@@ -59,6 +59,24 @@ export interface ElectronAPI {
    * drag-and-drop event. Wraps Electron's `webUtils.getPathForFile()`.
    */
   getDroppedFolderPath: (file: File) => string;
+  /**
+   * Subscribe to native application-menu commands. Returns an unsubscribe
+   * function. The id matches the menu item clicked (e.g. "about",
+   * "backup", "species-scientific").
+   */
+  onMenuCommand: (callback: (id: string) => void) => () => void;
+  /**
+   * Report the active species-name mode so the View → Species names radio
+   * shows the correct checkmark. One-way; localStorage remains the source
+   * of truth.
+   */
+  setSpeciesNameMenuMode: (mode: "common" | "scientific") => void;
+  /**
+   * Report whether first-run setup has finished so the setup-only menu
+   * items (Home, backup/restore, backups folder, species names) are
+   * disabled during the wizard and enabled afterward.
+   */
+  setMenuSetupReady: (ready: boolean) => void;
 }
 
 declare global {

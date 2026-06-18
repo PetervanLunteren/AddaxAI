@@ -56,6 +56,7 @@ def stream_with_tail(
     max_tail: int = 300,
     poll_interval: float = 0.01,
     popen_factory: Callable[..., "subprocess.Popen[Any]"] = subprocess.Popen,
+    job_id: str | None = None,
 ) -> StreamedResult:
     """
     Spawn `cmd`, stream merged stdout/stderr line-by-line, and return a
@@ -69,7 +70,21 @@ def stream_with_tail(
     (e.g. `app.core.subprocess_group.popen_group`) so cancellation can
     kill the whole tree. Defaults to plain `subprocess.Popen` for
     callers that don't need cancellation.
+
+    `job_id` opts the run into cooperative cancellation: the subprocess
+    is launched in its own process group and registered via
+    `track_subprocess`, so a concurrent `request_cancel(job_id)` kills
+    the whole tree. The caller is responsible for noticing the resulting
+    non-zero exit and raising `JobCancelledError`. No-op when None, which
+    keeps non-cancellable callers (most of them) on plain Popen.
     """
+    # Cancellable runs need a killable process group. Only override the
+    # default factory; an explicit popen_factory from the caller wins.
+    if job_id is not None and popen_factory is subprocess.Popen:
+        from app.core.subprocess_group import popen_group
+
+        popen_factory = popen_group
+
     process = popen_factory(
         cmd,
         stdout=subprocess.PIPE,
@@ -83,33 +98,39 @@ def stream_with_tail(
     last_line = ""
     output_tail: deque[str] = deque(maxlen=max_tail)
 
-    while True:
-        if process.poll() is not None:
-            # Drain anything still in the pipe before breaking out.
-            remaining = process.stdout.read() if process.stdout else ""
-            if remaining:
-                for raw in remaining.splitlines():
-                    line = raw.strip()
-                    if not line:
-                        continue
+    from app.core.job_cancellation import track_subprocess
+
+    # track_subprocess is a no-op when job_id is None, so the read loop
+    # is identical for cancellable and non-cancellable callers.
+    with track_subprocess(job_id, process):
+        while True:
+            if process.poll() is not None:
+                # Drain anything still in the pipe before breaking out.
+                remaining = process.stdout.read() if process.stdout else ""
+                if remaining:
+                    for raw in remaining.splitlines():
+                        line = raw.strip()
+                        if not line:
+                            continue
+                        last_line = line
+                        output_tail.append(line)
+                        if on_line:
+                            on_line(line)
+                break
+
+            raw = process.stdout.readline() if process.stdout else ""
+            if raw:
+                line = raw.strip()
+                if line:
                     last_line = line
                     output_tail.append(line)
                     if on_line:
                         on_line(line)
-            break
+            else:
+                time.sleep(poll_interval)
 
-        raw = process.stdout.readline() if process.stdout else ""
-        if raw:
-            line = raw.strip()
-            if line:
-                last_line = line
-                output_tail.append(line)
-                if on_line:
-                    on_line(line)
-        else:
-            time.sleep(poll_interval)
+        process.wait()
 
-    process.wait()
     return StreamedResult(
         returncode=process.returncode,
         last_line=last_line,

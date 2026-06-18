@@ -7,7 +7,6 @@ import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Info } from "lucide-react";
 import { projectsApi, type ProjectUpdate, type ProjectResponse } from "../../api/projects";
 import { API_BASE_URL } from "../../lib/api-client";
 import { ImageDropZone } from "./ImageDropZone";
@@ -30,12 +29,6 @@ import {
 } from "../ui/form";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../ui/tooltip";
 
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(100, "Name too long"),
@@ -133,25 +126,12 @@ export function EditProjectDialog({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <TooltipProvider>
               <FormField
                 control={form.control}
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-1.5">
-                      Project name
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">
-                            A unique name for your project
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </FormLabel>
+                    <FormLabel>Project name</FormLabel>
                     <FormControl>
                       <Input placeholder="e.g., Yellowstone camera trap project" {...field} value={field.value ?? ""} />
                     </FormControl>
@@ -165,22 +145,10 @@ export function EditProjectDialog({
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-1.5">
-                      Description
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">
-                            Optional notes about the project's purpose, location, team members, etc.
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </FormLabel>
+                    <FormLabel>Description (optional)</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="Brief description of the project"
+                        placeholder="Notes about purpose, location, team members, etc."
                         className="resize-y"
                         rows={2}
                         maxLength={500}
@@ -236,7 +204,6 @@ export function EditProjectDialog({
                   {updateMutation.isPending ? "Saving..." : "Save changes"}
                 </Button>
               </DialogFooter>
-            </TooltipProvider>
           </form>
         </Form>
       </DialogContent>

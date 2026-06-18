@@ -115,4 +115,36 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDroppedFolderPath: (file: File): string => {
     return webUtils.getPathForFile(file);
   },
+
+  /**
+   * Subscribe to application-menu commands. The native menu (built in the
+   * main process) sends a string id when a renderer-backed item is clicked;
+   * the <MenuCommands> component runs the matching action. Returns an
+   * unsubscribe function.
+   */
+  onMenuCommand: (callback: (id: string) => void): (() => void) => {
+    const listener = (_event: unknown, id: string) => callback(id);
+    ipcRenderer.on('menu:command', listener);
+    return () => ipcRenderer.removeListener('menu:command', listener);
+  },
+
+  /**
+   * Tell the main process which species-name mode is active so the
+   * View → Species names radio shows the right checkmark. Sent on mount
+   * and after each change. One-way; the renderer's localStorage stays the
+   * single source of truth.
+   */
+  setSpeciesNameMenuMode: (mode: 'common' | 'scientific'): void => {
+    ipcRenderer.send('menu:species-mode', mode);
+  },
+
+  /**
+   * Tell the main process whether first-run setup has finished, so the
+   * setup-only menu items (Home, backup/restore, backups folder, species
+   * names) can be disabled during the wizard and enabled afterward. Sent
+   * on mount and whenever the setup-ready state changes.
+   */
+  setMenuSetupReady: (ready: boolean): void => {
+    ipcRenderer.send('menu:setup-state', ready);
+  },
 });

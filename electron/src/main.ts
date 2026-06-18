@@ -8,7 +8,7 @@
  * - Clean shutdown of backend on quit
  */
 
-import { app, BrowserWindow, crashReporter, session, shell, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, crashReporter, session, shell, ipcMain, dialog, Menu } from 'electron';
 import { spawn, ChildProcess } from 'child_process';
 import * as os from 'os';
 import * as path from 'path';
@@ -346,13 +346,13 @@ async function createWindow(initialPath?: string): Promise<void> {
     minWidth: 1024,
     minHeight: 768,
     title: appTitle,
-    // Show the native menu bar on Windows / Linux. Beta testers
-    // benefit from seeing File / Edit / View / Window affordances
-    // (especially View → Force Reload for clearing stale state). The
-    // menu is slightly ugly because it sits flush against the white
-    // app header with no visual separator, but discoverability wins
-    // over aesthetics. No-op on macOS where the menu lives on the
-    // system menu bar.
+    // Show our custom application menu bar on Windows / Linux (built in
+    // setupApplicationMenu). It holds every app-wide action: File (data
+    // folders, backup/restore, quit), View (reload, species names), and
+    // Help (documentation, diagnostics, reset, about). The bar sits flush
+    // against the white app header with no visual separator, but
+    // discoverability wins over aesthetics. No-op on macOS where the menu
+    // lives on the system menu bar.
     autoHideMenuBar: false,
     webPreferences: {
       nodeIntegration: false,
@@ -421,6 +421,187 @@ async function createWindow(initialPath?: string): Promise<void> {
   if (!app.isPackaged) {
     mainWindow.webContents.openDevTools();
   }
+}
+
+/**
+ * Send a menu command to the focused renderer. The menu lives in the main
+ * process, but almost every action's logic already lives in the renderer
+ * (React Router navigation, the backup/restore/reset/updates dialogs, the
+ * species-name preference). Rather than duplicate that logic here, each
+ * renderer-backed menu item sends a single string command that the
+ * <MenuCommands> component dispatches. Roles (reload, quit, copy/paste) and
+ * external links (Documentation) are handled natively and never come here.
+ */
+function sendMenuCommand(id: string): void {
+  const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
+  win?.webContents.send('menu:command', id);
+}
+
+/**
+ * Build the application menu template. macOS gets the conventional app menu
+ * as the first submenu (About / Quit live there); Windows and Linux fold
+ * those entries into File and Help instead. Standard editing, reload, zoom
+ * and window behaviour use built-in Electron roles so we don't reimplement
+ * them.
+ */
+function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
+  const isMac = process.platform === 'darwin';
+
+  const aboutItem: Electron.MenuItemConstructorOptions = {
+    label: 'About AddaxAI',
+    click: () => sendMenuCommand('about'),
+  };
+  const checkForUpdatesItem: Electron.MenuItemConstructorOptions = {
+    label: 'Check for updates…',
+    click: () => sendMenuCommand('check-updates'),
+  };
+
+  const template: Electron.MenuItemConstructorOptions[] = [];
+
+  if (isMac) {
+    template.push({
+      label: 'AddaxAI',
+      submenu: [
+        aboutItem,
+        checkForUpdatesItem,
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    });
+  }
+
+  template.push({
+    label: 'File',
+    submenu: [
+      { id: 'nav-home', label: 'Home', click: () => sendMenuCommand('nav-home') },
+      { type: 'separator' },
+      { label: 'Open user data folder', click: () => sendMenuCommand('open-user-data') },
+      { id: 'open-backups', label: 'Open backups folder', click: () => sendMenuCommand('open-backups') },
+      { type: 'separator' },
+      { id: 'backup', label: 'Back up database…', click: () => sendMenuCommand('backup') },
+      { id: 'restore', label: 'Restore from backup…', click: () => sendMenuCommand('restore') },
+      // Windows / Linux have no app menu, so Check for updates and Quit
+      // live here instead.
+      ...(isMac
+        ? []
+        : ([
+            { type: 'separator' },
+            checkForUpdatesItem,
+            { type: 'separator' },
+            { role: 'quit' },
+          ] as Electron.MenuItemConstructorOptions[])),
+    ],
+  });
+
+  template.push({ role: 'editMenu' });
+
+  template.push({
+    label: 'View',
+    submenu: [
+      { role: 'reload' },
+      { role: 'forceReload' },
+      { type: 'separator' },
+      {
+        id: 'species-names',
+        label: 'Species names',
+        submenu: [
+          {
+            id: 'species-common',
+            label: 'Common',
+            type: 'radio',
+            checked: true,
+            click: () => sendMenuCommand('species-common'),
+          },
+          {
+            id: 'species-scientific',
+            label: 'Scientific',
+            type: 'radio',
+            checked: false,
+            click: () => sendMenuCommand('species-scientific'),
+          },
+        ],
+      },
+      { label: 'Language (coming soon)', enabled: false },
+      { type: 'separator' },
+      { role: 'togglefullscreen' },
+      { role: 'toggleDevTools' },
+      { type: 'separator' },
+      { role: 'resetZoom' },
+      { role: 'zoomIn' },
+      { role: 'zoomOut' },
+    ],
+  });
+
+  if (isMac) {
+    template.push({ role: 'windowMenu' });
+  }
+
+  template.push({
+    role: 'help',
+    label: 'Help',
+    submenu: [
+      { label: 'Documentation (coming soon)', enabled: false },
+      { label: 'Video tutorials (coming soon)', enabled: false },
+      { type: 'separator' },
+      { label: 'Export diagnostic report', click: () => sendMenuCommand('export-diagnostic') },
+      { type: 'separator' },
+      { label: 'Reset application…', click: () => sendMenuCommand('reset') },
+      // About lives in the app menu on macOS; fold it into Help elsewhere.
+      ...(isMac ? [] : ([{ type: 'separator' }, aboutItem] as Electron.MenuItemConstructorOptions[])),
+    ],
+  });
+
+  return template;
+}
+
+// Menu items that only make sense once first-run setup has finished.
+// Disabled until the renderer reports setup-ready over 'menu:setup-state':
+//   - nav-home / open-backups: navigation and a folder that are empty or
+//     loop back to the wizard during setup.
+//   - backup / restore: nothing to back up yet, no backups to restore.
+//   - species-names: no species data exists, so the toggle does nothing.
+// Diagnostics, Reset, Check for updates, About, reload and quit stay
+// enabled so a stuck setup can still be inspected or recovered.
+const SETUP_GATED_MENU_IDS = [
+  'nav-home',
+  'open-backups',
+  'backup',
+  'restore',
+  'species-names',
+] as const;
+
+/**
+ * Enable or disable the setup-gated menu items. Called whenever the
+ * renderer reports its setup-ready state. Items default to disabled at
+ * build time so a fresh install never shows a live-but-useless action
+ * before the first status report lands.
+ */
+function setMenuSetupReady(ready: boolean): void {
+  const menu = Menu.getApplicationMenu();
+  if (!menu) return;
+  for (const id of SETUP_GATED_MENU_IDS) {
+    const item = menu.getMenuItemById(id);
+    if (item) item.enabled = ready;
+  }
+}
+
+/**
+ * Build and install the application menu. Called once on startup. The
+ * renderer keeps the View → Species names radio in sync via the
+ * 'menu:species-mode' channel, and gates the setup-only items via
+ * 'menu:setup-state'.
+ */
+function setupApplicationMenu(): void {
+  Menu.setApplicationMenu(Menu.buildFromTemplate(buildMenuTemplate()));
+  // Default to not-ready: the renderer re-enables these once setup
+  // status reports ready. Avoids a flash of live items on first launch.
+  setMenuSetupReady(false);
 }
 
 /**
@@ -510,6 +691,25 @@ ipcMain.handle('app:getVersion', () => {
   return app.getVersion();
 });
 
+// Keep the View → Species names radio in sync with the renderer's stored
+// preference (localStorage, device-global). The renderer sends its current
+// mode on mount and after every change (a change reloads the page, so the
+// post-reload mount re-syncs the checkmark). One-way: the menu reflects the
+// renderer, never the reverse.
+ipcMain.on('menu:species-mode', (_event, mode: string) => {
+  const id = mode === 'scientific' ? 'species-scientific' : 'species-common';
+  const item = Menu.getApplicationMenu()?.getMenuItemById(id);
+  if (item) item.checked = true;
+});
+
+// Enable / disable the setup-gated menu items. The renderer sends its
+// current setup-ready state on mount and whenever it changes, so items
+// that only make sense post-setup stay greyed out during the first-run
+// wizard.
+ipcMain.on('menu:setup-state', (_event, ready: boolean) => {
+  setMenuSetupReady(Boolean(ready));
+});
+
 /**
  * Application lifecycle handlers
  */
@@ -563,6 +763,7 @@ function setupDownloadHandler(): void {
 app.on('ready', async () => {
   try {
     setupDownloadHandler();
+    setupApplicationMenu();
     await startBackend();
     // When launched via `AddaxAI.exe --timelapse <folder>` (Saul's
     // Timelapse integration / shim), open the main window straight on a

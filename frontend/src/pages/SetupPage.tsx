@@ -56,7 +56,11 @@ export default function SetupPage() {
   // bundled models missing, common in dev mode) leaves the user with no
   // affordance and the page looks frozen.
   const showStartButton = !inProgress && !status.ready && !hasError;
-  const isRetry = status.env_installed && !status.models_installed;
+  // Any finished piece on disk (env or models) means a previous attempt got
+  // partway. Closing the app mid-setup is safe: installs are atomic and
+  // finished downloads are kept, so we resume rather than start over.
+  const hasPartialProgress =
+    (status.env_installed || status.models_installed) && !status.ready;
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8">
@@ -87,14 +91,15 @@ export default function SetupPage() {
             >
               {install.isPending
                 ? "Starting..."
-                : isRetry
-                  ? "Try again"
+                : hasPartialProgress
+                  ? "Resume setup"
                   : "Start setup"}
             </Button>
             <p className="mt-2 text-center text-xs text-muted-foreground">
-              {isRetry
-                ? "Default models are still missing. Click try again to "
-                  + "download them from HuggingFace."
+              {hasPartialProgress
+                ? "Some pieces are already installed. Resuming picks up "
+                  + "where the last attempt stopped; finished downloads "
+                  + "are kept."
                 : "An internet connection is required for this one-time setup."}
             </p>
           </div>
@@ -110,8 +115,8 @@ export default function SetupPage() {
               {status.message || "Installing..."}
             </p>
             <p className="text-center text-xs text-muted-foreground">
-              {Math.round(status.progress_pct)}% complete. Do not close
-              the app.
+              {Math.round(status.progress_pct)}% complete. You can close the
+              app and resume later; finished downloads are kept.
             </p>
           </div>
         )}

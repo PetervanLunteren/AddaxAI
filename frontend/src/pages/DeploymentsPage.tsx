@@ -9,7 +9,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, Tent, AlertTriangle, Plus, Info, Scissors } from "lucide-react";
 import { deploymentsApi } from "../api/deployments";
-import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
 import { sitesApi } from "../api/sites";
 import { basename } from "../lib/path-utils";
 import type { DeploymentResponse, DeploymentStatsOnly } from "../api/types";
@@ -388,7 +387,6 @@ export function DeploymentsPage() {
                 <Plus className="mr-2 h-4 w-4" />
                 New deployment
               </Button>
-              <DiagnosticReportButton />
             </div>
           </div>
         </div>

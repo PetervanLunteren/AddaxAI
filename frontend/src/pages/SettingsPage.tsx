@@ -17,7 +17,6 @@ import { Save, RotateCcw, Undo2, Check, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { modelsApi } from "../api/models";
-import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
 import { LabelSelectionField } from "../components/taxonomy/LabelSelectionField";
 import { ModelSelect } from "../components/models/ModelSelect";
 import { ModelInfoSheet } from "../components/models/ModelInfoSheet";
@@ -397,7 +396,7 @@ export default function SettingsPage() {
   });
 
   // WebSocket progress tracking for model preparation
-  const { progress, message } = useTaskProgress({
+  const { progress, message, cancel: cancelPreparationTask } = useTaskProgress({
     taskId: preparingTaskId,
     onComplete: () => {
       // Refresh the correct model status based on which model was being prepared
@@ -413,6 +412,11 @@ export default function SettingsPage() {
       setPreparationError(error);
       setPreparationStage("error");
       setPreparingTaskId(null);
+    },
+    onCancelled: () => {
+      setPreparingTaskId(null);
+      setPreparationStage("form");
+      setPreparingModelType(null);
     },
   });
 
@@ -496,11 +500,17 @@ export default function SettingsPage() {
     }
   };
 
-  // Handler for canceling preparation
+  // Handler for canceling preparation. Sends a real cancel over the
+  // WebSocket; the worker kills its subprocess and replies "cancelled",
+  // handled by onCancelled above. If the socket isn't open (rare), fall
+  // back to detaching the UI so the modal can't get stuck.
   const handleCancelPreparation = () => {
-    setPreparingTaskId(null);
-    setPreparationStage("form");
-    setPreparingModelType(null);
+    if (preparingTaskId) {
+      cancelPreparationTask();
+    } else {
+      setPreparationStage("form");
+      setPreparingModelType(null);
+    }
   };
 
   // Handler for retrying after error
@@ -804,7 +814,6 @@ export default function SettingsPage() {
                 Configure AI models, labels, and analysis parameters
               </p>
             </div>
-            <DiagnosticReportButton />
           </div>
         </div>
       </header>

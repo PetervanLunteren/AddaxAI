@@ -32,8 +32,10 @@ import { cn } from "../../lib/utils";
 import { modelsApi } from "../../api/models";
 import { SpeciesSelectionModal } from "./SpeciesSelectionModal";
 
-/** Shown in the dropdown when no country is selected (all labels kept). */
-const NO_FILTER_LABEL = "All labels included";
+/** Shown in the dropdown when no country is selected (all labels kept).
+ *  "(default)" signals to first-time users that leaving it is a valid
+ *  choice and the country list below is the optional narrow-down path. */
+const NO_FILTER_LABEL = "All labels (default)";
 
 interface LabelSelectionFieldProps {
   modelId: string;
@@ -154,9 +156,19 @@ export function LabelSelectionField({
   );
   const includedCount = totalSpeciesCount - excludedInModel;
 
+  // Shared status text so the geofence and non-geofence branches read the
+  // same: "All species included" when nothing is excluded, otherwise the
+  // included / total count.
+  const statusText =
+    excludedInModel === 0
+      ? "All species included"
+      : `${includedCount} of ${totalSpeciesCount} included`;
+
+  // Geofence caption: the shared status plus a "Refine" link that opens the
+  // species tree (the country button above does not open it).
   const summary = (
     <p className="pl-3 text-xs text-muted-foreground">
-      {includedCount} of {totalSpeciesCount} included{" "}
+      {statusText}{" "}
       <button
         type="button"
         onClick={() => setModalOpen(true)}
@@ -232,23 +244,22 @@ export function LabelSelectionField({
           {summary}
           </>
         ) : (
-          // No geofence: the only action is manual refining, so give it a
-          // full-width control matching the country dropdown's weight instead
-          // of a bare caption floating in an empty column.
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-9 w-full justify-between"
-            onClick={() => setModalOpen(true)}
-          >
-            <span className="truncate flex-1 text-left">
-              {excludedInModel === 0
-                ? "All species included"
-                : `${includedCount} of ${totalSpeciesCount} species`}
-            </span>
-            <SlidersHorizontal className="ml-1.5 h-3.5 w-3.5 shrink-0 opacity-50" />
-          </Button>
+          // No geofence: no country dropdown, so mirror the geofence layout
+          // with a "Select species" button on top (names the action) and the
+          // shared status caption below. The button opens the species tree.
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 w-full justify-between"
+              onClick={() => setModalOpen(true)}
+            >
+              <span className="truncate flex-1 text-left">Select species</span>
+              <SlidersHorizontal className="ml-1.5 h-3.5 w-3.5 shrink-0 opacity-50" />
+            </Button>
+            <p className="pl-3 text-xs text-muted-foreground">{statusText}</p>
+          </>
         )}
       </div>
 

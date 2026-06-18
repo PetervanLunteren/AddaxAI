@@ -16,6 +16,7 @@ from pathlib import Path
 
 from huggingface_hub import HfApi
 
+from app.core.job_cancellation import JobCancelledError
 from app.core.logging_config import get_logger
 from app.ml.hf_downloader import HuggingFaceRepoDownloader
 from app.ml.schemas.model_manifest import ModelManifest
@@ -113,6 +114,7 @@ class ModelStorage:
         manifest: ModelManifest,
         progress_callback: Callable[[str, float], None] | None = None,
         force: bool = False,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> Path:
         """
         Download model weights from HuggingFace if not cached.
@@ -123,12 +125,16 @@ class ModelStorage:
             force: If True, wipe the model directory (preserving manifest.json)
                 before downloading. Used by the drift-redownload flow when the
                 upstream HF revision moved past the locally recorded SHA.
+            should_cancel: Optional predicate polled while downloading; when it
+                returns True the partial download is removed and
+                JobCancelledError propagates to the caller.
 
         Returns:
             Path to model directory
 
         Raises:
             RuntimeError: If download fails
+            JobCancelledError: If cancelled via should_cancel
         """
         # Model is in models/det/{model_id}/ or models/cls/{model_id}/
         # Use model_category (set by ManifestManager based on directory) to determine path
@@ -193,6 +199,7 @@ class ModelStorage:
                 local_dir=model_path,
                 progress_callback=progress_callback,
                 revision="main",
+                should_cancel=should_cancel,
             )
 
             if not success:
@@ -234,6 +241,16 @@ class ModelStorage:
 
             return model_path
 
+        except JobCancelledError:
+            # Cancelled mid-download: drop the partial directory so a later
+            # retry starts clean, then propagate so the worker reports
+            # cancellation rather than a failure.
+            if model_path.exists():
+                import shutil
+
+                logger.info(f"Cleaning up cancelled download at {model_path}")
+                shutil.rmtree(model_path)
+            raise
         except Exception as e:
             # Clean up partial download
             if model_path.exists():

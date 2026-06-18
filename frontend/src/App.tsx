@@ -46,6 +46,7 @@ import { FolderRunSaveStep } from "./pages/folder-run/FolderRunSaveStep";
 import { FolderRunResumeIndex } from "./pages/folder-run/FolderRunResumeIndex";
 import { Button } from "./components/ui/button";
 import { CrashBanner } from "./components/layout/CrashBanner";
+import { MenuCommands } from "./components/layout/MenuCommands";
 import { Toaster } from "./components/ui/sonner";
 import { api } from "./lib/api-client";
 import { setupApi } from "./api/setup";
@@ -442,7 +443,8 @@ function App() {
           </Routes>
         </SetupGate>
 
-        {/* Global toast notifications */}
+        {/* Native menu command bridge (Electron only) + global toasts */}
+        <MenuCommands />
         <ModelUpdateToast />
         <DownloadCompleteToasts />
         <Toaster />

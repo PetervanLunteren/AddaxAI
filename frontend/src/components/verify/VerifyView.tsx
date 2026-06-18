@@ -8,7 +8,7 @@
  * separately in `LabelsTab` / the Labels page. Mounted in two contexts:
  *
  * - Research projects: wrapped by `pages/CountsPage.tsx`, which adds the
- *   page chrome (header "Counts", DiagnosticReportButton).
+ *   page chrome (header "Counts").
  * - Folder runs: wrapped by `pages/folder-run/FolderRunCountsStep`,
  *   which mounts it inside the stepper with a sticky Back / Continue bar.
  *

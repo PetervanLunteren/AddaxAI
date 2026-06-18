@@ -24,6 +24,7 @@ import requests
 from huggingface_hub import HfApi
 from huggingface_hub.utils import RepositoryNotFoundError, RevisionNotFoundError
 
+from app.core.job_cancellation import JobCancelledError
 from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -190,7 +191,12 @@ class HuggingFaceRepoDownloader:
 
             self.last_adjustment_time = current_time
 
-    def download_file(self, file_info: dict, local_dir: Path) -> bool:
+    def download_file(
+        self,
+        file_info: dict,
+        local_dir: Path,
+        should_cancel: Callable[[], bool] | None = None,
+    ) -> bool:
         """
         Download a single file with progress tracking.
         Downloads to a .tmp file first, then renames atomically on success.
@@ -198,6 +204,9 @@ class HuggingFaceRepoDownloader:
         Args:
             file_info: File information including path, size, and URL
             local_dir: Local directory to save the file
+            should_cancel: Optional predicate polled between chunks; when it
+                returns True the download aborts, the partial .tmp file is
+                removed, and the method returns False.
 
         Returns:
             True if successful, False otherwise
@@ -228,6 +237,13 @@ class HuggingFaceRepoDownloader:
 
                 with open(temp_file_path, "wb") as f:
                     for chunk in response.iter_content(chunk_size=self.chunk_size):
+                        # Bail promptly on cancel so the worker's executor
+                        # shutdown doesn't block on a multi-GB transfer.
+                        if should_cancel is not None and should_cancel():
+                            f.close()
+                            if temp_file_path.exists():
+                                temp_file_path.unlink()
+                            return False
                         if chunk:
                             f.write(chunk)
                             chunk_size = len(chunk)
@@ -261,6 +277,7 @@ class HuggingFaceRepoDownloader:
         local_dir: Path,
         progress_callback: Callable[[str, float], None] | None = None,
         revision: str = "main",
+        should_cancel: Callable[[], bool] | None = None,
     ) -> bool:
         """
         Download entire Hugging Face repository.
@@ -270,9 +287,15 @@ class HuggingFaceRepoDownloader:
             local_dir: Local directory to save files
             progress_callback: Optional callback(message, progress) for updates
             revision: Branch or revision to download
+            should_cancel: Optional predicate polled while downloading; when
+                it returns True the download is aborted and JobCancelledError
+                is raised so the caller can clean up and report cancellation.
 
         Returns:
             True if successful, False otherwise
+
+        Raises:
+            JobCancelledError: If should_cancel() returned True mid-download.
         """
         try:
             logger.info(f"Starting download of {repo_id} (revision: {revision})")
@@ -306,7 +329,9 @@ class HuggingFaceRepoDownloader:
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                 # Submit all download tasks
                 future_to_file = {
-                    executor.submit(self.download_file, file_info, local_dir): file_info
+                    executor.submit(
+                        self.download_file, file_info, local_dir, should_cancel
+                    ): file_info
                     for file_info in files_info
                 }
 
@@ -318,6 +343,13 @@ class HuggingFaceRepoDownloader:
                 completed = 0
 
                 while future_to_file:
+                    # Cancel requested: stop scheduling new work and abort.
+                    # In-flight download_file calls poll should_cancel too,
+                    # so they unblock quickly; cancel_futures drops the rest.
+                    if should_cancel is not None and should_cancel():
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        raise JobCancelledError()
+
                     # Check for completed downloads
                     completed_futures = [f for f in future_to_file.keys() if f.done()]
 
@@ -390,6 +422,11 @@ class HuggingFaceRepoDownloader:
 
             return failed_downloads == 0
 
+        except JobCancelledError:
+            # Cancelled mid-download; let the caller clean up the partial
+            # directory and report cancellation rather than failure.
+            logger.info(f"Download of {repo_id} cancelled")
+            raise
         except Exception as e:
             logger.error(f"Download failed: {e}", exc_info=True)
             if progress_callback:

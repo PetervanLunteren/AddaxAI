@@ -21,6 +21,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import ClassVar
 
+from app.core.job_cancellation import JobCancelledError, is_cancel_requested
 from app.core.logging_config import get_logger
 from app.ml.schemas.model_manifest import ModelManifest
 from app.utils.subprocess_runner import log_subprocess_failure, stream_with_tail
@@ -291,7 +292,10 @@ class EnvironmentManager:
         return yaml_path
 
     def get_or_create_env(
-        self, manifest: ModelManifest, progress_callback: Callable[[str, float], None] | None = None
+        self,
+        manifest: ModelManifest,
+        progress_callback: Callable[[str, float], None] | None = None,
+        job_id: str | None = None,
     ) -> Path:
         """
         Get existing environment or create new one from YAML.
@@ -299,12 +303,17 @@ class EnvironmentManager:
         Args:
             manifest: Model manifest with env name
             progress_callback: Optional callback function(message: str, progress: float)
+            job_id: Optional cancellation key. When set, the micromamba
+                subprocess is killable via `request_cancel(job_id)` and a
+                cancel mid-build raises `JobCancelledError`. None for the
+                non-cancellable callers (first-run setup, drift rebuild).
 
         Returns:
             Path to environment directory
 
         Raises:
             RuntimeError: If environment creation fails
+            JobCancelledError: If the build was cancelled via job_id
             FileNotFoundError: If environment YAML not found
         """
         env_name = f"env-{manifest.env}"
@@ -359,7 +368,7 @@ class EnvironmentManager:
                 self._safe_rmtree(env_path)
 
             logger.info(f"Creating environment {env_name} from {yaml_path}")
-            self._create_env(env_name, env_path, yaml_path, progress_callback)
+            self._create_env(env_name, env_path, yaml_path, progress_callback, job_id)
 
             return env_path
         finally:
@@ -406,6 +415,7 @@ class EnvironmentManager:
         env_path: Path,
         yaml_path: Path,
         progress_callback: Callable[[str, float], None] | None = None,
+        job_id: str | None = None,
     ) -> None:
         """
         Create micromamba environment from YAML file.
@@ -415,9 +425,12 @@ class EnvironmentManager:
             env_path: Path where environment will be created
             yaml_path: Path to environment.yml file
             progress_callback: Optional callback function(message: str, progress: float)
+            job_id: Optional cancellation key passed to stream_with_tail so
+                the micromamba subprocess can be killed on cancel.
 
         Raises:
             RuntimeError: If environment creation fails
+            JobCancelledError: If the build was cancelled via job_id
         """
         try:
             # Heal any missing on-disk state (bin/, envs/, micromamba binary)
@@ -518,8 +531,18 @@ class EnvironmentManager:
                 logger.debug(f"micromamba: {line}")
 
             result = stream_with_tail(
-                cmd, env=env, on_line=on_micromamba_line
+                cmd, env=env, on_line=on_micromamba_line, job_id=job_id
             )
+
+            # A cancel kills micromamba mid-run, which surfaces here as a
+            # non-zero exit. Distinguish that from a genuine build failure
+            # so the user sees "cancelled", not a scary error. Clean the
+            # half-built temp env either way.
+            if job_id is not None and is_cancel_requested(job_id):
+                if temp_env_path.exists():
+                    self._safe_rmtree(temp_env_path)
+                logger.info(f"Environment build for {env_name} cancelled")
+                raise JobCancelledError()
 
             if result.returncode != 0:
                 # Clean up failed temp environment
@@ -568,6 +591,11 @@ class EnvironmentManager:
             if progress_callback:
                 progress_callback("Environment ready", 1.0)
 
+        except JobCancelledError:
+            # Cancelled mid-build. The temp env was already removed at the
+            # cancel checkpoint above; propagate cleanly so the worker
+            # reports cancellation rather than a build failure.
+            raise
         except Exception as e:
             # Clean up failed environment - only if rename hasn't happened yet
             # If temp still exists, remove it. If rename happened, remove final location.

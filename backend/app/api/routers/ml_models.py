@@ -12,6 +12,11 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 
+from app.core.job_cancellation import (
+    JobCancelledError,
+    clear_cancel,
+    is_cancel_requested,
+)
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.ml.batch_size import (
@@ -33,6 +38,15 @@ router = APIRouter(prefix="/api/ml", tags=["ML Models"])
 manifest_manager = None
 env_manager = None
 model_storage = None
+
+# task_ids (= model_id, model_id-env, model_id-weights) with a worker
+# currently running. Prepare reuses a stable task_id, so a stray double
+# "ready" (e.g. a torn-down dialog that still started a worker, then a
+# re-press) could otherwise spawn two workers downloading to the same
+# directory and fighting over the progress channel. Each worker checks
+# this set before any await — atomic on the single event loop — and a
+# duplicate start no-ops, letting the in-flight run own the channel.
+_active_prepares: set[str] = set()
 
 
 def _get_managers():
@@ -359,6 +373,17 @@ async def _prepare_model_task(model_id: str, manifest, task_id: str) -> None:
         manifest: Model manifest
         task_id: Task ID for WebSocket tracking
     """
+    if task_id in _active_prepares:
+        logger.info(f"Prepare for {task_id} already running; ignoring duplicate start")
+        return
+    _active_prepares.add(task_id)
+
+    # Polled by the download and env-build paths so a WebSocket "cancel"
+    # (which sets the flag and kills any running subprocess) unwinds the
+    # whole preparation promptly.
+    def should_cancel() -> bool:
+        return is_cancel_requested(task_id)
+
     try:
         await ws_manager.send_progress(task_id, "Starting model preparation...", 0.0)
 
@@ -416,7 +441,12 @@ async def _prepare_model_task(model_id: str, manifest, task_id: str) -> None:
                 )
 
             # Download weights (blocking call in thread pool)
-            await asyncio.to_thread(model_storage.download_weights, manifest, weights_progress)
+            await asyncio.to_thread(
+                model_storage.download_weights,
+                manifest,
+                weights_progress,
+                should_cancel=should_cancel,
+            )
 
             await ws_manager.send_progress(task_id, "Weights downloaded", weights_range[1])
 
@@ -451,8 +481,12 @@ async def _prepare_model_task(model_id: str, manifest, task_id: str) -> None:
                     ws_manager.send_progress(task_id, formatted_message, mapped_progress), loop
                 )
 
-            # Build environment (blocking call in thread pool)
-            await asyncio.to_thread(env_manager.get_or_create_env, manifest, env_progress)
+            # Build environment (blocking call in thread pool). task_id is
+            # passed as job_id so the micromamba subprocess is killable on
+            # cancel.
+            await asyncio.to_thread(
+                env_manager.get_or_create_env, manifest, env_progress, task_id
+            )
 
         # No torch.hub pre-warm: DINOv2 architecture now ships inside each
         # Addax-Data-Science/DINOV2-* HF repo alongside the .pth weights,
@@ -468,9 +502,17 @@ async def _prepare_model_task(model_id: str, manifest, task_id: str) -> None:
 
         logger.info(f"Model {model_id} prepared successfully")
 
+    except JobCancelledError:
+        logger.info(f"Model preparation for {model_id} cancelled")
+        await ws_manager.send_cancelled(task_id, "Model preparation cancelled")
     except Exception as e:
         logger.error(f"Failed to prepare model {model_id}: {e}", exc_info=True)
         await ws_manager.send_error(task_id, f"Preparation failed: {e}")
+    finally:
+        _active_prepares.discard(task_id)
+        # Drop the cancel flag so a re-prepare under the same task_id isn't
+        # killed on arrival by a leftover request.
+        clear_cancel(task_id)
 
 
 async def _prepare_weights_task(model_id: str, manifest, task_id: str) -> None:
@@ -482,6 +524,14 @@ async def _prepare_weights_task(model_id: str, manifest, task_id: str) -> None:
         manifest: Model manifest
         task_id: Task ID for WebSocket tracking
     """
+    if task_id in _active_prepares:
+        logger.info(f"Weights download for {task_id} already running; ignoring duplicate start")
+        return
+    _active_prepares.add(task_id)
+
+    def should_cancel() -> bool:
+        return is_cancel_requested(task_id)
+
     try:
         await ws_manager.send_progress(task_id, "Starting weights download...", 0.0)
 
@@ -497,7 +547,10 @@ async def _prepare_weights_task(model_id: str, manifest, task_id: str) -> None:
 
         # Download weights (blocking call in thread pool)
         await asyncio.to_thread(
-            model_storage.download_weights, manifest, weights_progress
+            model_storage.download_weights,
+            manifest,
+            weights_progress,
+            should_cancel=should_cancel,
         )
 
         await ws_manager.send_complete(
@@ -509,9 +562,15 @@ async def _prepare_weights_task(model_id: str, manifest, task_id: str) -> None:
 
         logger.info(f"Weights for {model_id} downloaded successfully")
 
+    except JobCancelledError:
+        logger.info(f"Weights download for {model_id} cancelled")
+        await ws_manager.send_cancelled(task_id, "Weights download cancelled")
     except Exception as e:
         logger.error(f"Failed to download weights for {model_id}: {e}", exc_info=True)
         await ws_manager.send_error(task_id, f"Weights download failed: {e}")
+    finally:
+        _active_prepares.discard(task_id)
+        clear_cancel(task_id)
 
 
 async def _prepare_env_task(model_id: str, manifest, task_id: str) -> None:
@@ -523,6 +582,11 @@ async def _prepare_env_task(model_id: str, manifest, task_id: str) -> None:
         manifest: Model manifest
         task_id: Task ID for WebSocket tracking
     """
+    if task_id in _active_prepares:
+        logger.info(f"Environment build for {task_id} already running; ignoring duplicate start")
+        return
+    _active_prepares.add(task_id)
+
     try:
         await ws_manager.send_progress(task_id, "Starting environment build...", 0.0)
 
@@ -537,8 +601,11 @@ async def _prepare_env_task(model_id: str, manifest, task_id: str) -> None:
                 ws_manager.send_progress(task_id, message, progress), loop
             )
 
-        # Build environment (blocking call in thread pool)
-        await asyncio.to_thread(env_manager.get_or_create_env, manifest, env_progress)
+        # Build environment (blocking call in thread pool). task_id as
+        # job_id makes the micromamba subprocess killable on cancel.
+        await asyncio.to_thread(
+            env_manager.get_or_create_env, manifest, env_progress, task_id
+        )
 
         await ws_manager.send_complete(
             task_id,
@@ -549,9 +616,15 @@ async def _prepare_env_task(model_id: str, manifest, task_id: str) -> None:
 
         logger.info(f"Environment for {model_id} built successfully")
 
+    except JobCancelledError:
+        logger.info(f"Environment build for {model_id} cancelled")
+        await ws_manager.send_cancelled(task_id, "Environment build cancelled")
     except Exception as e:
         logger.error(f"Failed to build environment for {model_id}: {e}", exc_info=True)
         await ws_manager.send_error(task_id, f"Environment build failed: {e}")
+    finally:
+        _active_prepares.discard(task_id)
+        clear_cancel(task_id)
 
 
 @router.get("/updates")

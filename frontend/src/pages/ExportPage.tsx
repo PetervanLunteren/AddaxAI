@@ -26,7 +26,6 @@ import {
 } from "../api/export";
 import { useNoSiteDeployments } from "../hooks/useNoSiteDeployments";
 import { SpatialExportConfirmDialog } from "../components/export/SpatialExportConfirmDialog";
-import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
 import { CamtrapDPExportConfirmDialog } from "../components/export/CamtrapDPExportConfirmDialog";
 import { CamtrapDPProgressModal } from "../components/export/CamtrapDPProgressModal";
 import { downloadBlob } from "../lib/download";
@@ -242,7 +241,6 @@ export default function ExportPage() {
                 Export project data in standardised formats
               </p>
             </div>
-            <DiagnosticReportButton />
           </div>
         </div>
       </header>

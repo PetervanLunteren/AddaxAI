@@ -17,8 +17,6 @@ import { useQuery } from "@tanstack/react-query";
 import { eventsApi } from "../api/events";
 import { sitesApi } from "../api/sites";
 import { speciesLabelMap } from "../lib/species-name-mode";
-import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
-import { SpeciesNameToggle } from "../components/layout/SpeciesNameToggle";
 import type { ObservationRateMapFilters } from "../api/statistics";
 import {
   MapFilterBar,
@@ -181,10 +179,6 @@ export function MapPage() {
               <p className="text-sm text-muted-foreground">
                 Observation rate per 100 trap nights
               </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <SpeciesNameToggle />
-              <DiagnosticReportButton />
             </div>
           </div>
         </div>

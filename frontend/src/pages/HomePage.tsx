@@ -27,7 +27,6 @@
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, LayoutDashboard, FolderOpen } from "lucide-react";
 import { buttonVariants } from "../components/ui/button";
-import { AppHamburger } from "../components/layout/AppHamburger";
 import { cn } from "../lib/utils";
 
 // Frosted-glass surface. backdrop-filter is set inline so the look does
@@ -58,11 +57,6 @@ export function HomePage() {
       />
 
       <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-7 lg:px-8">
-        {/* Top bar: brand left, app menu right. */}
-        <header className="flex items-center justify-end">
-          <AppHamburger />
-        </header>
-
         {/* Centered logo, heading, and the two glass cards. Top-aligned
             (not vertically centred) so the cards never fall off the
             bottom on short screens. */}

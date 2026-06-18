@@ -93,6 +93,13 @@ class ConnectionManager:
         Schedules automatic cleanup after _PENDING_START_TIMEOUT seconds to
         prevent memory leaks if the frontend never connects.
         """
+        # Drop any leftover terminal/progress state from a previous run that
+        # reused this task_id. Model preparation keys on model_id, so the
+        # same task_id recurs across runs; without this, a fresh prepare's
+        # WebSocket replays the prior run's "cancelled"/"complete" the instant
+        # it connects and the dialog closes immediately. Job runs use unique
+        # ids and are unaffected.
+        self.current_state.pop(task_id, None)
         self._pending_starts[task_id] = start_fn
         logger.info(f"Registered pending start for task {task_id}")
 

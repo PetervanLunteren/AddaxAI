@@ -24,7 +24,6 @@ import { createContext, useContext } from "react";
 import { Link, Outlet, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { StepProgress } from "../../components/folder-run/StepProgress";
-import { AppHamburger } from "../../components/layout/AppHamburger";
 import {
   folderRunsApi,
   type FolderRunResponse,
@@ -93,10 +92,8 @@ export function FolderRunLayout() {
     <FolderRunContext.Provider value={{ runId, run, isLoading }}>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
         {/* Standard page header (matches Projects and the project pages):
-            logo + title + subtitle on the left, app menu on the right.
-            The logo links home; the stepper sits in its own band below.
-            relative z-40 lets the AppHamburger dropdown paint over the
-            content (same reasoning as ProjectsPage). */}
+            logo + title + subtitle on the left. The logo links home; the
+            stepper sits in its own band below. */}
         <header className="relative z-40 border-b bg-white/80 backdrop-blur-sm">
           <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between gap-4">
@@ -122,7 +119,6 @@ export function FolderRunLayout() {
                   </p>
                 </div>
               </div>
-              <AppHamburger />
             </div>
           </div>
         </header>

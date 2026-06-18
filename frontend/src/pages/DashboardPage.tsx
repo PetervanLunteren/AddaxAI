@@ -5,15 +5,13 @@
  * content can be reused inside the folder-run Overview step
  * without duplicating the queries, filter state, or charts. This
  * page just provides the canonical research-projects chrome
- * (``<header>`` with the page title + DiagnosticReportButton) and
- * the outer max-width container.
+ * (``<header>`` with the page title) and the outer max-width
+ * container.
  */
 
 import { useParams } from "react-router-dom";
 
 import { DashboardView } from "../components/dashboard/DashboardView";
-import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
-import { SpeciesNameToggle } from "../components/layout/SpeciesNameToggle";
 
 export default function DashboardPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -31,10 +29,6 @@ export default function DashboardPage() {
               <p className="text-sm text-muted-foreground">
                 Project overview with statistics and trends
               </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <SpeciesNameToggle />
-              <DiagnosticReportButton />
             </div>
           </div>
         </div>

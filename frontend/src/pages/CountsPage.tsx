@@ -12,8 +12,6 @@
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { eventsApi } from "../api/events";
-import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
-import { SpeciesNameToggle } from "../components/layout/SpeciesNameToggle";
 import { VerifyView } from "../components/verify/VerifyView";
 
 export default function CountsPage() {
@@ -41,10 +39,6 @@ export default function CountsPage() {
                   ? "Check the AI's counts, adjust any that are wrong (optional)"
                   : "Run a deployment analysis to get started"}
               </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <SpeciesNameToggle />
-              <DiagnosticReportButton />
             </div>
           </div>
         </div>

@@ -408,6 +408,11 @@ export function FolderRunModelStep() {
       setPrepStage("error");
       setPreparingTaskId(null);
     },
+    onCancelled: () => {
+      setPreparingTaskId(null);
+      setPreparingModelId(null);
+      setPrepStage("form");
+    },
   });
 
   const startPrepare = async (modelId: string) => {
@@ -426,9 +431,15 @@ export function FolderRunModelStep() {
     }
   };
   const cancelPrepare = () => {
-    setPreparingTaskId(null);
-    setPreparingModelId(null);
-    setPrepStage("form");
+    // Real cancel over the WebSocket; the worker kills its subprocess and
+    // replies "cancelled" (handled by onCancelled). Falls back to detaching
+    // if no task is live so the modal can't get stuck.
+    if (preparingTaskId) {
+      prepProgress.cancel();
+    } else {
+      setPreparingModelId(null);
+      setPrepStage("form");
+    }
   };
   const retryPrepare = () => {
     if (preparingModelId) {

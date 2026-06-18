@@ -12,8 +12,6 @@ import { useQuery } from "@tanstack/react-query";
 
 import { performanceApi } from "../api/performance";
 import { sitesApi } from "../api/sites";
-import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
-import { SpeciesNameToggle } from "../components/layout/SpeciesNameToggle";
 import { PerClassPerformanceTable } from "../components/plots/PerClassPerformanceTable";
 import {
   InsightsFilterChips,
@@ -124,10 +122,6 @@ export function PerClassPerformancePage() {
               <p className="text-sm text-muted-foreground">
                 Precision, recall, and F1 score per class
               </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <SpeciesNameToggle />
-              <DiagnosticReportButton />
             </div>
           </div>
         </div>

@@ -9,8 +9,6 @@
  */
 
 import { useParams } from "react-router-dom";
-import { DiagnosticReportButton } from "../components/diagnostics/DiagnosticReportButton";
-import { SpeciesNameToggle } from "../components/layout/SpeciesNameToggle";
 import { LabelsView } from "../components/verify/LabelsView";
 
 export default function LabelsPage() {
@@ -26,10 +24,6 @@ export default function LabelsPage() {
               <p className="text-sm text-muted-foreground">
                 Check the AI's labels, fix any that are wrong (optional)
               </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <SpeciesNameToggle />
-              <DiagnosticReportButton />
             </div>
           </div>
         </div>

@@ -40,6 +40,7 @@ export function ModelPreparationView({
   onCancel,
 }: ModelPreparationViewProps) {
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const handleCancelClick = () => {
     setShowCancelDialog(true);
@@ -47,6 +48,9 @@ export function ModelPreparationView({
 
   const handleConfirmCancel = () => {
     setShowCancelDialog(false);
+    // Stays in this view showing "Cancelling..." until the backend sends
+    // the cancelled terminal event, which the parent uses to reset.
+    setCancelling(true);
     onCancel();
   };
 
@@ -57,7 +61,8 @@ export function ModelPreparationView({
       <DialogHeader>
         <DialogTitle>Preparing model...</DialogTitle>
         <DialogDescription>
-          This may take several minutes. Please don't close this window.
+          This may take several minutes. You can cancel below and prepare
+          again later.
         </DialogDescription>
       </DialogHeader>
 
@@ -67,7 +72,9 @@ export function ModelPreparationView({
           <span className="text-[4.5rem]">{modelEmoji}</span>
           <div>
             <h3 className="font-semibold text-lg">{modelName}</h3>
-            <p className="text-sm text-muted-foreground">Downloading and installing...</p>
+            <p className="text-sm text-muted-foreground">
+              {cancelling ? "Cancelling..." : "Downloading and installing..."}
+            </p>
           </div>
         </div>
 
@@ -87,8 +94,13 @@ export function ModelPreparationView({
 
       {/* Cancel Button */}
       <div className="flex justify-end">
-        <Button type="button" variant="outline" onClick={handleCancelClick}>
-          Cancel
+        <Button
+          type="button"
+          variant="outline"
+          onClick={handleCancelClick}
+          disabled={cancelling}
+        >
+          {cancelling ? "Cancelling..." : "Cancel"}
         </Button>
       </div>
 
@@ -98,8 +110,9 @@ export function ModelPreparationView({
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel preparation?</AlertDialogTitle>
             <AlertDialogDescription>
-              Model preparation is {progressPercent}% complete. Canceling will discard partial
-              downloads and you'll need to start over.
+              Model preparation is {progressPercent}% complete. Cancelling
+              stops it and discards the work in progress. You can prepare
+              again later.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

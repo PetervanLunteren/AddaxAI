@@ -12,7 +12,6 @@ import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Info } from "lucide-react";
 import { projectsApi, type ProjectCreate, type ProjectResponse } from "../../api/projects";
 import { ImageDropZone } from "./ImageDropZone";
 import { modelsApi } from "../../api/models";
@@ -136,7 +135,7 @@ export function CreateProjectDialog({
   });
 
   // WebSocket progress tracking for model preparation
-  const { progress, message } = useTaskProgress({
+  const { progress, message, cancel } = useTaskProgress({
     taskId: preparingTaskId,
     onComplete: () => {
       // Refresh model status
@@ -148,6 +147,11 @@ export function CreateProjectDialog({
       setPreparationError(error);
       setStage("error");
       setPreparingTaskId(null);
+    },
+    onCancelled: () => {
+      // Backend confirmed the cancel (subprocess killed, partial cleaned).
+      setPreparingTaskId(null);
+      setStage("form");
     },
   });
 
@@ -189,10 +193,12 @@ export function CreateProjectDialog({
     }
   };
 
-  // Handler for canceling preparation
+  // Handler for canceling preparation. Sends a real cancel over the
+  // WebSocket; the worker kills its subprocess and replies with a
+  // "cancelled" terminal event, which onCancelled handles. We keep the
+  // taskId mounted so the socket stays open to deliver the cancel.
   const handleCancelPreparation = () => {
-    setPreparingTaskId(null);
-    setStage("form");
+    cancel();
   };
 
   // Handler for retrying after error
@@ -222,7 +228,9 @@ export function CreateProjectDialog({
             <DialogHeader>
               <DialogTitle>Create new project</DialogTitle>
               <DialogDescription>
-                Projects organize your camera trap sites, deployments, and analysis settings
+                A project is a persistent workspace for many cameras over
+                time, holding sites, deployments, verification history,
+                dashboards, and exports.
               </DialogDescription>
             </DialogHeader>
 
@@ -234,19 +242,7 @@ export function CreateProjectDialog({
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-1.5">
-                      Project name
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">
-                            A unique name for your project
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </FormLabel>
+                    <FormLabel>Project name</FormLabel>
                     <FormControl>
                       <Input placeholder="e.g., Yellowstone camera trap project" {...field} />
                     </FormControl>
@@ -260,22 +256,10 @@ export function CreateProjectDialog({
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-1.5">
-                      Description
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">
-                            Optional notes about the project's purpose, location, team members, etc.
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </FormLabel>
+                    <FormLabel>Description (optional)</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="Brief description of the project"
+                        placeholder="Notes about purpose, location, team members, etc."
                         className="resize-y"
                         rows={2}
                         maxLength={500}
@@ -302,20 +286,11 @@ export function CreateProjectDialog({
                 name="classification_model_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-1.5">
-                      Classification model
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">
-                            The AI model that will identify species in your camera trap images.
-                            Choose a model trained on species from your geographic region.
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </FormLabel>
+                    <FormLabel>Classification model</FormLabel>
+                    <p className="text-xs text-muted-foreground">
+                      The AI model that identifies species in your images.
+                      Pick one trained for your region.
+                    </p>
                     <ModelSelect
                       value={field.value ?? "none"}
                       onValueChange={(val) => field.onChange(val === "none" ? "none" : val)}
@@ -351,19 +326,11 @@ export function CreateProjectDialog({
               {/* Label selection */}
               {hasClassificationModel && taxonomy && (
                 <FormItem>
-                  <FormLabel className="flex items-center gap-1.5">
-                    Label selection
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="max-w-xs">
-                          Limit which species the model can predict, to cut false positives. You can change this later in settings.
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </FormLabel>
+                  <FormLabel>Label selection</FormLabel>
+                  <p className="text-xs text-muted-foreground">
+                    Limit which species the model can predict, to cut false
+                    positives.
+                  </p>
                   <LabelSelectionField
                     modelId={classificationModelId}
                     excludedClasses={excludedClasses}

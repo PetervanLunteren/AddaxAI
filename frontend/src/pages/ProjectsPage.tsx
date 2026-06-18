@@ -33,7 +33,6 @@ import { CreateProjectDialog } from "../components/projects/CreateProjectDialog"
 import { EditProjectDialog } from "../components/projects/EditProjectDialog";
 
 import { DeleteProjectDialog } from "../components/projects/DeleteProjectDialog";
-import { AppHamburger } from "../components/layout/AppHamburger";
 
 export function ProjectsPage() {
   const navigate = useNavigate();
@@ -66,11 +65,8 @@ export function ProjectsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      {/* Header. relative + z-40 lifts the header's stacking context
-          above <main>, so the AppHamburger dropdown (z-50 absolute,
-          contained within this stacking context because backdrop-blur
-          makes <header> a stacking-context root) can paint over the
-          project cards instead of behind them. */}
+      {/* Header sits above <main> (relative z-40) so it never paints
+          behind the project cards. */}
       <header className="relative z-40 border-b bg-white/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-4">
@@ -106,7 +102,6 @@ export function ProjectsPage() {
                 <Plus className="h-4 w-4" />
                 New project
               </Button>
-              <AppHamburger />
             </div>
           </div>
         </div>
