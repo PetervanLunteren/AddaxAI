@@ -38,7 +38,7 @@ export default function CountsPage() {
               <h1 className="text-2xl font-bold tracking-tight">Counts</h1>
               <p className="text-sm text-muted-foreground">
                 {totalEvents > 0
-                  ? "Confirm the species and counts per event"
+                  ? "Check the AI's counts, adjust any that are wrong (optional)"
                   : "Run a deployment analysis to get started"}
               </p>
             </div>

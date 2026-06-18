@@ -99,7 +99,7 @@ export function FolderRunLabelsStep() {
       <div className="space-y-6">
         <StepHeader
           title="Check labels"
-          caption="Fix the AI's species labels, or continue."
+          caption="Fix any labels the AI got wrong, or continue."
         />
         <Card>
           <CardContent className="py-4">{actionRow}</CardContent>

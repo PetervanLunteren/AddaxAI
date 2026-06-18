@@ -95,7 +95,7 @@ export function FolderRunCountsStep() {
       <div className="space-y-6">
         <StepHeader
           title="Confirm counts"
-          caption="Adjust how many individuals each event has, or continue."
+          caption="Adjust any counts the AI got wrong, or continue."
         />
         <Card>
           <CardContent className="py-4">{actionRow}</CardContent>

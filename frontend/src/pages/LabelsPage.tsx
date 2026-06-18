@@ -24,7 +24,7 @@ export default function LabelsPage() {
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Labels</h1>
               <p className="text-sm text-muted-foreground">
-                Fix the AI's species labels
+                Check the AI's labels, fix any that are wrong (optional)
               </p>
             </div>
             <div className="flex items-center gap-2">
