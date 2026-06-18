@@ -98,6 +98,9 @@ export function LabelsKeyboardPopover({
             ))}
           </div>
         </div>
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          After an action the next crop is selected, so you can keep going.
+        </p>
       </PopoverContent>
     </Popover>
   );

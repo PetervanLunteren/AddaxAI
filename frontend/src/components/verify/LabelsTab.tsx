@@ -1354,7 +1354,7 @@ export function LabelsTab({
       />
 
       <LabelsWelcomePopover open={showWelcome} onDismiss={handleDismissWelcome} />
-      <VerifyHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
+      <VerifyHelpSheet open={helpOpen} onOpenChange={setHelpOpen} step="labels" />
 
       <DetectionDetailModal
         detection={detailDetection}

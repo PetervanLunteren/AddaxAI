@@ -1,11 +1,6 @@
 # TODO
 
 ## Priority 1
-
-On the label verification page / step. SHould we auto select the first one in line if we do an action where by the prev selection is gone? Now TYhere is still quite some mouse clicking, and that saves 99% of the time some clicks, as you can just keep one hand on the shft for new selection, and one hand on the mouse. Then move to enter or R or whatever. Otherwise its move mouse to frist, then shift to N, then ... Or would you advise against that? It might be anoying if that is not what you want
-
-
-- [ ] double check if the (?) help slideouts for label cleanup and counts confirmation pages / steps are up to date.  
 - [ ] DO not block data without datetime in projects mode. Just write NA, and they are excluded from the  insights etc that need times.
 - [ ] Allow reproceesing of a deployment. CUrrently it says "You can't, it already in the DB, first delete". But erhn make it "Please note that this one is already in the DB, if you process it again, you'll overwrite the previous preduicxtions, including the verifications etc. Are you sure?"
 - [ ] Do Sauls feedback

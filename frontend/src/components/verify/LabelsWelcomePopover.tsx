@@ -17,21 +17,23 @@ export function LabelsWelcomePopover({ open, onDismiss }: LabelsWelcomePopoverPr
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-lg shadow-xl max-w-md mx-4 p-6 space-y-4">
-        <h2 className="text-lg font-semibold">Welcome to label verification</h2>
+        <h2 className="text-lg font-semibold">Check the AI's labels</h2>
         <div className="space-y-3 text-sm text-muted-foreground">
           <p>
-            Each tile is a single AI detection. Tiles are sorted by visual
-            similarity (not time), so look-alikes sit next to each other.
-            That is what makes mislabels easy to spot.
+            The AI already labelled every detection. Here you can check those
+            labels and fix any that are wrong. It is optional, but the AI
+            makes mistakes, so a quick pass makes your data more reliable.
           </p>
           <p>
-            Click a tile to select it. Shift-click another to select the
-            range between them. Verify or relabel the whole selection at
-            once. Double-click a tile to open it for closer inspection.
+            Each tile is one detection, sorted by visual similarity (not time),
+            so look-alikes sit next to each other and wrong labels stand out.
+            Click a tile to select it, shift-click another for the range
+            between, then verify or relabel the whole selection. Double-click a
+            tile to open it.
           </p>
           <p>
             Click <CircleHelp className="inline h-3.5 w-3.5 align-text-bottom" /> in
-            the toolbar once dismissed for the full guide and keyboard
+            the toolbar any time for the full guide and keyboard
             shortcuts.
           </p>
         </div>

@@ -398,7 +398,7 @@ export function VerifyView({ projectId }: VerifyViewProps) {
         filters={debouncedFilters}
       />
 
-      <VerifyHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
+      <VerifyHelpSheet open={helpOpen} onOpenChange={setHelpOpen} step="counts" />
 
       <WelcomePopover
         open={showEventsWelcome && totalEvents > 0}
