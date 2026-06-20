@@ -145,7 +145,7 @@ export function EditProjectDialog({
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Description (optional)</FormLabel>
+                    <FormLabel>Description</FormLabel>
                     <FormControl>
                       <Textarea
                         placeholder="Notes about purpose, location, team members, etc."
