@@ -17,7 +17,7 @@ import { Save, RotateCcw, Undo2, Check, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { modelsApi } from "../api/models";
-import { LabelSelectionField } from "../components/taxonomy/LabelSelectionField";
+import { LabelSelectionField, useLabelSelectionCaption } from "../components/taxonomy/LabelSelectionField";
 import { ModelSelect } from "../components/models/ModelSelect";
 import { ModelInfoSheet } from "../components/models/ModelInfoSheet";
 import { ModelStatusBadge } from "../components/projects/ModelStatusBadge";
@@ -361,6 +361,9 @@ export default function SettingsPage() {
   // Watch model changes
   const detectionModelId = form.watch("detection_model_id");
   const classificationModelId = form.watch("classification_model_id");
+  const labelCaption = useLabelSelectionCaption(
+    classificationModelId && classificationModelId !== "none" ? classificationModelId : "",
+  );
   const embeddingModelId = form.watch("embedding_model_id");
   const countryCode = form.watch("country_code");
 
@@ -1072,7 +1075,7 @@ export default function SettingsPage() {
                     <div className="space-y-1">
                       <FormLabel>Label selection</FormLabel>
                       <FormDescription className="text-sm">
-                        Limit which species the model can predict, to cut false positives.
+                        {labelCaption}
                       </FormDescription>
                     </div>
                     <div>

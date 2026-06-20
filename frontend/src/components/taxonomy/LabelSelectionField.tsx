@@ -3,9 +3,10 @@
  *
  * Compact inline control that surfaces the geofence country filter which used
  * to be hidden inside SpeciesSelectionModal. Country dropdown on the left
- * (geofence models only) and an "X of Y included · Refine" summary on the
- * right. Picking a country applies immediately (recomputes excluded classes
- * from the geofence); "Refine" opens the species tree for manual tweaks.
+ * (geofence models only) and an "X of Y included · Edit species" summary on
+ * the right. Picking a country applies immediately (recomputes excluded
+ * classes from the geofence); "Edit species" opens the species tree for
+ * manual tweaks.
  *
  * Replaces the duplicated "Select labels" button + modal wiring across the
  * create-project modal, project settings, and folder-run step 1.
@@ -36,6 +37,25 @@ import { SpeciesSelectionModal } from "./SpeciesSelectionModal";
  *  "(default)" signals to first-time users that leaving it is a valid
  *  choice and the country list below is the optional narrow-down path. */
 const NO_FILTER_LABEL = "All labels (default)";
+
+/**
+ * Model-aware helper text for the label-selection control. Geofence models
+ * (e.g. SpeciesNet) narrow by country; other models pick species directly.
+ * Shared so the three call sites (create project, project settings, folder
+ * run) stay in sync, and reusing the cached geofence query means calling this
+ * next to the field adds no extra request.
+ */
+export function useLabelSelectionCaption(modelId: string): string {
+  const { data: geofence } = useQuery({
+    queryKey: ["model-geofence", modelId],
+    queryFn: () => modelsApi.getModelGeofence(modelId),
+    enabled: !!modelId,
+    staleTime: Infinity,
+  });
+  return geofence?.has_geofence && geofence.countries
+    ? "Filter species to the country where your cameras are."
+    : "Pick which species the model can predict, to cut false positives.";
+}
 
 interface LabelSelectionFieldProps {
   modelId: string;
@@ -164,8 +184,8 @@ export function LabelSelectionField({
       ? "All species included"
       : `${includedCount} of ${totalSpeciesCount} included`;
 
-  // Geofence caption: the shared status plus a "Refine" link that opens the
-  // species tree (the country button above does not open it).
+  // Geofence caption: the shared status plus an "Edit species" link that opens
+  // the species tree (the country button above does not open it).
   const summary = (
     <p className="pl-3 text-xs text-muted-foreground">
       {statusText}{" "}
@@ -174,7 +194,7 @@ export function LabelSelectionField({
         onClick={() => setModalOpen(true)}
         className="text-primary font-medium hover:underline"
       >
-        · Refine
+        · Edit species
       </button>
     </p>
   );

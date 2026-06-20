@@ -7,7 +7,8 @@
  * - Explicit error handling
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -47,8 +48,12 @@ import {
   TooltipTrigger,
 } from "../ui/tooltip";
 import { ModelInfoSheet } from "../models/ModelInfoSheet";
-import { LabelSelectionField } from "../taxonomy/LabelSelectionField";
+import { LabelSelectionField, useLabelSelectionCaption } from "../taxonomy/LabelSelectionField";
 import { ModelSelect } from "../models/ModelSelect";
+import {
+  loadLastUsedSettings,
+  saveLastUsedSettings,
+} from "../../lib/folderRunSettings";
 
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(100, "Name too long"),
@@ -77,6 +82,7 @@ export function CreateProjectDialog({
   onOpenChange,
 }: CreateProjectDialogProps) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [showModelInfo, setShowModelInfo] = useState(false);
 
@@ -93,17 +99,24 @@ export function CreateProjectDialog({
     enabled: open,
   });
 
+  // Pre-fill the model + species selection from the last analysis (project or
+  // folder run) via the shared last-used-settings store. Read once so
+  // re-renders don't churn it. Falls back to the cold defaults on first run.
+  // The stored classification model is validated against the catalog once it
+  // loads (effect below).
+  const [lastSelection] = useState(loadLastUsedSettings);
+
   const form = useForm<ProjectCreate>({
     resolver: zodResolver(projectSchema) as unknown as Resolver<ProjectCreate>,
     defaultValues: {
       name: "",
       description: "",
       detection_model_id: "MD5A-0-0",
-      classification_model_id: null,
-      embedding_model_id: "DINOV2-VITB14",
-      excluded_classes: [],
-      country_code: null,
-      state_code: null,
+      classification_model_id: lastSelection?.classification_model_id ?? null,
+      embedding_model_id: lastSelection?.embedding_model_id ?? "DINOV2-VITB14",
+      excluded_classes: lastSelection?.excluded_classes ?? [],
+      country_code: lastSelection?.country_code ?? null,
+      state_code: lastSelection?.state_code ?? null,
       detection_threshold: 0.5,
       event_smoothing: true,
       smoothing_strength: "normal" as const,
@@ -116,6 +129,9 @@ export function CreateProjectDialog({
   // Watch classification model changes
   const classificationModelId = form.watch("classification_model_id");
   const hasClassificationModel = !!classificationModelId && classificationModelId !== "none";
+  const labelCaption = useLabelSelectionCaption(
+    hasClassificationModel ? classificationModelId! : "",
+  );
 
   // Label selection state
   const excludedClasses = form.watch("excluded_classes") ?? [];
@@ -133,6 +149,33 @@ export function CreateProjectDialog({
     queryFn: () => modelsApi.getModelStatus(classificationModelId!),
     enabled: !!classificationModelId && classificationModelId !== "none" && open,
   });
+
+  // A sticky classification model that is no longer installed would leave the
+  // form pointing at a dead id. Once the catalog loads, drop it (and its
+  // region/exclusions) back to "no classification model".
+  useEffect(() => {
+    if (!open || classificationModels.length === 0) return;
+    const cur = form.getValues("classification_model_id");
+    if (cur && cur !== "none" && !classificationModels.some((m) => m.model_id === cur)) {
+      form.setValue("classification_model_id", null);
+      form.setValue("country_code", null);
+      form.setValue("state_code", null);
+      form.setValue("excluded_classes", []);
+    }
+  }, [open, classificationModels, form]);
+
+  // Keep exclusions consistent with the selected model's taxonomy. On a
+  // sticky pre-fill the stored exclusions match the stored model and survive;
+  // switching models drops the now-stale ones. Mirrors SettingsPage.
+  useEffect(() => {
+    if (hasClassificationModel && taxonomy?.all_classes) {
+      const current = form.getValues("excluded_classes");
+      const valid = current.filter((c) => taxonomy.all_classes.includes(c));
+      if (valid.length !== current.length) {
+        form.setValue("excluded_classes", valid, { shouldDirty: true });
+      }
+    }
+  }, [classificationModelId, taxonomy, hasClassificationModel, form]);
 
   // WebSocket progress tracking for model preparation
   const { progress, message, cancel } = useTaskProgress({
@@ -157,7 +200,7 @@ export function CreateProjectDialog({
 
   const createMutation = useMutation({
     mutationFn: (data: ProjectCreate) => projectsApi.create(data),
-    onSuccess: async (newProject: ProjectResponse) => {
+    onSuccess: async (newProject: ProjectResponse, variables: ProjectCreate) => {
       if (imageFile) {
         try {
           await projectsApi.uploadThumbnail(newProject.id, imageFile);
@@ -166,10 +209,27 @@ export function CreateProjectDialog({
           console.error("Failed to upload project image:", e);
         }
       }
+      // Remember this model + species selection so the next project / folder
+      // run pre-fills it. Only this subset is written; folder-run-only params
+      // in the shared store are left untouched. "none" is normalised to null
+      // so the store's canonical "no model" value is null.
+      const noneToNull = (v: string | null | undefined) =>
+        !v || v === "none" ? null : v;
+      saveLastUsedSettings({
+        classification_model_id: noneToNull(variables.classification_model_id),
+        embedding_model_id: noneToNull(variables.embedding_model_id),
+        country_code: variables.country_code ?? null,
+        state_code: variables.state_code ?? null,
+        excluded_classes: variables.excluded_classes,
+      });
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       form.reset();
       setImageFile(null);
       onOpenChange(false);
+      // Drop the user straight into the new project so the next step is
+      // obvious. An empty project redirects to the Analyses page (see
+      // ProjectIndexRoute), which is exactly "add a deployment / analyze".
+      navigate(`/projects/${newProject.id}`);
     },
     onError: (error: Error) => {
       console.error("Failed to create project:", error);
@@ -328,8 +388,7 @@ export function CreateProjectDialog({
                 <FormItem>
                   <FormLabel>Label selection</FormLabel>
                   <p className="text-xs text-muted-foreground">
-                    Limit which species the model can predict, to cut false
-                    positives.
+                    {labelCaption}
                   </p>
                   <LabelSelectionField
                     modelId={classificationModelId}

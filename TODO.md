@@ -3,6 +3,7 @@
 ## Priority 1
 - [ ] Do Sauls feedback
 - [ ] Do Dans feedback
+- [ ] Add a custom minutes input option for the independence interval, and remove the debug value. Have a look at how it wqorks to have a custom inout with the batch szie UI widgets. I want the same behaviour, and it should be saved like the other settings, so it is persistent. 
 - [ ] Do all the other feedback received via email
 
 

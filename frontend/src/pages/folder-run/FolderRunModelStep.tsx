@@ -94,7 +94,7 @@ import { ModelInfoSheet } from "../../components/models/ModelInfoSheet";
 import { ModelPreparationErrorView } from "../../components/projects/ModelPreparationErrorView";
 import { ModelPreparationView } from "../../components/projects/ModelPreparationView";
 import { ModelStatusBadge } from "../../components/projects/ModelStatusBadge";
-import { LabelSelectionField } from "../../components/taxonomy/LabelSelectionField";
+import { LabelSelectionField, useLabelSelectionCaption } from "../../components/taxonomy/LabelSelectionField";
 import { ModelSelect } from "../../components/models/ModelSelect";
 
 import { useFolderScan } from "../../hooks/useFolderScan";
@@ -327,6 +327,9 @@ export function FolderRunModelStep() {
   const folderPath = form.watch("folder_path") || null;
   const detectionModelId = form.watch("detection_model_id");
   const classificationModelId = form.watch("classification_model_id");
+  const labelCaption = useLabelSelectionCaption(
+    classificationModelId && classificationModelId !== "none" ? classificationModelId : "",
+  );
   const embeddingModelId = form.watch("embedding_model_id");
   const excludedClasses = form.watch("excluded_classes") ?? [];
   const hasClassifier =
@@ -843,8 +846,7 @@ export function FolderRunModelStep() {
                       <div className="space-y-1">
                         <FormLabel>Species selection</FormLabel>
                         <FormDescription className="text-sm">
-                          Limit which species the model can predict, to cut
-                          false positives.
+                          {labelCaption}
                         </FormDescription>
                       </div>
                       <div>
