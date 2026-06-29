@@ -252,8 +252,6 @@ export function ObservationRateMap({
         <span>
           {visibleSites.length} site{visibleSites.length === 1 ? "" : "s"} shown
         </span>
-        <span aria-hidden="true">·</span>
-        <span>Rate is observations (MaxN per event) per 100 trap nights</span>
       </div>
     </div>
   );

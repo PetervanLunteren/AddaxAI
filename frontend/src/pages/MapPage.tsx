@@ -177,7 +177,7 @@ export function MapPage() {
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Map</h1>
               <p className="text-sm text-muted-foreground">
-                Observation rate per 100 trap nights
+                Compare observation rates across your sites
               </p>
             </div>
           </div>
@@ -211,16 +211,25 @@ export function MapPage() {
         <PlotExplainer
           plotKey="map"
           what={
-            <p>
-              A marker per site, coloured by its observation rate per
-              100 trap nights. A site can have multiple deployments
-              over time; each marker aggregates across them. Three
-              layer modes: hexbins aggregate nearby sites onto a hex
-              grid, points show each site individually, and clusters
-              group nearby points into a single circle with the count
-              inside. The labels filter restricts the observation
-              count to the selected taxa.
-            </p>
+            <>
+              <p>
+                A marker per site, coloured by its observation rate per
+                100 trap nights. A site can have multiple deployments
+                over time; each marker aggregates across them. Three
+                layer modes: hexbins aggregate nearby sites onto a hex
+                grid, points show each site individually, and clusters
+                group nearby points into a single circle with the count
+                inside. The labels filter restricts the observation
+                count to the selected taxa.
+              </p>
+              <p>
+                An observation counts individuals: each event's confirmed
+                count, or the AI's count where not yet confirmed, which is
+                the most individuals visible in a single frame, so the same
+                animals aren't counted twice. A trap night is one day a
+                camera was active.
+              </p>
+            </>
           }
           how={
             <p>

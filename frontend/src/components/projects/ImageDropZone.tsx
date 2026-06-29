@@ -7,6 +7,7 @@
 import { useCallback, useRef, useState } from "react";
 import { Upload, X } from "lucide-react";
 import { Button } from "../ui/button";
+import { FieldHeader } from "../ui/field-header";
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
 const ACCEPTED_TYPES = ["image/jpeg", "image/png"];
@@ -73,7 +74,10 @@ export function ImageDropZone({
 
   return (
     <div className="space-y-1.5">
-      <label className="text-sm font-medium">Project image</label>
+      <FieldHeader
+        label={<label className="text-sm font-medium">Project image</label>}
+        caption="Shown on the project card. If left empty, one of the project's animal photos is used."
+      />
       <div
         className={`relative rounded-md border-2 border-dashed overflow-hidden cursor-pointer transition-colors ${!hasImage ? "h-32" : ""} ${
           dragOver

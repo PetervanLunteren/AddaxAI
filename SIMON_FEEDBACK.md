@@ -133,8 +133,21 @@ Warn the user when no classification model is selected, since it is the default 
 
 ### U4 - Map key terminology
 Map key calls the rate "Observations" but they look like events; should be labelled as such. Also questions per trap-night vs per trap-day (or per trap-week).
-- status: todo
-- notes:
+- status: done (clarified, not renamed)
+- notes: Both labels are kept on purpose. "Observation" = sum of MaxN per event (an abundance
+  count, not raw events and not images), the same metric and word the dashboard uses as a
+  headline stat ("Observations", "Observations per 100 trap nights", "Top 10 by total
+  observations"). "Trap night" is the field-standard term for one camera active 24h (confirmed
+  via research; "per 100 trap-nights" is the standard rate phrasing). Renaming to "events" would
+  be inaccurate; renaming to "trap-day" would be non-standard and would also diverge from the
+  dashboard vocabulary. Simon's confusion was that neither term was defined where he was looking
+  (the legend). Fix: added a plain-language definition to the map's "About this view" section
+  (`MapPage.tsx` PlotExplainer `what`), mirroring the dashboard's wording: "An observation counts
+  individuals: each event's confirmed count, or the AI's count where not yet confirmed, which is
+  the most individuals visible in a single frame, so the same animals aren't counted twice. A
+  trap night is one day a camera was active." Legend unchanged (matches the dashboard). Removed
+  the now-redundant footer line "Rate is observations (MaxN per event) per 100 trap nights" since
+  the About section covers it. Typecheck clean.
 
 ### U5 - Select all / clear all should be buttons
 "Filter by label" Select all is always checked and Clear all always unchecked; clicking still performs the action. Should be buttons.
