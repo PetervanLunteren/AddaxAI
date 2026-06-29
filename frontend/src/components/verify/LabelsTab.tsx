@@ -1291,7 +1291,7 @@ export function LabelsTab({
         <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
           <Check className="h-8 w-8 mb-3 text-muted-foreground/60" />
           <p className="text-sm">All {totalCount} labels in this view are verified.</p>
-          <p className="text-xs mt-1">Set the verification filter to &quot;All&quot; to see them.</p>
+          <p className="text-xs mt-1">Switch the Verified filter to &quot;All&quot; to see them.</p>
         </div>
       ) : allDetections.length === 0 ? (
         <Card>

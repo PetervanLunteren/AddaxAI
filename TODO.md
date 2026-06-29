@@ -1,12 +1,10 @@
 # TODO
 
 ## Priority 1
-- [ ] Do Sauls feedback
-- [ ] Do Dans feedback
+- [ ] Do all the other feedback received via email
 - [ ] What does the label cleanup step / page really yeild for the user? From the user persective, what does the label cleanup really do? Do we want to leave it in the folder mode? It corects labels in the CSVs, JSONs, and it makes sugestions for events better, right? What else? It makes the confusion matix, and the future train function dataset creation. What else? DO we want to leave it? Or perhaps add something like this to the caption? Or something else? What do you think? TYhink as a user. Thiunk UX UI. 
 - [ ] Do we need to do anything with this finding from a user? For the current Electron build I mean. https://forum.addaxai.com/t/ssl-certificate-issue-in-addaxai-bundled-python-windows/306
 - [ ] Do we need to set PYTHONNOUSERSITE=1 to stop users' global Python user-site packages from leaking into AddaxAI's envs? Is that a real risk? Or not worth it?
-- [ ] Do all the other feedback received via email
 
 
 ## Priority 2
@@ -30,6 +28,7 @@
 ## Future stuff
 - [ ] MULTI LANGUAGE SUPPORT
 - [ ] DEPTH ESTIMATION
+- [ ] TRAIN FEATURE - https://agentmorris.github.io/speciesnet-fine-tuning/ - must do something to have it accept bounding boxes with verified labels from projects mode (should allow data from multiple projects, so where does thi live? Not inside a single project, right? perhaps better in the projects overview page?). The tutorial also focusses on SpeciesNet only, but for marine workflows it would be good if we could have it accept generic pretrained models too. If we could adjust the script so it can train a pretrained Efficientnet model too, that would be great!
 - [ ] Add variant rank. See future-plans/add-variant-rank.md
 - [ ] POSTPROCESS BATCH RESULTS MEGADETECTOR
 - [ ] DOCUMENTATION (see items below)
