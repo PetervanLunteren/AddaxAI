@@ -50,6 +50,7 @@ import {
 import { ModelInfoSheet } from "../models/ModelInfoSheet";
 import { LabelSelectionField, useLabelSelectionCaption } from "../taxonomy/LabelSelectionField";
 import { ModelSelect } from "../models/ModelSelect";
+import { NoClassifierNotice } from "../models/NoClassifierNotice";
 import {
   loadLastUsedSettings,
   saveLastUsedSettings,
@@ -382,6 +383,8 @@ export function CreateProjectDialog({
                   isPreparing={false}
                 />
               )}
+
+              {!hasClassificationModel && <NoClassifierNotice />}
 
               {/* Label selection */}
               {hasClassificationModel && taxonomy && (

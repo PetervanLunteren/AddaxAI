@@ -102,6 +102,7 @@ import { ModelPreparationView } from "../../components/projects/ModelPreparation
 import { ModelStatusBadge } from "../../components/projects/ModelStatusBadge";
 import { LabelSelectionField, useLabelSelectionCaption } from "../../components/taxonomy/LabelSelectionField";
 import { ModelSelect } from "../../components/models/ModelSelect";
+import { NoClassifierNotice } from "../../components/models/NoClassifierNotice";
 
 import { useFolderScan } from "../../hooks/useFolderScan";
 import { useTaskProgress } from "../../hooks/useTaskProgress";
@@ -833,6 +834,7 @@ export function FolderRunModelStep() {
                                 isPreparing={false}
                               />
                             )}
+                          {!hasClassifier && <NoClassifierNotice />}
                           <FormMessage />
                         </div>
                       </div>

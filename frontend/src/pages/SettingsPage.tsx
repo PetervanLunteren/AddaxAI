@@ -21,6 +21,7 @@ import { LabelSelectionField, useLabelSelectionCaption } from "../components/tax
 import { IntervalControl } from "../components/analyses/IntervalControl";
 import { restoreAdvancedDefaults } from "../lib/advancedSettingsDefaults";
 import { ModelSelect } from "../components/models/ModelSelect";
+import { NoClassifierNotice } from "../components/models/NoClassifierNotice";
 import { ModelInfoSheet } from "../components/models/ModelInfoSheet";
 import { ModelStatusBadge } from "../components/projects/ModelStatusBadge";
 import { ModelPreparationView } from "../components/projects/ModelPreparationView";
@@ -927,6 +928,8 @@ export default function SettingsPage() {
                             isPreparing={preparationStage === "preparing" && preparingModelType === "classification"}
                           />
                         )}
+
+                        {!hasClassificationModel && <NoClassifierNotice />}
                       </div>
                     </div>
                   )}

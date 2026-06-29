@@ -115,8 +115,16 @@ Image-detection remaining time fluctuates a lot (6h to 8h within seconds on 190k
 
 ### U3 - Warn when no classification model
 Warn the user when no classification model is selected, since it is the default and users expect species to be identified.
-- status: todo
-- notes:
+- status: done
+- notes: Discussed the default first. A warning on the untouched default is an anti-pattern
+  (don't cry wolf), and `null` is a deliberate first-run default (defaulting to SpeciesNet would
+  force a heavy `pytorch` env build + weights download on every new user, since setup only
+  pre-installs MD5A + DINOv2 and the run is gated on all models ready). Kept `null` default
+  (option C) and added a neutral info note instead of a warning. New shared component
+  `components/models/NoClassifierNotice.tsx` (info Callout, compact): "Without a classification
+  model, AddaxAI detects animals but does not identify the species. You can label them yourself
+  in Verify." Shown when "none" is selected on all three selection surfaces: folder-run step,
+  create-project dialog, project settings. Typecheck clean.
 
 ### U4 - Map key terminology
 Map key calls the rate "Observations" but they look like events; should be labelled as such. Also questions per trap-night vs per trap-day (or per trap-week).
