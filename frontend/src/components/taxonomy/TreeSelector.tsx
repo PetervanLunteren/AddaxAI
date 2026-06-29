@@ -15,7 +15,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { CheckSquare, Square, ChevronDown, ChevronRight, Search } from "lucide-react";
+import { CheckCheck, X, ChevronDown, ChevronRight, Search } from "lucide-react";
 import type { TaxonomyNode } from "../../api/types";
 import { collectLeafIds } from "../../lib/taxonomy-utils";
 import { Checkbox } from "../ui/checkbox";
@@ -338,7 +338,7 @@ export function TreeSelector({
           onClick={handleSelectAll}
           className="flex-1 min-w-[100px]"
         >
-          <CheckSquare className="h-4 w-4 mr-1.5" />
+          <CheckCheck className="h-4 w-4 mr-1.5" />
           {selectLabel}
         </Button>
         <Button
@@ -348,7 +348,7 @@ export function TreeSelector({
           onClick={handleClearAll}
           className="flex-1 min-w-[100px]"
         >
-          <Square className="h-4 w-4 mr-1.5" />
+          <X className="h-4 w-4 mr-1.5" />
           {clearLabel}
         </Button>
         <Button

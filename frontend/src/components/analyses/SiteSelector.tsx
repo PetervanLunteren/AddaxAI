@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { FieldHeader } from "@/components/ui/field-header";
 import { sitesApi } from "@/api/sites";
 
 // Reserved option value that maps to `null` in the parent's state.
@@ -107,11 +108,10 @@ export function SiteSelector({
 
   return (
     <div className="space-y-2">
-      <label className="text-sm font-medium">Camera site</label>
-      <p className="text-xs text-muted-foreground">
-        Link this camera to a location to plot it on the map and compare
-        activity across sites.
-      </p>
+      <FieldHeader
+        label={<label className="text-sm font-medium">Camera site</label>}
+        caption="Link this camera to a location to plot it on the map and compare activity across sites."
+      />
 
       {/* Select + Add button */}
       <div className="flex gap-2">

@@ -38,6 +38,7 @@ import {
 import { deploymentQueueApi } from "@/api/deployment-queue";
 import { deploymentsApi } from "@/api/deployments";
 import { Label } from "@/components/ui/label";
+import { FieldHeader } from "@/components/ui/field-header";
 import { Textarea } from "@/components/ui/textarea";
 import { TagsEditor } from "@/components/ui/tags-editor";
 import { FolderSelector } from "./FolderSelector";
@@ -262,11 +263,10 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
 
           {/* Notes */}
           <div className="space-y-2">
-            <Label htmlFor="deployment-notes">Notes</Label>
-            <p className="text-xs text-muted-foreground">
-              Free-text for your own records. Shown on the deployment's info
-              panel.
-            </p>
+            <FieldHeader
+              label={<Label htmlFor="deployment-notes">Notes</Label>}
+              caption="Free-text for your own records. Shown on the deployment's info panel."
+            />
             <Textarea
               id="deployment-notes"
               value={notes}

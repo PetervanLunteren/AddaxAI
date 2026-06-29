@@ -51,6 +51,7 @@ import { ModelInfoSheet } from "../models/ModelInfoSheet";
 import { LabelSelectionField, useLabelSelectionCaption } from "../taxonomy/LabelSelectionField";
 import { ModelSelect } from "../models/ModelSelect";
 import { NoClassifierNotice } from "../models/NoClassifierNotice";
+import { FieldHeader } from "../ui/field-header";
 import {
   loadLastUsedSettings,
   saveLastUsedSettings,
@@ -347,11 +348,10 @@ export function CreateProjectDialog({
                 name="classification_model_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Classification model</FormLabel>
-                    <p className="text-xs text-muted-foreground">
-                      The AI model that identifies species in your images.
-                      Pick one trained for your region.
-                    </p>
+                    <FieldHeader
+                      label={<FormLabel>Classification model</FormLabel>}
+                      caption="The AI model that identifies species in your images. Pick one trained for your region."
+                    />
                     <ModelSelect
                       value={field.value ?? "none"}
                       onValueChange={(val) => field.onChange(val === "none" ? "none" : val)}
@@ -389,10 +389,10 @@ export function CreateProjectDialog({
               {/* Label selection */}
               {hasClassificationModel && taxonomy && (
                 <FormItem>
-                  <FormLabel>Label selection</FormLabel>
-                  <p className="text-xs text-muted-foreground">
-                    {labelCaption}
-                  </p>
+                  <FieldHeader
+                    label={<FormLabel>Label selection</FormLabel>}
+                    caption={labelCaption}
+                  />
                   <LabelSelectionField
                     modelId={classificationModelId}
                     excludedClasses={excludedClasses}

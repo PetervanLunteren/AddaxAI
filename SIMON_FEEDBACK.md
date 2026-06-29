@@ -28,8 +28,13 @@ Adding multiple camera deployments: error when adding to queue after the first w
 
 ### B5 - Wrong reason in rejection warning
 Rejection warning says "invalid time stamps found" even though EXIF is valid. Real reason: time range was only ~1.8h. Warning text should reflect the real cause.
-- status: todo
-- notes:
+- status: already solved (predates current code)
+- notes: Both halves are fixed in the current build. (1) The "invalid time stamps found" string
+  no longer exists anywhere. The datetime warning is now the accurate, non-blocking "Some files
+  have no capture date" (`FolderSelector.tsx:269-302`). (2) The old 3-hour minimum-span rejection
+  was removed (commit b9f2373); `folder_scanner.py:385-390` documents that dates come from EXIF
+  DateTimeOriginal not mtime, so a narrow span like Simon's 1.8h is accepted, not rejected. No
+  code change needed.
 
 ### B6 - Event spans longer than independence interval
 An event sometimes covers a time range larger than the independence interval set in Settings. First images in the event have no detections.
@@ -123,7 +128,7 @@ Warn the user when no classification model is selected, since it is the default 
   (option C) and added a neutral info note instead of a warning. New shared component
   `components/models/NoClassifierNotice.tsx` (info Callout, compact): "Without a classification
   model, AddaxAI detects animals but does not identify the species. You can label them yourself
-  in Verify." Shown when "none" is selected on all three selection surfaces: folder-run step,
+  in the Labels section." Shown when "none" is selected on all three selection surfaces: folder-run step,
   create-project dialog, project settings. Typecheck clean.
 
 ### U4 - Map key terminology
@@ -133,8 +138,12 @@ Map key calls the rate "Observations" but they look like events; should be label
 
 ### U5 - Select all / clear all should be buttons
 "Filter by label" Select all is always checked and Clear all always unchecked; clicking still performs the action. Should be buttons.
-- status: todo
-- notes:
+- status: done
+- notes: They were already real Buttons in `TreeSelector.tsx` (the tree rendered by
+  LabelFilterModal "Filter by label"), which is why clicking performed the action. What made
+  them read as checkboxes was the icon choice: CheckSquare (ticked box) on Select all, Square
+  (empty box) on Clear all. Swapped to CheckCheck (Select all / Include all) and X (Clear all /
+  Exclude all) so they read as actions, not toggles. Typecheck clean.
 
 ### U6 - Relabel confirmation wording
 After relabelling multiple observations, the message's last line would be clearer as `Switch Verified to "All" to see them`.

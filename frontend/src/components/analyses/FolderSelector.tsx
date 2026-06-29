@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Callout } from "@/components/ui/callout";
+import { FieldHeader } from "@/components/ui/field-header";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -130,12 +131,12 @@ export function FolderSelector({
 
   return (
     <div className="space-y-2">
-        {/* Label (suppressed when the parent provides its own label) */}
+        {/* Label + caption (suppressed when the parent provides its own label) */}
         {!hideLabel && (
-          <label className="text-sm font-medium">Folder</label>
-        )}
-        {!hideLabel && caption && (
-          <p className="text-xs text-muted-foreground">{caption}</p>
+          <FieldHeader
+            label={<label className="text-sm font-medium">Folder</label>}
+            caption={caption}
+          />
         )}
 
         {/* Field + scan caption grouped tight (space-y-1) so the caption sits

@@ -12,6 +12,7 @@ import { Plus, X } from "lucide-react";
 import { Input } from "./input";
 import { Button } from "./button";
 import { Label } from "./label";
+import { FieldHeader } from "./field-header";
 import { cn } from "../../lib/utils";
 
 const MAX_KEY_LENGTH = 40;
@@ -117,10 +118,7 @@ export function TagsEditor({
 
   return (
     <div className="space-y-2">
-      <Label>Tags</Label>
-      {description && (
-        <p className="text-xs text-muted-foreground">{description}</p>
-      )}
+      <FieldHeader label={<Label>Tags</Label>} caption={description} />
       {rows.length > 0 && (
         <div className="space-y-2">
           {rows.map((row, i) => {
