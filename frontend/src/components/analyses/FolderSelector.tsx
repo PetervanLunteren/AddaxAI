@@ -9,8 +9,6 @@
 
 import { Fragment, useState } from "react";
 import {
-  AlertCircle,
-  AlertTriangle,
   ChevronDown,
   ChevronRight,
   Folder,
@@ -19,7 +17,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Callout } from "@/components/ui/callout";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -221,10 +219,7 @@ export function FolderSelector({
 
         {/* Scan results or error */}
         {error ? (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
+          <Callout variant="error" size="compact">{error}</Callout>
         ) : hideScanResult ? null : value ? (
           isScanning ? (
             compactScanResult ? (
@@ -233,10 +228,10 @@ export function FolderSelector({
                 <span>Scanning folder...</span>
               </div>
             ) : (
-              <Alert>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <AlertDescription>Scanning folder...</AlertDescription>
-              </Alert>
+              <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                <span>Scanning folder...</span>
+              </div>
             )
           ) : hasFiles ? (
             compactScanResult ? (
@@ -262,49 +257,45 @@ export function FolderSelector({
                   backend still detects and classifies them; they just
                   drop out of time-based stats. */}
               {scanResult.missing_datetime && (
-                <Alert className="border-amber-300 bg-amber-50 text-amber-900">
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
-                  <AlertDescription className="text-sm">
-                    <div className="space-y-2">
-                      <p className="font-medium">
-                        Some files have no capture date.
-                      </p>
+                <Callout variant="warning">
+                  <div className="space-y-2">
+                    <p className="font-medium">
+                      Some files have no capture date.
+                    </p>
 
-                      <p>
-                        AddaxAI will still detect and classify them. Files
-                        without a date are left out of time-based stats,
-                        charts, and trap-night effort. This usually means
-                        the files were copied or had their metadata
-                        stripped; raw files from the camera SD card keep
-                        it.
-                      </p>
+                    <p>
+                      AddaxAI will still detect and classify them. Files
+                      without a date are left out of time-based stats,
+                      charts, and trap-night effort. This usually means
+                      the files were copied or had their metadata
+                      stripped; raw files from the camera SD card keep
+                      it.
+                    </p>
 
-                      {/* Validation log */}
-                      {scanResult.datetime_validation_log && scanResult.datetime_validation_log.length > 0 && (
-                        <details className="mt-2 rounded border border-amber-300 bg-amber-100 p-3">
-                          <summary className="cursor-pointer text-sm font-medium">
-                            Technical details
-                          </summary>
-                          <div className="mt-2 space-y-1 font-mono text-xs text-amber-900">
-                            {scanResult.datetime_validation_log.map((log, idx) => (
-                              <div key={idx} className="whitespace-pre-wrap break-words">
-                                {log}
-                              </div>
-                            ))}
-                          </div>
-                        </details>
-                      )}
-                    </div>
-                  </AlertDescription>
-                </Alert>
+                    {/* Validation log */}
+                    {scanResult.datetime_validation_log && scanResult.datetime_validation_log.length > 0 && (
+                      <details className="mt-2 rounded border border-amber-300 bg-amber-100 p-3">
+                        <summary className="cursor-pointer text-sm font-medium">
+                          Technical details
+                        </summary>
+                        <div className="mt-2 space-y-1 font-mono text-xs text-amber-900">
+                          {scanResult.datetime_validation_log.map((log, idx) => (
+                            <div key={idx} className="whitespace-pre-wrap break-words">
+                              {log}
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                </Callout>
               )}
             </>
             )
           ) : (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>No images found in this folder</AlertDescription>
-            </Alert>
+            <Callout variant="error" size="compact">
+              No images found in this folder
+            </Callout>
           )
         ) : null}
         </div>

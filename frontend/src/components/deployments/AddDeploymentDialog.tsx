@@ -45,8 +45,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
-import { Alert, AlertDescription } from "../ui/alert";
+import { Loader2 } from "lucide-react";
+import { Callout } from "../ui/callout";
 import { useTaskProgress } from "../../hooks/useTaskProgress";
 import { Progress } from "../ui/progress";
 
@@ -173,49 +173,38 @@ export function AddDeploymentDialog({
     // Show progress if model is being prepared
     if (prepareTaskId) {
       return (
-        <Alert className="border-blue-500 bg-blue-50 dark:bg-blue-950">
-          <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />
-          <AlertDescription className="space-y-3">
-            <div className="text-blue-800 dark:text-blue-200 font-semibold">
-              Preparing model...
-            </div>
-            <Progress
-              value={progressValue * 100}
-              className="h-2 bg-blue-200 dark:bg-blue-900"
-            />
-            <code className="block text-xs text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900 px-2 py-1 rounded font-mono overflow-x-auto">
+        <Callout variant="info">
+          <div className="space-y-3">
+            <div className="font-semibold">Preparing model...</div>
+            <Progress value={progressValue * 100} className="h-2" />
+            <code className="block overflow-x-auto rounded bg-blue-100 px-2 py-1 font-mono text-xs">
               {progressMessage || "Starting..."}
             </code>
-          </AlertDescription>
-        </Alert>
+          </div>
+        </Callout>
       );
     }
 
     if (status.status === "ready") {
       return (
-        <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
-          <CheckCircle2 className="h-4 w-4 text-green-600" />
-          <AlertDescription className="text-green-800 dark:text-green-200">
-            Model ready: Environment configured
-          </AlertDescription>
-        </Alert>
+        <Callout variant="success" size="compact">
+          Model ready: Environment configured
+        </Callout>
       );
     }
 
     // Show separate buttons based on what's needed
     if (status.status === "needs_weights") {
       return (
-        <Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
-          <AlertCircle className="h-4 w-4 text-yellow-600" />
-          <AlertDescription className="flex items-center justify-between text-yellow-800 dark:text-yellow-200">
-            <span>Model weights not downloaded</span>
+        <Callout
+          variant="warning"
+          action={
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={handlePrepareWeights}
               disabled={prepareWeightsMutation.isPending}
-              className="ml-2"
             >
               {prepareWeightsMutation.isPending ? (
                 <>
@@ -226,24 +215,24 @@ export function AddDeploymentDialog({
                 "Download weights"
               )}
             </Button>
-          </AlertDescription>
-        </Alert>
+          }
+        >
+          Model weights not downloaded
+        </Callout>
       );
     }
 
     if (status.status === "needs_env") {
       return (
-        <Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
-          <AlertCircle className="h-4 w-4 text-yellow-600" />
-          <AlertDescription className="flex items-center justify-between text-yellow-800 dark:text-yellow-200">
-            <span>Environment not built</span>
+        <Callout
+          variant="warning"
+          action={
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={handlePrepareEnv}
               disabled={prepareEnvMutation.isPending}
-              className="ml-2"
             >
               {prepareEnvMutation.isPending ? (
                 <>
@@ -254,17 +243,18 @@ export function AddDeploymentDialog({
                 "Build environment"
               )}
             </Button>
-          </AlertDescription>
-        </Alert>
+          }
+        >
+          Environment not built
+        </Callout>
       );
     }
 
     if (status.status === "needs_both") {
       return (
-        <Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
-          <AlertCircle className="h-4 w-4 text-yellow-600" />
-          <AlertDescription className="space-y-2">
-            <div className="text-yellow-800 dark:text-yellow-200">
+        <Callout variant="warning">
+          <div className="space-y-2">
+            <div>
               Model needs weights and environment
             </div>
             <div className="flex gap-2">
@@ -301,8 +291,8 @@ export function AddDeploymentDialog({
                 )}
               </Button>
             </div>
-          </AlertDescription>
-        </Alert>
+          </div>
+        </Callout>
       );
     }
 

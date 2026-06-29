@@ -10,6 +10,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowUpRight } from "lucide-react";
 import { Button } from "../ui/button";
+import { Callout } from "../ui/callout";
 import {
   Dialog,
   DialogContent,
@@ -91,20 +92,22 @@ export function CheckForUpdatesDialog({
             <>
               <Row label="Latest" value={`v${latest}`} />
               {upToDate ? (
-                <div className="rounded-lg border bg-blue-50 border-blue-200 p-3 text-sm text-blue-900">
+                <Callout variant="success" size="compact">
                   You're on the latest version.
-                </div>
+                </Callout>
               ) : (
-                <div className="rounded-lg border bg-amber-50 border-amber-200 p-3 text-sm text-amber-900 space-y-2">
-                  <div>A newer version is available.</div>
-                  <a
-                    href={data.html_url}
-                    className="inline-flex items-center gap-1 text-primary hover:underline"
-                  >
-                    View release notes and download
-                    <ArrowUpRight className="h-3.5 w-3.5" />
-                  </a>
-                </div>
+                <Callout variant="info">
+                  <div className="space-y-2">
+                    <div>A newer version is available.</div>
+                    <a
+                      href={data.html_url}
+                      className="inline-flex items-center gap-1 text-primary hover:underline"
+                    >
+                      View release notes and download
+                      <ArrowUpRight className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
+                </Callout>
               )}
             </>
           )}

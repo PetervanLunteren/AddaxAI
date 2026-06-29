@@ -10,8 +10,9 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Hammer } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Button } from "../../components/ui/button";
+import { Callout } from "../../components/ui/callout";
 import {
   Card,
   CardContent,
@@ -85,13 +86,9 @@ export function StepStub({
       </CardHeader>
 
       <CardContent className="space-y-4">
-        <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-4">
-          <Hammer className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
-          <div className="text-sm text-amber-900">
-            <p className="font-medium">Step under construction</p>
-            <p className="mt-1 text-amber-900/80">{comingNext}</p>
-          </div>
-        </div>
+        <Callout variant="warning" title="Step under construction">
+          {comingNext}
+        </Callout>
       </CardContent>
 
       <CardFooter className="justify-between">

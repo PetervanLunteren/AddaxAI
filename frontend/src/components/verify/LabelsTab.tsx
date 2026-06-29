@@ -27,6 +27,7 @@ import { detectionsApi } from "../../api/detections";
 import { eventsApi } from "../../api/events";
 import { projectsApi } from "../../api/projects";
 import { Button } from "../ui/button";
+import { Callout } from "../ui/callout";
 import { Card, CardContent } from "../ui/card";
 import { Progress } from "../ui/progress";
 import { invalidateProjectData } from "../../lib/invalidate-project";
@@ -1160,21 +1161,19 @@ export function LabelsTab({
 
       {/* Warning when embeddings are incomplete */}
       {stats && stats.missing_embeddings > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200 px-4 py-3">
-          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-          <div className="flex-1">
-            <p className="text-sm font-medium">
-              {stats.missing_embeddings} detection
-              {stats.missing_embeddings !== 1 ? "s are" : " is"} not shown
-            </p>
-            <p className="text-xs text-amber-800 dark:text-amber-300">
-              This grid only shows detections that have an embedding, no matter which sort mode you pick. Embeddings can be missing when embedding was switched off in settings, an error occurred during analysis, or detections were added manually via event verification. Click 'Embed now' to fix this.
-            </p>
-          </div>
-          <Button variant="outline" size="sm" className="shrink-0" onClick={handleEmbedNow}>
-            Embed now
-          </Button>
-        </div>
+        <Callout
+          variant="warning"
+          title={`${stats.missing_embeddings} detection${
+            stats.missing_embeddings !== 1 ? "s are" : " is"
+          } not shown`}
+          action={
+            <Button variant="outline" size="sm" className="shrink-0" onClick={handleEmbedNow}>
+              Embed now
+            </Button>
+          }
+        >
+          This grid only shows detections that have an embedding, no matter which sort mode you pick. Embeddings can be missing when embedding was switched off in settings, an error occurred during analysis, or detections were added manually via event verification. Click 'Embed now' to fix this.
+        </Callout>
       )}
 
       <ReEmbedModal

@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { AlertTriangle, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -18,6 +18,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import {
   Tooltip,
   TooltipContent,
@@ -282,33 +283,35 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
           {/* Surface duplicate-blocker messages above the disabled button so
               users don't have to hover to see why they're blocked. */}
           {(blockingDeployment || blockingQueueEntry) && (
-            <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
-              <div className="flex-1">
-                {blockingDeployment ? (
-                  <>This folder is already a deployment in this project.</>
-                ) : (
-                  <>
-                    This folder is already in the queue (status:{" "}
-                    <strong>{blockingQueueEntry?.status}</strong>).
-                  </>
-                )}
-              </div>
-              {blockingDeployment && (
-                <Button
-                  asChild
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0 border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
-                >
-                  <Link
-                    to={`/projects/${projectId}/deployments?info=${blockingDeployment.id}`}
+            <Callout
+              variant="warning"
+              size="compact"
+              action={
+                blockingDeployment ? (
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
                   >
-                    View
-                  </Link>
-                </Button>
+                    <Link
+                      to={`/projects/${projectId}/deployments?info=${blockingDeployment.id}`}
+                    >
+                      View
+                    </Link>
+                  </Button>
+                ) : undefined
+              }
+            >
+              {blockingDeployment ? (
+                <>This folder is already a deployment in this project.</>
+              ) : (
+                <>
+                  This folder is already in the queue (status:{" "}
+                  <strong>{blockingQueueEntry?.status}</strong>).
+                </>
               )}
-            </div>
+            </Callout>
           )}
           <TooltipProvider>
             <Tooltip>

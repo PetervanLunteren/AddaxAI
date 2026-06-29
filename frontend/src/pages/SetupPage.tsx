@@ -13,7 +13,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { setupApi } from "../api/setup";
 import { Button } from "../components/ui/button";
 import { Progress } from "../components/ui/progress";
-import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
+import { Callout } from "../components/ui/callout";
 
 const POLL_INTERVAL_MS = 1500;
 
@@ -123,12 +123,9 @@ export default function SetupPage() {
 
         {hasError && (
           <div className="mt-6 space-y-3">
-            <Alert variant="destructive">
-              <AlertTitle>Setup failed</AlertTitle>
-              <AlertDescription className="text-xs break-words">
-                {status.error}
-              </AlertDescription>
-            </Alert>
+            <Callout variant="error" title="Setup failed">
+              <span className="text-xs break-words">{status.error}</span>
+            </Callout>
             <Button onClick={() => install.mutate()} className="w-full">
               Try again
             </Button>

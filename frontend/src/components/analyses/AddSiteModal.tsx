@@ -13,7 +13,7 @@ import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { WifiOff, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Callout } from "@/components/ui/callout";
 import { sitesApi } from "@/api/sites";
 import type { SiteResponse } from "@/api/types";
 import { TagsEditor } from "@/components/ui/tags-editor";
@@ -263,10 +263,9 @@ export function AddSiteModal({
 
           {/* Offline notice */}
           {mapOffline && (
-            <Alert>
-              <WifiOff className="h-4 w-4" />
-              <AlertDescription className="flex items-center justify-between">
-                <span>Map unavailable offline. Enter coordinates manually.</span>
+            <Callout
+              variant="warning"
+              action={
                 <Button
                   type="button"
                   variant="outline"
@@ -276,8 +275,10 @@ export function AddSiteModal({
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Retry map
                 </Button>
-              </AlertDescription>
-            </Alert>
+              }
+            >
+              Map unavailable offline. Enter coordinates manually.
+            </Callout>
           )}
 
           {/* Map */}

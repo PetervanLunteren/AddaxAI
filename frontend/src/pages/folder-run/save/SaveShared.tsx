@@ -8,7 +8,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  AlertTriangle,
   ArrowLeft,
   CheckCircle2,
   FolderOpen,
@@ -16,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "../../../components/ui/button";
+import { Callout } from "../../../components/ui/callout";
 import { Card, CardContent } from "../../../components/ui/card";
 import {
   Dialog,
@@ -443,9 +443,8 @@ function IssuesPanel({ issues }: { issues: string[] }) {
   const shown = issues.slice(0, 5);
   const extra = issues.length - shown.length;
   return (
-    <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
-      <div className="flex-1 space-y-1">
+    <Callout variant="warning" size="compact">
+      <div className="space-y-1">
         <p className="font-medium">
           {issues.length} issue{issues.length === 1 ? "" : "s"} during
           save
@@ -463,7 +462,7 @@ function IssuesPanel({ issues }: { issues: string[] }) {
           )}
         </ul>
       </div>
-    </div>
+    </Callout>
   );
 }
 

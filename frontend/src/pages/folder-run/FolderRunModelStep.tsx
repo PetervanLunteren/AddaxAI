@@ -42,7 +42,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import * as z from "zod";
 import {
-  AlertCircle,
   ChevronDown,
   Loader2,
   RotateCcw,
@@ -50,6 +49,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "../../components/ui/button";
+import { Callout } from "../../components/ui/callout";
 import {
   isAnyAdvancedNonDefault,
   restoreAdvancedDefaults,
@@ -1205,33 +1205,32 @@ export function FolderRunModelStep() {
                     trigger py-3). */}
                 <div className="space-y-3 pt-2">
                   {folderReady && !modelsReady && !statusLoading && (
-                    <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                      <span>
-                        One or more selected models need to be set up
-                        before you can run. Check the model rows above.
-                      </span>
-                    </div>
+                    <Callout variant="warning" size="compact">
+                      One or more selected models need to be set up before
+                      you can run. Check the model rows above.
+                    </Callout>
                   )}
 
                   {nothingToRun && (
-                    <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                      <span className="flex items-start gap-2">
-                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                        Nothing to analyse — this folder looks already
-                        processed.
-                      </span>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          navigate(`/folder-runs/${runId}/labels`)
-                        }
-                      >
-                        View results
-                      </Button>
-                    </div>
+                    <Callout
+                      variant="warning"
+                      size="compact"
+                      action={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            navigate(`/folder-runs/${runId}/labels`)
+                          }
+                        >
+                          View results
+                        </Button>
+                      }
+                    >
+                      Nothing to analyse — this folder looks already
+                      processed.
+                    </Callout>
                   )}
 
                   {(startAnalysis.isError ||
