@@ -78,8 +78,15 @@ An event sometimes covers a time range larger than the independence interval set
 
 ### B7 - Site created before deployment not shown
 Creating a site before any deployment: the sites list shows empty, but the site appears in the deployment "Camera site" picker.
-- status: todo
-- notes:
+- status: done
+- notes: Not a backend issue (get_sites_with_stats uses an outer join, so 0-deployment sites are
+  returned). Cache bug: the blanket `invalidateProjectData` (used by the create/edit site
+  mutation) invalidated `["sites", projectId]` (the deployment picker's key) but not
+  `["sites-with-stats", projectId]` (the SitesPage table's key). React Query matches by prefix and
+  "sites" != "sites-with-stats", so the table never refreshed after a create, hence "shows in the
+  deployment picker but not in the sites list". Fix: added `["sites-with-stats", projectId]` to
+  `invalidate-project.ts`. Correct for all callers (deployment delete also changes the table's
+  deployment_count). Typecheck clean.
 
 ### B8 - Bad lat/long blurs the screen
 Entering an incorrect lat or long in the site form just blurs the screen instead of explaining what is wrong.

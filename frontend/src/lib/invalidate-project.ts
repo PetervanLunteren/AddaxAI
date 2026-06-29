@@ -24,6 +24,7 @@ export function invalidateProjectData(
     ["deployment-stats", projectId],
     ["deployment-queue", projectId],
     ["sites", projectId],
+    ["sites-with-stats", projectId],
     ["events"],
     ["event-count"],
     ["event-count-filtered"],
