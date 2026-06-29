@@ -3,7 +3,9 @@
 ## Priority 1
 - [ ] Do Sauls feedback
 - [ ] Do Dans feedback
-- [ ] Add a custom minutes input option for the independence interval, and remove the debug value. Have a look at how it wqorks to have a custom inout with the batch szie UI widgets. I want the same behaviour, and it should be saved like the other settings, so it is persistent. 
+- [ ] What does the label cleanup step / page really yeild for the user? From the user persective, what does the label cleanup really do? Do we want to leave it in the folder mode? It corects labels in the CSVs, JSONs, and it makes sugestions for events better, right? What else? It makes the confusion matix, and the future train function dataset creation. What else? DO we want to leave it? Or perhaps add something like this to the caption? Or something else? What do you think? TYhink as a user. Thiunk UX UI. 
+- [ ] Do we need to do anything with this finding from a user? For the current Electron build I mean. https://forum.addaxai.com/t/ssl-certificate-issue-in-addaxai-bundled-python-windows/306
+- [ ] Do we need to set PYTHONNOUSERSITE=1 to stop users' global Python user-site packages from leaking into AddaxAI's envs? Is that a real risk? Or not worth it?
 - [ ] Do all the other feedback received via email
 
 

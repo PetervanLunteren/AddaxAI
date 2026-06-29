@@ -1,0 +1,60 @@
+/**
+ * Factory defaults for the advanced analysis settings, shared by the project
+ * Settings page and the folder-run model step so their "Restore defaults"
+ * buttons and "is anything non-default?" checks stay in sync.
+ *
+ * Scope is the tuning params only. The model/species selection (classification
+ * model, embedding model, country/state, excluded classes) is a deliberate
+ * user choice, not a default, so it is intentionally excluded. Note the
+ * project-only `taxonomic_rollup_threshold` is not here either; Settings resets
+ * that one separately.
+ */
+
+import type {
+  FieldValues,
+  Path,
+  PathValue,
+  UseFormSetValue,
+} from "react-hook-form";
+
+export const ADVANCED_SETTINGS_DEFAULTS = {
+  detection_model_id: "MD5A-0-0",
+  video_fps: 1.0,
+  detection_threshold: 0.5,
+  event_smoothing: true,
+  smoothing_strength: "normal",
+  taxonomic_rollup: true,
+  independence_interval: 1800,
+  detection_batch_size: null,
+  classification_batch_size: null,
+  embedding_batch_size: null,
+} as const;
+
+type AdvancedKey = keyof typeof ADVANCED_SETTINGS_DEFAULTS;
+
+const ADVANCED_KEYS = Object.keys(ADVANCED_SETTINGS_DEFAULTS) as AdvancedKey[];
+
+/** True if any advanced setting in `values` deviates from its default. */
+export function isAnyAdvancedNonDefault(values: Record<string, unknown>): boolean {
+  return ADVANCED_KEYS.some(
+    (key) => values[key] !== ADVANCED_SETTINGS_DEFAULTS[key],
+  );
+}
+
+/**
+ * Reset every advanced setting to its default via the form's setValue. Marks
+ * fields dirty so the change is treated like any other edit (the user still
+ * has to save / run to apply it). The form `T` must carry these field names;
+ * the casts are safe because every consumer's schema includes them.
+ */
+export function restoreAdvancedDefaults<T extends FieldValues>(
+  setValue: UseFormSetValue<T>,
+): void {
+  for (const key of ADVANCED_KEYS) {
+    setValue(
+      key as Path<T>,
+      ADVANCED_SETTINGS_DEFAULTS[key] as PathValue<T, Path<T>>,
+      { shouldDirty: true },
+    );
+  }
+}

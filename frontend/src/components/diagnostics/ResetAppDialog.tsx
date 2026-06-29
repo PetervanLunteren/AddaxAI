@@ -16,6 +16,7 @@ import { useMutation } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 import { diagnosticsApi } from "../../api/diagnostics";
 import { Button } from "../ui/button";
+import { Callout } from "../ui/callout";
 import { Checkbox } from "../ui/checkbox";
 import {
   Dialog,
@@ -89,13 +90,11 @@ export function ResetAppDialog({ open, onOpenChange }: ResetAppDialogProps) {
             </ul>
           </div>
 
-          <div className="rounded-lg border bg-blue-50 border-blue-200 p-4">
-            <p className="text-sm text-blue-900">
-              <strong>Your original images and videos are never touched.</strong>
-              {" "}AddaxAI only writes to its own data directory; your files
-              on disk are read-only as far as this app is concerned.
-            </p>
-          </div>
+          <Callout variant="info">
+            <strong>Your original images and videos are never touched.</strong>{" "}
+            AddaxAI only writes to its own data directory; your files on disk
+            are read-only as far as this app is concerned.
+          </Callout>
 
           <div className="flex items-start gap-2">
             <div className="mt-0.5">

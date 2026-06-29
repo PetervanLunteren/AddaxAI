@@ -11,13 +11,13 @@
  */
 export const SETTING_CAPTIONS = {
   detectionThreshold:
-    "Hide detections below this confidence score. Verified observations are always included.",
+    "Hide detections below this confidence score. Verified observations are always included. The default is 0.5.",
   videoFrameRate:
-    "How many frames per second to extract from videos for detection. Higher values find more but take longer.",
+    "How many frames per second to extract from videos for detection. Higher values find more but take longer. One frame per second is a good default.",
   independenceInterval:
-    "Files at the same camera within this window are merged into one event.",
+    "Files at the same camera within this window are merged into one event. The default is 30 minutes.",
   smoothing:
-    "Cleans up species labels across an event, nudging the odd one out toward the rest.",
+    "Looks at all photos grouped into one event and changes an odd-one-out label to match the rest. Example: a burst that is mostly red deer with one stray roe deer gets the stray corrected to red deer.",
   taxonomicRollup:
-    "When the model isn't sure of the exact species, it falls back to a broader group it's confident about, like genus or family.",
+    "When the model can't confidently name the exact species, it labels the animal with a broader group instead, such as genus or family. Example: unsure between two deer species, it labels the animal 'deer' rather than guessing one. On by default.",
 } as const;

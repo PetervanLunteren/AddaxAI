@@ -85,6 +85,11 @@ export interface FolderRunLookup {
   species_count: number;
   verified_file_count: number;
   verified_detection_count: number;
+  /** Count-confirmation progress: events confirmed on the Counts page,
+   * out of ``event_count`` total. The "Counts confirmed" half of the app's
+   * two-metric verification split (the other half is verified detections). */
+  event_count: number;
+  confirmed_event_count: number;
 }
 
 export type SeparateGroupBy = "taxonomic" | "flat" | "none";

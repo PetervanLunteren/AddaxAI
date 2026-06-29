@@ -255,7 +255,6 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
             }}
             onAddNew={() => setShowAddSiteModal(true)}
             deploymentGps={scanResult?.gps_location ?? null}
-            allowEmpty
           />
 
           {/* Notes */}

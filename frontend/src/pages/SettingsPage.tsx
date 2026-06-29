@@ -18,6 +18,8 @@ import { toast } from "sonner";
 import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { modelsApi } from "../api/models";
 import { LabelSelectionField, useLabelSelectionCaption } from "../components/taxonomy/LabelSelectionField";
+import { IntervalControl } from "../components/analyses/IntervalControl";
+import { restoreAdvancedDefaults } from "../lib/advancedSettingsDefaults";
 import { ModelSelect } from "../components/models/ModelSelect";
 import { ModelInfoSheet } from "../components/models/ModelInfoSheet";
 import { ModelStatusBadge } from "../components/projects/ModelStatusBadge";
@@ -105,17 +107,6 @@ const settingsSchema = z.object({
   classification_batch_size: z.number().int().min(1).max(256).nullable(),
   embedding_batch_size: z.number().int().min(1).max(256).nullable(),
 });
-
-const INDEPENDENCE_INTERVAL_OPTIONS = [
-  { value: "0", label: "Disabled" },
-  { value: "60", label: "1 minute" },
-  { value: "300", label: "5 minutes" },
-  { value: "900", label: "15 minutes" },
-  { value: "1800", label: "30 minutes" },
-  { value: "3600", label: "60 minutes" },
-  // Debugging option: large interval to group many videos into one event
-  { value: "2592000", label: "1 month (for debugging)" },
-];
 
 const VIDEO_FPS_OPTIONS = [
   { value: "0.1", label: "1 frame every 10 seconds" },
@@ -1189,24 +1180,10 @@ export default function SettingsPage() {
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
-                        <Select
-                          key={String(field.value)}
-                          value={String(field.value)}
-                          onValueChange={(val) => field.onChange(parseInt(val))}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {INDEPENDENCE_INTERVAL_OPTIONS.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <IntervalControl
+                          value={field.value}
+                          onChange={field.onChange}
+                        />
                         <FormMessage />
                       </div>
                     </div>
@@ -1339,17 +1316,9 @@ export default function SettingsPage() {
                       // Use setValue (not reset) so the saved project values stay as the
                       // dirty-check baseline. This way isDirty becomes true and the user
                       // must press "Save changes" to persist the defaults.
-                      form.setValue("detection_model_id", "MD5A-0-0", { shouldDirty: true });
-                      form.setValue("video_fps", 1.0, { shouldDirty: true });
-                      form.setValue("detection_threshold", 0.5, { shouldDirty: true });
-                      form.setValue("event_smoothing", true, { shouldDirty: true });
-                      form.setValue("smoothing_strength", "normal", { shouldDirty: true });
-                      form.setValue("taxonomic_rollup", true, { shouldDirty: true });
+                      restoreAdvancedDefaults(form.setValue);
+                      // Project-only setting, not in the shared advanced set.
                       form.setValue("taxonomic_rollup_threshold", 0.65, { shouldDirty: true });
-                      form.setValue("independence_interval", 1800, { shouldDirty: true });
-                      form.setValue("detection_batch_size", null, { shouldDirty: true });
-                      form.setValue("classification_batch_size", null, { shouldDirty: true });
-                      form.setValue("embedding_batch_size", null, { shouldDirty: true });
                     }}
                     disabled={updateMutation.isPending}
                   >

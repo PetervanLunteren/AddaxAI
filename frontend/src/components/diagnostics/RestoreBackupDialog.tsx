@@ -19,6 +19,7 @@ import { useMutation } from "@tanstack/react-query";
 import { AlertTriangle, FileSearch } from "lucide-react";
 import { backupApi } from "../../api/backup";
 import { Button } from "../ui/button";
+import { Callout } from "../ui/callout";
 import {
   Dialog,
   DialogContent,
@@ -103,12 +104,10 @@ export function RestoreBackupDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="rounded-lg border bg-blue-50 border-blue-200 p-4">
-            <p className="text-sm text-blue-900">
-              <strong>Your original images and videos are never touched.</strong>
-              {" "}Only the SQLite database file is swapped.
-            </p>
-          </div>
+          <Callout variant="info">
+            <strong>Your original images and videos are never touched.</strong>{" "}
+            Only the SQLite database file is swapped.
+          </Callout>
 
           <div className="space-y-2">
             <Label>Backup file</Label>

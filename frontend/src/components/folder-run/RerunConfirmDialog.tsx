@@ -36,7 +36,9 @@ export function RerunConfirmDialog({
   onCancel,
   onConfirm,
 }: RerunConfirmDialogProps) {
-  const verified = run?.verified_detection_count ?? 0;
+  const hasProgress =
+    (run?.verified_detection_count ?? 0) > 0 ||
+    (run?.confirmed_event_count ?? 0) > 0;
 
   return (
     <Dialog open={open} onOpenChange={(v) => (v ? null : onCancel())}>
@@ -53,17 +55,19 @@ export function RerunConfirmDialog({
           <div className="rounded-md border bg-card-background p-3 text-xs text-muted-foreground">
             <p>{formatRunSummary(run)}</p>
             <p className="mt-1">{formatRunCounts(run)}</p>
-            {formatVerificationProgress(run) && (
-              <p className="mt-1">{formatVerificationProgress(run)}</p>
+            {formatLabelsVerified(run) && (
+              <p className="mt-1">{formatLabelsVerified(run)}</p>
+            )}
+            {formatCountsConfirmed(run) && (
+              <p className="mt-1">{formatCountsConfirmed(run)}</p>
             )}
           </div>
         )}
 
         <div className="space-y-1.5">
-          {verified > 0 && (
+          {hasProgress && (
             <p className="text-sm font-medium">
-              Your {verified.toLocaleString()} verified observation
-              {verified === 1 ? "" : "s"} will be lost.
+              Your verification and count progress will be lost.
             </p>
           )}
           <p className="text-sm text-muted-foreground">
@@ -115,19 +119,31 @@ function formatRunCounts(run: FolderRunLookup): string {
   return parts.join(" · ");
 }
 
-function formatVerificationProgress(run: FolderRunLookup): string | null {
-  if (run.detection_count === 0) return null;
-  const verified = run.verified_detection_count;
+// The app frames verification as two metrics (see the dashboard's
+// VerificationProgressChart): "Labels verified" (detections checked on the
+// Labels page) and "Counts confirmed" (events confirmed on the Counts page).
+// Re-running discards both, so the dialog shows both.
+
+function formatLabelsVerified(run: FolderRunLookup): string | null {
   const total = run.detection_count;
+  if (total === 0) return null;
+  const verified = run.verified_detection_count;
   if (verified === total) {
-    return `All ${total.toLocaleString()} observation${
-      total === 1 ? "" : "s"
-    } verified`;
+    return `All ${total.toLocaleString()} labels verified`;
   }
   const pct = Math.round((verified / total) * 100);
-  return `${verified.toLocaleString()} of ${total.toLocaleString()} observation${
-    total === 1 ? "" : "s"
-  } verified (${pct}%)`;
+  return `${verified.toLocaleString()} of ${total.toLocaleString()} labels verified (${pct}%)`;
+}
+
+function formatCountsConfirmed(run: FolderRunLookup): string | null {
+  const total = run.event_count;
+  if (total === 0) return null;
+  const confirmed = run.confirmed_event_count;
+  if (confirmed === total) {
+    return `All ${total.toLocaleString()} counts confirmed`;
+  }
+  const pct = Math.round((confirmed / total) * 100);
+  return `${confirmed.toLocaleString()} of ${total.toLocaleString()} counts confirmed (${pct}%)`;
 }
 
 function formatDate(iso: string): string {

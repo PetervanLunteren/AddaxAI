@@ -9,9 +9,10 @@
  */
 
 import { Link } from "react-router-dom";
-import { AlertCircle, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 import { buttonVariants } from "../ui/button";
+import { Callout } from "../ui/callout";
 
 interface NoSiteBannerProps {
   projectId: string;
@@ -33,25 +34,22 @@ export function NoSiteBanner({
   const has = count === 1 ? "has" : "have";
 
   return (
-    <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-      <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
-      <div className="flex-1 space-y-3">
-        <p>
-          <span className="font-medium">
-            {count} {depLabel} {verb} {context}.
-          </span>{" "}
-          {count === 1 ? "It" : "They"} {has} no site assigned.
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            to={`/projects/${projectId}/deployments?site=missing`}
-            className={buttonVariants({ variant: "outline", size: "sm" }) + " bg-white"}
-          >
-            <ArrowRight />
-            Assign a site
-          </Link>
-        </div>
-      </div>
-    </div>
+    <Callout
+      variant="warning"
+      action={
+        <Link
+          to={`/projects/${projectId}/deployments?site=missing`}
+          className={buttonVariants({ variant: "outline", size: "sm" }) + " bg-white"}
+        >
+          <ArrowRight />
+          Assign a site
+        </Link>
+      }
+    >
+      <span className="font-medium">
+        {count} {depLabel} {verb} {context}.
+      </span>{" "}
+      {count === 1 ? "It" : "They"} {has} no site assigned.
+    </Callout>
   );
 }

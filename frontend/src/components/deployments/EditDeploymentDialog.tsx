@@ -130,7 +130,6 @@ export function EditDeploymentDialog({
                 value={siteId}
                 onChange={setSiteId}
                 onAddNew={() => setShowAddSiteModal(true)}
-                allowEmpty
               />
               {onSplit && (
                 <p className="mt-1 text-xs text-muted-foreground">

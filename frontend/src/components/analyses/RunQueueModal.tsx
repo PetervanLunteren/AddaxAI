@@ -31,6 +31,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import { useTaskProgress } from "@/hooks/useTaskProgress";
 import { AnalysisProgress } from "./AnalysisProgress";
 import {
@@ -437,6 +438,9 @@ export function RunQueueModal({
   };
 
   const inTerminalState = isComplete || hasError || hasCancelled;
+  // Actively analysing: not finished, not stopping, not still preparing.
+  // Drives the advisory info bar below.
+  const isRunning = !inTerminalState && !isCancelling && !isWaitingForJob;
   const completedEntries = runEntries.filter((e) => e.status === "completed");
   const successCount = completedEntries.length;
   const completedImageTotal = completedEntries.reduce(
@@ -492,7 +496,7 @@ export function RunQueueModal({
                       ? mode === "folder-run"
                         ? "Preparing the analysis..."
                         : "Preparing the deployment queue..."
-                      : "This analysis is resource intensive. Please avoid other heavy tasks while it runs."}
+                      : "AddaxAI is analysing your files."}
           </DialogDescription>
         </DialogHeader>
 
@@ -666,6 +670,16 @@ export function RunQueueModal({
 
           {!inTerminalState && (
             <>
+              {isRunning && (
+                <Callout variant="info">
+                  This window stays open until the analysis finishes, so the
+                  rest of AddaxAI is on pause for now. It is resource
+                  intensive, so avoid other heavy tasks while it runs. Perfect
+                  moment to step outside and do some birding. Press Cancel to
+                  stop processing and return to AddaxAI.
+                </Callout>
+              )}
+
               {showSpinner && (
                 <div className="flex items-center gap-3">
                   <Loader2 className="h-5 w-5 animate-spin" style={{ color: '#0f6064' }} />

@@ -45,10 +45,15 @@ import {
   AlertCircle,
   ChevronDown,
   Loader2,
+  RotateCcw,
   Sparkles,
 } from "lucide-react";
 
 import { Button } from "../../components/ui/button";
+import {
+  isAnyAdvancedNonDefault,
+  restoreAdvancedDefaults,
+} from "../../lib/advancedSettingsDefaults";
 import { Card, CardContent } from "../../components/ui/card";
 import {
   Collapsible,
@@ -84,6 +89,7 @@ import {
 } from "../../components/ui/tooltip";
 
 import { BatchSizeRow } from "../../components/analyses/BatchSizeRow";
+import { IntervalControl } from "../../components/analyses/IntervalControl";
 import { FolderSelector } from "../../components/analyses/FolderSelector";
 import { RunQueueModal } from "../../components/analyses/RunQueueModal";
 import { CompletedRunNotice } from "../../components/folder-run/CompletedRunNotice";
@@ -130,18 +136,6 @@ const VIDEO_FPS_OPTIONS = [
   { value: "2", label: "2 frames per second" },
   { value: "4", label: "4 frames per second" },
   { value: "10", label: "10 frames per second" },
-];
-
-const INDEPENDENCE_INTERVAL_OPTIONS = [
-  { value: "0", label: "Disabled" },
-  { value: "60", label: "1 minute" },
-  { value: "300", label: "5 minutes" },
-  { value: "900", label: "15 minutes" },
-  { value: "1800", label: "30 minutes" },
-  { value: "3600", label: "60 minutes" },
-  // Debugging option: large interval to group many files (e.g. several
-  // videos) into one event so multi-video event handling can be tested.
-  { value: "2592000", label: "1 month (for debugging)" },
 ];
 
 const settingsSchema = z.object({
@@ -336,6 +330,10 @@ export function FolderRunModelStep() {
     !!classificationModelId && classificationModelId !== NO_CLASSIFIER;
   const hasEmbedding =
     !!embeddingModelId && embeddingModelId !== NO_EMBEDDING;
+
+  // Show "Restore defaults" only when an advanced setting differs from its
+  // factory default (e.g. carried over from the last run via sticky settings).
+  const advancedNonDefault = isAnyAdvancedNonDefault(form.watch());
 
   // Folder scan + previous-run lookup. The lookup only fires after a
   // valid scan so we don't probe folders the user is mid-typing or
@@ -1123,29 +1121,10 @@ export function FolderRunModelStep() {
                           label="Independence interval"
                           description={SETTING_CAPTIONS.independenceInterval}
                         >
-                          <Select
-                            key={String(field.value)}
-                            value={String(field.value)}
-                            onValueChange={(v) =>
-                              field.onChange(parseInt(v))
-                            }
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {INDEPENDENCE_INTERVAL_OPTIONS.map((opt) => (
-                                <SelectItem
-                                  key={opt.value}
-                                  value={opt.value}
-                                >
-                                  {opt.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <IntervalControl
+                            value={field.value}
+                            onChange={field.onChange}
+                          />
                           <FormMessage />
                         </SettingRow>
                       )}
@@ -1200,6 +1179,19 @@ export function FolderRunModelStep() {
                           </SettingRow>
                         )}
                       />
+                    )}
+                    {advancedNonDefault && (
+                      <div className="flex justify-end py-3">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => restoreAdvancedDefaults(form.setValue)}
+                        >
+                          <RotateCcw className="mr-2 h-4 w-4" />
+                          Restore defaults
+                        </Button>
+                      </div>
                     )}
                   </CollapsibleContent>
                 </Collapsible>

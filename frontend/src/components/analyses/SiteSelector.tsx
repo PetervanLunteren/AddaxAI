@@ -31,9 +31,6 @@ interface SiteSelectorProps {
   onChange: (id: string | null) => void;
   onAddNew: () => void;
   deploymentGps?: { latitude: number; longitude: number } | null;
-  /** When true, exposes a "Leave blank if unknown or from multiple
-   * locations" option and allows submitting `null` as the site. */
-  allowEmpty?: boolean;
 }
 
 export function SiteSelector({
@@ -42,7 +39,6 @@ export function SiteSelector({
   onChange,
   onAddNew,
   deploymentGps,
-  allowEmpty = false,
 }: SiteSelectorProps) {
   const { data: sites, isLoading } = useQuery({
     queryKey: ["sites", projectId],
@@ -122,17 +118,15 @@ export function SiteSelector({
         >
           <SelectTrigger className="flex-1">
             <SelectValue
-              placeholder={
-                isLoading
-                  ? "Loading sites..."
-                  : allowEmpty
-                    ? "Optionally select a site"
-                    : "Select a site"
-              }
+              placeholder={isLoading ? "Loading sites..." : "Optionally select a site"}
             />
           </SelectTrigger>
           <SelectContent>
-            {allowEmpty && (
+            {/* "(no site)" is only a meaningful choice alongside real
+                sites. With zero sites the deployment already defaults to
+                no site, so a lone "(no site)" option is a confusing no-op;
+                show the add-a-site hint instead (below). */}
+            {sites && sites.length > 0 && (
               <SelectItem key={NO_SITE_OPTION} value={NO_SITE_OPTION}>
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">(no site)</span>
@@ -172,11 +166,9 @@ export function SiteSelector({
                 );
               })
             ) : (
-              !allowEmpty && (
-                <div className="p-2 text-sm text-gray-500 text-center">
-                  No sites found, click + to add one
-                </div>
-              )
+              <div className="p-2 text-sm text-gray-500 text-center">
+                No sites yet, click + to add one
+              </div>
             )}
           </SelectContent>
         </Select>

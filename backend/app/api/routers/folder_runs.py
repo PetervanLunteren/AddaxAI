@@ -49,7 +49,14 @@ from app.ml.postprocessing_outputs.output_preview import (
 from app.ml.postprocessing_outputs.separate_folders import (
     SeparateGroupBy,
 )
-from app.models import Deployment, DeploymentQueue, Detection, File, Project
+from app.models import (
+    Deployment,
+    DeploymentQueue,
+    Detection,
+    Event,
+    File,
+    Project,
+)
 from app.services.folder_scanner import OUTPUT_DIR_MARKER
 
 logger = get_logger(__name__)
@@ -255,6 +262,11 @@ class FolderRunLookupResponse(BaseModel):
     species_count: int
     verified_file_count: int
     verified_detection_count: int
+    # Count-confirmation progress (events confirmed on the Counts page),
+    # the second half of the app's "Labels verified" + "Counts confirmed"
+    # split. ``event_count`` is the denominator for the confirmed percentage.
+    event_count: int
+    confirmed_event_count: int
 
 
 class SaveOutputsResponse(BaseModel):
@@ -582,6 +594,19 @@ def lookup_folder_run(
         .where(File.deployment_id.in_(deployment_ids_subq))
         .where(Detection.verified.is_(True))
     ) or 0
+    # Count confirmation is the second half of the verification work
+    # (events whose count was confirmed on the Counts page), mirroring the
+    # dashboard's "Labels verified" + "Counts confirmed" split.
+    event_count = db.scalar(
+        select(func.count(Event.id)).where(
+            Event.deployment_id.in_(deployment_ids_subq)
+        )
+    ) or 0
+    confirmed_event_count = db.scalar(
+        select(func.count(Event.id))
+        .where(Event.deployment_id.in_(deployment_ids_subq))
+        .where(Event.confirmed.is_(True))
+    ) or 0
 
     detection_model_name = _friendly_model_name(existing.detection_model_id)
     classification_model_name = _friendly_model_name(
@@ -603,6 +628,8 @@ def lookup_folder_run(
         species_count=species_count,
         verified_file_count=verified_file_count,
         verified_detection_count=verified_detection_count,
+        event_count=event_count,
+        confirmed_event_count=confirmed_event_count,
     )
 
 

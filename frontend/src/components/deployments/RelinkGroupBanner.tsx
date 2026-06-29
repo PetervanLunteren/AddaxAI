@@ -18,7 +18,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Folder, FolderSearch } from "lucide-react";
+import { Folder, FolderSearch } from "lucide-react";
 import { toast } from "sonner";
 import { deploymentsApi } from "../../api/deployments";
 import type { DeploymentResponse, GroupBrokenGroup } from "../../api/types";
@@ -29,6 +29,7 @@ import {
 } from "../../lib/path-utils";
 import type { PrefixGroup } from "../../lib/path-utils";
 import { Button } from "../ui/button";
+import { Callout } from "../ui/callout";
 import {
   BulkRelinkDeploymentDialog,
   type DeploymentPathItem,
@@ -110,32 +111,29 @@ export function RelinkGroupBanner({
 
   return (
     <>
-      <div className="mb-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-          <div className="flex-1 min-w-0 space-y-3">
-            <div className="text-sm font-medium">
-              Can't find files for {count} deployment{count === 1 ? "" : "s"}
-              {titleLeaf}
-            </div>
-
-            {suggestedPath ? (
-              <ConfirmationCard
-                missingPath={missingPath}
-                suggestedPath={suggestedPath}
-                busy={relinkMutation.isPending}
-                onConfirm={() => relinkMutation.mutate(suggestedPath)}
-                onReject={() => setDialogOpen(true)}
-              />
-            ) : (
-              <ManualPrompt
-                missingPath={missingPath}
-                onChoose={() => setDialogOpen(true)}
-              />
-            )}
+      <Callout variant="error" className="mb-3">
+        <div className="space-y-3">
+          <div className="text-sm font-medium">
+            Can't find files for {count} deployment{count === 1 ? "" : "s"}
+            {titleLeaf}
           </div>
+
+          {suggestedPath ? (
+            <ConfirmationCard
+              missingPath={missingPath}
+              suggestedPath={suggestedPath}
+              busy={relinkMutation.isPending}
+              onConfirm={() => relinkMutation.mutate(suggestedPath)}
+              onReject={() => setDialogOpen(true)}
+            />
+          ) : (
+            <ManualPrompt
+              missingPath={missingPath}
+              onChoose={() => setDialogOpen(true)}
+            />
+          )}
         </div>
-      </div>
+      </Callout>
 
       <BulkRelinkDeploymentDialog
         projectId={projectId}

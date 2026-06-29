@@ -13,8 +13,8 @@
  */
 
 import { useNavigate } from "react-router-dom";
-import { MapPinOff } from "lucide-react";
 import { Button } from "../ui/button";
+import { Callout } from "../ui/callout";
 import { NO_SITE_SENTINEL } from "../../lib/filter-url";
 
 interface NoSiteBannerProps {
@@ -60,29 +60,25 @@ export function NoSiteBanner({
   }
 
   return (
-    <div
-      role="note"
-      aria-label="Deployments without a site"
-      className="mb-4 flex items-center justify-between gap-4 rounded-md border px-4 py-3 text-sm"
-      // Status palette "middle" colour: this is a notice, not an error.
-      style={{ backgroundColor: "#71b7ba22", borderColor: "#71b7ba" }}
+    <Callout
+      variant="info"
+      className="mb-4"
+      action={
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() =>
+            navigate(
+              `/projects/${projectId}/deployments?site_ids=${NO_SITE_SENTINEL}`,
+            )
+          }
+        >
+          View deployments
+        </Button>
+      }
     >
-      <div className="flex items-center gap-2">
-        <MapPinOff className="h-4 w-4" style={{ color: "#0f6064" }} />
-        <span>{label}</span>
-      </div>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        onClick={() =>
-          navigate(
-            `/projects/${projectId}/deployments?site_ids=${NO_SITE_SENTINEL}`,
-          )
-        }
-      >
-        View deployments
-      </Button>
-    </div>
+      {label}
+    </Callout>
   );
 }
