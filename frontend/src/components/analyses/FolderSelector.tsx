@@ -68,6 +68,11 @@ interface FolderSelectorProps {
   onAdjustDates?: () => void;
   /** Hide the built-in "Folder" label (when the parent provides its own). */
   hideLabel?: boolean;
+  /** Optional caption under the built-in "Folder" label. Ignored when
+   *  hideLabel is set (the parent supplies its own). Use it to clarify what
+   *  the folder is for, since the selector is reused for source and
+   *  destination folders. */
+  caption?: string;
   /** Hide the scan result caption (file counts, dates, adjust-dates link). */
   hideScanResult?: boolean;
   /** Render scan results as a single muted dot-separated line instead
@@ -87,6 +92,7 @@ export function FolderSelector({
   datetimeOffsetSeconds = 0,
   onAdjustDates,
   hideLabel = false,
+  caption,
   hideScanResult = false,
   compactScanResult = false,
   noScan = false,
@@ -127,6 +133,9 @@ export function FolderSelector({
         {/* Label (suppressed when the parent provides its own label) */}
         {!hideLabel && (
           <label className="text-sm font-medium">Folder</label>
+        )}
+        {!hideLabel && caption && (
+          <p className="text-xs text-muted-foreground">{caption}</p>
         )}
 
         {/* Field + scan caption grouped tight (space-y-1) so the caption sits

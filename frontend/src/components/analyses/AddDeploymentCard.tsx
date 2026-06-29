@@ -226,7 +226,8 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
         <CardHeader>
           <CardTitle>New deployment</CardTitle>
           <CardDescription>
-            Configure a new deployment to analyze camera trap images
+            Pick a folder to add it to the queue. Everything else is optional
+            and can be added later.
           </CardDescription>
         </CardHeader>
 
@@ -241,6 +242,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
             }}
             datetimeOffsetSeconds={datetimeOffsetSeconds}
             onAdjustDates={() => setOffsetModalOpen(true)}
+            caption="The folder with the images or videos you want to analyse. Subfolders are included."
           />
 
           {/* Site selector (optional). When the user leaves it blank
@@ -261,6 +263,10 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
           {/* Notes */}
           <div className="space-y-2">
             <Label htmlFor="deployment-notes">Notes</Label>
+            <p className="text-xs text-muted-foreground">
+              Free-text for your own records. Shown on the deployment's info
+              panel.
+            </p>
             <Textarea
               id="deployment-notes"
               value={notes}
@@ -276,6 +282,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
             onChange={setTags}
             keyPlaceholder="e.g., season"
             valuePlaceholder="e.g., wet"
+            description="Labels to group and filter deployments later."
           />
         </CardContent>
 

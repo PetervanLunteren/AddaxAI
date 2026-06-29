@@ -33,6 +33,10 @@ interface TagsEditorProps {
   /** Placeholder shown in the value input. Same rationale as
    * keyPlaceholder. */
   valuePlaceholder?: string;
+  /** Optional one-line caption under the "Tags" label explaining what the
+   * tags are for in this context. The editor is generic (site tags,
+   * deployment tags), so the copy is supplied by the caller. */
+  description?: string;
 }
 
 function toRows(tags: Record<string, string>): TagRow[] {
@@ -55,6 +59,7 @@ export function TagsEditor({
   onChange,
   keyPlaceholder = "e.g., Baboon risk",
   valuePlaceholder = "e.g., High",
+  description,
 }: TagsEditorProps) {
   const [rows, setRows] = useState<TagRow[]>(() => {
     const existing = toRows(value);
@@ -113,6 +118,9 @@ export function TagsEditor({
   return (
     <div className="space-y-2">
       <Label>Tags</Label>
+      {description && (
+        <p className="text-xs text-muted-foreground">{description}</p>
+      )}
       {rows.length > 0 && (
         <div className="space-y-2">
           {rows.map((row, i) => {

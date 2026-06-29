@@ -175,6 +175,10 @@ export function EditDeploymentDialog({
             {/* Notes */}
             <div className="space-y-2">
               <Label htmlFor="edit-deployment-notes">Notes</Label>
+              <p className="text-xs text-muted-foreground">
+                Free-text for your own records. Shown on the deployment's info
+                panel.
+              </p>
               <Textarea
                 id="edit-deployment-notes"
                 value={notes}
@@ -190,6 +194,7 @@ export function EditDeploymentDialog({
               onChange={setTags}
               keyPlaceholder="e.g., season"
               valuePlaceholder="e.g., wet"
+              description="Labels to group and filter deployments later."
             />
 
             {updateMutation.isError && (

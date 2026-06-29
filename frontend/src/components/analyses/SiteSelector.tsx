@@ -108,6 +108,10 @@ export function SiteSelector({
   return (
     <div className="space-y-2">
       <label className="text-sm font-medium">Camera site</label>
+      <p className="text-xs text-muted-foreground">
+        Link this camera to a location to plot it on the map and compare
+        activity across sites.
+      </p>
 
       {/* Select + Add button */}
       <div className="flex gap-2">
