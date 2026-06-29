@@ -9,7 +9,16 @@ Following DEVELOPERS.md principles:
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+
+def _reject_null_island(latitude: float | None, longitude: float | None) -> None:
+    """Reject 0,0: it is the form default and 'null island', so almost always
+    a forgotten location rather than a real site."""
+    if latitude == 0 and longitude == 0:
+        raise ValueError(
+            "0, 0 is not allowed. This is probably an error. Enter the real coordinates."
+        )
 
 
 class SiteBase(BaseModel):
@@ -24,6 +33,11 @@ class SiteBase(BaseModel):
     tags: dict[str, str] = Field(
         default_factory=dict, description="Custom key:value metadata tags"
     )
+
+    @model_validator(mode="after")
+    def _check_null_island(self) -> "SiteBase":
+        _reject_null_island(self.latitude, self.longitude)
+        return self
 
 
 class SiteCreate(SiteBase):
@@ -51,6 +65,11 @@ class SiteUpdate(BaseModel):
     habitat_type: str | None = Field(None, max_length=255)
     notes: str | None = Field(None, max_length=1000)
     tags: dict[str, str] | None = None
+
+    @model_validator(mode="after")
+    def _check_null_island(self) -> "SiteUpdate":
+        _reject_null_island(self.latitude, self.longitude)
+        return self
 
 
 class SiteResponse(SiteBase):

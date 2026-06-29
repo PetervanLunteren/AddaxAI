@@ -36,8 +36,14 @@ import { SiteMap } from "./SiteMap";
 // Validation schema
 const siteSchema = z.object({
   name: z.string().min(1, "Site name is required"),
-  latitude: z.number().min(-90).max(90),
-  longitude: z.number().min(-180).max(180),
+  latitude: z
+    .number({ error: "Enter a latitude between -90 and 90" })
+    .min(-90, "Latitude must be between -90 and 90")
+    .max(90, "Latitude must be between -90 and 90"),
+  longitude: z
+    .number({ error: "Enter a longitude between -180 and 180" })
+    .min(-180, "Longitude must be between -180 and 180")
+    .max(180, "Longitude must be between -180 and 180"),
   elevation_m: z
     .union([z.string(), z.number()])
     .optional()
@@ -54,6 +60,11 @@ const siteSchema = z.object({
     .string()
     .optional()
     .transform((val) => (val === "" ? undefined : val)),
+}).refine((d) => !(d.latitude === 0 && d.longitude === 0), {
+  // 0,0 is "null island" in the Atlantic off Africa, so it is almost always
+  // a placeholder rather than a real camera location.
+  message: "0, 0 is not allowed. This is probably an error. Enter the real coordinates.",
+  path: ["latitude"],
 });
 
 type SiteFormData = z.infer<typeof siteSchema>;
@@ -97,9 +108,11 @@ export function AddSiteModal({
   } = useForm<SiteFormData>({
     resolver: zodResolver(siteSchema) as Resolver<SiteFormData>,
     defaultValues: {
+      // Leave coords empty so the inputs show their placeholder instead of a
+      // literal 0 that invites being saved as null island. Validated on save.
       name: "",
-      latitude: 0,
-      longitude: 0,
+      latitude: undefined,
+      longitude: undefined,
       elevation_m: undefined,
       habitat_type: "",
       notes: "",

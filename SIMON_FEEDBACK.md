@@ -90,8 +90,26 @@ Creating a site before any deployment: the sites list shows empty, but the site 
 
 ### B8 - Bad lat/long blurs the screen
 Entering an incorrect lat or long in the site form just blurs the screen instead of explaining what is wrong.
-- status: todo
-- notes:
+- status: already solved (no change)
+- notes: Data integrity is covered: the site schema is `latitude z.number().min(-90).max(90)` and
+  `longitude min(-180).max(180)`, so an out-of-range value blocks the save and renders a red error
+  under the field (AddSiteModal.tsx:311,325). Wrong coords can't be saved and the form does say
+  what's wrong. The "blur" Simon saw is just the standard modal backdrop (`backdrop-blur-sm` in
+  ui/dialog.tsx), not a failure. Validation post-dates beta 4. Decided not to gold-plate the
+  message wording / on-blur timing. Left as is.
+
+  Follow-up (Peter's call): also block 0,0. Coords are required and the form defaults to 0,0, so a
+  forgotten location saved a site at null island. Added a 0,0 reject on both sides: frontend zod
+  `.refine` on the site schema (message "0, 0 is not allowed. This is probably an error. Enter the
+  real coordinates.", shown under latitude) and a backend `model_validator` on SiteBase + SiteUpdate
+  via a shared `_reject_null_island` helper. Valid coords and partial updates still pass; 45 site
+  tests green, frontend typecheck + ruff clean.
+
+  Follow-up 2: the form defaulted lat/long to a literal 0, which invited saving null island.
+  Changed defaults to empty (undefined) so the inputs show their placeholders, and added friendly
+  zod messages so an empty field on save reads "Enter a latitude/longitude between ..." instead of
+  the raw NaN error. Validation still runs only on save (RHF default onSubmit). Edit mode and the
+  map-click prefill still set real coords. Zod v4 uses `{ error: ... }`, not `invalid_type_error`.
 
 ### B9 - Blue cast on filmstrip thumbnails
 Some filmstrip thumbnails in Verify, Events tab have a blue cast. Clicking a detection clears the cast.
