@@ -169,20 +169,32 @@ def get_label_tree(
     count_by: str = Query(
         "event", description="Count unit: 'event', 'file', or 'detection'"
     ),
+    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
+    date_from: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
     db: Session = Depends(get_db),
 ) -> LabelTreeResponse | None:
     """
     Get the label filter tree built from the label_taxonomy table.
 
     Returns a pre-built tree with only detected labels, annotated with counts.
-    Returns null if no taxonomy data is available (frontend falls back to flat list).
+    Counts are scoped to the active site + date filters so the tree matches the
+    slice the user has narrowed to. Returns null if no taxonomy data is
+    available (frontend falls back to flat list).
     """
     if count_by not in ("event", "file", "detection"):
         raise HTTPException(
             status_code=400,
             detail="count_by must be one of: event, file, detection",
         )
-    result = label_tree_crud.build_label_filter_tree(project_id, db, count_by=count_by)
+    result = label_tree_crud.build_label_filter_tree(
+        project_id,
+        db,
+        count_by=count_by,
+        site_ids=site_ids.split(",") if site_ids else None,
+        date_from=date_from,
+        date_to=date_to,
+    )
     if result is None:
         return None
     return result

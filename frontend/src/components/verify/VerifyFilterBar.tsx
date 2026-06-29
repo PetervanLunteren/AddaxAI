@@ -126,8 +126,20 @@ export function VerifyFilterBar({
   });
 
   const { data: labelTree } = useQuery({
-    queryKey: ["label-tree", projectId, countBy],
-    queryFn: () => eventsApi.getLabelTree(projectId, countBy),
+    queryKey: [
+      "label-tree",
+      projectId,
+      countBy,
+      filters.site_ids,
+      filters.date_from,
+      filters.date_to,
+    ],
+    queryFn: () =>
+      eventsApi.getLabelTree(projectId, countBy, {
+        siteIds: filters.site_ids,
+        dateFrom: filters.date_from,
+        dateTo: filters.date_to,
+      }),
     enabled: !!projectId,
   });
   const hasTaxonomy = !!labelTree?.tree?.length;

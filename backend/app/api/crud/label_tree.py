@@ -20,7 +20,12 @@ LEVEL_ORDER = ["class", "order", "family", "genus"]
 
 
 def build_label_filter_tree(
-    project_id: str, db: Session, count_by: str = "event",
+    project_id: str,
+    db: Session,
+    count_by: str = "event",
+    site_ids: list[str] | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ) -> dict | None:
     """
     Build the label filter tree for a project from label_taxonomy + detections.
@@ -30,6 +35,9 @@ def build_label_filter_tree(
                   "file" counts distinct files per label (videos resolved
                   via Detection.file_id's source_video_id on frame rows);
                   "detection" counts individual detections per label.
+        site_ids: optional list of site IDs to scope counts to.
+        date_from / date_to: optional ISO date strings to scope counts by
+                  File.captured_at_local.
 
     Returns:
         Dict with tree, all_leaf_ids, label_event_counts, count_unit; or None if no taxonomy.
@@ -40,11 +48,25 @@ def build_label_filter_tree(
 
     threshold = project.detection_threshold
 
+    # Scope the counts to the active site + date filters so the tree matches
+    # the slice the user has narrowed to (see SIMON_FEEDBACK B11). Both clauses
+    # ride on joins every count query already has (Deployment, File). Date
+    # compares against File.captured_at_local with raw ISO strings, matching
+    # the dashboard stats in crud/statistics.py.
+    def _apply_scope(query):
+        if site_ids:
+            query = query.filter(Deployment.site_id.in_(site_ids))
+        if date_from:
+            query = query.filter(File.captured_at_local >= date_from)
+        if date_to:
+            query = query.filter(File.captured_at_local <= date_to)
+        return query
+
     # Count by label_taxonomy_id (authoritative FK).
     # Only count detections at or above the project's confidence threshold
     # so the tree matches what the verify page actually displays.
     if count_by == "detection":
-        label_count_rows = (
+        query = (
             db.query(
                 Detection.label_taxonomy_id,
                 func.count(Detection.id),
@@ -54,14 +76,15 @@ def build_label_filter_tree(
             .filter(Deployment.project_id == project_id)
             .filter(Detection.label_taxonomy_id.isnot(None))
             .filter(or_(Detection.confidence >= threshold, Detection.verified == True))
-            .group_by(Detection.label_taxonomy_id)
-            .all()
+        )
+        label_count_rows = (
+            _apply_scope(query).group_by(Detection.label_taxonomy_id).all()
         )
     elif count_by == "file":
         # Count distinct media items (image/video), resolving frame rows up
         # to their parent video so a video isn't undercounted once per frame.
         media_id = func.coalesce(File.source_video_id, File.id)
-        label_count_rows = (
+        query = (
             db.query(
                 Detection.label_taxonomy_id,
                 func.count(func.distinct(media_id)),
@@ -71,11 +94,12 @@ def build_label_filter_tree(
             .filter(Deployment.project_id == project_id)
             .filter(Detection.label_taxonomy_id.isnot(None))
             .filter(or_(Detection.confidence >= threshold, Detection.verified == True))
-            .group_by(Detection.label_taxonomy_id)
-            .all()
+        )
+        label_count_rows = (
+            _apply_scope(query).group_by(Detection.label_taxonomy_id).all()
         )
     else:
-        label_count_rows = (
+        query = (
             db.query(
                 Detection.label_taxonomy_id,
                 func.count(func.distinct(Event.id)),
@@ -87,8 +111,9 @@ def build_label_filter_tree(
             .filter(Deployment.project_id == project_id)
             .filter(Detection.label_taxonomy_id.isnot(None))
             .filter(or_(Detection.confidence >= threshold, Detection.verified == True))
-            .group_by(Detection.label_taxonomy_id)
-            .all()
+        )
+        label_count_rows = (
+            _apply_scope(query).group_by(Detection.label_taxonomy_id).all()
         )
 
     if not label_count_rows:

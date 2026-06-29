@@ -98,8 +98,18 @@ In Verify Captures, selecting "All" hides Empty-classified images (only "Show on
 
 ### B11 - Label tree counts ignore site filter
 Detection counts in the Labels tree are not filtered by the selected site.
-- status: todo
-- notes:
+- status: done
+- notes: Real bug: `/label-tree` only took project_id + count_by, so tree counts were always
+  project-wide even with a site (or date) selected in the Verify / Map filter bar. Scope decided
+  as site + date only (KISS/DRY/YAGNI): those are the "what slice exists" filters a label
+  inventory should reflect; verified/confidence/flagged/favorited/empty are review-state filters
+  and would mean dragging the whole event-filter pipeline (which filters by label) into the tree
+  builder, plus jumpy counts. Fix: `build_label_filter_tree` gained site_ids/date_from/date_to,
+  applied via one `_apply_scope` helper to all 3 count queries (Deployment.site_id +
+  File.captured_at_local, date semantics matching crud/statistics.py). Endpoint exposes the
+  params; frontend `getLabelTree(projectId, countBy, scope)` passes them from both the Verify and
+  Map filter bars, with site+date in the query key so the tree recounts on change. Typecheck,
+  ruff, import sanity, and 13 label-tree tests all pass.
 
 ### B12 - Remapped drive letter shows no images
 If data moves to a drive with a different letter, no images show because absolute paths are stored in `files`. Wants a check that the mapped drive is present, with a warning.
@@ -167,8 +177,22 @@ After relabelling multiple observations, the message's last line would be cleare
 
 ### U7 - Squamata appears twice in labels tree
 Squamata shows twice in the labels tree. Simon notes it is a SpeciesNet issue; may still want display dedup.
-- status: todo
-- notes:
+- status: wontfix (working as designed)
+- notes: Not a bug. The two "Squamata" rows are two distinct SpeciesNet model classes whose
+  taxonomy happens to collide at the order rank. It is the same situation as a "bird" label and
+  a "raptor" label both sitting under class Aves: different model predictions, same shared
+  ancestor, so they appear as siblings under the same branch. They are kept separate on purpose
+  because each is a distinct label with its own detection count, and merging them would hide a
+  real distinction and miscount. To tell them apart, the tree shows the underlying model label
+  in italic parentheses after the shared name (`label_tree.py:206-215`,
+  `TreeSelector.tsx:475-478`), e.g. "Squamata (squamata)" vs "Squamata (<other label>)". So the
+  duplicate is expected and the two entries are genuinely different; the parenthetical annotation
+  is how to read which is which. Left as is.
+
+  Message for Simon: the two Squamata entries are two separate SpeciesNet classes that share the
+  order Squamata, like "bird" and "raptor" both being class Aves. AddaxAI keeps them separate so
+  their counts stay correct, and shows the underlying model label in brackets after the name so
+  you can tell them apart.
 
 ## Feature requests
 

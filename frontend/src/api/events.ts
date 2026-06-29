@@ -187,14 +187,20 @@ export const eventsApi = {
     );
   },
 
-  /** Get the label filter tree (pre-built from label_taxonomy table). */
+  /** Get the label filter tree (pre-built from label_taxonomy table).
+   *  Counts are scoped to the optional site + date filters. */
   getLabelTree: async (
     projectId: string,
-    countBy?: string
+    countBy?: string,
+    scope?: { siteIds?: string[]; dateFrom?: string; dateTo?: string }
   ): Promise<LabelTreeResponse | null> => {
-    const params = `project_id=${projectId}${countBy ? `&count_by=${countBy}` : ""}`;
+    const search = new URLSearchParams({ project_id: projectId });
+    if (countBy) search.set("count_by", countBy);
+    if (scope?.siteIds?.length) search.set("site_ids", scope.siteIds.join(","));
+    if (scope?.dateFrom) search.set("date_from", scope.dateFrom);
+    if (scope?.dateTo) search.set("date_to", scope.dateTo);
     return api.get<LabelTreeResponse | null>(
-      `/api/events/label-tree?${params}`
+      `/api/events/label-tree?${search.toString()}`
     );
   },
 };

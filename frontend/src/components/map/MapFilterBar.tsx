@@ -77,8 +77,20 @@ export function MapFilterBar({
   });
 
   const { data: labelTree } = useQuery({
-    queryKey: ["label-tree", projectId, "event"],
-    queryFn: () => eventsApi.getLabelTree(projectId, "event"),
+    queryKey: [
+      "label-tree",
+      projectId,
+      "event",
+      filters.site_ids,
+      filters.date_from,
+      filters.date_to,
+    ],
+    queryFn: () =>
+      eventsApi.getLabelTree(projectId, "event", {
+        siteIds: filters.site_ids,
+        dateFrom: filters.date_from,
+        dateTo: filters.date_to,
+      }),
     enabled: !!projectId,
   });
   const hasTaxonomy = !!labelTree?.tree?.length;

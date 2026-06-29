@@ -233,16 +233,14 @@ export function MapPage() {
           }
           how={
             <p>
-              rate = observations / trap_nights × 100, where
-              observations is the sum of MaxN across all events at the
-              site passing the active filters, and trap_nights is
-              summed across the site's contributing deployments (clipped
-              to the active date filter). Events respect the project's
-              detection threshold with the verified override applied,
-              so verified detections count even when they fall below
-              threshold. Hexbin colour scaling is per-render, so a
-              hex's shade reflects its rank within the current view
-              rather than an absolute comparison across projects.
+              rate = observations / trap_nights × 100, summed per site
+              across its deployments and restricted to the active date
+              and label filters. Events respect the project's detection
+              threshold with the verified override applied, so verified
+              detections count even when they fall below threshold.
+              Hexbin colour scaling is per-render, so a hex's shade
+              reflects its rank within the current view rather than an
+              absolute comparison across projects.
             </p>
           }
         />
