@@ -20,7 +20,7 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from collections.abc import Callable
-from typing import Tuple
+from typing import Tuple  # noqa: UP035  -- runtime alias must work on py3.8 subprocess
 
 import cv2
 import numpy as np
@@ -32,7 +32,7 @@ TOP_FRACTION = 0.9  # candidates within 90% of top score
 # isn't (that's PEP 585, 3.9+), so use `typing.Tuple[...]`. The alias
 # itself is still referenced inside function annotations elsewhere in
 # this module, where __future__ deferral keeps everything string-based.
-Bbox = Tuple[float, float, float, float]  # (x, y, width, height)
+Bbox = Tuple[float, float, float, float]  # noqa: UP006  -- (x, y, width, height); py3.8 runtime
 
 
 def compute_union_area(boxes: list[Bbox]) -> float:

@@ -47,6 +47,7 @@ import traceback
 from collections import defaultdict
 from pathlib import Path
 
+import cv2  # used for sharpness on the streaming path
 import numpy as np
 from PIL import Image
 
@@ -61,8 +62,6 @@ from video_iter import (  # noqa: E402
     sample_indices,
     write_best_frame,
 )
-import cv2  # noqa: E402  (used for sharpness on the streaming path)
-
 
 # Number of frames to sample for sharpness on blank videos (no animal
 # detections). Mirrors the legacy disk-based fallback in best_frame.py.

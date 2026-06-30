@@ -136,7 +136,7 @@ def select_best_frames_streaming(
         frame_scores = score_detections(det_tuples)
 
         def get_sharpest(keys: list[str], _sb=sharpness_by_frame) -> str:
-            return str(max((int(k) for k in keys), key=lambda fn: _sb.get(fn, 0.0)))
+            return str(max((int(k) for k in keys), key=lambda fn: _sb.get(fn, 0.0)))  # noqa: B023
 
         fallback_keys = [str(fn) for fn in sorted(sharpness_by_frame)]
         best_key = pick_best_candidate(

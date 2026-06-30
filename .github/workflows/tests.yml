@@ -1,19 +1,20 @@
 name: Tests
 
-# Runs on every PR and on pushes to main. Cheap and focused: the goal
-# is to catch the class of bug that destroyed user data on 2026-05-27
-# (a new alembic migration was merged without a matching entry in
-# SCHEMA_FINGERPRINTS, so `reconcile_alembic_version` silently rolled
-# the DB backward and re-ran the chain on startup). The migration
-# tests would have caught that locally; CI makes sure they catch it
-# at PR time too.
+# Runs on every PR and on pushes to main. Three gates:
 #
-# Scope is intentionally tight (no full backend suite) to keep this
-# fast. The frontend job is typecheck-only: `vite build` (and `vite dev`)
-# transpile with esbuild and never run the TypeScript compiler, so type
-# errors otherwise accumulate invisibly and only surface on a manual
-# `tsc -b`. This gate runs the compiler at PR time. Expand later if
-# other gates earn their seconds.
+#  - Frontend typecheck: `vite build` (and `vite dev`) transpile with
+#    esbuild and never run the TypeScript compiler, so type errors
+#    otherwise accumulate invisibly and only surface on a manual `tsc -b`.
+#    This gate runs the compiler at PR time.
+#  - Backend lint: `ruff check app tests`. DEVELOPERS.md promised this ran
+#    in CI; it did not, so lint errors drifted onto main. Now it does.
+#  - Backend tests: the full pytest suite (in-memory SQLite, no network),
+#    which includes the migration-safety tests. Those catch the class of
+#    bug that destroyed user data on 2026-05-27 (a new alembic migration
+#    merged without a matching SCHEMA_FINGERPRINTS entry, so
+#    `reconcile_alembic_version` silently rolled the DB backward and re-ran
+#    the chain on startup). Slow tests are excluded via the `-m 'not slow'`
+#    default in pyproject.toml.
 
 on:
   pull_request:
@@ -41,8 +42,26 @@ jobs:
         working-directory: frontend
         run: npm run typecheck
 
-  backend-migrations:
-    name: Backend migration safety
+  backend-lint:
+    name: Backend lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # Pin to the version in requirements.txt so local and CI agree.
+      - name: Install ruff
+        run: pip install ruff==0.8.4
+
+      - name: Ruff check
+        working-directory: backend
+        run: ruff check app tests
+
+  backend-tests:
+    name: Backend tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,8 +77,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov
 
-      - name: Run migration safety tests
+      - name: Run backend test suite
         working-directory: backend
-        run: python -m pytest tests/db/test_migrations.py -q --no-cov
+        run: python -m pytest -q

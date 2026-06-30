@@ -45,10 +45,10 @@ def test_create_folder_run_auto_name(client):
     assert body["project"]["mode"] == "folder_run"
     assert body["project"]["timezone"] == "UTC"
     assert body["project"]["folder_run_state"] == {
-        "step": "model",
+        "step": "setup",
         "source_folder": "/Volumes/Photos/Kruger_April",
     }
-    assert body["step"] == "model"
+    assert body["step"] == "setup"
     assert body["queue_entry"]["folder_path"] == "/Volumes/Photos/Kruger_April"
     assert body["queue_entry"]["site_id"] is None
     assert body["queue_entry"]["video_count"] == 7
@@ -167,7 +167,7 @@ def test_get_folder_run(client):
     resp = client.get(f"/api/folder-runs/{run_id}")
     assert resp.status_code == 200
     assert resp.json()["project"]["id"] == run_id
-    assert resp.json()["step"] == "model"
+    assert resp.json()["step"] == "setup"
 
 
 def test_get_folder_run_404_for_unknown(client):
@@ -276,13 +276,13 @@ def test_patch_step_persists_and_round_trips(client):
 
     resp = client.patch(
         f"/api/folder-runs/{run_id}/step",
-        json={"step": "model"},
+        json={"step": "setup"},
     )
     assert resp.status_code == 200
-    assert resp.json()["step"] == "model"
+    assert resp.json()["step"] == "setup"
 
     follow_up = client.get(f"/api/folder-runs/{run_id}").json()
-    assert follow_up["step"] == "model"
+    assert follow_up["step"] == "setup"
     # The other state keys (source_folder) survive the step update.
     assert (
         follow_up["project"]["folder_run_state"]["source_folder"]
@@ -394,8 +394,8 @@ def test_lookup_returns_summary_for_existing_run(client, db):
     # MD5A id), so we just assert presence rather than exact wording.
     assert body["detection_model_name"]
     assert body["classification_model_name"]
-    # Resume from step "model" because the user finished the folder picker.
-    assert body["step"] == "model"
+    # Resume from step "setup" because the user finished the folder picker.
+    assert body["step"] == "setup"
     assert body["file_count"] == 2
     assert body["detection_count"] == 2
     assert body["species_count"] == 2
