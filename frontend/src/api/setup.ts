@@ -23,4 +23,10 @@ export interface SetupStatus {
 export const setupApi = {
   getStatus: () => api.get<SetupStatus>("/api/setup/status"),
   installEnv: () => api.post<{ status: string }>("/api/setup/install-env", {}),
+  /** Wipe and rebuild specific environments (the env-drift "Update now"
+   *  button). Same endpoint as installEnv, with force_envs set. */
+  rebuildEnvs: (forceEnvs: string[]) =>
+    api.post<{ status: string }>("/api/setup/install-env", {
+      force_envs: forceEnvs,
+    }),
 };

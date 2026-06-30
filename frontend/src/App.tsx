@@ -14,7 +14,6 @@ import {
   Route,
   Navigate,
   useLocation,
-  useNavigate,
   useParams,
 } from "react-router-dom";
 import { X } from "lucide-react";
@@ -47,6 +46,7 @@ import { FolderRunResumeIndex } from "./pages/folder-run/FolderRunResumeIndex";
 import { Button } from "./components/ui/button";
 import { CrashBanner } from "./components/layout/CrashBanner";
 import { MenuCommands } from "./components/layout/MenuCommands";
+import { EnvRebuildButton } from "./components/layout/EnvRebuildButton";
 import { Toaster } from "./components/ui/sonner";
 import { api } from "./lib/api-client";
 import { setupApi } from "./api/setup";
@@ -74,8 +74,6 @@ interface ModelUpdatesResponse {
 function ModelUpdateToast() {
   const [dismissed, setDismissed] = useState(false);
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
-  const location = useLocation();
-  const navigate = useNavigate();
 
   // Fetch model updates once on app load.
   const { data: updates } = useQuery({
@@ -124,26 +122,10 @@ function ModelUpdateToast() {
     }
   };
 
-  // Env drift is surfaced as a passive notice that points users at the
-  // per-project Settings page. We deliberately do NOT auto-rebuild from
-  // the toast: a previous version did, and it raced with the per-model
-  // "Prepare" flow (both call paths share `.{env}.tmp/` on disk and
-  // would collide mid-build). The Settings → Models card runs the
-  // canonical, single-track preparation flow with WebSocket progress;
-  // sending users there keeps env rebuilds on one path.
-  const handleOpenSettings = () => {
-    // If the user is currently in a project, jump straight to its
-    // Settings page. Otherwise drop them on the project list — env
-    // rebuilds only make sense in the context of a project.
-    const match = location.pathname.match(/^\/projects\/([^/]+)\b/);
-    if (match && match[1] !== "" && match[1] !== "new") {
-      navigate(`/projects/${match[1]}/settings`);
-    } else {
-      navigate("/projects");
-    }
-    setDismissed(true);
-  };
-
+  // Env drift "Update now" goes through EnvRebuildButton, which uses the
+  // backend's single guarded drift-rebuild path (install-env force_envs). The
+  // env is global, so this needs no project context (the old version sent users
+  // to a project's Settings page, which broke when no project was open).
   return (
     <div
       className="fixed bottom-4 right-4 z-50 w-96 rounded-lg border bg-white p-4 shadow-lg animate-in slide-in-from-bottom-5"
@@ -208,8 +190,8 @@ function ModelUpdateToast() {
               </div>
               <p className="text-sm text-muted-foreground mb-2">
                 The analysis environment ships a newer version than the
-                one installed on this machine. Open a project's Settings
-                to rebuild it on the canonical single-track flow.
+                one installed on this machine. Rebuild it to match this
+                app version.
               </p>
               <ul className="text-xs text-muted-foreground space-y-0.5 mb-2">
                 {driftedEnvs.map((env) => (
@@ -218,14 +200,10 @@ function ModelUpdateToast() {
                   </li>
                 ))}
               </ul>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 px-2 text-xs w-full"
-                onClick={handleOpenSettings}
-              >
-                Open settings
-              </Button>
+              <EnvRebuildButton
+                envNames={driftedEnvs.map((env) => env.env_name)}
+                onDone={() => setDismissed(true)}
+              />
             </div>
           )}
         </div>
