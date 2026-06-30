@@ -13,9 +13,38 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.crud.statistics import get_trap_nights
-from app.api.schemas.project import ProjectCreate, ProjectMode, ProjectUpdate
+from app.api.schemas.project import (
+    ProjectCreate,
+    ProjectDuplicate,
+    ProjectMode,
+    ProjectUpdate,
+)
 from app.models import Deployment, Event, File, Project, Site
+from app.models.deployment_queue import DeploymentQueue
 from app.models.event_observation import EventObservation
+
+# Processing settings carried over wholesale when copy_settings is on. The
+# user-chosen fields (name, description, classification model, label selection)
+# are set from the request instead. Omitting these when copy_settings is off
+# lets the model's column defaults apply, matching a fresh project.
+_DUPLICATE_SETTINGS_COLUMNS = (
+    "detection_model_id",
+    "embedding_model_id",
+    "timezone",
+    "shortcut_labels",
+    "video_fps",
+    "detection_threshold",
+    "event_smoothing",
+    "smoothing_strength",
+    "taxonomic_rollup",
+    "taxonomic_rollup_threshold",
+    "independence_interval",
+    "min_cluster_size",
+    "min_samples",
+    "detection_batch_size",
+    "classification_batch_size",
+    "embedding_batch_size",
+)
 
 
 def get_projects(
@@ -76,6 +105,80 @@ def create_project(db: Session, project: ProjectCreate) -> Project:
     db.commit()
     db.refresh(db_project)
     return db_project
+
+
+def duplicate_project(
+    db: Session, source_id: str, params: ProjectDuplicate
+) -> Project | None:
+    """Create a new project from an existing one's structure.
+
+    Always copies the user-chosen fields (name, description, classification
+    model, label selection). Copies processing settings when copy_settings,
+    sites when copy_sites, and re-queues the source's deployments for
+    reprocessing when copy_deployments. Analyzed results are never copied across
+    projects (only the folders are queued). Returns None if the source is
+    missing. Raises on a duplicate name (unique constraint), like create.
+    """
+    source = get_project(db, source_id)
+    if source is None:
+        return None
+
+    new_project = Project(
+        name=params.name,
+        description=params.description,
+        classification_model_id=params.classification_model_id,
+        excluded_classes=list(params.excluded_classes or []),
+        country_code=params.country_code,
+        state_code=params.state_code,
+        mode=source.mode,
+    )
+    if params.copy_settings:
+        for col in _DUPLICATE_SETTINGS_COLUMNS:
+            setattr(new_project, col, getattr(source, col))
+    db.add(new_project)
+    db.flush()  # assign new_project.id for the FK references below
+
+    # Sites and deployments are independent. When deployments are copied
+    # without sites the site_id_map stays empty, so the re-queued folders come
+    # in without a site assignment (which the user can set later).
+    site_id_map: dict[str, str] = {}
+    if params.copy_sites:
+        for site in source.sites:
+            new_site = Site(
+                project_id=new_project.id,
+                name=site.name,
+                latitude=site.latitude,
+                longitude=site.longitude,
+                elevation_m=site.elevation_m,
+                habitat_type=site.habitat_type,
+                notes=site.notes,
+                tags=dict(site.tags or {}),
+            )
+            db.add(new_site)
+            db.flush()
+            site_id_map[site.id] = new_site.id
+
+    if params.copy_deployments:
+        for dep in source.deployments:
+            if not dep.folder_path:
+                continue
+            db.add(
+                DeploymentQueue(
+                    project_id=new_project.id,
+                    folder_path=dep.folder_path,
+                    site_id=(
+                        site_id_map.get(dep.site_id) if dep.site_id else None
+                    ),
+                    notes=dep.notes,
+                    tags=dict(dep.tags or {}),
+                    datetime_offset_seconds=dep.datetime_offset_seconds,
+                    status="pending",
+                )
+            )
+
+    db.commit()
+    db.refresh(new_project)
+    return new_project
 
 
 def update_project(db: Session, project_id: str, project: ProjectUpdate) -> Project | None:

@@ -53,6 +53,8 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogTitle,
 } from "../components/ui/dialog";
 import { Button } from "../components/ui/button";
 import { Slider } from "../components/ui/slider";
@@ -1380,6 +1382,10 @@ export default function SettingsPage() {
         {/* Model Preparation Dialog */}
         <Dialog open={preparationStage === "preparing"} onOpenChange={(open) => !open && handleCancelPreparation()}>
           <DialogContent className="max-w-xl">
+            <DialogTitle className="sr-only">Preparing model</DialogTitle>
+            <DialogDescription className="sr-only">
+              AddaxAI is downloading and preparing the selected model.
+            </DialogDescription>
             {preparingModelType === "detection" && detectionModels.find((m) => m.model_id === detectionModelId) && (
               <ModelPreparationView
                 modelName={detectionModels.find((m) => m.model_id === detectionModelId)!.friendly_name}
@@ -1413,6 +1419,10 @@ export default function SettingsPage() {
         {/* Applying Settings Progress Dialog */}
         <Dialog open={isSaving || !!saveJobId}>
           <DialogContent className="max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+            <DialogTitle className="sr-only">Applying settings</DialogTitle>
+            <DialogDescription className="sr-only">
+              AddaxAI is applying your settings. This may take a moment.
+            </DialogDescription>
             <div className="flex flex-col items-center gap-4 py-4">
               <div className="rounded-full bg-primary/10 p-3">
                 <RefreshCw className="h-6 w-6 text-primary animate-spin" />

@@ -34,10 +34,9 @@ class SiteBase(BaseModel):
         default_factory=dict, description="Custom key:value metadata tags"
     )
 
-    @model_validator(mode="after")
-    def _check_null_island(self) -> "SiteBase":
-        _reject_null_island(self.latitude, self.longitude)
-        return self
+    # NOTE: the 0,0 null-island check lives on the INPUT schemas (SiteCreate,
+    # SiteUpdate), not here. SiteResponse also extends SiteBase, and putting the
+    # validator here made reading back an existing 0,0 site fail with a 500.
 
 
 class SiteCreate(SiteBase):
@@ -48,6 +47,11 @@ class SiteCreate(SiteBase):
     """
 
     project_id: str = Field(..., description="ID of the project this site belongs to")
+
+    @model_validator(mode="after")
+    def _check_null_island(self) -> "SiteCreate":
+        _reject_null_island(self.latitude, self.longitude)
+        return self
 
 
 class SiteUpdate(BaseModel):

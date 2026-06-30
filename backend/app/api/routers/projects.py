@@ -26,6 +26,7 @@ from app.api.schemas.project import (
     GBIFSuggestion,
     MissingModel,
     ProjectCreate,
+    ProjectDuplicate,
     ProjectModelReadiness,
     ProjectResponse,
     ProjectUpdate,
@@ -172,6 +173,51 @@ def create_project(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Project with name '{project.name}' already exists",
         ) from e
+
+
+@router.post(
+    "/{project_id}/duplicate",
+    response_model=ProjectResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def duplicate_project(
+    project_id: str,
+    params: ProjectDuplicate,
+    db: Session = Depends(get_db),
+) -> ProjectResponse:
+    """Duplicate an existing project's structure into a new project.
+
+    Copies the chosen visible fields plus, per the flags, the processing
+    settings, the sites, and the source's deployments re-queued for
+    reprocessing. Analyzed results are never copied across projects.
+
+    Returns 404 if the source project is missing, 409 on a duplicate name.
+    """
+    if params.classification_model_id == "none":
+        params.classification_model_id = None
+
+    try:
+        new_project = crud_project.duplicate_project(db, project_id, params)
+    except IntegrityError as e:
+        logger.warning(
+            f"Failed to duplicate project: name '{params.name}' already exists"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Project with name '{params.name}' already exists",
+        ) from e
+
+    if new_project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Source project not found",
+        )
+
+    logger.info(
+        f"Duplicated project {project_id} -> {new_project.id} "
+        f"({new_project.name})"
+    )
+    return ProjectResponse.model_validate(new_project)
 
 
 @router.get("/gbif/suggest", response_model=list[GBIFSuggestion])

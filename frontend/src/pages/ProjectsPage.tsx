@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Plus, MoreVertical, Pencil, Trash2, ImageIcon } from "lucide-react";
+import { Plus, MoreVertical, Pencil, Copy, Trash2, ImageIcon } from "lucide-react";
 import { projectsApi, type ProjectWithStats } from "../api/projects";
 import { modelsApi } from "../api/models";
 import { logger } from "../lib/logger";
@@ -30,6 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import { CreateProjectDialog } from "../components/projects/CreateProjectDialog";
+import { DuplicateProjectDialog } from "../components/projects/DuplicateProjectDialog";
 import { EditProjectDialog } from "../components/projects/EditProjectDialog";
 
 import { DeleteProjectDialog } from "../components/projects/DeleteProjectDialog";
@@ -39,6 +40,7 @@ export function ProjectsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectWithStats | null>(null);
+  const [duplicatingProject, setDuplicatingProject] = useState<ProjectWithStats | null>(null);
   const [deletingProject, setDeletingProject] = useState<ProjectWithStats | null>(null);
 
   // The "New project…" app-menu item navigates here with ?new=1; open the
@@ -179,6 +181,16 @@ export function ProjectsPage() {
                       <DropdownMenuItem
                         onClick={(e) => {
                           e.stopPropagation();
+                          logger.info(`User opened duplicate dialog for project: ${project.name}`);
+                          setDuplicatingProject(project);
+                        }}
+                      >
+                        <Copy className="h-4 w-4 mr-2" />
+                        Duplicate
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
                           logger.info(`User opened delete dialog for project: ${project.name}`);
                           setDeletingProject(project);
                         }}
@@ -248,6 +260,12 @@ export function ProjectsPage() {
       <CreateProjectDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
+      />
+
+      <DuplicateProjectDialog
+        open={!!duplicatingProject}
+        onOpenChange={(open) => !open && setDuplicatingProject(null)}
+        source={duplicatingProject}
       />
 
       {editingProject && (

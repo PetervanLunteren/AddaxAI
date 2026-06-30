@@ -169,6 +169,10 @@ Entering an incorrect lat or long in the site form just blurs the screen instead
   real coordinates.", shown under latitude) and a backend `model_validator` on SiteBase + SiteUpdate
   via a shared `_reject_null_island` helper. Valid coords and partial updates still pass; 45 site
   tests green, frontend typecheck + ruff clean.
+  Regression fix: the validator was first put on SiteBase, but SiteResponse/SiteWithStats also
+  extend SiteBase, so reading back an existing 0,0 site (projects created before the validation)
+  failed with a 500 on GET /api/sites. Moved the check onto the INPUT schemas only (SiteCreate +
+  SiteUpdate); SiteResponse serializes 0,0 fine. 47 site tests pass.
 
   Follow-up 2: the form defaulted lat/long to a literal 0, which invited saving null island.
   Changed defaults to empty (undefined) so the inputs show their placeholders, and added friendly
@@ -389,8 +393,25 @@ Global toggle to show common vs scientific names. Common names live in `label_ta
 
 ### F5 - Copy sites/deployments into a new project
 Copy sites and deployments from an existing project so a new project (e.g. to compare models) does not need full re-entry.
-- status: todo
-- notes:
+- status: done (built as "Duplicate project")
+- notes: Reframed (Peter): not "copy data into parallel projects" but a general "Duplicate project"
+  in the project card kebab. Opens a Duplicate modal that mirrors the create fields prefilled from
+  the source (name "<name> (copy)", description "Duplicate of <name>", classification model, label
+  selection, empty image) plus 3 checkboxes: Settings, Sites, Deployments. Deployments re-queues the
+  source's deployments' folders for reprocessing (results can't move across projects; honest caption
+  says so) and auto-ticks Sites so the queued folders keep their site assignment (site IDs remapped).
+  Settings off = fresh defaults. Backend: ProjectDuplicate schema, crud.duplicate_project (copies
+  settings cols when flagged else model defaults; copies sites with old->new id map; re-queues
+  deployments as pending DeploymentQueue entries), POST /api/projects/{id}/duplicate (404 missing
+  source, 409 dup name). Frontend: projectsApi.duplicate + ProjectDuplicatePayload,
+  DuplicateProjectDialog, kebab item + dialog in ProjectsPage; on success navigates to the new
+  project's dashboard. Name uses "<name> (copy)" default + inline 409 handling (didn't wire the
+  name-suggestion endpoint for guaranteed-unique auto-gen; could later). Tests: 4 new duplicate
+  tests + 35 project tests pass; frontend typecheck clean.
+  Fix after first run: ModelSelect hardcodes <FormControl>, which needs a react-hook-form context;
+  the first DuplicateProjectDialog used plain useState and crashed (useFormContext null). Rewrote it
+  with react-hook-form (Form provider + FormField around ModelSelect), matching every other call
+  site. Checkboxes/image/label-selection stay outside RHF like CreateProjectDialog.
 
 ## Questions / upstream
 

@@ -498,14 +498,28 @@ def _detection_cells(
 # (date span + trap-nights). The single home for location, so files.csv and
 # counts.csv carry only deployment_id and join here. Mirrors the Camtrap-DP
 # deployments table.
+def _format_tags(tags: dict | None) -> str:
+    """Serialize a tags dict to one cell as pipe-separated key:value pairs,
+    matching the Camtrap-DP deploymentTags convention (e.g. "season:wet | access:4x4")."""
+    if not tags:
+        return ""
+    return " | ".join(f"{k}:{v}" for k, v in tags.items())
+
+
 _DEPLOYMENTS_HEADERS = [
     "deployment_id",
     "site_name",
     "latitude",
     "longitude",
+    "site_elevation_m",
+    "site_habitat",
+    "site_notes",
+    "site_tags",
     "deployment_start",
     "deployment_end",
     "trap_nights",
+    "deployment_notes",
+    "deployment_tags",
 ]
 
 
@@ -537,9 +551,15 @@ def build_deployments_rows(
                 site.name if site is not None else "",
                 site.latitude if site is not None else "",
                 site.longitude if site is not None else "",
+                site.elevation_m if site is not None and site.elevation_m is not None else "",
+                site.habitat_type or "" if site is not None else "",
+                site.notes or "" if site is not None else "",
+                _format_tags(site.tags) if site is not None else "",
                 dep.start_date_local.isoformat() if dep.start_date_local else "",
                 dep.end_date_local.isoformat() if dep.end_date_local else "",
                 trap_nights.get(dep.id, ""),
+                dep.notes or "",
+                _format_tags(dep.tags),
             ]
         )
 
@@ -571,6 +591,7 @@ _FILES_HEADERS = [
     # animal / person / vehicle / blank — what the file holds.
     "category",
     "is_verified",
+    "notes",
 ]
 
 
@@ -601,6 +622,7 @@ def build_files_rows(
                 _iso_datetime(file_obj.captured_at_local, tz_name),
                 file_obj.observation_type or "",
                 "TRUE" if file_obj.verified else "FALSE",
+                file_obj.notes or "",
             ]
         )
 
@@ -937,9 +959,9 @@ def build_camtrap_dp_tables(
                 "",                                                           # timestampIssues
                 "",                                                           # baitUse
                 "",                                                           # featureType
-                "",                                                           # habitat
+                site.habitat_type or "",                                      # habitat
                 "",                                                           # deploymentGroups
-                "",                                                           # deploymentTags
+                _format_tags(deployment.tags),                                # deploymentTags
                 deployment.notes or "",                                       # deploymentComments
             ]
         )

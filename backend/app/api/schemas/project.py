@@ -158,6 +158,26 @@ class ProjectCreate(ProjectBase):
     pass
 
 
+class ProjectDuplicate(BaseModel):
+    """Request to duplicate an existing project's structure into a new one.
+
+    The visible fields (name, description, classification model, label
+    selection = excluded_classes + region) come from the user, prefilled from
+    the source. The flags choose what else to carry over: processing settings,
+    sites, and re-queuing the source's deployments for reprocessing.
+    """
+
+    name: str = Field(..., min_length=1, max_length=255)
+    description: str | None = None
+    classification_model_id: str | None = None
+    excluded_classes: list[str] = Field(default_factory=list)
+    country_code: str | None = None
+    state_code: str | None = None
+    copy_settings: bool = True
+    copy_sites: bool = True
+    copy_deployments: bool = True
+
+
 class ProjectUpdate(BaseModel):
     """
     Schema for updating an existing project.

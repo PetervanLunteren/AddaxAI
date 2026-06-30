@@ -46,6 +46,19 @@ export interface DeploymentsWithoutSiteResponse {
   deployment_ids: string[];
 }
 
+/** Payload for duplicating a project's structure into a new one. */
+export interface ProjectDuplicatePayload {
+  name: string;
+  description?: string | null;
+  classification_model_id?: string | null;
+  excluded_classes: string[];
+  country_code?: string | null;
+  state_code?: string | null;
+  copy_settings: boolean;
+  copy_sites: boolean;
+  copy_deployments: boolean;
+}
+
 export const projectsApi = {
   /**
    * List projects with statistics, filtered by workflow mode.
@@ -68,6 +81,12 @@ export const projectsApi = {
    */
   create: (data: ProjectCreate) =>
     api.post<ProjectResponse>("/api/projects", data),
+
+  /**
+   * Duplicate an existing project's structure into a new project.
+   */
+  duplicate: (sourceId: string, data: ProjectDuplicatePayload) =>
+    api.post<ProjectResponse>(`/api/projects/${sourceId}/duplicate`, data),
 
   /**
    * Get project by ID
