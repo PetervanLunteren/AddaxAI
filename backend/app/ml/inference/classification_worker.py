@@ -68,6 +68,17 @@ import cv2  # noqa: E402  (used for sharpness on the streaming path)
 # detections). Mirrors the legacy disk-based fallback in best_frame.py.
 BLANK_VIDEO_SAMPLE_COUNT = 3
 
+# Keep only the top-N classifications per detection in the output JSON.
+# Classifiers like SpeciesNet return the full ~2000+ class softmax, almost all
+# near-zero; writing all of them produced multi-GB detection JSONs that filled
+# the disk during merge and exhausted memory (Simon's 8 GB file). Every
+# downstream consumer already caps at the top 5: `trim_classification_results`
+# (app/ml/json_utils.py, default 5, "matches SpeciesNet API"), the rollup
+# (`taxonomic_rollup.py`, top-5), and the DB load (top-1). This MUST stay >=
+# that downstream trim default, or we would silently drop classes it still
+# wants; the test in tests/ml/test_classification_topk_cap.py pins that.
+MAX_CLASSIFICATIONS_KEPT = 5
+
 
 def _has_nonfinite_confidence(classifications: list) -> bool:
     """True if any (label, conf) pair has a NaN or inf confidence."""
@@ -213,7 +224,10 @@ def _classify_one(
                 }
                 return
             sorted_cls = sorted(classifications, key=lambda x: x[1], reverse=True)
-            results[orig_idx] = {"success": True, "classifications": sorted_cls}
+            results[orig_idx] = {
+                "success": True,
+                "classifications": sorted_cls[:MAX_CLASSIFICATIONS_KEPT],
+            }
             return
 
         tensor = model_inference.get_tensor(crop)
@@ -255,7 +269,10 @@ def _make_batched_state(model_inference, batch_size: int, items: list, results: 
                 }
                 continue
             sorted_cls = sorted(classifications, key=lambda x: x[1], reverse=True)
-            results[idx] = {"success": True, "classifications": sorted_cls}
+            results[idx] = {
+                "success": True,
+                "classifications": sorted_cls[:MAX_CLASSIFICATIONS_KEPT],
+            }
         state["processed"] += len(state["batch_indices"])
         emit_fn({"current": state["processed"], "total": state["total"]})
         state["batch_indices"].clear()

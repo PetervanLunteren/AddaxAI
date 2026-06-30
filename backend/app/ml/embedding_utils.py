@@ -16,6 +16,10 @@ from app.models.detection_embedding import DetectionEmbedding
 
 logger = get_logger(__name__)
 
+# Max ids per `IN (...)` clause. Stays under SQLite's bound-parameter limit
+# (999 on old builds, 32766 on newer) for large detection-id lists.
+_SQL_VAR_CHUNK = 900
+
 
 def build_embedding_input(
     deployment_id: str,
@@ -140,15 +144,22 @@ def save_embeddings_to_db(
             f"Dimension mismatch: expected {embedding_dim}, got {sample.shape[0]}"
         )
 
-    # Delete existing embeddings for these detections with this model
-    existing_count = (
-        db.query(DetectionEmbedding)
-        .filter(
-            DetectionEmbedding.detection_id.in_(detection_ids),
-            DetectionEmbedding.embedding_model_id == embedding_model_id,
+    # Delete existing embeddings for these detections with this model. Chunk the
+    # id list: one `IN (?, ?, ...)` over every id blows SQLite's bound-parameter
+    # limit (SQLITE_MAX_VARIABLE_NUMBER: 999 on older builds, 32766 on newer) on
+    # large re-embeds. Simon's 50k+ detections crashed here with
+    # "too many SQL variables". 900 stays under even the old limit.
+    existing_count = 0
+    for i in range(0, len(detection_ids), _SQL_VAR_CHUNK):
+        chunk = detection_ids[i : i + _SQL_VAR_CHUNK]
+        existing_count += (
+            db.query(DetectionEmbedding)
+            .filter(
+                DetectionEmbedding.detection_id.in_(chunk),
+                DetectionEmbedding.embedding_model_id == embedding_model_id,
+            )
+            .delete(synchronize_session=False)
         )
-        .delete(synchronize_session=False)
-    )
     if existing_count:
         logger.info(f"Deleted {existing_count} existing embeddings for re-embedding")
 

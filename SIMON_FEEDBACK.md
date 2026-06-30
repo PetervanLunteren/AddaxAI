@@ -369,13 +369,26 @@ Click or right-click a species in the dashboard summary to open Verify pre-filte
 
 ### F2 - User-defined label mapping
 Map scientific names onto custom (common) names, many-to-one, to also fix misidentifications (e.g. deer recognized as cattle). Events would use the mapped values. Overlaps F3, F4.
-- status: todo
-- notes:
+- status: already solved (via existing features); persistent auto-mapping intentionally not built
+- notes: Covered by three existing features working together. (1) Bulk/cohort relabel handles the
+  many-to-one case: filter to the wrong-labeled detections and relabel them all at once
+  (BulkActionBar -> POST /detections/bulk-relabel, max 500, marks classification_method='human').
+  "Deer recognized as cattle" = select the cattle detections, relabel to deer. You can relabel to
+  a custom label too. (2) Custom labels (F3) provide the user-defined targets. (3) The common/
+  scientific name toggle (F4) shows common names. Relabeled detections cascade into events and
+  exports. The only thing not present is a persistent automatic alias rule (always treat model
+  label X as my-label Y, auto-applied to current + future detections); judged YAGNI since bulk
+  relabel achieves the same outcome and a re-run would re-relabel anyway. Peter: fine to leave.
 
 ### F3 - Add user-defined labels
 Allow adding user-defined labels (e.g. Tiliqua rugosa / shingleback, missing from the Australian set). Overlaps F2.
-- status: todo
-- notes:
+- status: already solved
+- notes: Implemented. TaxonomySheet (right-side slideout, opened from the Labels workspace) adds/
+  edits user-defined labels with GBIF-assisted taxonomy lookup or manual entry, stored as
+  is_custom LabelTaxonomy rows and placed in the hierarchical filter tree
+  (routers/projects.py /{project_id}/custom-labels list/create/update). Covers Simon's missing
+  Tiliqua rugosa / shingleback. Custom labels are selectable in the relabel picker, so they feed
+  bulk relabel (F2), events, and exports.
 
 ### F4 - Common vs scientific name toggle
 Global toggle to show common vs scientific names. Common names live in `label_taxonomy.display_name`, some with apostrophes. Already on the TODO nice-to-haves.
@@ -438,3 +451,132 @@ A 270-image event was mostly no-detection images, with a few low-confidence dete
   continuous burst (baits triggering near-constant captures): each image sits less than the
   interval after the previous one, so they chain into one long event even though most are
   empty. This is the same mechanism behind B6.
+
+---
+
+# Simon Kravis feedback part 3 (received 2026-06-30)
+
+Notes from "AddaxAI Notes part 3.docx" + email. Theme: big datasets (50k-190k
+files, 38 cameras) fail in the finalizing / save / embedding phase. Two exact
+crash messages captured this time. Simon offered to share the dataset (must
+never be shown in docs / on a website).
+
+## Bugs / robustness
+
+### P3-B13 - SQLite "too many SQL variables" crash on embedding
+image8: `(sqlite3.OperationalError) too many SQL variables [SQL: DELETE FROM
+detection_embeddings WHERE detection_embeddings.detection_id IN (?, ?, ... thousands of ?)]`.
+This is the headline "SQLite gives up when embedding from too much complexity"
+from the email. A bulk DELETE (or similar) builds one `IN (...)` with one bound
+parameter per detection, exceeding SQLite's SQLITE_MAX_VARIABLE_NUMBER (999 on
+old builds, 32766 on newer). Crashes ~5:36pm on a 50k-image run during
+embedding (47% in per image7). Fix: chunk the IN list (batch the ids, e.g.
+500-900 per statement) everywhere we build `IN (...)` over a detection/file id
+list, especially in the embedding path (detection_embeddings delete/insert).
+- status: done
+- notes: Exact site: `save_embeddings_to_db` (embedding_utils.py) deleted existing rows with
+  `DetectionEmbedding.detection_id.in_(detection_ids)` over EVERY id from the npz (50k+) -> one
+  giant IN -> exceeds the bound-parameter limit (32766 modern / 999 old). Fix: chunk the delete in
+  `_SQL_VAR_CHUNK = 900` batches (under even the old limit). The insert loop was already row-by-row
+  (no IN), so only the delete needed it. Audited the other `.in_()` sites: taxonomy_db uses
+  label_names (~<=2000, under the modern limit) or correlated subqueries (no per-id params), so
+  none of those can hit the limit in practice; left untouched. Test:
+  tests/ml/test_embedding_chunked_delete.py (shrinks the chunk size, asserts all pre-existing
+  embeddings are deleted across chunk boundaries). Ruff clean, tests pass.
+
+### P3-B14 - "No space left on device" during JSON merge
+image6: `Failed to merge JSON files: [Errno 28] No space left on device`
+(deployment "Ginini Raw Photos"). On 190k files the merge writes a very large
+combined JSON; it filled disk C: (the system/page-file disk), even though the
+source data is on USB drives D:/H:. Likely the merged JSON and/or temp files
+land on C:. Fix options: write merge output to the deployment's own folder /
+artifacts dir (on the data drive) instead of C:/temp; stream the merge instead
+of holding everything; pre-flight a disk-space check. Ties to the memory issue
+in P3-B15 (whole JSON held in memory).
+- status: resolved by P3-B17 (top-5 truncation kills the 8 GB JSON); optional disk-location defense deferred
+- notes: ROOT CAUSE (Simon's follow-up email + detail10000.json): the
+  detection_image.json was 8 GB. It holds the FULL SpeciesNet softmax per
+  detection (every one of ~2000+ classes, probabilities down to 6.7e-09), not
+  just the top few. See P3-B17. That single fact explains the ENOSPC here and
+  the 96-97% memory in P3-B15. If we truncate classifications to top-K at the
+  source (P3-B17) the JSON shrinks ~100-1000x and this ENOSPC likely disappears.
+  Still worth also writing the merge output to the data drive and a disk
+  pre-flight as defense in depth.
+
+### P3-B17 - Classifications written untrimmed -> 8 GB detection JSON (root cause of B14/B15)
+Simon's follow-up: "after the crash there was an 8 GB detection_image.json ...
+speciesnet is recording a lot of very small similarities." detail10000.json
+(the tail) confirms: per-detection classification arrays of
+`[class_id, probability]` for the entire ~2000+ class label set, with
+probabilities as small as 6.7e-09. We store the full sorted distribution per
+detection: `classification_worker.py:215-216` and `:257-258` keep `sorted_cls`
+(ALL classes) with no top-K cap. `trim_classification_results` (top-5) only
+runs in detection_worker PHASE 5, AFTER merge_json_files - so the raw 8 GB file
+is written and merged (or fails to, P3-B14) before any trimming happens. Fix:
+truncate to top-K at the source, in the classification worker, before writing
+each detection's classifications (top-5 matches the official SpeciesNet API and
+the existing trim; top-25/100 is a safe margin for taxonomic rollup, which sums
+top-5). This shrinks the JSON ~100-1000x and is the highest-leverage fix for the
+big-dataset failures (B14 disk, B15 memory, and reduces overall save pressure).
+- status: done (full audit + fix)
+- notes: Audited EVERY reader of the per-detection classifications array app-wide before changing
+  anything. The deepest any consumer reaches is top-5: trim_classification_results keeps [:5]
+  (PHASE 5, BEFORE all consumers), taxonomic rollup uses [:5] (incl. the geofence path, which sums
+  top-5 and checks allowed ancestors, NOT a deep scan), DB load + postprocessing-no-rollup use [0],
+  the Timelapse recognitions.json reads the resolved DB label (not the array), exclusion is a
+  deliberate no-op when taxonomy is present, smoothing runs after trim, and best-frame scoring uses
+  detection confidence not the distribution. So the full 2000+ list only ever lives in the raw
+  classifier JSON + the merge (the 8 GB), and the merge dies before trim runs. Therefore truncating
+  at the SOURCE to top-N with N>=5 is behaviorally identical to today for every consumer.
+  Fix: classification_worker now keeps `sorted_cls[:MAX_CLASSIFICATIONS_KEPT]` (=5) at both store
+  sites; the worker is an isolated subprocess so the constant is local with a comment tying it to
+  the downstream trim. Tests: tests/ml/test_classification_topk_cap.py (cap == 5, cap >= trim
+  default as a coupling guard, slice keeps highest-confidence). This shrinks the JSON ~400x and is
+  what resolves P3-B14 (ENOSPC) and P3-B15 (memory). Ruff clean, tests pass.
+  Unrelated finding (not fixed, per instructions): pre-existing ruff errors (4) in the inference
+  subprocess files best_frame.py / classification_worker.py / scoring.py (import order + a `tuple`
+  typing hint); they're not in ruff per-file-ignores, so CI `ruff check app tests` would flag them.
+  My change adds zero new lint errors.
+
+### P3-B15 - Memory + C-disk saturation in finalizing; terminates with no deployment
+image1/4/7: during "Finalizing" / Saving / Embedding on 190k (and 50k) files,
+Memory sits at 96-97% and Disk C: at 100% active; the machine goes
+non-responsive (Simon: "backend has v high PF delta periodically"), the run
+eventually terminates with NO deployment created and sometimes NOTHING in
+backend.log. Connects to the already-implemented B2 save-phase offload, but the
+remaining drivers are: the merged JSON is loaded fully into memory 2-3x (trim +
+taxonomy resolve), and the per-file work on the system disk. Needs the deferred
+B2 polish (stream / reuse the in-memory JSON instead of re-reading; avoid
+holding 190k records in RAM) plus the disk-location fix (P3-B14). The
+"terminates with no error in backend.log" part: the process likely OOM-killed
+or the worker died without surfacing an error to the run record (no failed-run
+entry) - investigate how a hard crash mid-save is reported.
+- status: resolved by P3-B17 (8 GB JSON gone, so the memory spike goes with it); deferred B2 polish + silent-crash reporting remain
+- notes: The 96-97% memory is driven by the 8 GB detection JSON (P3-B17) being
+  loaded fully into RAM 2-3x during finalizing. Truncating classifications to
+  top-K at source (P3-B17) is the main fix; the deferred B2 polish (reuse the
+  in-memory JSON instead of re-reading) helps further. Separately investigate
+  the silent termination (no backend.log entry, no failed-run record) so a hard
+  crash mid-save is at least surfaced to the user.
+
+### P3-B16 - Delete deployment fails after an unfinished run; SpeciesNet run error on new project
+"After processing did not finish, attempt to delete deployment fails." Then
+"creating new project and re-running, error on running SpeciesNet." The delete
+half overlaps B3 (delete blocked/hung while a stuck run holds the DB);
+re-verify it's resolved by the B2 offload. The "error on running SpeciesNet"
+after making a fresh project is vague (no screenshot/log) - needs a repro or
+log; could be model-prep / env state after a reinstall.
+- status: todo
+- notes:
+
+## Feature requests
+
+### P3-F6 - Show animal-image count during the detection phase
+"Might be useful to show number of animal images detected in 1st phase of image
+detection (MD5a, etc) in the progress screen." Currently the detection phase
+shows "Processing image N of M"; the animal count only appears once
+classification starts (image1: "Value is shown in Image Classification").
+Simon wants a running count of animal detections during phase 1 so he knows how
+much classification work is coming. Small UX add to the progress payload/modal.
+- status: todo
+- notes:
