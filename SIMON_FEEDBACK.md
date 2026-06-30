@@ -461,6 +461,19 @@ files, 38 cameras) fail in the finalizing / save / embedding phase. Two exact
 crash messages captured this time. Simon offered to share the dataset (must
 never be shown in docs / on a website).
 
+ACTION (validation) - ask Simon to re-run his large datasets (the 50k and 190k /
+38-camera sets, on the external drives) on the next build and confirm:
+  1. No "Failed to merge JSON files: No space left on device" (P3-B14) and no
+     8 GB detection_image.json - the per-detection classifications are now
+     capped at top-5 at the source (P3-B17), so the JSON should be ~400x smaller.
+  2. No "too many SQL variables" crash on embedding (P3-B13) - the delete is now
+     chunked.
+  3. The run reaches a created deployment instead of terminating in finalizing.
+These are the real-world validations we can't reproduce locally. If he can share
+the dataset (with his no-publication condition), keep it for our own large-scale
+regression check. Still open and needing his input: P3-B16 (delete-after-
+unfinished-run + the vague "error running SpeciesNet" - needs a repro/log).
+
 ## Bugs / robustness
 
 ### P3-B13 - SQLite "too many SQL variables" crash on embedding
