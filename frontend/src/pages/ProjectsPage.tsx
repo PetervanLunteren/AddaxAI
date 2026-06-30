@@ -6,9 +6,9 @@
  * - Simple, clear structure
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, MoreVertical, Pencil, Trash2, ImageIcon } from "lucide-react";
 import { projectsApi, type ProjectWithStats } from "../api/projects";
 import { modelsApi } from "../api/models";
@@ -36,9 +36,19 @@ import { DeleteProjectDialog } from "../components/projects/DeleteProjectDialog"
 
 export function ProjectsPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectWithStats | null>(null);
   const [deletingProject, setDeletingProject] = useState<ProjectWithStats | null>(null);
+
+  // The "New project…" app-menu item navigates here with ?new=1; open the
+  // create dialog and drop the param so a refresh doesn't reopen it.
+  useEffect(() => {
+    if (searchParams.get("new") === "1") {
+      setCreateDialogOpen(true);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const { data: projects, isLoading, error } = useQuery({
     queryKey: ["projects", "research"],

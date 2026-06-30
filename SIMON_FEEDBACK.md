@@ -113,13 +113,31 @@ Entering an incorrect lat or long in the site form just blurs the screen instead
 
 ### B9 - Blue cast on filmstrip thumbnails
 Some filmstrip thumbnails in Verify, Events tab have a blue cast. Clicking a detection clears the cast.
-- status: todo
-- notes:
+- status: done (screenshot confirmed)
+- notes: The "blue" is the `bg-muted` fallback in FrameThumbnail.tsx:54. In this theme `--muted`
+  is HSL hue 210 (a blue-grey), and it shows through any tile whose thumbnail image hasn't
+  painted (slow load, or the onError handler setting display:none). Clicking a detection
+  re-renders the tile, which resets the img's inline style and reloads it, repainting over the
+  blue, hence "clears on click". Fix: container background `bg-muted` -> `bg-neutral-200
+  dark:bg-neutral-800` (true grey, no blue hue). Covers both the event-card collage and the
+  Counts-modal filmstrip (same component). Typecheck clean.
+  Parked secondary issue (not chased, KISS): the onError handler hides the img permanently until
+  a re-render, so a transiently-failed thumbnail stays a blank placeholder until interaction. The
+  root cause (why a thumbnail occasionally fails to paint) is separate and fuzzier; left alone.
 
 ### B10 - Empty-classification filtering inconsistent
 In Verify Captures, selecting "All" hides Empty-classified images (only "Show only empty" reveals them), yet events still render showing only-empty images.
-- status: todo
-- notes:
+- status: already solved (predates current code)
+- notes: The core bug (Empty filter = "All" still hid blanks) is fixed in the current
+  `get_files_for_verify` (file.py:438-457), with a comment documenting exactly this: blank files
+  have no detections so they fail the implicit confidence-floor EXISTS gate; when no user conf/
+  label gate is set and the user has not chosen "hide", blanks are explicitly let through
+  (`or_(exists(conf_subq), File.observation_type == "blank")`), "otherwise Empty: All would
+  silently drop every blank tile". So now: all -> shows empties, show_only -> only blanks, hide
+  (default) -> no blanks. The events path (event.py empty show_only/hide) is consistent: a
+  fully-empty event is hidden by default and shown with "show only empty"; an event with some
+  detections shows and includes its in-between empty frames by design (time cluster). The beta-4
+  "Captures" tab itself is gone (verify restructured to Observations + Labels). No change needed.
 
 ### B11 - Label tree counts ignore site filter
 Detection counts in the Labels tree are not filtered by the selected site.
@@ -145,8 +163,15 @@ If data moves to a drive with a different letter, no images show because absolut
 
 ### U1 - "New project" in the app menu
 Add a "New..." menu option to create a project. Currently only reachable via the "Back to project" link at the bottom.
-- status: todo
-- notes:
+- status: done
+- notes: Simon's feedback predates the HomePage, which already largely solved discoverability (two
+  launcher cards + a File > Home item). Peter chose to also add the File > New convention.
+  Added two items at the top of the File menu (electron main.ts): "New project…" (new-project) and
+  "Analyse a folder…" (new-folder-run), then a separator before Home. Both gated in
+  SETUP_GATED_MENU_IDS so they're disabled until first-run setup finishes. Renderer
+  (MenuCommands.tsx): new-folder-run -> navigate /folder-runs/new; new-project -> navigate
+  /projects?new=1. ProjectsPage reads ?new=1 on arrival, opens the CreateProjectDialog, and clears
+  the param (replace) so a refresh doesn't reopen it. Frontend + electron typecheck clean.
 
 ### U2 - Smooth the detection ETA
 Image-detection remaining time fluctuates a lot (6h to 8h within seconds on 190k files). Wants smoothing.
@@ -199,25 +224,44 @@ After relabelling multiple observations, the message's last line would be cleare
 - notes: Empty-state in `LabelsTab.tsx:1294`. Changed "Set the verification filter to "All" to
   see them." to "Switch the Verified filter to "All" to see them." so it names the actual
   control on the bar (the "Verified" select). Typecheck clean.
+  Screenshot review (image18): the exact message Simon flagged was the beta-4 Observations-tab
+  empty state "All 144 detections in this view are verified. Switch to "All" to see them." That
+  message no longer exists: Verify was restructured since beta 4 (no more "Captures" tab; no
+  per-detection all-verified message). The current Observations/Events empty state is the generic
+  "No events match your filters" + a "Clear all filters" button (VerifyView.tsx:320-345), which is
+  functional. The surviving analogous message (LabelsTab) is the one improved above. No further
+  code needed unless we want the generic empty state to special-case the all-verified scenario.
 
 ### U7 - Squamata appears twice in labels tree
 Squamata shows twice in the labels tree. Simon notes it is a SpeciesNet issue; may still want display dedup.
-- status: wontfix (working as designed)
-- notes: Not a bug. The two "Squamata" rows are two distinct SpeciesNet model classes whose
-  taxonomy happens to collide at the order rank. It is the same situation as a "bird" label and
-  a "raptor" label both sitting under class Aves: different model predictions, same shared
-  ancestor, so they appear as siblings under the same branch. They are kept separate on purpose
-  because each is a distinct label with its own detection count, and merging them would hide a
-  real distinction and miscount. To tell them apart, the tree shows the underlying model label
-  in italic parentheses after the shared name (`label_tree.py:206-215`,
-  `TreeSelector.tsx:475-478`), e.g. "Squamata (squamata)" vs "Squamata (<other label>)". So the
-  duplicate is expected and the two entries are genuinely different; the parenthetical annotation
-  is how to read which is which. Left as is.
+- status: wontfix (working as designed; confirmed by Simon's DB screenshot)
+- notes: Confirmed with the label_taxonomy screenshot (image17). SpeciesNet (SPECIESNET-v4-0-2-A)
+  ships TWO distinct classes that both sit at order = Squamata with no family:
+    - name = "squamata"            (taxon_class reptilia, taxon_order squamata) -> 1 detection
+    - name = "lizards and snakes"  (taxon_class reptilia, taxon_order squamata) -> 8 detections
+  These are two different model outputs, not a duplicate row: "squamata" is the bare order-level
+  prediction SpeciesNet returns when it cannot go finer, and "lizards and snakes" is a separate
+  common-name class that also resolves to the order Squamata. (Same shape as "bird" and "raptor"
+  both being class Aves.) The unique constraint is (model_id, name), so they are legitimately two
+  separate rows with separate detection counts.
 
-  Message for Simon: the two Squamata entries are two separate SpeciesNet classes that share the
-  order Squamata, like "bird" and "raptor" both being class Aves. AddaxAI keeps them separate so
-  their counts stay correct, and shows the underlying model label in brackets after the name so
-  you can tell them apart.
+  In the tree (image16) they both hang under one "Squamata" order node and render as:
+    - "Squamata (unspecified)"        -> the "squamata" row (1 detection)
+    - "Squamata (lizards and snakes)" -> the "lizards and snakes" row (8 detections)
+  Why those names: for a non-species leaf the display is the rank-derived "Squamata"
+  (label_tree.py), and the annotation in brackets is the underlying model label. "lizards and
+  snakes" differs from the rank name so it shows as the annotation; "squamata" equals its rank
+  name so the annotation falls back to the literal "unspecified" (TreeSelector.tsx:475-478).
+
+  So it is not a bug and not a dedup miss: two genuinely different SpeciesNet classes, kept
+  separate so counts stay correct, already disambiguated by the bracketed annotation. Merging
+  them would hide a real distinction and double-count. Left as is.
+
+  Message for Simon: those are two separate SpeciesNet classes that both resolve to the order
+  Squamata, a bare "squamata" prediction (1 detection) and a "lizards and snakes" class (8
+  detections), much like "bird" and "raptor" both being class Aves. AddaxAI keeps them apart so
+  the counts stay correct and shows the model label in brackets to tell them apart; the
+  "(unspecified)" one is the generic order-level prediction.
 
 ## Feature requests
 

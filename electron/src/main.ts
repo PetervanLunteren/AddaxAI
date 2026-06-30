@@ -479,6 +479,9 @@ function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
   template.push({
     label: 'File',
     submenu: [
+      { id: 'new-project', label: 'New project…', click: () => sendMenuCommand('new-project') },
+      { id: 'new-folder-run', label: 'Analyse a folder…', click: () => sendMenuCommand('new-folder-run') },
+      { type: 'separator' },
       { id: 'nav-home', label: 'Home', click: () => sendMenuCommand('nav-home') },
       { type: 'separator' },
       { label: 'Open user data folder', click: () => sendMenuCommand('open-user-data') },
@@ -569,6 +572,8 @@ function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
 // Diagnostics, Reset, Check for updates, About, reload and quit stay
 // enabled so a stuck setup can still be inspected or recovered.
 const SETUP_GATED_MENU_IDS = [
+  'new-project',
+  'new-folder-run',
   'nav-home',
   'open-backups',
   'backup',

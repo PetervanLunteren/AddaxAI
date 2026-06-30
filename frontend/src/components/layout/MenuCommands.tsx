@@ -104,6 +104,13 @@ export function MenuCommands() {
         case "nav-home":
           navigate("/");
           break;
+        case "new-project":
+          // ?new=1 tells ProjectsPage to open the create dialog on arrival.
+          navigate("/projects?new=1");
+          break;
+        case "new-folder-run":
+          navigate("/folder-runs/new");
+          break;
         case "about":
           navigate("/about");
           break;

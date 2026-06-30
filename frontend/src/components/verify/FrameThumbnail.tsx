@@ -51,7 +51,10 @@ export function FrameThumbnail({
 
   return (
     <div
-      className={`relative overflow-hidden bg-muted h-full w-full ${className ?? ""}`}
+      // Neutral grey fallback, not bg-muted: the muted token is hue 210 (a
+      // blue-grey), which shows through as a blue "cast" on tiles whose
+      // thumbnail image hasn't painted yet (slow load or onError-hidden img).
+      className={`relative overflow-hidden bg-neutral-200 dark:bg-neutral-800 h-full w-full ${className ?? ""}`}
     >
       <img
         src={`${API_BASE_URL}/api/files/${fileId}/image?size=thumb`}
