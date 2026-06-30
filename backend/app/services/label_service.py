@@ -25,8 +25,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import select
+import queue
 import subprocess
+import threading
 import time
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
@@ -344,10 +345,11 @@ async def stream_labels_subprocess_async(
     generator off the yield point indefinitely. In the wild that meant a
     refreshed tab left a similarity subprocess running until its 180 s
     timeout, holding one of the browser's six per-host connection slots
-    so the next page load queued behind it. This generator does
-    non-blocking reads with a 0.5 s select tick and rechecks
-    ``is_disconnected`` between ticks, so a refresh frees the slot
-    within half a second.
+    so the next page load queued behind it. This generator reads stdout on
+    a background thread and pops with a 0.5 s queue-poll tick, rechecking
+    ``is_disconnected`` between ticks, so a refresh frees the slot within
+    half a second. (Pure ``select`` on the pipe is not portable: Windows
+    only selects on sockets, not pipes.)
     """
     python_path = _get_env_python()
     db_path = _get_db_path()
@@ -379,18 +381,31 @@ async def stream_labels_subprocess_async(
     loop = asyncio.get_running_loop()
     saw_terminal_event = False
 
-    def read_next() -> str | None:
-        """Return one line, or '' if no data yet (caller should retry),
-        or None on EOF. 0.5 s timeout so the caller can re-check
-        disconnect between ticks even when the subprocess is silent."""
+    # Windows `select` only accepts sockets, not subprocess pipes, so the old
+    # `select.select([process.stdout], ...)` raised WinError 10038 there and the
+    # whole sort/cohort stream failed. A daemon reader thread does blocking line
+    # reads into a queue instead (same approach as the sync variant above);
+    # read_next() pops with a 0.5 s timeout, preserving the "" / line / None
+    # contract and the re-check-disconnect-during-silence cadence, cross-platform.
+    line_queue: queue.Queue[str | None] = queue.Queue()
+
+    def pump_stdout() -> None:
         assert process.stdout is not None
-        rlist, _, _ = select.select([process.stdout], [], [], 0.5)
-        if not rlist:
+        try:
+            for line in process.stdout:
+                line_queue.put(line)
+        finally:
+            line_queue.put(None)  # EOF sentinel
+
+    threading.Thread(target=pump_stdout, daemon=True).start()
+
+    def read_next() -> str | None:
+        """One line, '' on a silent 0.5 s tick (caller re-checks disconnect),
+        or None on EOF."""
+        try:
+            return line_queue.get(timeout=0.5)
+        except queue.Empty:
             return ""
-        line = process.stdout.readline()
-        if line == "" and process.poll() is not None:
-            return None
-        return line
 
     try:
         while True:
