@@ -31,6 +31,30 @@ from app.utils.fs_hidden import mkdir_hidden_addaxai
 logger = get_logger(__name__)
 
 
+def _tqdm_time_to_seconds(value: str) -> int | None:
+    """Parse a tqdm time field ("MM:SS" or "HH:MM:SS") to whole seconds."""
+    parts = value.split(":")
+    try:
+        nums = [int(p) for p in parts]
+    except ValueError:
+        return None
+    if len(nums) == 2:
+        return nums[0] * 60 + nums[1]
+    if len(nums) == 3:
+        return nums[0] * 3600 + nums[1] * 60 + nums[2]
+    return None
+
+
+def _seconds_to_tqdm_time(seconds: float) -> str:
+    """Format seconds back into tqdm's style: "MM:SS", or "H:MM:SS" past an hour."""
+    total = max(0, int(seconds))
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+
 class MegaDetectorV1000(DetectionModel):
     """
     MegaDetector v1000 implementation.
@@ -165,6 +189,19 @@ class MegaDetectorV1000(DetectionModel):
             remaining_match = re.search(r"<(\d{1,2}:\d{2}(?::\d{2})?)", line)
             if remaining_match:
                 metrics["remaining"] = remaining_match.group(1)
+
+            # Replace tqdm's remaining (a short rolling-window estimate that
+            # swings 6h<->8h on heterogeneous batches) with a smooth ETA from
+            # the overall average rate so far: it drifts gradually instead of
+            # bouncing. Stateless; uses the current/total/elapsed already parsed.
+            current = metrics.get("current")
+            total = metrics.get("total")
+            elapsed = metrics.get("elapsed")
+            if current and total and elapsed and 0 < current <= total:
+                elapsed_s = _tqdm_time_to_seconds(elapsed)
+                if elapsed_s:
+                    remaining_s = elapsed_s * (total - current) / current
+                    metrics["remaining"] = _seconds_to_tqdm_time(remaining_s)
 
             # Only return if we got meaningful data
             if "current" in metrics and "total" in metrics:

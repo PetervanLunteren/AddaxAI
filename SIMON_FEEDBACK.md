@@ -175,8 +175,17 @@ Add a "New..." menu option to create a project. Currently only reachable via the
 
 ### U2 - Smooth the detection ETA
 Image-detection remaining time fluctuates a lot (6h to 8h within seconds on 190k files). Wants smoothing.
-- status: todo
-- notes:
+- status: done
+- notes: The ETA was tqdm's own `<MM:SS` field, a short rolling-window estimate that swings on
+  heterogeneous batches; the frontend buckets it but 6h vs 8h are different buckets so it still
+  flips. Fix (overall-average, chosen over EMA for KISS): in `_parse_tqdm_metrics`
+  (megadetector.py) replace tqdm's remaining with `elapsed_s * (total - current) / current`,
+  computed from the current/total/elapsed already parsed off the same line. Stateless, output is
+  the same tqdm time-string so the frontend is untouched. Two module helpers added
+  (`_tqdm_time_to_seconds`, `_seconds_to_tqdm_time`). Verified: two consecutive lines where tqdm
+  swung 6:04:00 -> 8:00:00 now give 4:20:20 -> 4:20:11 (stable). Trade-off accepted: an average
+  since start, so the first minute or two can read a bit high until it settles. Ruff clean, 23
+  detector/progress tests pass.
 
 ### U3 - Warn when no classification model
 Warn the user when no classification model is selected, since it is the default and users expect species to be identified.
