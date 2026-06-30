@@ -536,7 +536,11 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 logger.info(f"Phase 5: Merging {len(json_files_to_merge)} JSON files")
                 await deployment_progress_callback("Merging results...", 0.0, "saving", 0.5)
 
-                merge_json_files(
+                # Offloaded: merge reads/writes large JSON for the whole
+                # deployment. Running it on the event loop blocks the backend
+                # (see SIMON_FEEDBACK B2/B3/B4); to_thread keeps it responsive.
+                await asyncio.to_thread(
+                    merge_json_files,
                     json_files_to_merge,
                     final_json_path,
                     deployment.id,
@@ -610,19 +614,31 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 logger.info("Phase 6: Loading results to database")
                 await deployment_progress_callback("Loading to database...", 0.0, "saving", 0.75)
 
-                from app.ml.json_pipeline import load_json_to_database
-
-                result = load_json_to_database(
-                    json_path=final_json_path,
-                    deployment_id=deployment.id,
-                    deployment_folder=folder_path,
-                    job_id=job_id,
-                    db=db,
-                    artifacts_folder=artifacts_folder,
-                    taxonomy_name_to_id=taxonomy_name_to_id,
-                    builtin_taxonomy_ids=builtin_taxonomy_ids,
-                    datetime_offset_seconds=datetime_offset_seconds,
+                from app.ml.json_pipeline import (
+                    load_json_to_database_owned_session,
                 )
+
+                # Offloaded to a thread with its own DB session: the per-file
+                # insert loop over the whole deployment is the heavy blocker of
+                # the save phase. Running it on the event loop made the backend
+                # hang (delete, add-to-queue) on large runs (SIMON_FEEDBACK
+                # B2/B3/B4). Taxonomy is already committed above and passed in as
+                # plain dicts, so the thread session only writes files/detections.
+                result = await asyncio.to_thread(
+                    load_json_to_database_owned_session,
+                    final_json_path,
+                    deployment.id,
+                    folder_path,
+                    job_id,
+                    artifacts_folder,
+                    taxonomy_name_to_id,
+                    builtin_taxonomy_ids,
+                    datetime_offset_seconds,
+                )
+                # The insert happened on another session; drop any stale state
+                # so the main session's later queries (taxonomy link,
+                # postprocessing) see the just-committed files and detections.
+                db.expire_all()
 
                 total_detections += result.total_detections
                 logger.info(f"Database load complete: {result.total_detections} detections")

@@ -8,13 +8,75 @@ Status legend: `todo` / `investigating` / `verdict` (assessed, awaiting go) / `d
 
 ### B1 - Upgrade install failed
 New version would not install over the old one (error, no log kept). Had to uninstall, wipe `C:/Simon/AddaxAI`, and re-download models on the new install.
-- status: todo
-- notes:
+- status: likely fixed (Peter)
+- notes: Peter: this was probably a DB migration issue on upgrade, and should be fixed now. No log
+  was kept so it can't be reproduced precisely. Migration robustness has since been hardened (see
+  DEVELOPERS.md "Database migrations": idempotent column drops guarded by presence checks, legacy
+  DBs stamped at head, pre-upgrade backups). Treat as resolved unless it recurs with a log.
 
 ### B2 - Large dirty dataset failed late
 139k-image deployment ran 9h, then failed in the last phase at 16h. Folder had wild EXIF date anomalies (e.g. consecutive images 8 months apart). Suggests a time-anomaly check (notes EXIF reads are slow on Windows).
-- status: todo
-- notes:
+- status: diagnosed (fix scoped, awaiting decision); shares root cause with B3, B4
+- notes: Deep dive. The screenshots show the run stuck at Saving -> "Merging results... 0%" with
+  6 AddaxAI.exe processes (image1/2). Findings:
+  1. Detection worker is a coroutine on the MAIN event loop (asyncio.create_task in ws_manager
+     handle_ready); the save-phase calls are synchronous and not offloaded, so they block the loop
+     for their whole duration -> backend unresponsive (this is what ties in B3/B4).
+  2. Prime cost: load_json_to_database does `absolute_path.exists()` + `.stat()` per file
+     (json_pipeline.py:286, for size_bytes) -> 2 filesystem syscalls x 139k on a slow external
+     drive. Linear but the constant explodes on network/external storage; matches the ~7h stuck
+     save. Everything else in the per-image loop is from the in-memory JSON.
+  3. Whole merged JSON is re-loaded from disk 2-3x (trim at :553, taxonomy resolve at :591) ->
+     memory churn on a huge JSON.
+  4. No progress updates across merge -> trim -> taxonomy -> DB load, so it shows frozen
+     "Merging results 0%".
+  5. No O(n^2): DB load is one pass + one commit, merge is linear, event clustering is O(n log n);
+     the 8-month date jumps just make more events, not a hang.
+  Scoped fix (4 parts): offload save phase to a thread w/ dedicated DB session (unblocks B3/B4);
+  drop/cheapen the per-file stat (removes the multi-hour bottleneck); pass the in-memory JSON
+  between trim/taxonomy/load instead of re-reading 3x; add intermediate save-phase progress.
+
+  IMPLEMENTED (core 2 parts):
+  - Per-file stat: new `_safe_file_size()` (json_pipeline.py) does a single stat() in try/except
+    instead of exists()+stat(), halving per-file filesystem syscalls during DB load. Used at the
+    File() build.
+  - Offload: merge_json_files and the 139k-file DB load now run via `asyncio.to_thread` in the
+    detection worker, so the event loop stays responsive (delete / add-to-queue no longer hang).
+    The load runs through new `load_json_to_database_owned_session()` which creates its OWN session
+    inside the thread (SQLite check_same_thread=True forbids reusing the loop's session). Safe
+    because taxonomy is committed on the main session first and passed in as plain dicts; the
+    `set_sqlite_pragma` connect listener is on the Engine base class so the thread engine also gets
+    WAL/FK/seeded_hash; deployment is committed before load so FKs hold; WAL makes the thread's
+    commit visible; `db.expire_all()` after the thread so the main session's later queries (taxonomy
+    link, postprocessing) see the new rows.
+  Tests: 430 integration+ml + 107 pipeline/worker tests pass; ruff clean. Correctness testable on a
+  small folder run; the perf win (and B3/B4 responsiveness) wants validation on a large/slow-drive
+  set like Simon's 139k.
+  NOT done (deferred polish): offload trim + the taxonomy JSON re-read; pass the in-memory JSON
+  between steps instead of 3 reads; fine-grained progress inside the load; a cooperative cancel
+  check inside the load loop (would let Cancel interrupt the in-process save, B3 part b).
+
+### B3 - Cancel does not stop the process
+Cancel button did not stop processing. After killing all tasks, restarting, and deleting the deployment, the app hung.
+- status: largely fixed via B2 offload (delete no longer blocked); cancel-during-save still in-process
+- before-status: diagnosed (same root cause as B2); see B2 notes
+- notes: Two parts. (a) Cancel during the save phase can't take effect because cancellation kills
+  tracked subprocesses, but the save phase is in-process synchronous Python on the event loop (no
+  subprocess to kill, and the loop is blocked so the cancel request isn't even processed). (b) The
+  delete-deployment "Deleting..." hang is the same event-loop block plus SQLite single-writer lock
+  contention from the worker's open transaction. Fixing B2 (offload save to a thread) restores
+  responsiveness so cancel/delete are served; a cooperative cancel check inside the save loop would
+  also let cancel interrupt the in-process work. Tie to B2's fix.
+
+### B4 - Error adding multiple deployments to queue
+Adding multiple camera deployments: error when adding to queue after the first was added. Worked after a restart.
+- status: fixed via B2 offload (backend stays responsive during the save phase)
+- before-status: diagnosed (same root cause as B2); see B2 notes
+- notes: "Failed to add to queue: API request failed: Failed to fetch" (image5) is the frontend
+  fetch timing out because the backend event loop was blocked by the in-process save phase of the
+  first deployment's run (see B2). Not a queue-logic bug; it's backend unresponsiveness during the
+  heavy synchronous save. Offloading the save phase (B2 fix) resolves it. "Worked after restart"
+  fits: once the stuck run was gone, the loop was free again.
 
 ### B3 - Cancel does not stop the process
 Cancel button did not stop processing. After killing all tasks, restarting, and deleting the deployment, the app hung.
@@ -156,8 +218,16 @@ Detection counts in the Labels tree are not filtered by the selected site.
 
 ### B12 - Remapped drive letter shows no images
 If data moves to a drive with a different letter, no images show because absolute paths are stored in `files`. Wants a check that the mapped drive is present, with a warning.
-- status: todo
-- notes:
+- status: already solved (existing relink feature)
+- notes: Already implemented end to end, and goes beyond "just warn". (1) Detection: a startup
+  background task `check_all_deployment_folders` (main.py:431) verifies every deployment's folder
+  (path existence + sample-size check, deployment.py:717); a remapped/unmounted drive flips
+  folder_status to "needs_relink". (2) Warning: DeploymentHealthToast fires a startup sonner
+  warning ("N deployment folders couldn't be found ... moved, renamed, or unmounted") with a View
+  action, plus RelinkGroupBanner on the deployments page. (3) Fix: suggest-relink-target walks up
+  the broken path to find the moved location (resolves a new drive letter), and bulk-relink
+  rewrites the absolute file_path values in the files table. So the mapped-drive case is detected,
+  warned, and reconnectable. No change needed.
 
 ## UX / wording
 

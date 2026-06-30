@@ -76,6 +76,20 @@ def _resolve_capture_timestamp(
     return ts
 
 
+def _safe_file_size(path: Path) -> int | None:
+    """File size via a single stat(), or None if unreadable.
+
+    The DB load runs this once per file. Using one stat() instead of
+    exists()+stat() halves the per-file filesystem syscalls, which is a major
+    share of load time on large deployments stored on slow external / network
+    drives (see SIMON_FEEDBACK B2).
+    """
+    try:
+        return path.stat().st_size
+    except OSError:
+        return None
+
+
 def load_json_to_database(
     json_path: Path,
     deployment_id: str,
@@ -283,7 +297,7 @@ def load_json_to_database(
                     file_path=str(absolute_path),
                     file_type=file_type,
                     file_format=file_format,
-                    size_bytes=absolute_path.stat().st_size if absolute_path.exists() else None,
+                    size_bytes=_safe_file_size(absolute_path),
                     captured_at_local=captured_at_local,
                     width_px=width_px,
                     height_px=height_px,
@@ -452,6 +466,48 @@ def load_json_to_database(
     except Exception as e:
         logger.error(f"Failed to load JSON to database: {e}", exc_info=True)
         raise RuntimeError(f"Database load failed: {e}") from e
+
+
+def load_json_to_database_owned_session(
+    json_path: Path,
+    deployment_id: str,
+    deployment_folder: Path,
+    job_id: str,
+    artifacts_folder: Path | None = None,
+    taxonomy_name_to_id: (
+        dict[str, tuple[str, str | None]] | None
+    ) = None,
+    builtin_taxonomy_ids: dict[str, str] | None = None,
+    datetime_offset_seconds: int = 0,
+) -> PipelineResult:
+    """Run load_json_to_database with a session created in THIS thread.
+
+    The per-file insert loop is the heavy, event-loop-blocking part of the save
+    phase. The async detection worker runs this via ``asyncio.to_thread`` so the
+    backend stays responsive (delete deployment, add to queue) during big runs
+    instead of hanging (see SIMON_FEEDBACK B2/B3/B4). SQLite's default
+    ``check_same_thread`` requires the session be created in the worker thread,
+    so this owns a fresh session rather than taking the caller's. Taxonomy rows
+    are already committed by the caller and passed in as plain dicts, so this
+    session only inserts files/detections and commits them.
+    """
+    from app.db.base import get_session_factory
+
+    db = get_session_factory()()
+    try:
+        return load_json_to_database(
+            json_path=json_path,
+            deployment_id=deployment_id,
+            deployment_folder=deployment_folder,
+            job_id=job_id,
+            db=db,
+            artifacts_folder=artifacts_folder,
+            taxonomy_name_to_id=taxonomy_name_to_id,
+            builtin_taxonomy_ids=builtin_taxonomy_ids,
+            datetime_offset_seconds=datetime_offset_seconds,
+        )
+    finally:
+        db.close()
 
 
 async def run_classification_on_json(
