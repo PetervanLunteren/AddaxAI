@@ -78,31 +78,26 @@ def serialize_tsv(headers: list[str], rows: list[list[Any]]) -> bytes:
 def serialize_xlsx(
     headers: list[str], rows: list[list[Any]], sheet_title: str = "Sheet1"
 ) -> bytes:
-    from openpyxl import Workbook
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = sheet_title
-    ws.append(headers)
-    for row in rows:
-        ws.append(row)
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
+    return serialize_xlsx_multi([(sheet_title, headers, rows)])
 
 
 def serialize_xlsx_multi(
     sheets: list[tuple[str, list[str], list[list[Any]]]],
 ) -> bytes:
     """One workbook with several sheets. Each entry is
-    ``(sheet_title, headers, rows)``; sheets are added in order."""
+    ``(sheet_title, headers, rows)``; sheets are added in order.
+
+    Uses openpyxl's ``write_only`` mode: rows are streamed straight into the
+    sheet instead of building an in-memory cell graph, so memory stays flat
+    for large exports (the whole point of the Detections / Files grains).
+    A write-only workbook has no default sheet, so every sheet is created
+    explicitly.
+    """
     from openpyxl import Workbook
 
-    wb = Workbook()
-    # The workbook starts with one empty sheet; reuse it for the first entry.
-    for index, (title, headers, rows) in enumerate(sheets):
-        ws = wb.active if index == 0 else wb.create_sheet()
-        ws.title = title
+    wb = Workbook(write_only=True)
+    for title, headers, rows in sheets:
+        ws = wb.create_sheet(title=title)
         ws.append(headers)
         for row in rows:
             ws.append(row)

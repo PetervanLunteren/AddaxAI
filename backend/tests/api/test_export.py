@@ -712,3 +712,31 @@ def test_scoped_rows_defer_exif_blob(db):
     assert "exif_data" in inspect(returned_file).unloaded
     # But it is still reachable when something does ask for it.
     assert returned_file.exif_data["Make"] == "RECONYX"
+
+
+def test_serialize_xlsx_multi_write_only_roundtrip():
+    """write_only mode still produces a readable multi-sheet workbook.
+
+    Pins the memory-bounded serializer: rows stream into the sheet rather
+    than building an in-memory cell graph, but the output must load back
+    with the same sheet names and cell values.
+    """
+    from openpyxl import load_workbook
+
+    payload = export_formats.serialize_xlsx_multi(
+        [
+            ("Alpha", ["a", "b"], [[1, "x"], [2, "y"]]),
+            ("Beta", ["c"], [["only"]]),
+        ]
+    )
+    wb = load_workbook(io.BytesIO(payload))
+    assert wb.sheetnames == ["Alpha", "Beta"]
+    assert list(wb["Alpha"].iter_rows(values_only=True)) == [
+        ("a", "b"),
+        (1, "x"),
+        (2, "y"),
+    ]
+    assert list(wb["Beta"].iter_rows(values_only=True)) == [
+        ("c",),
+        ("only",),
+    ]
