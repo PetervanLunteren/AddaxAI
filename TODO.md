@@ -1,5 +1,25 @@
 # TODO
 
+we made the env update into the toast, but why not open it in a blocking Modal (perhaps reuse the preparation modal)? no users can so other stuff, with the app and this happens in the background. Isnt that complex and error prone? Also, what happens if the user presses the X? I like KISS. If you cnacelled it didnt work. You have to wait, not parallel processes, no backrgound stuff. What do you think? 
+
+                Environment update available
+                The analysis environment ships a newer version than the one installed on this machine. Rebuild it to match this app version.
+
+                env-pytorch
+                Installing packages...
+
+
+
+how do we decide which label to choose? the most aparent one? If so, add it to the caption. 
+
+                Keep events together
+                All photos and videos from one event go to the same folder
+
+
+There seems to be some exclusions in the detections.csv in folder run (perhaps also in projects mode?). If I have a run of 6 coyotes and 4 AI suggested coyotes but verified birds, it only lists the coyotes in the detections.csv. Why? Investigate. Is this the only bug, or are there more like this?
+
+
+
 ## Priority 1
 - [ ] Do all the other feedback received via email
 - [ ] What does the label cleanup step / page really yeild for the user? From the user persective, what does the label cleanup really do? Do we want to leave it in the folder mode? It corects labels in the CSVs, JSONs, and it makes sugestions for events better, right? What else? It makes the confusion matix, and the future train function dataset creation. What else? DO we want to leave it? Or perhaps add something like this to the caption? Or something else? What do you think? TYhink as a user. Thiunk UX UI.

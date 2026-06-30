@@ -45,6 +45,7 @@ pyshp==2.3.1          # Shapefile writer for spatial export
 # ML & Model Management
 huggingface-hub>=0.20.0
 requests>=2.31.0  # Required by huggingface-hub
+truststore>=0.9.1  # Route TLS through the OS trust store (frozen-build CA fix)
 pyyaml==6.0.2
 
 # Development

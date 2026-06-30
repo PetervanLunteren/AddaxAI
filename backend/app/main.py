@@ -39,12 +39,18 @@ from app.api.routers import (
 )
 from app.core.config import get_settings
 from app.core.logging_config import get_logger, setup_logging
+from app.core.ssl_trust import enable_os_trust_store
 from app.db.base import init_db
 from app.ml.catalog_updater import ModelCatalogUpdater
 
 # Initialize logging first, before anything else
 setup_logging()
 logger = get_logger(__name__)
+
+# Route TLS through the OS trust store before any network call (micromamba
+# download, model catalog, HuggingFace, geocoding). Fixes the frozen build's
+# first-launch CERTIFICATE_VERIFY_FAILED and lab/proxy TLS-inspection setups.
+enable_os_trust_store()
 
 
 async def auto_generate_thumbnails() -> None:
