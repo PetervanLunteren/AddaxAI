@@ -15,6 +15,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Bar } from "react-chartjs-2";
+import { useNavigate } from "react-router-dom";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -81,6 +82,7 @@ ChartJS.register(
 );
 
 export function DashboardView({ projectId }: { projectId: string }) {
+  const navigate = useNavigate();
   const [dateRange, setDateRange] = useState<DateRange>({
     startDate: null,
     endDate: null,
@@ -263,10 +265,33 @@ export function DashboardView({ projectId }: { projectId: string }) {
     ],
   };
 
+  // Deep-link a bar to the Labels page filtered to that taxon (F1). Only in
+  // project mode; folder-run is a linear wizard with its own labels step.
+  const drillToLabels = (index: number) => {
+    if (isFolderRun) return;
+    const ids = topSpecies[index]?.label_taxonomy_ids ?? [];
+    if (ids.length === 0) return;
+    navigate(
+      `/projects/${projectId}/labels?lbl_labels=${ids.join(",")}`,
+    );
+  };
+
   const speciesOptions: ChartOptions<"bar"> = {
     indexAxis: "y",
     responsive: true,
     maintainAspectRatio: false,
+    onClick: (_evt, elements) => {
+      if (elements.length > 0) drillToLabels(elements[0].index);
+    },
+    onHover: (evt, elements) => {
+      const target = (evt.native?.target as HTMLElement | undefined);
+      if (!target) return;
+      const clickable =
+        !isFolderRun &&
+        elements.length > 0 &&
+        (topSpecies[elements[0].index]?.label_taxonomy_ids?.length ?? 0) > 0;
+      target.style.cursor = clickable ? "pointer" : "default";
+    },
     plugins: {
       legend: { display: false },
       title: { display: false },

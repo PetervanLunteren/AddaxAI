@@ -429,6 +429,12 @@ def get_species_distribution(
             label_expr.label("species"),
             func.max(common_expr).label("common_name"),
             count_expr.label("count"),
+            # The distinct taxonomy IDs this bar covers, so the dashboard can
+            # deep-link to the Labels page filtered to exactly these (F1).
+            # group_concat skips NULLs, so non-taxonomy bars come back empty.
+            func.group_concat(
+                distinct(EventObservation.label_taxonomy_id)
+            ).label("taxonomy_ids"),
         )
         .select_from(EventObservation)
         .join(Event, Event.id == EventObservation.event_id)
@@ -454,6 +460,11 @@ def get_species_distribution(
             species=row.species,
             common_name=row.common_name,
             count=row.count,
+            label_taxonomy_ids=(
+                [t for t in row.taxonomy_ids.split(",") if t]
+                if row.taxonomy_ids
+                else []
+            ),
         )
         for row in rows
     ]

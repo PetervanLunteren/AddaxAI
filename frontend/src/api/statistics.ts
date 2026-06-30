@@ -31,6 +31,10 @@ export interface SpeciesCount {
   species: string;
   common_name: string | null;
   count: number;
+  /** Distinct taxonomy IDs this row covers, for deep-linking a dashboard
+   *  bar to the Labels page filtered to these labels. Empty for bars with
+   *  no taxonomy. */
+  label_taxonomy_ids: string[];
 }
 
 export interface HourlyCount {

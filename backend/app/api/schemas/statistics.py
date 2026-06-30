@@ -3,7 +3,7 @@
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CaptureDateCoverage(BaseModel):
@@ -32,6 +32,10 @@ class SpeciesCount(BaseModel):
     species: str
     common_name: str | None = None
     count: int
+    # Distinct taxonomy IDs this row covers, for deep-linking the dashboard
+    # bar to the Labels page filtered to these labels (F1). Empty for bars
+    # with no taxonomy (e.g. "No taxonomy", or category-only rows).
+    label_taxonomy_ids: list[str] = Field(default_factory=list)
 
 
 class HourlyCount(BaseModel):

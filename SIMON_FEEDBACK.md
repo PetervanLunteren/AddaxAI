@@ -52,6 +52,9 @@ New version would not install over the old one (error, no log kept). Had to unin
   Tests: 430 integration+ml + 107 pipeline/worker tests pass; ruff clean. Correctness testable on a
   small folder run; the perf win (and B3/B4 responsiveness) wants validation on a large/slow-drive
   set like Simon's 139k.
+  ACTION: ask Simon to re-run his large external-drive dataset (the 139k Ginini set) and confirm
+  the save phase no longer hangs and the app stays responsive (delete / add-to-queue work) during
+  it. This is the real validation we can't do locally.
   NOT done (deferred polish): offload trim + the taxonomy JSON re-read; pass the in-memory JSON
   between steps instead of 3 reads; fine-grained progress inside the load; a cooperative cancel
   check inside the load loop (would let Cancel interrupt the in-process save, B3 part b).
@@ -346,8 +349,19 @@ Squamata shows twice in the labels tree. Simon notes it is a SpeciesNet issue; m
 
 ### F1 - Drill down from dashboard to verify
 Click or right-click a species in the dashboard summary to open Verify pre-filtered to that species. Quick way to fix frequent misidentifications.
-- status: todo
-- notes:
+- status: done
+- notes: Target is the Labels page (the per-detection label-cleanup workspace; "Verify" was
+  restructured into Labels + Counts/Observations). Clicking a bar in the dashboard "Top taxa" chart
+  opens /projects/:id/labels?lbl_labels=<ids>, which LabelsTab hydrates into its label filter on
+  arrival (lblFiltersFromSearchParams, no extra click). Mapping: the SpeciesCount rows now carry
+  `label_taxonomy_ids` (backend group_concat(distinct EventObservation.label_taxonomy_id) per bar;
+  group_concat skips NULLs so non-taxonomy bars come back empty). This handles every rank: a
+  species bar -> its ids, a family/"Higher-level taxa" bar -> all ids it covers. Frontend: onClick
+  on the chart navigates with those ids; onHover shows a pointer only on clickable bars; bars with
+  no taxonomy ids are no-ops. Gated to project mode (folder-run is a linear wizard with its own
+  labels step). Files: schemas/statistics.py + crud/statistics.py (group_concat + field),
+  api/statistics.ts (type), DashboardView.tsx (drillToLabels + onClick/onHover). Backend ruff +
+  101 statistics tests pass; frontend typecheck clean.
 
 ### F2 - User-defined label mapping
 Map scientific names onto custom (common) names, many-to-one, to also fix misidentifications (e.g. deer recognized as cattle). Events would use the mapped values. Overlaps F3, F4.
@@ -361,8 +375,17 @@ Allow adding user-defined labels (e.g. Tiliqua rugosa / shingleback, missing fro
 
 ### F4 - Common vs scientific name toggle
 Global toggle to show common vs scientific names. Common names live in `label_taxonomy.display_name`, some with apostrophes. Already on the TODO nice-to-haves.
-- status: todo
-- notes:
+- status: already solved
+- notes: Fully implemented. `lib/species-name-mode.ts` holds a global per-user preference (common
+  default / scientific) in localStorage; the native menu has View > Species names > Common /
+  Scientific (species-common / species-scientific commands). `resolveSpeciesName` is consumed across
+  ~25 files including verify (LabelsTab, VerifyFilterBar, VerifyView, CropGrid, EventCountPanel) and
+  dashboard (DashboardView + charts), so the toggle flips names app-wide (setSpeciesNameMode reloads
+  to guarantee consistency). Simon's "if not available, show something" is handled by the fallback
+  chain: common -> scientific -> label -> category (and the reverse in scientific mode), so a missing
+  common name shows the scientific/label name, never blank. Apostrophe concern is a non-issue: DB
+  access is parameterized SQLAlchemy and names render as React text. Common names formatted via
+  `format_common_name` (taxonomy_db.py). No change needed.
 
 ### F5 - Copy sites/deployments into a new project
 Copy sites and deployments from an existing project so a new project (e.g. to compare models) does not need full re-entry.
