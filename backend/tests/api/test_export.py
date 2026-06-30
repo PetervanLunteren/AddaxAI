@@ -675,3 +675,40 @@ def test_serialize_csv_roundtrip():
     )
     rows = list(csv.reader(io.StringIO(payload.decode("utf-8"))))
     assert rows == [["a", "b"], ["1", "x"], ["2", "y,z"]]
+
+
+def test_scoped_rows_defer_exif_blob(db):
+    """get_scoped_detection_rows must not pull File.exif_data into the sort.
+
+    The export never reads the per-file EXIF JSON blob, so it is deferred.
+    Loading it dragged ~70k blobs through SQLite's ORDER BY sorter and
+    blew up the temp file with SQLITE_FULL on large projects. Asserting
+    the column is unloaded pins the fix in place.
+    """
+    from sqlalchemy import inspect
+
+    from app.api.crud.export import get_scoped_detection_rows
+
+    project = make_project(db)
+    site = make_site(db, project_id=project.id)
+    deployment = make_deployment(db, project_id=project.id, site_id=site.id)
+    file_obj = make_file(
+        db,
+        deployment_id=deployment.id,
+        exif_data={"Make": "RECONYX", "huge": "x" * 5000},
+    )
+    make_detection(db, file_id=file_obj.id, category="animal", confidence=0.9)
+
+    # Expire so the query reloads from the DB; otherwise the freshly built
+    # instance sits in the identity map with exif_data already populated and
+    # defer() has nothing to unload.
+    db.expire_all()
+
+    rows = get_scoped_detection_rows(db, project)
+
+    assert rows, "expected at least one scoped row"
+    returned_file = rows[0][0]
+    # Deferred: exif_data is not loaded until explicitly touched.
+    assert "exif_data" in inspect(returned_file).unloaded
+    # But it is still reachable when something does ask for it.
+    assert returned_file.exif_data["Make"] == "RECONYX"

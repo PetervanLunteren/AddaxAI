@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Row, and_, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from app.api.crud.export_formats import slugify
 from app.models import (
@@ -238,6 +238,12 @@ def get_scoped_detection_rows(
     # skipped_deployment_ids list.
     query = (
         select(File, Detection, Deployment, Site, LabelTaxonomy)
+        # Drop File.exif_data: the full per-file EXIF JSON blob is never read
+        # by any export builder (CamTrap's exifData column is emitted blank).
+        # Without this, SQLite drags ~70k EXIF blobs through the ORDER BY
+        # sorter's temp file and hits SQLITE_FULL ("database or disk is full")
+        # on large projects even with plenty of free space on the data drive.
+        .options(defer(File.exif_data))
         .select_from(File)
         .join(Deployment, File.deployment_id == Deployment.id)
         .outerjoin(Site, Deployment.site_id == Site.id)
