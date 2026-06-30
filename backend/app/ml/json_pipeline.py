@@ -27,9 +27,9 @@ from app.core.media_types import VIDEO_EXTENSIONS
 from app.ml.inference.base import PipelineResult
 from app.ml.json_utils import (
     build_classification_category_descriptions,
-    collect_md_failures,
     extract_animal_detections,
 )
+from app.ml.results_json import iter_images, read_top_level_object
 from app.models import Deployment, File
 from app.utils.media_dates import (
     extract_video_dates,
@@ -134,11 +134,13 @@ def load_json_to_database(
         raise FileNotFoundError(f"JSON file not found: {json_path}")
 
     try:
-        # Load JSON
-        with open(json_path) as f:
-            results = json.load(f)
-
-        logger.info(f"Loading {len(results.get('images', []))} images/videos to database")
+        # Stream the results JSON instead of json.load: a large deployment's
+        # file would otherwise peak at ~6.4x its size in RAM (measured) and
+        # OOM the backend. iter_images walks it at flat memory. We make two
+        # passes over images (collect video paths, then insert) plus a cheap
+        # metadata read; capture timestamps are resolved inline in the second
+        # pass rather than in a held-in-memory dict.
+        logger.info("Streaming images/videos to database")
 
         # Build non-label ID set for skip logic
         from app.ml.label_exclusion import (
@@ -146,24 +148,32 @@ def load_json_to_database(
             should_skip_detection,
         )
 
-        class_categories = results.get("classification_categories", {})
+        class_categories = read_top_level_object(
+            json_path, "classification_categories"
+        )
         non_label_ids = build_non_label_class_ids(class_categories)
 
         # Track statistics
+        total_files = 0
         total_detections = 0
         animal_count = 0
         person_count = 0
         vehicle_count = 0
         classified_count = 0
         skipped_non_label = 0
+        skipped_missing_timestamp: list[str] = []
+        # MegaDetector failure entries (undecodable video etc.), collected
+        # during the insert pass instead of a separate collect_md_failures
+        # pass over the whole dict.
+        skipped_video_failures: list[dict] = []
 
-        # Pre-extract video dates using exiftool (single process for all videos)
-        # Skip MegaDetector-failure entries (video could not be decoded;
-        # `detections: null`). The worker surfaces those separately as
-        # queue warnings; there is no usable file row to create here.
+        # Pass 1: pre-extract video dates using exiftool (single process for
+        # all videos). Skip MegaDetector-failure entries (video could not be
+        # decoded; `detections: null`). The worker surfaces those separately
+        # as queue warnings; there is no usable file row to create here.
         video_extensions = {"mp4", "avi", "mov", "mkv", "m4v", "wmv", "flv"}
         video_paths: list[Path] = []
-        for img in results.get("images") or []:
+        for img in iter_images(json_path):
             if img.get("failure"):
                 continue
             abs_path = (deployment_folder / img["file"]).resolve()
@@ -172,39 +182,21 @@ def load_json_to_database(
                 video_paths.append(abs_path)
         video_dates = extract_video_dates(video_paths) if video_paths else {}
 
-        # Pre-flight: resolve every image's capture timestamp so the main
-        # insert loop can look them up in O(1). Files whose timestamp
-        # can't be resolved (corrupted EXIF, missing DateTimeOriginal on
-        # an image, exiftool couldn't parse a video header) are still
-        # ingested with captured_at_local=NULL (data-agnostic) and
-        # recorded in `skipped_missing_timestamp` so the UI can surface
-        # the count.
-        loadable_images = [
-            img for img in (results.get("images") or []) if not img.get("failure")
-        ]
-        skipped_missing_timestamp: list[str] = []
-        resolved_timestamps: dict[str, datetime] = {}
-        for img in loadable_images:
-            absolute_path = (deployment_folder / img["file"]).resolve()
-            fmt = absolute_path.suffix.lstrip(".").lower() if absolute_path.exists() else ""
-            ts = _resolve_capture_timestamp(
-                absolute_path,
-                is_video=fmt in video_extensions,
-                exif_metadata=img.get("exif_metadata"),
-                video_dates=video_dates,
-            )
-            if ts is None:
-                skipped_missing_timestamp.append(str(absolute_path))
-            else:
-                resolved_timestamps[str(absolute_path)] = ts
-
         # Best-frame JPEGs (one per video) land under this directory.
         # `best_frame_path` on each video File row points into the same
         # tree; legacy data uses the same layout, so the path math works
         # for new and old runs alike.
         _af = artifacts_folder or (deployment_folder / ".addaxai")
 
-        for img in loadable_images:
+        # Pass 2: stream images again and insert. Counting here (before the
+        # failure skip) matches the old total_files = len(images).
+        for img in iter_images(json_path):
+            total_files += 1
+            if img.get("failure"):
+                skipped_video_failures.append(
+                    {"file": img.get("file"), "reason": img.get("failure")}
+                )
+                continue
             relative_file = img["file"]
             absolute_path = (deployment_folder / relative_file).resolve()
 
@@ -219,6 +211,18 @@ def load_json_to_database(
             file_format = absolute_path.suffix.lstrip(".").lower() if absolute_path.exists() else ""
             is_video = file_format in video_extensions
             file_type = "video" if is_video else "image"
+
+            # Resolve capture timestamp inline (replaces the old pre-pass).
+            # Recorded for every loadable image, including ones whose File
+            # row already exists, to match the previous behaviour.
+            captured_at_local = _resolve_capture_timestamp(
+                absolute_path,
+                is_video=is_video,
+                exif_metadata=img.get("exif_metadata"),
+                video_dates=video_dates,
+            )
+            if captured_at_local is None:
+                skipped_missing_timestamp.append(str(absolute_path))
 
             # Get or create File record
             # First check by file_id if provided in JSON
@@ -243,8 +247,7 @@ def load_json_to_database(
                 if not file_id:
                     file_id = str(uuid.uuid4())
 
-                # Timestamp already resolved in the pre-flight pass.
-                captured_at_local = resolved_timestamps.get(str(absolute_path))
+                # captured_at_local already resolved inline above.
                 exif_metadata = img.get("exif_metadata")
 
                 # Apply user-specified datetime offset (from the "Adjust
@@ -353,8 +356,7 @@ def load_json_to_database(
                     # Store raw top-1 classification. Exclusion and rollup
                     # are applied in Phase 7 (postprocessing).
                     top_class_id, top_conf = det["classifications"][0]
-                    class_names = results.get("classification_categories", {})
-                    label = class_names.get(str(top_class_id))
+                    label = class_categories.get(str(top_class_id))
                     label_confidence = float(top_conf)
 
                     if label:
@@ -453,14 +455,14 @@ def load_json_to_database(
         )
 
         return PipelineResult(
-            total_files=len(results.get("images") or []),
+            total_files=total_files,
             total_detections=total_detections,
             animal_detections=animal_count,
             person_detections=person_count,
             vehicle_detections=vehicle_count,
             classified_detections=classified_count,
             skipped_missing_timestamp=skipped_missing_timestamp,
-            skipped_video_failures=collect_md_failures(results),
+            skipped_video_failures=skipped_video_failures,
         )
 
     except Exception as e:
@@ -862,6 +864,12 @@ def merge_json_files(
         if classification_model_id:
             addaxai_info["classification_model"] = classification_model_id
         merged_data["info"]["addaxai"] = addaxai_info
+
+        # Write metadata (categories, info) before the big images array so a
+        # streaming reader can grab classification_categories without scanning
+        # the whole file. Moving images to the end of the insertion order does
+        # this; key order is not semantically meaningful to any consumer.
+        merged_data["images"] = merged_data.pop("images")
 
         with open(output_file, "w") as f:
             json.dump(merged_data, f, indent=2)

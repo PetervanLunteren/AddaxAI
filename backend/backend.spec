@@ -71,6 +71,7 @@ hiddenimports += collect_submodules('httpx')
 hiddenimports += collect_submodules('redis')
 hiddenimports += collect_submodules('requests')  # Required by huggingface_hub
 hiddenimports += collect_submodules('truststore')  # OS trust store for TLS
+hiddenimports += collect_submodules('ijson')  # streaming JSON (results.json)
 hiddenimports += collect_submodules('cv2')       # opencv-python-headless
 hiddenimports += collect_submodules('astral')    # sunrise/sunset for activity overlap
 hiddenimports += collect_submodules('timezonefinder')  # lat/lon -> IANA tz
