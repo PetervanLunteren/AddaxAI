@@ -13,7 +13,6 @@ from pathlib import Path
 
 from app.ml.postprocessing_outputs._output_context import OutputContext
 from app.ml.postprocessing_outputs.separate_folders import (
-    UNRANKED_FOLDER,
     separate_into_folders,
 )
 from app.models import LabelTaxonomy
@@ -286,7 +285,10 @@ def test_unmapped_label_falls_back_to_other(db, tmp_path):
     target = tmp_path / "out"
     separate_into_folders(db, project.id, _ctx(target))
 
-    assert (target / UNRANKED_FOLDER / "mystery" / "IMG_001.jpg").is_file()
+    # _slug lowercases every segment, so the unranked folder is "other".
+    # Asserting the lowercase form keeps the test correct on case-sensitive
+    # filesystems (Linux CI), where "Other" != "other".
+    assert (target / "other" / "mystery" / "IMG_001.jpg").is_file()
 
 
 # ---------------------------------------------------------------------
