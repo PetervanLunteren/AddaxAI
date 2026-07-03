@@ -21,6 +21,9 @@ LabelSort = Literal[
     "newest",
     "oldest",
     "cls_low",
+    # Group detections by their event, events newest first. Grouping is
+    # the point, so the grid auto-shows event dividers in this mode.
+    "events",
     # Cohort-grouped review mode. Reachable only via the toolbar's
     # review pill, never selectable from the sort dropdown.
     "suggestions",
@@ -118,14 +121,21 @@ class DetectionSummary(BaseModel):
     site_name: str | None = None
     deployment_id: str | None = None
     captured_at_local: datetime | None = None
+    # Event this detection's file belongs to. Drives the "By event" sort,
+    # the event dividers, and the detail modal's sequence strip. Null when
+    # event clustering has not run for the deployment.
+    event_id: str | None = None
+    # Start time of `event_id`, naive camera-local; the event divider's
+    # header label. Serialized like captured_at_local.
+    event_start_local: datetime | None = None
     crop_url: str
     crop_bbox: CropBbox | None = None
     # Video detections carry the frame index they came from; image
     # detections expose None.
     frame_number: int | None = None
 
-    @field_serializer("captured_at_local")
-    def _serialize_captured_at_local(self, value: datetime | None) -> str | None:
+    @field_serializer("captured_at_local", "event_start_local")
+    def _serialize_local_datetimes(self, value: datetime | None) -> str | None:
         return serialize_local_datetime(value)
 
 

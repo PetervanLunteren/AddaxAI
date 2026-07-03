@@ -73,7 +73,21 @@ SELECT de.detection_id, de.vector, de.l2_norm,
        d.classification_method, d.file_id, d.frame_number,
        d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
        f.deployment_id, f.captured_at_local, f.width_px, f.height_px,
-       s.name AS site_name
+       s.name AS site_name,
+       -- Event membership for the "By event" sort and event dividers.
+       -- event_files is many-to-many in the schema but one-event-per-file
+       -- in practice (clustering deletes+recreates a deployment's events,
+       -- assigning each file once). Correlated subqueries keep the result
+       -- strictly one row per detection, which the greedy walk and counts
+       -- depend on; a LEFT JOIN could multiply rows if that invariant ever
+       -- broke. Indexed by idx_event_files_file.
+       (SELECT ef.event_id FROM event_files ef WHERE ef.file_id = f.id LIMIT 1)
+           AS event_id,
+       (SELECT ef.sequence_number FROM event_files ef WHERE ef.file_id = f.id LIMIT 1)
+           AS event_sequence,
+       (SELECT e.event_start_local FROM event_files ef
+        JOIN events e ON e.id = ef.event_id
+        WHERE ef.file_id = f.id LIMIT 1) AS event_start_local
 FROM detection_embeddings de
 JOIN detections d ON d.id = de.detection_id
 JOIN files f ON f.id = d.file_id
@@ -212,6 +226,10 @@ def _load_embeddings(
             elif ts:
                 ts = str(ts)
 
+            event_start = row["event_start_local"]
+            if event_start and not isinstance(event_start, str):
+                event_start = str(event_start)
+
             metadata_list.append({
                 "label": row["label"],
                 "label_taxonomy_id": row["label_taxonomy_id"],
@@ -227,6 +245,9 @@ def _load_embeddings(
                 "deployment_id": row["deployment_id"],
                 "captured_at_local": ts,
                 "site_name": row["site_name"],
+                "event_id": row["event_id"],
+                "event_sequence": row["event_sequence"],
+                "event_start_local": event_start,
                 "bbox_x": row["bbox_x"],
                 "bbox_y": row["bbox_y"],
                 "bbox_width": row["bbox_width"],
@@ -399,6 +420,8 @@ def _build_summary(
         "site_name": meta.get("site_name"),
         "deployment_id": meta.get("deployment_id"),
         "captured_at_local": meta.get("captured_at_local"),
+        "event_id": meta.get("event_id"),
+        "event_start_local": meta.get("event_start_local"),
         "crop_url": f"/api/detections/{detection_id}/crop?size=200",
         "crop_bbox": _compute_crop_bbox(meta),
         "frame_number": meta.get("frame_number"),

@@ -61,13 +61,39 @@ import type {
   VerifySort,
 } from "../../api/types";
 
+// Labels dropdown, kept deliberately small: browse look-alikes, review
+// by event, or triage the model's least-confident calls. Suggestions is
+// a fourth mode reached via the toolbar pill, not this list.
 const LABELS_SORT_MODES: readonly VerifySort[] = [
   "similarity",
-  "similarity_reverse",
-  "newest",
-  "oldest",
+  "events",
   "cls_low",
 ];
+
+/**
+ * IDs of the first event that still has an unverified crop in view.
+ *
+ * The "By event" sort lays each event's crops out contiguously, so we
+ * walk the list, take each contiguous run of one event_id, and return
+ * the first run that contains an unverified crop. Returns every in-view
+ * crop of that event (matching what the user sees under the filters),
+ * so the existing bulk shortcuts act on the whole event at once. Empty
+ * when nothing is left to verify.
+ */
+function firstUnverifiedEventDetectionIds(
+  detections: DetectionSummary[],
+): string[] {
+  let i = 0;
+  while (i < detections.length) {
+    const eventId = detections[i].event_id;
+    let j = i;
+    while (j < detections.length && detections[j].event_id === eventId) j++;
+    const run = detections.slice(i, j);
+    if (run.some((d) => !d.verified)) return run.map((d) => d.detection_id);
+    i = j;
+  }
+  return [];
+}
 
 interface LabelsTabProps {
   projectId: string;
@@ -372,17 +398,15 @@ export function LabelsTab({
 
   const isLabelSort = (v: unknown): v is LabelSort =>
     v === "similarity" ||
-    v === "similarity_reverse" ||
-    v === "newest" ||
-    v === "oldest" ||
+    v === "events" ||
     v === "cls_low" ||
     v === "suggestions";
 
+  // A saved sort that is no longer offered (the retired
+  // similarity_reverse / newest / oldest modes) falls back to similarity.
   const initialSort: LabelSort = isLabelSort(savedSettings.sort)
     ? savedSettings.sort
-    : savedSettings.reverseSort // migrate the dropped reverseSort flag
-      ? "similarity_reverse"
-      : "similarity";
+    : "similarity";
   const [lblSort, _setLblSort] = useState<LabelSort>(initialSort);
   const setLblSort = useCallback(
     (v: LabelSort) => {
@@ -399,12 +423,9 @@ export function LabelsTab({
   const verificationFilter: LabelsVerification =
     lblFilters.verification ?? "unverified";
 
-  const [showLabelDividers, _setShowLabelDividers] = useState(savedSettings.showLabelDividers ?? false);
-  const setShowLabelDividers = useCallback((v: boolean) => { _setShowLabelDividers(v); persistSetting("showLabelDividers", v); }, [persistSetting]);
-
   // Max-detections cap for similarity sort. Per-user / per-browser
-  // memory budget; lives next to tileSize and showLabelDividers because
-  // it's tuned at the same surface and persisted the same way.
+  // memory budget; lives next to tileSize because it's tuned at the same
+  // surface and persisted the same way.
   const [maxDetections, _setMaxDetections] = useState<number>(
     typeof savedSettings.maxDetections === "number"
       ? savedSettings.maxDetections
@@ -762,14 +783,20 @@ export function LabelsTab({
         );
       }
       queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
-      // Verifying labels cascades up to File.verified (and thus
-      // event verification). Invalidate the Media and Events queries so
-      // those views show the updated badges/filters when the user
-      // switches to them, instead of stale cached state. Inactive
-      // queries just get marked stale and refetch on next mount.
-      // The ["events"] prefix also covers the verified-progress pill's
-      // verification-stats query.
-      queryClient.invalidateQueries({ queryKey: ["events"] });
+      // Relabelling rebuilds the event's observations server-side (and
+      // cascades up to File.verified / event verification). Refresh every
+      // event-family query so the Counts page reflects it: the event list
+      // (["events", ...]), the single-event modal (["event", id]), the
+      // count badges (["event-count", ...]) and the filter options. A
+      // plain ["events"] prefix would miss the singular ["event", ...] and
+      // ["event-count", ...] keys, which is why the Counts view and its
+      // event modal used to stay stale after a relabel.
+      queryClient.invalidateQueries({
+        predicate: (q) => {
+          const key = q.queryKey[0];
+          return typeof key === "string" && key.startsWith("event");
+        },
+      });
       queryClient.invalidateQueries({ queryKey: ["files-for-verify"] });
     },
     [lblSort, patchLocalDetections, projectId, queryClient],
@@ -781,6 +808,10 @@ export function LabelsTab({
         ...d,
         label,
         category,
+        // Set BOTH names: the display prefers common_name, so leaving the
+        // old one in place would keep showing the previous label until a
+        // refetch.
+        common_name: displayName,
         scientific_name: displayName,
         label_taxonomy_id: null,
         neighbor_top_label: null,
@@ -824,7 +855,15 @@ export function LabelsTab({
         );
         queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
         queryClient.invalidateQueries({ queryKey: ["label-tree"] });
-        queryClient.invalidateQueries({ queryKey: ["events"] });
+        // Refresh every event-family query (list, single-event modal,
+        // count badges, filter options) so the Counts page reflects the
+        // rebuilt observations, not just the ["events"] list prefix.
+        queryClient.invalidateQueries({
+          predicate: (q) => {
+            const key = q.queryKey[0];
+            return typeof key === "string" && key.startsWith("event");
+          },
+        });
         queryClient.invalidateQueries({ queryKey: ["files-for-verify"] });
         toast.success(
           `Relabelled ${cohort.count} label${
@@ -892,9 +931,12 @@ export function LabelsTab({
     [projectId, queryClient],
   );
 
-  // Convenience used by SuggestionsToolbarPill.
+  // The sort the user was on before entering suggestions. Exiting
+  // returns them there instead of always dropping them into similarity,
+  // which they may not use (e.g. they came from "By event").
+  const preSuggestionsSortRef = useRef<LabelSort>("similarity");
   const exitSuggestionsMode = useCallback(
-    () => setLblSort("similarity"),
+    () => setLblSort(preSuggestionsSortRef.current),
     [setLblSort],
   );
 
@@ -906,6 +948,7 @@ export function LabelsTab({
           applyDetectionAction(ids, (d) => ({
             ...d,
             label: "false detection",
+            common_name: "False detection",
             scientific_name: "False detection",
             label_taxonomy_id: null,
             neighbor_top_label: null,
@@ -925,6 +968,7 @@ export function LabelsTab({
       applyDetectionAction(ids, (d) => ({
         ...d,
         label: "false detection",
+        common_name: "False detection",
         scientific_name: "False detection",
         label_taxonomy_id: null,
         neighbor_top_label: null,
@@ -1041,6 +1085,22 @@ export function LabelsTab({
         return;
       }
 
+      // "E" selects the first event that still needs work, so the bulk
+      // shortcuts above (Enter, M, R, X, 1-5) can act on the whole event.
+      // Only meaningful in "By event" sort, where each event's crops are
+      // contiguous; a no-op in other sorts.
+      if (
+        (e.key === "e" || e.key === "E") &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        resultSort === "events"
+      ) {
+        e.preventDefault();
+        const ids = firstUnverifiedEventDetectionIds(allDetections);
+        if (ids.length > 0) setSelectedIds(new Set(ids));
+        return;
+      }
+
       if (e.key === "a" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         // Select all visible
@@ -1060,6 +1120,7 @@ export function LabelsTab({
             ...d,
             label: label.label ?? label.category,
             category: label.category,
+            common_name: label.displayName,
             scientific_name: label.displayName,
             label_taxonomy_id: null,
             neighbor_top_label: null,
@@ -1073,7 +1134,7 @@ export function LabelsTab({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds, detailDetection, allDetections, handleActionComplete, shortcutLabels, applyDetectionAction, handleMarkFalse, handleMatchMajority, handleBulkVerify, advanceSelectionAfter]);
+  }, [selectedIds, detailDetection, allDetections, resultSort, handleActionComplete, shortcutLabels, applyDetectionAction, handleMarkFalse, handleMatchMajority, handleBulkVerify, advanceSelectionAfter]);
 
   // Click outside grid to deselect
   useEffect(() => {
@@ -1198,13 +1259,10 @@ export function LabelsTab({
           projectId={projectId}
         />
         <LabelsSettings
-          showLabelDividers={showLabelDividers}
-          onShowLabelDividersChange={setShowLabelDividers}
           tileSize={tileSize}
           onTileSizeChange={setTileSize}
           maxDetections={maxDetections}
           onMaxDetectionsChange={setMaxDetections}
-          similaritySort={lblSort === "similarity" || lblSort === "similarity_reverse"}
         />
         <VerifyToolbarIcon
           icon={RefreshCw}
@@ -1230,7 +1288,10 @@ export function LabelsTab({
         <SuggestionsToolbarPill
           projectId={projectId}
           isActive={lblSort === "suggestions"}
-          onEnter={() => setLblSort("suggestions")}
+          onEnter={() => {
+            if (lblSort !== "suggestions") preSuggestionsSortRef.current = lblSort;
+            setLblSort("suggestions");
+          }}
           onExit={exitSuggestionsMode}
         />
         {sortResult && (
@@ -1273,17 +1334,17 @@ export function LabelsTab({
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <Check className="h-8 w-8 mb-3 text-primary" />
-            <p className="text-lg font-medium">All cohorts reviewed</p>
+            <p className="text-lg font-medium">All suggestions reviewed</p>
             <p className="text-sm text-muted-foreground mt-1 max-w-md">
-              Nothing left to promote at the current min count. Switch
-              back to the regular sort to keep verifying.
+              There are no more label suggestions to check right now. Go
+              back to your labels to keep verifying.
             </p>
             <Button
               type="button"
               className="mt-4"
               onClick={exitSuggestionsMode}
             >
-              Back to similarity sort
+              Exit suggestions
             </Button>
           </CardContent>
         </Card>
@@ -1315,21 +1376,18 @@ export function LabelsTab({
             onBackgroundClick={clearSelection}
             onRelabelCohort={relabelCohort}
             onDismissCohort={dismissCohort}
+            onSelectEvent={(ids) => setSelectedIds(new Set(ids))}
             tileSize={tileSize}
             dividers={
-              // Tie cohort dividers to the sort that PRODUCED the
-              // current result, not the user's dropdown selection.
-              // Otherwise the brief window after switching modes,
-              // where the old result lingers until the new sort lands,
-              // paints cohort dividers over similarity data, which
-              // groups everything that shares (label, "", category)
-              // into a giant "(no label)" cohort and produces
-              // sub-min_count phantom cohorts from the few items that
-              // do carry a suggestion.
+              // Tie dividers to the sort that PRODUCED the current
+              // result, not the user's dropdown selection. Otherwise the
+              // brief window after switching modes, where the old result
+              // lingers until the new sort lands, paints the wrong
+              // dividers over the old data.
               resultSort === "suggestions"
                 ? "cohort"
-                : showLabelDividers
-                  ? "label"
+                : resultSort === "events"
+                  ? "event"
                   : "none"
             }
           />
@@ -1370,6 +1428,10 @@ export function LabelsTab({
             ...d,
             label,
             category,
+            // Clear BOTH names so the display falls back to the new
+            // label; leaving the old common_name would keep showing the
+            // previous label until a refetch fills the canonical names.
+            common_name: null,
             scientific_name: null,
             label_taxonomy_id: null,
             neighbor_top_label: null,
@@ -1381,6 +1443,7 @@ export function LabelsTab({
           applyDetectionAction([detectionId], (d) => ({
             ...d,
             label: "false detection",
+            common_name: "False detection",
             scientific_name: "False detection",
             label_taxonomy_id: null,
             neighbor_top_label: null,

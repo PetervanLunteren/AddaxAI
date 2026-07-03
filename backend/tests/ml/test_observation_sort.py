@@ -20,6 +20,9 @@ def _metas(*items: dict) -> list[dict]:
         {
             "captured_at_local": item.get("captured_at_local"),
             "label_confidence": item.get("label_confidence"),
+            "event_id": item.get("event_id"),
+            "event_start_local": item.get("event_start_local"),
+            "event_sequence": item.get("event_sequence"),
         }
         for item in items
     ]
@@ -96,6 +99,47 @@ def test_cls_low_pushes_null_label_confidence_to_end():
     assert result == [3, 1, 0, 2]
 
 
+def test_events_groups_by_event_newest_first_sequence_within():
+    # Two events. Event B starts later than event A, so B's detections
+    # come first; within each event, ascending sequence_number.
+    metas = _metas(
+        {"event_id": "A", "event_start_local": "2026-01-01T08:00:00", "event_sequence": 1},
+        {"event_id": "B", "event_start_local": "2026-03-15T14:30:00", "event_sequence": 2},
+        {"event_id": "A", "event_start_local": "2026-01-01T08:00:00", "event_sequence": 0},
+        {"event_id": "B", "event_start_local": "2026-03-15T14:30:00", "event_sequence": 1},
+    )
+    # Newest event (B) first: seq 1 then 2 → indices 3, 1.
+    # Then event A: seq 0 then 1 → indices 2, 0.
+    assert order_indices("events", [0, 1, 2, 3], metas) == [3, 1, 2, 0]
+
+
+def test_events_ties_on_event_id_keep_events_separate():
+    # Two events sharing a start time must not interleave; event_id
+    # breaks the tie so each event's detections stay contiguous.
+    metas = _metas(
+        {"event_id": "A", "event_start_local": "2026-01-01T08:00:00", "event_sequence": 0},
+        {"event_id": "B", "event_start_local": "2026-01-01T08:00:00", "event_sequence": 0},
+        {"event_id": "A", "event_start_local": "2026-01-01T08:00:00", "event_sequence": 1},
+        {"event_id": "B", "event_start_local": "2026-01-01T08:00:00", "event_sequence": 1},
+    )
+    result = order_indices("events", [0, 1, 2, 3], metas)
+    # Equal start times, so event_id descending: "B" before "A". Each
+    # event's two detections stay together, ordered by sequence.
+    assert result == [1, 3, 0, 2]
+
+
+def test_events_pushes_detections_without_event_to_end():
+    metas = _metas(
+        {"event_id": None},
+        {"event_id": "A", "event_start_local": "2026-02-01T08:00:00", "event_sequence": 0},
+        {"event_id": None},
+    )
+    result = order_indices("events", [0, 1, 2], metas)
+    # The one real event first, then the event-less detections in
+    # original order.
+    assert result == [1, 0, 2]
+
+
 def test_unknown_sort_mode_raises():
     with pytest.raises(ValueError):
         order_indices("bogus", [0], _metas({}))
@@ -108,6 +152,7 @@ def test_valid_sorts_lists_every_supported_mode():
         "newest",
         "oldest",
         "cls_low",
+        "events",
         "suggestions",
     }
 

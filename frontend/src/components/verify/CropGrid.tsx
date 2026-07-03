@@ -3,10 +3,10 @@
  *
  * Uses @tanstack/react-virtual for efficient rendering of large detection sets.
  * Responsive columns: 4 (sm), 6 (md), 8 (lg), 10 (xl).
- * Optional divider rows: `label` groups by current label, `cohort`
- * groups by `(current_label, neighbor_top_label, category)` and
- * surfaces a "Relabel all (N)" button so the suggestions sort mode can
- * promote a whole cohort in one click.
+ * Optional divider rows: `cohort` groups by
+ * `(current_label, neighbor_top_label, category)` and surfaces a
+ * "Relabel all (N)" button for the suggestions sort; `event` groups by
+ * event and surfaces a "Select" link to select that event's crops.
  */
 
 import { memo, useRef, useMemo, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
@@ -21,6 +21,7 @@ import {
 } from "../ui/tooltip";
 import { cn } from "../../lib/utils";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
+import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import type { CohortItem, DetectionSummary } from "../../api/types";
 
 /**
@@ -52,7 +53,7 @@ class SelectionStore {
 
 export type TileSize = "S" | "M" | "L";
 
-export type GridDividerMode = "none" | "label" | "cohort";
+export type GridDividerMode = "none" | "cohort" | "event";
 
 type CohortRowPos = "first" | "middle" | "last" | "only";
 
@@ -66,7 +67,7 @@ type GridRow =
        * for non-cohort modes. */
       cohortPos?: CohortRowPos;
     }
-  | { type: "divider"; label: string; count: number }
+  | { type: "divider"; label: string; count: number; detectionIds: string[] }
   | { type: "cohort_divider"; cohort: CohortItem }
   | { type: "cohort_gap" };
 
@@ -84,6 +85,9 @@ interface CropGridProps {
    * Hides the suggestion without touching the crops; parent owns the
    * mutation and the Undo toast. The divider is presentational. */
   onDismissCohort?: (cohort: CohortItem) => void;
+  /** Fires when the user clicks "Select" on an event divider. Selects
+   *  that event's in-view crops so the existing bulk actions apply. */
+  onSelectEvent?: (detectionIds: string[]) => void;
   tileSize?: TileSize;
   dividers?: GridDividerMode;
 }
@@ -100,7 +104,12 @@ const ESTIMATE_SIZE: Record<TileSize, number> = {
   L: 380,
 };
 
-const DIVIDER_HEIGHT = 32;
+// Event divider height estimate (real height is measured). The header
+// below uses asymmetric padding (pt-1 pb-4): the crop row above already
+// carries its own bottom padding (GAP_CLASS `pb-*`), so a smaller top +
+// larger bottom padding lands the label visually centered in the gap
+// between the two events rather than hugging one side.
+const DIVIDER_HEIGHT = 44;
 // Cohort dividers carry a header line + chips + a Relabel-all button so
 // they need more vertical real estate than a plain label divider. The
 // header uses `text-base` and symmetric vertical padding (`py-3`) so
@@ -174,6 +183,7 @@ export function CropGrid({
   onBackgroundClick,
   onRelabelCohort,
   onDismissCohort,
+  onSelectEvent,
   tileSize = "M",
   dividers = "none",
 }: CropGridProps) {
@@ -197,18 +207,18 @@ export function CropGrid({
       return result;
     }
 
+    // Group key by dividers mode: cohort groups by the (label, suggested
+    // descendant, category) triple; event groups by the detection's
+    // event. ("none" is handled above.)
+    const keyOf = (d: DetectionSummary) =>
+      dividers === "cohort" ? cohortKey(d) : eventKey(d);
+
     const result: GridRow[] = [];
     let i = 0;
     while (i < detections.length) {
-      // Group key changes with dividers mode: label groups by current
-      // label / category, cohort groups by the (label, suggested
-      // descendant, category) triple that defines a cohort.
-      const groupKey = dividers === "cohort" ? cohortKey(detections[i]) : labelKey(detections[i]);
+      const groupKey = keyOf(detections[i]);
       let j = i;
-      while (
-        j < detections.length &&
-        (dividers === "cohort" ? cohortKey(detections[j]) : labelKey(detections[j])) === groupKey
-      ) {
+      while (j < detections.length && keyOf(detections[j]) === groupKey) {
         j++;
       }
       const slice = detections.slice(i, j);
@@ -236,7 +246,14 @@ export function CropGrid({
           result.push({ type: "cohort_gap" });
         }
       } else {
-        result.push({ type: "divider", label: labelKey(slice[0]), count: slice.length });
+        // Only event dividers remain in this branch (label dividers were
+        // removed; cohort is handled above).
+        result.push({
+          type: "divider",
+          label: eventDividerLabel(slice[0]),
+          count: slice.length,
+          detectionIds: slice.map((d) => d.detection_id),
+        });
         for (let k = 0; k < slice.length; k += columns) {
           result.push({ type: "cards", detections: slice.slice(k, k + columns) });
         }
@@ -296,12 +313,25 @@ export function CropGrid({
                 transform: `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)`,
               }}
             >
-              <div className="flex items-center gap-2 px-1 h-full">
-                <div className="h-px flex-1 bg-border" />
+              <div className="flex items-center gap-2 px-1 pt-1 pb-4">
                 <span className="text-xs text-muted-foreground font-medium capitalize whitespace-nowrap">
                   {row.label} ({row.count})
                 </span>
                 <div className="h-px flex-1 bg-border" />
+                {onSelectEvent && row.detectionIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      // Don't bubble to the grid's background handler,
+                      // which would clear the selection we just set.
+                      e.stopPropagation();
+                      onSelectEvent(row.detectionIds);
+                    }}
+                    className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline whitespace-nowrap"
+                  >
+                    Select
+                  </button>
+                )}
               </div>
             </div>
           );
@@ -488,8 +518,27 @@ export function CropGrid({
 // ── Grouping helpers (used by the dividers union above) ─────────────────
 
 
-function labelKey(d: DetectionSummary): string {
-  return d.label || d.category;
+function eventKey(d: DetectionSummary): string {
+  // Detections without an event (clustering not run) all fall into one
+  // trailing group; the "By event" sort places them last.
+  return d.event_id ?? "__no_event__";
+}
+
+
+/** Header text for an event divider: the event start (camera-local) and
+ *  site, matching how event cards label themselves on the Counts page. */
+function eventDividerLabel(d: DetectionSummary): string {
+  if (!d.event_start_local) return d.site_name || "No event";
+  const date = formatCameraDate(d.event_start_local, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  const time = formatCameraTime(d.event_start_local, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return d.site_name ? `${date} · ${time} · ${d.site_name}` : `${date} · ${time}`;
 }
 
 

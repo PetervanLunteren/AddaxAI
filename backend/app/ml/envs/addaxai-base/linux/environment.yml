@@ -41,5 +41,11 @@ dependencies:
 
     # MegaDetector and detection packages
     - setuptools<82  # yolov5 needs pkg_resources, removed in setuptools 82
+    # Prebuilt wheel for megadetector's ultralytics-yolov5 dependency.
+    # The PyPI release is sdist-only and its setup.py downloads a README
+    # from GitHub at build time; that crashes on machines where Python
+    # cannot load the Windows certificate store (ssl ASN1 error, beta
+    # report 2026-06-10). Installing a wheel skips setup.py entirely.
+    - ultralytics-yolov5 @ https://huggingface.co/Addax-Data-Science/pip-wheels/resolve/main/ultralytics_yolov5-0.1.1-py3-none-any.whl#sha256=d532e62d6d7cd6c7381e4453810f31f10fd269cf9f237494bc570e74168dc2e1
     - megadetector==10.0.18
     - ultralytics==8.3.177

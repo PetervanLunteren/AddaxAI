@@ -102,7 +102,17 @@ export function BulkActionBar({
   if (count === 0) return null;
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-background/95 backdrop-blur border rounded-xl shadow-lg px-4 py-2.5 flex items-center gap-3">
+    <>
+      {/* Gradient blur scrim behind the floating bar, so the grid crops
+          fade out under it instead of butting hard against the pill.
+          Mirrors the folder-run stepper's blurred Back / Continue bar.
+          Non-interactive; the mask fades the blur upward so there's no
+          hard blur edge. */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-40 h-28 bg-gradient-to-t from-background via-background/60 to-transparent backdrop-blur-sm [mask-image:linear-gradient(to_top,black,transparent)] [-webkit-mask-image:linear-gradient(to_top,black,transparent)]"
+      />
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-background/95 backdrop-blur border rounded-xl shadow-lg px-4 py-2.5 flex items-center gap-3">
       <span className="text-sm font-medium min-w-[80px]">
         {count} selected
       </span>
@@ -177,6 +187,7 @@ export function BulkActionBar({
         Deselect
         <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">Esc</kbd>
       </Button>
-    </div>
+      </div>
+    </>
   );
 }

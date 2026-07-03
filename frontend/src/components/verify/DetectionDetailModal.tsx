@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Ban, Check, Tag, ChevronLeft, ChevronRight, ChevronsRight, X } from "lucide-react";
+import { Ban, Check, Tag, ChevronLeft, ChevronRight, ChevronsRight, Play, X } from "lucide-react";
 import { basename } from "../../lib/path-utils";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
@@ -16,10 +16,13 @@ import { Button } from "../ui/button";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { labelsApi } from "../../api/labels";
+import { eventsApi } from "../../api/events";
+import { projectsApi } from "../../api/projects";
 import { API_BASE_URL } from "../../lib/api-client";
-import { cn } from "../../lib/utils";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import { getDetectionDisplayName } from "../../lib/detection-utils";
+import { FrameThumbnail } from "./FrameThumbnail";
+import { ContextCard } from "./ContextCard";
 import {
   computePillLayout,
   svgRoundedRectPath,
@@ -164,12 +167,32 @@ export function DetectionDetailModal({
     };
   }, [isPanning, zoom]);
 
-  // Load full file data to get image dimensions and detection bbox
+  // Load full file data to get image dimensions and detection bbox.
   const { data: fileData } = useQuery({
     queryKey: ["file", detection?.file_id],
     queryFn: () => filesApi.get(detection!.file_id),
     enabled: open && !!detection?.file_id,
   });
+
+  // Load the detection's event for the chronological-context card. Reuses
+  // the same endpoint the Counts modal uses, so it shows every frame of
+  // the event regardless of embeddings. Absent when event clustering
+  // hasn't run (event_id is null).
+  const { data: eventData } = useQuery({
+    queryKey: ["event", detection?.event_id],
+    queryFn: () => eventsApi.get(detection!.event_id!),
+    enabled: open && !!detection?.event_id,
+  });
+  const eventFiles = eventData?.files ?? [];
+
+  // Project detection threshold for the context thumbnails' box overlay.
+  // Shared query key with the rest of the app, so usually a cache hit.
+  const { data: project } = useQuery({
+    queryKey: ["project", projectId],
+    queryFn: () => projectsApi.get(projectId!),
+    enabled: open && !!projectId,
+  });
+  const detectionThreshold = project?.detection_threshold ?? 0;
 
   // Fetch 10 nearest neighbors for the Label Agreement thumbnails
   const { data: neighborsData } = useQuery({
@@ -556,61 +579,130 @@ export function DetectionDetailModal({
                 </div>
               )}
 
-              {/* Label Agreement */}
+              {/* Event context: the event's other frames, so a close-up
+                  crop can be read in sequence. Hover-only — nothing is
+                  opened, so the big image on the left always stays on the
+                  crop being verified. */}
+              {eventFiles.length > 1 && (
+                <ContextCard
+                  title="Event context"
+                  caption="Other frames in this event"
+                  columns={4}
+                  items={eventFiles.map((file) => {
+                    const isCurrent = file.id === detection.file_id;
+                    return {
+                      key: file.id,
+                      borderClassName: isCurrent
+                        ? "border-primary"
+                        : "border-transparent",
+                      tile: (
+                        <>
+                          <FrameThumbnail
+                            fileId={file.id}
+                            file={file}
+                            detectionThreshold={detectionThreshold}
+                          />
+                          {file.file_type === "video" && (
+                            <span className="pointer-events-none absolute bottom-0.5 left-0.5 flex items-center justify-center rounded-full bg-black/60 p-0.5">
+                              <Play className="h-2.5 w-2.5 fill-white text-white" />
+                            </span>
+                          )}
+                        </>
+                      ),
+                      preview: (
+                        <>
+                          <div className="relative aspect-[4/3] w-full overflow-hidden rounded">
+                            <FrameThumbnail
+                              fileId={file.id}
+                              file={file}
+                              detectionThreshold={detectionThreshold}
+                            />
+                          </div>
+                          <p className="mt-1.5 px-0.5 text-[11px] text-muted-foreground">
+                            {formatCameraTime(
+                              file.captured_at_local,
+                              { hour: "2-digit", minute: "2-digit", second: "2-digit" },
+                              "en-GB",
+                            )}
+                            {isCurrent && " · the crop you're verifying"}
+                          </p>
+                        </>
+                      ),
+                    };
+                  })}
+                />
+              )}
+
+              {/* Similarity context: the crop's look-alike neighbours,
+                  mirroring the Similarity sort. Meter shows how many
+                  neighbours share the label; thumbnails enlarge on hover
+                  like the Event context card. */}
               {!detection.verified && detection.neighbor_agreement != null && (() => {
                 const count = Math.round(detection.neighbor_agreement * 10);
                 const pct = detection.neighbor_agreement * 100;
                 const hasSuggestion =
                   detection.neighbor_top_label &&
                   detection.neighbor_top_label !== detection.label;
-                return (
-                  <div className="mx-3 mt-3 rounded-lg border bg-muted/40">
-                    <h3 className="px-3 pt-3 pb-2 text-sm font-semibold">Label agreement</h3>
-                    <div className="px-3 pb-3 space-y-2">
-                      <div className="relative h-3 w-full overflow-hidden rounded-full flex">
-                        <div style={{ width: `${pct}%`, backgroundColor: "#0f6064" }} className="h-full transition-all duration-500 ease-out" />
-                        <div style={{ width: `${100 - pct}%`, backgroundColor: "#882000" }} className="h-full transition-all duration-500 ease-out" />
-                      </div>
-                      <p className="text-xs text-muted-foreground text-center">
-                        {count}/10 neighbors agree
-                      </p>
-                      {hasSuggestion && (
-                        <p className="text-sm text-amber-600 dark:text-amber-400">
-                          Neighbors suggest:{" "}
-                          <span className="font-semibold capitalize">
-                            {detection.neighbor_top_scientific_name ||
-                              detection.neighbor_top_label}
-                          </span>
-                        </p>
-                      )}
-                      {/* Neighbor thumbnails */}
-                      {neighborsData?.results && neighborsData.results.length > 0 && (
-                        <div className="grid grid-cols-5 gap-1.5 pt-1">
-                          {neighborsData.results
-                            .filter((n) => n.detection_id !== detection.detection_id)
-                            .slice(0, 10)
-                            .map((n) => {
-                            const agrees = n.label === detection.label;
-                            return (
-                              <div key={n.detection_id} className="space-y-0.5">
-                                <img
-                                  src={`${API_BASE_URL}${n.crop_url}`}
-                                  alt={getDetectionDisplayName(n)}
-                                  className={cn(
-                                    "w-full aspect-square object-cover rounded border-2",
-                                    agrees ? "border-[#0f6064]" : "border-[#882000]"
-                                  )}
-                                />
-                                <p className="text-[9px] text-muted-foreground truncate text-center capitalize">
-                                  {getDetectionDisplayName(n)}
-                                </p>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                const header = (
+                  <>
+                    {/* Calm confidence meter: a single teal fill over a
+                        muted track. Disagreement is just the unfilled
+                        remainder, not a red "wrong" signal. */}
+                    <div className="relative h-3 w-full overflow-hidden rounded-full bg-muted-foreground/15">
+                      <div style={{ width: `${pct}%`, backgroundColor: "#0f6064" }} className="h-full transition-all duration-500 ease-out" />
                     </div>
-                  </div>
+                    <p className="text-xs text-muted-foreground text-center">
+                      {count} of 10 similar crops share this label
+                    </p>
+                    {hasSuggestion && (
+                      <p className="text-sm text-muted-foreground">
+                        Most look like:{" "}
+                        <span className="font-semibold capitalize text-foreground">
+                          {detection.neighbor_top_scientific_name ||
+                            detection.neighbor_top_label}
+                        </span>
+                      </p>
+                    )}
+                  </>
+                );
+                const items = (neighborsData?.results ?? [])
+                  .filter((n) => n.detection_id !== detection.detection_id)
+                  .slice(0, 10)
+                  .map((n) => {
+                    const agrees = n.label === detection.label;
+                    const crop = (
+                      <img
+                        src={`${API_BASE_URL}${n.crop_url}`}
+                        alt={getDetectionDisplayName(n)}
+                        className="h-full w-full object-cover"
+                      />
+                    );
+                    return {
+                      key: n.detection_id,
+                      borderClassName: agrees
+                        ? "border-[#0f6064]"
+                        : "border-muted-foreground/30",
+                      tile: crop,
+                      preview: (
+                        <>
+                          <div className="relative aspect-[4/3] w-full overflow-hidden rounded">
+                            {crop}
+                          </div>
+                          <p className="mt-1.5 px-0.5 text-[11px] capitalize text-muted-foreground">
+                            {getDetectionDisplayName(n)}
+                          </p>
+                        </>
+                      ),
+                    };
+                  });
+                return (
+                  <ContextCard
+                    title="Similarity context"
+                    caption="Similar-looking crops"
+                    columns={5}
+                    header={header}
+                    items={items}
+                  />
                 );
               })()}
             </div> {/* end scrollable area */}

@@ -25,12 +25,13 @@ import type { VerifySort } from "../../api/types";
 const RANDOM_SEED_MAX = 2 ** 31;
 
 const SORT_LABELS: Record<VerifySort, string> = {
-  similarity: "Similarity (typical first)",
+  similarity: "Similarity",
   similarity_reverse: "Similarity (outliers first)",
   newest: "Newest first",
   oldest: "Oldest first",
   random: "Random",
   cls_low: "Lowest confidence first",
+  events: "By event",
 };
 
 function newSeed(): number {

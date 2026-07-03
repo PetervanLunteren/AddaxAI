@@ -16,6 +16,7 @@ VALID_SORTS: frozenset[str] = frozenset(
         "newest",
         "oldest",
         "cls_low",
+        "events",
         "suggestions",
     }
 )
@@ -60,6 +61,30 @@ def order_indices(
         nulls = [i for ts, i in with_ts if not ts]
         non_null.sort(key=lambda kv: kv[0], reverse=descending)
         return [i for _, i in non_null] + nulls
+
+    if sort_mode == "events":
+        # Group detections by their event. Events are ordered newest
+        # first (matching the Counts page default); within an event,
+        # chronological by sequence_number so a burst reads in capture
+        # order. Detections with no event (event clustering not run, or
+        # an orphaned file) sort to the end, like the timestamp sorts.
+        #
+        # The sort is stable, so we sort by the weakest key first
+        # (sequence ascending) then the strongest (event_start
+        # descending). event_id breaks ties between events that share a
+        # start time so their detections never interleave.
+        with_event = [(metas[i].get("event_id"), i) for i in range(n)]
+        non_null = [i for eid, i in with_event if eid]
+        nulls = [i for eid, i in with_event if not eid]
+        non_null.sort(key=lambda i: (metas[i].get("event_sequence") or 0))
+        non_null.sort(
+            key=lambda i: (
+                metas[i].get("event_start_local") or "",
+                metas[i].get("event_id") or "",
+            ),
+            reverse=True,
+        )
+        return non_null + nulls
 
     # cls_low
     with_lc = [(metas[i].get("label_confidence"), i) for i in range(n)]

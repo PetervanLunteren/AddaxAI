@@ -589,7 +589,8 @@ export type VerifySort =
   | "random"
   | "cls_low"
   | "similarity"
-  | "similarity_reverse";
+  | "similarity_reverse"
+  | "events";
 
 export interface EventFilterParams {
   site_ids?: string[];
@@ -915,6 +916,7 @@ export type LabelSort =
   | "newest"
   | "oldest"
   | "cls_low"
+  | "events"
   | "suggestions";
 
 export interface SortRequest {
@@ -968,6 +970,13 @@ export interface DetectionSummary {
   deployment_id: string | null;
   /** ISO 8601 with the project's local UTC offset. */
   captured_at_local: string | null;
+  /** Event this detection's file belongs to. Drives the "By event" sort,
+   * the event dividers, and the detail modal's sequence strip. Null when
+   * event clustering has not run for the deployment. */
+  event_id: string | null;
+  /** Start time of `event_id`, naive camera-local. Used as the event
+   * divider's header label. */
+  event_start_local: string | null;
   crop_url: string;
   crop_bbox: CropBbox | null;
   /** Video detections carry their frame index; image detections are null. */
