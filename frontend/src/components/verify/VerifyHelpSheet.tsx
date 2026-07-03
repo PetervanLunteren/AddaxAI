@@ -141,9 +141,10 @@ function LabelsGuide() {
         </p>
         <p>
           Keys: <Kbd>Enter</Kbd> verify, <Kbd>R</Kbd> relabel, <Kbd>X</Kbd> mark
-          as a false detection, <Kbd>M</Kbd> set the whole selection to its most
-          common label, <Kbd>1</Kbd>-<Kbd>5</Kbd> your saved labels. The
-          keyboard icon in the toolbar lists them all and lets you set the{" "}
+          as a false detection, <Kbd>U</Kbd> mark as unknown when you can't
+          identify it, <Kbd>M</Kbd> set the whole selection to its most common
+          label, <Kbd>1</Kbd>-<Kbd>5</Kbd> your saved labels. The keyboard icon
+          in the toolbar lists them all and lets you set the{" "}
           <Kbd>1</Kbd>-<Kbd>5</Kbd> slots.
         </p>
       </Section>

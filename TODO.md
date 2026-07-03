@@ -16,7 +16,7 @@ how do we decide which label to choose? the most aparent one? If so, add it to t
                 All photos and videos from one event go to the same folder
 
 
-There seems to be some exclusions in the detections.csv in folder run (perhaps also in projects mode?). If I have a run of 6 coyotes and 4 AI suggested coyotes but verified birds, it only lists the coyotes in the detections.csv. Why? Investigate. Is this the only bug, or are there more like this? The burds do appear in the JSON output, but nowhere in the CSVs
+There seems to be some exclusions in the detections.csv in folder run (perhaps also in projects mode?). If I have a run of 6 coyotes and 4 AI suggested coyotes but verified birds, it only lists the coyotes in the detections.csv. Why? Investigate. Is this the only bug, or are there more like this? The burds do appear in the JSON output, but nowhere in the CSVs ("detections.csv dropping verified-relabelled rows")
 
 If it takes long per video to process, the user would see speed as 0.0 video per second.... what do do abouyt that?
                 Processing video:

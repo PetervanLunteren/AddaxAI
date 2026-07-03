@@ -727,7 +727,6 @@ export function LabelsTab({
     // Cascade to the Media / Events views (File.verified rollup) and the
     // verified-progress pill — see applyDetectionAction.
     queryClient.invalidateQueries({ queryKey: ["events"] });
-    queryClient.invalidateQueries({ queryKey: ["files-for-verify"] });
   }, [lblSort, queryClient, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Patch detections in local state without refetching. */
@@ -797,7 +796,6 @@ export function LabelsTab({
           return typeof key === "string" && key.startsWith("event");
         },
       });
-      queryClient.invalidateQueries({ queryKey: ["files-for-verify"] });
     },
     [lblSort, patchLocalDetections, projectId, queryClient],
   );
@@ -864,7 +862,6 @@ export function LabelsTab({
             return typeof key === "string" && key.startsWith("event");
           },
         });
-        queryClient.invalidateQueries({ queryKey: ["files-for-verify"] });
         toast.success(
           `Relabelled ${cohort.count} label${
             cohort.count === 1 ? "" : "s"
@@ -981,6 +978,53 @@ export function LabelsTab({
     [applyDetectionAction, advanceSelectionAfter, queryClient]
   );
 
+  // "Unknown" mirrors mark-false but the label is a real observation
+  // (kept in counts/exports) and the category is left untouched. The
+  // server auto-creates the "unknown" custom taxonomy row and resolves
+  // both names to "Unknown"; the optimistic patch pre-fills them so the
+  // tile updates immediately. Grid-shortcut variant owns the API call.
+  const handleMarkUnknown = useCallback(
+    (ids: string[]) => {
+      detectionsApi
+        .bulkRelabel(ids, "unknown", undefined)
+        .then(() => {
+          applyDetectionAction(ids, (d) => ({
+            ...d,
+            label: "unknown",
+            common_name: "Unknown",
+            scientific_name: "Unknown",
+            label_taxonomy_id: null,
+            neighbor_top_label: null,
+            neighbor_top_scientific_name: null,
+            verified: true,
+          }));
+          advanceSelectionAfter(ids);
+          queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+        })
+        .catch((err: Error) => toast.error(err.message));
+    },
+    [applyDetectionAction, advanceSelectionAfter, queryClient]
+  );
+
+  // Patch-only variant: the BulkActionBar already ran the API call.
+  const handleBulkMarkUnknown = useCallback(
+    (ids: string[]) => {
+      applyDetectionAction(ids, (d) => ({
+        ...d,
+        label: "unknown",
+        common_name: "Unknown",
+        scientific_name: "Unknown",
+        label_taxonomy_id: null,
+        neighbor_top_label: null,
+        neighbor_top_scientific_name: null,
+        verified: true,
+      }));
+      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+      advanceSelectionAfter(ids);
+    },
+    [applyDetectionAction, advanceSelectionAfter, queryClient]
+  );
+
   const handleBulkVerify = useCallback(
     (ids: string[]) => {
       applyDetectionAction(ids, (d) => ({ ...d, verified: true }));
@@ -1079,6 +1123,12 @@ export function LabelsTab({
         return;
       }
 
+      if ((e.key === "u" || e.key === "U") && !e.ctrlKey && !e.metaKey && selectedIds.size > 0) {
+        e.preventDefault();
+        handleMarkUnknown(Array.from(selectedIds));
+        return;
+      }
+
       if ((e.key === "m" || e.key === "M") && !e.ctrlKey && !e.metaKey && selectedIds.size > 0) {
         e.preventDefault();
         handleMatchMajority(Array.from(selectedIds));
@@ -1134,7 +1184,7 @@ export function LabelsTab({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds, detailDetection, allDetections, resultSort, handleActionComplete, shortcutLabels, applyDetectionAction, handleMarkFalse, handleMatchMajority, handleBulkVerify, advanceSelectionAfter]);
+  }, [selectedIds, detailDetection, allDetections, resultSort, handleActionComplete, shortcutLabels, applyDetectionAction, handleMarkFalse, handleMarkUnknown, handleMatchMajority, handleBulkVerify, advanceSelectionAfter]);
 
   // Click outside grid to deselect
   useEffect(() => {
@@ -1403,6 +1453,7 @@ export function LabelsTab({
         onRelabel={handleBulkRelabel}
         onVerify={handleBulkVerify}
         onMarkFalse={handleBulkMarkFalse}
+        onMarkUnknown={handleBulkMarkUnknown}
         onMatchMajority={handleMatchMajority}
         majorityLabel={majorityLabel}
         projectId={projectId}
@@ -1445,6 +1496,18 @@ export function LabelsTab({
             label: "false detection",
             common_name: "False detection",
             scientific_name: "False detection",
+            label_taxonomy_id: null,
+            neighbor_top_label: null,
+            neighbor_top_scientific_name: null,
+            verified: true,
+          }));
+        }}
+        onMarkUnknown={(detectionId) => {
+          applyDetectionAction([detectionId], (d) => ({
+            ...d,
+            label: "unknown",
+            common_name: "Unknown",
+            scientific_name: "Unknown",
             label_taxonomy_id: null,
             neighbor_top_label: null,
             neighbor_top_scientific_name: null,

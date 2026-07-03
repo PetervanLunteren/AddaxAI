@@ -442,7 +442,6 @@ export function EventDetailModal({
       queryClient.invalidateQueries({ queryKey: ["events"] });
       queryClient.invalidateQueries({ queryKey: ["label-tree"] });
       queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["files-for-verify"] });
     },
     onError: (err: Error) => toast.error(err.message),
   });

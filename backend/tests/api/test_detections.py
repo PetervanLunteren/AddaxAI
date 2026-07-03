@@ -160,6 +160,36 @@ def test_bulk_relabel(client, db):
     assert resp.json()["updated_count"] == 2
 
 
+def test_bulk_relabel_unknown_stays_a_real_observation(client, db):
+    """Relabelling to "unknown" keeps a counted, verified observation.
+
+    Unlike "false detection", "unknown" is deliberately NOT a
+    NON_LABEL_CLASS, so it survives as a real observation. The relabel
+    keeps the category, verifies the detection, and auto-creates a custom
+    taxonomy row resolving both names to "Unknown". This backs the
+    Labels-page "Unknown" action.
+    """
+    from app.ml.label_exclusion import NON_LABEL_CLASSES
+
+    assert "unknown" not in NON_LABEL_CLASSES
+
+    f = _setup_file(db)
+    d = make_detection(db, file_id=f.id, label="crow", category="animal")
+    resp = client.post("/api/detections/bulk-relabel", json={
+        "detection_ids": [d.id],
+        "label": "unknown",
+    })
+    assert resp.status_code == 200
+
+    db.refresh(d)
+    assert d.label == "unknown"
+    assert d.verified is True
+    assert d.category == "animal"  # category left untouched
+    assert d.common_name == "Unknown"
+    assert d.scientific_name == "Unknown"
+    assert d.label_taxonomy_id is not None  # auto-created custom row
+
+
 def test_bulk_dismiss_sets_and_clears_flag(client, db):
     f = _setup_file(db)
     d1 = make_detection(db, file_id=f.id, label="crow")

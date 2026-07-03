@@ -11,6 +11,25 @@ import { logger } from "../lib/logger";
 export type ObservationFormat = "csv" | "tsv" | "xlsx";
 export type SpatialFormat = "geojson" | "shapefile" | "gpkg";
 
+/** Optional export scope. Empty / omitted = whole project. Picking a site
+ *  includes all its deployments (resolved server-side). */
+export interface ExportScope {
+  siteIds?: string[];
+  deploymentIds?: string[];
+}
+
+/** Append the scope to an endpoint, handling URLs that already have a
+ *  query string (e.g. `?format=csv`) and those that don't (spreadsheet). */
+function withScope(endpoint: string, scope?: ExportScope): string {
+  const parts: string[] = [];
+  if (scope?.siteIds?.length) parts.push(`site_ids=${scope.siteIds.join(",")}`);
+  if (scope?.deploymentIds?.length)
+    parts.push(`deployment_ids=${scope.deploymentIds.join(",")}`);
+  if (parts.length === 0) return endpoint;
+  const sep = endpoint.includes("?") ? "&" : "?";
+  return `${endpoint}${sep}${parts.join("&")}`;
+}
+
 async function fetchBlob(endpoint: string): Promise<Blob> {
   const url = `${API_BASE_URL}${endpoint}`;
   logger.info(`API GET ${endpoint}`);
@@ -42,25 +61,49 @@ async function fetchBlob(endpoint: string): Promise<Blob> {
 
 export const exportApi = {
   /** Location / effort table: one row per deployment (site, trap-nights). */
-  downloadDeployments: (projectId: string, format: ObservationFormat): Promise<Blob> =>
-    fetchBlob(`/api/projects/${projectId}/export/deployments?format=${format}`),
+  downloadDeployments: (
+    projectId: string,
+    format: ObservationFormat,
+    scope?: ExportScope,
+  ): Promise<Blob> =>
+    fetchBlob(
+      withScope(`/api/projects/${projectId}/export/deployments?format=${format}`, scope),
+    ),
 
   /** Media / membership table: one row per file, including empties. */
-  downloadFiles: (projectId: string, format: ObservationFormat): Promise<Blob> =>
-    fetchBlob(`/api/projects/${projectId}/export/files?format=${format}`),
+  downloadFiles: (
+    projectId: string,
+    format: ObservationFormat,
+    scope?: ExportScope,
+  ): Promise<Blob> =>
+    fetchBlob(
+      withScope(`/api/projects/${projectId}/export/files?format=${format}`, scope),
+    ),
 
   /** Per-detection table (the labels grain): one row per bounding box. */
-  downloadDetections: (projectId: string, format: ObservationFormat): Promise<Blob> =>
-    fetchBlob(`/api/projects/${projectId}/export/detections?format=${format}`),
+  downloadDetections: (
+    projectId: string,
+    format: ObservationFormat,
+    scope?: ExportScope,
+  ): Promise<Blob> =>
+    fetchBlob(
+      withScope(`/api/projects/${projectId}/export/detections?format=${format}`, scope),
+    ),
 
   /** Event-level table (the counts grain): one row per species per event
    *  with the effective count. */
-  downloadObservations: (projectId: string, format: ObservationFormat): Promise<Blob> =>
-    fetchBlob(`/api/projects/${projectId}/export/observations?format=${format}`),
+  downloadObservations: (
+    projectId: string,
+    format: ObservationFormat,
+    scope?: ExportScope,
+  ): Promise<Blob> =>
+    fetchBlob(
+      withScope(`/api/projects/${projectId}/export/observations?format=${format}`, scope),
+    ),
 
   /** Combined two-sheet workbook (Detections + Counts). XLSX only. */
-  downloadSpreadsheetXlsx: (projectId: string): Promise<Blob> =>
-    fetchBlob(`/api/projects/${projectId}/export/spreadsheet`),
+  downloadSpreadsheetXlsx: (projectId: string, scope?: ExportScope): Promise<Blob> =>
+    fetchBlob(withScope(`/api/projects/${projectId}/export/spreadsheet`, scope)),
 
   downloadSpatial: (projectId: string, format: SpatialFormat): Promise<Blob> =>
     fetchBlob(`/api/projects/${projectId}/export/spatial?format=${format}`),

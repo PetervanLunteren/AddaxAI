@@ -31,6 +31,7 @@ const GRID_SHORTCUTS: ReadonlyArray<readonly [string, string]> = [
   ["Click outside", "Deselect all"],
   ["Enter", "Verify selected"],
   ["X", "Mark false detection"],
+  ["U", "Mark unknown (unidentifiable)"],
   ["R", "Relabel selected"],
   ["M", "Relabel to most common in selection"],
   [navigator.platform.includes("Mac") ? "Cmd + A" : "Ctrl + A", "Select all"],

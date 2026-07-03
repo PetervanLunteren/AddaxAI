@@ -129,15 +129,16 @@ def test_export_detections_csv_happy_path(client, db):
     # fields. Time / place live in files.csv (join on file_id).
     assert headers == [
         "detection_id", "file_id", "deployment_id", "event_id",
-        "category", "detection_confidence",
+        "detection_category", "detection_confidence",
         "classification_label", "classification_confidence",
+        "ai_classification_label", "ai_classification_confidence",
+        "classification_method", "is_verified",
         "taxon_class", "taxon_order", "taxon_family", "taxon_genus",
         "taxon_species", "scientific_name", "common_name",
         "frame_number", "bbox_x", "bbox_y", "bbox_width", "bbox_height",
-        "is_verified",
     ]
     cls_i = headers.index("classification_label")
-    cat_i = headers.index("category")
+    cat_i = headers.index("detection_category")
     conf_i = headers.index("detection_confidence")
 
     data = rows[1:]
@@ -156,6 +157,92 @@ def test_export_detections_csv_happy_path(client, db):
     person = next(r for r in data if r[cat_i] == "person")
     assert float(person[conf_i]) == pytest.approx(0.95, abs=1e-4)
     assert person[cls_i] == ""
+
+
+def test_export_detections_records_ai_vs_human_labels(client, db):
+    """The detections CSV keeps the AI's original call alongside the
+    current (possibly human-corrected) label, so a correction is visible."""
+    project, _site, deployment = _build_simple_project(db)
+    f = make_file(
+        db, deployment_id=deployment.id, captured_at_local=datetime(2024, 6, 1, 9, 0, 0)
+    )
+    # AI said "wallaby"; a human later corrected it to "possum" and verified.
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=0.9,
+        label="possum",
+        label_confidence=1.0,
+        original_label="wallaby",
+        original_label_confidence=0.42,
+        classification_method="human",
+        verified=True,
+    )
+    db.commit()
+
+    resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
+    assert resp.status_code == 200
+    rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
+    headers, data = rows[0], rows[1:]
+    row = data[0]
+
+    def cell(name: str) -> str:
+        return row[headers.index(name)]
+
+    assert cell("classification_label") == "possum"       # current
+    assert cell("ai_classification_label") == "wallaby"    # AI original, retained
+    assert float(cell("ai_classification_confidence")) == pytest.approx(0.42)
+    assert cell("classification_method") == "human"
+    assert cell("is_verified") == "TRUE"
+
+
+def test_export_scope_by_site_and_deployment(client, db):
+    """Exports narrow to a site (all its deployments) or a specific
+    deployment; no scope exports the whole project."""
+    project = make_project(db)
+    site_a = make_site(db, project_id=project.id, name="alpha")
+    site_b = make_site(db, project_id=project.id, name="beta")
+    dep_a = make_deployment(db, site_id=site_a.id)
+    dep_b = make_deployment(db, site_id=site_b.id)
+    f_a = make_file(
+        db, deployment_id=dep_a.id, captured_at_local=datetime(2024, 6, 1, 9, 0, 0)
+    )
+    f_b = make_file(
+        db, deployment_id=dep_b.id, captured_at_local=datetime(2024, 6, 2, 9, 0, 0)
+    )
+    make_detection(db, file_id=f_a.id, category="animal", confidence=0.9, label="deer")
+    make_detection(db, file_id=f_b.id, category="animal", confidence=0.9, label="fox")
+    db.commit()
+
+    base = f"/api/projects/{project.id}/export/detections?format=csv"
+
+    def _labels(url: str) -> set[str]:
+        resp = client.get(url)
+        assert resp.status_code == 200
+        rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
+        i = rows[0].index("classification_label")
+        return {r[i] for r in rows[1:]}
+
+    # Whole project (no scope): both detections.
+    assert _labels(base) == {"deer", "fox"}
+    # Scope to site A → only its deployment's detection.
+    assert _labels(f"{base}&site_ids={site_a.id}") == {"deer"}
+    # Scope to deployment B → only that deployment's detection.
+    assert _labels(f"{base}&deployment_ids={dep_b.id}") == {"fox"}
+    # Site A + deployment B combined → union.
+    assert _labels(
+        f"{base}&site_ids={site_a.id}&deployment_ids={dep_b.id}"
+    ) == {"deer", "fox"}
+
+    # The deployments table scopes through its own query path too.
+    dep_resp = client.get(
+        f"/api/projects/{project.id}/export/deployments"
+        f"?format=csv&site_ids={site_a.id}"
+    )
+    dep_rows = list(csv.reader(io.StringIO(dep_resp.content.decode("utf-8"))))
+    dep_id_i = dep_rows[0].index("deployment_id")
+    assert {r[dep_id_i] for r in dep_rows[1:]} == {dep_a.id}
 
 
 def test_export_files_includes_empties(client, db):
@@ -182,16 +269,17 @@ def test_export_files_includes_empties(client, db):
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     headers = rows[0]
     assert headers[0] == "file_id"
-    assert "category" in headers
+    assert "observation_type" in headers
     assert "event_id" in headers
     assert "file_type" in headers
     fid_i = headers.index("file_id")
-    cat_i = headers.index("category")
+    cat_i = headers.index("observation_type")
     dt_i = headers.index("datetime")
 
     data = rows[1:]
     by_id = {r[fid_i]: r for r in data}
-    # Both files appear, exactly once each; the empty file is category=blank.
+    # Both files appear, exactly once each; the empty file's observation_type
+    # is blank.
     assert set(by_id) == {f_animal.id, f_blank.id}
     assert by_id[f_blank.id][cat_i] == "blank"
     assert by_id[f_animal.id][cat_i] == "animal"

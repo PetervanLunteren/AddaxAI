@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Ban, Check, Tag, ChevronLeft, ChevronRight, ChevronsRight, Play, X } from "lucide-react";
+import { Ban, Check, CircleHelp, Tag, ChevronLeft, ChevronRight, ChevronsRight, Play, X } from "lucide-react";
 import { basename } from "../../lib/path-utils";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
@@ -43,6 +43,8 @@ interface DetectionDetailModalProps {
   onRelabel?: (detectionId: string, label: string, category: string) => void;
   /** Optimistic mark-false callback so parent can patch local state before navigating. */
   onMarkFalse?: (detectionId: string) => void;
+  /** Optimistic mark-unknown callback (real observation, keeps category). */
+  onMarkUnknown?: (detectionId: string) => void;
   /** Optimistic verify callback so parent can patch local state before navigating. */
   onVerify?: (detectionId: string, verified?: boolean) => void;
   /** Navigate to adjacent detection. Return false if at boundary. */
@@ -63,6 +65,7 @@ export function DetectionDetailModal({
   onActionComplete,
   onRelabel,
   onMarkFalse,
+  onMarkUnknown,
   onVerify,
   onNavigate,
   position,
@@ -237,6 +240,17 @@ export function DetectionDetailModal({
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const markUnknownMutation = useMutation({
+    mutationFn: () =>
+      detectionsApi.bulkRelabel([detection!.detection_id], "unknown", undefined),
+    onSuccess: () => {
+      onMarkUnknown?.(detection!.detection_id);
+      onActionComplete();
+      onNavigate?.("nextUnverified");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   // Verify current detection and advance to next unverified
   const handleVerifyAndAdvance = useCallback(() => {
     if (!detection || detection.verified) {
@@ -276,6 +290,9 @@ export function DetectionDetailModal({
       } else if (key === "x") {
         e.preventDefault();
         if (!markFalseMutation.isPending) markFalseMutation.mutate();
+      } else if (key === "u") {
+        e.preventDefault();
+        if (!markUnknownMutation.isPending) markUnknownMutation.mutate();
       } else if (key === "r") {
         e.preventDefault();
         setForceOpenPicker(true);
@@ -301,6 +318,7 @@ export function DetectionDetailModal({
     onNavigate,
     handleVerifyAndAdvance,
     markFalseMutation,
+    markUnknownMutation,
     relabelMutation,
     detection,
     onOpenChange,
@@ -789,6 +807,21 @@ export function DetectionDetailModal({
                 Mark false
                 <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
                   X
+                </kbd>
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-center"
+                onClick={() => markUnknownMutation.mutate()}
+                disabled={markUnknownMutation.isPending}
+                title="Mark as an unidentifiable animal and verify"
+              >
+                <CircleHelp className="h-4 w-4 mr-1" />
+                Unknown
+                <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
+                  U
                 </kbd>
               </Button>
 

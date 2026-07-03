@@ -32,9 +32,6 @@ export function invalidateProjectData(
     ["label-tree"],
     ["project-label-stats"],
     ["observations-stats", projectId],
-    ["files-for-verify", projectId],
-    ["files-count-for-verify", projectId],
-    ["files-verification-stats", projectId],
     ["observation-rate-map", projectId],
   ];
   for (const queryKey of keys) {

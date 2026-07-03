@@ -615,61 +615,6 @@ export interface EventFilterParams {
   seed?: number;
 }
 
-// File summary for the Files verify tab grid.
-export interface FileSummaryDetection {
-  id: string;
-  category: string;
-  confidence: number;
-  /** All four bbox fields are null together for event-level observations. */
-  bbox_x: number | null;
-  bbox_y: number | null;
-  bbox_width: number | null;
-  bbox_height: number | null;
-  label: string | null;
-  label_taxonomy_id: string | null;
-  /** Video detections carry their frame index; image detections are null. */
-  frame_number: number | null;
-}
-
-export interface FileSummary {
-  id: string;
-  deployment_id: string;
-  file_type: string;
-  file_format: string | null;
-  width_px: number | null;
-  height_px: number | null;
-  /** ISO 8601 with the project's local UTC offset. */
-  captured_at_local: string;
-  site_id: string | null;
-  site_name: string | null;
-  observation_type: string;
-  observation_types: string[];
-  labels: string[];
-  scientific_labels: Record<string, string>;
-  common_labels: Record<string, string>;
-  verified: boolean;
-  favorited: boolean;
-  flagged: boolean;
-  source_video_id: string | null;
-  /** Video rows expose this so the grid overlay can filter detections
-   * to the one frame the thumbnail actually shows. Null for images. */
-  best_frame_number: number | null;
-  detections: FileSummaryDetection[];
-}
-
-export interface FileVerificationStats {
-  total_files: number;
-  verified_files: number;
-}
-
-export interface AdjacentFilesResponse {
-  previous_id: string | null;
-  next_id: string | null;
-  next_unverified_id: string | null;
-  current_index: number;
-  total_count: number;
-}
-
 export interface EventFilterOptions {
   labels: string[];
   date_range: { min: string; max: string } | null;

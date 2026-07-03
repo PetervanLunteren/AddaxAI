@@ -43,6 +43,17 @@ from app.utils.datetime_serialization import set_active_project_timezone
 router = APIRouter(prefix="/api/projects/{project_id}/export", tags=["Export"])
 
 
+def _parse_ids(value: str | None) -> list[str] | None:
+    """Split a comma-separated query param into a list, or None if absent.
+
+    None means "no scope" (whole project); a list narrows the export.
+    """
+    if not value:
+        return None
+    ids = [v for v in (s.strip() for s in value.split(",")) if v]
+    return ids or None
+
+
 def _resolve_project(project_id: str, db: Session) -> Project:
     project = db.query(Project).filter(Project.id == project_id).first()
     if project is None:
@@ -100,11 +111,18 @@ def _tabular_response(
 async def export_deployments(
     project_id: str,
     format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
+    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
+    deployment_ids: str | None = Query(
+        None, description="Comma-separated deployment IDs"
+    ),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """Location / effort table: one row per deployment (site + trap-nights)."""
     project = _resolve_project(project_id, db)
-    headers, rows = export_crud.build_deployments_rows(db, project)
+    scope = export_crud.resolve_scope_deployment_ids(
+        db, project, _parse_ids(site_ids), _parse_ids(deployment_ids)
+    )
+    headers, rows = export_crud.build_deployments_rows(db, project, scope)
     base = _filename_base(project, "deployments")
     return _tabular_response(headers, rows, base, "Deployments", format)
 
@@ -113,11 +131,18 @@ async def export_deployments(
 async def export_files(
     project_id: str,
     format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
+    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
+    deployment_ids: str | None = Query(
+        None, description="Comma-separated deployment IDs"
+    ),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """Media / membership table: one row per file, including empties."""
     project = _resolve_project(project_id, db)
-    headers, rows = export_crud.build_files_rows(db, project)
+    scope = export_crud.resolve_scope_deployment_ids(
+        db, project, _parse_ids(site_ids), _parse_ids(deployment_ids)
+    )
+    headers, rows = export_crud.build_files_rows(db, project, scope)
     base = _filename_base(project, "files")
     return _tabular_response(headers, rows, base, "Files", format)
 
@@ -126,11 +151,20 @@ async def export_files(
 async def export_detections(
     project_id: str,
     format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
+    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
+    deployment_ids: str | None = Query(
+        None, description="Comma-separated deployment IDs"
+    ),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """Flat detections: one row per detection (the labels grain)."""
     project = _resolve_project(project_id, db)
-    scoped = export_crud.get_scoped_detection_rows(db, project)
+    scope = export_crud.resolve_scope_deployment_ids(
+        db, project, _parse_ids(site_ids), _parse_ids(deployment_ids)
+    )
+    scoped = export_crud.get_scoped_detection_rows(
+        db, project, deployment_ids=scope
+    )
     headers, rows = export_crud.build_detection_rows(db, project, scoped)
     base = _filename_base(project, "detections")
     return _tabular_response(headers, rows, base, "Detections", format)
@@ -140,11 +174,18 @@ async def export_detections(
 async def export_observations(
     project_id: str,
     format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
+    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
+    deployment_ids: str | None = Query(
+        None, description="Comma-separated deployment IDs"
+    ),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """Event-level observations: one row per species per event with count."""
     project = _resolve_project(project_id, db)
-    headers, rows = export_crud.build_observation_rows(db, project)
+    scope = export_crud.resolve_scope_deployment_ids(
+        db, project, _parse_ids(site_ids), _parse_ids(deployment_ids)
+    )
+    headers, rows = export_crud.build_observation_rows(db, project, scope)
     base = _filename_base(project, "counts")
     return _tabular_response(headers, rows, base, "Counts", format)
 
@@ -152,6 +193,10 @@ async def export_observations(
 @router.get("/spreadsheet")
 async def export_spreadsheet(
     project_id: str,
+    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
+    deployment_ids: str | None = Query(
+        None, description="Comma-separated deployment IDs"
+    ),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """Combined workbook: a Detections sheet and a Counts sheet.
@@ -160,7 +205,10 @@ async def export_spreadsheet(
     CSV / TSV the client downloads the two single-table endpoints instead.
     """
     project = _resolve_project(project_id, db)
-    sheets = export_crud.build_spreadsheet_sheets(db, project)
+    scope = export_crud.resolve_scope_deployment_ids(
+        db, project, _parse_ids(site_ids), _parse_ids(deployment_ids)
+    )
+    sheets = export_crud.build_spreadsheet_sheets(db, project, scope)
     payload = export_formats.serialize_xlsx_multi(sheets)
     base = _filename_base(project, "spreadsheet")
     return StreamingResponse(

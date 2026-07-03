@@ -1,111 +1,159 @@
 /**
- * Export page — three cards: Spreadsheet, Spatial, CamTrap DP.
+ * Export page (project mode) — one Card with a row per export.
  *
- * Ports the layout and formats from AddaxAI Connect's ExportsPage so users
- * can download project data in community-standard shapes: analyst-friendly
- * CSV/TSV/XLSX, GIS-ready GeoJSON/Shapefile/GeoPackage, and a GBIF-compatible
- * CamTrap DP package.
+ * Each row reads left to right: title + caption (half width), an optional
+ * filters slot (quarter width, currently the site/deployment scope on the
+ * Spreadsheet row), and a single "Download" dropdown of formats (quarter
+ * width). The dropdown pattern is used for every export, including
+ * single-option ones, so the page reads as one tidy column of controls.
+ * Layout follows AddaxAI Connect's ExportsPage; the filters column is
+ * WebUI-specific and reserved for more filters later.
  */
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { useParams } from "react-router-dom";
-import { AlertCircle, Download, Loader2 } from "lucide-react";
+import { AlertCircle, ChevronDown, Download, Loader2 } from "lucide-react";
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
+import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "../components/ui/dropdown-menu";
+import {
   exportApi,
+  type ExportScope,
   type ObservationFormat,
   type SpatialFormat,
 } from "../api/export";
 import { useNoSiteDeployments } from "../hooks/useNoSiteDeployments";
+import { ExportScopeSelect } from "../components/export/ExportScopeSelect";
 import { SpatialExportConfirmDialog } from "../components/export/SpatialExportConfirmDialog";
 import { CamtrapDPExportConfirmDialog } from "../components/export/CamtrapDPExportConfirmDialog";
 import { CamtrapDPProgressModal } from "../components/export/CamtrapDPProgressModal";
 import { downloadBlob } from "../lib/download";
 
+interface DownloadOption {
+  value: string;
+  label: string;
+}
 
-const OBSERVATION_OPTIONS: { value: ObservationFormat; label: string }[] = [
+const OBSERVATION_OPTIONS: DownloadOption[] = [
   { value: "csv", label: "CSV" },
   { value: "tsv", label: "TSV" },
   { value: "xlsx", label: "XLSX" },
 ];
 
-const SPATIAL_OPTIONS: { value: SpatialFormat; label: string }[] = [
+const SPATIAL_OPTIONS: DownloadOption[] = [
   { value: "geojson", label: "GeoJSON" },
   { value: "shapefile", label: "Shapefile" },
   { value: "gpkg", label: "GeoPackage" },
 ];
 
-type CamtrapMedia = "metadata" | "thumbnails";
-
-const CAMTRAP_MEDIA_OPTIONS: { value: CamtrapMedia; label: string }[] = [
+const CAMTRAP_MEDIA_OPTIONS: DownloadOption[] = [
   { value: "metadata", label: "Metadata only" },
   { value: "thumbnails", label: "Include thumbnails" },
 ];
-
-interface TextToggleProps<T extends string> {
-  options: { value: T; label: string }[];
-  value: T;
-  onChange: (value: T) => void;
-}
-
-function TextToggle<T extends string>({ options, value, onChange }: TextToggleProps<T>) {
-  return (
-    <div className="inline-flex rounded-md border border-input overflow-hidden">
-      {options.map((opt) => {
-        const active = opt.value === value;
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => onChange(opt.value)}
-            className={
-              "px-4 py-1.5 text-sm font-medium transition-colors " +
-              (active
-                ? "bg-primary text-primary-foreground"
-                : "bg-background text-foreground hover:bg-accent")
-            }
-          >
-            {opt.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-interface ErrorBannerProps {
-  message: string;
-}
-
-function ErrorBanner({ message }: ErrorBannerProps) {
-  return (
-    <div className="flex items-center gap-2 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
-      <AlertCircle className="h-4 w-4 flex-shrink-0" />
-      <span>{message}</span>
-    </div>
-  );
-}
 
 function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return "Export failed";
 }
 
+function DownloadDropdown({
+  options,
+  onSelect,
+  isLoading,
+}: {
+  options: DownloadOption[];
+  onSelect: (value: string) => void;
+  isLoading: boolean;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" disabled={isLoading} className="gap-2">
+          {isLoading ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Preparing export...
+            </>
+          ) : (
+            <>
+              <Download className="h-4 w-4" />
+              Download
+              <ChevronDown className="h-4 w-4" />
+            </>
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {options.map((opt) => (
+          <DropdownMenuItem key={opt.value} onClick={() => onSelect(opt.value)}>
+            {opt.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ExportRow({
+  title,
+  description,
+  filters,
+  options,
+  isLoading,
+  onSelect,
+  error,
+}: {
+  title: string;
+  description: React.ReactNode;
+  filters?: React.ReactNode;
+  options: DownloadOption[];
+  isLoading: boolean;
+  onSelect: (value: string) => void;
+  error: string | null;
+}) {
+  return (
+    <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
+        <div className="w-full sm:w-1/2 sm:shrink-0">
+          <h3 className="text-sm font-medium">{title}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        </div>
+        <div className="w-full sm:w-1/4">{filters}</div>
+        <div className="w-full sm:w-1/4 sm:flex sm:justify-end">
+          <DownloadDropdown
+            options={options}
+            onSelect={onSelect}
+            isLoading={isLoading}
+          />
+        </div>
+      </div>
+      {error && (
+        <div className="mt-3 flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ExportPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const { data: noSite } = useNoSiteDeployments(projectId);
 
-  const [tableFormat, setTableFormat] = useState<ObservationFormat>("csv");
+  // Export scope reported by the picker. Undefined = whole project.
+  // Applies only to the Spreadsheet export, not spatial or CamTrap DP.
+  const [tableScope, setTableScope] = useState<ExportScope | undefined>(undefined);
+
+  // Spatial / CamTrap DP carry a selection into their confirm dialogs.
   const [spatialFormat, setSpatialFormat] = useState<SpatialFormat>("geojson");
-  const [dpMedia, setDpMedia] = useState<CamtrapMedia>("metadata");
+  const [dpIncludesThumbnails, setDpIncludesThumbnails] = useState(false);
 
   const [tableLoading, setTableLoading] = useState(false);
   const [spatialLoading, setSpatialLoading] = useState(false);
@@ -118,31 +166,30 @@ export default function ExportPage() {
   const [spatialConfirmOpen, setSpatialConfirmOpen] = useState(false);
   const [dpConfirmOpen, setDpConfirmOpen] = useState(false);
   const [dpJobId, setDpJobId] = useState<string | null>(null);
-  const [dpJobIncludesThumbnails, setDpJobIncludesThumbnails] = useState(false);
 
   const noSiteCount = noSite?.count ?? 0;
 
-  // One "Spreadsheet" download covering both tables. XLSX is a single
-  // two-sheet workbook (Detections + Counts). CSV / TSV can't hold two
-  // sheets, so the click saves two files (detections + counts); browsers
-  // may show a one-time "allow multiple downloads" prompt outside Electron.
-  const handleDownloadSpreadsheet = async () => {
+  // One "Spreadsheet" download covering four tables. XLSX is a single
+  // workbook; CSV / TSV save one file per table (browsers may show a
+  // one-time "allow multiple downloads" prompt outside Electron).
+  const handleDownloadSpreadsheet = async (value: string) => {
     if (!projectId) return;
+    const format = value as ObservationFormat;
     setTableLoading(true);
     setTableError(null);
     try {
-      if (tableFormat === "xlsx") {
-        const blob = await exportApi.downloadSpreadsheetXlsx(projectId);
+      if (format === "xlsx") {
+        const blob = await exportApi.downloadSpreadsheetXlsx(projectId, tableScope);
         downloadBlob(blob, "addaxai-spreadsheet.xlsx");
       } else {
-        const deployments = await exportApi.downloadDeployments(projectId, tableFormat);
-        downloadBlob(deployments, `addaxai-deployments.${tableFormat}`);
-        const files = await exportApi.downloadFiles(projectId, tableFormat);
-        downloadBlob(files, `addaxai-files.${tableFormat}`);
-        const detections = await exportApi.downloadDetections(projectId, tableFormat);
-        downloadBlob(detections, `addaxai-detections.${tableFormat}`);
-        const counts = await exportApi.downloadObservations(projectId, tableFormat);
-        downloadBlob(counts, `addaxai-counts.${tableFormat}`);
+        const deployments = await exportApi.downloadDeployments(projectId, format, tableScope);
+        downloadBlob(deployments, `addaxai-deployments.${format}`);
+        const files = await exportApi.downloadFiles(projectId, format, tableScope);
+        downloadBlob(files, `addaxai-files.${format}`);
+        const detections = await exportApi.downloadDetections(projectId, format, tableScope);
+        downloadBlob(detections, `addaxai-detections.${format}`);
+        const counts = await exportApi.downloadObservations(projectId, format, tableScope);
+        downloadBlob(counts, `addaxai-counts.${format}`);
       }
     } catch (err) {
       setTableError(errorMessage(err));
@@ -151,19 +198,20 @@ export default function ExportPage() {
     }
   };
 
-  // Click handler for the Spatial download button. Opens the confirm
-  // dialog when any deployment has no site (those would be silently
-  // dropped from the export); otherwise goes straight to download.
-  const onSpatialClick = () => {
+  // Spatial: pick a format from the dropdown, then confirm when any
+  // deployment has no site (those rows are dropped from the export).
+  const handleSpatialSelect = (value: string) => {
     if (!projectId) return;
+    const fmt = value as SpatialFormat;
+    setSpatialFormat(fmt);
     if (noSiteCount > 0) {
       setSpatialConfirmOpen(true);
     } else {
-      void runSpatialExport();
+      void runSpatialExport(fmt);
     }
   };
 
-  const runSpatialExport = async () => {
+  const runSpatialExport = async (fmt: SpatialFormat) => {
     if (!projectId) return;
     setSpatialLoading(true);
     setSpatialError(null);
@@ -173,8 +221,8 @@ export default function ExportPage() {
       gpkg: "gpkg",
     };
     try {
-      const blob = await exportApi.downloadSpatial(projectId, spatialFormat);
-      downloadBlob(blob, `addaxai-spatial.${ext[spatialFormat]}`);
+      const blob = await exportApi.downloadSpatial(projectId, fmt);
+      downloadBlob(blob, `addaxai-spatial.${ext[fmt]}`);
     } catch (err) {
       setSpatialError(errorMessage(err));
     } finally {
@@ -182,11 +230,12 @@ export default function ExportPage() {
     }
   };
 
-  // CamtrapDP: always open the pre-flight dialog first — the format has
-  // hard schema requirements (one camera / one location / one period per
-  // deployment) that the user should explicitly confirm are satisfied.
-  const onCamtrapDPClick = () => {
+  // CamTrap DP: always open the pre-flight dialog — the format has hard
+  // schema requirements (one camera / location / period per deployment)
+  // the user should explicitly confirm.
+  const handleCamtrapSelect = (value: string) => {
     if (!projectId) return;
+    setDpIncludesThumbnails(value === "thumbnails");
     setDpConfirmOpen(true);
   };
 
@@ -196,17 +245,15 @@ export default function ExportPage() {
     setDpError(null);
     try {
       const { job_id } = await exportApi.prepareCamtrapDP(projectId, includeThumbnails);
-      // The progress modal subscribes to the job over WebSocket via
-      // useTaskProgress. When it completes, it calls downloadCamtrapDPZip.
+      // The progress modal subscribes to the job over WebSocket; when it
+      // completes it calls downloadCamtrapDPZip.
       setDpJobId(job_id);
-      setDpJobIncludesThumbnails(includeThumbnails);
     } catch (err) {
       setDpError(errorMessage(err));
       setDpLoading(false);
     }
   };
 
-  // Called by the progress modal once the job reports complete.
   const finalizeCamtrapDPExport = async (jobId: string) => {
     if (!projectId) {
       setDpLoading(false);
@@ -234,125 +281,54 @@ export default function ExportPage() {
     <div className="min-h-screen">
       <header className="border-b bg-white/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Export</h1>
-              <p className="text-sm text-muted-foreground">
-                Export project data in standardised formats
-              </p>
-            </div>
-          </div>
+          <h1 className="text-2xl font-bold tracking-tight">Export</h1>
+          <p className="text-sm text-muted-foreground">
+            Export project data in standardised formats
+          </p>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <Card>
-          <CardHeader>
-            <CardTitle>Spreadsheet</CardTitle>
-            <CardDescription>
-              Tables for deployments, files, detections, and counts.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {tableError && <ErrorBanner message={tableError} />}
-            <div className="flex items-center justify-between gap-4">
-              <TextToggle
-                options={OBSERVATION_OPTIONS}
-                value={tableFormat}
-                onChange={setTableFormat}
-              />
-              <Button
-                onClick={handleDownloadSpreadsheet}
-                disabled={tableLoading}
-                className="flex items-center gap-2"
-              >
-                {tableLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Preparing export...
-                  </>
-                ) : (
-                  <>
-                    <Download className="h-4 w-4" />
-                    Download {tableFormat.toUpperCase()}
-                  </>
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          <CardContent className="pt-6">
+            <ExportRow
+              title="Spreadsheet"
+              description="Tables for deployments, files, detections, and counts."
+              filters={
+                projectId ? (
+                  <ExportScopeSelect
+                    projectId={projectId}
+                    onChange={setTableScope}
+                  />
+                ) : undefined
+              }
+              options={OBSERVATION_OPTIONS}
+              isLoading={tableLoading}
+              onSelect={handleDownloadSpreadsheet}
+              error={tableError}
+            />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Spatial</CardTitle>
-            <CardDescription>
-              Geographic point layers for GIS tools (QGIS, ArcGIS).
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {spatialError && <ErrorBanner message={spatialError} />}
-            <div className="flex items-center justify-between gap-4">
-              <TextToggle
-                options={SPATIAL_OPTIONS}
-                value={spatialFormat}
-                onChange={setSpatialFormat}
-              />
-              <Button
-                onClick={onSpatialClick}
-                disabled={spatialLoading}
-                className="flex items-center gap-2"
-              >
-                {spatialLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Preparing export...
-                  </>
-                ) : (
-                  <>
-                    <Download className="h-4 w-4" />
-                    Download{" "}
-                    {SPATIAL_OPTIONS.find((o) => o.value === spatialFormat)?.label}
-                  </>
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            <div className="my-6 border-t" />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Camtrap DP</CardTitle>
-            <CardDescription>
-              A standardized, community-developed data exchange format to
-              and archive camera trap data.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {dpError && <ErrorBanner message={dpError} />}
-            <div className="flex items-center justify-between gap-4">
-              <TextToggle
-                options={CAMTRAP_MEDIA_OPTIONS}
-                value={dpMedia}
-                onChange={setDpMedia}
-              />
-              <Button
-                onClick={onCamtrapDPClick}
-                disabled={dpLoading}
-                className="flex items-center gap-2"
-              >
-                {dpLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Preparing export...
-                  </>
-                ) : (
-                  <>
-                    <Download className="h-4 w-4" />
-                    Download Camtrap DP
-                  </>
-                )}
-              </Button>
-            </div>
+            <ExportRow
+              title="Spatial"
+              description="Geographic point layers for GIS tools (QGIS, ArcGIS)."
+              options={SPATIAL_OPTIONS}
+              isLoading={spatialLoading}
+              onSelect={handleSpatialSelect}
+              error={spatialError}
+            />
+
+            <div className="my-6 border-t" />
+
+            <ExportRow
+              title="Camtrap DP"
+              description="A standardised, community-developed exchange format for sharing and archiving camera trap data."
+              options={CAMTRAP_MEDIA_OPTIONS}
+              isLoading={dpLoading}
+              onSelect={handleCamtrapSelect}
+              error={dpError}
+            />
           </CardContent>
         </Card>
       </main>
@@ -368,21 +344,19 @@ export default function ExportPage() {
             }
             open={spatialConfirmOpen}
             onOpenChange={setSpatialConfirmOpen}
-            onProceed={() => void runSpatialExport()}
+            onProceed={() => void runSpatialExport(spatialFormat)}
           />
           <CamtrapDPExportConfirmDialog
             projectId={projectId}
             noSiteCount={noSiteCount}
             open={dpConfirmOpen}
             onOpenChange={setDpConfirmOpen}
-            onProceed={() =>
-              void runCamtrapDPExport(dpMedia === "thumbnails")
-            }
+            onProceed={() => void runCamtrapDPExport(dpIncludesThumbnails)}
           />
 
           <CamtrapDPProgressModal
             jobId={dpJobId}
-            includesThumbnails={dpJobIncludesThumbnails}
+            includesThumbnails={dpIncludesThumbnails}
             onComplete={finalizeCamtrapDPExport}
             onError={abortCamtrapDPExport}
           />

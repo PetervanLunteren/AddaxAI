@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Ban, Check, CheckCheck, Tag, X } from "lucide-react";
+import { Ban, Check, CheckCheck, CircleHelp, Tag, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { detectionsApi } from "../../api/detections";
@@ -23,6 +23,9 @@ interface BulkActionBarProps {
   onRelabel?: (ids: string[], label: string | null, category: string, displayName: string) => void;
   onVerify?: (ids: string[]) => void;
   onMarkFalse?: (ids: string[]) => void;
+  /** Mark the selection as "unknown" (a real, unidentifiable observation)
+   *  and verify, so it leaves the queue but stays countable. */
+  onMarkUnknown?: (ids: string[]) => void;
   /** Relabel the selection to its most common label and verify. The
    *  parent owns the mode-finding + API call because it has the full
    *  detection metadata; this prop just wires the button. */
@@ -46,6 +49,7 @@ export function BulkActionBar({
   onRelabel,
   onVerify,
   onMarkFalse,
+  onMarkUnknown,
   onMatchMajority,
   majorityLabel,
   projectId,
@@ -77,6 +81,21 @@ export function BulkActionBar({
     onSuccess: () => {
       if (onMarkFalse) {
         onMarkFalse(ids);
+      } else {
+        onActionComplete();
+        onDeselectAll();
+      }
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  // "Unknown" is a real observation (unlike "false detection"): keep the
+  // category, just relabel to unknown and verify so it leaves the queue.
+  const markUnknownMutation = useMutation({
+    mutationFn: () => detectionsApi.bulkRelabel(ids, "unknown", undefined),
+    onSuccess: () => {
+      if (onMarkUnknown) {
+        onMarkUnknown(ids);
       } else {
         onActionComplete();
         onDeselectAll();
@@ -139,6 +158,18 @@ export function BulkActionBar({
         <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">X</kbd>
       </Button>
 
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => markUnknownMutation.mutate()}
+        disabled={markUnknownMutation.isPending}
+        title="Mark as an unidentifiable animal and verify"
+      >
+        <CircleHelp className="h-4 w-4 mr-1" />
+        Unknown
+        <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">U</kbd>
+      </Button>
+
       {onMatchMajority && majorityLabel && (
         <Button
           variant="outline"
@@ -182,10 +213,15 @@ export function BulkActionBar({
         </div>
       </div>
 
-      <Button variant="outline" size="sm" onClick={onDeselectAll}>
-        <X className="h-4 w-4 mr-1" />
-        Deselect
-        <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">Esc</kbd>
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-9 px-0"
+        onClick={onDeselectAll}
+        title="Deselect (Esc)"
+        aria-label="Deselect"
+      >
+        <X className="h-4 w-4" />
       </Button>
       </div>
     </>

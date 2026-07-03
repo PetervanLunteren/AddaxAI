@@ -81,18 +81,25 @@ OBSERVATIONS_SCHEMA = (
 #   file_id         — FK to files.csv (time, place, paths live there).
 #   deployment_id   — FK to deployments.csv (site, effort).
 #   event_id        — FK to the event (also on files.csv).
-#   category        — detector class: animal / person / vehicle.
+#   detection_category — detector class: animal / person / vehicle.
 #   detection_confidence — detector (MegaDetector) score for the box.
 #   classification_label — the current species label, by model or human
 #                     (provenance-neutral; see is_verified). Empty when
 #                     nothing was classified (person, vehicle, unclassified).
 #   classification_confidence — score for that label: the classifier's
 #                     score, or 1.0 when a human assigned it.
+#   ai_classification_label — the AI's original top-1 species call, kept
+#                     even after a human relabel (so "AI said X, human
+#                     changed to Y" is visible). Empty for detector-only,
+#                     person / vehicle, and pre-column detections.
+#   ai_classification_confidence — the AI's score for that original call.
+#   classification_method — who set the current label: machine or human.
+#   is_verified     — this detection is human-verified (grouped with the
+#                     label columns above so the provenance reads together).
 #   taxon_*         — formal ranks from label_taxonomy; empty where the
 #                     label has no (or partial) taxonomy.
 #   frame_number    — video frame index; empty for images.
 #   bbox_*          — normalized [0,1] box.
-#   is_verified     — this detection is human-verified.
 #
 # Empty files do not appear here (a detections table holds detections);
 # they live in files.csv. The per-event species count lives in counts.csv.
@@ -102,11 +109,21 @@ _FLAT_DETECTION_HEADERS = [
     "deployment_id",
     "event_id",
     # Detector stage (MegaDetector): category + score.
-    "category",
+    "detection_category",
     "detection_confidence",
-    # Classifier stage: species label + score.
+    # Classifier stage: the current species label + score (may be a human
+    # correction — see classification_method / is_verified).
     "classification_label",
     "classification_confidence",
+    # The AI's original top-1 call, retained even after a human relabel, so
+    # the export shows "AI said X, human changed to Y". Blank for
+    # detector-only, person / vehicle, and pre-column detections.
+    "ai_classification_label",
+    "ai_classification_confidence",
+    # Who set the current label, and whether a human confirmed it. Kept next
+    # to the label columns so the provenance reads as one contiguous block.
+    "classification_method",
+    "is_verified",
     # Everything that describes the label: taxonomy broad -> specific, then
     # the two human-readable display names.
     "taxon_class",
@@ -122,7 +139,6 @@ _FLAT_DETECTION_HEADERS = [
     "bbox_y",
     "bbox_width",
     "bbox_height",
-    "is_verified",
 ]
 
 # CamTrap-DP 1.0 table schemas mandate all columns in a fixed order,
@@ -208,11 +224,44 @@ _CAMTRAP_OBS_HEADERS = [
 # ---------------------------------------------------------------------------
 
 
+def resolve_scope_deployment_ids(
+    db: Session,
+    project: Project,
+    site_ids: list[str] | None,
+    deployment_ids: list[str] | None,
+) -> list[str] | None:
+    """Resolve an export scope to a concrete list of deployment ids.
+
+    Single source of truth for narrowing exports to part of a project.
+    Returns ``None`` when no scope is given (export the whole project).
+    Otherwise returns the project's deployments whose site is in
+    ``site_ids`` OR whose id is in ``deployment_ids`` — so picking a site
+    includes all its deployments. Ids from other projects are ignored by
+    the ``project_id`` filter; an explicit scope that matches nothing
+    returns an empty list (a legitimately empty export).
+    """
+    if not site_ids and not deployment_ids:
+        return None
+    clauses = []
+    if site_ids:
+        clauses.append(Deployment.site_id.in_(site_ids))
+    if deployment_ids:
+        clauses.append(Deployment.id.in_(deployment_ids))
+    rows = (
+        db.query(Deployment.id)
+        .filter(Deployment.project_id == project.id)
+        .filter(or_(*clauses))
+        .all()
+    )
+    return [r[0] for r in rows]
+
+
 def get_scoped_detection_rows(
     db: Session,
     project: Project,
     *,
     extra_excluded: list[str] | None = None,
+    deployment_ids: list[str] | None = None,
 ) -> list[Row[Any]]:
     """
     Return every (File, Detection, Deployment, Site, LabelTaxonomy) row
@@ -258,6 +307,11 @@ def get_scoped_detection_rows(
         .where(File.file_type.in_(("image", "video")))
         .order_by(File.captured_at_local.asc(), File.id, Detection.id)
     )
+
+    # Optional export scope: narrow to a subset of the project's
+    # deployments (see resolve_scope_deployment_ids). None = whole project.
+    if deployment_ids is not None:
+        query = query.where(Deployment.id.in_(deployment_ids))
 
     excluded = [s.lower() for s in (project.excluded_classes or [])]
     if extra_excluded:
@@ -484,6 +538,10 @@ def _detection_cells(
         round(detection.confidence, 6),
         detection.label or "",
         _round_or_blank(detection.label_confidence, 6),
+        detection.original_label or "",
+        _round_or_blank(detection.original_label_confidence, 6),
+        detection.classification_method or "",
+        "TRUE" if detection.verified else "FALSE",
         *_taxon_ranks(taxonomy),
         detection.scientific_name or "",
         detection.common_name or "",
@@ -492,7 +550,6 @@ def _detection_cells(
         _round_or_blank(detection.bbox_y, 6),
         _round_or_blank(detection.bbox_width, 6),
         _round_or_blank(detection.bbox_height, 6),
-        "TRUE" if detection.verified else "FALSE",
     ]
 
 
@@ -530,7 +587,9 @@ _DEPLOYMENTS_HEADERS = [
 
 
 def build_deployments_rows(
-    db: Session, project: Project
+    db: Session,
+    project: Project,
+    deployment_ids: list[str] | None = None,
 ) -> tuple[list[str], list[list[Any]]]:
     """Build `(headers, rows)` for the Deployments export: one row per
     deployment with its site, coordinates, date span and trap-nights. The
@@ -538,13 +597,15 @@ def build_deployments_rows(
     deployment_id."""
     from app.api.crud.trap_nights import compute_trap_nights_for_deployments
 
-    deployments = (
+    query = (
         db.query(Deployment, Site)
         .outerjoin(Site, Site.id == Deployment.site_id)
         .filter(Deployment.project_id == project.id)
         .order_by(Deployment.start_date_local.asc(), Deployment.id)
-        .all()
     )
+    if deployment_ids is not None:
+        query = query.filter(Deployment.id.in_(deployment_ids))
+    deployments = query.all()
     trap_nights = compute_trap_nights_for_deployments(
         db, [dep.id for dep, _site in deployments]
     )
@@ -594,22 +655,28 @@ _FILES_HEADERS = [
     "relative_path",
     "absolute_path",
     "datetime",
-    # animal / person / vehicle / blank — what the file holds.
-    "category",
+    # File-level rollup of what the file holds: animal / person / vehicle /
+    # blank (File.observation_type). Distinct from the per-box
+    # detection_category in detections.csv, and it uniquely carries "blank".
+    "observation_type",
     "is_verified",
     "notes",
 ]
 
 
 def build_files_rows(
-    db: Session, project: Project
+    db: Session,
+    project: Project,
+    deployment_ids: list[str] | None = None,
 ) -> tuple[list[str], list[list[Any]]]:
     """Build `(headers, rows)` for the Files export: one row per media file,
     including files with no detections (the effort table). `event_id`
     answers "which files are in this event"."""
     tz_name = project.timezone
 
-    scoped_rows = get_scoped_detection_rows(db, project)
+    scoped_rows = get_scoped_detection_rows(
+        db, project, deployment_ids=deployment_ids
+    )
     grouped = list(_group_rows_by_file(scoped_rows))
     event_map = _events_by_file(db, [f.id for f, _d, _s, _dets in grouped])
 
@@ -665,7 +732,9 @@ _OBSERVATIONS_HEADERS = [
 
 
 def build_observation_rows(
-    db: Session, project: Project
+    db: Session,
+    project: Project,
+    deployment_ids: list[str] | None = None,
 ) -> tuple[list[str], list[list[Any]]]:
     """
     Build `(headers, rows)` for the event-level Observations export.
@@ -688,6 +757,8 @@ def build_observation_rows(
         .filter(Deployment.project_id == project.id)
         .order_by(Event.event_start_local.asc(), Event.id)
     )
+    if deployment_ids is not None:
+        query = query.filter(Deployment.id.in_(deployment_ids))
 
     rows: list[list[Any]] = []
     for obs, event, deployment, taxonomy in query.all():
@@ -714,16 +785,21 @@ def build_observation_rows(
 
 
 def build_spreadsheet_sheets(
-    db: Session, project: Project
+    db: Session,
+    project: Project,
+    deployment_ids: list[str] | None = None,
 ) -> list[tuple[str, list[str], list[list[Any]]]]:
     """The tables that make up a combined spreadsheet: Deployments, Files,
     Detections, and Counts. Single source for both the project Export
-    page's XLSX and the folder-run Save step, so the two never drift."""
-    scoped = get_scoped_detection_rows(db, project)
-    dep_headers, dep_rows = build_deployments_rows(db, project)
-    files_headers, files_rows = build_files_rows(db, project)
+    page's XLSX and the folder-run Save step, so the two never drift.
+
+    ``deployment_ids`` narrows every sheet to a subset of the project's
+    deployments; None (the folder-run Save default) exports everything."""
+    scoped = get_scoped_detection_rows(db, project, deployment_ids=deployment_ids)
+    dep_headers, dep_rows = build_deployments_rows(db, project, deployment_ids)
+    files_headers, files_rows = build_files_rows(db, project, deployment_ids)
     det_headers, det_rows = build_detection_rows(db, project, scoped)
-    obs_headers, obs_rows = build_observation_rows(db, project)
+    obs_headers, obs_rows = build_observation_rows(db, project, deployment_ids)
     return [
         ("Deployments", dep_headers, dep_rows),
         ("Files", files_headers, files_rows),
