@@ -72,6 +72,9 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
+      - name: Install exiftool
+        run: sudo apt-get update && sudo apt-get install -y libimage-exiftool-perl
+
       - name: Install backend dependencies
         working-directory: backend
         run: |
