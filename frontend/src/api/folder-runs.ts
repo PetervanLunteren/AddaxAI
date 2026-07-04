@@ -175,19 +175,17 @@ export interface OutputPreview {
   in_scope_video_count: number;
   /** Sum of size_bytes for in-scope files only. */
   in_scope_bytes: number;
-  /** Slash-separated taxonomic paths → placement counts. Keys look
-   * like "Mammalia/Carnivora/Canidae/Canis/dog". The Save step
-   * parses these into a nested tree at render time. Non-animal
-   * files contribute single-segment paths ("person", "blank", ...). */
-  by_taxonomic_tree: Record<string, number>;
-  /** Flat single-segment placements: one folder per species label
-   * (or per non-animal observation type, or animal/ fallback). */
-  by_flat: Record<string, number>;
-  /** "No subfolders" mode: source subfolder path → file count, rendered
-   * with the same builder as the species tree. */
-  by_source_tree: Record<string, number>;
-  /** "No subfolders" mode: a capped sample of loose root-file names.
-   * Root total = in_scope_files − sum(by_source_tree). */
+  /** Slash-separated destination folder paths → placement counts, for
+   * the exact folder layout the user picked (group_by + species order):
+   * the species / observation folder and the preserved source subfolder
+   * combined in the chosen order. Keys look like
+   * "mammalia/carnivora/canidae/canis/dog/cam01" (species first) or
+   * "cam01/dog" (species last). Under "No subfolders" the keys are just
+   * the source subfolders. The Save step parses these into a nested tree
+   * and rolls counts up. */
+  by_media_tree: Record<string, number>;
+  /** A capped sample of loose file names that land at the output root
+   * (no folder). Root total = in_scope_files − sum(by_media_tree). */
   root_files: string[];
 }
 
@@ -205,6 +203,10 @@ export interface OutputPreviewRequest {
   /** Event grouping, mirroring the save request so the previewed counts
    * match what the save will write. */
   group_events?: boolean;
+  /** Folder layout, mirroring the save request so the previewed tree
+   * shows the real nesting and order. */
+  separate_group_by?: SeparateGroupBy;
+  separate_species_last?: boolean;
 }
 
 export interface SaveOutputsRequest {
@@ -214,6 +216,10 @@ export interface SaveOutputsRequest {
   /** Keep a burst together: every file in an event goes to one folder
    * (the event's main species). */
   group_events?: boolean;
+  /** Put the species folder inside the user's original folders instead of
+   * on top: ``<source subfolder>/<species>/`` rather than
+   * ``<species>/<source subfolder>/`` (the layout camtrapR expects). */
+  separate_species_last?: boolean;
   /** Label identifiers to exclude from the media copies / visualisations
    * (LabelTaxonomy.id UUIDs or raw label strings). The data exports are
    * never filtered. */

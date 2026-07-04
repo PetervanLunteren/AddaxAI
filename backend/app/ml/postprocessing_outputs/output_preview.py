@@ -12,13 +12,12 @@ main-species choice, same fallback folder, same observation-type
 folder names, same exclusion semantics. The numbers it returns are
 the same numbers the real postprocess run will produce.
 
-The species-folder counts and byte totals are exact. In the species
-modes the source subfolders the run preserves *under* each species are
-summarised away (``by_taxonomic_tree`` / ``by_flat`` stay species-level
-so the tree reads cleanly). The "No subfolders" mode mirrors the source
-tree, so it reports the source subfolders as ``by_source_tree``
-(path -> count, rendered by the same builder as the species tree) plus
-a capped ``root_files`` sample for any loose files at the source root.
+The placement counts and byte totals are exact. ``by_media_tree`` is the
+full on-disk tree for the chosen ``group_by`` + ``species_last``: the
+species / observation folder and the preserved source subfolder combined
+in the order the run writes them (path -> count). A capped ``root_files``
+sample lists any loose files that land at the output root (only the "No
+subfolders" mode with files at the source root).
 
 Computation is three SELECTs: files, labelled detections, the
 LabelTaxonomy chain for the project's classification model. The
@@ -53,6 +52,7 @@ from .separate_folders import (
     _FALLBACK_FOLDER,
     _OBSERVATION_TYPE_FOLDER,
     NameMode,
+    SeparateGroupBy,
     _leaf_name,
     _taxonomic_path_for_label,
     build_deployment_folders,
@@ -67,9 +67,9 @@ class OutputPreviewResult:
     """Aggregated counts used by the Save step's live preview.
 
     All counts reflect what the actual postprocess run would write —
-    the multi-species inflation in ``by_taxonomic_tree`` is real,
-    not an estimate, because the placement rules are deterministic
-    from the DB state alone.
+    the placement counts in ``by_media_tree`` are real, not estimates,
+    because the placement rules are deterministic from the DB state
+    alone.
 
     The "dropped" counters reflect files that the user's species
     exclusion filter removes from the output. Surface separately so
@@ -92,22 +92,21 @@ class OutputPreviewResult:
     in_scope_image_count: int = 0
     in_scope_video_count: int = 0
     in_scope_bytes: int = 0
-    # Slash-separated taxonomic paths to placement counts. Keys look
-    # like "Mammalia/Carnivora/Canidae/Canis/dog". The frontend
-    # parses these into a real nested tree. Non-animal files
-    # contribute single-segment paths ("person", "vehicle", ...).
-    by_taxonomic_tree: Counter = field(default_factory=Counter)
-    # Flat single-segment placements: one folder per species label
-    # (or per non-animal observation type, or the animal/ fallback).
-    # Used when the user picks ``group_by="flat"`` on the Separate
-    # card; keys are label strings, no slashes.
-    by_flat: Counter = field(default_factory=Counter)
-    # "No subfolders" mode mirrors the source tree. Its preview reuses the
-    # species-tree renderer for the source SUBFOLDERS (path -> file count)
-    # and falls back to a capped filename list for the loose ROOT files
-    # (basenames; videos as their best-frame "<stem>.jpg"). The root file
-    # total is derived as in_scope_files - sum(by_source_tree).
-    by_source_tree: Counter = field(default_factory=Counter)
+    # Slash-separated destination folder paths to placement counts, for
+    # the exact ``group_by`` + ``species_last`` the user picked — i.e. the
+    # real on-disk tree, species nesting AND the preserved source
+    # subfolders combined in the chosen order. Keys look like
+    # "mammalia/carnivora/canidae/canis/dog/cam01" (species first) or
+    # "cam01/dog" (species last, flat). Non-animal files contribute their
+    # observation-type folder ("person", "blank", ...). Under
+    # ``group_by="none"`` the keys are just the source subfolders. The
+    # frontend parses these into a nested tree and rolls counts up.
+    by_media_tree: Counter = field(default_factory=Counter)
+    # A capped sample of loose file names that land at the output root
+    # (no folder at all): basenames, videos as their best-frame
+    # "<stem>_still.jpg". Only non-empty when a file's full destination
+    # path is empty — i.e. "No subfolders" mode with files at the source
+    # root. Root total = in_scope_files - sum(by_media_tree).
     root_files: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -122,9 +121,7 @@ class OutputPreviewResult:
             "in_scope_image_count": self.in_scope_image_count,
             "in_scope_video_count": self.in_scope_video_count,
             "in_scope_bytes": self.in_scope_bytes,
-            "by_taxonomic_tree": dict(self.by_taxonomic_tree),
-            "by_flat": dict(self.by_flat),
-            "by_source_tree": dict(self.by_source_tree),
+            "by_media_tree": dict(self.by_media_tree),
             "root_files": list(self.root_files),
         }
 
@@ -150,14 +147,21 @@ def build_output_preview(
     include_empty: bool = True,
     name_mode: NameMode = "common",
     group_events: bool = True,
+    group_by: SeparateGroupBy = "flat",
+    species_last: bool = False,
 ) -> OutputPreviewResult:
     """Aggregate the counts the Save step needs for its live preview.
 
     Mirrors ``separate_folders`` exactly: every file is bucketed into its
-    one main-species folder; ``excluded_label_ids`` drops a file when
+    one destination folder; ``excluded_label_ids`` drops a file when
     every passing identified detection is excluded (counted in
     ``dropped_by_filter``); ``group_events`` buckets a whole event into
     one folder, the event's main species.
+
+    ``group_by`` and ``species_last`` shape ``by_media_tree`` to the exact
+    on-disk layout the run will write: the species / observation folder
+    (nested taxonomy, a single species folder, or none) combined with the
+    preserved source subfolder in the chosen order.
     """
     project = db.get(Project, project_id)
     if project is None:
@@ -275,20 +279,11 @@ def build_output_preview(
             result.in_scope_video_count += 1
         if written is not None:
             result.in_scope_bytes += written
-        # Mirror the source tree: files in a subfolder feed the
-        # folders-with-counts tree; loose root files feed the capped
-        # filename list.
-        subdir = source_subdir(
-            row.file_path, dep_folders.get(row.deployment_id)
-        )
-        if subdir:
-            result.by_source_tree[subdir] += 1
-        elif len(result.root_files) < _ROOT_FILE_CAP:
-            result.root_files.append(
-                _output_basename(row.file_type, row.file_path)
-            )
 
-        if row.observation_type == "animal":
+        # The species / observation folder for this file, per group_by.
+        if group_by == "none":
+            folder = ""
+        elif row.observation_type == "animal":
             # Main species = the event's main species when grouping, else
             # the file's most confident non-excluded label (idents is
             # confidence-descending).
@@ -298,26 +293,37 @@ def build_output_preview(
                     if r.label and not _row_is_excluded(r):
                         main = r.label
                         break
-
             if main is None:
                 # Animal known, species not — fallback "animal/" folder.
-                result.by_taxonomic_tree[_FALLBACK_FOLDER] += 1
-                result.by_flat[_FALLBACK_FOLDER] += 1
+                folder = _FALLBACK_FOLDER
+            elif group_by == "taxonomic":
+                folder = _taxonomic_path_for_label(
+                    main, taxonomy_by_name, name_mode
+                )
             else:
-                result.by_taxonomic_tree[
-                    _taxonomic_path_for_label(
-                        main, taxonomy_by_name, name_mode
-                    )
-                ] += 1
-                result.by_flat[
-                    _leaf_name(main, taxonomy_by_name.get(main), name_mode)
-                ] += 1
+                folder = _leaf_name(
+                    main, taxonomy_by_name.get(main), name_mode
+                )
         else:
-            non_animal_folder = _OBSERVATION_TYPE_FOLDER.get(
+            folder = _OBSERVATION_TYPE_FOLDER.get(
                 row.observation_type, _FALLBACK_FOLDER
             )
-            result.by_taxonomic_tree[non_animal_folder] += 1
-            result.by_flat[non_animal_folder] += 1
+
+        # Combine the species / observation folder with the preserved
+        # source subfolder in the chosen order, exactly as
+        # separate_into_folders lays it on disk. An empty full path means
+        # the file lands loose at the output root.
+        subdir = source_subdir(
+            row.file_path, dep_folders.get(row.deployment_id)
+        )
+        ordered = (subdir, folder) if species_last else (folder, subdir)
+        full = "/".join(p for p in ordered if p)
+        if full:
+            result.by_media_tree[full] += 1
+        elif len(result.root_files) < _ROOT_FILE_CAP:
+            result.root_files.append(
+                _output_basename(row.file_type, row.file_path)
+            )
 
     return result
 

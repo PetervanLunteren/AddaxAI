@@ -1,29 +1,42 @@
 /**
- * One-click "Update now" for a drifted analysis environment.
+ * "Update now" for a drifted analysis environment.
  *
- * Triggers the backend's designated drift-rebuild path
- * (POST /api/setup/install-env with force_envs) and shows live progress by
- * polling /api/setup/status. This is the single guarded env-build path
- * (_install_state on the backend rejects a concurrent install with 409), so it
- * does not reintroduce the old toast-vs-Settings rebuild race.
+ * Clicking the button opens a blocking modal (no X, no ESC, no
+ * backdrop dismiss, no cancel) and triggers the backend's designated
+ * drift-rebuild path (POST /api/setup/install-env with force_envs).
+ * Progress comes from polling /api/setup/status. The rebuild wipes the
+ * env before recreating it, so there is nothing sensible to cancel
+ * into; the user waits until it finishes or fails.
  *
- * Note: the drift list itself is computed once at app launch, so the rebuild
- * updates the env's YAML-hash sentinel (it won't reappear next launch) but the
- * notice only disappears after the parent dismisses it.
+ * This is the single guarded env-build path (_install_state on the
+ * backend rejects a concurrent install with 409), so it does not
+ * reintroduce the old toast-vs-Settings rebuild race.
+ *
+ * Note: the drift list itself is computed once at app launch, so the
+ * rebuild updates the env's YAML-hash sentinel (it won't reappear next
+ * launch) but the notice only disappears after the parent dismisses it.
  */
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw, Check, AlertCircle } from "lucide-react";
+import { AlertCircle, Check, RefreshCw } from "lucide-react";
 import { setupApi } from "../../api/setup";
 import { Button } from "../ui/button";
+import { Progress } from "../ui/progress";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 
 type Phase = "idle" | "rebuilding" | "done" | "error";
 
 interface EnvRebuildButtonProps {
   /** Env names to wipe and rebuild, e.g. ["pytorch"]. */
   envNames: string[];
-  /** Called once the rebuild finishes successfully. */
+  /** Called when the user closes the modal after a successful rebuild. */
   onDone?: () => void;
 }
 
@@ -55,9 +68,21 @@ export function EnvRebuildButton({ envNames, onDone }: EnvRebuildButtonProps) {
       setPhase("error");
     } else {
       setPhase("done");
-      onDone?.();
     }
-  }, [status, phase, onDone]);
+  }, [status, phase]);
+
+  // Warn before closing the window while the rebuild is running. The
+  // env is wiped first, so quitting mid-rebuild leaves a broken env
+  // and sends the user through the first-run wizard on next launch.
+  useEffect(() => {
+    if (phase !== "rebuilding") return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [phase]);
 
   const start = async () => {
     setError(null);
@@ -73,62 +98,101 @@ export function EnvRebuildButton({ envNames, onDone }: EnvRebuildButtonProps) {
     }
   };
 
-  if (phase === "rebuilding") {
-    const pct = Math.round(status?.progress_pct ?? 0);
-    return (
-      <div className="space-y-1">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-          <span className="truncate">
-            {status?.message || "Starting rebuild..."}
-          </span>
-        </div>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-          <div
-            className="h-full rounded-full bg-primary transition-all"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  if (phase === "done") {
-    return (
-      <div className="flex items-center gap-2 text-xs text-primary">
-        <Check className="h-3.5 w-3.5" />
-        <span>Environment updated. Restart the app to finish.</span>
-      </div>
-    );
-  }
-
-  if (phase === "error") {
-    return (
-      <div className="space-y-1">
-        <div className="flex items-start gap-2 text-xs text-destructive">
-          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>{error || "Rebuild failed."}</span>
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 w-full px-2 text-xs"
-          onClick={start}
-        >
-          Try again
-        </Button>
-      </div>
-    );
-  }
+  const pct = Math.round(status?.progress_pct ?? 0);
+  const modalOpen = phase !== "idle";
 
   return (
-    <Button
-      size="sm"
-      variant="outline"
-      className="h-7 w-full px-2 text-xs"
-      onClick={start}
-    >
-      Update now
-    </Button>
+    <>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 w-full px-2 text-xs"
+        onClick={start}
+      >
+        Update now
+      </Button>
+
+      <Dialog open={modalOpen}>
+        <DialogContent
+          className="max-w-lg [&>button]:hidden"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {phase === "rebuilding" && (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              )}
+              Updating analysis environment
+            </DialogTitle>
+            <DialogDescription>
+              The environment is wiped and rebuilt to match this app
+              version. This can take several minutes and cannot be
+              cancelled. Keep the app open until it finishes.
+            </DialogDescription>
+          </DialogHeader>
+
+          <ul className="text-xs text-muted-foreground space-y-0.5">
+            {envNames.map((name) => (
+              <li key={name} className="font-mono truncate">
+                env-{name}
+              </li>
+            ))}
+          </ul>
+
+          {phase === "rebuilding" && (
+            <div className="space-y-3">
+              <div className="space-y-2 min-w-0">
+                <Progress value={pct} className="h-2" />
+                <div className="flex justify-end text-sm">
+                  <span className="text-muted-foreground">{pct}%</span>
+                </div>
+              </div>
+              <div className="bg-muted/50 rounded-md px-3 py-2 min-w-0">
+                <p className="text-[11px] leading-none text-muted-foreground font-mono truncate">
+                  {status?.message || "Starting rebuild..."}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {phase === "done" && (
+            <div className="flex items-center gap-2 text-sm text-primary">
+              <Check className="h-4 w-4 shrink-0" />
+              <span>Environment updated.</span>
+            </div>
+          )}
+
+          {phase === "error" && (
+            <div className="flex items-start gap-2 text-sm text-destructive">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{error || "Rebuild failed."}</span>
+            </div>
+          )}
+
+          {phase !== "rebuilding" && (
+            <div className="flex justify-end gap-2">
+              {phase === "error" && (
+                <Button variant="outline" size="sm" onClick={start}>
+                  Try again
+                </Button>
+              )}
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (phase === "done") {
+                    onDone?.();
+                  }
+                  setPhase("idle");
+                }}
+              >
+                Close
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

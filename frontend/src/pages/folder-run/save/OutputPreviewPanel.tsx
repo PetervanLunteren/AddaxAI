@@ -142,24 +142,20 @@ function buildTree({
   const folders: SubFolder[] = [];
   const files: FileEntry[] = [];
 
-  // Media copies. "taxonomic" / "flat" lay them out in per-label
-  // subfolders (counts from the preview); "none" flattens them to the
-  // output root, so we list the actual filenames there instead.
+  // Media copies. ``by_media_tree`` is the real on-disk tree for the
+  // chosen layout: species / observation folders and the preserved
+  // source subfolders combined in the chosen order (or just the source
+  // subfolders under "No subfolders"). Loose files with no folder at all
+  // ("No subfolders" with source-root files) fall back to a capped
+  // filename list at the root.
   if (separate.enabled && preview) {
-    if (separate.groupBy === "taxonomic") {
-      folders.push(...nestedFoldersFromPaths(preview.by_taxonomic_tree));
-    } else if (separate.groupBy === "flat") {
-      folders.push(...flatFoldersFromMap(preview.by_flat));
-    } else {
-      // "No subfolders" mirrors the source tree. Source subfolders render
-      // as folders-with-counts via the SAME builder the species tree
-      // uses; loose root files fall back to a capped filename list.
-      folders.push(...nestedFoldersFromPaths(preview.by_source_tree));
-      const inFolders = Object.values(preview.by_source_tree).reduce(
-        (a, n) => a + n,
-        0,
-      );
-      const rootTotal = preview.in_scope_files - inFolders;
+    folders.push(...nestedFoldersFromPaths(preview.by_media_tree));
+    const inFolders = Object.values(preview.by_media_tree).reduce(
+      (a, n) => a + n,
+      0,
+    );
+    const rootTotal = preview.in_scope_files - inFolders;
+    if (rootTotal > 0) {
       const shown =
         rootTotal <= MAX_CHILDREN_PER_LEVEL
           ? preview.root_files
@@ -193,10 +189,11 @@ function buildTree({
 
 /** Turn a flat map of slash-paths into a nested SubFolder tree.
  *
- * The backend's ``by_taxonomic_tree`` is keyed by paths like
- * ``Mammalia/Carnivora/Canidae/Canis/dog``; each value is the
- * leaf placement count. We parse into a tree, then roll up counts
- * so internal nodes show the cumulative total of their subtree. */
+ * The backend's ``by_media_tree`` is keyed by full destination paths like
+ * ``mammalia/carnivora/canidae/canis/dog/cam01`` (or ``cam01/dog`` under
+ * species-last); each value is the leaf placement count. We parse into a
+ * tree, then roll up counts so internal nodes show the cumulative total
+ * of their subtree. */
 function nestedFoldersFromPaths(
   paths: Record<string, number>,
 ): SubFolder[] {
@@ -245,21 +242,6 @@ function sortLevels(nodes: SubFolder[]): void {
   }
 }
 
-/** Turn a flat ``label -> count`` map into the leaf SubFolders for
- * the "Flat by species" mode. Sorted by count desc, capped at 20
- * entries so very-many-species runs don't blow up the preview. */
-function flatFoldersFromMap(
-  buckets: Record<string, number>,
-): SubFolder[] {
-  return Object.entries(buckets)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 20)
-    .map(([name, count]) => ({
-      name: `${name}/`,
-      count,
-    }));
-}
-
 // Per-level cap on visible children. When a folder has more than
 // MAX_CHILDREN_PER_LEVEL children, the first (cap - 1) are shown,
 // followed by a "…" row at that same level. The marker tells the
@@ -285,6 +267,15 @@ function TreeView({
     prefix: string;
     name: string;
     count?: number;
+  }
+
+  // Count only on leaf folders — the ones files actually land in. Every
+  // level above (station, deployment, taxonomy chain) is just a container;
+  // showing its rolled-up total repeats the same number down the tree and
+  // reads as if files live at each level. The grand total is in the footer.
+  function countFor(node: SubFolder): number | undefined {
+    const isLeaf = (node.children?.length ?? 0) === 0;
+    return isLeaf ? node.count : undefined;
   }
 
   const entries: Entry[] = [];
@@ -315,7 +306,7 @@ function TreeView({
       entries.push({
         prefix: ancestorPrefix + branch,
         name: child.name,
-        count: child.count,
+        count: countFor(child),
       });
       if (child.children && child.children.length > 0) {
         walkFolder(child, ancestorPrefix + descend);
@@ -338,7 +329,7 @@ function TreeView({
       entries.push({
         prefix: branch,
         name: item.folder.name,
-        count: item.folder.count,
+        count: countFor(item.folder),
       });
       walkFolder(item.folder, descend);
     } else {

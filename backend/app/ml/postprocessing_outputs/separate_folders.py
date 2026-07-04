@@ -497,6 +497,7 @@ def separate_into_folders(
     excluded_label_ids: frozenset[str] | None = None,
     name_mode: NameMode = "common",
     group_events: bool = True,
+    species_last: bool = False,
 ) -> SeparateFoldersResult:
     """Reorganise every file in the project into subdirectories under
     ``ctx.output_root``.
@@ -511,6 +512,14 @@ def separate_into_folders(
 
     ``mode`` is ``copy`` / ``move`` for images; videos are always copied
     as their best-frame JPEG.
+
+    ``species_last`` flips the layering: instead of
+    ``<species>/<source subfolder>/`` the file lands at
+    ``<source subfolder>/<species>/``, so the user's original folders
+    stay on top and species sits inside them (matches the layout
+    camtrapR's ``recordTable`` expects: station folder, then species).
+    No effect when there is no species folder (``group_by="none"``) or no
+    source subfolder.
 
     ``excluded_label_ids`` filters detections: a file where every passing
     identified detection is excluded is skipped entirely (counted in
@@ -596,7 +605,8 @@ def separate_into_folders(
             subdir = source_subdir(
                 file.file_path, dep_folders.get(file.deployment_id)
             )
-            parts = [p for p in (folder, subdir) if p]
+            ordered = (subdir, folder) if species_last else (folder, subdir)
+            parts = [p for p in ordered if p]
             dest_dir = target_dir.joinpath(*parts) if parts else target_dir
             dest_dir.mkdir(parents=True, exist_ok=True)
             dest, renamed = _unique_destination(dest_dir, out_name)
@@ -644,6 +654,7 @@ def separate_into_folders(
     logger.info(
         f"separate_folders: project={project_id} mode={mode} "
         f"group_by={group_by} group_events={group_events} "
+        f"species_last={species_last} "
         f"written={result.written_count} renamed={result.renamed_count} "
         f"missing={result.skipped_missing_source} "
         f"excluded={result.skipped_excluded}"

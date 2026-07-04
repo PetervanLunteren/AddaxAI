@@ -200,6 +200,9 @@ def verify_detection(
     detection.verified_at_utc = datetime.now(UTC) if body.verified else None
     file_crud.recompute_file_verified(db, [detection.file_id])
     db.commit()
+    # Verifying makes a detection "pass" regardless of confidence, which can
+    # flip the file's observation_type (it counts over-threshold OR verified).
+    file_crud.recalculate_observation_type(db, detection.file_id)
     db.refresh(detection)
     _recalculate_max_n(db, [detection_id])
     return detection
@@ -222,6 +225,16 @@ def bulk_verify_detections(
     )
     file_crud.recompute_file_verified_for_detections(db, body.detection_ids)
     db.commit()
+    # Verifying can flip observation_type (verified detections always pass),
+    # so re-derive it for every touched file.
+    file_ids = {
+        fid
+        for (fid,) in db.query(Detection.file_id)
+        .filter(Detection.id.in_(body.detection_ids))
+        .all()
+    }
+    for fid in file_ids:
+        file_crud.recalculate_observation_type(db, fid)
     _recalculate_max_n(db, body.detection_ids)
     return {"updated_count": updated}
 
@@ -330,11 +343,12 @@ def bulk_relabel_detections(
     file_crud.recompute_file_verified_for_detections(db, body.detection_ids)
     db.commit()
 
-    # Recalculate observation types for affected files
-    if body.category is not None:
-        file_ids = {det.file_id for det in detections}
-        for fid in file_ids:
-            file_crud.recalculate_observation_type(db, fid)
+    # Recalculate observation types for affected files. Relabel always
+    # verifies the detections, and a verified box always passes, so the
+    # file's observation_type can change even without a category change.
+    file_ids = {det.file_id for det in detections}
+    for fid in file_ids:
+        file_crud.recalculate_observation_type(db, fid)
 
     _recalculate_max_n(db, body.detection_ids)
     return {"updated_count": len(detections)}

@@ -320,7 +320,10 @@ def get_scoped_detection_rows(
         # Drop animal detections whose taxonomy name OR raw label matches
         # the excluded list (case-insensitive). ``coalesce`` turns null
         # taxonomy/label into an empty string so ``in_`` behaves predictably
-        # instead of returning SQL NULL.
+        # instead of returning SQL NULL. Verified detections always
+        # survive: a human relabel to an excluded species (possible when
+        # the species selection hid the true class from the classifier)
+        # outranks the exclusion config, same as the threshold override.
         taxonomy_name_lower = func.lower(func.coalesce(LabelTaxonomy.name, ""))
         detection_label_lower = func.lower(func.coalesce(Detection.label, ""))
         excluded_match = or_(
@@ -331,6 +334,7 @@ def get_scoped_detection_rows(
             or_(
                 Detection.id.is_(None),
                 Detection.category != "animal",
+                Detection.verified.is_(True),
                 ~excluded_match,
             )
         )

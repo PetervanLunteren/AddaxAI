@@ -286,6 +286,7 @@ export function LabelSelectionField({
       <SpeciesSelectionModal
         modelId={modelId}
         excludedClasses={excludedClasses}
+        allClasses={allClasses}
         onExclusionChange={onExclusionChange}
         open={modalOpen}
         onOpenChange={setModalOpen}

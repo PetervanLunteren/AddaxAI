@@ -353,6 +353,30 @@ def test_export_detections_respects_excluded_classes(client, db):
     assert "domestic_cat" not in text
 
 
+def test_export_detections_verified_survives_excluded_classes(client, db):
+    # A human relabel to an excluded species (possible when the species
+    # selection hid the true class from the classifier) must not be
+    # dropped from the export: verified outranks the exclusion config.
+    project = make_project(db, timezone="UTC", excluded_classes=["bird"])
+    site = make_site(db, project_id=project.id)
+    deployment = make_deployment(db, site_id=site.id)
+    f = make_file(db, deployment_id=deployment.id)
+    make_detection(db, file_id=f.id, category="animal", confidence=0.9, label="coyote")
+    # AI said coyote, human verified it as bird.
+    make_detection(
+        db, file_id=f.id, category="animal", confidence=0.9, label="bird", verified=True
+    )
+    # Excluded and unverified → still dropped.
+    make_detection(db, file_id=f.id, category="animal", confidence=0.9, label="bird")
+    db.commit()
+
+    resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
+    rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
+    labels = [r[rows[0].index("classification_label")] for r in rows[1:]]
+    assert "coyote" in labels
+    assert labels.count("bird") == 1
+
+
 def test_export_detections_project_not_found(client):
     resp = client.get("/api/projects/does-not-exist/export/detections?format=csv")
     assert resp.status_code == 404

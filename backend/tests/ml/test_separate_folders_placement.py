@@ -210,9 +210,9 @@ def test_preview_counts_one_placement(db):
     make_detection(db, file_id=f.id, confidence=0.95, label="dog")
     make_detection(db, file_id=f.id, confidence=0.80, label="wolf")
 
-    preview = build_output_preview(db, project.id)
+    preview = build_output_preview(db, project.id, group_by="taxonomic")
 
-    assert preview.by_taxonomic_tree == {"other/dog": 1}
+    assert preview.by_media_tree == {"other/dog": 1}
 
 
 def test_video_copied_as_best_frame_jpeg(db, tmp_path):
@@ -297,6 +297,34 @@ def test_preserves_source_subfolder_under_species(db, tmp_path):
     assert not (target / "deer" / "IMG_1.jpg").exists()
 
 
+def test_species_last_puts_source_folder_on_top(db, tmp_path):
+    """``species_last`` flips the layering: ``cam01/sub/species/`` instead
+    of ``species/cam01/sub/`` — the user's folders on top, species inside
+    (the camtrapR station/species layout)."""
+    project = make_project(db, name="species-last", detection_threshold=0.5)
+    source = tmp_path / "source"
+    dep = make_deployment(
+        db, project_id=project.id, folder_path=str(source)
+    )
+    src = source / "cam01" / "sub" / "IMG_1.jpg"
+    src.parent.mkdir(parents=True)
+    src.write_bytes(b"x")
+    f = make_file(
+        db, deployment_id=dep.id, file_path=str(src),
+        observation_type="animal",
+    )
+    make_detection(db, file_id=f.id, confidence=0.9, label="deer")
+
+    target = tmp_path / "out"
+    separate_into_folders(
+        db, project.id, _ctx(target), group_by="flat", species_last=True
+    )
+
+    assert (target / "cam01" / "sub" / "deer" / "IMG_1.jpg").is_file()
+    # Not the default species-on-top layout.
+    assert not (target / "deer" / "cam01" / "sub" / "IMG_1.jpg").exists()
+
+
 def test_none_mode_mirrors_source_tree(db, tmp_path):
     """``group_by="none"`` mirrors the source tree: no species folder,
     original structure preserved."""
@@ -321,9 +349,9 @@ def test_none_mode_mirrors_source_tree(db, tmp_path):
     assert not (target / "deer").exists()
 
 
-def test_preview_subfolder_reported_as_source_tree(db, tmp_path):
-    """A file in a source subfolder is counted in by_source_tree (for the
-    "No subfolders" preview), not the root-file list."""
+def test_preview_subfolder_reported_in_media_tree(db, tmp_path):
+    """Under "No subfolders" a file in a source subfolder is counted in
+    by_media_tree at that subfolder, not the root-file list."""
     project = make_project(db, name="subdir-prev", detection_threshold=0.5)
     source = tmp_path / "source"
     dep = make_deployment(
@@ -337,15 +365,15 @@ def test_preview_subfolder_reported_as_source_tree(db, tmp_path):
     )
     make_detection(db, file_id=f.id, confidence=0.9, label="deer")
 
-    preview = build_output_preview(db, project.id)
+    preview = build_output_preview(db, project.id, group_by="none")
 
-    assert preview.by_source_tree == {"cam01": 1}
+    assert preview.by_media_tree == {"cam01": 1}
     assert preview.root_files == []
 
 
 def test_preview_root_files_reported_as_filename_list(db, tmp_path):
-    """A file at the source root feeds the root-file sample, not the
-    source tree."""
+    """Under "No subfolders" a file at the source root feeds the
+    root-file sample, not the media tree."""
     project = make_project(db, name="root-prev", detection_threshold=0.5)
     source = tmp_path / "source"
     dep = make_deployment(
@@ -359,9 +387,9 @@ def test_preview_root_files_reported_as_filename_list(db, tmp_path):
     )
     make_detection(db, file_id=f.id, confidence=0.9, label="deer")
 
-    preview = build_output_preview(db, project.id)
+    preview = build_output_preview(db, project.id, group_by="none")
 
-    assert preview.by_source_tree == {}
+    assert preview.by_media_tree == {}
     assert preview.root_files == ["IMG_4.jpg"]
 
 

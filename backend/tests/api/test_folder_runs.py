@@ -199,7 +199,8 @@ def test_output_preview_endpoint_returns_counts(client, db):
     make_detection(db, file_id=f.id, confidence=0.95, label="dog")
 
     resp = client.post(
-        f"/api/folder-runs/{project.id}/output-preview", json={}
+        f"/api/folder-runs/{project.id}/output-preview",
+        json={"separate_group_by": "taxonomic"},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -210,10 +211,9 @@ def test_output_preview_endpoint_returns_counts(client, db):
     assert data["files_with_known_size"] == 1
     assert data["dropped_by_filter"] == 0
     assert data["in_scope_files"] == 1
-    # Unmapped label → falls back to other/<label> in the tree, and
-    # to a single-segment "dog" entry in the flat bucket (slugged).
-    assert data["by_taxonomic_tree"] == {"other/dog": 1}
-    assert data["by_flat"] == {"dog": 1}
+    # Unmapped label under taxonomic grouping → other/<label> (slugged),
+    # no source subfolder so no extra path segment.
+    assert data["by_media_tree"] == {"other/dog": 1}
 
 
 def test_output_preview_honours_excluded_label_ids(client, db):
@@ -245,7 +245,7 @@ def test_output_preview_honours_excluded_label_ids(client, db):
     data = resp.json()
     assert data["dropped_by_filter"] == 1
     assert data["in_scope_files"] == 0
-    assert data["by_taxonomic_tree"] == {}
+    assert data["by_media_tree"] == {}
 
 
 def test_output_preview_404_for_research_project(client, db):

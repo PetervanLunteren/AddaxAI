@@ -497,9 +497,16 @@ def update_project(
 
         # Recalculate MaxN if threshold changed
         if threshold_changing:
+            from app.api.crud import file as crud_file
             from app.api.crud.event_observation import recalculate_max_n_for_project
 
             recalculate_max_n_for_project(db, project_id)
+            # observation_type is threshold-aware (a file with only
+            # sub-threshold boxes is "blank"), so a threshold change can
+            # flip files between blank and animal / human / vehicle.
+            crud_file.recalculate_observation_types_for_project(
+                db, project_id
+            )
             db.commit()
 
         logger.info(f"Updated project: {project_id}")

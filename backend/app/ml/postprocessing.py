@@ -27,7 +27,8 @@ from app.core.job_cancellation import (
 )
 from app.core.logging_config import get_logger
 from app.core.subprocess_group import popen_group
-from app.models import Deployment, Detection, File
+from app.ml.observation_type import derive_observation_type
+from app.models import Deployment, Detection, File, Project
 
 logger = get_logger(__name__)
 
@@ -618,7 +619,15 @@ def update_database_from_smoothed_results(
                 changed_file_ids.add(det.file_id)
                 updated += 1
 
-    # Recompute observation_type for files with changed detections
+    # Recompute observation_type for files with changed detections, from
+    # the file's passing detections (over the project threshold or
+    # verified), so a file left with only sub-threshold boxes reads "blank".
+    threshold = 0.0
+    _dep = db.get(Deployment, deployment_id)
+    if _dep is not None:
+        _proj = db.get(Project, _dep.project_id)
+        if _proj is not None:
+            threshold = _proj.detection_threshold
     for file_id in changed_file_ids:
         file_record = db.query(File).filter(File.id == file_id).first()
         if not file_record:
@@ -627,16 +636,9 @@ def update_database_from_smoothed_results(
         file_detections = (
             db.query(Detection).filter(Detection.file_id == file_id).all()
         )
-        categories = {d.category for d in file_detections}
-
-        if "animal" in categories:
-            file_record.observation_type = "animal"
-        elif "person" in categories:
-            file_record.observation_type = "human"
-        elif "vehicle" in categories:
-            file_record.observation_type = "vehicle"
-        else:
-            file_record.observation_type = "blank"
+        file_record.observation_type = derive_observation_type(
+            file_detections, threshold
+        )
 
     db.commit()
 

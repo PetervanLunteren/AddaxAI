@@ -9,6 +9,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.schemas.file import FileUpdate
+from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, File, Project
 
 
@@ -252,12 +253,31 @@ def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:
     return file
 
 
+def _project_threshold_for_file(db: Session, file: File) -> float:
+    """The detection threshold of the project a file belongs to.
+
+    observation_type only counts detections at or above this (or verified),
+    so the threshold has to come from the owning project. Defaults to 0.0
+    if the chain is somehow broken (every detection then passes, matching
+    the pre-threshold behaviour).
+    """
+    row = (
+        db.query(Project.detection_threshold)
+        .join(Deployment, Deployment.project_id == Project.id)
+        .filter(Deployment.id == file.deployment_id)
+        .first()
+    )
+    return row[0] if row else 0.0
+
+
 def recalculate_observation_type(db: Session, file_id: str) -> None:
     """
-    Re-derive observation_type from current detections.
+    Re-derive observation_type from the file's *passing* detections.
 
-    Priority: animal > human > vehicle > blank.
-    Called after detection create/update/delete.
+    Passing = over the project threshold OR verified (see
+    ``derive_observation_type``). Called after any detection create /
+    update / delete / verify so the summary stays consistent with what
+    the verify grid shows.
     """
     file = db.query(File).filter(File.id == file_id).first()
     if not file:
@@ -268,23 +288,50 @@ def recalculate_observation_type(db: Session, file_id: str) -> None:
         .filter(Detection.file_id == file_id)
         .all()
     )
-
-    if not detections:
-        file.observation_type = "blank"
-    else:
-        # Map detection categories to observation types
-        category_map = {"animal": "animal", "person": "human", "vehicle": "vehicle"}
-        priority = {"animal": 4, "human": 3, "vehicle": 2}
-
-        best_type = "blank"
-        best_priority = 0
-        for d in detections:
-            obs = category_map.get(d.category, "unknown")
-            p = priority.get(obs, 0)
-            if p > best_priority:
-                best_priority = p
-                best_type = obs
-
-        file.observation_type = best_type
-
+    threshold = _project_threshold_for_file(db, file)
+    file.observation_type = derive_observation_type(detections, threshold)
     db.commit()
+
+
+def recalculate_observation_types_for_project(
+    db: Session, project_id: str
+) -> int:
+    """Re-derive observation_type for every file in a project.
+
+    Run when the project detection threshold changes: the threshold feeds
+    the passing rule, so a file whose only detection now falls below it
+    flips to ``"blank"`` (and vice-versa). Returns the number of files
+    whose observation_type actually changed. One pass, one commit.
+    """
+    project = db.get(Project, project_id)
+    if project is None:
+        return 0
+    threshold = project.detection_threshold
+
+    files = (
+        db.query(File)
+        .join(Deployment, Deployment.id == File.deployment_id)
+        .filter(Deployment.project_id == project_id)
+        .all()
+    )
+    detections = (
+        db.query(Detection)
+        .join(File, File.id == Detection.file_id)
+        .join(Deployment, Deployment.id == File.deployment_id)
+        .filter(Deployment.project_id == project_id)
+        .all()
+    )
+    by_file: dict[str, list[Detection]] = {}
+    for det in detections:
+        by_file.setdefault(det.file_id, []).append(det)
+
+    changed = 0
+    for file in files:
+        new_type = derive_observation_type(
+            by_file.get(file.id, []), threshold
+        )
+        if file.observation_type != new_type:
+            file.observation_type = new_type
+            changed += 1
+    db.commit()
+    return changed

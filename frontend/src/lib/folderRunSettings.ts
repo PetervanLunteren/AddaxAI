@@ -94,6 +94,7 @@ export interface PersistedSaveOutputsSettings {
   mediaEnabled: boolean;
   groupBy: SeparateGroupBy;
   groupEvents: boolean;
+  speciesLast: boolean;
   copyEmpties: boolean;
   drawBoxes: boolean;
   blur: boolean;

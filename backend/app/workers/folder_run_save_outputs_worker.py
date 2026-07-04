@@ -219,6 +219,9 @@ async def process_save_outputs_job(job_id: str) -> None:
                         group_events=bool(
                             payload.get("group_events", True)
                         ),
+                        species_last=bool(
+                            payload.get("separate_species_last", False)
+                        ),
                     ).to_dict()
                 if m == "annotated_copies":
                     return write_annotated_copies(

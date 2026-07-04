@@ -49,11 +49,12 @@ class ManifestManager:
             force_refresh: If True, ignore cache and reload from disk
 
         Returns:
-            Dictionary mapping model_id to ModelManifest
+            Dictionary mapping model_id to ModelManifest. Manifests that
+            fail to parse or validate are skipped (logged at error level),
+            so one bad model never hides the rest.
 
         Raises:
             FileNotFoundError: If models directory doesn't exist
-            ValueError: If manifest validation fails
         """
         if self._cache is not None and not force_refresh:
             return self._cache
@@ -98,9 +99,17 @@ class ManifestManager:
                     )
 
                 except Exception as e:
-                    logger.error(f"Invalid manifest in {manifest_path}: {e}")
-                    # Crash early in development
-                    raise ValueError(f"Invalid manifest in {manifest_path}: {e}") from e
+                    # Skip this one model and keep loading the rest. A single
+                    # malformed manifest (a missing field, a bad partial
+                    # download, a hand-edited file) must not take down the
+                    # whole catalog: that makes every model, including fully
+                    # valid ones, disappear and surfaces as a misleading
+                    # "model X not found" downstream. Logged at error level so
+                    # it's still loud, not silent.
+                    logger.error(
+                        f"Skipping invalid manifest in {manifest_path}: {e}"
+                    )
+                    continue
 
         if not validated_manifests:
             logger.warning(f"No valid model manifests found in {self.models_dir}")

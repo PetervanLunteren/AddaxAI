@@ -1209,7 +1209,7 @@ export function LabelsTab({
   }, [verificationStats]);
 
   // Majority label of the current selection, shown on the Match-majority
-  // button so the action is previewable ("Set all to Corvus") instead
+  // button so the action is previewable ("Set to Corvus") instead
   // of a blind relabel. Null when the selection carries no labels — the
   // button hides in that case.
   const majorityLabel = useMemo(() => {

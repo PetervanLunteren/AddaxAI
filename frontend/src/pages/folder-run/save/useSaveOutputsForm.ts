@@ -37,6 +37,9 @@ export interface SeparateState {
   /** Keep a burst together: every file in an event shares one folder
    * (the event's main species). */
   groupEvents: boolean;
+  /** Put the species folder inside the user's original folders instead of
+   * on top (camtrapR-style ``station/species/`` layout). */
+  speciesLast: boolean;
   /** Copy empty captures (no detections) too. Off = skip them. */
   copyEmpties: boolean;
   /** Leaf ids the user chose to include (empty = all species). The
@@ -73,6 +76,7 @@ function buildRequest(
     separate_folders: separate.enabled,
     separate_group_by: separate.groupBy,
     group_events: separate.groupEvents,
+    separate_species_last: separate.speciesLast,
     // Visualise / anonymise / copy-empties / species-filter are facets
     // of the media copy: only emit them when the media output is on.
     draw_bboxes: separate.enabled && visualise.enabled,
@@ -215,6 +219,7 @@ export function useSaveOutputsForm({
     enabled: persisted?.mediaEnabled ?? false,
     groupBy: persisted?.groupBy ?? "flat",
     groupEvents: persisted?.groupEvents ?? true,
+    speciesLast: persisted?.speciesLast ?? false,
     copyEmpties: persisted?.copyEmpties ?? false,
     includedLabelIds: [],
   }));
@@ -264,6 +269,7 @@ export function useSaveOutputsForm({
       mediaEnabled: separate.enabled,
       groupBy: separate.groupBy,
       groupEvents: separate.groupEvents,
+      speciesLast: separate.speciesLast,
       copyEmpties: separate.copyEmpties,
       drawBoxes: visualise.enabled,
       blur: anonymise.enabled,

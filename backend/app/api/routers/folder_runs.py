@@ -158,6 +158,11 @@ class SaveOutputsRequest(BaseModel):
     # Keep a burst together: every file in an event lands in one folder
     # (the event's main species) instead of being filed per file.
     group_events: bool = True
+    # Flip the layering to ``<source subfolder>/<species>/`` instead of
+    # ``<species>/<source subfolder>/``. Keeps the user's original folders
+    # on top and species inside them (the layout camtrapR expects). No
+    # effect with ``separate_group_by="none"`` or a flat source folder.
+    separate_species_last: bool = False
     # Copy empty captures (no animal / person / vehicle) too. Off by
     # default so the media copies aren't padded with blank captures.
     include_empty: bool = False
@@ -204,6 +209,11 @@ class OutputPreviewRequest(BaseModel):
     # Event grouping, mirroring the save request so the previewed counts
     # match exactly what the save will write.
     group_events: bool = True
+    # Folder layout, mirroring the save request so the previewed tree
+    # shows the real on-disk nesting (species folder + preserved source
+    # subfolders) in the chosen order.
+    separate_group_by: SeparateGroupBy = "flat"
+    separate_species_last: bool = False
 
 
 class OutputPreviewResponse(BaseModel):
@@ -223,9 +233,7 @@ class OutputPreviewResponse(BaseModel):
     in_scope_image_count: int
     in_scope_video_count: int
     in_scope_bytes: int
-    by_taxonomic_tree: dict[str, int]
-    by_flat: dict[str, int]
-    by_source_tree: dict[str, int]
+    by_media_tree: dict[str, int]
     root_files: list[str]
 
 
@@ -707,6 +715,10 @@ def get_output_preview(
         include_empty=bool(payload.include_empty) if payload else False,
         name_mode=payload.name_mode if payload else "common",
         group_events=payload.group_events if payload else True,
+        group_by=payload.separate_group_by if payload else "flat",
+        species_last=(
+            payload.separate_species_last if payload else False
+        ),
     )
     return OutputPreviewResponse(**preview.to_dict())
 
@@ -759,6 +771,7 @@ async def save_outputs(
                 "separate_folders": payload.separate_folders,
                 "separate_group_by": payload.separate_group_by,
                 "group_events": payload.group_events,
+                "separate_species_last": payload.separate_species_last,
                 "include_empty": payload.include_empty,
                 "draw_bboxes": payload.draw_bboxes,
                 "anonymise": payload.anonymise,

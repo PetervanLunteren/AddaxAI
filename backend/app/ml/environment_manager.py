@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import threading
 import urllib.request
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import ClassVar
@@ -120,6 +121,18 @@ def parse_micromamba_progress(
         )
     if line.startswith("Successfully installed"):
         return max(current_progress, 0.95), "Python packages installed"
+
+    # Byte-compiling installed packages: the last conda link step. It goes
+    # silent for a stretch with no per-file output, so without this the bar
+    # freezes on a raw "libmamba Waiting for pyc compilation" line and looks
+    # stuck (the beta report). We pass --no-pyc so this normally does not run,
+    # but keep the caption as a safety net for builds / pip that still compile.
+    if "pyc" in lower:
+        finishing = conda_start + (conda_end - conda_start) * 0.85
+        return (
+            max(current_progress, finishing),
+            "Finishing install, compiling files (can take a few minutes)...",
+        )
 
     # No known phase: leave progress alone, show the raw line so the
     # user still sees activity. Truncated so a 500-char libmamba diag
@@ -479,8 +492,16 @@ class EnvironmentManager:
                     self._safe_rmtree(temp_env_path)
                 except Exception as e:
                     logger.error(f"Failed to remove stale temp directory: {e}")
-                    # If we can't remove it, try to continue anyway - micromamba might overwrite
-                    logger.warning("Attempting to continue despite cleanup failure...")
+                    # On Windows a killed run can leave the temp dir locked
+                    # (open handle, antivirus scan). Building into a leftover
+                    # half-env is exactly what made a retry stall early, so
+                    # don't reuse it: fall back to a fresh unique temp path.
+                    temp_env_path = (
+                        env_path.parent / f".{env_name}.tmp-{uuid.uuid4().hex[:8]}"
+                    )
+                    logger.warning(
+                        f"Building into a fresh temp path instead: {temp_env_path}"
+                    )
 
             logger.info(f"Running micromamba create for {env_name} (temp: {temp_env_path})...")
             cmd = [
@@ -493,6 +514,17 @@ class EnvironmentManager:
                 "-y",
                 "-v",  # Verbose output for better progress tracking
                 "--no-rc",  # Don't use .condarc
+                # Skip byte-compiling .py to .pyc during the conda link step.
+                # That step goes silent for minutes (worse on corporate
+                # Windows where antivirus scans each of the thousands of new
+                # files), which looked like a hang to a beta tester. Python
+                # compiles each module on first import instead: a tiny,
+                # one-time cost, not worth a multi-minute stall at install.
+                "--no-pyc",
+                # Fail after waiting 5 min for a package lock instead of
+                # hanging forever on a stale lock left by a killed run.
+                "--lock-timeout",
+                "300",
             ]
 
             # Subprocess env tuning. Verbose pip is needed for the line

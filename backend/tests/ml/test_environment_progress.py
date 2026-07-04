@@ -118,6 +118,24 @@ def test_pip_phase_progression() -> None:
     assert cd == "Python packages installed"
 
 
+def test_pyc_compilation_line_gets_reassuring_caption() -> None:
+    """The pyc-compile phase must not freeze the bar on a raw libmamba line.
+
+    This is the beta report: the install went silent at
+    'libmamba Waiting for pyc compilation to finish', the bar stayed put,
+    and it looked stuck. Now that line lifts the bar toward the end of the
+    conda range and shows a caption that says it is finishing.
+    """
+    progress, caption = _parse(
+        "info libmamba Waiting for pyc compilation to finish",
+        current=CONDA_START,
+    )
+    expected = CONDA_START + (CONDA_END - CONDA_START) * 0.85
+    assert progress == pytest.approx(max(CONDA_START, expected))
+    assert "compiling files" in caption.lower()
+    assert "libmamba" not in caption
+
+
 def test_progress_is_monotonic_under_real_sequence() -> None:
     """Replay the line order from a real setup log and confirm the bar
     only ever moves forward. Any backwards movement is a UX regression.

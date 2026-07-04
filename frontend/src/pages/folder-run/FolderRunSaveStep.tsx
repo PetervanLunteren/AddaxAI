@@ -101,6 +101,8 @@ export function FolderRunSaveStep() {
   // what the save will actually write.
   const nameMode = getSpeciesNameMode();
   const groupEvents = form.separate.groupEvents;
+  const groupBy = form.separate.groupBy;
+  const speciesLast = form.separate.speciesLast;
   const excluded = excludedLabelIds(
     form.separate,
     form.labelTree?.all_leaf_ids ?? [],
@@ -112,6 +114,8 @@ export function FolderRunSaveStep() {
       includeEmpty,
       nameMode,
       groupEvents,
+      groupBy,
+      speciesLast,
       excluded,
     ],
     queryFn: () =>
@@ -119,6 +123,8 @@ export function FolderRunSaveStep() {
         include_empty: includeEmpty,
         name_mode: nameMode,
         group_events: groupEvents,
+        separate_group_by: groupBy,
+        separate_species_last: speciesLast,
         excluded_label_ids: excluded,
       }),
     enabled: !!runId,

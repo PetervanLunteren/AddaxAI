@@ -29,8 +29,9 @@ from app.ml.json_utils import (
     build_classification_category_descriptions,
     extract_animal_detections,
 )
+from app.ml.observation_type import derive_observation_type
 from app.ml.results_json import iter_images, read_top_level_object
-from app.models import Deployment, File
+from app.models import Deployment, File, Project
 from app.utils.media_dates import (
     extract_video_dates,
     parse_addaxai_filename_datetime,
@@ -152,6 +153,13 @@ def load_json_to_database(
             json_path, "classification_categories"
         )
         non_label_ids = build_non_label_class_ids(class_categories)
+
+        # Project detection threshold: observation_type counts only
+        # detections at or above it (verified is always False at ingestion),
+        # so a file whose every box is below threshold ingests as "blank".
+        _dep = db.get(Deployment, deployment_id)
+        _proj = db.get(Project, _dep.project_id) if _dep else None
+        detection_threshold = _proj.detection_threshold if _proj else 0.0
 
         # Track statistics
         total_files = 0
@@ -317,7 +325,9 @@ def load_json_to_database(
             # File row per detection-bearing frame; the disk used to
             # back those rows is gone too (the classifier worker now
             # streams frames straight from the source video).
-            video_categories: set[str] = set()
+            # The file's created Detection records, for the threshold-aware
+            # observation_type derivation after the loop.
+            file_detection_records: list = []
 
             # Create Detection records. `detections or []` keeps the loop
             # safe even if `loadable_images` filtering above is bypassed
@@ -335,7 +345,6 @@ def load_json_to_database(
                     continue
 
                 total_detections += 1
-                video_categories.add(category)
 
                 # Count by category
                 if category == "animal":
@@ -381,6 +390,7 @@ def load_json_to_database(
                 )
 
                 detection_record = detection_crud.create_detection(db, detection_data)
+                file_detection_records.append(detection_record)
 
                 # Update detection with classification data if present
                 if label:
@@ -415,16 +425,12 @@ def load_json_to_database(
                             category.capitalize()
                         )
 
-            # Set observation_type on the video/image File record
-            if video_categories:
-                if "animal" in video_categories:
-                    file_record.observation_type = "animal"
-                elif "person" in video_categories:
-                    file_record.observation_type = "human"
-                elif "vehicle" in video_categories:
-                    file_record.observation_type = "vehicle"
-            else:
-                file_record.observation_type = "blank"
+            # Set observation_type from the file's *trusted* detections
+            # (over threshold; verified is always False at ingestion). A
+            # file with only sub-threshold boxes reads as "blank".
+            file_record.observation_type = derive_observation_type(
+                file_detection_records, detection_threshold
+            )
 
         # Commit all records
         db.commit()

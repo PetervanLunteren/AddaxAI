@@ -166,8 +166,37 @@ export function MediaBody({
           checked={separate.groupEvents}
           onChange={(v) => setSeparate({ ...separate, groupEvents: v })}
           label="Keep events together"
-          caption="All photos and videos from one event go to the same folder"
+          caption="The whole event goes to the folder of its most confident species"
         />
+      )}
+
+      {showGrouping && (
+        <div className="grid grid-cols-2 items-center gap-3 py-3 text-sm">
+          <span>
+            Folder order
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              Whether species or your original folders sit on top
+            </span>
+          </span>
+          <Select
+            value={separate.speciesLast ? "species-last" : "species-first"}
+            onValueChange={(v) =>
+              setSeparate({ ...separate, speciesLast: v === "species-last" })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="species-first">
+                Species folder first
+              </SelectItem>
+              <SelectItem value="species-last">
+                Species folder last
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       )}
 
       {labelTree && labelTree.tree.length > 0 && (
