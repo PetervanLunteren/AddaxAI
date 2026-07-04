@@ -17,7 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useTaskProgress } from "@/hooks/useTaskProgress";
-import { humanizeTqdmTime } from "@/lib/duration";
+import { formatRate, humanizeTqdmTime } from "@/lib/duration";
 
 interface ReEmbedModalProps {
   open: boolean;
@@ -199,8 +199,8 @@ export function ReEmbedModal({ open, onOpenChange, jobId, onComplete, onError }:
                       )}
                       {metrics.rate && metrics.unit && (
                         <div className="flex justify-between">
-                          <span>{metrics.unit.charAt(0).toUpperCase() + metrics.unit.slice(1)} per second:</span>
-                          <span>{metrics.rate.toFixed(1)}</span>
+                          <span>{formatRate(metrics.rate, metrics.unit).label}:</span>
+                          <span>{formatRate(metrics.rate, metrics.unit).value}</span>
                         </div>
                       )}
                       <div className="flex justify-between">

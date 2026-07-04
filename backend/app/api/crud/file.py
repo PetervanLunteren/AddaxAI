@@ -45,7 +45,15 @@ def get_files(
     query = db.query(File)
     if observation_type:
         query = query.filter(File.observation_type == observation_type)
-    return query.order_by(File.captured_at_local.desc()).offset(skip).limit(limit).all()
+    # file_path tiebreak (here and in the sibling queries below): burst
+    # shots share one second-resolution timestamp, and offset pagination
+    # over a non-unique sort key can skip or repeat rows across pages.
+    return (
+        query.order_by(File.captured_at_local.desc(), File.file_path.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 
 def get_files_by_deployment(
@@ -71,7 +79,12 @@ def get_files_by_deployment(
     query = db.query(File).filter(File.deployment_id == deployment_id)
     if observation_type:
         query = query.filter(File.observation_type == observation_type)
-    return query.order_by(File.captured_at_local.desc()).offset(skip).limit(limit).all()
+    return (
+        query.order_by(File.captured_at_local.desc(), File.file_path.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 
 def get_files_by_project(
@@ -102,7 +115,12 @@ def get_files_by_project(
     )
     if observation_type:
         query = query.filter(File.observation_type == observation_type)
-    return query.order_by(File.captured_at_local.desc()).offset(skip).limit(limit).all()
+    return (
+        query.order_by(File.captured_at_local.desc(), File.file_path.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 
 def get_file_with_detections(db: Session, file_id: str) -> File | None:

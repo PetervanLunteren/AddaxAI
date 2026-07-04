@@ -25,6 +25,7 @@ from typing import ClassVar
 from app.core.job_cancellation import JobCancelledError, is_cancel_requested
 from app.core.logging_config import get_logger
 from app.ml.schemas.model_manifest import ModelManifest
+from app.utils.subprocess_env import clean_python_env
 from app.utils.subprocess_runner import log_subprocess_failure, stream_with_tail
 
 logger = get_logger(__name__)
@@ -532,7 +533,9 @@ class EnvironmentManager:
             # mirror the legacy AddaxAI Windows workflow: a single dropped
             # TCP packet during the 2.3 GB torch download otherwise nukes
             # the whole install and the user has to start over.
-            env = os.environ.copy()
+            # clean_python_env keeps the user's personal site-packages and
+            # PYTHONPATH out of the build (pip runs inside the new env).
+            env = clean_python_env()
             env["PIP_VERBOSE"] = "1"
             env["PIP_DEFAULT_TIMEOUT"] = "120"
             env["PIP_RETRIES"] = "5"

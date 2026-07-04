@@ -29,6 +29,7 @@ from app.core.logging_config import get_logger
 from app.core.subprocess_group import popen_group
 from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, File, Project
+from app.utils.subprocess_env import clean_python_env
 
 logger = get_logger(__name__)
 
@@ -380,6 +381,7 @@ def run_postprocessing_for_deployment(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env=clean_python_env(),
         )
         with track_subprocess(job_id, process):
             try:

@@ -333,10 +333,17 @@ async def get_event(
 
     # Sort files by captured_at_local (sequence order at the camera).
     # Date-less files (no EXIF capture date) sort last via the tuple key
-    # so a mixed event never compares None against a datetime.
+    # so a mixed event never compares None against a datetime. Bursts
+    # often share one second-resolution timestamp, so ties break on
+    # file_path: camera filenames are sequential (IMG_0001, IMG_0002),
+    # making alphabetical order the true capture order.
     sorted_files = sorted(
         event.files,
-        key=lambda f: (f.captured_at_local is None, f.captured_at_local),
+        key=lambda f: (
+            f.captured_at_local is None,
+            f.captured_at_local,
+            f.file_path,
+        ),
     )
 
     site_name = None

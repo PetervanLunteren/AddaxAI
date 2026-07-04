@@ -19,6 +19,7 @@ from typing import Any
 from app.core.logging_config import get_logger
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.schemas.model_manifest import ModelManifest
+from app.utils.subprocess_env import clean_python_env
 
 logger = get_logger(__name__)
 
@@ -203,6 +204,7 @@ class MegaDetectorRunner:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                env=clean_python_env(),
             )
 
             # Monitor progress from stderr
@@ -292,6 +294,7 @@ class MegaDetectorRunner:
                 capture_output=True,
                 text=True,
                 timeout=10,
+                env=clean_python_env(),
             )
 
             if result.returncode == 0:

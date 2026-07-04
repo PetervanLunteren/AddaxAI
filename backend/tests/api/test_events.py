@@ -76,6 +76,47 @@ def test_get_event_with_files(client, db):
     assert len(data["files"]) == 1
 
 
+def test_get_event_files_same_second_sort_alphabetically(client, db):
+    # Burst shots often share one second-resolution EXIF timestamp; the
+    # filmstrip must then fall back to the sequential camera filenames.
+    from app.models.event import event_files as event_files_table
+    from tests.conftest import make_file
+
+    p = make_project(db)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    ev = make_event_with_files(
+        db,
+        deployment_id=d.id,
+        event_start_local=datetime(2024, 1, 1, 12, 0),
+        files_verified=[],
+    )
+    ts = datetime(2024, 1, 1, 12, 0, 7)
+    # Insert out of alphabetical order so relationship order alone fails.
+    for seq, name in enumerate(["IMG_0003.jpg", "IMG_0001.jpg", "IMG_0002.jpg"]):
+        f = make_file(
+            db,
+            deployment_id=d.id,
+            captured_at_local=ts,
+            file_path=f"/cam01/{name}",
+        )
+        db.execute(
+            event_files_table.insert().values(
+                event_id=ev.id, file_id=f.id, sequence_number=seq
+            )
+        )
+    db.commit()
+
+    resp = client.get(f"/api/events/{ev.id}")
+    assert resp.status_code == 200
+    paths = [f["file_path"] for f in resp.json()["files"]]
+    assert paths == [
+        "/cam01/IMG_0001.jpg",
+        "/cam01/IMG_0002.jpg",
+        "/cam01/IMG_0003.jpg",
+    ]
+
+
 def test_get_adjacent_events(client, db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)

@@ -1,25 +1,7 @@
 # TODO
 
-If it takes long per video to process, the user would see speed as 0.0 video per second.... what do do abouyt that?
-                Processing video:
-                3 of 20
-                Elapsed time:
-                1 min
-                Remaining time:
-                about 7 min
-                Video per second:
-                0.0
-                Running on:
-                GPU (Apple Silicon)
-
 ## Priority 1
-- [ ] What does the label cleanup step / page really yeild for the user? From the user persective, what does the label cleanup really do? Do we want to leave it in the folder mode? It corects labels in the CSVs, JSONs, and it makes sugestions for events better, right? What else? It makes the confusion matix, and the future train function dataset creation. What else? DO we want to leave it? Or perhaps add something like this to the caption? Or something else? What do you think? TYhink as a user. Thiunk UX UI.
-- [ ] How are the filmstrip thumbs sorted? I got an event where it wasnt oin chronoligcal order. The two images that were swapped had the same HH:MM:SS timestamp, but the order was wrong. How can we avoid that? If exact same timestamp order alphabitcally (given that camtrap images are generally ityerative IMG001.jpg etc.)?
-- [ ] Should we add a option to dismiss info bars? They are info bars and non intrisive, but i can imagine that a user will annoy themselves if they have to look at the info mars at every progress modal. What do you think? Which ones should have a dismiss option, and whisch ones not? Or all? 
-- [ ] It says "You have unsaved changes" every time i open the settings page. As a test: click "reset changes" the "You have unsaved changes" is not shown anymore, no apparent changes visible. Move different page, move back to settings, it shows "You have unsaved changes" again. Bug. Investigate. 
-- [ ] Do we need to do anything with this finding from a user? For the current Electron build I mean. https://forum.addaxai.com/t/ssl-certificate-issue-in-addaxai-bundled-python-windows/306
-- [ ] Do we need to set PYTHONNOUSERSITE=1 to stop users' global Python user-site packages from leaking into AddaxAI's envs? Is that a real risk? Or not worth it?
-
+- [ ] 
 
 ## Priority 2
 - [ ] 
@@ -27,7 +9,7 @@ If it takes long per video to process, the user would see speed as 0.0 video per
 ## Priority 3 
 - [ ] 
 
-## AFter the Beta phase
+## After the Beta phase
 - [ ] ADD ALL MODELS (Also Caras model)
 - [?] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
 - [?] ALLOW CANADA sex-age-classes GRANT MODEL 

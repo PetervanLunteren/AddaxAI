@@ -53,6 +53,29 @@ function bucketEstimate(seconds: number): number {
   return Math.round(mins / step) * step * 60;
 }
 
+/** Format a processing speed for the progress info card.
+ *
+ * The backend normalises tqdm speeds to items per second, so slow work
+ * (a minute per video) arrives as 0.0166 and would render as "0.0",
+ * which reads as stalled. Below 1/s the display flips to the inverse,
+ * like tqdm's own "s/it" mode: "Time per video: 34 sec". Above 1/s the
+ * familiar "Videos per second: 2.3" stays. */
+export function formatRate(
+  rate: number,
+  unit: string,
+): { label: string; value: string } {
+  const capitalized = unit.charAt(0).toUpperCase() + unit.slice(1);
+  if (rate >= 1) {
+    return { label: `${capitalized} per second`, value: rate.toFixed(1) };
+  }
+  const secondsPer = 1 / rate;
+  const value =
+    secondsPer < 10
+      ? `${secondsPer.toFixed(1)} sec`
+      : humanizeDuration(secondsPer);
+  return { label: `Time per ${unit}`, value };
+}
+
 /** Reformat a tqdm time string for display.
  *
  * Elapsed (``estimate=false``) is an exact fact, so it shows real

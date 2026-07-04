@@ -29,6 +29,7 @@ from app.core.logging_config import get_logger
 from app.core.subprocess_group import popen_group
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.inference.base import ClassificationResult
+from app.utils.subprocess_env import clean_python_env
 
 logger = get_logger(__name__)
 
@@ -154,7 +155,7 @@ class CustomClassificationModel:
             ]
 
             # Prepare environment
-            env = os.environ.copy()
+            env = clean_python_env()
             if platform.system() == "Darwin":
                 env["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 

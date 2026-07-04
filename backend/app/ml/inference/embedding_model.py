@@ -22,6 +22,7 @@ from app.core.logging_config import get_logger
 from app.core.subprocess_group import popen_group
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.schemas.model_manifest import ModelManifest
+from app.utils.subprocess_env import clean_python_env
 
 logger = get_logger(__name__)
 
@@ -127,9 +128,8 @@ class EmbeddingModel:
         if progress_callback:
             progress_callback("Loading embedding model...", 0.0, None)
 
-        import os as _os
 
-        env = {**_os.environ, "PYTHONUNBUFFERED": "1"}
+        env = clean_python_env(PYTHONUNBUFFERED="1")
 
         process = popen_group(
             cmd,

@@ -528,10 +528,11 @@ def get_events_by_project(
 
     summaries = []
     for event in unique_events:
-        # Sort files by sequence within event
+        # Sort files by sequence within event. Same-second bursts break
+        # ties on file_path (sequential camera filenames = capture order).
         sorted_files = sorted(
             event.files,
-            key=lambda f: f.captured_at_local,
+            key=lambda f: (f.captured_at_local, f.file_path),
         )
 
         # Collect unique taxonomy IDs across all files. Both name maps are

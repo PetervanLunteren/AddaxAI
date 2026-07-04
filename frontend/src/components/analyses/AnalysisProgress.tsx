@@ -18,7 +18,7 @@
 import { Loader2 } from "lucide-react";
 import { Progress } from "../ui/progress";
 import { Separator } from "../ui/separator";
-import { humanizeTqdmTime } from "../../lib/duration";
+import { formatRate, humanizeTqdmTime } from "../../lib/duration";
 import type {
   DeploymentContext,
   TqdmMetrics,
@@ -133,7 +133,7 @@ function PhaseRow({
     (phaseProgress === undefined || phaseProgress < 1.0);
 
   const unit = metrics?.unit || "items";
-  const capitalizedUnit = unit.charAt(0).toUpperCase() + unit.slice(1);
+  const rateDisplay = metrics?.rate ? formatRate(metrics.rate, unit) : null;
 
   return (
     <div className="space-y-1.5">
@@ -166,10 +166,10 @@ function PhaseRow({
               <span>{humanizeTqdmTime(metrics.remaining, true)}</span>
             </div>
           )}
-          {metrics.rate && (
+          {rateDisplay && (
             <div className="flex justify-between">
-              <span>{capitalizedUnit} per second:</span>
-              <span>{metrics.rate.toFixed(1)}</span>
+              <span>{rateDisplay.label}:</span>
+              <span>{rateDisplay.value}</span>
             </div>
           )}
           <div className="flex justify-between">

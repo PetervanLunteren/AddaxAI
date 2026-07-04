@@ -27,6 +27,7 @@ from app.core.subprocess_group import popen_group
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.inference.base import DetectionModel
 from app.utils.fs_hidden import mkdir_hidden_addaxai
+from app.utils.subprocess_env import clean_python_env
 
 logger = get_logger(__name__)
 
@@ -319,6 +320,7 @@ class MegaDetectorV1000(DetectionModel):
                     stderr=subprocess.STDOUT,
                     text=True,
                     bufsize=1,
+                    env=clean_python_env(),
                 )
 
                 # Monitor progress from stdout
