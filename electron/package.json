@@ -85,12 +85,21 @@
     },
     "linux": {
       "target": ["deb"],
+      "icon": "build/icons",
       "artifactName": "${productName}-${arch}.${ext}",
       "category": "Science",
       "maintainer": "Addax Data Science <peter@addaxdatascience.com>"
     },
     "deb": {
-      "afterInstall": "build/deb-after-install.sh"
+      "packageName": "addaxai",
+      "afterInstall": "build/deb-after-install.sh",
+      "fpm": [
+        "--replaces",
+        "addaxai-desktop",
+        "--conflicts",
+        "addaxai-desktop",
+        "build/addaxai.metainfo.xml=/usr/share/metainfo/com.addaxai.cameratrap.metainfo.xml"
+      ]
     }
   }
 }

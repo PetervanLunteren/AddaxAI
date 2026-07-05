@@ -552,6 +552,17 @@ class EnvironmentManager:
             env["MAMBA_REMOTE_READ_TIMEOUT_SECS"] = "120"
             env["MAMBA_REMOTE_MAX_RETRIES"] = "5"
 
+            # pip stages downloads and build dirs in TMPDIR. On Ubuntu
+            # 24.10+ /tmp is a tmpfs capped at half the RAM with per-user
+            # quotas, and the multi-GB torch download dies there with
+            # EDQUOT (Linux beta report 2026-07-05). Point pip at a
+            # disk-backed dir we own instead. POSIX only: Windows uses
+            # TEMP/TMP and has no tmpfs problem, so leave it untouched.
+            pip_tmp_dir = env_path.parent / f".{env_name}.pip-tmp"
+            if os.name == "posix":
+                pip_tmp_dir.mkdir(parents=True, exist_ok=True)
+                env["TMPDIR"] = str(pip_tmp_dir)
+
             # Seed at the floor we just announced via the explicit
             # "Starting package installation..." callback above. The
             # first uncategorised micromamba line would otherwise emit
@@ -580,6 +591,7 @@ class EnvironmentManager:
                 )
             finally:
                 yaml_copy_path.unlink(missing_ok=True)
+                shutil.rmtree(pip_tmp_dir, ignore_errors=True)
 
             # A cancel kills micromamba mid-run, which surfaces here as a
             # non-zero exit. Distinguish that from a genuine build failure

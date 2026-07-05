@@ -365,6 +365,9 @@
 
 - [ ] It says "You have unsaved changes" every time i open the settings page. As a test: click "reset changes" the "You have unsaved changes" is not shown anymore, no apparent changes visible. Move different page, move back to settings, it shows "You have unsaved changes" again. Bug. Investigate. The thing is, we investigated previous already but could not find anything. We could not reproduce it, but now its back, and perhaps it has to do with the electron build as opposed to the localhost dev version. That the bug is only in electron, but not in the dev version. Could that be? 
 
+- [ ] "Initial setup - The AI models and their environment need to be installed before AddaxAI can analyse images. This is a one-time download and can take 10 to 30 minutes depending on your internet connection." -> " ... can analyse images." - its not only about analysing images, also videos. Perhaps something more generic like "before AddaxAI works" or something like that. Propose a few suggestions. 
+
+- [ ] If a user clicks the menu item help > "export diagnotics report" it doesnt tell the user where it went. I believe it goes to downloads, but it should say so by toast or something like that. 
 
 - [ ] LINUX DEB PACKAGE - decision (2026-07-05): ship the Linux beta as a .deb instead of the AppImage. Goal: zero terminal for the user. Double-click the .deb, install via the software center, launch AddaxAI from the app menu like any other app. Background: the AppImage aborts on launch on Ubuntu 23.10 and newer because AppArmor restricts unprivileged user namespaces and Electron's SUID chrome-sandbox fallback cannot work on a nosuid FUSE mount (confirmed on Ubuntu 26.04 in VirtualBox; --no-sandbox works but drops the sandbox). The deb solves both the crash and the chmod +x UX in one go. Implementation sketch:
     - add "deb" to the linux targets in electron/package.json (electron-builder generates the desktop entry and icons, so it appears in the app menu)
