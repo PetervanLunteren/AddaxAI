@@ -39,7 +39,7 @@ jobs:
             continue-on-error: true
             artifact-name: linux-installers
             artifact-glob: |
-              electron/dist-build/*.AppImage
+              electron/dist-build/*.deb
             electron-builder-args: --linux
           # Windows hard-fails on release events: the installer must be
           # code-signed (Authenticode) or SmartScreen scares users.

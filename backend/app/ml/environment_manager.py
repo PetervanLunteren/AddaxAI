@@ -504,12 +504,21 @@ class EnvironmentManager:
                         f"Building into a fresh temp path instead: {temp_env_path}"
                     )
 
+            # micromamba materialises temp files next to the spec file
+            # (pip requirement fragments), so the yaml's directory must be
+            # writable. The bundled yaml lives inside the installed app
+            # resources, which are read-only on Linux (AppImage FUSE mount,
+            # root-owned /opt for a deb). Build from a copy in the writable
+            # envs dir instead.
+            yaml_copy_path = env_path.parent / f".{env_name}.environment.yml"
+            shutil.copyfile(yaml_path, yaml_copy_path)
+
             logger.info(f"Running micromamba create for {env_name} (temp: {temp_env_path})...")
             cmd = [
                 str(self.micromamba_path),
                 "create",
                 "-f",
-                str(yaml_path),
+                str(yaml_copy_path),
                 "-p",
                 str(temp_env_path),  # Create in temp location
                 "-y",
@@ -565,9 +574,12 @@ class EnvironmentManager:
                     progress_callback(caption, current_progress)
                 logger.debug(f"micromamba: {line}")
 
-            result = stream_with_tail(
-                cmd, env=env, on_line=on_micromamba_line, job_id=job_id
-            )
+            try:
+                result = stream_with_tail(
+                    cmd, env=env, on_line=on_micromamba_line, job_id=job_id
+                )
+            finally:
+                yaml_copy_path.unlink(missing_ok=True)
 
             # A cancel kills micromamba mid-run, which surfaces here as a
             # non-zero exit. Distinguish that from a genuine build failure

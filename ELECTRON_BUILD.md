@@ -159,18 +159,26 @@ This creates `backend/dist/backend` (~26MB executable)
 ```bash
 cd ../electron
 npm run build    # Compile TypeScript
-npm run package  # Build AppImage
+npm run package  # Build deb
 ```
 
 **Output:**
-- `electron/dist-build/AddaxAI-x86_64.AppImage` (~120MB)
+- `electron/dist-build/AddaxAI-amd64.deb` (~120MB)
+
+The deb uses a custom after-install script (`electron/build/deb-after-install.sh`)
+that sets the SUID bit on chrome-sandbox unconditionally. Without it the app
+aborts on launch on Ubuntu 23.10+, where AppArmor blocks unprivileged user
+namespaces (see the comment in the script). An AppImage is not built: it
+cannot work sandboxed on those systems (nosuid FUSE mount).
 
 ### 4. Test the Installer
 
 ```bash
-chmod +x dist-build/AddaxAI-x86_64.AppImage
-./dist-build/AddaxAI-x86_64.AppImage
+sudo apt install ./dist-build/AddaxAI-amd64.deb
 ```
+
+Then launch AddaxAI from the app menu, or double-click the deb in the file
+manager to install through the software center like an end user would.
 
 ## Development Mode
 

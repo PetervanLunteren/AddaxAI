@@ -1,13 +1,385 @@
 # TODO
 
 ## Priority 1
-- [ ] 
+- [ ] The prcess for label verification and event comfirmation can be quick. That is what we designed it for, so it s working. That is great. But mistakes can happen. NOw the user needst to change a filter to see verified ones, then relabel them. Can we make this faster? Like an UNDO button or so? Just invetigate and report with estimated effort. KISS DRY YAGNI. Can we make it undo unlimited? Just like CNTR+Z on windows? maybe only the labels is enough for the undo, as counts confirmation you can go back to the previous one with the arrows right? 
+- [ ] If ordering by event, does it order the events of a single camera first? how does it order the events? how does it currently work and how should it work? we want the most dependent detections grouped/ordered. what is possible given the contraints of folder runs with agnostic data.
+- [ ] Do we really need the refresh button on the label verification step/page? What does it do? It doesnt buy the user anyhting right? We also offer a full app hard refresh via the electron menu. Is it of value?
+- [ ] the label verification options in the bar (Help, keybord shortcuts, view options), do we want to keep them as icons? or as buttons? Whats the best UX UI here? 
+- [ ] when verifying labels, it often shows a taost saying it verified them succesfully, but the user is do this for hours on end.... and it covers the floating bar wich is annoying... what do do about this? Arent toasts for infrequent things? What is best here? in terms of UX UI
+- [ ] SHould we name the folder run buttons [back] [continue] to [previous step] and [next step]?
+- [ ] SHould we make the folder run steps clickable? now they are only clickable if you have visited it in that run already. But why not just have users click step 5 directly after processing... ?
+- [ ] in the counts confirmation modal, would it make sense to add an option to edit the label of an already present species row? for instance, sometimes you'll get an event with a deer in a garden with a bucnh of chickens. It will suggest: deer x1, and bird x5. But the user wants deer x1, and chicken x5. Now he has to remove the biurd row and add a new one, choose chicken, and add 5 counts. If the label can change, that will be much faster. It doesnt have to be a button (as little visual clutter as possible), perhaps just by clickin on the word "bird"?
+
+- [ ] The save step pbar is like this below. But the separating files takes quite long. Why not show progress per image? Then the user gets better feedback. perhaps pbars for all stages? or just stage + percentage + ETA? or something like that. It doesnt need to be beatiful, just practical. Also, what do these stages actually mean? "Separating files" and "Writing annotated copies"?
+
+                Saving outputs
+                Separating files (0 / 5)
+
+                Separating files
+                Writing annotated copies
+                Writing recognition JSON
+                Writing CSV
+                Writing run README
+
+- [ ] The save step output preview is now this below. Arguably a bit too much. You dont have to visualise everything, just enough to show the user how the folders will be grouped. What do you thnk? add a cut off point somewhere? if so, how and what is good? Also, what happens if the folder name is super duper long? Lets say the species name is "superduperlongspeicesnamewithsomeextracharactersjusttotestwithlongwords"? how would that look in the preview ciurrently? and do we want to do anything with that?
+
+                Output preview
+                What the run will write into your output folder
+
+                AddaxAI-output
+                ├─ 
+                mammalia
+                │  ├─ 
+                carnivora
+                │  │  ├─ 
+                canidae
+                │  │  │  ├─ 
+                canis
+                │  │  │  │  ├─ 
+                coyote
+                │  │  │  │  │  ├─ 
+                Pocono_North
+                123
+                │  │  │  │  │  ├─ 
+                Ricketts_Glen
+                52
+                │  │  │  │  │  ├─ 
+                Allegheny_National_North
+                49
+                │  │  │  │  │  └─ 
+                …
+                │  │  │  │  └─ 
+                domestic_dog
+                │  │  │  │     ├─ 
+                Kinzua
+                48
+                │  │  │  │     ├─ 
+                Rocky_Spring
+                37
+                │  │  │  │     ├─ 
+                Maple_Hollow
+                31
+                │  │  │  │     └─ 
+                …
+                │  │  │  ├─ 
+                vulpes
+                │  │  │  │  └─ 
+                red_fox
+                │  │  │  │     ├─ 
+                Worlds_End
+                56
+                │  │  │  │     ├─ 
+                Cold_Gap
+                34
+                │  │  │  │     ├─ 
+                Beaver_Marsh
+                26
+                │  │  │  │     └─ 
+                …
+                │  │  │  ├─ 
+                Tuscarora_North
+                133
+                │  │  │  └─ 
+                …
+                │  │  ├─ 
+                felidae
+                │  │  │  ├─ 
+                felis
+                │  │  │  │  └─ 
+                domestic_cat
+                │  │  │  │     ├─ 
+                Pocono_South
+                120
+                │  │  │  │     ├─ 
+                Hyner_Run
+                48
+                │  │  │  │     ├─ 
+                Eagle_Mill
+                23
+                │  │  │  │     └─ 
+                …
+                │  │  │  ├─ 
+                lynx
+                │  │  │  │  └─ 
+                bobcat
+                │  │  │  │     ├─ 
+                Susquehannock
+                49
+                │  │  │  │     ├─ 
+                Slippery_Ridge
+                21
+                │  │  │  │     ├─ 
+                Cherry_Valley
+                15
+                │  │  │  │     └─ 
+                …
+                │  │  │  └─ 
+                Sugar_Valley
+                1
+                │  │  ├─ 
+                ursidae
+                │  │  │  └─ 
+                ursus
+                │  │  │     └─ 
+                american_black_bear
+                │  │  │        ├─ 
+                Tioga_State_Forest
+                79
+                │  │  │        ├─ 
+                Laurel_Highlands
+                41
+                │  │  │        ├─ 
+                Bedford_State_Forest
+                40
+                │  │  │        └─ 
+                …
+                │  │  └─ 
+                …
+                │  ├─ 
+                rodentia
+                │  │  ├─ 
+                sciuridae
+                │  │  │  ├─ 
+                Allegheny_North
+                179
+                │  │  │  ├─ 
+                marmota
+                │  │  │  │  └─ 
+                woodchuck
+                │  │  │  │     ├─ 
+                Otter_Cove
+                36
+                │  │  │  │     ├─ 
+                New_Gap
+                29
+                │  │  │  │     ├─ 
+                Slate_Mountain
+                29
+                │  │  │  │     └─ 
+                …
+                │  │  │  ├─ 
+                Tuscarora
+                142
+                │  │  │  └─ 
+                …
+                │  │  └─ 
+                Otter_Hill
+                2
+                │  ├─ 
+                didelphimorphia
+                │  │  └─ 
+                didelphidae
+                │  │     └─ 
+                didelphis
+                │  │        └─ 
+                virginia_opossum
+                │  │           ├─ 
+                Allegheny_Front
+                288
+                │  │           ├─ 
+                Allegheny_South
+                158
+                │  │           ├─ 
+                Gallitzin
+                43
+                │  │           └─ 
+                …
+                │  └─ 
+                …
+                ├─ 
+                aves
+                │  ├─ 
+                galliformes
+                │  │  └─ 
+                phasianidae
+                │  │     ├─ 
+                gallus
+                │  │     │  ├─ 
+                domestic_chicken
+                │  │     │  │  ├─ 
+                Moshannon
+                68
+                │  │     │  │  ├─ 
+                Buchanan_State_Forest
+                42
+                │  │     │  │  ├─ 
+                Tioga_North
+                35
+                │  │     │  │  └─ 
+                …
+                │  │     │  ├─ 
+                Clear_Bend
+                18
+                │  │     │  ├─ 
+                Laurel_Spring
+                18
+                │  │     │  └─ 
+                …
+                │  │     ├─ 
+                meleagris
+                │  │     │  └─ 
+                wild_turkey
+                │  │     │     ├─ 
+                Michaux
+                55
+                │  │     │     ├─ 
+                Tionesta
+                21
+                │  │     │     ├─ 
+                Crow_Cove
+                20
+                │  │     │     └─ 
+                …
+                │  │     ├─ 
+                Old_Valley
+                6
+                │  │     └─ 
+                …
+                │  ├─ 
+                passeriformes
+                │  │  ├─ 
+                corvidae
+                │  │  │  ├─ 
+                corvus
+                │  │  │  │  ├─ 
+                american_crow
+                │  │  │  │  │  ├─ 
+                Ohiopyle
+                51
+                │  │  │  │  │  ├─ 
+                Birch_Marsh
+                37
+                │  │  │  │  │  ├─ 
+                Oak_Mill
+                35
+                │  │  │  │  │  └─ 
+                …
+                │  │  │  │  ├─ 
+                Crow_Bend
+                12
+                │  │  │  │  ├─ 
+                Otter_Creek
+                9
+                │  │  │  │  └─ 
+                …
+                │  │  │  └─ 
+                Iron_Ridge
+                5
+                │  │  └─ 
+                turdidae
+                │  │     └─ 
+                turdus
+                │  │        └─ 
+                american_robin
+                │  │           ├─ 
+                Sproul_State_Forest
+                14
+                │  │           └─ 
+                Old_Branch
+                8
+                │  ├─ 
+                Sproul_State_Forest
+                70
+                │  └─ 
+                …
+                ├─ 
+                vehicle
+                │  ├─ 
+                Wolf_Hill
+                35
+                │  ├─ 
+                Bear_Glen
+                27
+                │  ├─ 
+                Coal_Branch
+                12
+                │  └─ 
+                …
+                ├─ 
+                blank
+                │  ├─ 
+                Crow_Bottom
+                8
+                │  ├─ 
+                Bald_Eagle
+                6
+                │  ├─ 
+                Allegheny_North
+                4
+                │  └─ 
+                …
+                ├─ 
+                other
+                │  ├─ 
+                unknown
+                │  │  ├─ 
+                Mossy_Ridge
+                10
+                │  │  ├─ 
+                Tioga_State_Forest
+                6
+                │  │  └─ 
+                Sugar_Hollow
+                1
+                │  └─ 
+                fictional_species
+                │     ├─ 
+                Cherry_Cove
+                4
+                │     └─ 
+                Michaux
+                1
+                ├─ 
+                person
+                │  ├─ 
+                Buck_Branch
+                3
+                │  └─ 
+                Bear_Glen
+                1
+                ├─ 
+                bird
+                │  ├─ 
+                Sproul_State_Forest
+                1
+                │  └─ 
+                Tumbling_Branch
+                1
+                ├─ 
+                deployments.csv
+                ├─ 
+                files.csv
+                ├─ 
+                detections.csv
+                ├─ 
+                counts.csv
+                ├─ 
+                recognitions.json
+                └─ 
+                summary.txt
+                6,465 source files → 6,465 written
+
+                ~2.6 GB
+
+
+
+- [ ] It says "You have unsaved changes" every time i open the settings page. As a test: click "reset changes" the "You have unsaved changes" is not shown anymore, no apparent changes visible. Move different page, move back to settings, it shows "You have unsaved changes" again. Bug. Investigate. The thing is, we investigated previous already but could not find anything. We could not reproduce it, but now its back, and perhaps it has to do with the electron build as opposed to the localhost dev version. That the bug is only in electron, but not in the dev version. Could that be? 
+
+
+- [ ] LINUX DEB PACKAGE - decision (2026-07-05): ship the Linux beta as a .deb instead of the AppImage. Goal: zero terminal for the user. Double-click the .deb, install via the software center, launch AddaxAI from the app menu like any other app. Background: the AppImage aborts on launch on Ubuntu 23.10 and newer because AppArmor restricts unprivileged user namespaces and Electron's SUID chrome-sandbox fallback cannot work on a nosuid FUSE mount (confirmed on Ubuntu 26.04 in VirtualBox; --no-sandbox works but drops the sandbox). The deb solves both the crash and the chmod +x UX in one go. Implementation sketch:
+    - add "deb" to the linux targets in electron/package.json (electron-builder generates the desktop entry and icons, so it appears in the app menu)
+    - add a deb afterInstall script that installs an AppArmor profile granting userns (the standard Ubuntu 24.04+ electron fix) and runs apparmor_parser; afterRemove cleans it up
+    - keep the AppImage as a secondary download for non-deb distros, with the --no-sandbox relaunch fallback in the main process so it at least starts
+    - CI: build-electron.yml linux job already runs --linux, so it picks up the new target; check the artifact name pattern
+    - update BETA.md with the Linux download + install steps once it works
+    - test on the clean-install VirtualBox snapshot: double-click install, menu launch, model download, folder run, uninstall
+
 
 ## Priority 2
 - [ ] 
 
 ## Priority 3 
-- [ ] 
+- [ ] would it make sense to show a list of previously analysed folders at the folder run step 1? SO that they do not have to drag and drop the folder or browse trough them, but just scroll and click... ? If so, how and where? 
 
 ## After the Beta phase
 - [ ] ADD ALL MODELS (Also Caras model)

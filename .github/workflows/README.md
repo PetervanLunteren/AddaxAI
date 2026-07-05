@@ -23,7 +23,7 @@ re-pushing.
 | OS | Runner | Arch | Outputs | Blocking |
 |----|--------|------|---------|----------|
 | macOS | `macos-14` | arm64 | `.dmg`, `-mac.zip` | Yes |
-| Linux | `ubuntu-22.04` | x64 | `.AppImage` | No (`continue-on-error`) |
+| Linux | `ubuntu-22.04` | x64 | `.deb` | No (`continue-on-error`) |
 | Windows | `windows-2022` | x64 | `.exe` (NSIS), `-win.zip` | No (`continue-on-error`) |
 
 macOS runs on Apple Silicon only. There is no Intel x64 build. Anyone on a
@@ -83,10 +83,18 @@ mode where electron-builder produces an unsigned-but-named-correctly
 
 ### Linux and Windows
 
-No signing yet. Linux uses `electron-builder --linux` (AppImage only;
-covers every modern glibc distro). Windows uses `electron-builder --win`
-(NSIS + zip). End users see SmartScreen / Gatekeeper warnings on these
-platforms; that's expected until signing is wired up.
+No signing yet. Linux uses `electron-builder --linux` (deb only; targets
+Ubuntu/Debian/Mint, which is the supported Linux audience for the beta).
+The deb ships a custom after-install script
+(`electron/build/deb-after-install.sh`) that sets the SUID bit on
+chrome-sandbox unconditionally, because electron-builder's default
+template tests for user namespaces as root and therefore skips the bit
+on Ubuntu 23.10+, where AppArmor blocks unprivileged user namespaces at
+runtime and the app aborts on launch. An AppImage was shipped before
+this; it cannot work sandboxed on Ubuntu 23.10+ (nosuid FUSE mount), so
+it was dropped. Windows uses `electron-builder --win` (NSIS + zip). End
+users see SmartScreen / Gatekeeper warnings on these platforms; that's
+expected until signing is wired up.
 
 ### Releasing
 
