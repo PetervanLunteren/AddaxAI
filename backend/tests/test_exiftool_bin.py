@@ -49,3 +49,37 @@ def test_raises_when_missing_everywhere(tmp_path, monkeypatch):
 
     with pytest.raises(RuntimeError, match="exiftool not found"):
         exiftool_bin.resolve_exiftool()
+
+
+def test_windows_uses_bat_and_extends_path(tmp_path, monkeypatch):
+    """On Windows the .bat wrapper wins (the extensionless perl script
+    also exists but is not executable there: WinError 193), and the
+    env's binary dirs land on PATH so the wrapper can find perl.exe."""
+    env_dir = tmp_path / "envs" / "env-addaxai-base"
+    env_bin = env_dir / "bin"
+    env_bin.mkdir(parents=True)
+    (env_bin / "exiftool").write_text("#!perl\n")
+    bat = env_bin / "exiftool.bat"
+    bat.write_text("@perl -x -S %0 %*\n")
+    lib_bin = env_dir / "Library" / "bin"
+    lib_bin.mkdir(parents=True)
+
+    monkeypatch.setattr(
+        exiftool_bin, "get_settings", lambda: _fake_settings(tmp_path)
+    )
+    monkeypatch.setattr(exiftool_bin.os, "name", "nt")
+    monkeypatch.setenv("PATH", "/usr/bin")
+
+    assert exiftool_bin.resolve_exiftool() == str(bat)
+    path_parts = exiftool_bin.os.environ["PATH"].split(
+        exiftool_bin.os.pathsep
+    )
+    assert str(lib_bin) in path_parts
+    assert str(env_bin) in path_parts
+
+    # Second resolve must not duplicate the PATH entries.
+    exiftool_bin.resolve_exiftool()
+    path_parts = exiftool_bin.os.environ["PATH"].split(
+        exiftool_bin.os.pathsep
+    )
+    assert path_parts.count(str(lib_bin)) == 1

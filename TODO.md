@@ -367,7 +367,7 @@
 
 - [ ] "Initial setup - The AI models and their environment need to be installed before AddaxAI can analyse images. This is a one-time download and can take 10 to 30 minutes depending on your internet connection." -> " ... can analyse images." - its not only about analysing images, also videos. Perhaps something more generic like "before AddaxAI works" or something like that. Propose a few suggestions. 
 
-- [ ] If a user clicks the menu item help > "export diagnotics report" it doesnt tell the user where it went. I believe it goes to downloads, but it should say so by toast or something like that. 
+- [ ] If a user clicks the menu item help > "export diagnotics report" there are two toasts: '/Users/peter/Desktop/Screenshot 2026-07-06 at 13.21.31.png'
 
 - [ ] LINUX DEB PACKAGE - decision (2026-07-05): ship the Linux beta as a .deb instead of the AppImage. Goal: zero terminal for the user. Double-click the .deb, install via the software center, launch AddaxAI from the app menu like any other app. Background: the AppImage aborts on launch on Ubuntu 23.10 and newer because AppArmor restricts unprivileged user namespaces and Electron's SUID chrome-sandbox fallback cannot work on a nosuid FUSE mount (confirmed on Ubuntu 26.04 in VirtualBox; --no-sandbox works but drops the sandbox). The deb solves both the crash and the chmod +x UX in one go. Implementation sketch:
     - add "deb" to the linux targets in electron/package.json (electron-builder generates the desktop entry and icons, so it appears in the app menu)
@@ -398,6 +398,9 @@
 - [ ] Set up a scheduled GitHub Action to fetch download counts for all release assets via the GitHub API and store daily or weekly snapshots in a CSV for tracking downloads over time.
 
 - [ ] The very first time a user opens AddaxAI after a fresh install, it takes quite long to open. Can we do anything about that? Perhaps do a warmup open during the actual installation part? Or how would that work? And what would it save in terms of time the first time? KISS DRY YAGNI
+
+- [ ] folder run save step. option : "Keep events together - The whole event goes to the folder of its most confident species". Is this most confident species referring to the cls confidence? Because that if set to 100% if verified, right? Or to the det conf? Worth knowing which one it is, and if that is the desired behaviour. No action point yet, just checking and see if we want to do anything with it. 
+
 
 ## Priority 2
 - [ ] 
