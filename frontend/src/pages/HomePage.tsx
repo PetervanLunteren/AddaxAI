@@ -20,8 +20,8 @@
  *
  * Timelapse Analyser is no longer a separate mode: its launcher
  * (`AddaxAI.exe --timelapse <folder>`) now opens "Analyse a folder"
- * with the folder pre-filled, and the folder run's recognitions.json
- * is what Timelapse imports.
+ * with the folder pre-filled, and the folder run's
+ * addaxai-recognitions.json is what Timelapse imports.
  */
 
 import { useNavigate } from "react-router-dom";

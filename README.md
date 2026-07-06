@@ -141,9 +141,12 @@ tail -f ~/AddaxAI/logs/backend.log
 
 ## Timelapse Analyser integration (Windows only)
 
-AddaxAI produces a `recognitions.json` for import in [Timelapse Analyser](https://saul.cpsc.ucalgary.ca/timelapse/).
+AddaxAI produces an `addaxai-recognitions.json` for import in [Timelapse Analyser](https://saul.cpsc.ucalgary.ca/timelapse/).
 Run a folder analysis ("Analyse a folder") and keep the recognition file
-enabled in the save step; it is written to the run's output folder.
+enabled in the save step; it is written into the analysed folder itself
+(the default output folder), where Timelapse expects it: Timelapse
+resolves the file paths inside the JSON against the folder the JSON
+sits in.
 
 Timelapse launches AddaxAI on a folder with:
 

@@ -380,16 +380,23 @@
     - test on the clean-install VirtualBox snapshot: double-click install, menu launch, model download, folder run, uninstall
 
 
+- [ ] There is a bug in the new label addition slideout. At least on linux, other OS not tested. Reproduce: select crops in labels step, Relabel, type "new species", click add, add new label slidout appears, focus on the GBIF lookup text field, sometimes on first click it disapears, sometimes you have to click a few times, sometimes it doesnt at all, but it is a bug that keeps the slidoue from closing without any label being added. INvestigate.
 
+- [ ] new label slidout '/Users/peter/Desktop/Screenshot 2026-07-06 at 14.37.33.png'. We shoduld probabaly make it ocnsistent with the rest of the app and dont put all the text in the main caption, but do the relevant things under its relevant widgets.... that keeps it managemenble. Make sure you use the shared helper for the widget cpations (same font, size, and indetation.)
+
+- [ ] The add deployment to queue form on the projects process page, do we want to hide the metadata like description, tags, etc by default? What do you thbink? I think not a lot of users will use that. The folder and the site is important, so alsways show that, but we can hide the rest under a collapsable, what do you think? Then save the collpsabel state to LocalStorage so it is hidden / open next time too. Matches the users workflow. INvestigate and report the effort.  
 
 - [ ] Add a back arrow to home button on the folder run view and the projects overview page, exactly like the Baout page. Or better yet, make the current logo go back to home (as it already does currently), but make it more aparent. How? IDK. What do you suggest. Hover text, perhaps. Hover arrow appears icon? hover makes it a home icon? Perhaps. wouildnt that look modern? SOmething like that. What would you suggest? be honest, no sugar coating. Whats your opinion on this from a stadpoint of UX UI. KISS DRY YAGNI. How do other wellknown applications do it? You can webquery if you want. 
 
-
+- [ ] fodler run save step. it always automatically saves summary.txt. possibly confusing for people who just want one thing. Should we put this under a checkbox too? If so, which title+captipon and where in the page? 
 
 - [ ] ABout page.... should we add the logo there too in the header to make it consistent with the other pages folder run and projects view? We can keep the ABout and the tag caption as is.  Also, should we get rid of the large logo in the page contents? I think the users know the logo by now.... what do you think? 
 
 - [ ] ABout page.... it still references "Click the (i) button next to a model " but that is not true anymore. Its the "model info" caption below the dropdown that they need to click. Update this. Are there more stale references? 
 
+- [ ] lables page/step - on events sorting, when pressing 'E' shotcut, it should auto scroll/focus on the first crop of the new selection. Now you have to scroll upwards every time your lower. 
+
+- [ ] The "Restoree database from backup" option modal should be made more user friendly. There are auto backups and manual backups (more flavours?) in the app dir, and then also manual backups in user difined dirs. The ones in the auto app dir shouod show as human friendly list of cards with datetimes, the flavour, etc. OR the user can select a backup file from a custom location. That is good UX UI. NOw the user needs to find it himself every time... and figure out how the naming works... 
 
 - [ ] SHould we add an option to opt out? Just to be clear: opting out is canceling, not doing it in the backgound. NO cleverness here. Or better yet, a lot simpler. Just add to the cpation that the user can quit the app and try it again later. Some users might want to know that it is safe to quit. 
             Updating analysis environment
@@ -439,6 +446,7 @@
 - [ ] also include the fallback date reader from filename (...addaxai-YYYYMMDD-HHMMSS.ext)
 
 ## Nice to haves
+- [ ] APT REPO FOR LINUX UPDATES - host a small signed apt repository so Linux users add it once and then get AddaxAI updates through Ubuntu's normal Software Updater. Currently a new deb opened in the App Center shows a greyed-out "Installed" button with no update path (App Center limitation for sideloaded debs), so BETA.md tells users to run `sudo apt install ./AddaxAI-amd64.deb` by hand. An apt repo also removes the "Unknown publisher / potentially unsafe" warning on the install page. Only worth it if Linux uptake grows beyond the current handful of users.
 - [ ] SUBSAHARA GEOFILE - Add a geolocation file for the Sub Saharan model too, like SpeciesNet, so users of the SSmodel can also prefil by country. 
 - [ ] CLS THRESH - add a classification threshold and a per species override. Check how that is one in AddaxAI-Connect. I want something like that.
 - [ ] Bulk-create sites and deployments from a text file (CSV). Columns: name, lat, lon, optional habitat, deployment folder, altitude. Requested by Simon for a 34-camera survey where adding each site/deployment by hand is laborious.

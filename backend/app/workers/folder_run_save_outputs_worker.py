@@ -15,8 +15,10 @@ check is good enough for the typical run.
 Module sequencing matters: ``separate_folders`` runs first so the
 shared ``OutputContext`` knows where each file ended up, then
 ``annotated_copies`` reads those placements and writes the
-combined-effect image into each one. The data exports run last and
-can pick up the resolved paths for the new ``relative_path`` column.
+combined-effect image into each one. Media copies land under the
+``addaxai-media`` subfolder of the output dir; the loose data exports
+(``addaxai-*.csv`` / ``.xlsx`` / ``.json`` / ``.txt``) go at the
+output root, which defaults to the source folder itself.
 
 The job's ``result`` payload mirrors the per-module dataclass dicts so
 the completion modal in the UI can render summary panels directly.
@@ -38,7 +40,10 @@ from app.core.job_cancellation import (
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
-from app.ml.postprocessing_outputs._output_context import OutputContext
+from app.ml.postprocessing_outputs._output_context import (
+    MEDIA_SUBDIR,
+    OutputContext,
+)
 from app.ml.postprocessing_outputs.annotated_copies import (
     write_annotated_copies,
 )
@@ -110,22 +115,37 @@ async def process_save_outputs_job(job_id: str) -> None:
         if project is None or project.mode != "folder_run":
             raise ValueError(f"Folder run not found: {run_id}")
 
+        # Layout: loose ``addaxai-*`` data files at the output root
+        # (which defaults to the source folder itself), media copies
+        # under the ``addaxai-media`` subfolder.
         output_root = Path(output_dir)
         output_root.mkdir(parents=True, exist_ok=True)
-        # Mark the output folder so future scans (preview + the analysis
-        # worker's input enumeration) skip it — its separated / annotated
-        # copies must never be re-ingested as input media. The save
-        # endpoint also writes this, but doing it here too guarantees the
-        # marker is co-located with the output tree this worker creates,
-        # regardless of how the save was triggered. Best-effort.
-        try:
-            (output_root / OUTPUT_DIR_MARKER).touch(exist_ok=True)
-        except OSError as e:
-            logger.warning(f"Could not write output marker in {output_root}: {e}")
-        ctx = OutputContext(output_root=output_root)
+        media_root = output_root / MEDIA_SUBDIR
+        ctx = OutputContext(output_root=media_root)
 
         draw_bboxes = bool(payload.get("draw_bboxes"))
         anonymise = bool(payload.get("anonymise"))
+        media_active = bool(
+            payload.get("separate_folders") or draw_bboxes or anonymise
+        )
+        if media_active:
+            # Mark the media folder so future scans (preview + the
+            # analysis worker's input enumeration) skip it — its
+            # separated / annotated copies must never be re-ingested as
+            # input media. Only the media subfolder gets the marker:
+            # marking the output root would make re-scans skip the whole
+            # source folder when the default (source root) is used. The
+            # save endpoint also writes this, but doing it here too
+            # guarantees the marker is co-located with the tree this
+            # worker creates, regardless of how the save was triggered.
+            # Best-effort.
+            try:
+                media_root.mkdir(parents=True, exist_ok=True)
+                (media_root / OUTPUT_DIR_MARKER).touch(exist_ok=True)
+            except OSError as e:
+                logger.warning(
+                    f"Could not write output marker in {media_root}: {e}"
+                )
 
         # Which modules actually fire on this run.
         active_modules: list[str] = []
@@ -237,23 +257,23 @@ async def process_save_outputs_job(job_id: str) -> None:
                     return write_recognition_json(
                         db,
                         project.id,
-                        ctx.output_root,
+                        output_root,
                     ).to_dict()
                 if m == "csv":
                     return write_tables_csv(
                         db,
                         project.id,
-                        ctx,
+                        output_root,
                     ).to_dict()
                 if m == "xlsx":
                     return write_tables_xlsx(
                         db,
                         project.id,
-                        ctx,
+                        output_root,
                     ).to_dict()
                 if m == "run_readme":
                     return write_run_readme(
-                        db, project.id, ctx.output_root
+                        db, project.id, output_root
                     ).to_dict()
                 raise ValueError(f"Unknown module: {m}")
 

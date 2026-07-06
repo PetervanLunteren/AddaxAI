@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 
-from app.ml.postprocessing_outputs._output_context import OutputContext
 from app.ml.postprocessing_outputs.tables_xlsx import (
     XLSX_FILENAME,
     write_tables_xlsx,
@@ -30,9 +29,6 @@ def _write_placeholder(path: Path) -> str:
     path.write_bytes(b"x")
     return str(path)
 
-
-def _ctx(output_root: Path) -> OutputContext:
-    return OutputContext(output_root=output_root)
 
 
 def test_writes_two_sheet_workbook(db, tmp_path):
@@ -59,7 +55,7 @@ def test_writes_two_sheet_workbook(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = write_tables_xlsx(db, project.id, _ctx(target))
+    result = write_tables_xlsx(db, project.id, target)
 
     assert result.output_path.endswith(XLSX_FILENAME)
     output_path = target / XLSX_FILENAME
@@ -73,4 +69,4 @@ def test_writes_two_sheet_workbook(db, tmp_path):
 
 def test_unknown_project_raises(db, tmp_path):
     with pytest.raises(ValueError, match="not found"):
-        write_tables_xlsx(db, "no-such-id", _ctx(tmp_path / "out"))
+        write_tables_xlsx(db, "no-such-id", tmp_path / "out")

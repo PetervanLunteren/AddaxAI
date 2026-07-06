@@ -7,11 +7,12 @@
  * is responsible for the WebSocket subscription (``useTaskProgress``)
  * and the modal rendering — this hook just exposes the handles.
  *
- * Safety net: ``sourceFolderConflict`` blocks Save only when the chosen
- * output folder *is* the source folder — the flat-copy mode writes
- * original filenames at the output root, which would overwrite the
- * source. Subfolders inside the source are allowed; the save drops a
- * marker so future scans skip them.
+ * The output dir defaults to the source folder itself. That is safe
+ * because the backend writes media copies into an ``addaxai-media``
+ * subfolder (with a scan-skip marker) and the loose data files carry
+ * the ``addaxai-`` prefix, so originals are never overwritten and the
+ * recognition JSON lands where its source-relative paths resolve
+ * (what Timelapse needs).
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -112,23 +113,6 @@ export function excludedLabelIds(
   return allLabelIds.filter((id) => !included.has(id));
 }
 
-/** True only when ``output`` *is* ``source``. The flat-copy mode writes
- * original filenames at the output root, so saving into the source root
- * itself would overwrite the originals. Subfolders of the source are
- * fine — they get a scan-skip marker — so they don't conflict. Handles
- * both POSIX and Windows separators regardless of which the OS emitted. */
-function outputConflictsWithSource(
-  output: string,
-  source: string | undefined,
-): boolean {
-  if (!output || !source) return false;
-  const norm = (p: string) => p.replace(/[\\/]+$/, "").replace(/\\/g, "/");
-  const o = norm(output);
-  const s = norm(source);
-  if (!s) return false;
-  return o === s;
-}
-
 export interface UseSaveOutputsFormParams {
   runId: string;
   sourceFolder: string | undefined;
@@ -137,12 +121,9 @@ export interface UseSaveOutputsFormParams {
 export interface UseSaveOutputsFormResult {
   outputDir: string;
   setOutputDir: (v: string) => void;
-  /** The dir the form will submit. Defaults to an ``AddaxAI-output``
-   * subfolder of the source; equal to ``outputDir``. */
+  /** The dir the form will submit. Defaults to the source folder
+   * itself; equal to ``outputDir``. */
   effectiveOutputDir: string;
-  /** True when the chosen output dir is the source folder itself
-   * (would overwrite originals). Save is disabled in this state. */
-  sourceFolderConflict: boolean;
 
   separate: SeparateState;
   setSeparate: (s: SeparateState) => void;
@@ -191,16 +172,14 @@ export function useSaveOutputsForm({
 }: UseSaveOutputsFormParams): UseSaveOutputsFormResult {
   const [outputDir, setOutputDir] = useState("");
   const effectiveOutputDir = outputDir;
-  const sourceFolderConflict = outputConflictsWithSource(
-    effectiveOutputDir,
-    sourceFolder,
-  );
 
-  // Seed a sensible default once the source folder is known: an
-  // "AddaxAI-output" subfolder inside the source. The save writes a
-  // marker there so future scans skip it, which makes nesting under the
-  // source safe. Fires once, and only while the field is still empty, so
-  // it never clobbers a user-picked path.
+  // Seed a sensible default once the source folder is known: the
+  // source folder itself. The recognition JSON only resolves its
+  // source-relative paths there (Timelapse requirement), the data
+  // files carry the addaxai- prefix, and media copies go into an
+  // addaxai-media subfolder with a scan-skip marker — so nothing
+  // collides with the originals. Fires once, and only while the field
+  // is still empty, so it never clobbers a user-picked path.
   const hasSeededOutputRef = useRef(false);
   useEffect(() => {
     if (hasSeededOutputRef.current || !sourceFolder) return;
@@ -208,7 +187,7 @@ export function useSaveOutputsForm({
     // One-time seed of a default from an async-loaded prop, guarded by
     // the ref so it can't loop.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOutputDir((cur) => (cur ? cur : `${sourceFolder}/AddaxAI-output`));
+    setOutputDir((cur) => (cur ? cur : sourceFolder));
   }, [sourceFolder]);
 
   // Seed the option state from the last-used choices (persisted on
@@ -324,7 +303,6 @@ export function useSaveOutputsForm({
     (exportOpts.csv || exportOpts.xlsx || exportOpts.recognitionJson);
   const canSave =
     !!effectiveOutputDir &&
-    !sourceFolderConflict &&
     !spawn.isPending &&
     jobId === null &&
     (separate.enabled || exportPicked);
@@ -333,7 +311,6 @@ export function useSaveOutputsForm({
     outputDir,
     setOutputDir,
     effectiveOutputDir,
-    sourceFolderConflict,
     separate,
     setSeparate,
     labelTree: labelTree ?? null,

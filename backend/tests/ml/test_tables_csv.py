@@ -11,7 +11,6 @@ from pathlib import Path
 
 import pytest
 
-from app.ml.postprocessing_outputs._output_context import OutputContext
 from app.ml.postprocessing_outputs.tables_csv import (
     COUNTS_FILENAME,
     DEPLOYMENTS_FILENAME,
@@ -32,9 +31,6 @@ def _write_placeholder(path: Path) -> str:
     path.write_bytes(b"x")
     return str(path)
 
-
-def _ctx(output_root: Path) -> OutputContext:
-    return OutputContext(output_root=output_root)
 
 
 def test_writes_both_files_at_canonical_paths(db, tmp_path):
@@ -59,7 +55,7 @@ def test_writes_both_files_at_canonical_paths(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = write_tables_csv(db, project.id, _ctx(target))
+    result = write_tables_csv(db, project.id, target)
 
     assert (target / DEPLOYMENTS_FILENAME).is_file()
     assert (target / FILES_FILENAME).is_file()
@@ -95,7 +91,7 @@ def test_row_count_totals_all_tables(db, tmp_path):
         )
 
     target = tmp_path / "out"
-    result = write_tables_csv(db, project.id, _ctx(target))
+    result = write_tables_csv(db, project.id, target)
 
     assert result.row_count == 5
 
@@ -119,7 +115,7 @@ def test_relative_path_is_relative_to_deployment_folder(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_tables_csv(db, project.id, _ctx(target))
+    write_tables_csv(db, project.id, target)
 
     csv = (target / FILES_FILENAME).read_text()
     header_line, *data_lines = csv.splitlines()
@@ -146,7 +142,7 @@ def test_relative_path_falls_back_to_filename(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_tables_csv(db, project.id, _ctx(target))
+    write_tables_csv(db, project.id, target)
 
     csv = (target / FILES_FILENAME).read_text()
     header_line, *data_lines = csv.splitlines()
@@ -158,4 +154,4 @@ def test_relative_path_falls_back_to_filename(db, tmp_path):
 
 def test_unknown_project_raises(db, tmp_path):
     with pytest.raises(ValueError, match="not found"):
-        write_tables_csv(db, "no-such-id", _ctx(tmp_path / "out"))
+        write_tables_csv(db, "no-such-id", tmp_path / "out")

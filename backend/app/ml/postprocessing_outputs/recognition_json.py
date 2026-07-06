@@ -25,13 +25,15 @@ independence interval, video fps) so the run is reproducible from the
 JSON alone.
 
 File paths in the output are relative to the source folder (the
-deployment's `folder_path`), which keeps the file portable: copy or
-share the source folder along with the JSON and downstream tools still
-work.
+deployment's `folder_path`). The save step defaults the output dir to
+the source folder itself, so the file lands where those paths
+resolve — required by the Timelapse Analyser, which matches the
+relative paths against the folder the JSON sits in.
 
-Filename is `recognitions.json`: one canonical name so scripts (and
-the Timelapse Analyser) that look for a single filename keep working.
-Kept consistent with `observations.csv` / `observations.xlsx`.
+Filename is `addaxai-recognitions.json`: one canonical name so
+scripts (and the Timelapse Analyser) can rely on it, with the shared
+`addaxai-` prefix so the run's outputs sort together between the
+user's own files.
 """
 
 from __future__ import annotations
@@ -58,9 +60,8 @@ _CATEGORY_TO_ID = {"animal": "1", "person": "2", "vehicle": "3"}
 _DETECTION_CATEGORIES = {v: k for k, v in _CATEGORY_TO_ID.items()}
 
 # Output filename. Stays the same across runs so downstream tools that
-# look for one canonical filename keep working. Plural to match
-# observations.csv / observations.xlsx.
-RECOGNITION_JSON_FILENAME = "recognitions.json"
+# look for one canonical filename keep working.
+RECOGNITION_JSON_FILENAME = "addaxai-recognitions.json"
 
 
 @dataclass
@@ -160,7 +161,7 @@ def write_recognition_json(
 ) -> RecognitionJsonResult:
     """Serialise the project's analysis results to the canonical JSON shape.
 
-    The output is written to `target_dir/recognitions.json`.
+    The output is written to `target_dir/addaxai-recognitions.json`.
     The directory is created if it does not exist. An existing file
     at that path is overwritten — the recognition file represents the
     current DB state, so a re-export replaces the previous snapshot.

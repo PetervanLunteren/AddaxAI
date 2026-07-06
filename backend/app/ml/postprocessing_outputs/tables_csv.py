@@ -1,19 +1,21 @@
 """Folder-run tabular CSV outputs.
 
 Writes the same tables the Research projects Export page produces, so the
-two modes stay in sync: a per-deployment ``deployments.csv`` (location +
-effort), a per-file ``files.csv`` (membership, including empties), a
-per-detection ``detections.csv``, and an event-level ``counts.csv``. All
+two modes stay in sync: a per-deployment deployments table (location +
+effort), a per-file files table (membership, including empties), a
+per-detection detections table, and an event-level counts table. All
 wrap the shared ``export_crud`` builders, so a column added there shows up
 in both places automatically.
 
-Writes ``deployments.csv``, ``files.csv``, ``detections.csv`` and
-``counts.csv`` under ``<output_root>``.
+Writes the four ``addaxai-*.csv`` files under ``target_dir`` (the
+user's output dir, which defaults to the source folder — the prefix
+keeps the run's files grouped between the user's own).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -22,14 +24,12 @@ from app.api.crud import export_formats
 from app.core.logging_config import get_logger
 from app.models import Project
 
-from ._output_context import OutputContext
-
 logger = get_logger(__name__)
 
-DEPLOYMENTS_FILENAME = "deployments.csv"
-FILES_FILENAME = "files.csv"
-DETECTIONS_FILENAME = "detections.csv"
-COUNTS_FILENAME = "counts.csv"
+DEPLOYMENTS_FILENAME = "addaxai-deployments.csv"
+FILES_FILENAME = "addaxai-files.csv"
+DETECTIONS_FILENAME = "addaxai-detections.csv"
+COUNTS_FILENAME = "addaxai-counts.csv"
 
 
 @dataclass
@@ -51,19 +51,19 @@ class TablesCsvResult:
 def write_tables_csv(
     db: Session,
     project_id: str,
-    ctx: OutputContext,
+    target_dir: Path,
 ) -> TablesCsvResult:
-    """Write ``files.csv``, ``detections.csv`` and ``counts.csv``.
+    """Write the four ``addaxai-*.csv`` tables into ``target_dir``.
 
     The data exports are the complete record of the run (no per-call
-    species exclusion), so all three tables derive from the same project
+    species exclusion), so all tables derive from the same project
     scope and stay join-consistent.
     """
     project = db.get(Project, project_id)
     if project is None:
         raise ValueError(f"Project {project_id!r} not found")
 
-    ctx.output_root.mkdir(parents=True, exist_ok=True)
+    target_dir.mkdir(parents=True, exist_ok=True)
 
     scoped = export_crud.get_scoped_detection_rows(db, project)
     dep_headers, dep_rows = export_crud.build_deployments_rows(db, project)
@@ -71,16 +71,16 @@ def write_tables_csv(
     det_headers, det_rows = export_crud.build_detection_rows(db, project, scoped)
     obs_headers, obs_rows = export_crud.build_observation_rows(db, project)
 
-    deployments_path = ctx.output_root / DEPLOYMENTS_FILENAME
+    deployments_path = target_dir / DEPLOYMENTS_FILENAME
     with open(deployments_path, "wb") as f:
         f.write(export_formats.serialize_csv(dep_headers, dep_rows))
-    files_path = ctx.output_root / FILES_FILENAME
+    files_path = target_dir / FILES_FILENAME
     with open(files_path, "wb") as f:
         f.write(export_formats.serialize_csv(files_headers, files_rows))
-    detections_path = ctx.output_root / DETECTIONS_FILENAME
+    detections_path = target_dir / DETECTIONS_FILENAME
     with open(detections_path, "wb") as f:
         f.write(export_formats.serialize_csv(det_headers, det_rows))
-    counts_path = ctx.output_root / COUNTS_FILENAME
+    counts_path = target_dir / COUNTS_FILENAME
     with open(counts_path, "wb") as f:
         f.write(export_formats.serialize_csv(obs_headers, obs_rows))
 

@@ -93,7 +93,8 @@ export function OutputFolderField({
         <div>
           <span className="block text-sm font-semibold">Output folder</span>
           <span className="mt-0.5 block text-xs text-muted-foreground">
-            Where everything gets written
+            Where everything gets written. Defaults to the folder you
+            analysed; your originals are never overwritten.
           </span>
         </div>
         <FolderSelector
@@ -103,12 +104,6 @@ export function OutputFolderField({
           hideScanResult
           noScan
         />
-        {form.sourceFolderConflict && (
-          <p className="text-xs text-destructive">
-            Saving into the source folder itself would overwrite your
-            originals. Pick a subfolder or another location.
-          </p>
-        )}
       </CardContent>
     </Card>
   );

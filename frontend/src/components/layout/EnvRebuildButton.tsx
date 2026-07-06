@@ -1,9 +1,13 @@
 /**
  * "Update now" for a drifted analysis environment.
  *
- * Clicking the button opens a blocking modal (no X, no ESC, no
- * backdrop dismiss, no cancel) and triggers the backend's designated
- * drift-rebuild path (POST /api/setup/install-env with force_envs).
+ * Clicking the button opens a confirm step first: the rebuild is long
+ * (tens of minutes) and cannot be cancelled once started, so the user
+ * gets the warning while backing out is still possible (beta feedback
+ * from Saul: the old flow only said this after the rebuild had already
+ * begun). Confirming triggers the backend's designated drift-rebuild
+ * path (POST /api/setup/install-env with force_envs) and the modal
+ * becomes blocking (no X, no ESC, no backdrop dismiss, no cancel).
  * Progress comes from polling /api/setup/status. The rebuild wipes the
  * env before recreating it, so there is nothing sensible to cancel
  * into; the user waits until it finishes or fails.
@@ -31,7 +35,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 
-type Phase = "idle" | "rebuilding" | "done" | "error";
+type Phase = "idle" | "confirm" | "rebuilding" | "done" | "error";
 
 interface EnvRebuildButtonProps {
   /** Env names to wipe and rebuild, e.g. ["pytorch"]. */
@@ -107,7 +111,7 @@ export function EnvRebuildButton({ envNames, onDone }: EnvRebuildButtonProps) {
         size="sm"
         variant="outline"
         className="h-7 w-full px-2 text-xs"
-        onClick={start}
+        onClick={() => setPhase("confirm")}
       >
         Update now
       </Button>
@@ -128,8 +132,9 @@ export function EnvRebuildButton({ envNames, onDone }: EnvRebuildButtonProps) {
             </DialogTitle>
             <DialogDescription>
               The environment is wiped and rebuilt to match this app
-              version. This can take several minutes and cannot be
-              cancelled. Keep the app open until it finishes.
+              version. This can take 10 to 30 minutes depending on your
+              machine and internet connection, and cannot be cancelled
+              once started. Keep the app open until it finishes.
             </DialogDescription>
           </DialogHeader>
 
@@ -171,7 +176,28 @@ export function EnvRebuildButton({ envNames, onDone }: EnvRebuildButtonProps) {
             </div>
           )}
 
-          {phase !== "rebuilding" && (
+          {phase === "confirm" && (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Not a good moment? Cancel and update later, the notice
+                comes back the next time you open the app.
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPhase("idle")}
+                >
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={start}>
+                  Update now
+                </Button>
+              </div>
+            </>
+          )}
+
+          {(phase === "done" || phase === "error") && (
             <div className="flex justify-end gap-2">
               {phase === "error" && (
                 <Button variant="outline" size="sm" onClick={start}>

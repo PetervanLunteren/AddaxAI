@@ -142,14 +142,17 @@ function buildTree({
   const folders: SubFolder[] = [];
   const files: FileEntry[] = [];
 
-  // Media copies. ``by_media_tree`` is the real on-disk tree for the
-  // chosen layout: species / observation folders and the preserved
-  // source subfolders combined in the chosen order (or just the source
-  // subfolders under "No subfolders"). Loose files with no folder at all
-  // ("No subfolders" with source-root files) fall back to a capped
-  // filename list at the root.
+  // Media copies, all under the addaxai-media subfolder.
+  // ``by_media_tree`` is the real on-disk tree for the chosen layout:
+  // species / observation folders and the preserved source subfolders
+  // combined in the chosen order (or just the source subfolders under
+  // "No subfolders"). Loose files with no folder at all ("No
+  // subfolders" with source-root files) fall back to a capped filename
+  // list inside addaxai-media.
   if (separate.enabled && preview) {
-    folders.push(...nestedFoldersFromPaths(preview.by_media_tree));
+    const mediaChildren: SubFolder[] = nestedFoldersFromPaths(
+      preview.by_media_tree,
+    );
     const inFolders = Object.values(preview.by_media_tree).reduce(
       (a, n) => a + n,
       0,
@@ -160,29 +163,30 @@ function buildTree({
         rootTotal <= MAX_CHILDREN_PER_LEVEL
           ? preview.root_files
           : preview.root_files.slice(0, MAX_CHILDREN_PER_LEVEL - 1);
-      for (const name of shown) files.push({ name });
+      for (const name of shown) mediaChildren.push({ name });
       if (rootTotal > shown.length) {
-        files.push({
+        mediaChildren.push({
           name: `… ${(rootTotal - shown.length).toLocaleString()} more`,
         });
       }
     }
+    folders.push({ name: "addaxai-media/", children: mediaChildren });
   }
 
   if (exportOpts.enabled) {
     if (exportOpts.csv) {
-      files.push({ name: "deployments.csv" });
-      files.push({ name: "files.csv" });
-      files.push({ name: "detections.csv" });
-      files.push({ name: "counts.csv" });
+      files.push({ name: "addaxai-deployments.csv" });
+      files.push({ name: "addaxai-files.csv" });
+      files.push({ name: "addaxai-detections.csv" });
+      files.push({ name: "addaxai-counts.csv" });
     }
-    if (exportOpts.xlsx) files.push({ name: "spreadsheet.xlsx" });
+    if (exportOpts.xlsx) files.push({ name: "addaxai-spreadsheet.xlsx" });
     if (exportOpts.recognitionJson)
-      files.push({ name: "recognitions.json" });
+      files.push({ name: "addaxai-recognitions.json" });
   }
 
   // The run summary is always written.
-  files.push({ name: "summary.txt" });
+  files.push({ name: "addaxai-summary.txt" });
 
   return { folders, files };
 }

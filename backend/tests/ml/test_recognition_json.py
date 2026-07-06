@@ -515,8 +515,8 @@ def test_filename_is_canonical(db, tmp_path):
 
     # One canonical filename, so existing downstream scripts (and the
     # Timelapse Analyser) find it.
-    assert result.output_path.endswith("recognitions.json")
-    assert (target / "recognitions.json").is_file()
+    assert result.output_path.endswith("addaxai-recognitions.json")
+    assert (target / "addaxai-recognitions.json").is_file()
 
 
 def test_unknown_project_raises(db, tmp_path):

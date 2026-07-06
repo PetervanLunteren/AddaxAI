@@ -23,11 +23,19 @@ Run the setup `.exe` and follow the installer.
 #### Linux
 Double-click the downloaded `.deb`. The App Center opens and shows it as `addaxai` from an unknown publisher with a "potentially unsafe" warning. That is how Ubuntu presents every app installed outside its own store. It is expected, click Install. After installing, find AddaxAI in the app grid to open the app.
 
+## Updating to a new beta version
+
+Your projects, verifications, and settings live in the AddaxAI user data folder and survive updates. Just install the new version over the old one:
+
+- **macOS**: open the new dmg, drag AddaxAI into Applications, click Replace.
+- **Windows**: run the new setup `.exe`, it replaces the old version.
+- **Linux**: the App Center shows a greyed-out "Installed" button for the new file and offers no update, that is an Ubuntu limitation for third-party packages. Update via terminal instead: `sudo apt install ./AddaxAI-amd64.deb` from the download folder.
+
 ## Timelapse integration
 
 Windows only, because Timelapse itself is also Windows only. Install AddaxAI first using the steps above. In Timelapse, choose AddaxAI from the menu `Recognitions` > `AddaxAI Image Recognizer` > `Run AddaxAI recognizer on a folder...`. AddaxAI opens "Analyse a folder" with that folder filled in; run it and keep the recognition file enabled in the save step.
 
-When the run finishes, AddaxAI writes `recognitions.json` to the run's output folder. In Timelapse, go to Recognition > Import recognition data for this image set and pick that file.
+When the run finishes, AddaxAI writes `addaxai-recognitions.json` into the analysed folder itself, next to your images. In Timelapse, go to Recognition > Import recognition data for this image set and pick that file.
 
 ## What I would like to learn from you
 

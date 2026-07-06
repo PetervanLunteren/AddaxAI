@@ -1,10 +1,14 @@
-"""Shared state passed between the folder-run Save modules.
+"""Shared state passed between the folder-run media Save modules.
 
 ``separate_folders`` populates ``OutputContext.resolved_paths`` as it
-places each file. Downstream modules (``annotated_copies``,
-``tables_csv``, ``tables_xlsx``) consult the same context
-to discover where each source file ended up, instead of writing into
+places each file. ``annotated_copies`` consults the same context to
+discover where each source file ended up, instead of writing into
 siloed wrapper folders next to the separated tree.
+
+The context belongs to the media modules only. The worker points
+``output_root`` at the ``addaxai-media`` subfolder of the user's
+output dir; the loose data exports (CSV / XLSX / recognition JSON /
+summary) take their target dir directly and never see this context.
 
 When the user did not enable separation, ``resolved_paths`` stays
 empty; downstream modules allocate fresh destinations under
@@ -17,6 +21,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+
+# Subfolder of the user's output dir that receives all media copies
+# (separated folders, annotated / anonymised images). Keeping media in
+# one prefixed subfolder is what lets the output dir default to the
+# source folder itself: originals are never overwritten, and the
+# scan-skip marker goes on this subfolder only, never on the source
+# root. The loose data exports share the prefix ("addaxai-…") so all
+# run outputs sort together between the user's own files.
+MEDIA_SUBDIR = "addaxai-media"
 
 
 @dataclass

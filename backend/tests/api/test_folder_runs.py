@@ -703,3 +703,51 @@ def test_rerun_404_for_research_project(client, db):
     proj = make_project(db, mode="research")
     resp = client.post(f"/api/folder-runs/{proj.id}/rerun")
     assert resp.status_code == 404
+
+
+def _create_run(client, source: str) -> str:
+    resp = client.post(
+        "/api/folder-runs",
+        json={"source_folder": source, "image_count": 1, "video_count": 0},
+    )
+    assert resp.status_code == 201
+    return resp.json()["project"]["id"]
+
+
+def test_save_outputs_marks_media_subdir_not_output_root(client, tmp_path):
+    """The scan-skip marker goes on the addaxai-media subfolder only.
+
+    The output dir defaults to the source folder itself; a marker at
+    its root would make every future re-scan skip the user's entire
+    source. Pinned here because the regression is silent and severe.
+    """
+    source = tmp_path / "src"
+    source.mkdir()
+    run_id = _create_run(client, str(source))
+
+    resp = client.post(
+        f"/api/folder-runs/{run_id}/save-outputs",
+        json={"output_dir": str(source), "separate_folders": True},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["job_id"]
+
+    assert (source / "addaxai-media" / ".addaxai-output").is_file()
+    assert not (source / ".addaxai-output").exists()
+
+
+def test_save_outputs_data_only_creates_no_media_dir(client, tmp_path):
+    """A data-exports-only save (no media modules) must not create the
+    addaxai-media folder or any marker."""
+    source = tmp_path / "src"
+    source.mkdir()
+    run_id = _create_run(client, str(source))
+
+    resp = client.post(
+        f"/api/folder-runs/{run_id}/save-outputs",
+        json={"output_dir": str(source), "csv": True},
+    )
+    assert resp.status_code == 200
+
+    assert not (source / "addaxai-media").exists()
+    assert not (source / ".addaxai-output").exists()

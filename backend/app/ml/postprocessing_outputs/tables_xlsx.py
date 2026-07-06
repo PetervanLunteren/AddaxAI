@@ -5,12 +5,13 @@ Research projects Export page's combined spreadsheet. Wraps the shared
 ``export_crud.build_spreadsheet_sheets`` + ``export_formats.serialize_xlsx_multi``
 pipeline so the two modes never drift.
 
-Writes ``<output_root>/spreadsheet.xlsx``.
+Writes ``<target_dir>/addaxai-spreadsheet.xlsx``.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -19,11 +20,9 @@ from app.api.crud import export_formats
 from app.core.logging_config import get_logger
 from app.models import Project
 
-from ._output_context import OutputContext
-
 logger = get_logger(__name__)
 
-XLSX_FILENAME = "spreadsheet.xlsx"
+XLSX_FILENAME = "addaxai-spreadsheet.xlsx"
 
 
 @dataclass
@@ -45,19 +44,19 @@ class TablesXlsxResult:
 def write_tables_xlsx(
     db: Session,
     project_id: str,
-    ctx: OutputContext,
+    target_dir: Path,
 ) -> TablesXlsxResult:
-    """Write the two-sheet ``spreadsheet.xlsx`` (Detections + Counts)."""
+    """Write the two-sheet ``addaxai-spreadsheet.xlsx`` (Detections + Counts)."""
     project = db.get(Project, project_id)
     if project is None:
         raise ValueError(f"Project {project_id!r} not found")
 
-    ctx.output_root.mkdir(parents=True, exist_ok=True)
+    target_dir.mkdir(parents=True, exist_ok=True)
 
     sheets = export_crud.build_spreadsheet_sheets(db, project)
     payload = export_formats.serialize_xlsx_multi(sheets)
 
-    output_path = ctx.output_root / XLSX_FILENAME
+    output_path = target_dir / XLSX_FILENAME
     with open(output_path, "wb") as f:
         f.write(payload)
 

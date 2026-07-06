@@ -1,6 +1,6 @@
 """Human-readable run summary written into every folder-run output.
 
-A `summary.txt` at the root of the output directory carries
+An `addaxai-summary.txt` at the root of the output directory carries
 the complete picture of the run so a user (or a colleague) opening the
 folder weeks later can see exactly what produced the deliverables:
 
@@ -33,7 +33,7 @@ from app.models import Deployment, Detection, File, Project
 
 logger = get_logger(__name__)
 
-SUMMARY_FILENAME = "summary.txt"
+SUMMARY_FILENAME = "addaxai-summary.txt"
 
 
 @dataclass
@@ -337,7 +337,7 @@ def write_run_readme(
     project_id: str,
     target_dir: Path,
 ) -> RunReadmeResult:
-    """Write the run summary at ``target_dir/summary.txt``.
+    """Write the run summary at ``target_dir/addaxai-summary.txt``.
 
     Always-on output — every save run produces one. Errors during
     composition / write are recorded but never raise; the README is

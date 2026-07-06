@@ -13,10 +13,11 @@ A folder run owns:
   source folder. The standard queue worker turns this into a
   `Deployment` once analysis runs.
 
-The user-facing deliverables (CSV, recognition JSON, visualised images,
-blurred copies, separated subfolders) land in a sibling `AddaxAI
-results/<run_name>/` folder; that part of the flow ships in a later
-slice and is not orchestrated here yet.
+The user-facing deliverables land in the user's output dir, which
+defaults to the source folder itself: loose ``addaxai-*`` data files
+(CSV, XLSX, recognition JSON, summary) at its root, media copies
+(separated subfolders, visualised / blurred images) under the
+``addaxai-media`` subfolder.
 
 Following DEVELOPERS.md principles: type hints everywhere, crash on
 unexpected errors, no silent failures.
@@ -43,6 +44,7 @@ from app.api.schemas.project import ProjectCreate, ProjectResponse
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
+from app.ml.postprocessing_outputs._output_context import MEDIA_SUBDIR
 from app.ml.postprocessing_outputs.output_preview import (
     build_output_preview,
 )
@@ -138,10 +140,12 @@ class FolderRunResponse(BaseModel):
 class SaveOutputsRequest(BaseModel):
     """Request body for POST /api/folder-runs/{id}/save-outputs.
 
-    ``output_dir`` is the absolute path the deliverables should land in;
-    files land directly at the root (separation places per-label folders
-    under it, the exports drop their files at the root next to the
-    README). Each boolean flag toggles one output module.
+    ``output_dir`` is the absolute path the deliverables should land
+    in; it defaults to the source folder itself on the frontend. The
+    data exports drop their ``addaxai-*`` files at its root; media
+    copies (separation, annotated / blurred images) go under the
+    ``addaxai-media`` subfolder. Each boolean flag toggles one output
+    module.
 
     ``draw_bboxes`` and ``anonymise`` drive the combined per-file
     annotated-copies pass: either, neither, or both — when both are
@@ -752,14 +756,22 @@ async def save_outputs(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Could not create output folder: {e}",
         ) from e
-    # Mark the output folder so future scans skip it — its copies and
-    # visualisations must never be re-ingested as input media. This is
-    # what makes a subfolder of the source a safe default destination.
+    # Mark the media subfolder so future scans skip it — its copies and
+    # visualisations must never be re-ingested as input media. Only the
+    # media dir gets the marker, never the output root: the root
+    # defaults to the source folder itself, and marking it would make
+    # re-scans skip the user's entire source. The loose data exports
+    # need no marker (scans only ingest image / video extensions).
     # Best-effort: a failed marker doesn't block the save.
-    try:
-        (output_root / OUTPUT_DIR_MARKER).touch(exist_ok=True)
-    except OSError as e:
-        logger.warning(f"Could not write output marker in {output_root}: {e}")
+    if payload.separate_folders or payload.draw_bboxes or payload.anonymise:
+        media_root = output_root / MEDIA_SUBDIR
+        try:
+            media_root.mkdir(parents=True, exist_ok=True)
+            (media_root / OUTPUT_DIR_MARKER).touch(exist_ok=True)
+        except OSError as e:
+            logger.warning(
+                f"Could not write output marker in {media_root}: {e}"
+            )
 
     job = job_crud.create_job(
         db,
