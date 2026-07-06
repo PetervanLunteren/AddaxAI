@@ -8,8 +8,9 @@ Thanks for trying the new AddaxAI. It is a full rewrite from scratch, with stron
 |---|---|
 | Windows | [AddaxAI-Setup.exe](https://github.com/PetervanLunteren/AddaxAI-WebUI/releases/latest/download/AddaxAI-Setup.exe) |
 | macOS (Apple Silicon) | [AddaxAI-arm64.dmg](https://github.com/PetervanLunteren/AddaxAI-WebUI/releases/latest/download/AddaxAI-arm64.dmg) |
+| Linux | [AddaxAI-amd64.deb](https://github.com/PetervanLunteren/AddaxAI-WebUI/releases/latest/download/AddaxAI-amd64.deb) |
 
-Linux is still in development, so the beta will not run there yet. Intel Macs are not supported, only Apple Silicon (M1, M2, M3, M4, M5).
+Intel Macs are not supported, only Apple Silicon (M1, M2, M3, M4, M5).
 
 ## Install
 
@@ -18,6 +19,9 @@ Open the dmg, drag AddaxAI into Applications.
 
 #### Windows
 Run the setup `.exe` and follow the installer.
+
+#### Linux
+Double-click the downloaded `.deb`. The App Center opens and shows it as `addaxai` from an unknown publisher with a "potentially unsafe" warning. That is how Ubuntu presents every app installed outside its own store. It is expected, click Install. After installing, find AddaxAI in the app grid to open the app.
 
 ## Timelapse integration
 
@@ -60,6 +64,7 @@ Click the bug icon in the top-right page header (tooltip says "Export diagnostic
 |---|---|
 | macOS | `/Users/<username>/AddaxAI/logs/` |
 | Windows | `C:\Users\<username>\AddaxAI\logs\` |
+| Linux | `/home/<username>/AddaxAI/logs/` |
 
 Also share these if they exist next to `logs/`:
 
@@ -85,6 +90,9 @@ Drag AddaxAI from Applications to the Trash. To also remove logs, models, and th
 
 #### Windows
 Open Windows Settings, then Apps, find AddaxAI, click Uninstall. The uninstaller asks whether to also remove your user data.
+
+#### Linux
+Run `sudo apt remove addaxai`. To also remove logs, models, and the database, delete the folder at `/home/<username>/AddaxAI`.
 
 ## Contact
 

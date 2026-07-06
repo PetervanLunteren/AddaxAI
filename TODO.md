@@ -388,6 +388,17 @@
 
 - [ ] ABout page.... it still references "Click the (i) button next to a model " but that is not true anymore. Its the "model info" caption below the dropdown that they need to click. Update this. Are there more stale references? 
 
+
+- [ ] SHould we add an option to opt out? Just to be clear: opting out is canceling, not doing it in the backgound. NO cleverness here. Or better yet, a lot simpler. Just add to the cpation that the user can quit the app and try it again later. Some users might want to know that it is safe to quit. 
+            Updating analysis environment
+            The environment is wiped and rebuilt to match this app version. This can take several minutes and cannot be cancelled. Keep the app open until it finishes.
+
+- [ ] There is quite a lot of whitespace here ion the project create moidal info. card for no cls model. Can we make it less? Wihtout messing up the format if the bar is not there. '/Users/peter/Desktop/Screenshot 2026-07-06 at 12.29.39.png' '/Users/peter/Desktop/Screenshot 2026-07-06 at 12.29.48.png'
+
+- [ ] Set up a scheduled GitHub Action to fetch download counts for all release assets via the GitHub API and store daily or weekly snapshots in a CSV for tracking downloads over time.
+
+- [ ] The very first time a user opens AddaxAI after a fresh install, it takes quite long to open. Can we do anything about that? Perhaps do a warmup open during the actual installation part? Or how would that work? And what would it save in terms of time the first time? KISS DRY YAGNI
+
 ## Priority 2
 - [ ] 
 
