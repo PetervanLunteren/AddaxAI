@@ -42,9 +42,7 @@ I want to hear about anything that feels wrong, weird, or could be better. You d
 
 If you are unsure whether it is a bug, send it anyway, I would rather see one too many than miss something.
 
-## If something looks wrong, try Restore from backup first
 
-The hamburger menu in the projects page has a Database section with three entries: Back up database, Restore from backup, Open backups folder. AddaxAI takes a snapshot of the project database once a day on startup and keeps the last five, so if a verification batch goes wrong or the app behaves oddly after an update, you can pick a snapshot from yesterday and restore it. The restore is reversible: a safety copy of the current database is saved before the swap. You do not have to email me to wipe anything, just try Restore first.
 
 ## How to send me a bug report
 
@@ -58,7 +56,7 @@ Send everything to [peter@addaxdatascience.com](mailto:peter@addaxdatascience.co
 
 #### Export diagnostic report
 
-Click the bug icon in the top-right page header (tooltip says "Export diagnostic report"). It builds a zip of logs, attach that to the email. If the app won't open, zip the logs folder by hand:
+Open the Help menu and click Export diagnostic report. It builds a zip of logs and saves it to your Downloads folder, attach that to the email. If the app won't open, zip the logs folder by hand:
 
 | OS | Logs folder |
 |---|---|
@@ -66,15 +64,10 @@ Click the bug icon in the top-right page header (tooltip says "Export diagnostic
 | Windows | `C:\Users\<username>\AddaxAI\logs\` |
 | Linux | `/home/<username>/AddaxAI/logs/` |
 
-Also share these if they exist next to `logs/`:
-
-- `crash-dumps/` (zip the full folder)
-
 ## What is not built yet
 
 Here is what is missing on purpose. None of these are forgotten, they are just not in this beta yet:
 
-- full-image classification models support (AHDRIFT-v1 and similar)
 - multi-language support
 - depth estimation 
 - postprocess batch results from MegaDetector

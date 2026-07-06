@@ -407,8 +407,8 @@
 
 ## After the Beta phase
 - [ ] ADD ALL MODELS (Also Caras model)
-- [?] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
-- [?] ALLOW CANADA sex-age-classes GRANT MODEL 
+- [?] [ALREADY IMPLEMENTED - NEEDS TESTING] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
+- [?] [ALREADY IMPLEMENTED - NEEDS TESTING] ALLOW CANADA sex-age-classes GRANT MODEL 
 - [ ] ask to Saul to add AddaxAI.exe --timelapse "<folder>" to Timelapse's command list as the long-term path.
 - [ ] If everything works and all models are verified, please double check if there are any stale environment.ymls that are never used by any of the models. If so, remove them. 
 - [ ] Any other non used imports or requirements in the environments YMLS? 
