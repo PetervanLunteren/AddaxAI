@@ -88,6 +88,7 @@ def test_load_creates_video_and_image_files(deployment_scaffold):
             "file": "videos/clip.mp4",
             "best_frame_number": 30,
             "frame_rate": 30.0,
+            "frames_processed": [0, 30],
             "detections": [
                 {"category": "1", "conf": 0.9, "bbox": [0.1, 0.2, 0.3, 0.4],
                  "frame_number": 0},
@@ -124,6 +125,10 @@ def test_load_creates_video_and_image_files(deployment_scaffold):
     assert video_files[0].best_frame_number == 30
     assert video_files[0].best_frame_path is not None
     assert video_files[0].best_frame_path.endswith("frame000030.jpg")
+    # MD format 1.6 video fields survive the DB round-trip so the save
+    # step's recognition JSON can re-emit them.
+    assert video_files[0].frame_rate == 30.0
+    assert video_files[0].frames_processed == [0, 30]
 
     image_files = [f for f in all_files if f.file_type == "image"]
     assert len(image_files) == 1

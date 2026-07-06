@@ -472,6 +472,78 @@ def test_video_frame_number_preserved(db, tmp_path):
     assert det["frame_number"] == 42
 
 
+def test_video_frame_rate_and_frames_processed_emitted(db, tmp_path):
+    """MD output format 1.6 requires frame_rate + frames_processed on
+    every video entry; Timelapse fails to import videos without
+    frame_rate (beta feedback from Saul). Image entries carry neither."""
+    project = make_project(db, name="rj-video-fields")
+    dep = make_deployment(
+        db,
+        project_id=project.id,
+        folder_path=str(tmp_path / "src"),
+    )
+    make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=str(tmp_path / "src" / "VID.mp4"),
+        file_type="video",
+        file_format="mp4",
+        observation_type="animal",
+        frame_rate=20.0,
+        frames_processed=[0, 20, 40],
+    )
+    make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=str(tmp_path / "src" / "IMG.jpg"),
+        observation_type="animal",
+    )
+
+    target = tmp_path / "out"
+    write_recognition_json(db, project.id, target)
+    payload = _load_json(target)
+
+    entries = {e["file"]: e for e in payload["images"]}
+    video = entries["VID.mp4"]
+    assert video["frame_rate"] == 20.0
+    assert video["frames_processed"] == [0, 20, 40]
+    image = entries["IMG.jpg"]
+    assert "frame_rate" not in image
+    assert "frames_processed" not in image
+    # The file declares the format version whose video requirements the
+    # fields above satisfy.
+    assert payload["info"]["format_version"] == "1.6"
+
+
+def test_legacy_video_without_frames_processed_omits_field(db, tmp_path):
+    """Videos ingested before the frames_processed column existed have
+    NULL there; the field is omitted rather than emitted as null.
+    frame_rate alone is what Timelapse needs."""
+    project = make_project(db, name="rj-video-legacy")
+    dep = make_deployment(
+        db,
+        project_id=project.id,
+        folder_path=str(tmp_path / "src"),
+    )
+    make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=str(tmp_path / "src" / "OLD.mp4"),
+        file_type="video",
+        file_format="mp4",
+        observation_type="animal",
+        frame_rate=20.0,
+    )
+
+    target = tmp_path / "out"
+    write_recognition_json(db, project.id, target)
+    payload = _load_json(target)
+
+    entry = payload["images"][0]
+    assert entry["frame_rate"] == 20.0
+    assert "frames_processed" not in entry
+
+
 def test_event_level_observation_dropped(db, tmp_path):
     """A detection with no bbox cannot be serialised in the canonical
     shape (there's no place for it in the schema), so it is dropped."""

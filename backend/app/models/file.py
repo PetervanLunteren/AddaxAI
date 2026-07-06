@@ -73,6 +73,14 @@ class File(Base):
 
     # Video-specific
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Frame numbers MegaDetector analysed (list of ints, from
+    # process_video's results.json). Required on video entries by the
+    # MegaDetector output format 1.6; persisted so the folder-run save
+    # step can rebuild the recognition JSON from the DB alone. NULL for
+    # images and for videos ingested before this column existed.
+    frames_processed: Mapped[list[int] | None] = mapped_column(
+        JSON, nullable=True
+    )
 
     # Best frame (video only)
     best_frame_number: Mapped[int | None] = mapped_column(Integer, nullable=True)

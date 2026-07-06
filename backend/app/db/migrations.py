@@ -225,6 +225,16 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
             "page 'Confirm' action); detectable via events.confirmed"
         ),
     ),
+    _Fingerprint(
+        revision="b4c5d6e7f8a9",
+        table="files",
+        column="frames_processed",
+        description=(
+            "add files.frames_processed (analysed frame numbers from "
+            "MegaDetector's process_video) so the recognition JSON can "
+            "emit the MD format 1.6 video fields"
+        ),
+    ),
 )
 
 

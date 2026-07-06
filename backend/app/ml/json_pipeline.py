@@ -277,8 +277,13 @@ def load_json_to_database(
                         / f"frame{best_frame_number:06d}.jpg"
                     )
 
-                # Frame rate (video only) - output by MegaDetector's process_video
+                # Frame rate + analysed frame numbers (video only) -
+                # output by MegaDetector's process_video. Both are
+                # required on video entries by the MD output format 1.6,
+                # so they must survive the DB round-trip that rebuilds
+                # the recognition JSON at the save step.
                 frame_rate = img.get("frame_rate")
+                frames_processed = img.get("frames_processed")
 
                 # Image dimensions. MD writes `width`/`height` for images
                 # but `process_video` does not, so video entries arrive
@@ -316,6 +321,7 @@ def load_json_to_database(
                     best_frame_number=best_frame_number,
                     best_frame_path=best_frame_path,
                     frame_rate=frame_rate,
+                    frames_processed=frames_processed,
                 )
                 db.add(file_record)
                 db.flush()  # Get file_record.id

@@ -14,10 +14,12 @@ classification per detection — but the shape is identical:
 `detection_categories`, `classification_categories`,
 `classification_category_descriptions` (the 7-token taxonomy strings,
 rebuilt from `label_taxonomy` exactly as results mode emits them),
-the `info.addaxai` block, per-image `exif_metadata` (DateTimeOriginal
-and GPSInfo, as MegaDetector writes them) and `width`/`height`, and
-per-image detections with `category`, `conf`, `bbox`, and optional
-`classifications` and `frame_number` keys.
+the `info` block (`format_version` 1.6 + the `addaxai` sub-block),
+per-image `exif_metadata` (DateTimeOriginal and GPSInfo, as
+MegaDetector writes them) and `width`/`height`, per-video
+`frame_rate` and `frames_processed` (required for videos by MD format
+1.6), and per-image detections with `category`, `conf`, `bbox`, and
+optional `classifications` and `frame_number` keys.
 
 The `info.addaxai` block additionally carries the app version and a
 `settings` sub-dict (detection threshold, smoothing, rollup, geofence,
@@ -282,8 +284,18 @@ def write_recognition_json(
         # (DateTimeOriginal, GPSInfo). Stored on the File row at ingestion.
         image_entry: dict = {
             "file": _relative_path(file.file_path, base_folder),
-            "detections": det_objs,
         }
+        # Video fields, required by the MD output format 1.6 (Timelapse
+        # needs frame_rate to resolve frame numbers to timestamps).
+        # frames_processed is NULL for videos ingested before the column
+        # existed; omitted then, restored on re-analysis.
+        if file.frame_rate is not None:
+            image_entry["frame_rate"] = float(file.frame_rate)
+        if file.frames_processed is not None:
+            image_entry["frames_processed"] = [
+                int(n) for n in file.frames_processed
+            ]
+        image_entry["detections"] = det_objs
         if file.width_px is not None:
             image_entry["width"] = file.width_px
         if file.height_px is not None:
@@ -327,6 +339,10 @@ def write_recognition_json(
             classification_category_descriptions
         )
     output_payload["info"] = {
+        # MegaDetector output format version this file conforms to.
+        # 1.6 requires frame_rate + frames_processed on video entries
+        # and frame_number on their detections, all emitted above.
+        "format_version": "1.6",
         "addaxai": {
             "version": APP_VERSION,
             "export_source": "folder-run",
