@@ -5,6 +5,10 @@ channels:
 dependencies:
   - python=3.11
   - pip
+  # exiftool binary for EXIF writes and video date extraction. The
+  # installers do not bundle exiftool and fresh machines do not have
+  # it on PATH; the backend resolves it from this env (exiftool_bin.py).
+  - exiftool
   - pip:
     # CUDA torch wheels installed from the pytorch.org cu118 index so
     # GPU acceleration is available out of the box. Pinned to 2.5.1

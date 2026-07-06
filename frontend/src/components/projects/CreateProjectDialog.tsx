@@ -15,7 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
 import { projectsApi, type ProjectCreate, type ProjectResponse } from "../../api/projects";
 import { ImageDropZone } from "./ImageDropZone";
-import { modelsApi } from "../../api/models";
+import { invalidateModelMetadata, modelsApi } from "../../api/models";
 import { useTaskProgress } from "../../hooks/useTaskProgress";
 import { ModelStatusBadge } from "./ModelStatusBadge";
 import { ModelPreparationView } from "./ModelPreparationView";
@@ -48,7 +48,11 @@ import {
   TooltipTrigger,
 } from "../ui/tooltip";
 import { ModelInfoSheet } from "../models/ModelInfoSheet";
-import { LabelSelectionField, useLabelSelectionCaption } from "../taxonomy/LabelSelectionField";
+import {
+  LabelSelectionField,
+  toApiCountryCode,
+  useLabelSelectionCaption,
+} from "../taxonomy/LabelSelectionField";
 import { ModelSelect } from "../models/ModelSelect";
 import { NoClassifierNotice } from "../models/NoClassifierNotice";
 import { FieldHeader } from "../ui/field-header";
@@ -145,6 +149,20 @@ export function CreateProjectDialog({
     enabled: hasClassificationModel && open,
   });
 
+  // Same query (and cache entry) as LabelSelectionField uses internally.
+  // Needed to know whether the selected classifier is geofenced, which
+  // makes the country choice a required field on submit.
+  const { data: clsGeofence } = useQuery({
+    queryKey: ["model-geofence", classificationModelId],
+    queryFn: () => modelsApi.getModelGeofence(classificationModelId!),
+    enabled: hasClassificationModel && open,
+    staleTime: Infinity,
+  });
+  const requiresCountryChoice =
+    hasClassificationModel &&
+    !!clsGeofence?.has_geofence &&
+    !!clsGeofence?.countries;
+
   // Fetch model status when model is selected
   const { data: modelStatus } = useQuery({
     queryKey: ["model-status", classificationModelId],
@@ -183,8 +201,7 @@ export function CreateProjectDialog({
   const { progress, message, cancel } = useTaskProgress({
     taskId: preparingTaskId,
     onComplete: () => {
-      // Refresh model status
-      queryClient.invalidateQueries({ queryKey: ["model-status", classificationModelId] });
+      invalidateModelMetadata(queryClient, classificationModelId);
       setPreparingTaskId(null);
       setStage("form");
     },
@@ -201,7 +218,15 @@ export function CreateProjectDialog({
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: ProjectCreate) => projectsApi.create(data),
+    // ALL is a form-only sentinel; the API knows ISO codes or null. The
+    // mapping happens here (not at the mutate call) so onSuccess still
+    // sees the raw variables and stores the explicit choice in the
+    // last-used settings.
+    mutationFn: (data: ProjectCreate) =>
+      projectsApi.create({
+        ...data,
+        country_code: toApiCountryCode(data.country_code),
+      }),
     onSuccess: async (newProject: ProjectResponse, variables: ProjectCreate) => {
       if (imageFile) {
         try {
@@ -270,6 +295,17 @@ export function CreateProjectDialog({
   };
 
   const onSubmit = (data: ProjectCreate) => {
+    // Geofenced classifiers require an explicit location choice: a
+    // country, or knowingly "All labels". Enforced here rather than in
+    // the zod schema because the requirement depends on the selected
+    // model's geofence, which lives in a query, not in the form data.
+    if (requiresCountryChoice && data.country_code == null) {
+      form.setError("country_code", {
+        type: "required",
+        message: "Choose a country, or pick All labels to run unfiltered.",
+      });
+      return;
+    }
     // No timezone is sent: a new project starts with none and the backend
     // auto-derives the camera timezone from the first site's coordinates
     // (the authoritative source for the sun-based insights). The browser's
@@ -403,9 +439,11 @@ export function CreateProjectDialog({
                       form.setValue("excluded_classes", classes, { shouldDirty: true });
                     }}
                     onLocationChange={(country, state) => {
+                      form.clearErrors("country_code");
                       form.setValue("country_code", country, { shouldDirty: true });
                       form.setValue("state_code", state, { shouldDirty: true });
                     }}
+                    error={form.formState.errors.country_code?.message}
                   />
                 </FormItem>
               )}

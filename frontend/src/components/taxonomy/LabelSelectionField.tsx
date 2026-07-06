@@ -33,10 +33,27 @@ import { cn } from "../../lib/utils";
 import { modelsApi } from "../../api/models";
 import { SpeciesSelectionModal } from "./SpeciesSelectionModal";
 
-/** Shown in the dropdown when no country is selected (all labels kept).
- *  "(default)" signals to first-time users that leaving it is a valid
- *  choice and the country list below is the optional narrow-down path. */
-const NO_FILTER_LABEL = "All labels (default)";
+/** Sentinel country code for an explicit "All labels" choice. Kept out
+ *  of the API: forms map it to null before sending (the backend knows
+ *  only real ISO codes or null). It exists so forms can distinguish
+ *  "user actively chose to run all labels" from "user has not chosen
+ *  yet", which makes the country field a required choice. */
+export const ALL_LABELS_CODE = "ALL";
+
+/** First entry in the country dropdown: run with every label. */
+const ALL_LABELS_LABEL = "All labels";
+
+/** Map a form-level country code to what the API accepts: the ALL
+ *  sentinel becomes null (no geofence filter). Use at every payload
+ *  build site that sends country_code to the backend. */
+export function toApiCountryCode(
+  code: string | null | undefined,
+): string | null {
+  return code === ALL_LABELS_CODE ? null : (code ?? null);
+}
+
+/** Button prompt while no choice has been made yet. */
+const CHOOSE_PROMPT = "Select a country";
 
 /**
  * Model-aware helper text for the label-selection control. Geofence models
@@ -65,14 +82,17 @@ interface LabelSelectionFieldProps {
    *  included labels and to ignore stale exclusions left over from a previously
    *  selected model. */
   allClasses: string[];
-  /** Current country code from the parent form. */
+  /** Current country code from the parent form. `ALL_LABELS_CODE` means
+   *  the user explicitly chose all labels; null means no choice yet. */
   countryCode?: string | null;
   /** Current state code from the parent form. */
   stateCode?: string | null;
   /** Called when the excluded label set changes (country preselect or refine). */
   onExclusionChange: (classes: string[]) => void;
-  /** Called when the user picks a country/state. */
+  /** Called when the user picks a country/state (or `ALL_LABELS_CODE`). */
   onLocationChange: (country: string | null, state: string | null) => void;
+  /** Validation error from the parent form, rendered under the control. */
+  error?: string;
 }
 
 export function LabelSelectionField({
@@ -83,6 +103,7 @@ export function LabelSelectionField({
   stateCode,
   onExclusionChange,
   onLocationChange,
+  error,
 }: LabelSelectionFieldProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
@@ -134,23 +155,30 @@ export function LabelSelectionField({
     return options;
   }, [hasGeofence, geofence]);
 
-  // Composite key + label for the current selection.
-  const selectedLocationKey = countryCode
-    ? stateCode
-      ? `${countryCode}:${stateCode}`
-      : countryCode
-    : null;
+  // Composite key + label for the current selection. Three states:
+  // a real country/state, the explicit "All labels" choice, or no
+  // choice yet (prompt).
+  const allLabelsChosen = countryCode === ALL_LABELS_CODE;
+  const selectedLocationKey =
+    countryCode && !allLabelsChosen
+      ? stateCode
+        ? `${countryCode}:${stateCode}`
+        : countryCode
+      : null;
   const selectedLocationLabel = locationOptions.find(
     (o) => o.key === selectedLocationKey,
   )?.label;
-  const displayLabel = selectedLocationLabel ?? NO_FILTER_LABEL;
+  const displayLabel = allLabelsChosen
+    ? ALL_LABELS_LABEL
+    : (selectedLocationLabel ?? CHOOSE_PROMPT);
+  const isPrompt = !allLabelsChosen && !selectedLocationLabel;
 
   // Apply a country/state pick: recompute excluded classes from the geofence.
   const applyLocation = useCallback(
     async (country: string | null, state: string | null) => {
       setLocationOpen(false);
       onLocationChange(country, state);
-      if (!country) {
+      if (!country || country === ALL_LABELS_CODE) {
         onExclusionChange([]);
         return;
       }
@@ -216,7 +244,13 @@ export function LabelSelectionField({
                 {applying && (
                   <Loader2 className="h-3.5 w-3.5 shrink-0 mr-1.5 animate-spin" />
                 )}
-                <span className="truncate flex-1 text-left" title={displayLabel}>
+                <span
+                  className={cn(
+                    "truncate flex-1 text-left",
+                    isPrompt && "text-muted-foreground",
+                  )}
+                  title={displayLabel}
+                >
                   {displayLabel}
                 </span>
                 <ChevronsUpDown className="ml-1.5 h-3 w-3 shrink-0 opacity-50" />
@@ -229,17 +263,17 @@ export function LabelSelectionField({
                   <CommandEmpty>No location found.</CommandEmpty>
                   <CommandGroup>
                     <CommandItem
-                      key="__none__"
+                      key="__all__"
                       value="Do not filter show all labels"
-                      onSelect={() => applyLocation(null, null)}
+                      onSelect={() => applyLocation(ALL_LABELS_CODE, null)}
                     >
                       <Check
                         className={cn(
                           "mr-2 h-4 w-4",
-                          !selectedLocationKey ? "opacity-100" : "opacity-0",
+                          allLabelsChosen ? "opacity-100" : "opacity-0",
                         )}
                       />
-                      {NO_FILTER_LABEL}
+                      {ALL_LABELS_LABEL}
                     </CommandItem>
                     {locationOptions.map((option) => (
                       <CommandItem
@@ -261,7 +295,17 @@ export function LabelSelectionField({
               </Command>
             </PopoverContent>
           </Popover>
-          {summary}
+          {/* No status line while nothing is chosen: "All species
+              included · Edit species" would contradict the "Select a
+              country" prompt above, and manual species tweaks made
+              before a country pick would be clobbered by the geofence
+              recompute anyway. */}
+          {!isPrompt && summary}
+          {error && (
+            <p className="pl-3 text-xs font-medium text-destructive">
+              {error}
+            </p>
+          )}
           </>
         ) : (
           // No geofence: no country dropdown, so mirror the geofence layout

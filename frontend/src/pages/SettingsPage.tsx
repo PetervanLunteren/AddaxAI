@@ -16,8 +16,12 @@ import * as z from "zod";
 import { Save, RotateCcw, Undo2, Check, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { projectsApi, type ProjectUpdate } from "../api/projects";
-import { modelsApi } from "../api/models";
-import { LabelSelectionField, useLabelSelectionCaption } from "../components/taxonomy/LabelSelectionField";
+import { invalidateModelMetadata, modelsApi } from "../api/models";
+import {
+  LabelSelectionField,
+  toApiCountryCode,
+  useLabelSelectionCaption,
+} from "../components/taxonomy/LabelSelectionField";
 import { IntervalControl } from "../components/analyses/IntervalControl";
 import { restoreAdvancedDefaults } from "../lib/advancedSettingsDefaults";
 import { ModelSelect } from "../components/models/ModelSelect";
@@ -400,7 +404,7 @@ export default function SettingsPage() {
       const modelIdToRefresh = preparingModelType === "detection" ? detectionModelId
         : preparingModelType === "embedding" ? embeddingModelId
         : classificationModelId;
-      queryClient.invalidateQueries({ queryKey: ["model-status", modelIdToRefresh] });
+      invalidateModelMetadata(queryClient, modelIdToRefresh);
       setPreparingTaskId(null);
       setPreparationStage("form");
       setPreparingModelType(null);
@@ -668,6 +672,8 @@ export default function SettingsPage() {
       await updateMutation.mutateAsync({
         ...data,
         timezone: data.timezone || null,
+        // ALL is a form-only sentinel; the API knows ISO codes or null.
+        country_code: toApiCountryCode(data.country_code),
       });
 
       // 3. If smoothing settings changed, trigger reprocess

@@ -5,6 +5,10 @@ channels:
 dependencies:
   - python=3.11
   - pip
+  # exiftool binary for EXIF writes and video date extraction. The
+  # installers do not bundle exiftool and fresh machines do not have
+  # it on PATH; the backend resolves it from this env (exiftool_bin.py).
+  - exiftool
   - pip:
     # Image processing and metadata
     - exifread

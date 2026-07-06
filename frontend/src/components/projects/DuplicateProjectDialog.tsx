@@ -30,6 +30,7 @@ import { NoClassifierNotice } from "../models/NoClassifierNotice";
 import { ModelInfoSheet } from "../models/ModelInfoSheet";
 import {
   LabelSelectionField,
+  toApiCountryCode,
   useLabelSelectionCaption,
 } from "../taxonomy/LabelSelectionField";
 import { FieldHeader } from "../ui/field-header";
@@ -169,7 +170,8 @@ export function DuplicateProjectDialog({
           ? data.classification_model_id
           : null,
         excluded_classes: data.excluded_classes,
-        country_code: data.country_code ?? null,
+        // ALL is a form-only sentinel; the API knows ISO codes or null.
+        country_code: toApiCountryCode(data.country_code),
         state_code: data.state_code ?? null,
         copy_settings: copySettings,
         copy_sites: copySites,

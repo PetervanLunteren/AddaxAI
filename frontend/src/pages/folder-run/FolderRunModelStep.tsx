@@ -100,7 +100,11 @@ import { ModelInfoSheet } from "../../components/models/ModelInfoSheet";
 import { ModelPreparationErrorView } from "../../components/projects/ModelPreparationErrorView";
 import { ModelPreparationView } from "../../components/projects/ModelPreparationView";
 import { ModelStatusBadge } from "../../components/projects/ModelStatusBadge";
-import { LabelSelectionField, useLabelSelectionCaption } from "../../components/taxonomy/LabelSelectionField";
+import {
+  LabelSelectionField,
+  toApiCountryCode,
+  useLabelSelectionCaption,
+} from "../../components/taxonomy/LabelSelectionField";
 import { ModelSelect } from "../../components/models/ModelSelect";
 import { NoClassifierNotice } from "../../components/models/NoClassifierNotice";
 
@@ -117,7 +121,7 @@ import {
   folderRunsApi,
   type FolderRunCreate,
 } from "../../api/folder-runs";
-import { modelsApi } from "../../api/models";
+import { invalidateModelMetadata, modelsApi } from "../../api/models";
 import { projectsApi } from "../../api/projects";
 
 import { useFolderRun } from "./FolderRunLayout";
@@ -395,12 +399,22 @@ export function FolderRunModelStep() {
     enabled: hasClassifier,
   });
 
+  // Same query (and cache entry) as LabelSelectionField uses internally.
+  // Needed here to know whether the selected classifier is geofenced,
+  // which makes the country choice a required field on submit.
+  const { data: clsGeofence } = useQuery({
+    queryKey: ["model-geofence", classificationModelId],
+    queryFn: () => modelsApi.getModelGeofence(classificationModelId!),
+    enabled: hasClassifier,
+    staleTime: Infinity,
+  });
+  const requiresCountryChoice =
+    hasClassifier && !!clsGeofence?.has_geofence && !!clsGeofence?.countries;
+
   const prepProgress = useTaskProgress({
     taskId: preparingTaskId,
     onComplete: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["model-status", preparingModelId],
-      });
+      invalidateModelMetadata(queryClient, preparingModelId);
       setPreparingTaskId(null);
       setPreparingModelId(null);
       setPrepStage("form");
@@ -463,7 +477,9 @@ export function FolderRunModelStep() {
           ? null
           : data.embedding_model_id,
       excluded_classes: data.excluded_classes,
-      country_code: data.country_code,
+      // ALL is a form-only sentinel ("user explicitly chose all
+      // labels"); the API and DB know only real ISO codes or null.
+      country_code: toApiCountryCode(data.country_code),
       state_code: data.state_code,
       detection_batch_size: data.detection_batch_size,
       classification_batch_size: data.classification_batch_size,
@@ -631,6 +647,17 @@ export function FolderRunModelStep() {
    * state — see `actionMode` below for the full matrix. */
   const onSubmit = (data: SettingsFormData) => {
     if (!folderPath || !scanResult) return;
+    // Geofenced classifiers require an explicit location choice: a
+    // country, or knowingly "All labels". Enforced here rather than in
+    // the zod schema because the requirement depends on the selected
+    // model's geofence, which lives in a query, not in the form data.
+    if (requiresCountryChoice && data.country_code == null) {
+      form.setError("country_code", {
+        type: "required",
+        message: "Choose a country, or pick All labels to run unfiltered.",
+      });
+      return;
+    }
     const currentFolder = run?.queue_entry?.folder_path;
     const folderChanged = !!runId && currentFolder !== folderPath;
 
@@ -862,11 +889,15 @@ export function FolderRunModelStep() {
                             })
                           }
                           onLocationChange={(country, state) => {
+                            form.clearErrors("country_code");
                             form.setValue("country_code", country, {
                               shouldDirty: true,
                             });
                             form.setValue("state_code", state, { shouldDirty: true });
                           }}
+                          error={
+                            form.formState.errors.country_code?.message
+                          }
                         />
                       </div>
                     </div>

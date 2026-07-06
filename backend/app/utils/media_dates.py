@@ -12,6 +12,7 @@ from pathlib import Path
 import exiftool
 
 from app.core.logging_config import get_logger
+from app.utils.exiftool_bin import resolve_exiftool
 
 logger = get_logger(__name__)
 
@@ -92,8 +93,13 @@ def extract_video_dates(paths: list[Path]) -> dict[Path, datetime]:
 
     date_map: dict[Path, datetime] = {}
 
+    # Resolved outside the tolerant try-block below: a missing exiftool
+    # binary is an installation problem and must fail loudly, unlike
+    # per-file metadata trouble which is tolerated.
+    executable = resolve_exiftool()
+
     try:
-        with exiftool.ExifToolHelper() as et:
+        with exiftool.ExifToolHelper(executable=executable) as et:
             for video_path in paths:
                 try:
                     metadata_list = et.get_metadata([str(video_path)])

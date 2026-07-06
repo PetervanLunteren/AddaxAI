@@ -6,8 +6,27 @@
  * - Explicit operations
  */
 
+import type { QueryClient } from "@tanstack/react-query";
+
 import { api } from "../lib/api-client";
 import type { ModelInfo, ModelStatusResponse, TaxonomyResponse, GeofenceResponse } from "./types";
+
+/**
+ * Invalidate every query derived from a model's on-disk files. Call after
+ * a model prepare (download / env build) completes: the geofence and
+ * taxonomy queries may have been fetched (404) while the model dir was
+ * still missing, and would otherwise stay cached as absent for the whole
+ * session, hiding the country selector and the species tree.
+ */
+export function invalidateModelMetadata(
+  queryClient: QueryClient,
+  modelId: string | null | undefined,
+) {
+  if (!modelId) return;
+  for (const key of ["model-status", "model-geofence", "taxonomy"]) {
+    void queryClient.invalidateQueries({ queryKey: [key, modelId] });
+  }
+}
 
 export const modelsApi = {
   /**

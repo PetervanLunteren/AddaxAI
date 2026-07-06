@@ -378,11 +378,21 @@
     - test on the clean-install VirtualBox snapshot: double-click install, menu launch, model download, folder run, uninstall
 
 
+
+
+- [ ] Add a back arrow to home button on the folder run view and the projects overview page, exactly like the Baout page. Or better yet, make the current logo go back to home (as it already does currently), but make it more aparent. How? IDK. What do you suggest. Hover text, perhaps. Hover arrow appears icon? hover makes it a home icon? Perhaps. wouildnt that look modern? SOmething like that. What would you suggest? be honest, no sugar coating. Whats your opinion on this from a stadpoint of UX UI. KISS DRY YAGNI. How do other wellknown applications do it? You can webquery if you want. 
+
+
+
+- [ ] ABout page.... should we add the logo there too in the header to make it consistent with the other pages folder run and projects view? We can keep the ABout and the tag caption as is.  Also, should we get rid of the large logo in the page contents? I think the users know the logo by now.... what do you think? 
+
+- [ ] ABout page.... it still references "Click the (i) button next to a model " but that is not true anymore. Its the "model info" caption below the dropdown that they need to click. Update this. Are there more stale references? 
+
 ## Priority 2
 - [ ] 
 
 ## Priority 3 
-- [ ] would it make sense to show a list of previously analysed folders at the folder run step 1? SO that they do not have to drag and drop the folder or browse trough them, but just scroll and click... ? If so, how and where? 
+- [ ] would it make sense to show a list of previously analysed folders at the folder run step 1? SO that they do not have to drag and drop the folder or browse trough them, but just scroll and click... ? If so, how and where?
 
 ## After the Beta phase
 - [ ] ADD ALL MODELS (Also Caras model)
@@ -408,7 +418,7 @@
 
 ## Documentation
 - [ ] Make a tutorial on how to move data between computers. "The difficulty is that AddaxAI uses three data sources, and all are required. The raw images and videos (to show you while doing verification)The internal JSON files hidden in the processed folders (to reprocess after settings are changed)The internal AddaxAI database (stores all detections, verification statuses, etc)If we want to move everything to a new computer, we must move all three of these components. Luckily, components 1 and 2 are together, so if you have the images on an external drive, you can just plug it into a new computer. Then, you also need to move the DB, which means you must back it up manually, move the DB file to the new computer, and then restore from the there. "
-- [ ] in text and in video tutorials
+- [ ] in text and in video tutorials - proposed workflow: record MP4 locally with ScreenKite, host on HF (tutorial-videos repo), stream in-app, bundle nothing
 - [ ] also all the models avaiulable with species etc 
 - [ ] also include the fallback date reader from filename (...addaxai-YYYYMMDD-HHMMSS.ext)
 
@@ -424,9 +434,4 @@
 - [ ] Take the heatmap for deploment timeline feature from AddaxAI Connect
 - [ ] Naïve occupancy insights page. See AddaxAI-Connect. 
 - [ ] Update the exports page to match the 2 col format. Check Connect. 
-
-
-
-
-
 

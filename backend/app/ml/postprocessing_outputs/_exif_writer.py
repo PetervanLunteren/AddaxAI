@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
 from app.models import Detection, File, Project
+from app.utils.exiftool_bin import resolve_exiftool
 
 logger = get_logger(__name__)
 
@@ -209,7 +210,7 @@ class ExifBatch(AbstractContextManager["ExifBatch"]):
         self._helper: exiftool.ExifToolHelper | None = None
 
     def __enter__(self) -> ExifBatch:
-        self._helper = exiftool.ExifToolHelper()
+        self._helper = exiftool.ExifToolHelper(executable=resolve_exiftool())
         self._helper.__enter__()
         return self
 

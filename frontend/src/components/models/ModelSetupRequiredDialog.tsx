@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { projectsApi } from "@/api/projects";
 import { mlModelsApi } from "@/api/ml-models";
+import { invalidateModelMetadata } from "@/api/models";
 import { useTaskProgress } from "@/hooks/useTaskProgress";
 import { useModelSetupGate } from "@/lib/model-setup-gate";
 import type { MissingModel } from "@/api/types";
@@ -225,6 +226,7 @@ function MissingModelRow({
       void queryClient.invalidateQueries({
         queryKey: ["project-model-readiness", projectId],
       });
+      invalidateModelMetadata(queryClient, missing.model_id);
       onFinished(missing.model_id, true);
     },
     onError: (msg) => {
