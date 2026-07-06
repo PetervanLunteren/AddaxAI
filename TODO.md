@@ -369,6 +369,8 @@
 
 - [ ] If a user clicks the menu item help > "export diagnotics report" there are two toasts: '/Users/peter/Desktop/Screenshot 2026-07-06 at 13.21.31.png'
 
+- [ ] "Analyzing - AddaxAI is analysing your files." the trailing dot is not consistent with the rest of the captions, right? Please check. 
+
 - [ ] LINUX DEB PACKAGE - decision (2026-07-05): ship the Linux beta as a .deb instead of the AppImage. Goal: zero terminal for the user. Double-click the .deb, install via the software center, launch AddaxAI from the app menu like any other app. Background: the AppImage aborts on launch on Ubuntu 23.10 and newer because AppArmor restricts unprivileged user namespaces and Electron's SUID chrome-sandbox fallback cannot work on a nosuid FUSE mount (confirmed on Ubuntu 26.04 in VirtualBox; --no-sandbox works but drops the sandbox). The deb solves both the crash and the chmod +x UX in one go. Implementation sketch:
     - add "deb" to the linux targets in electron/package.json (electron-builder generates the desktop entry and icons, so it appears in the app menu)
     - add a deb afterInstall script that installs an AppArmor profile granting userns (the standard Ubuntu 24.04+ electron fix) and runs apparmor_parser; afterRemove cleans it up
