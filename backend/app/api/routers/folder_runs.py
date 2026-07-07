@@ -66,17 +66,21 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/folder-runs", tags=["Folder runs"])
 
 
-FolderRunStep = Literal[
-    "setup", "labels", "counts", "summary", "save"
-]
+FolderRunStep = Literal["setup", "labels", "save"]
 
-# Forward-compat: map renamed step slugs so runs persisted under the old
-# names re-attach without failing FolderRunStep validation. "observations"
-# became "counts"; "model" became "setup"; "overview" became "summary".
+# Forward-compat: map retired step slugs so runs persisted under the old
+# names re-attach without failing FolderRunStep validation. The counts
+# and summary steps were removed (folder run = run AI without
+# ecological interpretation; counts live in projects mode), so runs
+# parked there resume on labels, the step right before save. Older
+# renames ("observations", "model", "overview") chain to the same
+# targets.
 _LEGACY_STEP_MAP: dict[str, str] = {
-    "observations": "counts",
     "model": "setup",
-    "overview": "summary",
+    "observations": "labels",
+    "counts": "labels",
+    "overview": "labels",
+    "summary": "labels",
 }
 
 

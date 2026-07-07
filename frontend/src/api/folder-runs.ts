@@ -10,12 +10,7 @@
 import { api } from "../lib/api-client";
 import type { ProjectResponse } from "./types";
 
-export type FolderRunStep =
-  | "setup"
-  | "labels"
-  | "counts"
-  | "summary"
-  | "save";
+export type FolderRunStep = "setup" | "labels" | "save";
 
 /** Queue entry shape carried on a folder-run response. Matches the
  * DeploymentQueueResponse Pydantic schema but only the fields the

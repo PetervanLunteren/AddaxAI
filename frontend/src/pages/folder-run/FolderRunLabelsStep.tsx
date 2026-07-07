@@ -1,13 +1,13 @@
 /**
  * Labels step (slug `labels`, optional).
  *
- * First of the two verification steps. Per-detection label cleanup via
- * the crop grid. Editing is optional, so the heavy grid is collapsed
- * behind a "Show editor" toggle and the default page is lightweight so
- * the obvious path is to continue (direct response to feedback that a
- * wall of grid made the step feel required).
+ * Per-detection label cleanup via the crop grid. Editing is optional,
+ * so the heavy grid is collapsed behind a "Show editor" toggle and the
+ * default page is lightweight so the obvious path is to continue
+ * (direct response to feedback that a wall of grid made the step feel
+ * required).
  *
- * Continue PATCHes `step=counts` server-side and navigates onward.
+ * Continue PATCHes `step=save` server-side and navigates onward.
  */
 
 import { useState } from "react";
@@ -33,10 +33,10 @@ export function FolderRunLabelsStep() {
   const [selectionCount, setSelectionCount] = useState(0);
 
   const advance = useMutation({
-    mutationFn: () => folderRunsApi.updateStep(runId!, "counts"),
+    mutationFn: () => folderRunsApi.updateStep(runId!, "save"),
     onSuccess: (next) => {
       queryClient.setQueryData(["folder-run", runId], next);
-      navigate(`/folder-runs/${runId}/counts`);
+      navigate(`/folder-runs/${runId}/save`);
     },
   });
 

@@ -38,9 +38,7 @@ import { DeploymentsPage } from "./pages/DeploymentsPage";
 import { HomePage } from "./pages/HomePage";
 import { FolderRunLayout } from "./pages/folder-run/FolderRunLayout";
 import { FolderRunModelStep } from "./pages/folder-run/FolderRunModelStep";
-import { FolderRunOverviewStep } from "./pages/folder-run/FolderRunOverviewStep";
 import { FolderRunLabelsStep } from "./pages/folder-run/FolderRunLabelsStep";
-import { FolderRunCountsStep } from "./pages/folder-run/FolderRunCountsStep";
 import { FolderRunSaveStep } from "./pages/folder-run/FolderRunSaveStep";
 import { FolderRunResumeIndex } from "./pages/folder-run/FolderRunResumeIndex";
 import { Button } from "./components/ui/button";
@@ -392,9 +390,7 @@ function App() {
             <Route path="/folder-runs/:runId" element={<FolderRunLayout />}>
               <Route index element={<FolderRunResumeIndex />} />
               <Route path="setup" element={<FolderRunModelStep />} />
-              <Route path="summary" element={<FolderRunOverviewStep />} />
               <Route path="labels" element={<FolderRunLabelsStep />} />
-              <Route path="counts" element={<FolderRunCountsStep />} />
               <Route path="save" element={<FolderRunSaveStep />} />
             </Route>
 

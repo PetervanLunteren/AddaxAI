@@ -1,15 +1,9 @@
 /**
  * Project Dashboard body — pure presentational component.
  *
- * Mounted by:
- * - ``DashboardPage`` (the research-projects route ``/projects/:id/dashboard``
- *   wraps it in its own ``min-h-screen`` + ``<header>`` chrome).
- * - ``FolderRunOverviewStep`` (the folder-run Overview step renders it
- *   inline under the stepper's existing header).
- *
- * Single source of truth: changing what the dashboard shows (new
- * filter, new chart, new query) automatically applies in both
- * places.
+ * Mounted by ``DashboardPage`` (the research-projects route
+ * ``/projects/:id/dashboard`` wraps it in its own ``min-h-screen`` +
+ * ``<header>`` chrome).
  */
 
 import { useState, useMemo } from "react";

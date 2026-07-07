@@ -770,3 +770,25 @@ def test_create_pins_detection_threshold_to_inference_floor(client):
     assert resp.status_code == 201
     body = resp.json()
     assert body["project"]["detection_threshold"] == DETECTION_CONFIDENCE_FLOOR
+
+
+def test_legacy_counts_and_summary_steps_resume_on_labels(client, db):
+    """Runs persisted at the retired counts / summary steps resume on
+    labels: the step right before save in the 3-step flow."""
+    from app.models import Project
+
+    for legacy in ("counts", "summary", "observations", "overview"):
+        resp = client.post(
+            "/api/folder-runs",
+            json={"source_folder": f"/tmp/legacy-{legacy}"},
+        )
+        run_id = resp.json()["project"]["id"]
+        proj = db.get(Project, run_id)
+        proj.folder_run_state = {
+            **(proj.folder_run_state or {}),
+            "step": legacy,
+        }
+        db.commit()
+
+        follow_up = client.get(f"/api/folder-runs/{run_id}")
+        assert follow_up.json()["step"] == "labels", legacy
