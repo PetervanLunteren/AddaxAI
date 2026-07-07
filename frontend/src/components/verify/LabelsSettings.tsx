@@ -1,7 +1,7 @@
 /**
  * Labels sort/display settings popover.
  *
- * Renders its own toolbar icon trigger (Settings2) so it sits inline
+ * Renders its own toolbar icon trigger (LayoutGrid) so it sits inline
  * with the other utility icons in the verify toolbar. Hosts the
  * tile-size segmented control and the per-user max-detections cap for
  * similarity sort.
@@ -13,7 +13,7 @@
  * from the feature it controls.
  */
 
-import { Settings2 } from "lucide-react";
+import { LayoutGrid } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { VERIFY_TOOLBAR_ICON_CLASS } from "./VerifyToolbar";
@@ -50,7 +50,7 @@ export function LabelsSettings({
           aria-label="View options"
           className={VERIFY_TOOLBAR_ICON_CLASS}
         >
-          <Settings2 className="h-4 w-4" />
+          <LayoutGrid className="h-4 w-4" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 space-y-4">

@@ -1,13 +1,12 @@
 /**
- * Sort selector shared across the Verify tabs.
+ * Sort selector shared across the verify toolbars.
  *
- * Each tab passes the modes it supports via `availableSorts`. Events and
- * Files use newest / oldest / random / cls_low; Observations uses
- * similarity / similarity_reverse / newest / oldest / cls_low. The
- * Random mode is seeded so pagination and modal navigation stay stable;
- * the seed lives in URL state and the Shuffle button regenerates it.
- *
- * Rendered inline in the verify toolbar with a small "Sort" label.
+ * Each host passes the modes it supports via `availableSorts` (the
+ * Counts gallery uses newest / oldest / random, the Labels grid uses
+ * similarity / events). The option texts are self-labeling ("Sort by
+ * ..."), so the trigger needs no extra label or icon. The Random mode
+ * is seeded so pagination and modal navigation stay stable; the seed
+ * lives in URL state and the Shuffle button regenerates it.
  */
 
 import { Shuffle } from "lucide-react";
@@ -25,13 +24,13 @@ import type { VerifySort } from "../../api/types";
 const RANDOM_SEED_MAX = 2 ** 31;
 
 const SORT_LABELS: Record<VerifySort, string> = {
-  similarity: "Similarity",
-  similarity_reverse: "Similarity (outliers first)",
-  newest: "Newest first",
-  oldest: "Oldest first",
-  random: "Random",
-  cls_low: "Lowest confidence first",
-  events: "By event",
+  similarity: "Sort by similarity",
+  similarity_reverse: "Sort by similarity (outliers first)",
+  newest: "Sort by newest first",
+  oldest: "Sort by oldest first",
+  random: "Sort in random order",
+  cls_low: "Sort by lowest confidence",
+  events: "Sort by event",
 };
 
 function newSeed(): number {
@@ -63,7 +62,7 @@ export function SortSelector({
   return (
     <div className="flex items-center gap-1.5">
       <Select value={sort} onValueChange={(v) => handleSortChange(v as VerifySort)}>
-        <SelectTrigger className="h-8 w-52 text-xs">
+        <SelectTrigger className="h-8 min-h-8 w-52 text-sm">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

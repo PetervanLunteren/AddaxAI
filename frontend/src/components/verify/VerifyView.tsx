@@ -57,7 +57,7 @@ import {
 } from "./VerifyToolbar";
 import { StatusBadgeCluster } from "./StatusBadgeCluster";
 
-const EVENTS_SORT_MODES = ["newest", "oldest", "random", "cls_low"] as const;
+const EVENTS_SORT_MODES = ["newest", "oldest", "random"] as const;
 
 // 48 = LCM(1,2,3,4), so every page lays out cleanly at every grid breakpoint
 // (1/2/3/4 columns). Avoids orphan rows on intermediate pages.

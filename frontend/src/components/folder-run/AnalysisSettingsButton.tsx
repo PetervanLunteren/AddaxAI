@@ -126,10 +126,10 @@ export function AnalysisSettingsButton({
         type="button"
         variant="outline"
         size="sm"
-        className="h-8 gap-2"
+        className="h-8 gap-2 font-normal"
         onClick={() => setOpen(true)}
       >
-        <SlidersHorizontal className="h-3.5 w-3.5" />
+        <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
         Analysis settings
       </Button>
 

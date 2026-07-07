@@ -67,13 +67,13 @@ import type {
   VerifySort,
 } from "../../api/types";
 
-// Labels dropdown, kept deliberately small: browse look-alikes, review
-// by event, or triage the model's least-confident calls. Suggestions is
-// a fourth mode reached via the toolbar pill, not this list.
+// Labels dropdown, kept deliberately small: browse look-alikes or
+// review by event. Low-confidence triage is the confidence slider's
+// job, not a sort mode. Suggestions is a third mode reached via the
+// toolbar pill, not this list.
 const LABELS_SORT_MODES: readonly VerifySort[] = [
   "similarity",
   "events",
-  "cls_low",
 ];
 
 /**
@@ -409,10 +409,9 @@ export function LabelsTab({
   const isLabelSort = (v: unknown): v is LabelSort =>
     v === "similarity" ||
     v === "events" ||
-    v === "cls_low" ||
     v === "suggestions";
 
-  // A saved sort that is no longer offered (the retired
+  // A saved sort that is no longer offered (the retired cls_low /
   // similarity_reverse / newest / oldest modes) falls back to similarity.
   const initialSort: LabelSort = isLabelSort(savedSettings.sort)
     ? savedSettings.sort
