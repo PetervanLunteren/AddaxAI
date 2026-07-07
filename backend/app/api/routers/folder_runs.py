@@ -44,7 +44,7 @@ from app.api.schemas.project import ProjectCreate, ProjectResponse
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
-from app.ml.detection import DETECTION_CONFIDENCE_FLOOR
+from app.ml.detection import DEFAULT_CLASSIFICATION_GATE
 from app.ml.postprocessing_outputs._output_context import MEDIA_SUBDIR
 from app.ml.postprocessing_outputs.output_preview import (
     build_output_preview,
@@ -516,7 +516,7 @@ def create_folder_run(
         name=name,
         timezone="UTC",
         mode="folder_run",
-        detection_threshold=DETECTION_CONFIDENCE_FLOOR,
+        detection_threshold=DEFAULT_CLASSIFICATION_GATE,
         folder_run_state={
             "step": "setup",
             "source_folder": payload.source_folder,

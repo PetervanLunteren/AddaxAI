@@ -107,6 +107,7 @@ const settingsSchema = z.object({
   timezone: z.string(),
   video_fps: z.number().min(0.1).max(10),
   detection_threshold: z.number().min(0).max(1),
+  classification_gate: z.number().min(0.005).max(1),
   event_smoothing: z.boolean(),
   smoothing_strength: z.enum(["mild", "normal", "aggressive"]),
   taxonomic_rollup: z.boolean(),
@@ -285,7 +286,8 @@ export default function SettingsPage() {
       state_code: null,
       timezone: "",
       video_fps: 1.0,
-      detection_threshold: 0.5,
+      detection_threshold: 0.2,
+      classification_gate: 0.1,
       event_smoothing: true,
       smoothing_strength: "normal" as const,
       taxonomic_rollup: true,
@@ -310,6 +312,7 @@ export default function SettingsPage() {
         timezone: project.timezone ?? "",
         video_fps: project.video_fps,
         detection_threshold: project.detection_threshold,
+        classification_gate: project.classification_gate,
         event_smoothing: project.event_smoothing,
         smoothing_strength: (project.smoothing_strength || "normal") as "mild" | "normal" | "aggressive",
         taxonomic_rollup: project.taxonomic_rollup,
@@ -748,6 +751,7 @@ export default function SettingsPage() {
         timezone: project.timezone ?? "",
         video_fps: project.video_fps,
         detection_threshold: project.detection_threshold,
+        classification_gate: project.classification_gate,
         event_smoothing: project.event_smoothing,
         smoothing_strength: (project.smoothing_strength || "normal") as "mild" | "normal" | "aggressive",
         taxonomic_rollup: project.taxonomic_rollup,
@@ -1116,6 +1120,36 @@ export default function SettingsPage() {
                             ))}
                           </SelectContent>
                         </Select>
+                        <FormMessage />
+                      </div>
+                    </div>
+                  )}
+                />
+
+                {/* Classification gate (inference-time) */}
+                <FormField
+                  control={form.control}
+                  name="classification_gate"
+                  render={({ field }) => (
+                    <div className="grid grid-cols-2 items-center gap-8 py-6">
+                      <div className="space-y-1">
+                        <FormLabel>Classify detections above</FormLabel>
+                        <FormDescription className="text-sm">
+                          {SETTING_CAPTIONS.classificationGate} Applies to new analyses only.
+                        </FormDescription>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Slider
+                            min={0.005}
+                            max={1.0}
+                            step={0.005}
+                            value={[field.value]}
+                            onValueChange={(vals) => field.onChange(vals[0])}
+                            className="flex-1 mr-4"
+                          />
+                          <span className="text-sm font-medium min-w-[3.5rem] text-right">{field.value.toFixed(3)}</span>
+                        </div>
                         <FormMessage />
                       </div>
                     </div>

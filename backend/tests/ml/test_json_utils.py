@@ -56,7 +56,7 @@ def test_extract_animal_detections_skips_failure_entries() -> None:
             _ok_image("b.jpg"),
         ],
     }
-    animals = extract_animal_detections(md)
+    animals = extract_animal_detections(md, min_confidence=0.1)
     # Both ok images contribute one animal detection each. The corrupt
     # entry contributes nothing and does not raise.
     assert len(animals) == 2
@@ -66,8 +66,8 @@ def test_extract_animal_detections_skips_failure_entries() -> None:
 
 def test_extract_animal_detections_handles_top_level_null_images() -> None:
     """`{"images": null}` should be treated as an empty list, not crash."""
-    assert extract_animal_detections({"images": None}) == []
-    assert extract_animal_detections({}) == []
+    assert extract_animal_detections({"images": None}, min_confidence=0.1) == []
+    assert extract_animal_detections({}, min_confidence=0.1) == []
 
 
 def test_extract_animal_detections_ignores_non_animal_categories() -> None:
@@ -84,8 +84,32 @@ def test_extract_animal_detections_ignores_non_animal_categories() -> None:
             },
         ],
     }
-    animals = extract_animal_detections(md)
+    animals = extract_animal_detections(md, min_confidence=0.1)
     assert len(animals) == 1
+
+
+def test_extract_animal_detections_applies_classification_gate() -> None:
+    """Animal detections below the gate are not sent to the classifier.
+    MD runs untresholded (0.005), so the JSON carries a near-noise tail
+    that must be gated here."""
+    md = {
+        "images": [
+            {
+                "file": "a.jpg",
+                "detections": [
+                    {"category": "1", "conf": 0.9, "bbox": [0, 0, 0.1, 0.1]},
+                    {"category": "1", "conf": 0.1, "bbox": [0, 0, 0.1, 0.1]},
+                    {"category": "1", "conf": 0.02, "bbox": [0, 0, 0.1, 0.1]},
+                ],
+            },
+        ],
+    }
+    # Exactly-at-gate passes; below-gate is skipped.
+    animals = extract_animal_detections(md, min_confidence=0.1)
+    assert [d["conf"] for _, _, d in animals] == [0.9, 0.1]
+    # Lowering the gate brings the tail into classification scope.
+    animals_low = extract_animal_detections(md, min_confidence=0.005)
+    assert len(animals_low) == 3
 
 
 def test_collect_md_failures_returns_failure_entries() -> None:

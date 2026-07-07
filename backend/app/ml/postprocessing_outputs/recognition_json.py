@@ -368,6 +368,9 @@ def write_recognition_json(
             # this file is the complete record down to the inference
             # floor, nothing was filtered out.
             "settings": {
+                # Detection confidence above which crops were classified
+                # and embedded. MD itself ran untresholded (0.005).
+                "classification_gate": project.classification_gate,
                 "country_code": project.country_code,
                 "state_code": project.state_code,
                 "event_smoothing": project.event_smoothing,

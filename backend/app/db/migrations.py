@@ -235,6 +235,16 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
             "emit the MD format 1.6 video fields"
         ),
     ),
+    _Fingerprint(
+        revision="c5d6e7f8a9b0",
+        table="projects",
+        column="classification_gate",
+        description=(
+            "add projects.classification_gate (detection confidence "
+            "above which crops are classified and embedded; MD itself "
+            "now runs untresholded)"
+        ),
+    ),
 )
 
 

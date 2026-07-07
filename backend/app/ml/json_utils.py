@@ -35,16 +35,26 @@ def collect_md_failures(md_results: dict) -> list[dict]:
     ]
 
 
-def extract_animal_detections(md_results: dict) -> list[tuple[int, int, dict]]:
+def extract_animal_detections(
+    md_results: dict, *, min_confidence: float
+) -> list[tuple[int, int, dict]]:
     """
     Extract animal detections with their indices for classification.
 
+    ``min_confidence`` is the project's classification gate: MegaDetector
+    runs untresholded (0.005 output floor), so the JSON carries a long
+    near-noise tail that must not be classified. Detections below the
+    gate stay in the JSON and the database as raw animal boxes; they
+    are just not sent to the classifier.
+
     Args:
         md_results: MegaDetector JSON results dict
+        min_confidence: gate below which animal detections are skipped
 
     Returns:
-        List of (image_index, detection_index, detection_dict) tuples
-        Only includes detections where category == "1" (animal)
+        List of (image_index, detection_index, detection_dict) tuples.
+        Only detections with category == "1" (animal) at or above the
+        gate.
     """
     animals: list[tuple[int, int, dict]] = []
 
@@ -54,8 +64,11 @@ def extract_animal_detections(md_results: dict) -> list[tuple[int, int, dict]]:
         if img.get("failure"):
             continue
         for det_idx, det in enumerate(img.get("detections") or []):
-            if det.get("category") == "1":  # animal
-                animals.append((img_idx, det_idx, det))
+            if det.get("category") != "1":  # animal only
+                continue
+            if float(det.get("conf", 0.0)) < min_confidence:
+                continue
+            animals.append((img_idx, det_idx, det))
 
     return animals
 

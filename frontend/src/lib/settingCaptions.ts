@@ -11,7 +11,9 @@
  */
 export const SETTING_CAPTIONS = {
   detectionThreshold:
-    "Hide detections below this confidence score. Verified observations are always included. The default is 0.5.",
+    "Hide detections below this confidence score from counts and views. Verified observations are always included. The default is 0.2.",
+  classificationGate:
+    "Animal detections below this confidence are not identified to species (and not embedded). They stay in the data exports as raw animal boxes. The default is 0.1.",
   videoFrameRate:
     "How many frames per second to extract from videos for detection. Higher values find more but take longer. One frame per second is a good default.",
   independenceInterval:

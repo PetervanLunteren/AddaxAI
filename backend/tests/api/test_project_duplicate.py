@@ -75,7 +75,7 @@ def test_duplicate_without_settings_uses_defaults(db):
     )
     assert new is not None
     # Default, not the source's 0.9.
-    assert new.detection_threshold == 0.5
+    assert new.detection_threshold == 0.2
 
 
 def test_duplicate_without_sites_or_deployments(db):

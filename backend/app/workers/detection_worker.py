@@ -29,7 +29,7 @@ from app.core.logging_config import get_logger
 from app.core.media_types import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
-from app.ml.detection import DETECTION_CONFIDENCE_FLOOR
+from app.ml.detection import MD_OUTPUT_CONFIDENCE_THRESHOLD
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.inference.custom_classification_model import CustomClassificationModel
 from app.ml.inference.megadetector import MegaDetectorV1000
@@ -343,7 +343,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         video_folder=_fp,
                         output_json=_vjp,
                         fps=project.video_fps,
-                        confidence_threshold=DETECTION_CONFIDENCE_FLOOR,
+                        confidence_threshold=MD_OUTPUT_CONFIDENCE_THRESHOLD,
                         progress_callback=sync_video_detection_progress,
                         job_id=_jid,
                     ),
@@ -416,6 +416,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     classification_model=classification_model,
                     deployment_folder=folder_path,
                     batch_size=project.classification_batch_size,
+                    classification_gate=project.classification_gate,
                     progress_callback=video_classification_progress,
                     classification_model_dir=cls_model_dir if classification_model_id else None,
                     best_frame_output_base=artifacts_folder / "video_frames",
@@ -485,7 +486,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     _jid=job_id: detection_model.detect_to_json(
                         image_paths=_if,
                         deployment_folder=_fp,
-                        confidence_threshold=DETECTION_CONFIDENCE_FLOOR,
+                        confidence_threshold=MD_OUTPUT_CONFIDENCE_THRESHOLD,
                         batch_size=_bs,
                         progress_callback=sync_image_detection_progress,
                         output_path=_ijp,
@@ -521,6 +522,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     classification_model=classification_model,
                     deployment_folder=folder_path,
                     batch_size=project.classification_batch_size,
+                    classification_gate=project.classification_gate,
                     progress_callback=image_classification_progress,
                     classification_model_dir=cls_model_dir if classification_model_id else None,
                     best_frame_output_base=artifacts_folder / "video_frames",
@@ -779,7 +781,11 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                 embedding_model = EmbeddingModel(emb_model_path, emb_manifest, env_manager)
 
-                input_data = build_embedding_input(deployment.id, db)
+                input_data = build_embedding_input(
+                    deployment.id,
+                    db,
+                    min_confidence=project.classification_gate,
+                )
                 embedding_input_json = artifacts_folder / "embedding_input.json"
                 embedding_output_npz = artifacts_folder / "embeddings.npz"
 

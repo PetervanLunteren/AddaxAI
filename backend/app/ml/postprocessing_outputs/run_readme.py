@@ -273,6 +273,9 @@ def _build_readme_text(
         _kv("Data exports", "complete, no confidence filter")
     )
     lines.append(
+        _kv("Classification gate", project.classification_gate)
+    )
+    lines.append(
         _kv("Detection batch size", project.detection_batch_size or "(auto)")
     )
     lines.append(_kv("Country (geofence)", project.country_code or "(none)"))

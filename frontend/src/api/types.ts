@@ -35,6 +35,7 @@ export interface ProjectCreate {
   timezone?: string | null;
   video_fps: number;
   detection_threshold: number;
+  classification_gate: number;
   event_smoothing: boolean;
   smoothing_strength: string;
   taxonomic_rollup: boolean;
@@ -63,6 +64,7 @@ export interface ProjectUpdate {
   timezone?: string | null;
   video_fps?: number | null;
   detection_threshold?: number | null;
+  classification_gate?: number | null;
   event_smoothing?: boolean | null;
   smoothing_strength?: string | null;
   taxonomic_rollup?: boolean | null;
@@ -93,6 +95,7 @@ export interface ProjectResponse {
   timezone: string | null;
   video_fps: number;
   detection_threshold: number;
+  classification_gate: number;
   event_smoothing: boolean;
   smoothing_strength: string;
   taxonomic_rollup: boolean;

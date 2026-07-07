@@ -38,6 +38,7 @@ export interface PersistedAnalysisSettings {
   classification_batch_size?: number | null;
   embedding_batch_size?: number | null;
   detection_threshold?: number;
+  classification_gate?: number;
   video_fps?: number;
   event_smoothing?: boolean;
   smoothing_strength?: "mild" | "normal" | "aggressive";

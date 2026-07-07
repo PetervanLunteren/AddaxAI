@@ -754,10 +754,11 @@ def test_save_outputs_data_only_creates_no_media_dir(client, tmp_path):
 
 
 def test_create_pins_detection_threshold_to_inference_floor(client):
-    """Folder runs have no in-app interpretation threshold: the project
-    row is pinned to the MD inference floor so every shared read path
-    (grid, label tree, exports) sees the complete record."""
-    from app.ml.detection import DETECTION_CONFIDENCE_FLOOR
+    """Folder runs pin the display threshold to the classification gate
+    at creation (the setup step keeps the two in sync afterwards): the
+    grid and counts show exactly what was classified, while data
+    exports bypass the threshold entirely."""
+    from app.ml.detection import DEFAULT_CLASSIFICATION_GATE
 
     resp = client.post(
         "/api/folder-runs",
@@ -769,7 +770,7 @@ def test_create_pins_detection_threshold_to_inference_floor(client):
     )
     assert resp.status_code == 201
     body = resp.json()
-    assert body["project"]["detection_threshold"] == DETECTION_CONFIDENCE_FLOOR
+    assert body["project"]["detection_threshold"] == DEFAULT_CLASSIFICATION_GATE
 
 
 def test_legacy_counts_and_summary_steps_resume_on_labels(client, db):

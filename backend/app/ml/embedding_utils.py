@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 
 import numpy as np
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
@@ -24,10 +25,18 @@ _SQL_VAR_CHUNK = 900
 def build_embedding_input(
     deployment_id: str,
     db: Session,
+    *,
+    min_confidence: float,
     skip_detection_ids: set[str] | None = None,
 ) -> dict:
     """
-    Query all detections for a deployment and build input for embedding_script.py.
+    Query a deployment's detections and build input for embedding_script.py.
+
+    ``min_confidence`` is the project's classification gate: detections
+    below it are neither classified nor embedded, so the near-noise
+    tail MegaDetector emits at its untresholded 0.005 output never
+    multiplies the per-crop model work. Verified detections always
+    embed — a human said the box is real.
 
     Image detections embed against `File.file_path`. Video detections
     only embed when their `frame_number` matches the parent video's
@@ -41,6 +50,7 @@ def build_embedding_input(
     Args:
         deployment_id: Deployment ID to query detections for
         db: Database session
+        min_confidence: the project's classification gate
         skip_detection_ids: Detection IDs to skip (already embedded)
 
     Returns:
@@ -50,6 +60,12 @@ def build_embedding_input(
         db.query(Detection, File)
         .join(File, Detection.file_id == File.id)
         .filter(File.deployment_id == deployment_id)
+        .filter(
+            or_(
+                Detection.confidence >= min_confidence,
+                Detection.verified.is_(True),
+            )
+        )
         .all()
     )
 

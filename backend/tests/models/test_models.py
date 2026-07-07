@@ -19,7 +19,8 @@ from tests.conftest import (
 
 def test_project_defaults(db):
     p = make_project(db)
-    assert p.detection_threshold == 0.5
+    assert p.detection_threshold == 0.2
+    assert p.classification_gate == 0.1
     assert p.event_smoothing is True
     assert p.taxonomic_rollup is True
     assert p.independence_interval == 1800

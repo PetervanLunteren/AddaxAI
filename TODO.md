@@ -1,7 +1,20 @@
 # TODO
 
 
-We probabaly want to change the inpedendece interval caption now that there are no events in folder mode run, it just feeds the smoothing and save "keep events together" right? Do we even want to call it "events" in folder mode? Or dependent batches? IDK. whats you take here on the caption and the rest of the wording in folder run? Now that I'm reading the caption of the smoothing, it also refers to events. It moight be confusing not to call it events. And it also shows what the user does if setting the independence interval. Perhaps just a tiny addition to the caption of the indopendence interval with "also determines the smoothing and .... (fill in what it feeds)". 
+Why dont we follow Dans advice here exactly? That means:
+
+golabally (on every MD call, independent of mode): running MD with no confidence threshold (other than the internal default)
+
+in folder mode:
+- Detection confidence threshold above which the classifier gets run (0.1 is a good default here) under the advanced settings of step 1
+- Detection confidence threshold for what gets used in counting/visualization (0.2 is a good default here) under the media export options at step 3 (already implemented AFAIK)
+
+In proects mode:
+- Detection confidence threshold above which the classifier gets run (0.1 is a good default here) under the projects settings page
+- Detection confidence threshold for what gets used in counting/visualization (0.2 is a good default here) in the project settings page
+
+Leave the classification threholding for now as is. 
+
 
 "Also used as the starting point for your next run." is not needed. Users dont need to kow that some of this also is used by the inference time. Perhaps this will suffice: "Applies to the results below without re-running the models. "
 
@@ -56,6 +69,7 @@ in the outputs CSVs, there are redundant columns like eventID, deploymentID etc.
 ## Priority 1
 - [ ] ORPHANED BACKEND PROCESS - the packaged app can leave its backend running after quit, and the next launch then silently talks to the stale backend. Observed on Peters mac (2026-07-07): /Applications/AddaxAI.app backend orphaned on port 8000, PPID 1. Three causes in electron/src/main.ts: (1) stopBackend() sends SIGTERM blind, never verifies exit, no SIGKILL fallback; uvicorn graceful shutdown can hang forever on open connections (an open browser tab is enough). (2) the relaunch path uses app.exit(0), which skips before-quit/will-quit entirely, so stopBackend never runs on relaunch. (3) force-quit/crash. Worst consequence: after an update, the new app fails to bind 8000 but the health check gets an answer from the STALE old-version backend and uses it -> new frontend on old backend, schema drift, unexplainable bugs. Fix ideas: SIGTERM then wait then SIGKILL; call stopBackend explicitly before app.exit in the relaunch path; on startup, verify the /health version matches the app version and kill/refuse a stale backend.
 - [ ] projects menu sidebar: the "Per class performance" text is too long. Propose shorter alternative. Perhaps class performace? 
+- [ ] Now that we work with different confidence thresholds, investigate how it works in projects mode, and what we need. Where do we need confidence sliders there? Not in the settings anymore rigght? The labels, counts, have the own. ... IDK. investigate what is going on, and whether or not we need to change somnething. Audit. 
 - [ ] The prcess for label verification and event comfirmation can be quick. That is what we designed it for, so it s working. That is great. But mistakes can happen. NOw the user needst to change a filter to see verified ones, then relabel them. Can we make this faster? Like an UNDO button or so? Just invetigate and report with estimated effort. KISS DRY YAGNI. Can we make it undo unlimited? Just like CNTR+Z on windows? maybe only the labels is enough for the undo, as counts confirmation you can go back to the previous one with the arrows right? 
 - [ ] If ordering by event, does it order the events of a single camera first? how does it order the events? how does it currently work and how should it work? we want the most dependent detections grouped/ordered. what is possible given the contraints of folder runs with agnostic data.
 - [ ] when verifying labels, it often shows a taost saying it verified them succesfully, but the user is do this for hours on end.... and it covers the floating bar wich is annoying... what do do about this? Arent toasts for infrequent things? What is best here? in terms of UX UI

@@ -139,6 +139,7 @@ async def process_re_embedding_job(job_id: str) -> None:
                 input_data = build_embedding_input(
                     deployment.id,
                     db,
+                    min_confidence=project.classification_gate,
                     skip_detection_ids=already_embedded,
                 )
                 if not input_data["detections"]:

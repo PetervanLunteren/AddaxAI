@@ -155,6 +155,7 @@ const settingsSchema = z.object({
   classification_batch_size: z.number().int().min(1).max(256).nullable(),
   embedding_batch_size: z.number().int().min(1).max(256).nullable(),
   video_fps: z.number().min(0.1).max(10),
+  classification_gate: z.number().min(0.005).max(1),
   event_smoothing: z.boolean(),
   smoothing_strength: z.enum(["mild", "normal", "aggressive"]),
   taxonomic_rollup: z.boolean(),
@@ -249,6 +250,7 @@ export function FolderRunModelStep() {
       classification_batch_size: null,
       embedding_batch_size: null,
       video_fps: 1.0,
+      classification_gate: 0.1,
       event_smoothing: true,
       smoothing_strength: "normal",
       taxonomic_rollup: true,
@@ -286,6 +288,7 @@ export function FolderRunModelStep() {
         run.project.classification_batch_size ?? null,
       embedding_batch_size: run.project.embedding_batch_size ?? null,
       video_fps: run.project.video_fps,
+      classification_gate: run.project.classification_gate,
       event_smoothing: run.project.event_smoothing,
       smoothing_strength: (run.project.smoothing_strength ??
         "normal") as "mild" | "normal" | "aggressive",
@@ -482,6 +485,12 @@ export function FolderRunModelStep() {
       classification_batch_size: data.classification_batch_size,
       embedding_batch_size: data.embedding_batch_size,
       video_fps: data.video_fps,
+      classification_gate: data.classification_gate,
+      // Folder runs pin the display floor to the gate: the grid, label
+      // tree, and counts show exactly the detections that were
+      // classified / embedded, while the data exports stay complete
+      // regardless (they bypass the threshold).
+      detection_threshold: data.classification_gate,
       event_smoothing: data.event_smoothing,
       smoothing_strength: data.smoothing_strength,
       taxonomic_rollup: data.taxonomic_rollup,
@@ -609,6 +618,12 @@ export function FolderRunModelStep() {
       classification_batch_size: data.classification_batch_size,
       embedding_batch_size: data.embedding_batch_size,
       video_fps: data.video_fps,
+      classification_gate: data.classification_gate,
+      // Folder runs pin the display floor to the gate: the grid, label
+      // tree, and counts show exactly the detections that were
+      // classified / embedded, while the data exports stay complete
+      // regardless (they bypass the threshold).
+      detection_threshold: data.classification_gate,
       event_smoothing: data.event_smoothing,
       smoothing_strength: data.smoothing_strength,
       taxonomic_rollup: data.taxonomic_rollup,
@@ -1108,6 +1123,34 @@ export function FolderRunModelStep() {
                               ))}
                             </SelectContent>
                           </Select>
+                          <FormMessage />
+                        </SettingRow>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="classification_gate"
+                      render={({ field }) => (
+                        <SettingRow
+                          label="Classify detections above"
+                          description={SETTING_CAPTIONS.classificationGate}
+                        >
+                          <div className="flex items-center justify-between">
+                            <Slider
+                              min={0.005}
+                              max={1.0}
+                              step={0.005}
+                              value={[field.value]}
+                              onValueChange={(vals) =>
+                                field.onChange(vals[0])
+                              }
+                              className="mr-4 flex-1"
+                            />
+                            <span className="min-w-[3.5rem] text-right text-sm font-medium">
+                              {field.value.toFixed(3)}
+                            </span>
+                          </div>
                           <FormMessage />
                         </SettingRow>
                       )}

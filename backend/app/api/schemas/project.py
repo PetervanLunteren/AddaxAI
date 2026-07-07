@@ -83,7 +83,19 @@ class ProjectBase(BaseModel):
 
     # Detection and processing settings
     detection_threshold: float = Field(
-        default=0.5, ge=0.0, le=1.0, description="Confidence threshold for detections (0.0-1.0)"
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Counting / visualization confidence filter (0.0-1.0)",
+    )
+    classification_gate: float = Field(
+        default=0.1,
+        ge=0.005,
+        le=1.0,
+        description=(
+            "Detection confidence above which animal crops are "
+            "classified and embedded (0.005-1.0)"
+        ),
     )
     event_smoothing: bool = Field(
         default=True, description="Apply temporal smoothing to detections"
@@ -204,6 +216,7 @@ class ProjectUpdate(BaseModel):
         return _validate_iana_timezone(v)
     video_fps: float | None = Field(None, ge=0.1, le=10.0)
     detection_threshold: float | None = Field(None, ge=0.0, le=1.0)
+    classification_gate: float | None = Field(None, ge=0.005, le=1.0)
     event_smoothing: bool | None = None
     smoothing_strength: str | None = Field(None, pattern="^(mild|normal|aggressive)$")
     taxonomic_rollup: bool | None = None

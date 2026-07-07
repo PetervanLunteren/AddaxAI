@@ -84,9 +84,18 @@ class Project(Base):
         String(64), nullable=True
     )
 
-    # Detection and processing settings
+    # Detection and processing settings.
+    #
+    # detection_threshold is the counting / visualization filter (what
+    # the app shows and counts); classification_gate is the detection
+    # confidence above which animal crops are classified and embedded.
+    # MegaDetector itself always runs untresholded (0.005, see
+    # app/ml/detection); neither setting affects what is stored.
     detection_threshold: Mapped[float] = mapped_column(
-        Float, nullable=False, default=0.5
+        Float, nullable=False, default=0.2
+    )
+    classification_gate: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.1
     )
     event_smoothing: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True

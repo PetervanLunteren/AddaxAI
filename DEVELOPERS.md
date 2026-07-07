@@ -170,7 +170,13 @@ Coverage is collected automatically (`--cov=app` in `pyproject.toml`).
 
 ## Detection threshold and verified override
 
-Every project has a `detection_threshold` (e.g. 0.5). Detections below this confidence are hidden from the UI. However, verified detections always pass, regardless of confidence. A human verification is a stronger signal than a model score.
+Three confidence values exist and must not be confused:
+
+1. **MD output** — MegaDetector always runs untresholded (`MD_OUTPUT_CONFIDENCE_THRESHOLD = 0.005`, MD's own internal default). Everything above it is stored: raw results.json, database, and the folder-run data exports (which bypass all thresholds by design).
+2. **`Project.classification_gate`** (default 0.1) — detection confidence above which animal crops are classified and embedded. Inference-time; changing it applies to new analyses. Gating both per-crop model passes is what keeps the untresholded MD output from multiplying compute.
+3. **`Project.detection_threshold`** (default 0.2) — the counting/visualization filter described below. Folder runs pin it to the classification gate.
+
+Detections below `detection_threshold` are hidden from the UI. However, verified detections always pass, regardless of confidence. A human verification is a stronger signal than a model score.
 
 **The rule:** anywhere you query detections and the result is user-facing, apply:
 

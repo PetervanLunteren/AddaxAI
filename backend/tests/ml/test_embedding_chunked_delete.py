@@ -82,3 +82,30 @@ def test_chunked_delete_removes_all_existing(db, tmp_path, monkeypatch):
     assert inserted == n
     # Old n deleted across chunks, new n inserted -> exactly n, not 2n.
     assert db.query(DetectionEmbedding).count() == n
+
+
+def test_build_embedding_input_applies_classification_gate(db, tmp_path):
+    """Detections below the classification gate are not embedded (MD now
+    runs untresholded, the gate bounds the per-crop model work), but a
+    verified detection always embeds regardless of confidence."""
+    from app.ml.embedding_utils import build_embedding_input
+    from tests.conftest import make_deployment, make_detection, make_file, make_project
+
+    project = make_project(db, name="emb-gate")
+    dep = make_deployment(db, project_id=project.id)
+    src = tmp_path / "IMG.jpg"
+    src.write_bytes(b"x")
+    file = make_file(
+        db, deployment_id=dep.id, file_path=str(src), observation_type="animal"
+    )
+    common = dict(
+        file_id=file.id, category="animal",
+        bbox_x=0.1, bbox_y=0.1, bbox_width=0.2, bbox_height=0.2,
+    )
+    d_pass = make_detection(db, confidence=0.9, **common)
+    make_detection(db, confidence=0.02, **common)
+    d_verified = make_detection(db, confidence=0.02, verified=True, **common)
+
+    result = build_embedding_input(dep.id, db, min_confidence=0.1)
+    ids = {e["detection_id"] for e in result["detections"]}
+    assert ids == {d_pass.id, d_verified.id}

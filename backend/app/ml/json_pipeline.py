@@ -529,6 +529,8 @@ async def run_classification_on_json(
     classification_model,
     deployment_folder: Path,
     batch_size: int,
+    *,
+    classification_gate: float,
     progress_callback: Callable[[str, float, dict | None], None] | None = None,
     classification_model_dir: Path | None = None,
     best_frame_output_base: Path | None = None,
@@ -567,7 +569,9 @@ async def run_classification_on_json(
     with open(json_path) as f:
         md_results = json.load(f)
 
-    animal_detections = extract_animal_detections(md_results)
+    animal_detections = extract_animal_detections(
+        md_results, min_confidence=classification_gate
+    )
 
     # Build the best-frame output map up front: every non-failed video
     # in the JSON gets a destination directory, including blank videos
