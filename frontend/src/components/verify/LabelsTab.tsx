@@ -7,7 +7,14 @@
  * and detail sheet.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -16,7 +23,6 @@ import {
   CircleHelp,
   Layers,
   Loader2,
-  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -103,6 +109,9 @@ interface LabelsTabProps {
    *  bar while a selection is live, so the BulkActionBar doesn't sit
    *  on top of it and the user can't accidentally advance mid-action. */
   onSelectionChange?: (count: number) => void;
+  /** Extra control rendered at the start of the toolbar row. The
+   *  folder-run Labels step slots its "Analysis settings" button here. */
+  toolbarExtra?: ReactNode;
 }
 
 // ── Labels filter state (independent from Events / Files filters) ──
@@ -334,6 +343,7 @@ export function LabelsTab({
   projectId,
   classificationModelId,
   onSelectionChange,
+  toolbarExtra,
 }: LabelsTabProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -1296,6 +1306,7 @@ export function LabelsTab({
       />
 
       <VerifyToolbar>
+        {toolbarExtra}
         <VerifyToolbarIcon
           icon={CircleHelp}
           title="Help"
@@ -1313,13 +1324,6 @@ export function LabelsTab({
           onTileSizeChange={setTileSize}
           maxDetections={maxDetections}
           onMaxDetectionsChange={setMaxDetections}
-        />
-        <VerifyToolbarIcon
-          icon={RefreshCw}
-          title="Refresh"
-          onClick={() => sortMutation.mutate(lblSort)}
-          spinning={isSorting}
-          disabled={!stats?.embedded_detections || isSorting}
         />
         {/* Hide the dropdown in suggestions mode: it's a focused review
             workflow with its own entry / exit via the pill below. The

@@ -1,7 +1,7 @@
 /**
  * Verify toolbar — slim row below the filter bar.
  *
- * Hosts the inline utility icons (help / keyboard / settings / refresh,
+ * Hosts the inline utility icons (help / keyboard / settings,
  * tab-specific) on the left and the verification progress pill on the
  * right. Each tab composes the contents from `VerifyToolbarIcon` and
  * `VerifyProgressPill`.
@@ -34,8 +34,6 @@ interface VerifyToolbarIconProps {
   title: string;
   onClick: () => void;
   disabled?: boolean;
-  /** When true the icon spins (used for in-flight refresh). */
-  spinning?: boolean;
 }
 
 export function VerifyToolbarIcon({
@@ -43,7 +41,6 @@ export function VerifyToolbarIcon({
   title,
   onClick,
   disabled = false,
-  spinning = false,
 }: VerifyToolbarIconProps) {
   return (
     <button
@@ -54,7 +51,7 @@ export function VerifyToolbarIcon({
       disabled={disabled}
       className="text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
     >
-      <Icon className={cn("h-4 w-4", spinning && "animate-spin")} />
+      <Icon className="h-4 w-4" />
     </button>
   );
 }

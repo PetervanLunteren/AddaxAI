@@ -17,7 +17,7 @@ import { ArrowLeft, ArrowRight, ChevronDown, Pencil } from "lucide-react";
 
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
-import { AnalysisSettingsPanel } from "../../components/folder-run/AnalysisSettingsPanel";
+import { AnalysisSettingsButton } from "../../components/folder-run/AnalysisSettingsButton";
 import { StepHeader } from "../../components/folder-run/StepHeader";
 import { LabelsView } from "../../components/verify/LabelsView";
 import { folderRunsApi } from "../../api/folder-runs";
@@ -127,20 +127,23 @@ export function FolderRunLabelsStep() {
     </div>
   );
 
-  // One tree for both views so the analysis panel keeps its (possibly
-  // unapplied) state when the editor is toggled.
   return (
     <div className={editorOpen ? "space-y-6 pb-24" : "space-y-6"}>
       <StepHeader
         title="Check labels"
         caption="Fix any labels the AI got wrong, or continue."
       />
-      <AnalysisSettingsPanel runId={runId} project={run.project} />
       {editorOpen ? (
         <>
           <LabelsView
             projectId={runId}
             onSelectionChange={setSelectionCount}
+            toolbarExtra={
+              <AnalysisSettingsButton
+                runId={runId}
+                project={run.project}
+              />
+            }
           />
           {selectionCount === 0 && (
             <div className="sticky bottom-0 z-30 -mx-4 border-t bg-white/80 px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">

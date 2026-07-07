@@ -1,10 +1,63 @@
 # TODO
 
+
+We probabaly want to change the inpedendece interval caption now that there are no events in folder mode run, it just feeds the smoothing and save "keep events together" right? Do we even want to call it "events" in folder mode? Or dependent batches? IDK. whats you take here on the caption and the rest of the wording in folder run? Now that I'm reading the caption of the smoothing, it also refers to events. It moight be confusing not to call it events. And it also shows what the user does if setting the independence interval. Perhaps just a tiny addition to the caption of the indopendence interval with "also determines the smoothing and .... (fill in what it feeds)". 
+
+"Also used as the starting point for your next run." is not needed. Users dont need to kow that some of this also is used by the inference time. Perhaps this will suffice: "Applies to the results below without re-running the models. "
+
+Do we need to rename it from Ananlsysis settings to something else? Perhaps Analysis preferences? IDK probabaly not that. I'm just thjinking that thjere are many settings here.... at step 1, advanced at step 1, analysis settings at step 2, settings inside projects, settings in the save steps itself etc. What do yoiu think?
+
+If I reprocess the labels pane should auto update. Now it needs a hard refesh to see the new labels. 
+
+In projects mode, if you reprocess, it shows you a summary of how the DB was changed. Might be good to do here too. You can use the exact same code and toasts, modals etc for this. Use shared helpers. 
+
+"Where everything gets written. Defaults to the folder you analysed; your originals are never overwritten." -> Where everything gets written. Defaults to the folder you analysed. Your originals are never overwritten.
+
+"Your media sorted into folders, videos as a best-frame image" -> Your media sorted into folders. Videos are written as best-frame images.
+
+What do we think of this order? Is it logical? 
+            Folder structure
+            How the copies are organised
+
+            Nested by taxonomy
+            Keep events together
+            The whole event goes to the folder of its most confident species
+
+            Folder order
+            Whether species or your original folders sit on top
+
+            Species folder first
+            Labels
+            Which labels to copy and visualise
+
+            All labels
+            Confidence
+            Detections below this score are left out of the copies. The data files always include everything.
+            0.20
+            Draw detection boxes
+            Boxes and labels on each file
+
+            Blur people and vehicles
+            People and vehicles blurred on each file
+
+            Also copy empty files
+            Images and videos with no animals, people, or vehicles
+
+
+"Detections below this score are left out of the copies. The data files always include everything." -> Detections below this score are left out
+
+Should we make the actions all in the same row card format? With a title + caption? Now its a mix. '/Users/peter/Desktop/Screenshot 2026-07-07 at 13.30.03.png' Perhaps a bit more following this format? '/Users/peter/Desktop/Screenshot 2026-07-07 at 13.36.01.png'
+
+in the outputs CSVs, there are redundant columns like eventID, deploymentID etc. These are not needed in folder run. Investiogate what is currently there, and what can be hidden for folder mode runs. Make sure the porojects exports remain exactly the same, so you only edit the folder run exports. BTW, the full CSV/XSLX exports are still present on projects mode exports, right? With deployments, events, trap days, etc. ? 
+
+
+
+
 ## Priority 1
+- [ ] ORPHANED BACKEND PROCESS - the packaged app can leave its backend running after quit, and the next launch then silently talks to the stale backend. Observed on Peters mac (2026-07-07): /Applications/AddaxAI.app backend orphaned on port 8000, PPID 1. Three causes in electron/src/main.ts: (1) stopBackend() sends SIGTERM blind, never verifies exit, no SIGKILL fallback; uvicorn graceful shutdown can hang forever on open connections (an open browser tab is enough). (2) the relaunch path uses app.exit(0), which skips before-quit/will-quit entirely, so stopBackend never runs on relaunch. (3) force-quit/crash. Worst consequence: after an update, the new app fails to bind 8000 but the health check gets an answer from the STALE old-version backend and uses it -> new frontend on old backend, schema drift, unexplainable bugs. Fix ideas: SIGTERM then wait then SIGKILL; call stopBackend explicitly before app.exit in the relaunch path; on startup, verify the /health version matches the app version and kill/refuse a stale backend.
+- [ ] projects menu sidebar: the "Per class performance" text is too long. Propose shorter alternative. Perhaps class performace? 
 - [ ] The prcess for label verification and event comfirmation can be quick. That is what we designed it for, so it s working. That is great. But mistakes can happen. NOw the user needst to change a filter to see verified ones, then relabel them. Can we make this faster? Like an UNDO button or so? Just invetigate and report with estimated effort. KISS DRY YAGNI. Can we make it undo unlimited? Just like CNTR+Z on windows? maybe only the labels is enough for the undo, as counts confirmation you can go back to the previous one with the arrows right? 
 - [ ] If ordering by event, does it order the events of a single camera first? how does it order the events? how does it currently work and how should it work? we want the most dependent detections grouped/ordered. what is possible given the contraints of folder runs with agnostic data.
-- [ ] Do we really need the refresh button on the label verification step/page? What does it do? It doesnt buy the user anyhting right? We also offer a full app hard refresh via the electron menu. Is it of value?
-- [ ] the label verification options in the bar (Help, keybord shortcuts, view options), do we want to keep them as icons? or as buttons? Whats the best UX UI here? 
 - [ ] when verifying labels, it often shows a taost saying it verified them succesfully, but the user is do this for hours on end.... and it covers the floating bar wich is annoying... what do do about this? Arent toasts for infrequent things? What is best here? in terms of UX UI
 - [ ] SHould we name the folder run buttons [back] [continue] to [previous step] and [next step]?
 - [ ] SHould we make the folder run steps clickable? now they are only clickable if you have visited it in that run already. But why not just have users click step 5 directly after processing... ?
