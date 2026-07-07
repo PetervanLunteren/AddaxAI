@@ -1,6 +1,11 @@
 # AddaxAI beta
 
-Thanks for trying the new AddaxAI. It is a full rewrite from scratch, with stronger metadata analysis and verification options. It works as an additive system: keep adding deployments to a project and the analyses, dashboards, and insights update with them.
+Thanks for trying the new AddaxAI. It is a full rewrite from scratch, with stronger metadata analysis and verification options.
+
+There are two ways to work:
+
+- **Analyse a folder**: a one-off run in three steps (setup, labels, save). Run the AI, clean up labels if you want, and get files out: complete detection tables, a recognition file for Timelapse, species-separated folders, visualised or blurred images. No ecological interpretation, you do your own analysis with the files.
+- **Build a project**: a stored workspace for tracking cameras over time. Confirm species counts, keep verification history, watch dashboards and maps, and export to Camtrap DP. It works as an additive system: keep adding deployments and the analyses update with them. A folder run can be turned into a project after saving.
 
 ## Download
 

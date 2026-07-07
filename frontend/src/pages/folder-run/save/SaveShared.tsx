@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   FolderOpen,
   Save,
+  Sparkles,
 } from "lucide-react";
 
 import { Button } from "../../../components/ui/button";
@@ -366,39 +367,6 @@ export function CompletionDialog({
   const issues = collectIssues(result);
   const sourceCount = result.source_file_count;
 
-  // Promote-to-research path is intentionally hidden from the folder-run
-  // completion — beta testers found the supporting jargon (Camtrap-DP,
-  // GeoJSON, Shapefile, dashboards) intimidating, and any extra control
-  // at the moment of success reads as upsell. The PromoteDialog + form
-  // state + backend promote endpoint stay wired so re-enabling is a
-  // one-block uncomment if we add an entry point elsewhere (e.g. the
-  // Step 1 "you analysed this folder before" notice card).
-  //
-  // Known tradeoff: users who later decide they want dashboards on this
-  // folder must spin up a fresh research project and re-run analysis on
-  // the same media. The redo cost is real but rare.
-  //
-  // To re-enable, drop this block into the dialog above the footer (also
-  // re-import Sparkles from lucide-react):
-  //
-  // <div className="flex items-start gap-3 rounded-md border p-3">
-  //   <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-  //   <div className="flex-1">
-  //     <p className="text-xs text-muted-foreground">
-  //       Want dashboards, insights, and full exports? Turn this
-  //       into a research project.
-  //     </p>
-  //     <Button
-  //       onClick={() => setPromoteOpen(true)}
-  //       variant="outline"
-  //       size="sm"
-  //       className="mt-2"
-  //     >
-  //       Promote to research project
-  //     </Button>
-  //   </div>
-  // </div>
-
   return (
     <>
       <Dialog
@@ -428,6 +396,27 @@ export function CompletionDialog({
           </div>
 
           {issues.length > 0 && <IssuesPanel issues={issues} />}
+
+          {/* Bridge to projects mode. A folder run deliberately does no
+              ecological interpretation; this is the one place we point
+              at where that lives. */}
+          <div className="flex items-start gap-3 rounded-md border p-3">
+            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div className="flex-1">
+              <p className="text-xs text-muted-foreground">
+                Want species counts, dashboards, and maps for this
+                folder? Turn the run into a project.
+              </p>
+              <Button
+                onClick={() => setPromoteOpen(true)}
+                variant="outline"
+                size="sm"
+                className="mt-2"
+              >
+                Turn into a project
+              </Button>
+            </div>
+          </div>
 
           <DialogFooter>
             <Button

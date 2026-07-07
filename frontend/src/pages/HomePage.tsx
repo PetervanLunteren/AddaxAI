@@ -90,7 +90,7 @@ export function HomePage() {
               icon={<FolderOpen className="h-6 w-6" />}
               title="Analyse a folder"
               lead="A quick one-off run. Point at a folder, get results, move on."
-              body="Run the AI, review and fix the results if you want, then get files out: a results table, a recognition file for Timelapse, species-separated folders, visualised or blurred images. You manage the output files yourself."
+              body="Run the AI, clean up labels if you want, then get files out: detection tables, a recognition file for Timelapse, species-separated folders, visualised or blurred images. No interpretation, you do your own analysis with the files."
               cta="Start folder analysis"
               onClick={() => navigate("/folder-runs/new")}
             />
@@ -98,7 +98,7 @@ export function HomePage() {
               icon={<LayoutDashboard className="h-6 w-6" />}
               title="Build a project"
               lead="A workspace you come back to and keep adding cameras to."
-              body="Track many cameras over time: keep verification history, watch dashboards and maps, compare activity, and export to Camtrap DP. Everything stays stored and revisitable in the app."
+              body="Track many cameras over time: confirm species counts, keep verification history, watch dashboards and maps, compare activity, and export to Camtrap DP. Everything stays stored and revisitable in the app."
               cta="Open projects"
               onClick={() => navigate("/projects")}
             />

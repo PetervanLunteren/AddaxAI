@@ -107,11 +107,11 @@ export function PromoteDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Start a research project from this run</DialogTitle>
+          <DialogTitle>Turn this run into a project</DialogTitle>
           <DialogDescription>
-            Keep this folder run as a full project with sites,
-            deployments, verification history, dashboards, insights,
-            and exports.
+            Keep this folder run as a full project with species counts,
+            verification history, dashboards, maps, and exports. The
+            analysis you already ran carries over, nothing is re-run.
           </DialogDescription>
         </DialogHeader>
 
@@ -154,7 +154,7 @@ export function PromoteDialog({
             onClick={() => promote.mutate()}
             disabled={!canSubmit}
           >
-            {promote.isPending ? "Promoting..." : "Create research project"}
+            {promote.isPending ? "Creating..." : "Create project"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,12 +1,9 @@
 /**
  * Project Dashboard page — thin wrapper around ``DashboardView``.
  *
- * The body of the dashboard lives in ``DashboardView`` so the same
- * content can be reused inside the folder-run Overview step
- * without duplicating the queries, filter state, or charts. This
- * page just provides the canonical research-projects chrome
- * (``<header>`` with the page title) and the outer max-width
- * container.
+ * The body of the dashboard lives in ``DashboardView``; this page
+ * just provides the research-projects chrome (``<header>`` with the
+ * page title) and the outer max-width container.
  */
 
 import { useParams } from "react-router-dom";
