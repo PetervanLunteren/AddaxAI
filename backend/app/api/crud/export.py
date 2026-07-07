@@ -30,7 +30,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Row, and_, func, or_, select
+from sqlalchemy import Row, and_, func, or_, select, true
 from sqlalchemy.orm import Session, defer
 
 from app.api.crud.export_formats import slugify
@@ -262,6 +262,7 @@ def get_scoped_detection_rows(
     *,
     extra_excluded: list[str] | None = None,
     deployment_ids: list[str] | None = None,
+    apply_threshold: bool = True,
 ) -> list[Row[Any]]:
     """
     Return every (File, Detection, Deployment, Site, LabelTaxonomy) row
@@ -275,10 +276,21 @@ def get_scoped_detection_rows(
     user's "exclude these species from outputs" choice on the Save
     page applies to exports without mutating the project's persistent
     exclusion list.
+
+    ``apply_threshold=False`` drops the detection-threshold filter so
+    every stored detection is in scope. The folder-run save step uses
+    this: its data exports are the complete record of the run
+    (detections are only thresholded in-app and in media outputs).
+    Projects-mode export endpoints keep the default threshold +
+    verified-override rule (DEVELOPERS.md).
     """
-    threshold_clause = or_(
-        Detection.confidence >= project.detection_threshold,
-        Detection.verified.is_(True),
+    threshold_clause = (
+        or_(
+            Detection.confidence >= project.detection_threshold,
+            Detection.verified.is_(True),
+        )
+        if apply_threshold
+        else true()
     )
 
     # Outer join on Site so deployments without an assigned site still
@@ -792,14 +804,23 @@ def build_spreadsheet_sheets(
     db: Session,
     project: Project,
     deployment_ids: list[str] | None = None,
+    *,
+    apply_threshold: bool = True,
 ) -> list[tuple[str, list[str], list[list[Any]]]]:
     """The tables that make up a combined spreadsheet: Deployments, Files,
     Detections, and Counts. Single source for both the project Export
     page's XLSX and the folder-run Save step, so the two never drift.
 
     ``deployment_ids`` narrows every sheet to a subset of the project's
-    deployments; None (the folder-run Save default) exports everything."""
-    scoped = get_scoped_detection_rows(db, project, deployment_ids=deployment_ids)
+    deployments; None (the folder-run Save default) exports everything.
+    ``apply_threshold=False`` makes the Detections sheet the complete
+    record (see ``get_scoped_detection_rows``)."""
+    scoped = get_scoped_detection_rows(
+        db,
+        project,
+        deployment_ids=deployment_ids,
+        apply_threshold=apply_threshold,
+    )
     dep_headers, dep_rows = build_deployments_rows(db, project, deployment_ids)
     files_headers, files_rows = build_files_rows(db, project, deployment_ids)
     det_headers, det_rows = build_detection_rows(db, project, scoped)

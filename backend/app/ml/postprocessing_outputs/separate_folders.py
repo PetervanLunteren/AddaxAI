@@ -87,6 +87,7 @@ from sqlalchemy.orm import Session
 
 from app import __version__ as APP_VERSION
 from app.core.logging_config import get_logger
+from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, File, LabelTaxonomy, Project
 from app.models.event import event_files
 
@@ -343,6 +344,7 @@ def _taxonomic_path_for_label(
 def _folder_for_file(
     db: Session,
     file: File,
+    obs_type: str,
     threshold: float,
     taxonomy_map: dict[str, LabelTaxonomy],
     group_by: SeparateGroupBy = "taxonomic",
@@ -359,11 +361,14 @@ def _folder_for_file(
     per-file choice with the event's main species (``group_events``).
     Animal files with no surviving label fall back to ``animal/``. The
     empty string means the output root (``group_by="none"``).
+
+    ``obs_type`` is the file's effective observation type at the media
+    threshold (see ``derive_observation_type``), passed in by the caller
+    so the blank-skip and the routing here agree on one derivation.
     """
     if group_by == "none":
         return ""
 
-    obs_type = file.observation_type
     if obs_type != "animal":
         return _OBSERVATION_TYPE_FOLDER.get(obs_type) or _FALLBACK_FOLDER
 
@@ -491,6 +496,7 @@ def separate_into_folders(
     project_id: str,
     ctx: OutputContext,
     *,
+    media_confidence: float,
     mode: SeparateMode = "copy",
     group_by: SeparateGroupBy = "taxonomic",
     include_empty: bool = True,
@@ -526,6 +532,12 @@ def separate_into_folders(
     ``skipped_excluded``). A mixed file still goes through, filed under
     its most confident non-excluded label.
 
+    ``media_confidence`` is the media-output confidence threshold picked
+    on the Save step: detections below it (unless verified) do not count
+    towards placement, and a file's effective observation type is
+    re-derived at this threshold rather than trusting the stored
+    ``observation_type`` (which is derived at the project threshold).
+
     Each placement is recorded on ``ctx`` so downstream modules can find
     the file on disk without re-reading ``File.file_path``.
     """
@@ -535,7 +547,7 @@ def separate_into_folders(
 
     target_dir = ctx.output_root
     target_dir.mkdir(parents=True, exist_ok=True)
-    threshold = project.detection_threshold
+    threshold = media_confidence
     taxonomy_map = _build_taxonomy_map(db, project)
 
     # Empty map = per-file placement; populated = whole events grouped.
@@ -584,13 +596,19 @@ def separate_into_folders(
                 result.skipped_excluded += 1
                 continue
 
+            # Effective observation type at the media threshold. The
+            # stored column is derived at the project threshold, which
+            # no longer matches the media outputs' own confidence.
+            obs_type = derive_observation_type(file.detections, threshold)
+
             # Empties are skipped from the copies unless opted in.
-            if not include_empty and file.observation_type == "blank":
+            if not include_empty and obs_type == "blank":
                 continue
 
             folder = _folder_for_file(
                 db,
                 file,
+                obs_type,
                 threshold,
                 taxonomy_map,
                 group_by,
@@ -640,6 +658,7 @@ def separate_into_folders(
                     file,
                     project,
                     APP_VERSION,
+                    media_confidence=threshold,
                     excluded_label_ids=excluded_label_ids,
                 )
                 if tag_set is not None:

@@ -34,10 +34,13 @@ type AdvancedKey = keyof typeof ADVANCED_SETTINGS_DEFAULTS;
 
 const ADVANCED_KEYS = Object.keys(ADVANCED_SETTINGS_DEFAULTS) as AdvancedKey[];
 
-/** True if any advanced setting in `values` deviates from its default. */
+/** True if any advanced setting in `values` deviates from its default.
+ * Keys absent from `values` are skipped: not every consumer form carries
+ * every advanced setting (the folder-run setup step has no
+ * detection_threshold; that lives on the project Settings page only). */
 export function isAnyAdvancedNonDefault(values: Record<string, unknown>): boolean {
   return ADVANCED_KEYS.some(
-    (key) => values[key] !== ADVANCED_SETTINGS_DEFAULTS[key],
+    (key) => key in values && values[key] !== ADVANCED_SETTINGS_DEFAULTS[key],
   );
 }
 

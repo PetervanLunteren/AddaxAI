@@ -78,7 +78,7 @@ def test_places_multi_species_file_once(db, tmp_path):
     make_detection(db, file_id=f.id, confidence=0.80, label="wolf")
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, _ctx(target))
+    result = separate_into_folders(db, project.id, _ctx(target), media_confidence=0.5)
 
     assert result.copied_count == 1
     assert (target / "other" / "dog" / "IMG_1.jpg").is_file()
@@ -110,7 +110,7 @@ def test_group_events_keeps_burst_in_one_folder(db, tmp_path):
     target = tmp_path / "out"
     result = separate_into_folders(
         db, project.id, _ctx(target), group_events=True
-    )
+    , media_confidence=0.5)
 
     # Both files land under the event's primary species (dog).
     assert (target / "other" / "dog" / "A.jpg").is_file()
@@ -136,7 +136,7 @@ def test_group_events_off_splits_burst_per_file(db, tmp_path):
     _link_event(db, dep.id, [fa.id, fb.id])
 
     target = tmp_path / "out"
-    separate_into_folders(db, project.id, _ctx(target), group_events=False)
+    separate_into_folders(db, project.id, _ctx(target), group_events=False, media_confidence=0.5)
 
     assert (target / "other" / "dog" / "A.jpg").is_file()
     assert (target / "other" / "fox" / "B.jpg").is_file()
@@ -187,6 +187,7 @@ def test_excluding_person_drops_person_file(db, tmp_path):
         project.id,
         _ctx(target),
         excluded_label_ids=frozenset({person_tid}),
+        media_confidence=0.5,
     )
 
     assert result.skipped_excluded == 1
@@ -210,7 +211,7 @@ def test_preview_counts_one_placement(db):
     make_detection(db, file_id=f.id, confidence=0.95, label="dog")
     make_detection(db, file_id=f.id, confidence=0.80, label="wolf")
 
-    preview = build_output_preview(db, project.id, group_by="taxonomic")
+    preview = build_output_preview(db, project.id, group_by="taxonomic", media_confidence=0.5)
 
     assert preview.by_media_tree == {"other/dog": 1}
 
@@ -235,7 +236,7 @@ def test_video_copied_as_best_frame_jpeg(db, tmp_path):
     make_detection(db, file_id=f.id, confidence=0.9, label="deer")
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, _ctx(target))
+    result = separate_into_folders(db, project.id, _ctx(target), media_confidence=0.5)
 
     assert result.copied_count == 1
     jpeg = target / "other" / "deer" / "CLIP01_still.jpg"
@@ -261,7 +262,7 @@ def test_video_without_best_frame_is_skipped(db, tmp_path):
     make_detection(db, file_id=f.id, confidence=0.9, label="deer")
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, _ctx(target))
+    result = separate_into_folders(db, project.id, _ctx(target), media_confidence=0.5)
 
     assert result.copied_count == 0
     assert result.skipped_missing_source == 1
@@ -290,7 +291,7 @@ def test_preserves_source_subfolder_under_species(db, tmp_path):
     make_detection(db, file_id=f.id, confidence=0.9, label="deer")
 
     target = tmp_path / "out"
-    separate_into_folders(db, project.id, _ctx(target), group_by="flat")
+    separate_into_folders(db, project.id, _ctx(target), group_by="flat", media_confidence=0.5)
 
     assert (target / "deer" / "cam01" / "sub" / "IMG_1.jpg").is_file()
     # Not flattened to the species root.
@@ -318,7 +319,7 @@ def test_species_last_puts_source_folder_on_top(db, tmp_path):
     target = tmp_path / "out"
     separate_into_folders(
         db, project.id, _ctx(target), group_by="flat", species_last=True
-    )
+    , media_confidence=0.5)
 
     assert (target / "cam01" / "sub" / "deer" / "IMG_1.jpg").is_file()
     # Not the default species-on-top layout.
@@ -343,7 +344,7 @@ def test_none_mode_mirrors_source_tree(db, tmp_path):
     make_detection(db, file_id=f.id, confidence=0.9, label="deer")
 
     target = tmp_path / "out"
-    separate_into_folders(db, project.id, _ctx(target), group_by="none")
+    separate_into_folders(db, project.id, _ctx(target), group_by="none", media_confidence=0.5)
 
     assert (target / "cam01" / "IMG_2.jpg").is_file()
     assert not (target / "deer").exists()
@@ -365,7 +366,7 @@ def test_preview_subfolder_reported_in_media_tree(db, tmp_path):
     )
     make_detection(db, file_id=f.id, confidence=0.9, label="deer")
 
-    preview = build_output_preview(db, project.id, group_by="none")
+    preview = build_output_preview(db, project.id, group_by="none", media_confidence=0.5)
 
     assert preview.by_media_tree == {"cam01": 1}
     assert preview.root_files == []
@@ -387,7 +388,7 @@ def test_preview_root_files_reported_as_filename_list(db, tmp_path):
     )
     make_detection(db, file_id=f.id, confidence=0.9, label="deer")
 
-    preview = build_output_preview(db, project.id, group_by="none")
+    preview = build_output_preview(db, project.id, group_by="none", media_confidence=0.5)
 
     assert preview.by_media_tree == {}
     assert preview.root_files == ["IMG_4.jpg"]
@@ -413,7 +414,7 @@ def test_preview_drops_excluded_person(db):
 
     preview = build_output_preview(
         db, project.id, excluded_label_ids=frozenset({person_tid})
-    )
+    , media_confidence=0.5)
 
     assert preview.dropped_by_filter == 1
     assert preview.in_scope_files == 0

@@ -65,7 +65,12 @@ def write_tables_csv(
 
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    scoped = export_crud.get_scoped_detection_rows(db, project)
+    # Complete record: folder-run data exports are never filtered by the
+    # detection threshold. Thresholding is an in-app / media-output
+    # concern only (beta feedback from Dan).
+    scoped = export_crud.get_scoped_detection_rows(
+        db, project, apply_threshold=False
+    )
     dep_headers, dep_rows = export_crud.build_deployments_rows(db, project)
     files_headers, files_rows = export_crud.build_files_rows(db, project)
     det_headers, det_rows = export_crud.build_detection_rows(db, project, scoped)

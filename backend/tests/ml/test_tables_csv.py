@@ -155,3 +155,30 @@ def test_relative_path_falls_back_to_filename(db, tmp_path):
 def test_unknown_project_raises(db, tmp_path):
     with pytest.raises(ValueError, match="not found"):
         write_tables_csv(db, "no-such-id", tmp_path / "out")
+
+
+def test_detections_export_ignores_project_threshold(db, tmp_path):
+    """The folder-run data exports are the complete record: a detection
+    below the project's detection_threshold still appears in
+    addaxai-detections.csv (Dan's must-fix). Thresholding is an in-app /
+    media-output concern only."""
+    project = make_project(db, name="csv-complete", detection_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    file = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=_write_placeholder(tmp_path / "src" / "IMG_LOW.jpg"),
+        observation_type="animal",
+    )
+    make_detection(
+        db, file_id=file.id, category="animal", confidence=0.12,
+        label="cat", verified=False,
+        bbox_x=0.1, bbox_y=0.1, bbox_width=0.2, bbox_height=0.2,
+    )
+
+    target = tmp_path / "out"
+    write_tables_csv(db, project.id, target)
+
+    csv = (target / DETECTIONS_FILENAME).read_text()
+    assert "cat" in csv
+    assert "0.12" in csv

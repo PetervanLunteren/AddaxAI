@@ -44,6 +44,7 @@ from app.api.schemas.project import ProjectCreate, ProjectResponse
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
+from app.ml.detection import DETECTION_CONFIDENCE_FLOOR
 from app.ml.postprocessing_outputs._output_context import MEDIA_SUBDIR
 from app.ml.postprocessing_outputs.output_preview import (
     build_output_preview,
@@ -154,6 +155,11 @@ class SaveOutputsRequest(BaseModel):
     """
 
     output_dir: str = Field(..., min_length=1)
+    # Media-output confidence: detections below it (unless verified) are
+    # left out of the separated copies, drawn boxes, blurs, and EXIF
+    # tags. Data exports (CSV / XLSX / recognition JSON) ignore it: they
+    # are always the complete record of the run.
+    media_confidence: float = Field(0.2, ge=0.0, le=1.0)
     separate_folders: bool = False
     # How media copies are grouped at the output root. ``taxonomic``
     # nests Class/Order/Family/Genus/species; ``flat`` is one folder
@@ -204,6 +210,9 @@ class OutputPreviewRequest(BaseModel):
     """
 
     excluded_label_ids: list[str] = Field(default_factory=list)
+    # Media-output confidence, mirroring the save request so the
+    # preview counts match what the save will write.
+    media_confidence: float = Field(0.2, ge=0.0, le=1.0)
     # Copy empty captures too; off by default. Mirrors the save
     # request so the preview matches what will be written.
     include_empty: bool = False
@@ -492,10 +501,18 @@ def create_folder_run(
     # what completes the folder picker. The user is about to land on
     # the Setup step, so that's the right resume target if they close
     # the tab now.
+    #
+    # detection_threshold is pinned to the MD inference floor: a folder
+    # run has no in-app interpretation threshold. The DB never stores
+    # detections below the floor, so every shared read path (labels
+    # grid, label tree, lookup summary, exports) sees the complete
+    # record. Filtering is the labels grid's own confidence slider and
+    # the Save step's media confidence, not a project setting.
     project_create = ProjectCreate(
         name=name,
         timezone="UTC",
         mode="folder_run",
+        detection_threshold=DETECTION_CONFIDENCE_FLOOR,
         folder_run_state={
             "step": "setup",
             "source_folder": payload.source_folder,
@@ -715,6 +732,9 @@ def get_output_preview(
     preview = build_output_preview(
         db,
         run_id,
+        media_confidence=(
+            payload.media_confidence if payload else 0.2
+        ),
         excluded_label_ids=excluded,
         include_empty=bool(payload.include_empty) if payload else False,
         name_mode=payload.name_mode if payload else "common",
@@ -780,6 +800,7 @@ async def save_outputs(
             payload={
                 "run_id": run_id,
                 "output_dir": str(output_root),
+                "media_confidence": payload.media_confidence,
                 "separate_folders": payload.separate_folders,
                 "separate_group_by": payload.separate_group_by,
                 "group_events": payload.group_events,

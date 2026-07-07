@@ -100,7 +100,6 @@ def test_info_block_carries_reproducibility_settings(db, tmp_path):
     project = make_project(
         db,
         name="rj-repro",
-        detection_threshold=0.31,
         taxonomic_rollup=True,
         country_code="NLD",
     )
@@ -118,7 +117,9 @@ def test_info_block_carries_reproducibility_settings(db, tmp_path):
     # deployment_id and the trimmed settings are intentionally absent.
     assert "deployment_id" not in addaxai
     settings = addaxai["settings"]
-    assert settings["detection_threshold"] == pytest.approx(0.31)
+    # No detection threshold: the file is the complete record, nothing
+    # in it is threshold-filtered (Dan's must-fix).
+    assert "detection_threshold" not in settings
     assert settings["taxonomic_rollup"] is True
     assert settings["country_code"] == "NLD"
     assert "taxonomic_rollup_threshold" not in settings

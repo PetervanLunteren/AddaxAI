@@ -22,9 +22,10 @@ MegaDetector writes them) and `width`/`height`, per-video
 optional `classifications` and `frame_number` keys.
 
 The `info.addaxai` block additionally carries the app version and a
-`settings` sub-dict (detection threshold, smoothing, rollup, geofence,
-independence interval, video fps) so the run is reproducible from the
-JSON alone.
+`settings` sub-dict (smoothing, rollup, geofence, independence
+interval, video fps) so the run is reproducible from the JSON alone.
+The file is the complete record of the run: every stored detection is
+included, nothing is threshold-filtered.
 
 File paths in the output are relative to the source folder (the
 deployment's `folder_path`). The save step defaults the output dir to
@@ -363,9 +364,10 @@ def write_recognition_json(
             # The result-affecting settings that produced this export, so a
             # run is reproducible from the JSON alone. These are the
             # project's current settings, which for a folder run are the
-            # settings that produced the outputs.
+            # settings that produced the outputs. No detection threshold:
+            # this file is the complete record down to the inference
+            # floor, nothing was filtered out.
             "settings": {
-                "detection_threshold": project.detection_threshold,
                 "country_code": project.country_code,
                 "state_code": project.state_code,
                 "event_smoothing": project.event_smoothing,

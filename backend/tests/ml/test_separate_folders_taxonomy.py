@@ -92,7 +92,7 @@ def test_writes_full_five_level_nested_path(db, tmp_path):
     make_detection(db, file_id=f.id, confidence=0.9, label="dog")
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, _ctx(target))
+    result = separate_into_folders(db, project.id, _ctx(target), media_confidence=0.5)
 
     assert result.copied_count == 1
     expected = (
@@ -137,7 +137,10 @@ def test_scientific_mode_uses_scientific_name_leaf(db, tmp_path):
     make_detection(db, file_id=f.id, confidence=0.9, label="grey wolf")
 
     target = tmp_path / "out"
-    separate_into_folders(db, project.id, _ctx(target), name_mode="scientific")
+    separate_into_folders(
+        db, project.id, _ctx(target), name_mode="scientific",
+        media_confidence=0.5,
+    )
 
     assert (
         target / "mammalia" / "carnivora" / "canidae" / "canis" / "c_lupus"
@@ -178,7 +181,10 @@ def test_scientific_mode_falls_back_to_label_without_scientific_name(db, tmp_pat
     make_detection(db, file_id=f.id, confidence=0.9, label="dog")
 
     target = tmp_path / "out"
-    separate_into_folders(db, project.id, _ctx(target), name_mode="scientific")
+    separate_into_folders(
+        db, project.id, _ctx(target), name_mode="scientific",
+        media_confidence=0.5,
+    )
 
     assert (
         target / "mammalia" / "carnivora" / "canidae" / "canis" / "dog"
@@ -212,7 +218,7 @@ def test_truncates_at_deepest_known_rank(db, tmp_path):
     make_detection(db, file_id=f.id, confidence=0.9, label="Canidae")
 
     target = tmp_path / "out"
-    separate_into_folders(db, project.id, _ctx(target))
+    separate_into_folders(db, project.id, _ctx(target), media_confidence=0.5)
 
     assert (
         target / "mammalia" / "carnivora" / "canidae" / "IMG_001.jpg"
@@ -258,7 +264,7 @@ def test_multi_species_lands_in_main_species_leaf(db, tmp_path):
     make_detection(db, file_id=f.id, confidence=0.85, label="lion")
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, _ctx(target))
+    result = separate_into_folders(db, project.id, _ctx(target), media_confidence=0.5)
 
     assert result.copied_count == 1
     assert (
@@ -283,7 +289,7 @@ def test_unmapped_label_falls_back_to_other(db, tmp_path):
     make_detection(db, file_id=f.id, confidence=0.9, label="mystery")
 
     target = tmp_path / "out"
-    separate_into_folders(db, project.id, _ctx(target))
+    separate_into_folders(db, project.id, _ctx(target), media_confidence=0.5)
 
     # _slug lowercases every segment, so the unranked folder is "other".
     # Asserting the lowercase form keeps the test correct on case-sensitive
@@ -312,6 +318,7 @@ def test_excluded_label_ids_drops_animal_file(db, tmp_path):
         project.id,
         _ctx(target),
         excluded_label_ids=frozenset({"dog"}),
+        media_confidence=0.5,
     )
 
     assert result.skipped_excluded == 1
@@ -341,6 +348,7 @@ def test_excluded_label_ids_partial_keeps_file_in_remaining_folders(
         project.id,
         _ctx(target),
         excluded_label_ids=frozenset({"wolf"}),
+        media_confidence=0.5,
     )
 
     assert result.copied_count == 1
@@ -374,7 +382,7 @@ def test_flat_mode_places_single_segment_per_species(db, tmp_path):
     make_detection(db, file_id=f.id, confidence=0.9, label="dog")
 
     target = tmp_path / "out"
-    separate_into_folders(db, project.id, _ctx(target), group_by="flat")
+    separate_into_folders(db, project.id, _ctx(target), group_by="flat", media_confidence=0.5)
 
     assert (target / "dog" / "IMG_001.jpg").is_file()
     assert not (target / "mammalia").exists()
@@ -393,7 +401,7 @@ def test_flat_mode_multi_species_main_only(db, tmp_path):
     target = tmp_path / "out"
     result = separate_into_folders(
         db, project.id, _ctx(target), group_by="flat"
-    )
+    , media_confidence=0.5)
 
     assert result.copied_count == 1
     assert (target / "dog" / "IMG_001.jpg").is_file()
@@ -424,6 +432,7 @@ def test_excluded_label_ids_does_not_affect_non_animal_files(db, tmp_path):
         project.id,
         _ctx(target),
         excluded_label_ids=frozenset({"dog", "wolf", "cat"}),
+        media_confidence=0.5,
     )
 
     assert result.copied_count == 3

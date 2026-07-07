@@ -751,3 +751,22 @@ def test_save_outputs_data_only_creates_no_media_dir(client, tmp_path):
 
     assert not (source / "addaxai-media").exists()
     assert not (source / ".addaxai-output").exists()
+
+
+def test_create_pins_detection_threshold_to_inference_floor(client):
+    """Folder runs have no in-app interpretation threshold: the project
+    row is pinned to the MD inference floor so every shared read path
+    (grid, label tree, exports) sees the complete record."""
+    from app.ml.detection import DETECTION_CONFIDENCE_FLOOR
+
+    resp = client.post(
+        "/api/folder-runs",
+        json={
+            "source_folder": "/Volumes/Photos/Pinned_Floor",
+            "image_count": 1,
+            "video_count": 0,
+        },
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["project"]["detection_threshold"] == DETECTION_CONFIDENCE_FLOOR

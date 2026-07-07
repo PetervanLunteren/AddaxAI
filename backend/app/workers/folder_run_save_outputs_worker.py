@@ -125,6 +125,11 @@ async def process_save_outputs_job(job_id: str) -> None:
 
         draw_bboxes = bool(payload.get("draw_bboxes"))
         anonymise = bool(payload.get("anonymise"))
+        # Media-output confidence from the Save step. Scopes the media
+        # modules only; the data exports are always the complete record.
+        # Falls back to the schema default for jobs enqueued by an older
+        # frontend that did not send the field.
+        media_confidence = float(payload.get("media_confidence", 0.2))
         media_active = bool(
             payload.get("separate_folders") or draw_bboxes or anonymise
         )
@@ -227,6 +232,7 @@ async def process_save_outputs_job(job_id: str) -> None:
                         db,
                         project.id,
                         ctx,
+                        media_confidence=media_confidence,
                         mode="copy",
                         group_by=payload.get(
                             "separate_group_by", "flat"
@@ -248,6 +254,7 @@ async def process_save_outputs_job(job_id: str) -> None:
                         db,
                         project.id,
                         ctx,
+                        media_confidence=media_confidence,
                         draw_bboxes=draw_bboxes,
                         anonymise=anonymise,
                         excluded_label_ids=excluded_frozen,
@@ -273,7 +280,10 @@ async def process_save_outputs_job(job_id: str) -> None:
                     ).to_dict()
                 if m == "run_readme":
                     return write_run_readme(
-                        db, project.id, output_root
+                        db,
+                        project.id,
+                        output_root,
+                        media_confidence=media_confidence,
                     ).to_dict()
                 raise ValueError(f"Unknown module: {m}")
 

@@ -53,7 +53,11 @@ def write_tables_xlsx(
 
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    sheets = export_crud.build_spreadsheet_sheets(db, project)
+    # Complete record: folder-run data exports are never filtered by the
+    # detection threshold (matches tables_csv and the recognition JSON).
+    sheets = export_crud.build_spreadsheet_sheets(
+        db, project, apply_threshold=False
+    )
     payload = export_formats.serialize_xlsx_multi(sheets)
 
     output_path = target_dir / XLSX_FILENAME

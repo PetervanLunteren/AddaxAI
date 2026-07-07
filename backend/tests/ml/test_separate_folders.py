@@ -54,7 +54,7 @@ def test_separate_routes_animal_to_other_when_no_taxonomy(db, tmp_path):
 
     target = tmp_path / "out"
     ctx = _ctx(target)
-    result = separate_into_folders(db, project.id, ctx)
+    result = separate_into_folders(db, project.id, ctx, media_confidence=0.5)
 
     assert result.copied_count == 1
     assert (target / "other" / "dog" / "IMG_001.jpg").is_file()
@@ -79,13 +79,17 @@ def test_separate_animal_without_label_falls_back_to_animal_folder(db, tmp_path)
     )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, _ctx(target))
+    result = separate_into_folders(db, project.id, _ctx(target), media_confidence=0.5)
 
     assert dict(result.by_label) == {"animal": 1}
     assert (target / "animal" / "IMG_002.jpg").is_file()
 
 
 def test_separate_threshold_filters_low_confidence_detections(db, tmp_path):
+    """A file whose every detection sits below the media confidence is
+    effectively empty for the media outputs: it routes to the blank
+    folder regardless of the stored observation_type (derived at the
+    project threshold, which the media outputs no longer trust)."""
     project = make_project(db, name="sep-thresh", detection_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _make_source(tmp_path, "IMG_003.jpg")
@@ -95,7 +99,7 @@ def test_separate_threshold_filters_low_confidence_detections(db, tmp_path):
         file_path=src,
         observation_type="animal",
     )
-    # Below threshold and not verified, must be ignored.
+    # Below the media confidence and not verified, must be ignored.
     make_detection(
         db,
         file_id=file.id,
@@ -106,25 +110,35 @@ def test_separate_threshold_filters_low_confidence_detections(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, _ctx(target))
+    result = separate_into_folders(db, project.id, _ctx(target), media_confidence=0.5)
 
-    # No detection passes threshold → falls back to animal/ folder.
-    assert dict(result.by_label) == {"animal": 1}
+    assert dict(result.by_label) == {"blank": 1}
+
+    # Lowering the media confidence brings the detection into scope and
+    # the same file routes to its species folder instead.
+    target2 = tmp_path / "out2"
+    result2 = separate_into_folders(
+        db, project.id, _ctx(target2), media_confidence=0.1
+    )
+    assert dict(result2.by_label) == {"other/cat": 1}
 
 
 def test_separate_routes_human_to_person_folder(db, tmp_path):
     project = make_project(db, name="sep-human")
     dep = make_deployment(db, project_id=project.id)
     src = _make_source(tmp_path, "IMG_004.jpg")
-    make_file(
+    file = make_file(
         db,
         deployment_id=dep.id,
         file_path=src,
         observation_type="human",
     )
+    make_detection(
+        db, file_id=file.id, category="person", confidence=0.9
+    )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, _ctx(target))
+    result = separate_into_folders(db, project.id, _ctx(target), media_confidence=0.5)
 
     assert dict(result.by_label) == {"person": 1}
     assert (target / "person" / "IMG_004.jpg").is_file()
@@ -142,7 +156,7 @@ def test_separate_routes_blank_to_blank_folder(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, _ctx(target))
+    result = separate_into_folders(db, project.id, _ctx(target), media_confidence=0.5)
 
     assert dict(result.by_label) == {"blank": 1}
     assert (target / "blank" / "IMG_005.jpg").is_file()
@@ -169,7 +183,7 @@ def test_separate_renames_on_collision(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, _ctx(target))
+    result = separate_into_folders(db, project.id, _ctx(target), media_confidence=0.5)
 
     assert result.copied_count == 2
     assert result.renamed_count == 1
@@ -189,7 +203,7 @@ def test_separate_skips_missing_source(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, _ctx(target))
+    result = separate_into_folders(db, project.id, _ctx(target), media_confidence=0.5)
 
     assert result.copied_count == 0
     assert result.skipped_missing_source == 1
@@ -208,7 +222,7 @@ def test_separate_preserves_original(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    separate_into_folders(db, project.id, _ctx(target))
+    separate_into_folders(db, project.id, _ctx(target), media_confidence=0.5)
 
     # Source is still where it was; we never move.
     assert Path(src_path).is_file()
@@ -221,7 +235,7 @@ def test_separate_unknown_project_raises(db, tmp_path):
     with pytest.raises(ValueError, match="not found"):
         separate_into_folders(
             db, "does-not-exist", _ctx(tmp_path / "out")
-        )
+        , media_confidence=0.5)
 
 
 def test_move_relocates_file_and_rewrites_db(db, tmp_path):
@@ -241,7 +255,7 @@ def test_move_relocates_file_and_rewrites_db(db, tmp_path):
 
     target = tmp_path / "out"
     ctx = _ctx(target)
-    result = separate_into_folders(db, project.id, ctx, mode="move")
+    result = separate_into_folders(db, project.id, ctx, mode="move", media_confidence=0.5)
 
     # File moved on disk: source gone, destination present.
     assert not Path(src_path).exists()
@@ -288,7 +302,7 @@ def test_multi_species_lands_in_main_species_folder(db, tmp_path):
 
     target = tmp_path / "out"
     ctx = _ctx(target)
-    result = separate_into_folders(db, project.id, ctx)
+    result = separate_into_folders(db, project.id, ctx, media_confidence=0.5)
 
     assert result.copied_count == 1
     assert result.written_count == 1
@@ -317,7 +331,7 @@ def test_multi_species_repeated_labels_dedupe(db, tmp_path):
         )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, _ctx(target))
+    result = separate_into_folders(db, project.id, _ctx(target), media_confidence=0.5)
 
     assert result.copied_count == 1
     assert (target / "other" / "dog" / "IMG_M02.jpg").is_file()
@@ -345,7 +359,7 @@ def test_main_species_is_highest_confidence(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, _ctx(target))
+    result = separate_into_folders(db, project.id, _ctx(target), media_confidence=0.5)
 
     assert result.copied_count == 1
     assert (target / "other" / "dog" / "IMG_M03.jpg").is_file()

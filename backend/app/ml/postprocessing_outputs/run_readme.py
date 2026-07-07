@@ -216,6 +216,7 @@ def _build_readme_text(
     verification: tuple[int, int],
     geofence_summary: str,
     manifest_mgr: ManifestManager,
+    media_confidence: float,
 ) -> str:
     """Compose the README body. Returns a single newline-delimited
     string ready to write to disk."""
@@ -264,7 +265,13 @@ def _build_readme_text(
     )
 
     lines.append(_section("Detection settings"))
-    lines.append(_kv("Detection threshold", project.detection_threshold))
+    # Media copies (separated folders, drawn boxes, blurs) only show
+    # detections at or above this confidence. The data exports (CSV,
+    # XLSX, recognition JSON) always contain every detection.
+    lines.append(_kv("Media output confidence", media_confidence))
+    lines.append(
+        _kv("Data exports", "complete, no confidence filter")
+    )
     lines.append(
         _kv("Detection batch size", project.detection_batch_size or "(auto)")
     )
@@ -336,8 +343,14 @@ def write_run_readme(
     db: Session,
     project_id: str,
     target_dir: Path,
+    *,
+    media_confidence: float,
 ) -> RunReadmeResult:
     """Write the run summary at ``target_dir/addaxai-summary.txt``.
+
+    ``media_confidence`` is the Save step's media-output confidence,
+    reported so a reader knows which detections the media copies show.
+    The data exports are always complete and say so in the summary.
 
     Always-on output — every save run produces one. Errors during
     composition / write are recorded but never raise; the README is
@@ -382,6 +395,7 @@ def write_run_readme(
         verification=verification,
         geofence_summary=geofence_summary,
         manifest_mgr=manifest_mgr,
+        media_confidence=media_confidence,
     )
 
     output_path = target_dir / SUMMARY_FILENAME

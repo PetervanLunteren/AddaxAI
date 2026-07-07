@@ -154,7 +154,6 @@ const settingsSchema = z.object({
   detection_batch_size: z.number().int().min(1).max(256).nullable(),
   classification_batch_size: z.number().int().min(1).max(256).nullable(),
   embedding_batch_size: z.number().int().min(1).max(256).nullable(),
-  detection_threshold: z.number().min(0.1).max(1),
   video_fps: z.number().min(0.1).max(10),
   event_smoothing: z.boolean(),
   smoothing_strength: z.enum(["mild", "normal", "aggressive"]),
@@ -249,7 +248,6 @@ export function FolderRunModelStep() {
       detection_batch_size: null,
       classification_batch_size: null,
       embedding_batch_size: null,
-      detection_threshold: 0.5,
       video_fps: 1.0,
       event_smoothing: true,
       smoothing_strength: "normal",
@@ -287,7 +285,6 @@ export function FolderRunModelStep() {
       classification_batch_size:
         run.project.classification_batch_size ?? null,
       embedding_batch_size: run.project.embedding_batch_size ?? null,
-      detection_threshold: run.project.detection_threshold,
       video_fps: run.project.video_fps,
       event_smoothing: run.project.event_smoothing,
       smoothing_strength: (run.project.smoothing_strength ??
@@ -484,7 +481,6 @@ export function FolderRunModelStep() {
       detection_batch_size: data.detection_batch_size,
       classification_batch_size: data.classification_batch_size,
       embedding_batch_size: data.embedding_batch_size,
-      detection_threshold: data.detection_threshold,
       video_fps: data.video_fps,
       event_smoothing: data.event_smoothing,
       smoothing_strength: data.smoothing_strength,
@@ -612,7 +608,6 @@ export function FolderRunModelStep() {
       detection_batch_size: data.detection_batch_size,
       classification_batch_size: data.classification_batch_size,
       embedding_batch_size: data.embedding_batch_size,
-      detection_threshold: data.detection_threshold,
       video_fps: data.video_fps,
       event_smoothing: data.event_smoothing,
       smoothing_strength: data.smoothing_strength,
@@ -1081,34 +1076,6 @@ export function FolderRunModelStep() {
                         defaultCpu={embeddingModel.default_batch_size_cpu}
                       />
                     )}
-
-                    <FormField
-                      control={form.control}
-                      name="detection_threshold"
-                      render={({ field }) => (
-                        <SettingRow
-                          label="Detection confidence threshold"
-                          description={SETTING_CAPTIONS.detectionThreshold}
-                        >
-                          <div className="flex items-center justify-between">
-                            <Slider
-                              min={0.1}
-                              max={1.0}
-                              step={0.01}
-                              value={[field.value]}
-                              onValueChange={(vals) =>
-                                field.onChange(vals[0])
-                              }
-                              className="mr-4 flex-1"
-                            />
-                            <span className="min-w-[3rem] text-right text-sm font-medium">
-                              {field.value.toFixed(2)}
-                            </span>
-                          </div>
-                          <FormMessage />
-                        </SettingRow>
-                      )}
-                    />
 
                     <FormField
                       control={form.control}

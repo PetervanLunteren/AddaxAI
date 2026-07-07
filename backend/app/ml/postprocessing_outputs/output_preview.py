@@ -37,9 +37,10 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ml.observation_type import derive_observation_type
 from app.models import (
     Deployment,
     Detection,
@@ -143,6 +144,7 @@ def build_output_preview(
     db: Session,
     project_id: str,
     *,
+    media_confidence: float,
     excluded_label_ids: frozenset[str] | None = None,
     include_empty: bool = True,
     name_mode: NameMode = "common",
@@ -156,7 +158,9 @@ def build_output_preview(
     one destination folder; ``excluded_label_ids`` drops a file when
     every passing identified detection is excluded (counted in
     ``dropped_by_filter``); ``group_events`` buckets a whole event into
-    one folder, the event's main species.
+    one folder, the event's main species. ``media_confidence`` is the
+    Save step's media-output confidence, applied exactly as the real run
+    applies it (placement, blank skip, filter drops).
 
     ``group_by`` and ``species_last`` shape ``by_media_tree`` to the exact
     on-disk layout the run will write: the species / observation folder
@@ -167,13 +171,12 @@ def build_output_preview(
     if project is None:
         raise ValueError(f"Project {project_id!r} not found")
 
-    threshold = project.detection_threshold
+    threshold = media_confidence
     excluded = excluded_label_ids or frozenset()
 
     file_rows = db.execute(
         select(
             File.id,
-            File.observation_type,
             File.file_type,
             File.size_bytes,
             File.best_frame_path,
@@ -191,30 +194,24 @@ def build_output_preview(
     # path in the "No subfolders" filename sample.
     dep_folders = build_deployment_folders(db, project_id)
 
-    # All passing, identified detections (a label or a builtin taxonomy
-    # id — covers species plus person / vehicle / animal). Confidence
-    # descending so the first species label per file is its primary.
+    # Every detection in the project, confidence descending. One query
+    # feeds two derivations: the passing identified detections (a label
+    # or a builtin taxonomy id — species plus person / vehicle /
+    # animal), and each file's effective observation type at the media
+    # confidence (the stored ``observation_type`` column is derived at
+    # the project threshold, which no longer matches media outputs).
     detection_rows = db.execute(
         select(
             Detection.file_id,
             Detection.label,
             Detection.label_taxonomy_id,
+            Detection.category,
+            Detection.confidence,
+            Detection.verified,
         )
         .join(File, Detection.file_id == File.id)
         .join(Deployment, File.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
-        .where(
-            or_(
-                Detection.label.isnot(None),
-                Detection.label_taxonomy_id.isnot(None),
-            )
-        )
-        .where(
-            or_(
-                Detection.confidence >= threshold,
-                Detection.verified == True,  # noqa: E712
-            )
-        )
         .order_by(Detection.confidence.desc())
     ).all()
 
@@ -229,10 +226,24 @@ def build_output_preview(
             return True
         return False
 
-    # Identified detections per file, confidence-descending.
+    def _row_passes(row) -> bool:
+        return row.confidence >= threshold or row.verified
+
+    # Passing identified detections per file, confidence-descending, and
+    # the effective observation type per file (rows expose category /
+    # confidence / verified, satisfying derive_observation_type).
     idents_per_file: dict[str, list] = {}
+    dets_per_file: dict[str, list] = {}
     for det_row in detection_rows:
-        idents_per_file.setdefault(det_row.file_id, []).append(det_row)
+        dets_per_file.setdefault(det_row.file_id, []).append(det_row)
+        if _row_passes(det_row) and (
+            det_row.label or det_row.label_taxonomy_id
+        ):
+            idents_per_file.setdefault(det_row.file_id, []).append(det_row)
+    obs_type_per_file: dict[str, str] = {
+        file_id: derive_observation_type(rows, threshold)
+        for file_id, rows in dets_per_file.items()
+    }
 
     # Event-primary map, populated only when grouping is on.
     event_primary: dict[str, str] = {}
@@ -269,7 +280,8 @@ def build_output_preview(
 
         # Empties are skipped from the copies unless opted in, so they
         # add no placements or in-scope counts in the preview either.
-        if not include_empty and row.observation_type == "blank":
+        obs_type = obs_type_per_file.get(row.id, "blank")
+        if not include_empty and obs_type == "blank":
             continue
 
         result.in_scope_files += 1
@@ -283,7 +295,7 @@ def build_output_preview(
         # The species / observation folder for this file, per group_by.
         if group_by == "none":
             folder = ""
-        elif row.observation_type == "animal":
+        elif obs_type == "animal":
             # Main species = the event's main species when grouping, else
             # the file's most confident non-excluded label (idents is
             # confidence-descending).
@@ -306,7 +318,7 @@ def build_output_preview(
                 )
         else:
             folder = _OBSERVATION_TYPE_FOLDER.get(
-                row.observation_type, _FALLBACK_FOLDER
+                obs_type, _FALLBACK_FOLDER
             )
 
         # Combine the species / observation folder with the preserved

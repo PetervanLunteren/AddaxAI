@@ -35,7 +35,7 @@ def test_readme_lands_at_canonical_path(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = write_run_readme(db, project.id, target)
+    result = write_run_readme(db, project.id, target, media_confidence=0.5)
 
     assert result.output_path.endswith(SUMMARY_FILENAME)
     path = target / SUMMARY_FILENAME
@@ -55,7 +55,7 @@ def test_readme_summarises_geofence_without_dumping_the_list(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_run_readme(db, project.id, target)
+    write_run_readme(db, project.id, target, media_confidence=0.5)
     text = (target / SUMMARY_FILENAME).read_text()
 
     assert "1,500 excluded" in text
@@ -79,7 +79,7 @@ def test_readme_carries_run_metadata(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_run_readme(db, project.id, target)
+    write_run_readme(db, project.id, target, media_confidence=0.5)
 
     text = (target / SUMMARY_FILENAME).read_text("utf-8")
 
@@ -121,7 +121,7 @@ def test_readme_lists_top_species(db, tmp_path):
             )
 
     target = tmp_path / "out"
-    write_run_readme(db, project.id, target)
+    write_run_readme(db, project.id, target, media_confidence=0.5)
     text = (target / SUMMARY_FILENAME).read_text("utf-8")
 
     # Slice out the Top species section so the substring search
@@ -143,7 +143,6 @@ def test_readme_includes_settings_block(db, tmp_path):
     project = make_project(
         db,
         name="readme-settings",
-        detection_threshold=0.42,
         smoothing_strength="aggressive",
         taxonomic_rollup=False,
         independence_interval=900,
@@ -152,10 +151,14 @@ def test_readme_includes_settings_block(db, tmp_path):
     make_deployment(db, project_id=project.id, folder_path=str(tmp_path))
 
     target = tmp_path / "out"
-    write_run_readme(db, project.id, target)
+    # The reported confidence is the Save step's media confidence, not
+    # a project setting; data exports are reported as complete.
+    write_run_readme(db, project.id, target, media_confidence=0.42)
     text = (target / SUMMARY_FILENAME).read_text("utf-8")
 
     assert "0.42" in text
+    assert "Media output confidence" in text
+    assert "complete, no confidence filter" in text
     assert "aggressive" in text
     # taxonomic_rollup False surfaces somehow — exact string varies
     # by Python repr but "False" is universally present.
@@ -166,4 +169,4 @@ def test_readme_includes_settings_block(db, tmp_path):
 
 def test_readme_unknown_project_raises(db, tmp_path):
     with pytest.raises(ValueError, match="not found"):
-        write_run_readme(db, "no-such-id", tmp_path / "out")
+        write_run_readme(db, "no-such-id", tmp_path / "out", media_confidence=0.5)

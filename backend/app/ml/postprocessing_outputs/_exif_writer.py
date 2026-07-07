@@ -70,9 +70,14 @@ def build_tag_set(
     project: Project,
     app_version: str,
     *,
+    media_confidence: float,
     excluded_label_ids: frozenset[str] | None = None,
 ) -> DetectionTagSet | None:
     """Build the tag set for one file, threshold-aware.
+
+    ``media_confidence`` is the Save step's media-output confidence:
+    detections below it (unless verified) are left out of the tags,
+    matching what the media copies show.
 
     Returns ``None`` when the file has no detections above threshold
     (or no detections at all) — no point in writing empty metadata.
@@ -83,7 +88,7 @@ def build_tag_set(
     never excluded by the species filter; only labelled detections
     are subject to it.
     """
-    threshold = project.detection_threshold
+    threshold = media_confidence
     rows = db.execute(
         select(Detection)
         .where(Detection.file_id == file.id)
@@ -179,7 +184,9 @@ def build_tag_set(
         "app": f"AddaxAI {app_version}",
         "detection_model": project.detection_model_id,
         "classification_model": project.classification_model_id,
-        "detection_threshold": float(project.detection_threshold),
+        # The media-output confidence the user picked on the Save step:
+        # the tag set only carries detections at or above it.
+        "media_confidence": float(media_confidence),
         "detections": detections_payload,
     }
     user_comment_json = json.dumps(user_comment, separators=(",", ":"))

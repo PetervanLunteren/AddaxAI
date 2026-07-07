@@ -56,7 +56,7 @@ def _add_taxonomy(
 def test_empty_project_returns_zero_counts(db):
     project = make_project(db, name="prev-empty")
 
-    preview = build_output_preview(db, project.id)
+    preview = build_output_preview(db, project.id, media_confidence=0.5)
 
     assert preview.total_files == 0
     assert preview.image_count == 0
@@ -73,7 +73,7 @@ def test_image_video_split(db):
     _animal_file(db, dep.id, file_type="image")
     _animal_file(db, dep.id, file_type="video")
 
-    preview = build_output_preview(db, project.id)
+    preview = build_output_preview(db, project.id, media_confidence=0.5)
 
     assert preview.total_files == 3
     assert preview.image_count == 2
@@ -87,7 +87,7 @@ def test_size_aggregation_skips_null(db):
     _animal_file(db, dep.id, size=2000)
     _animal_file(db, dep.id, size=None)
 
-    preview = build_output_preview(db, project.id)
+    preview = build_output_preview(db, project.id, media_confidence=0.5)
 
     assert preview.total_bytes == 3000
     assert preview.files_with_known_size == 2
@@ -106,7 +106,7 @@ def test_unmapped_label_falls_back_to_other(db):
     f = _animal_file(db, dep.id)
     make_detection(db, file_id=f.id, confidence=0.9, label="mystery")
 
-    preview = build_output_preview(db, project.id, group_by="taxonomic")
+    preview = build_output_preview(db, project.id, group_by="taxonomic", media_confidence=0.5)
 
     assert preview.by_media_tree == {"other/mystery": 1}
 
@@ -131,7 +131,7 @@ def test_full_taxonomy_yields_full_nested_path(db):
     f = _animal_file(db, dep.id)
     make_detection(db, file_id=f.id, confidence=0.9, label="dog")
 
-    preview = build_output_preview(db, project.id, group_by="taxonomic")
+    preview = build_output_preview(db, project.id, group_by="taxonomic", media_confidence=0.5)
 
     assert preview.by_media_tree == {
         "mammalia/carnivora/canidae/canis/dog": 1
@@ -149,7 +149,7 @@ def test_multi_species_counts_main_species_only(db):
     make_detection(db, file_id=f.id, confidence=0.9, label="dog")
     make_detection(db, file_id=f.id, confidence=0.85, label="wolf")
 
-    preview = build_output_preview(db, project.id, group_by="taxonomic")
+    preview = build_output_preview(db, project.id, group_by="taxonomic", media_confidence=0.5)
 
     assert preview.by_media_tree == {"other/dog": 1}
 
@@ -163,7 +163,7 @@ def test_low_confidence_detection_is_ignored(db):
     make_detection(db, file_id=f.id, confidence=0.9, label="dog")
     make_detection(db, file_id=f.id, confidence=0.2, label="wolf")
 
-    preview = build_output_preview(db, project.id, group_by="taxonomic")
+    preview = build_output_preview(db, project.id, group_by="taxonomic", media_confidence=0.5)
 
     # Wolf is below threshold and unverified — should not place.
     assert preview.by_media_tree == {"other/dog": 1}
@@ -179,7 +179,7 @@ def test_verified_below_threshold_still_placed(db):
         db, file_id=f.id, confidence=0.2, label="dog", verified=True
     )
 
-    preview = build_output_preview(db, project.id, group_by="taxonomic")
+    preview = build_output_preview(db, project.id, group_by="taxonomic", media_confidence=0.5)
 
     assert preview.by_media_tree == {"other/dog": 1}
 
@@ -190,24 +190,49 @@ def test_animal_without_passing_label_falls_back(db):
     )
     dep = make_deployment(db, project_id=project.id)
     f = _animal_file(db, dep.id)
-    # Only a below-threshold, unlabelled detection.
-    make_detection(db, file_id=f.id, confidence=0.2, label=None)
+    # A passing animal detection with no species label.
+    make_detection(db, file_id=f.id, confidence=0.9, label=None)
 
-    preview = build_output_preview(db, project.id)
+    preview = build_output_preview(db, project.id, media_confidence=0.5)
 
     # Falls back to the single-segment "animal" leaf.
     assert preview.by_media_tree.get("animal") == 1
 
 
+def test_below_media_confidence_file_reads_as_blank(db):
+    """A file whose every detection sits below the media confidence is
+    effectively empty for the media outputs, whatever the stored
+    observation_type says (that column is derived at the project
+    threshold). Lowering the media confidence brings it back."""
+    project = make_project(db, name="prev-blank-derived")
+    dep = make_deployment(db, project_id=project.id)
+    f = _animal_file(db, dep.id)
+    make_detection(db, file_id=f.id, confidence=0.2, label="cat")
+
+    preview = build_output_preview(db, project.id, media_confidence=0.5)
+    assert dict(preview.by_media_tree) == {"blank": 1}
+
+    preview_low = build_output_preview(
+        db, project.id, media_confidence=0.1
+    )
+    assert preview_low.by_media_tree.get("blank") is None
+
+
 def test_non_animal_observation_types_bucket_to_fixed_folders(db):
     project = make_project(db, name="prev-non-animal")
     dep = make_deployment(db, project_id=project.id)
-    make_file(db, deployment_id=dep.id, observation_type="human")
-    make_file(db, deployment_id=dep.id, observation_type="vehicle")
+    f_human = make_file(db, deployment_id=dep.id, observation_type="human")
+    make_detection(db, file_id=f_human.id, category="person", confidence=0.9)
+    f_vehicle = make_file(
+        db, deployment_id=dep.id, observation_type="vehicle"
+    )
+    make_detection(
+        db, file_id=f_vehicle.id, category="vehicle", confidence=0.9
+    )
     make_file(db, deployment_id=dep.id, observation_type="blank")
     make_file(db, deployment_id=dep.id, observation_type="blank")
 
-    preview = build_output_preview(db, project.id)
+    preview = build_output_preview(db, project.id, media_confidence=0.5)
 
     assert dict(preview.by_media_tree) == {
         "person": 1,
@@ -240,7 +265,7 @@ def test_source_subfolder_nested_under_species(db, tmp_path):
     )
     make_detection(db, file_id=f.id, confidence=0.9, label="dog")
 
-    preview = build_output_preview(db, project.id, group_by="flat")
+    preview = build_output_preview(db, project.id, group_by="flat", media_confidence=0.5)
 
     assert preview.by_media_tree == {"dog/cam01": 1}
     assert preview.root_files == []
@@ -267,7 +292,7 @@ def test_species_last_puts_source_subfolder_on_top(db, tmp_path):
 
     preview = build_output_preview(
         db, project.id, group_by="flat", species_last=True
-    )
+    , media_confidence=0.5)
 
     assert preview.by_media_tree == {"cam01/dog": 1}
 
@@ -297,7 +322,7 @@ def test_none_mode_mirrors_source_tree_and_lists_root_files(db, tmp_path):
     )
     make_detection(db, file_id=loose.id, confidence=0.9, label="dog")
 
-    preview = build_output_preview(db, project.id, group_by="none")
+    preview = build_output_preview(db, project.id, group_by="none", media_confidence=0.5)
 
     assert preview.by_media_tree == {"cam01": 1}
     assert preview.root_files == ["IMG_2.jpg"]
@@ -318,7 +343,7 @@ def test_excluded_label_ids_drops_file_from_tree(db):
 
     preview = build_output_preview(
         db, project.id, excluded_label_ids=frozenset({"dog"})
-    )
+    , media_confidence=0.5)
 
     assert preview.dropped_by_filter == 1
     assert preview.in_scope_files == 0
@@ -341,6 +366,7 @@ def test_excluded_label_ids_partial_inclusion(db):
         project.id,
         excluded_label_ids=frozenset({"wolf"}),
         group_by="taxonomic",
+        media_confidence=0.5,
     )
 
     assert preview.dropped_by_filter == 0
@@ -351,12 +377,13 @@ def test_excluded_label_ids_partial_inclusion(db):
 def test_excluded_label_ids_does_not_affect_non_animal_files(db):
     project = make_project(db, name="prev-excl-non-animal")
     dep = make_deployment(db, project_id=project.id)
-    make_file(db, deployment_id=dep.id, observation_type="human")
+    f_human = make_file(db, deployment_id=dep.id, observation_type="human")
+    make_detection(db, file_id=f_human.id, category="person", confidence=0.9)
     make_file(db, deployment_id=dep.id, observation_type="blank")
 
     preview = build_output_preview(
         db, project.id, excluded_label_ids=frozenset({"dog"})
-    )
+    , media_confidence=0.5)
 
     assert preview.dropped_by_filter == 0
     assert preview.in_scope_files == 2
@@ -393,7 +420,7 @@ def test_excluded_filter_matches_taxonomy_id(db):
 
     preview = build_output_preview(
         db, project.id, excluded_label_ids=frozenset({taxon.id})
-    )
+    , media_confidence=0.5)
 
     assert preview.dropped_by_filter == 1
     assert preview.in_scope_files == 0
