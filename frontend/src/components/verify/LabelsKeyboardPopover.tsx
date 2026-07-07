@@ -10,6 +10,7 @@
 import { Keyboard } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { VERIFY_TOOLBAR_ICON_CLASS } from "./VerifyToolbar";
 import { LabelPicker } from "./LabelPicker";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 
@@ -67,7 +68,7 @@ export function LabelsKeyboardPopover({
           type="button"
           title="Keyboard shortcuts"
           aria-label="Keyboard shortcuts"
-          className="text-muted-foreground hover:text-foreground transition-colors"
+          className={VERIFY_TOOLBAR_ICON_CLASS}
         >
           <Keyboard className="h-4 w-4" />
         </button>

@@ -1306,25 +1306,10 @@ export function LabelsTab({
       />
 
       <VerifyToolbar>
+        {/* Left: the controls that change what happens (analysis
+            settings, sort, suggestions). Right: meta icons + progress,
+            the glance-and-forget zone. */}
         {toolbarExtra}
-        <VerifyToolbarIcon
-          icon={CircleHelp}
-          title="Help"
-          onClick={() => setHelpOpen(true)}
-        />
-        <LabelsKeyboardPopover
-          shortcutLabels={shortcutLabels}
-          onShortcutLabelsChange={updateShortcutLabels}
-          labelOptions={labelOptions}
-          labelOptionsLoading={labelOptionsLoading}
-          projectId={projectId}
-        />
-        <LabelsSettings
-          tileSize={tileSize}
-          onTileSizeChange={setTileSize}
-          maxDetections={maxDetections}
-          onMaxDetectionsChange={setMaxDetections}
-        />
         {/* Hide the dropdown in suggestions mode: it's a focused review
             workflow with its own entry / exit via the pill below. The
             pill itself is rendered in any sort mode because the count
@@ -1348,9 +1333,31 @@ export function LabelsTab({
           }}
           onExit={exitSuggestionsMode}
         />
-        {sortResult && (
-          <VerifyProgressPill pct={verifiedPct} label="verified" />
-        )}
+        <div className="ml-auto flex items-center gap-1">
+          <VerifyToolbarIcon
+            icon={CircleHelp}
+            title="Help"
+            onClick={() => setHelpOpen(true)}
+          />
+          <LabelsKeyboardPopover
+            shortcutLabels={shortcutLabels}
+            onShortcutLabelsChange={updateShortcutLabels}
+            labelOptions={labelOptions}
+            labelOptionsLoading={labelOptionsLoading}
+            projectId={projectId}
+          />
+          <LabelsSettings
+            tileSize={tileSize}
+            onTileSizeChange={setTileSize}
+            maxDetections={maxDetections}
+            onMaxDetectionsChange={setMaxDetections}
+          />
+          {sortResult && (
+            <div className="ml-2">
+              <VerifyProgressPill pct={verifiedPct} label="verified" />
+            </div>
+          )}
+        </div>
       </VerifyToolbar>
 
       {sortError ? (

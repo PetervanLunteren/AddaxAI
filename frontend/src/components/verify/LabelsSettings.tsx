@@ -16,6 +16,7 @@
 import { Settings2 } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { VERIFY_TOOLBAR_ICON_CLASS } from "./VerifyToolbar";
 import {
   Select,
   SelectContent,
@@ -47,7 +48,7 @@ export function LabelsSettings({
           type="button"
           title="View options"
           aria-label="View options"
-          className="text-muted-foreground hover:text-foreground transition-colors"
+          className={VERIFY_TOOLBAR_ICON_CLASS}
         >
           <Settings2 className="h-4 w-4" />
         </button>

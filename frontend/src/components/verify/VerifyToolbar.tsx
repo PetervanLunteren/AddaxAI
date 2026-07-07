@@ -29,6 +29,15 @@ export function VerifyToolbar({ children, className }: VerifyToolbarProps) {
   );
 }
 
+/** Shared chrome for the toolbar's icon buttons: a 32px ghost button so
+ * the icons sit on the same visual line as the labeled buttons and
+ * dropdowns in the row. Also used by the popover triggers (keyboard
+ * shortcuts, view options) so every icon in the row matches. */
+export const VERIFY_TOOLBAR_ICON_CLASS =
+  "inline-flex h-8 w-8 items-center justify-center rounded-md " +
+  "text-muted-foreground transition-colors hover:bg-muted " +
+  "hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed";
+
 interface VerifyToolbarIconProps {
   icon: ComponentType<SVGProps<SVGSVGElement>>;
   title: string;
@@ -49,7 +58,7 @@ export function VerifyToolbarIcon({
       aria-label={title}
       onClick={onClick}
       disabled={disabled}
-      className="text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      className={VERIFY_TOOLBAR_ICON_CLASS}
     >
       <Icon className="h-4 w-4" />
     </button>
@@ -66,7 +75,7 @@ interface VerifyProgressPillProps {
 export function VerifyProgressPill({ pct, label }: VerifyProgressPillProps) {
   const clamped = Math.max(0, Math.min(100, pct));
   return (
-    <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
       <div className="relative h-2 w-20 overflow-hidden rounded-full bg-muted">
         <div
           className="h-full transition-all duration-500 ease-out rounded-full"

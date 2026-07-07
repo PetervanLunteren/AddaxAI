@@ -279,11 +279,8 @@ export function VerifyView({ projectId }: VerifyViewProps) {
       />
       {totalEvents > 0 && verificationStats && (
         <VerifyToolbar>
-          <VerifyToolbarIcon
-            icon={CircleHelp}
-            title="Help"
-            onClick={() => setHelpOpen(true)}
-          />
+          {/* Left: sort. Right: meta icons + progress, matching the
+              Labels grid's toolbar grouping. */}
           <SortSelector
             sort={filters.sort ?? "newest"}
             seed={filters.seed ?? null}
@@ -297,16 +294,25 @@ export function VerifyView({ projectId }: VerifyViewProps) {
               setFilters(updated);
             }}
           />
-          <VerifyProgressPill
-            pct={
-              verificationStats.events_total > 0
-                ? (verificationStats.events_confirmed /
-                    verificationStats.events_total) *
-                  100
-                : 0
-            }
-            label="confirmed"
-          />
+          <div className="ml-auto flex items-center gap-1">
+            <VerifyToolbarIcon
+              icon={CircleHelp}
+              title="Help"
+              onClick={() => setHelpOpen(true)}
+            />
+            <div className="ml-2">
+              <VerifyProgressPill
+                pct={
+                  verificationStats.events_total > 0
+                    ? (verificationStats.events_confirmed /
+                        verificationStats.events_total) *
+                      100
+                    : 0
+                }
+                label="confirmed"
+              />
+            </div>
+          </div>
         </VerifyToolbar>
       )}
       {/* Event cards */}

@@ -134,7 +134,7 @@ export function AnalysisSettingsButton({
       </Button>
 
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-4xl">
           <SheetHeader>
             <SheetTitle>Analysis settings</SheetTitle>
             <SheetDescription>
