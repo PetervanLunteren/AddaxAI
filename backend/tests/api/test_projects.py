@@ -280,3 +280,22 @@ def test_update_project_batch_size_too_large_is_rejected(client, db):
     p = make_project(db)
     resp = client.patch(f"/api/projects/{p.id}", json={"embedding_batch_size": 999})
     assert resp.status_code == 422
+
+
+def test_reprocess_accepts_folder_run_projects(client, db):
+    """The folder-run Labels step's analysis panel PATCHes the project
+    and reprocesses through the same endpoints as the Settings page;
+    neither may gate on project mode."""
+    p = make_project(db, mode="folder_run")
+
+    resp = client.patch(
+        f"/api/projects/{p.id}",
+        json={"independence_interval": 900, "taxonomic_rollup": False},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["independence_interval"] == 900
+
+    with patch("app.api.routers.projects.ws_manager"):
+        resp = client.post(f"/api/projects/{p.id}/reprocess")
+    assert resp.status_code == 202
+    assert "job_id" in resp.json()

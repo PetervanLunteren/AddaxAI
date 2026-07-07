@@ -18,8 +18,11 @@
  * - Detection / classification / embedding batch sizes (BatchSizeRow)
  * - Embedding model + status badge
  * - Video frame rate
- * - Smoothing (Off / Mild / Normal / Aggressive)
- * - Taxonomic rollup
+ *
+ * The retroactive analysis settings (independence interval, smoothing,
+ * taxonomic rollup) have no UI here; they live on the Labels step's
+ * analysis panel. The form still carries their values (seeded from the
+ * last run via localStorage) so the initial analysis applies them.
  *
  * Start analysis: PATCH the project row, then POST
  * /api/deployment-queue/process, then open ``RunQueueModal`` (the
@@ -76,8 +79,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
-import { CaptionedSelect } from "../../components/ui/captioned-select";
-import { SMOOTHING_LEVELS } from "../../lib/smoothing";
 import { SETTING_CAPTIONS } from "../../lib/settingCaptions";
 import { Slider } from "../../components/ui/slider";
 import { Switch } from "../../components/ui/switch";
@@ -89,7 +90,6 @@ import {
 } from "../../components/ui/tooltip";
 
 import { BatchSizeRow } from "../../components/analyses/BatchSizeRow";
-import { IntervalControl } from "../../components/analyses/IntervalControl";
 import { FolderSelector } from "../../components/analyses/FolderSelector";
 import { RunQueueModal } from "../../components/analyses/RunQueueModal";
 import { CompletedRunNotice } from "../../components/folder-run/CompletedRunNotice";
@@ -1113,73 +1113,14 @@ export function FolderRunModelStep() {
                       )}
                     />
 
-                    <FormField
-                      control={form.control}
-                      name="independence_interval"
-                      render={({ field }) => (
-                        <SettingRow
-                          label="Independence interval"
-                          description={SETTING_CAPTIONS.independenceInterval}
-                        >
-                          <IntervalControl
-                            value={field.value}
-                            onChange={field.onChange}
-                          />
-                          <FormMessage />
-                        </SettingRow>
-                      )}
-                    />
-
-                    {hasClassifier && (
-                      <SettingRow
-                        label="Smoothing"
-                        description={SETTING_CAPTIONS.smoothing}
-                      >
-                        <CaptionedSelect
-                          value={
-                            form.watch("event_smoothing")
-                              ? form.watch("smoothing_strength")
-                              : "off"
-                          }
-                          onValueChange={(value) => {
-                            if (!value) return;
-                            if (value === "off") {
-                              form.setValue("event_smoothing", false, {
-                                shouldDirty: true,
-                              });
-                            } else {
-                              form.setValue("event_smoothing", true, {
-                                shouldDirty: true,
-                              });
-                              form.setValue(
-                                "smoothing_strength",
-                                value as "mild" | "normal" | "aggressive",
-                                { shouldDirty: true },
-                              );
-                            }
-                          }}
-                          options={SMOOTHING_LEVELS}
-                        />
-                      </SettingRow>
-                    )}
-
-                    {hasClassifier && (
-                      <FormField
-                        control={form.control}
-                        name="taxonomic_rollup"
-                        render={({ field }) => (
-                          <SettingRow
-                            label="Taxonomic rollup"
-                            description={SETTING_CAPTIONS.taxonomicRollup}
-                          >
-                            <Switch
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                            />
-                          </SettingRow>
-                        )}
-                      />
-                    )}
+                    {/* The retroactive analysis settings (independence
+                        interval, smoothing, taxonomic rollup) have no UI
+                        here: they live on the Labels step's analysis
+                        panel, where their effect is visible and they can
+                        be retuned with a reprocess. The form still
+                        carries their values (seeded from the last run
+                        via localStorage) so the initial analysis applies
+                        them. */}
                     {advancedNonDefault && (
                       <div className="flex justify-end py-3">
                         <Button

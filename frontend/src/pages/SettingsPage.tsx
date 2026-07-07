@@ -22,7 +22,12 @@ import {
   toApiCountryCode,
   useLabelSelectionCaption,
 } from "../components/taxonomy/LabelSelectionField";
-import { IntervalControl } from "../components/analyses/IntervalControl";
+import { AnalysisSettingsRows } from "../components/settings/AnalysisSettingsRows";
+import { ApplySettingsModal } from "../components/settings/ApplySettingsModal";
+import {
+  hasReprocessChanges,
+  startReprocessIfNeeded,
+} from "../lib/reprocessSettings";
 import { restoreAdvancedDefaults } from "../lib/advancedSettingsDefaults";
 import { ModelSelect } from "../components/models/ModelSelect";
 import { NoClassifierNotice } from "../components/models/NoClassifierNotice";
@@ -77,8 +82,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import { CaptionedSelect } from "../components/ui/captioned-select";
-import { SMOOTHING_LEVELS } from "../lib/smoothing";
 import { SETTING_CAPTIONS } from "../lib/settingCaptions";
 import { ClassificationModelGroupedItems } from "../components/models/ClassificationModelGroupedItems";
 import { BatchSizeRow } from "../components/analyses/BatchSizeRow";
@@ -126,33 +129,6 @@ const VIDEO_FPS_OPTIONS = [
 ];
 
 type SettingsFormData = z.infer<typeof settingsSchema>;
-
-/** Settings that trigger classification reprocessing when changed. */
-const SMOOTHING_SETTINGS = [
-  "event_smoothing",
-  "smoothing_strength",
-  "taxonomic_rollup",
-  "taxonomic_rollup_threshold",
-  "independence_interval",
-  "excluded_classes",
-];
-
-/** Check if any smoothing-relevant setting differs between old and new form data. */
-function hasSmoothingChanges(
-  before: SettingsFormData,
-  after: SettingsFormData,
-): boolean {
-  for (const key of SMOOTHING_SETTINGS) {
-    const a = before[key as keyof SettingsFormData];
-    const b = after[key as keyof SettingsFormData];
-    if (Array.isArray(a) && Array.isArray(b)) {
-      if (a.length !== b.length || a.some((v, i) => v !== b[i])) return true;
-    } else if (a !== b) {
-      return true;
-    }
-  }
-  return false;
-}
 
 // BatchSizeRow lives in components/analyses/BatchSizeRow.tsx and is
 // shared between this page and the folder-run setup step. Imported above.
@@ -653,7 +629,7 @@ export default function SettingsPage() {
 
     try {
       const currentValues = form.formState.defaultValues as SettingsFormData;
-      const willReprocess = hasSmoothingChanges(currentValues, data);
+      const willReprocess = hasReprocessChanges(currentValues, data);
 
       // Show progress modal immediately if reprocessing will happen
       if (willReprocess) {
@@ -676,13 +652,11 @@ export default function SettingsPage() {
         country_code: toApiCountryCode(data.country_code),
       });
 
-      // 3. If smoothing settings changed, trigger reprocess
+      // 3. If reprocess-triggering settings changed, kick off the job
       if (willReprocess) {
-        const status = await projectsApi.getPostprocessingStatus(projectId);
-        if (status.has_classifications) {
-          // Trigger reprocess and connect WebSocket for progress tracking
-          const reprocessResult = await projectsApi.reprocess(projectId);
-          setSaveJobId(reprocessResult.job_id);
+        const reprocessJobId = await startReprocessIfNeeded(projectId);
+        if (reprocessJobId) {
+          setSaveJobId(reprocessJobId);
 
           // Await before-stats (likely already resolved by now)
           const beforeStats = await beforeStatsPromise;
@@ -1178,81 +1152,45 @@ export default function SettingsPage() {
                   )}
                 />
 
-                {/* Independence Interval */}
-                <FormField
-                  control={form.control}
-                  name="independence_interval"
-                  render={({ field }) => (
-                    <div className="grid grid-cols-2 items-center gap-8 py-6">
-                      <div className="space-y-1">
-                        <FormLabel>Independence interval</FormLabel>
-                        <FormDescription className="text-sm">
-                          {SETTING_CAPTIONS.independenceInterval} Affects all statistics retroactively.
-                        </FormDescription>
-                      </div>
-                      <div className="space-y-2">
-                        <IntervalControl
-                          value={field.value}
-                          onChange={field.onChange}
-                        />
-                        <FormMessage />
-                      </div>
-                    </div>
-                  )}
+                {/* Independence interval, smoothing, taxonomic rollup —
+                    shared rows with the folder-run Labels step's
+                    analysis panel (one source of truth). */}
+                <AnalysisSettingsRows
+                  values={{
+                    event_smoothing: form.watch("event_smoothing"),
+                    smoothing_strength: form.watch("smoothing_strength"),
+                    taxonomic_rollup: form.watch("taxonomic_rollup"),
+                    independence_interval: form.watch(
+                      "independence_interval",
+                    ),
+                  }}
+                  onIntervalChange={(seconds) =>
+                    form.setValue("independence_interval", seconds, {
+                      shouldDirty: true,
+                    })
+                  }
+                  onSmoothingChange={(level) => {
+                    if (level === "off") {
+                      form.setValue("event_smoothing", false, {
+                        shouldDirty: true,
+                      });
+                    } else {
+                      form.setValue("event_smoothing", true, {
+                        shouldDirty: true,
+                      });
+                      form.setValue("smoothing_strength", level, {
+                        shouldDirty: true,
+                      });
+                    }
+                  }}
+                  onRollupChange={(enabled) =>
+                    form.setValue("taxonomic_rollup", enabled, {
+                      shouldDirty: true,
+                    })
+                  }
+                  showClassifierFields={hasClassificationModel}
+                  intervalNote="Affects all statistics retroactively."
                 />
-
-                {/* Event Smoothing (only when classification model is selected) */}
-                {hasClassificationModel && <FormField
-                  control={form.control}
-                  name="event_smoothing"
-                  render={() => (
-                    <div className="grid grid-cols-2 items-center gap-8 py-6">
-                      <div className="space-y-1">
-                        <FormLabel>Smoothing</FormLabel>
-                        <FormDescription className="text-sm">
-                          {SETTING_CAPTIONS.smoothing}
-                        </FormDescription>
-                      </div>
-                      <div className="space-y-2">
-                        <CaptionedSelect
-                          value={form.watch("event_smoothing") ? form.watch("smoothing_strength") : "off"}
-                          onValueChange={(value) => {
-                            if (!value) return;
-                            if (value === "off") {
-                              form.setValue("event_smoothing", false, { shouldDirty: true });
-                            } else {
-                              form.setValue("event_smoothing", true, { shouldDirty: true });
-                              form.setValue("smoothing_strength", value as "mild" | "normal" | "aggressive", { shouldDirty: true });
-                            }
-                          }}
-                          options={SMOOTHING_LEVELS}
-                        />
-                      </div>
-                    </div>
-                  )}
-                />}
-
-                {/* Taxonomic Rollup (only when classification model is selected) */}
-                {hasClassificationModel && <FormField
-                  control={form.control}
-                  name="taxonomic_rollup"
-                  render={({ field }) => (
-                    <div className="grid grid-cols-2 items-center gap-8 py-6">
-                      <div className="space-y-1">
-                        <FormLabel>Taxonomic rollup</FormLabel>
-                        <FormDescription className="text-sm">
-                          {SETTING_CAPTIONS.taxonomicRollup}
-                        </FormDescription>
-                      </div>
-                      <div className="space-y-2">
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </div>
-                    </div>
-                  )}
-                />}
 
                 {/* Camera timezone: affects how event/activity times and
                     exports read (moved from the old one-setting card). */}
@@ -1422,39 +1360,16 @@ export default function SettingsPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Applying Settings Progress Dialog */}
-        <Dialog open={isSaving || !!saveJobId}>
-          <DialogContent className="max-w-md" onInteractOutside={(e) => e.preventDefault()}>
-            <DialogTitle className="sr-only">Applying settings</DialogTitle>
-            <DialogDescription className="sr-only">
-              AddaxAI is applying your settings. This may take a moment.
-            </DialogDescription>
-            <div className="flex flex-col items-center gap-4 py-4">
-              <div className="rounded-full bg-primary/10 p-3">
-                <RefreshCw className="h-6 w-6 text-primary animate-spin" />
-              </div>
-              <div className="text-center space-y-2">
-                <h3 className="font-semibold text-lg">Applying settings</h3>
-                <p className="text-sm text-muted-foreground">
-                  {saveProgress.message || (isSaving && !saveJobId ? "Saving settings..." : "Starting...")}
-                </p>
-              </div>
-              {saveProgress.progress > 0 && saveProgress.progress < 1 && (
-                <div className="w-full space-y-1">
-                  <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary rounded-full transition-all duration-300"
-                      style={{ width: `${Math.round(saveProgress.progress * 100)}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground text-center">
-                    {Math.round(saveProgress.progress * 100)}%
-                  </p>
-                </div>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
+        {/* Applying Settings Progress Dialog (shared with the
+            folder-run Labels step's analysis panel) */}
+        <ApplySettingsModal
+          open={isSaving || !!saveJobId}
+          message={saveProgress.message}
+          progress={saveProgress.progress}
+          fallbackMessage={
+            isSaving && !saveJobId ? "Saving settings..." : "Starting..."
+          }
+        />
 
         {/* Save toast */}
         {toastResults && (

@@ -10,23 +10,56 @@
  * Continue PATCHes `step=save` server-side and navigates onward.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, ChevronDown, Pencil } from "lucide-react";
 
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
+import { AnalysisSettingsPanel } from "../../components/folder-run/AnalysisSettingsPanel";
 import { StepHeader } from "../../components/folder-run/StepHeader";
 import { LabelsView } from "../../components/verify/LabelsView";
 import { folderRunsApi } from "../../api/folder-runs";
 import { useFolderRun } from "./FolderRunLayout";
+
+/** Default floor for the grid's detection-confidence filter. Folder
+ * runs store every detection down to the 0.1 inference floor; showing
+ * all of it by default buries the reviewer in near-noise boxes, so the
+ * grid opens pre-filtered at 0.2. It is an ordinary filter: the user
+ * can drop it to the floor (or clear it) in the filter bar. Affects
+ * this review grid only — data exports always contain everything. */
+const DEFAULT_GRID_MIN_CONFIDENCE = 0.2;
 
 export function FolderRunLabelsStep() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { runId, run, isLoading } = useFolderRun();
   const [editorOpen, setEditorOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Seed the grid's confidence filter once per mount, and only when
+  // the URL doesn't already carry one, so a user-cleared or user-set
+  // filter is never overridden within the session.
+  const seededMinConfidenceRef = useRef(false);
+  useEffect(() => {
+    if (seededMinConfidenceRef.current) return;
+    seededMinConfidenceRef.current = true;
+    if (!searchParams.has("lbl_min_confidence")) {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set(
+            "lbl_min_confidence",
+            String(DEFAULT_GRID_MIN_CONFIDENCE),
+          );
+          return next;
+        },
+        { replace: true },
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Track bulk-selection size from the embedded LabelsView. While a
   // selection is live, the sticky Back / Continue bar is hidden so the
   // floating BulkActionBar has the bottom of the viewport to itself.
@@ -94,31 +127,31 @@ export function FolderRunLabelsStep() {
     </div>
   );
 
-  if (!editorOpen) {
-    return (
-      <div className="space-y-6">
-        <StepHeader
-          title="Check labels"
-          caption="Fix any labels the AI got wrong, or continue."
-        />
+  // One tree for both views so the analysis panel keeps its (possibly
+  // unapplied) state when the editor is toggled.
+  return (
+    <div className={editorOpen ? "space-y-6 pb-24" : "space-y-6"}>
+      <StepHeader
+        title="Check labels"
+        caption="Fix any labels the AI got wrong, or continue."
+      />
+      <AnalysisSettingsPanel runId={runId} project={run.project} />
+      {editorOpen ? (
+        <>
+          <LabelsView
+            projectId={runId}
+            onSelectionChange={setSelectionCount}
+          />
+          {selectionCount === 0 && (
+            <div className="sticky bottom-0 z-30 -mx-4 border-t bg-white/80 px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+              <div className="mx-auto max-w-7xl">{actionRow}</div>
+            </div>
+          )}
+        </>
+      ) : (
         <Card>
           <CardContent className="py-4">{actionRow}</CardContent>
         </Card>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6 pb-24">
-      <StepHeader
-        title="Check labels"
-        caption="Fix the AI's species labels, or continue."
-      />
-      <LabelsView projectId={runId} onSelectionChange={setSelectionCount} />
-      {selectionCount === 0 && (
-        <div className="sticky bottom-0 z-30 -mx-4 border-t bg-white/80 px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-          <div className="mx-auto max-w-7xl">{actionRow}</div>
-        </div>
       )}
     </div>
   );
