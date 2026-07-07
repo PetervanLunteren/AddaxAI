@@ -1,9 +1,11 @@
 """Folder-run tabular XLSX output.
 
-One workbook with two sheets, Detections and Counts, matching the
-Research projects Export page's combined spreadsheet. Wraps the shared
-``export_crud.build_spreadsheet_sheets`` + ``export_formats.serialize_xlsx_multi``
-pipeline so the two modes never drift.
+One workbook with two sheets, Files and Detections — the same two
+tables as the folder-run CSV export, in one file. A folder run is "run
+AI without ecological interpretation", so the projects-mode sheets
+(Deployments, Counts) are intentionally absent. The sheets wrap the
+shared ``export_crud`` builders, so columns stay identical to the
+projects Export page's spreadsheet.
 
 Writes ``<target_dir>/addaxai-spreadsheet.xlsx``.
 """
@@ -46,7 +48,7 @@ def write_tables_xlsx(
     project_id: str,
     target_dir: Path,
 ) -> TablesXlsxResult:
-    """Write the two-sheet ``addaxai-spreadsheet.xlsx`` (Detections + Counts)."""
+    """Write the two-sheet ``addaxai-spreadsheet.xlsx`` (Files + Detections)."""
     project = db.get(Project, project_id)
     if project is None:
         raise ValueError(f"Project {project_id!r} not found")
@@ -55,9 +57,17 @@ def write_tables_xlsx(
 
     # Complete record: folder-run data exports are never filtered by the
     # detection threshold (matches tables_csv and the recognition JSON).
-    sheets = export_crud.build_spreadsheet_sheets(
+    scoped = export_crud.get_scoped_detection_rows(
         db, project, apply_threshold=False
     )
+    files_headers, files_rows = export_crud.build_files_rows(db, project)
+    det_headers, det_rows = export_crud.build_detection_rows(
+        db, project, scoped
+    )
+    sheets = [
+        ("Files", files_headers, files_rows),
+        ("Detections", det_headers, det_rows),
+    ]
     payload = export_formats.serialize_xlsx_multi(sheets)
 
     output_path = target_dir / XLSX_FILENAME

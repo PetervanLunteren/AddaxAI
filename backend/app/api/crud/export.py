@@ -804,23 +804,15 @@ def build_spreadsheet_sheets(
     db: Session,
     project: Project,
     deployment_ids: list[str] | None = None,
-    *,
-    apply_threshold: bool = True,
 ) -> list[tuple[str, list[str], list[list[Any]]]]:
-    """The tables that make up a combined spreadsheet: Deployments, Files,
-    Detections, and Counts. Single source for both the project Export
-    page's XLSX and the folder-run Save step, so the two never drift.
+    """The tables that make up the project Export page's combined
+    spreadsheet: Deployments, Files, Detections, and Counts. The
+    folder-run Save step writes its own two-sheet workbook (Files +
+    Detections) from the same row builders.
 
     ``deployment_ids`` narrows every sheet to a subset of the project's
-    deployments; None (the folder-run Save default) exports everything.
-    ``apply_threshold=False`` makes the Detections sheet the complete
-    record (see ``get_scoped_detection_rows``)."""
-    scoped = get_scoped_detection_rows(
-        db,
-        project,
-        deployment_ids=deployment_ids,
-        apply_threshold=apply_threshold,
-    )
+    deployments; None exports everything."""
+    scoped = get_scoped_detection_rows(db, project, deployment_ids=deployment_ids)
     dep_headers, dep_rows = build_deployments_rows(db, project, deployment_ids)
     files_headers, files_rows = build_files_rows(db, project, deployment_ids)
     det_headers, det_rows = build_detection_rows(db, project, scoped)

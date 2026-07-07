@@ -175,10 +175,8 @@ function buildTree({
 
   if (exportOpts.enabled) {
     if (exportOpts.csv) {
-      files.push({ name: "addaxai-deployments.csv" });
       files.push({ name: "addaxai-files.csv" });
       files.push({ name: "addaxai-detections.csv" });
-      files.push({ name: "addaxai-counts.csv" });
     }
     if (exportOpts.xlsx) files.push({ name: "addaxai-spreadsheet.xlsx" });
     if (exportOpts.recognitionJson)

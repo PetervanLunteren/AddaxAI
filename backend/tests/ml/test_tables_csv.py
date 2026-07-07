@@ -12,8 +12,6 @@ from pathlib import Path
 import pytest
 
 from app.ml.postprocessing_outputs.tables_csv import (
-    COUNTS_FILENAME,
-    DEPLOYMENTS_FILENAME,
     DETECTIONS_FILENAME,
     FILES_FILENAME,
     write_tables_csv,
@@ -57,18 +55,19 @@ def test_writes_both_files_at_canonical_paths(db, tmp_path):
     target = tmp_path / "out"
     result = write_tables_csv(db, project.id, target)
 
-    assert (target / DEPLOYMENTS_FILENAME).is_file()
+    # Files + detections only: a folder run has no deployments or
+    # counts tables (ecological interpretation lives in projects mode).
     assert (target / FILES_FILENAME).is_file()
     assert (target / DETECTIONS_FILENAME).is_file()
-    assert (target / COUNTS_FILENAME).is_file()
     assert (target / DETECTIONS_FILENAME).stat().st_size > 0
-    assert len(result.output_paths) == 4
+    assert len(result.output_paths) == 2
+    assert not (target / "addaxai-deployments.csv").exists()
+    assert not (target / "addaxai-counts.csv").exists()
 
 
 def test_row_count_totals_all_tables(db, tmp_path):
-    """Two files, each with one detection, one deployment. No events
-    generated, so counts is header-only. Total row_count = 1 deployment +
-    2 files + 2 detections + 0 counts."""
+    """Two files, each with one detection. Total row_count =
+    2 files + 2 detections."""
     project = make_project(db, name="csv-rows")
     dep = make_deployment(db, project_id=project.id)
     for n, label in enumerate(["dog", "cat"]):
@@ -93,7 +92,7 @@ def test_row_count_totals_all_tables(db, tmp_path):
     target = tmp_path / "out"
     result = write_tables_csv(db, project.id, target)
 
-    assert result.row_count == 5
+    assert result.row_count == 4
 
 
 def test_relative_path_is_relative_to_deployment_folder(db, tmp_path):

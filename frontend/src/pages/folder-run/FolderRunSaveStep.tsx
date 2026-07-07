@@ -107,6 +107,7 @@ export function FolderRunSaveStep() {
     form.separate,
     form.labelTree?.all_leaf_ids ?? [],
   );
+  const mediaConfidence = form.separate.mediaConfidence;
   const { data: preview, isLoading: previewLoading } = useQuery({
     queryKey: [
       "folder-run-output-preview",
@@ -117,9 +118,11 @@ export function FolderRunSaveStep() {
       groupBy,
       speciesLast,
       excluded,
+      mediaConfidence,
     ],
     queryFn: () =>
       folderRunsApi.getOutputPreview(runId!, {
+        media_confidence: mediaConfidence,
         include_empty: includeEmpty,
         name_mode: nameMode,
         group_events: groupEvents,

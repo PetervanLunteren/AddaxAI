@@ -17,6 +17,7 @@ import {
 import { Button } from "../../../components/ui/button";
 import { Callout } from "../../../components/ui/callout";
 import { Card, CardContent } from "../../../components/ui/card";
+import { Slider } from "../../../components/ui/slider";
 import {
   Dialog,
   DialogContent,
@@ -198,6 +199,31 @@ export function MediaBody({
         <LabelFilterRow form={form} labelTree={labelTree} />
       )}
 
+      <div className="grid grid-cols-2 items-center gap-3 py-3 text-sm">
+        <span>
+          Confidence
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            Detections below this score are left out of the copies.
+            The data files always include everything.
+          </span>
+        </span>
+        <div className="flex items-center justify-between">
+          <Slider
+            min={0.1}
+            max={1.0}
+            step={0.01}
+            value={[separate.mediaConfidence]}
+            onValueChange={(vals) =>
+              setSeparate({ ...separate, mediaConfidence: vals[0] })
+            }
+            className="mr-4 flex-1"
+          />
+          <span className="min-w-[3rem] text-right text-sm font-medium">
+            {separate.mediaConfidence.toFixed(2)}
+          </span>
+        </div>
+      </div>
+
       <CaptionedCheckbox
         checked={visualise.enabled}
         onChange={(v) => setVisualise({ enabled: v })}
@@ -285,7 +311,7 @@ export function ExportBody({
         checked={exportOpts.csv}
         onChange={(v) => setExportOpts({ ...exportOpts, csv: v })}
         label="CSV"
-        caption="Tables for deployments, files, detections, and counts"
+        caption="Tables for files and detections"
       />
       <CaptionedCheckbox
         checked={exportOpts.xlsx}

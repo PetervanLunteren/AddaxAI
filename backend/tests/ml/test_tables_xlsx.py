@@ -64,7 +64,7 @@ def test_writes_two_sheet_workbook(db, tmp_path):
         assert f.read(4) == _XLSX_MAGIC
 
     wb = load_workbook(output_path)
-    assert wb.sheetnames == ["Deployments", "Files", "Detections", "Counts"]
+    assert wb.sheetnames == ["Files", "Detections"]
 
 
 def test_unknown_project_raises(db, tmp_path):

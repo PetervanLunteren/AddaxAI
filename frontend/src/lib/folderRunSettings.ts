@@ -98,6 +98,9 @@ export interface PersistedSaveOutputsSettings {
   copyEmpties: boolean;
   drawBoxes: boolean;
   blur: boolean;
+  /** Media-output confidence slider. Absent in objects stored by older
+   * versions; readers fall back to the 0.2 default. */
+  mediaConfidence?: number;
 }
 
 export function saveLastUsedSaveOutputs(
