@@ -31,6 +31,9 @@ interface ConfidenceSliderProps {
   /** Shown as a compact info callout while the (low) handle rests on a
    * clamped minimum above the scale min. */
   clampReason?: string;
+  /** Advisory (not a clamp): a compact warning callout shown while the
+   * (low) handle sits below ``value``. */
+  warnBelow?: { value: number; message: string };
   className?: string;
 }
 
@@ -39,6 +42,7 @@ export function ConfidenceSlider({
   onChange,
   effectiveMin = CONFIDENCE_SCALE_MIN,
   clampReason,
+  warnBelow,
   className,
 }: ConfidenceSliderProps) {
   const values = Array.isArray(value) ? value : [value];
@@ -71,6 +75,13 @@ export function ConfidenceSlider({
         <div className="mt-2">
           <Callout variant="info" size="compact">
             {clampReason}
+          </Callout>
+        </div>
+      )}
+      {warnBelow && shown[0] < warnBelow.value - 1e-9 && (
+        <div className="mt-2">
+          <Callout variant="warning" size="compact">
+            {warnBelow.message}
           </Callout>
         </div>
       )}

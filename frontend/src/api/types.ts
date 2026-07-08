@@ -624,6 +624,9 @@ export interface EventFilterOptions {
   label_event_counts: Record<string, number>;
   scientific_labels?: Record<string, string>;
   common_labels?: Record<string, string>;
+  /** Lowest classification confidence in the project, the data-driven
+   * clamp for the cls range slider. Null when nothing is classified. */
+  min_label_confidence?: number | null;
 }
 
 // MaxN frame reference

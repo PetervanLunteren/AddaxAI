@@ -29,6 +29,10 @@ import {
 } from "../ui/confidence-slider";
 import type { EventFilterParams } from "../../api/types";
 
+// Below this detection confidence, most boxes are false positives.
+// Purely advisory: the slider still goes there, with a warning.
+const DETECTION_NOISE_ADVISORY = 0.2;
+
 interface ConfidenceRangeFilterProps {
   filters: EventFilterParams;
   onChange: (next: EventFilterParams) => void;
@@ -41,6 +45,11 @@ interface ConfidenceRangeFilterProps {
   clampReason?: string;
   /** Whether to render the classification slider at all. */
   showClassification: boolean;
+  /** Lowest classification confidence present in the project (from the
+   * filter-options endpoint). The cls slider's low handle stops there:
+   * dragging further would select nothing. Null / undefined = no
+   * classifications yet, no clamp. */
+  minLabelConfidence?: number | null;
 }
 
 function pct(v: number): string {
@@ -54,17 +63,28 @@ export function ConfidenceRangeFilter({
   floorMode,
   clampReason,
   showClassification,
+  minLabelConfidence,
 }: ConfidenceRangeFilterProps) {
-  // Effective slider values: fall back to defaults when filter is unset.
-  const detMin = filters.min_confidence ?? detectionFloor;
-  const detMax = filters.max_confidence ?? 1;
-  const clsMin = filters.min_label_confidence ?? CONFIDENCE_SCALE_MIN;
-  const clsMax = filters.max_label_confidence ?? 1;
-
   const detEffectiveMin =
     floorMode === "clamp"
       ? Math.max(detectionFloor, CONFIDENCE_SCALE_MIN)
       : CONFIDENCE_SCALE_MIN;
+
+  // Data-driven clamp for the cls slider: floored to the 0.01 grid so
+  // the handle rests on a grid position just below the lowest value.
+  const clsEffectiveMin =
+    minLabelConfidence != null
+      ? Math.max(
+          CONFIDENCE_SCALE_MIN,
+          Math.floor(minLabelConfidence * 100) / 100,
+        )
+      : CONFIDENCE_SCALE_MIN;
+
+  // Effective slider values: fall back to defaults when filter is unset.
+  const detMin = filters.min_confidence ?? detectionFloor;
+  const detMax = filters.max_confidence ?? 1;
+  const clsMin = filters.min_label_confidence ?? clsEffectiveMin;
+  const clsMax = filters.max_label_confidence ?? 1;
 
   return (
     <>
@@ -78,6 +98,12 @@ export function ConfidenceRangeFilter({
             value={[detMin, detMax]}
             effectiveMin={detEffectiveMin}
             clampReason={floorMode === "clamp" ? clampReason : undefined}
+            warnBelow={{
+              value: DETECTION_NOISE_ADVISORY,
+              message:
+                "Most detections below 20% are false positives. " +
+                "Expect noise when reviewing this range.",
+            }}
             onChange={([nextMin, nextMax]) => {
               onChange({
                 ...filters,
@@ -106,13 +132,17 @@ export function ConfidenceRangeFilter({
             <ConfidenceSlider
               className="h-9 px-2"
               value={[clsMin, clsMax]}
+              effectiveMin={clsEffectiveMin}
+              clampReason={
+                `This run has no classifications below ` +
+                `${Math.round(clsEffectiveMin * 100)}%.`
+              }
               onChange={([nextMin, nextMax]) => {
                 onChange({
                   ...filters,
+                  // Resting on the clamp selects everything -> no filter.
                   min_label_confidence:
-                    nextMin > CONFIDENCE_SCALE_MIN + 1e-6
-                      ? nextMin
-                      : undefined,
+                    nextMin > clsEffectiveMin + 1e-6 ? nextMin : undefined,
                   max_label_confidence:
                     nextMax < 1 - 1e-6 ? nextMax : undefined,
                 });

@@ -44,6 +44,9 @@ interface VerifyMoreFiltersProps {
   clampReason?: string;
   /** When false, the classification slider is hidden (no cls model). */
   showClassification?: boolean;
+  /** Lowest classification confidence in the project (data-driven cls
+   * slider clamp); null / undefined = no classifications yet. */
+  minLabelConfidence?: number | null;
   /** Render the liked / flagged / empty selects. False on Observations. */
   showLikedFlaggedEmpty?: boolean;
 }
@@ -55,6 +58,7 @@ export function VerifyMoreFilters({
   confidenceFloorMode = "clamp",
   clampReason,
   showClassification = false,
+  minLabelConfidence,
   showLikedFlaggedEmpty = true,
 }: VerifyMoreFiltersProps) {
   const [open, setOpen] = useState(false);
@@ -184,6 +188,7 @@ export function VerifyMoreFilters({
           floorMode={confidenceFloorMode}
           clampReason={clampReason}
           showClassification={showClassification}
+          minLabelConfidence={minLabelConfidence}
         />
       </PopoverContent>
     </Popover>

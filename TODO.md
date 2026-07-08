@@ -1,5 +1,7 @@
 # TODO
 
+The confidence sliders and threhsold values thourghout the app are incosistemtly percentages and 0-1 values. AUdit and make it all percentages. That means all user facing stuff like info captions, sliders, visualisation thngs on images and videos, etc. 
+
 "Also used as the starting point for your next run." is not needed. Users dont need to kow that some of this also is used by the inference time. Perhaps this will suffice: "Applies to the results below without re-running the models. "
 
 Do we need to rename it from Ananlsysis settings to something else? Perhaps Analysis preferences? IDK probabaly not that. I'm just thjinking that thjere are many settings here.... at step 1, advanced at step 1, analysis settings at step 2, settings inside projects, settings in the save steps itself etc. What do yoiu think?

@@ -1070,10 +1070,25 @@ def get_filter_options(db: Session, project_id: str) -> dict:
     if date_row and date_row[0] and date_row[1]:
         date_range = {"min": date_row[0], "max": date_row[1]}
 
+    # Lowest classification confidence present in the project. The
+    # verify filter bars use it as the data-driven clamp for the
+    # classification range slider: dragging below it selects nothing,
+    # so the handle stops there with an explanatory callout. None when
+    # the project has no classifications yet.
+    min_label_confidence = (
+        db.query(func.min(Detection.label_confidence))
+        .join(File, File.id == Detection.file_id)
+        .join(Deployment, Deployment.id == File.deployment_id)
+        .filter(Deployment.project_id == project_id)
+        .filter(Detection.label_confidence.isnot(None))
+        .scalar()
+    )
+
     return {
         "labels": label_list,
         "date_range": date_range,
         "label_event_counts": label_event_counts,
         "scientific_labels": scientific_labels,
         "common_labels": common_labels,
+        "min_label_confidence": min_label_confidence,
     }

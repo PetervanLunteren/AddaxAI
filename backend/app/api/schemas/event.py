@@ -169,6 +169,10 @@ class EventFilterOptions(BaseModel):
     label_event_counts: dict[str, int]
     scientific_labels: dict[str, str] | None = None
     common_labels: dict[str, str] | None = None
+    # Lowest classification confidence in the project; the filter bars'
+    # data-driven clamp for the classification range slider. None when
+    # no classifications exist yet.
+    min_label_confidence: float | None = None
 
 
 class LabelTreeNode(BaseModel):

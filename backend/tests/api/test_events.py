@@ -521,3 +521,34 @@ def test_event_verify_and_count_endpoints(client, db):
     assert len(data["observations"]) == 1
     assert data["observations"][0]["label"] == "cow"
     assert data["observations"][0]["effective_count"] == 1
+
+
+def test_filter_options_reports_min_label_confidence(client, db):
+    """The filter bars clamp the cls range slider at the lowest
+    classification confidence that exists; the endpoint reports it."""
+    from tests.conftest import make_deployment, make_detection, make_file, make_project
+
+    p = make_project(db)
+    dep = make_deployment(db, project_id=p.id)
+    f = make_file(db, deployment_id=dep.id, observation_type="animal")
+    make_detection(
+        db, file_id=f.id, category="animal", confidence=0.9,
+        label="dog", label_confidence=0.42,
+    )
+    make_detection(
+        db, file_id=f.id, category="animal", confidence=0.8,
+        label="cat", label_confidence=0.07,
+    )
+
+    resp = client.get(f"/api/events/filter-options?project_id={p.id}")
+    assert resp.status_code == 200
+    assert resp.json()["min_label_confidence"] == 0.07
+
+
+def test_filter_options_min_label_confidence_null_when_unclassified(client, db):
+    from tests.conftest import make_project
+
+    p = make_project(db)
+    resp = client.get(f"/api/events/filter-options?project_id={p.id}")
+    assert resp.status_code == 200
+    assert resp.json()["min_label_confidence"] is None

@@ -283,6 +283,7 @@ export function VerifyFilterBar({
             onChange={onChange}
             detectionFloor={detectionFloor}
             confidenceFloorMode={confidenceFloorMode}
+            minLabelConfidence={filterOptions?.min_label_confidence}
             clampReason={
               `Counting uses the project's detection threshold ` +
               `(currently ${Math.round(detectionFloor * 100)}%). ` +
