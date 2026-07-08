@@ -156,7 +156,8 @@ def test_readme_includes_settings_block(db, tmp_path):
     write_run_readme(db, project.id, target, media_confidence=0.42)
     text = (target / SUMMARY_FILENAME).read_text("utf-8")
 
-    assert "0.42" in text
+    # Confidence values are rendered as whole percentages for humans.
+    assert "42%" in text
     assert "Media output confidence" in text
     assert "complete, no confidence filter" in text
     assert "aggressive" in text

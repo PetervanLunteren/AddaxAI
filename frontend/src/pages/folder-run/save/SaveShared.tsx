@@ -22,6 +22,7 @@ import { ConfidenceSlider } from "../../../components/ui/confidence-slider";
 import {
   DEFAULT_COUNTING_THRESHOLD,
   DETECTION_CONFIDENCE_ADVICE,
+  formatConfidencePct,
 } from "../../../lib/confidence";
 import {
   Dialog,
@@ -219,7 +220,7 @@ export function MediaBody({
           adviseBelow={DETECTION_CONFIDENCE_ADVICE}
           valueLabel={
             <span className="min-w-[3rem] shrink-0 text-right text-sm font-medium">
-              {separate.mediaConfidence.toFixed(2)}
+              {formatConfidencePct(separate.mediaConfidence)}
             </span>
           }
           onReset={() =>

@@ -27,7 +27,10 @@ import {
   CONFIDENCE_SCALE_MIN,
   ConfidenceSlider,
 } from "../ui/confidence-slider";
-import { DETECTION_CONFIDENCE_ADVICE } from "../../lib/confidence";
+import {
+  DETECTION_CONFIDENCE_ADVICE,
+  formatConfidencePct as pct,
+} from "../../lib/confidence";
 import type { EventFilterParams } from "../../api/types";
 
 interface ConfidenceRangeFilterProps {
@@ -52,10 +55,6 @@ interface ConfidenceRangeFilterProps {
    * dragging further would select nothing. Null / undefined = no
    * classifications yet, no clamp. */
   minLabelConfidence?: number | null;
-}
-
-function pct(v: number): string {
-  return `${Math.round(v * 100)}%`;
 }
 
 export function ConfidenceRangeFilter({

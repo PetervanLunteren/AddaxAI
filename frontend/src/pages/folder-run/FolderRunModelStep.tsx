@@ -79,11 +79,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
-import { DEFAULT_CLASSIFICATION_GATE } from "../../lib/confidence";
+import { DEFAULT_CLASSIFICATION_GATE,
+  formatConfidencePct,
+} from "../../lib/confidence";
 import { ConfidenceSlider } from "../../components/ui/confidence-slider";
 import { SETTING_CAPTIONS } from "../../lib/settingCaptions";
-import { Slider } from "../../components/ui/slider";
-import { Switch } from "../../components/ui/switch";
 import {
   Tooltip,
   TooltipContent,
@@ -1143,7 +1143,7 @@ export function FolderRunModelStep() {
                             onChange={(vals) => field.onChange(vals[0])}
                             valueLabel={
                               <span className="min-w-[3.5rem] shrink-0 text-right text-sm font-medium">
-                                {field.value.toFixed(2)}
+                                {formatConfidencePct(field.value)}
                               </span>
                             }
                           />

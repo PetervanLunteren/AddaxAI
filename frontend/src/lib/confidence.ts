@@ -22,6 +22,15 @@
  * ConfidenceSlider component.
  */
 
+/**
+ * Render a 0-1 confidence as a whole-percent string for display
+ * (sliders, captions). Mirrors the backend format_confidence_pct. Data
+ * (URL params, API payloads, exports) keeps the raw 0-1 value.
+ */
+export function formatConfidencePct(value: number): string {
+  return `${Math.round(value * 100)}%`;
+}
+
 export const MD_OUTPUT_CONFIDENCE_THRESHOLD = 0.005;
 export const DEFAULT_CLASSIFICATION_GATE = 0.1;
 export const DEFAULT_COUNTING_THRESHOLD = 0.2;

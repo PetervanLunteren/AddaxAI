@@ -1,6 +1,7 @@
 import {
   DEFAULT_CLASSIFICATION_GATE,
   DEFAULT_COUNTING_THRESHOLD,
+  formatConfidencePct,
 } from "./confidence";
 
 /**
@@ -18,11 +19,11 @@ export const SETTING_CAPTIONS = {
   detectionThreshold:
     "Hide detections below this confidence score from counts and views. " +
     "Verified observations are always included. " +
-    `The default is ${DEFAULT_COUNTING_THRESHOLD}.`,
+    `The default is ${formatConfidencePct(DEFAULT_COUNTING_THRESHOLD)}.`,
   classificationGate:
     "Detections below this confidence are not identified to species and " +
     "skip label review, but are still saved and exported. " +
-    `The default is ${DEFAULT_CLASSIFICATION_GATE}.`,
+    `The default is ${formatConfidencePct(DEFAULT_CLASSIFICATION_GATE)}.`,
   videoFrameRate:
     "How many frames per second to extract from videos for detection. Higher values find more but take longer. One frame per second is a good default.",
   independenceInterval:

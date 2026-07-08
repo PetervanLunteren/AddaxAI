@@ -53,6 +53,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app import __version__ as APP_VERSION
+from app.core.confidence import format_confidence_pct
 from app.core.logging_config import get_logger
 from app.models import Deployment, Detection, File, Project
 
@@ -330,13 +331,13 @@ def _compute_pill_layout(
     has_label = bool(detection.label)
     category_text = (
         f"{detection.category.capitalize()} "
-        f"{int(round(detection.confidence * 100))}%"
+        f"{format_confidence_pct(detection.confidence)}"
     )
     if has_label:
         species_name = _pill_name(detection, name_mode)
         label_text = (
             f"{species_name[:1].upper()}{species_name[1:]} "
-            f"{int(round((detection.label_confidence or detection.confidence) * 100))}%"
+            f"{format_confidence_pct(detection.label_confidence or detection.confidence)}"
         )
         pill_height = (
             m.pad_y + m.font_sm + m.line_gap + m.font_lg + m.pad_y

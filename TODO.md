@@ -1,6 +1,5 @@
 # TODO
 
-There are errors on the github pages on every push... investigate. 
 
 The confidence sliders and threhsold values thourghout the app are incosistemtly percentages and 0-1 values. AUdit and make it all percentages. That means all user facing stuff like info captions, sliders, visualisation thngs on images and videos, etc. 
 

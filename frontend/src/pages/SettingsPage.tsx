@@ -13,7 +13,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Save, RotateCcw, Undo2, Check, RefreshCw, X } from "lucide-react";
+import { Save, RotateCcw, Undo2, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { invalidateModelMetadata, modelsApi } from "../api/models";
@@ -66,8 +66,6 @@ import {
   DialogTitle,
 } from "../components/ui/dialog";
 import { Button } from "../components/ui/button";
-import { Slider } from "../components/ui/slider";
-import { Switch } from "../components/ui/switch";
 import {
   Card,
   CardContent,
@@ -85,6 +83,7 @@ import {
 import {
   DEFAULT_CLASSIFICATION_GATE,
   DEFAULT_COUNTING_THRESHOLD,
+  formatConfidencePct,
 } from "../lib/confidence";
 import { ConfidenceSlider } from "../components/ui/confidence-slider";
 import { SETTING_CAPTIONS } from "../lib/settingCaptions";
@@ -1144,7 +1143,7 @@ export default function SettingsPage() {
                           value={field.value}
                           onChange={(vals) => field.onChange(vals[0])}
                           valueLabel={
-                            <span className="text-sm font-medium min-w-[3.5rem] shrink-0 text-right">{field.value.toFixed(2)}</span>
+                            <span className="text-sm font-medium min-w-[3.5rem] shrink-0 text-right">{formatConfidencePct(field.value)}</span>
                           }
                         />
                         <FormMessage />
@@ -1170,7 +1169,7 @@ export default function SettingsPage() {
                           value={field.value}
                           onChange={(vals) => field.onChange(vals[0])}
                           valueLabel={
-                            <span className="text-sm font-medium min-w-[3rem] shrink-0 text-right">{field.value.toFixed(2)}</span>
+                            <span className="text-sm font-medium min-w-[3rem] shrink-0 text-right">{formatConfidencePct(field.value)}</span>
                           }
                         />
                         <FormMessage />

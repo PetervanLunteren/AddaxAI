@@ -39,3 +39,10 @@ DEFAULT_COUNTING_THRESHOLD = 0.2
 # app/ml/taxonomic_rollup.py default to this; it lives here so all
 # confidence policy sits in one file.
 ROLLUP_THRESHOLD = 0.65
+
+
+def format_confidence_pct(value: float) -> str:
+    """Render a 0-1 confidence as a whole-percent string for humans
+    (sliders, captions, the run README, drawn boxes). Data files keep
+    the raw 0-1 value."""
+    return f"{round(value * 100)}%"
