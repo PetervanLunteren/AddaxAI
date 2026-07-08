@@ -299,3 +299,21 @@ def test_reprocess_accepts_folder_run_projects(client, db):
         resp = client.post(f"/api/projects/{p.id}/reprocess")
     assert resp.status_code == 202
     assert "job_id" in resp.json()
+
+
+def test_re_embed_accepts_min_confidence_override(client, db):
+    """The labels grid's unprocessed-range banner backfills embeddings
+    below the classification gate; the override rides on the job
+    payload."""
+    from app.models import Job
+
+    p = make_project(db, embedding_model_id="DINOV2-VITB14")
+    with patch("app.api.routers.projects.ws_manager"):
+        resp = client.post(
+            f"/api/projects/{p.id}/re-embed",
+            json={"min_confidence": 0.02},
+        )
+    assert resp.status_code == 202
+    job_id = resp.json()["job_id"]
+    job = db.get(Job, job_id)
+    assert job.payload["min_confidence"] == 0.02

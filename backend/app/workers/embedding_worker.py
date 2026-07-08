@@ -139,7 +139,12 @@ async def process_re_embedding_job(job_id: str) -> None:
                 input_data = build_embedding_input(
                     deployment.id,
                     db,
-                    min_confidence=project.classification_gate,
+                    # A per-job override (the labels grid's backfill for
+                    # a below-gate range) beats the project gate.
+                    min_confidence=(
+                        payload.get("min_confidence")
+                        or project.classification_gate
+                    ),
                     skip_detection_ids=already_embedded,
                 )
                 if not input_data["detections"]:

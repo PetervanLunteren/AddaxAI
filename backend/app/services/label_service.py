@@ -235,12 +235,20 @@ def _apply_project_threshold(
     rule shared with events / files. The user's `min_confidence` slider
     stays untouched and is applied LITERALLY by the subprocess so a
     verified low-confidence detection cannot bypass a narrow user range.
+
+    A user min *below* the project threshold deliberately digs into the
+    low-confidence tail (the grid's range slider is unclamped), so the
+    floor follows it down: the grid then shows whatever exists there.
+    Detections in that tail that were never embedded still cannot
+    appear — the banner above the grid reports them and offers the
+    backfill.
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if project:
-        filters = filters.model_copy(
-            update={"project_floor": project.detection_threshold}
-        )
+        floor = project.detection_threshold
+        if filters.min_confidence is not None:
+            floor = min(floor, filters.min_confidence)
+        filters = filters.model_copy(update={"project_floor": floor})
     return filters
 
 

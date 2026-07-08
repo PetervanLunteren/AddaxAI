@@ -1267,6 +1267,56 @@ export function LabelsTab({
     }
   };
 
+  // ── Unprocessed low-confidence tail ─────────────────────────────
+  // MegaDetector runs untresholded; detections below the run's
+  // classification gate were deliberately never embedded, so they
+  // cannot appear in this grid. When the user's range slider digs
+  // below the gate, count what exists there and offer the backfill.
+  // Purely data-driven (embedding-existence, not settings), so it is
+  // also correct for projects whose deployments ran under different
+  // gates.
+  const classificationGate = project?.classification_gate ?? 0.1;
+  const detectionFloorValue = project?.detection_threshold ?? 0;
+  const effectiveFloor = Math.min(
+    detectionFloorValue,
+    lblFilters.min_confidence ?? detectionFloorValue,
+  );
+  const unprocessedRangeMax = Math.min(
+    classificationGate,
+    lblFilters.max_confidence ?? 1,
+  );
+  const { data: unprocessed } = useQuery({
+    queryKey: [
+      "labels-unprocessed",
+      projectId,
+      effectiveFloor,
+      unprocessedRangeMax,
+    ],
+    queryFn: () =>
+      labelsApi.unprocessedCount(
+        projectId,
+        Math.max(effectiveFloor, 0.005),
+        unprocessedRangeMax,
+      ),
+    enabled:
+      !!project?.embedding_model_id &&
+      effectiveFloor < classificationGate,
+  });
+  const unprocessedCount = unprocessed?.count ?? 0;
+
+  const handleProcessUnprocessed = async () => {
+    try {
+      const { job_id } = await projectsApi.reEmbed(projectId, {
+        min_confidence: Math.max(effectiveFloor, 0.005),
+      });
+      setReEmbedJobId(job_id);
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to start processing",
+      );
+    }
+  };
+
   return (
     <div className="space-y-4">
       <VerifyFilterBar
@@ -1277,6 +1327,7 @@ export function LabelsTab({
         detectionFloor={project?.detection_threshold ?? 0}
         countBy="detection"
         showLikedFlaggedEmpty={false}
+        confidenceFloorMode="open"
       />
 
       {/* Warning when embeddings are incomplete */}
@@ -1293,6 +1344,31 @@ export function LabelsTab({
           }
         >
           This grid only shows detections that have an embedding, no matter which sort mode you pick. Embeddings can be missing when embedding was switched off in settings, an error occurred during analysis, or detections were added manually via event verification. Click 'Embed now' to fix this.
+        </Callout>
+      )}
+
+      {/* Unprocessed low-confidence tail in the selected range */}
+      {unprocessedCount > 0 && (
+        <Callout
+          variant="info"
+          title={`${unprocessedCount.toLocaleString()} more detection${
+            unprocessedCount !== 1 ? "s" : ""
+          } available in this confidence range`}
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={handleProcessUnprocessed}
+            >
+              Process now
+            </Button>
+          }
+        >
+          These detections sit below the confidence at which this
+          analysis identified species, so they were never processed for
+          review. Process them to show them here as unlabeled animals.
+          Your data exports include them either way.
         </Callout>
       )}
 

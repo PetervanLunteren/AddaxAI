@@ -245,6 +245,15 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
             "now runs untresholded)"
         ),
     ),
+    _Fingerprint(
+        revision="d6e7f8a9b0c1",
+        table="deployments",
+        column="classification_gate_used",
+        description=(
+            "add deployments.classification_gate_used (per-run audit "
+            "of the gate an analysis ran with, for mixed-gate projects)"
+        ),
+    ),
 )
 
 

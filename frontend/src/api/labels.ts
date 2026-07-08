@@ -170,6 +170,21 @@ export const labelsApi = {
     );
   },
 
+  /** Count detections in a confidence range that could appear in the
+   * grid after an embedding backfill but currently cannot (embeddable,
+   * yet no embedding for the current model). Drives the "unprocessed
+   * detections" banner. */
+  unprocessedCount: async (
+    projectId: string,
+    minConfidence: number,
+    maxConfidence: number,
+  ): Promise<{ count: number }> => {
+    return api.get<{ count: number }>(
+      `/api/projects/${projectId}/labels/unprocessed-count` +
+        `?min_confidence=${minConfidence}&max_confidence=${maxConfidence}`,
+    );
+  },
+
   /** Get embedding coverage stats for a project. */
   stats: async (projectId: string): Promise<LabelStatsResponse> => {
     return api.get<LabelStatsResponse>(

@@ -82,6 +82,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
+import { ConfidenceSlider } from "../components/ui/confidence-slider";
 import { SETTING_CAPTIONS } from "../lib/settingCaptions";
 import { ClassificationModelGroupedItems } from "../components/models/ClassificationModelGroupedItems";
 import { BatchSizeRow } from "../components/analyses/BatchSizeRow";
@@ -107,7 +108,7 @@ const settingsSchema = z.object({
   timezone: z.string(),
   video_fps: z.number().min(0.1).max(10),
   detection_threshold: z.number().min(0).max(1),
-  classification_gate: z.number().min(0.005).max(1),
+  classification_gate: z.number().min(0.01).max(1),
   event_smoothing: z.boolean(),
   smoothing_strength: z.enum(["mild", "normal", "aggressive"]),
   taxonomic_rollup: z.boolean(),
@@ -1139,16 +1140,12 @@ export default function SettingsPage() {
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <Slider
-                            min={0.005}
-                            max={1.0}
-                            step={0.005}
-                            value={[field.value]}
-                            onValueChange={(vals) => field.onChange(vals[0])}
-                            className="flex-1 mr-4"
+                        <div className="flex items-center justify-between gap-4">
+                          <ConfidenceSlider
+                            value={field.value}
+                            onChange={(vals) => field.onChange(vals[0])}
                           />
-                          <span className="text-sm font-medium min-w-[3.5rem] text-right">{field.value.toFixed(3)}</span>
+                          <span className="text-sm font-medium min-w-[3.5rem] text-right">{field.value.toFixed(2)}</span>
                         </div>
                         <FormMessage />
                       </div>
@@ -1169,14 +1166,10 @@ export default function SettingsPage() {
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <Slider
-                            min={0.1}
-                            max={1.0}
-                            step={0.01}
-                            value={[field.value]}
-                            onValueChange={(vals) => field.onChange(vals[0])}
-                            className="flex-1 mr-4"
+                        <div className="flex items-center justify-between gap-4">
+                          <ConfidenceSlider
+                            value={field.value}
+                            onChange={(vals) => field.onChange(vals[0])}
                           />
                           <span className="text-sm font-medium min-w-[3rem] text-right">{field.value.toFixed(2)}</span>
                         </div>

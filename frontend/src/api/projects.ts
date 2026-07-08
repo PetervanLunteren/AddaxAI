@@ -129,9 +129,10 @@ export const projectsApi = {
   /**
    * Re-embed all detections with the current embedding model
    */
-  reEmbed: (id: string) =>
+  reEmbed: (id: string, body?: { min_confidence?: number }) =>
     api.post<{ message: string; job_id: string | null }>(
-      `/api/projects/${id}/re-embed`
+      `/api/projects/${id}/re-embed`,
+      body ?? {}
     ),
 
   /**

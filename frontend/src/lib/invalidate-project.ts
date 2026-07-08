@@ -33,6 +33,7 @@ export function invalidateProjectData(
     ["project-label-stats"],
     ["observations-stats", projectId],
     ["observation-rate-map", projectId],
+    ["labels-unprocessed", projectId],
   ];
   for (const queryKey of keys) {
     void queryClient.invalidateQueries({ queryKey });

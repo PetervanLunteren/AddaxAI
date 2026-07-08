@@ -12,7 +12,7 @@ import uuid
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -85,6 +85,15 @@ class Deployment(Base):
     # not used in queries. NULL = no offset was applied.
     datetime_offset_seconds: Mapped[int | None] = mapped_column(
         Integer, nullable=True
+    )
+
+    # Audit: the classification gate this deployment was analysed with
+    # (the project's value at run time). The project-level setting can
+    # change between runs, so mixed-gate projects need the per-run
+    # record to explain what was classified / embedded and why.
+    # Informational only, not used in queries. NULL = pre-gate analysis.
+    classification_gate_used: Mapped[float | None] = mapped_column(
+        Float, nullable=True
     )
 
     # Non-fatal issues encountered during analysis. List of typed dicts

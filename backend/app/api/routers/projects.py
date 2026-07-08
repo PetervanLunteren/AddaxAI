@@ -14,6 +14,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -1315,12 +1316,27 @@ def _delete_project_embeddings(db: Session, project_id: str) -> int:
     return count
 
 
+class ReEmbedRequest(BaseModel):
+    """Optional body for POST /{project_id}/re-embed.
+
+    ``min_confidence`` overrides the project's classification gate as
+    the embedding floor for this one job. The labels grid's
+    "unprocessed detections" banner uses it to backfill embeddings for
+    a below-gate confidence range the user chose to review; detections
+    already embedded are skipped as usual, so the job only adds the
+    missing tail.
+    """
+
+    min_confidence: float | None = Field(None, ge=0.005, le=1.0)
+
+
 @router.post(
     "/{project_id}/re-embed",
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def re_embed_detections(
     project_id: str,
+    payload: ReEmbedRequest | None = None,
     db: Session = Depends(get_db),
 ) -> dict:
     """
@@ -1353,6 +1369,7 @@ async def re_embed_detections(
         payload={
             "project_id": project_id,
             "embedding_model_id": embedding_model_id,
+            "min_confidence": payload.min_confidence if payload else None,
         },
     )
     job = crud_job.create_job(db, job_data)

@@ -222,6 +222,12 @@ def test_init_db_repairs_db_stamped_at_wrong_revision(
         conn.execute(
             text("ALTER TABLE projects DROP COLUMN classification_gate")
         )
+        # deployments.classification_gate_used was added by d6e7f8a9b0c1.
+        conn.execute(
+            text(
+                "ALTER TABLE deployments DROP COLUMN classification_gate_used"
+            )
+        )
 
     # alembic_version row stays at head — that is exactly the bug.
     assert get_current_revision(engine) == head

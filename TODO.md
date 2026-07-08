@@ -1,21 +1,5 @@
 # TODO
 
-
-Why dont we follow Dans advice here exactly? That means:
-
-golabally (on every MD call, independent of mode): running MD with no confidence threshold (other than the internal default)
-
-in folder mode:
-- Detection confidence threshold above which the classifier gets run (0.1 is a good default here) under the advanced settings of step 1
-- Detection confidence threshold for what gets used in counting/visualization (0.2 is a good default here) under the media export options at step 3 (already implemented AFAIK)
-
-In proects mode:
-- Detection confidence threshold above which the classifier gets run (0.1 is a good default here) under the projects settings page
-- Detection confidence threshold for what gets used in counting/visualization (0.2 is a good default here) in the project settings page
-
-Leave the classification threholding for now as is. 
-
-
 "Also used as the starting point for your next run." is not needed. Users dont need to kow that some of this also is used by the inference time. Perhaps this will suffice: "Applies to the results below without re-running the models. "
 
 Do we need to rename it from Ananlsysis settings to something else? Perhaps Analysis preferences? IDK probabaly not that. I'm just thjinking that thjere are many settings here.... at step 1, advanced at step 1, analysis settings at step 2, settings inside projects, settings in the save steps itself etc. What do yoiu think?

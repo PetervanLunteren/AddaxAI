@@ -81,6 +81,10 @@ interface VerifyFilterBarProps {
   /** Whether the More popover renders the liked / flagged / empty
    *  selects. False on the Labels page (those don't apply there). */
   showLikedFlaggedEmpty?: boolean;
+  /** Detection-confidence slider floor behaviour: "clamp" (Counts,
+   *  stops at the project threshold with a reason) or "open" (Labels,
+   *  full scale so the user can dig into the low-confidence tail). */
+  confidenceFloorMode?: "clamp" | "open";
 }
 
 export function VerifyFilterBar({
@@ -92,6 +96,7 @@ export function VerifyFilterBar({
   countBy,
   verificationOptions,
   showLikedFlaggedEmpty = true,
+  confidenceFloorMode = "clamp",
 }: VerifyFilterBarProps) {
   const [labelModalOpen, setLabelModalOpen] = useState(false);
 
@@ -277,6 +282,12 @@ export function VerifyFilterBar({
             filters={filters}
             onChange={onChange}
             detectionFloor={detectionFloor}
+            confidenceFloorMode={confidenceFloorMode}
+            clampReason={
+              `Counting uses the project's detection threshold ` +
+              `(currently ${Math.round(detectionFloor * 100)}%). ` +
+              `Adjust it in the project settings.`
+            }
             showClassification={!!classificationModelId}
             showLikedFlaggedEmpty={showLikedFlaggedEmpty}
           />

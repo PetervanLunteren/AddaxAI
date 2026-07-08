@@ -35,8 +35,13 @@ import type {
 interface VerifyMoreFiltersProps {
   filters: EventFilterParams;
   onChange: (next: EventFilterParams) => void;
-  /** Project's detection_threshold; clamps the floor of the det slider. */
+  /** Project's detection_threshold; the det slider's resting floor. */
   detectionFloor?: number;
+  /** Whether the det slider's low handle stops at the floor ("clamp",
+   * Counts) or goes down the full scale ("open", Labels). */
+  confidenceFloorMode?: "clamp" | "open";
+  /** Reason shown while the handle rests on a clamped floor. */
+  clampReason?: string;
   /** When false, the classification slider is hidden (no cls model). */
   showClassification?: boolean;
   /** Render the liked / flagged / empty selects. False on Observations. */
@@ -47,6 +52,8 @@ export function VerifyMoreFilters({
   filters,
   onChange,
   detectionFloor = 0,
+  confidenceFloorMode = "clamp",
+  clampReason,
   showClassification = false,
   showLikedFlaggedEmpty = true,
 }: VerifyMoreFiltersProps) {
@@ -174,6 +181,8 @@ export function VerifyMoreFilters({
           filters={filters}
           onChange={onChange}
           detectionFloor={detectionFloor}
+          floorMode={confidenceFloorMode}
+          clampReason={clampReason}
           showClassification={showClassification}
         />
       </PopoverContent>

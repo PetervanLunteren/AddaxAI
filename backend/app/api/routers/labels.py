@@ -110,6 +110,63 @@ async def cohorts(
     return StreamingResponse(stream, media_type="application/x-ndjson")
 
 
+@router.get("/{project_id}/labels/unprocessed-count")
+def get_unprocessed_count(
+    project_id: str,
+    min_confidence: float = 0.005,
+    max_confidence: float = 1.0,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Count detections in a confidence range that could appear in the
+    labels grid after an embedding backfill, but currently cannot: they
+    are embeddable (bbox, on an embeddable surface) yet have no
+    embedding for the project's current embedding model.
+
+    Drives the grid's "unprocessed detections" banner. Purely
+    data-driven, so it stays correct for projects whose deployments
+    were analysed under different classification gates: whatever the
+    historical gate was, an un-embedded detection shows up here.
+    """
+    from sqlalchemy import and_, exists, or_
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    embedding_model_id = project.embedding_model_id if project else None
+    if not embedding_model_id:
+        # No embedding model: the grid cannot show anything either way,
+        # and the existing "Embed now" callout owns that situation.
+        return {"count": 0}
+
+    has_bbox = Detection.bbox_x.isnot(None)
+    on_embeddable_surface = or_(
+        File.file_type == "image",
+        and_(
+            File.file_type == "video",
+            Detection.frame_number == File.best_frame_number,
+        ),
+    )
+    has_embedding = exists().where(
+        and_(
+            DetectionEmbedding.detection_id == Detection.id,
+            DetectionEmbedding.embedding_model_id == embedding_model_id,
+        )
+    )
+
+    count = (
+        db.query(func.count(Detection.id))
+        .join(File, File.id == Detection.file_id)
+        .join(Deployment, Deployment.id == File.deployment_id)
+        .filter(Deployment.project_id == project_id)
+        .filter(has_bbox)
+        .filter(on_embeddable_surface)
+        .filter(~has_embedding)
+        .filter(Detection.confidence >= min_confidence)
+        .filter(Detection.confidence <= max_confidence)
+        .scalar()
+    ) or 0
+
+    return {"count": int(count)}
+
+
 @router.get(
     "/{project_id}/labels/stats",
     response_model=LabelStatsResponse,
@@ -145,12 +202,24 @@ def get_label_stats(
     )
     embeddable_clause = and_(has_bbox, on_embeddable_surface)
 
+    # Only detections at or above the classification gate (or verified)
+    # are SUPPOSED to be embedded — MegaDetector runs untresholded, so
+    # the below-gate tail is deliberately unprocessed and must not
+    # count as "missing" here (the grid's separate unprocessed-range
+    # banner owns that population, with its own backfill action).
+    gate = project.classification_gate if project else 0.1
+    above_gate_or_verified = or_(
+        Detection.confidence >= gate,
+        Detection.verified == True,  # noqa: E712
+    )
+
     total = (
         db.query(func.count(Detection.id))
         .join(File, File.id == Detection.file_id)
         .join(Deployment, Deployment.id == File.deployment_id)
         .filter(Deployment.project_id == project_id)
         .filter(embeddable_clause)
+        .filter(above_gate_or_verified)
         .scalar()
     ) or 0
 

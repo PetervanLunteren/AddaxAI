@@ -246,10 +246,14 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 notes=entry.notes,
                 tags=entry.tags or {},
             )
-            # Store the datetime offset on the deployment for audit
+            # Audit stamps: the datetime offset applied to timestamps,
+            # and the classification gate this analysis runs under (the
+            # project value can change later; mixed-gate projects need
+            # the per-run record).
             if datetime_offset_seconds:
                 deployment.datetime_offset_seconds = datetime_offset_seconds
-                db.commit()
+            deployment.classification_gate_used = project.classification_gate
+            db.commit()
             logger.info(f"Created deployment: {deployment.id}")
 
             # Create project-scoped artifacts folder

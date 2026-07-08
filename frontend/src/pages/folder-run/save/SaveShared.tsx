@@ -18,7 +18,7 @@ import {
 import { Button } from "../../../components/ui/button";
 import { Callout } from "../../../components/ui/callout";
 import { Card, CardContent } from "../../../components/ui/card";
-import { Slider } from "../../../components/ui/slider";
+import { ConfidenceSlider } from "../../../components/ui/confidence-slider";
 import {
   Dialog,
   DialogContent,
@@ -208,16 +208,12 @@ export function MediaBody({
             The data files always include everything.
           </span>
         </span>
-        <div className="flex items-center justify-between">
-          <Slider
-            min={0.1}
-            max={1.0}
-            step={0.01}
-            value={[separate.mediaConfidence]}
-            onValueChange={(vals) =>
+        <div className="flex items-center justify-between gap-4">
+          <ConfidenceSlider
+            value={separate.mediaConfidence}
+            onChange={(vals) =>
               setSeparate({ ...separate, mediaConfidence: vals[0] })
             }
-            className="mr-4 flex-1"
           />
           <span className="min-w-[3rem] text-right text-sm font-medium">
             {separate.mediaConfidence.toFixed(2)}

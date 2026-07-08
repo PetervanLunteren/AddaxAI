@@ -79,6 +79,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
+import { ConfidenceSlider } from "../../components/ui/confidence-slider";
 import { SETTING_CAPTIONS } from "../../lib/settingCaptions";
 import { Slider } from "../../components/ui/slider";
 import { Switch } from "../../components/ui/switch";
@@ -155,7 +156,7 @@ const settingsSchema = z.object({
   classification_batch_size: z.number().int().min(1).max(256).nullable(),
   embedding_batch_size: z.number().int().min(1).max(256).nullable(),
   video_fps: z.number().min(0.1).max(10),
-  classification_gate: z.number().min(0.005).max(1),
+  classification_gate: z.number().min(0.01).max(1),
   event_smoothing: z.boolean(),
   smoothing_strength: z.enum(["mild", "normal", "aggressive"]),
   taxonomic_rollup: z.boolean(),
@@ -1136,19 +1137,13 @@ export function FolderRunModelStep() {
                           label="Classify detections above"
                           description={SETTING_CAPTIONS.classificationGate}
                         >
-                          <div className="flex items-center justify-between">
-                            <Slider
-                              min={0.005}
-                              max={1.0}
-                              step={0.005}
-                              value={[field.value]}
-                              onValueChange={(vals) =>
-                                field.onChange(vals[0])
-                              }
-                              className="mr-4 flex-1"
+                          <div className="flex items-center justify-between gap-4">
+                            <ConfidenceSlider
+                              value={field.value}
+                              onChange={(vals) => field.onChange(vals[0])}
                             />
                             <span className="min-w-[3.5rem] text-right text-sm font-medium">
-                              {field.value.toFixed(3)}
+                              {field.value.toFixed(2)}
                             </span>
                           </div>
                           <FormMessage />

@@ -139,3 +139,59 @@ def test_search_observations_error(client, db):
             json={"anchor_detection_id": "abc", "filters": {}},
         )
     assert resp.status_code == 503
+
+
+def test_unprocessed_count_counts_unembedded_in_range(client, db):
+    """The labels grid's "unprocessed detections" banner counts
+    embeddable detections in a confidence range that have no embedding
+    for the project's current embedding model. Data-driven, so it is
+    correct whatever classification gate each deployment ran under."""
+    import uuid as _uuid
+
+    import numpy as np
+
+    from app.models.detection_embedding import DetectionEmbedding
+    from tests.conftest import make_deployment, make_detection, make_file
+
+    p = make_project(db, embedding_model_id="DINOV2-VITB14")
+    dep = make_deployment(db, project_id=p.id)
+    f = make_file(db, deployment_id=dep.id, observation_type="animal")
+    common = dict(
+        file_id=f.id, category="animal",
+        bbox_x=0.1, bbox_y=0.1, bbox_width=0.2, bbox_height=0.2,
+    )
+    # In range, unembedded -> counted.
+    make_detection(db, confidence=0.05, **common)
+    make_detection(db, confidence=0.08, **common)
+    # In range but embedded -> not counted.
+    d_embedded = make_detection(db, confidence=0.06, **common)
+    db.add(DetectionEmbedding(
+        id=str(_uuid.uuid4()),
+        detection_id=d_embedded.id,
+        embedding_model_id="DINOV2-VITB14",
+        vector=np.zeros(4, dtype=np.float16).tobytes(),
+        dimension=4,
+        l2_norm=0.0,
+    ))
+    # Out of range -> not counted.
+    make_detection(db, confidence=0.5, **common)
+    db.flush()
+
+    resp = client.get(
+        f"/api/projects/{p.id}/labels/unprocessed-count"
+        f"?min_confidence=0.01&max_confidence=0.1"
+    )
+    assert resp.status_code == 200
+    assert resp.json()["count"] == 2
+
+
+def test_unprocessed_count_zero_without_embedding_model(client, db):
+    p = make_project(db)
+    p.embedding_model_id = None
+    db.flush()
+    resp = client.get(
+        f"/api/projects/{p.id}/labels/unprocessed-count"
+        f"?min_confidence=0.01&max_confidence=1.0"
+    )
+    assert resp.status_code == 200
+    assert resp.json()["count"] == 0
