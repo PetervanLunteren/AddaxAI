@@ -62,9 +62,13 @@ function valuesFromProject(project: ProjectResponse): AnalysisSettingsValues {
 export function AnalysisSettingsButton({
   runId,
   project,
+  onApplied,
 }: {
   runId: string;
   project: ProjectResponse;
+  /** Fired after settings are applied (and any reprocess finished), so
+   *  the host can re-run the grid's sort onto the new labels. */
+  onApplied?: () => void;
 }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -84,6 +88,10 @@ export function AnalysisSettingsButton({
   const finish = () => {
     invalidateProjectData(queryClient, runId);
     queryClient.invalidateQueries({ queryKey: ["folder-run", runId] });
+    // The grid renders from a streaming sort mutation, not a query, so
+    // query invalidation alone won't refresh it. Tell the host to
+    // re-sort onto the reprocessed labels.
+    onApplied?.();
     toast.success("Analysis settings applied");
   };
 

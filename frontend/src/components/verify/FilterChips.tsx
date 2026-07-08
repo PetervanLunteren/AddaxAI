@@ -20,7 +20,7 @@ export function hasAnyActiveFilter(filters: EventFilterParams): boolean {
     (!!filters.verification && filters.verification !== "all") ||
     (!!filters.flagged && filters.flagged !== "all") ||
     (!!filters.favorited && filters.favorited !== "all") ||
-    (!!filters.empty && filters.empty !== "all") ||
+    (!!filters.empty && filters.empty !== "hide") ||
     filters.min_confidence !== undefined ||
     filters.max_confidence !== undefined ||
     filters.min_label_confidence !== undefined ||
@@ -71,7 +71,7 @@ const FAVORITED_LABELS: Record<string, string> = {
 
 const EMPTY_LABELS: Record<string, string> = {
   show_only: "Empty only",
-  hide: "No empty",
+  all: "Including empty",
 };
 
 
@@ -173,15 +173,16 @@ export function FilterChips({
     });
   }
 
-  // Empty chip. "hide" is the implicit default (shown as a removable
-  // chip like the Counts "Unconfirmed" default); removing it means
-  // "show everything", which must be set to "all" explicitly because
-  // undefined falls back to the "hide" default.
-  if (filters.empty && filters.empty !== "all") {
+  // Empty chip. "hide" is the implicit default (hide blank captures),
+  // so it renders no chip — a default is not a filter. Only a
+  // deviation ("Including empty" / "Empty only") shows, and removing it
+  // resets to the "hide" default (set explicitly because undefined also
+  // falls back to "hide").
+  if (filters.empty && filters.empty !== "hide") {
     chips.push({
       key: "empty",
       label: EMPTY_LABELS[filters.empty] ?? filters.empty,
-      onRemove: () => onChange({ ...filters, empty: "all" }),
+      onRemove: () => onChange({ ...filters, empty: "hide" }),
     });
   }
 

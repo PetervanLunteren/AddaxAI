@@ -25,6 +25,9 @@ export interface LabelsViewProps {
   /** Forwarded to LabelsTab: the grid's default min-confidence floor
    *  (a default, not a filter). */
   defaultMinConfidence?: number;
+  /** Forwarded to LabelsTab: bump to force a re-sort onto refreshed
+   *  labels (e.g. after a reprocess). */
+  refreshSignal?: number;
 }
 
 export function LabelsView({
@@ -32,6 +35,7 @@ export function LabelsView({
   onSelectionChange,
   toolbarExtra,
   defaultMinConfidence,
+  refreshSignal,
 }: LabelsViewProps) {
   const { data: project } = useQuery({
     queryKey: ["project", projectId],
@@ -45,6 +49,7 @@ export function LabelsView({
       onSelectionChange={onSelectionChange}
       toolbarExtra={toolbarExtra}
       defaultMinConfidence={defaultMinConfidence}
+      refreshSignal={refreshSignal}
     />
   );
 }

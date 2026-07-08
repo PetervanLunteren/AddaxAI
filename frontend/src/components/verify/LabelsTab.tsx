@@ -18,6 +18,10 @@ import {
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  FILTER_DEBOUNCE_MS,
+  useDebouncedValue,
+} from "../../hooks/useDebouncedValue";
+import {
   AlertTriangle,
   Check,
   CircleHelp,
@@ -121,6 +125,9 @@ interface LabelsTabProps {
    *  a chip, count in the More badge, or react to "Clear all". The
    *  slider rests at it. */
   defaultMinConfidence?: number;
+  /** Bumping this re-runs the sort even when filters are unchanged.
+   *  Used to refresh the grid after a reprocess rewrites labels. */
+  refreshSignal?: number;
 }
 
 // ── Labels filter state (independent from Events / Files filters) ──
@@ -356,6 +363,7 @@ export function LabelsTab({
   onSelectionChange,
   toolbarExtra,
   defaultMinConfidence,
+  refreshSignal,
 }: LabelsTabProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -624,16 +632,26 @@ export function LabelsTab({
   // in the view-options popover triggers a fresh sort with the new
   // candidate pool — otherwise the old result would stay stale.
   const filtersKey = JSON.stringify(toLabelFilters(effectiveLblFilters));
-  const sortKey = `${filtersKey}|${lblSort}|${maxDetections}`;
+  const sortKey =
+    `${filtersKey}|${lblSort}|${maxDetections}|${refreshSignal ?? 0}`;
   const lastSortKeyRef = useRef<string | null>(null);
 
-  // Auto-sort on mount and when filters or sort mode change.
+  // Debounce the key so a slider drag (or any rapid filter change)
+  // fires ONE sort after it settles, not a subprocess spawn per step.
+  // Matches the Counts page's debounced filters. The handle, % readout,
+  // chips, and URL all update live off the undebounced state.
+  const debouncedSortKey = useDebouncedValue(sortKey, FILTER_DEBOUNCE_MS);
+
+  // Auto-sort on mount and when filters or sort mode settle.
   useEffect(() => {
-    if (stats?.embedded_detections && sortKey !== lastSortKeyRef.current) {
-      lastSortKeyRef.current = sortKey;
+    if (
+      stats?.embedded_detections &&
+      debouncedSortKey !== lastSortKeyRef.current
+    ) {
+      lastSortKeyRef.current = debouncedSortKey;
       sortMutation.mutate(lblSort);
     }
-  }, [sortKey, stats?.embedded_detections]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSortKey, stats?.embedded_detections]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Flat detection list for selection model
   const allDetections = useMemo((): DetectionSummary[] => {
@@ -760,6 +778,21 @@ export function LabelsTab({
     // Cascade to the Media / Events views (File.verified rollup) and the
     // verified-progress pill — see applyDetectionAction.
     queryClient.invalidateQueries({ queryKey: ["events"] });
+  }, [lblSort, queryClient, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Re-embed (Embed now / Process now) finished: the grid renders from
+   *  the sort mutation, so query invalidation alone can't show the newly
+   *  embedded detections. Refresh the embedding-coverage stats (note the
+   *  labels-stats key — invalidateProjectData uses a different one) and
+   *  the unprocessed-tail count, then re-run the sort so the new crops
+   *  appear without a hard refresh. */
+  const handleReEmbedComplete = useCallback(() => {
+    invalidateProjectData(queryClient, projectId);
+    queryClient.invalidateQueries({ queryKey: ["labels-stats", projectId] });
+    queryClient.invalidateQueries({
+      queryKey: ["labels-unprocessed", projectId],
+    });
+    sortMutation.mutate(lblSort);
   }, [lblSort, queryClient, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Patch detections in local state without refetching. */
@@ -1406,7 +1439,7 @@ export function LabelsTab({
         open={!!reEmbedJobId}
         onOpenChange={(open) => { if (!open) setReEmbedJobId(null); }}
         jobId={reEmbedJobId}
-        onComplete={() => invalidateProjectData(queryClient, projectId)}
+        onComplete={handleReEmbedComplete}
         onError={() => invalidateProjectData(queryClient, projectId)}
       />
 

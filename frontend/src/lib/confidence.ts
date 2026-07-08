@@ -25,3 +25,16 @@
 export const MD_OUTPUT_CONFIDENCE_THRESHOLD = 0.005;
 export const DEFAULT_CLASSIFICATION_GATE = 0.1;
 export const DEFAULT_COUNTING_THRESHOLD = 0.2;
+
+/**
+ * Detection-confidence noise advice, shared by every detection slider
+ * (the filter ranges and the save step's media slider). Frontend-only
+ * (UI copy, no backend mirror). The trigger value equals the counting
+ * default, so both move together if that default ever changes.
+ */
+export const DETECTION_CONFIDENCE_ADVICE = {
+  value: DEFAULT_COUNTING_THRESHOLD,
+  message:
+    "The lower the detection confidence, the more false positives to " +
+    "expect. Review with care.",
+} as const;

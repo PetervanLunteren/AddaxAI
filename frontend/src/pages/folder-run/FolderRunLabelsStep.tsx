@@ -29,6 +29,10 @@ export function FolderRunLabelsStep() {
   const queryClient = useQueryClient();
   const { runId, run, isLoading } = useFolderRun();
   const [editorOpen, setEditorOpen] = useState(false);
+  // Bumped when the analysis panel finishes an apply-and-reprocess, so
+  // the grid re-runs its sort onto the new labels (it renders from a
+  // mutation, which query invalidation cannot refresh).
+  const [reprocessNonce, setReprocessNonce] = useState(0);
   // Track bulk-selection size from the embedded LabelsView. While a
   // selection is live, the sticky Back / Continue bar is hidden so the
   // floating BulkActionBar has the bottom of the viewport to itself.
@@ -107,11 +111,22 @@ export function FolderRunLabelsStep() {
           <LabelsView
             projectId={runId}
             onSelectionChange={setSelectionCount}
-            defaultMinConfidence={DEFAULT_COUNTING_THRESHOLD}
+            // Rest the grid floor at the gate when it is higher than
+            // the counting default: below the gate nothing was
+            // embedded, so resting there would show fewer results than
+            // the floor implies AND trip the "unprocessed detections"
+            // banner on arrival. Dragging below the gate still works
+            // (and then the banner is a wanted offer, not a nag).
+            defaultMinConfidence={Math.max(
+              DEFAULT_COUNTING_THRESHOLD,
+              run.project.classification_gate,
+            )}
+            refreshSignal={reprocessNonce}
             toolbarExtra={
               <AnalysisSettingsButton
                 runId={runId}
                 project={run.project}
+                onApplied={() => setReprocessNonce((n) => n + 1)}
               />
             }
           />

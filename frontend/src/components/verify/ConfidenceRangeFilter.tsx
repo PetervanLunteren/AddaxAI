@@ -27,12 +27,8 @@ import {
   CONFIDENCE_SCALE_MIN,
   ConfidenceSlider,
 } from "../ui/confidence-slider";
-import { DEFAULT_COUNTING_THRESHOLD } from "../../lib/confidence";
+import { DETECTION_CONFIDENCE_ADVICE } from "../../lib/confidence";
 import type { EventFilterParams } from "../../api/types";
-
-// Below the counting default, most boxes are false positives. Purely
-// advisory: the slider still goes there, with a warning.
-const DETECTION_NOISE_ADVISORY = DEFAULT_COUNTING_THRESHOLD;
 
 interface ConfidenceRangeFilterProps {
   filters: EventFilterParams;
@@ -115,12 +111,7 @@ export function ConfidenceRangeFilter({
           value={[detMin, detMax]}
           effectiveMin={detEffectiveMin}
           clampReason={floorMode === "clamp" ? clampReason : undefined}
-          adviseBelow={{
-            value: DETECTION_NOISE_ADVISORY,
-            message:
-              "The lower the detection confidence, the more false " +
-              "positives to expect. Review with care.",
-          }}
+          adviseBelow={DETECTION_CONFIDENCE_ADVICE}
           valueLabel={
             <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
               {pct(detMin)} – {pct(detMax)}

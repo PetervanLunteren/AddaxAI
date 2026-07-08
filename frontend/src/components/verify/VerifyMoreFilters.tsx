@@ -78,7 +78,7 @@ export function VerifyMoreFilters({
   const activeCount =
     (showLikedFlaggedEmpty && filters.favorited && filters.favorited !== "all" ? 1 : 0) +
     (showLikedFlaggedEmpty && filters.flagged && filters.flagged !== "all" ? 1 : 0) +
-    (showLikedFlaggedEmpty && filters.empty && filters.empty !== "all" ? 1 : 0) +
+    (showLikedFlaggedEmpty && filters.empty && filters.empty !== "hide" ? 1 : 0) +
     (detRangeActive ? 1 : 0) +
     (clsRangeActive ? 1 : 0);
 

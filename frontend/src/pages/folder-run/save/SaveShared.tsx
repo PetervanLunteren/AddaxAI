@@ -20,6 +20,10 @@ import { Callout } from "../../../components/ui/callout";
 import { Card, CardContent } from "../../../components/ui/card";
 import { ConfidenceSlider } from "../../../components/ui/confidence-slider";
 import {
+  DEFAULT_COUNTING_THRESHOLD,
+  DETECTION_CONFIDENCE_ADVICE,
+} from "../../../lib/confidence";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -134,7 +138,7 @@ export function MediaBody({
   const showGrouping = separate.groupBy !== "none";
   return (
     <div className="divide-y [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
-      <div className="grid grid-cols-2 items-center gap-3 py-3 text-sm">
+      <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
         <span>
           Folder structure
           <span className="mt-0.5 block text-xs text-muted-foreground">
@@ -168,7 +172,7 @@ export function MediaBody({
       )}
 
       {showGrouping && (
-        <div className="grid grid-cols-2 items-center gap-3 py-3 text-sm">
+        <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
           <span>
             Folder order
             <span className="mt-0.5 block text-xs text-muted-foreground">
@@ -200,12 +204,11 @@ export function MediaBody({
         <LabelFilterRow form={form} labelTree={labelTree} />
       )}
 
-      <div className="grid grid-cols-2 items-center gap-3 py-3 text-sm">
+      <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
         <span>
           Confidence
           <span className="mt-0.5 block text-xs text-muted-foreground">
-            Detections below this score are left out of the copies.
-            The data files always include everything.
+            Detections below this score are left out of the copies
           </span>
         </span>
         <ConfidenceSlider
@@ -213,10 +216,21 @@ export function MediaBody({
           onChange={(vals) =>
             setSeparate({ ...separate, mediaConfidence: vals[0] })
           }
+          adviseBelow={DETECTION_CONFIDENCE_ADVICE}
           valueLabel={
             <span className="min-w-[3rem] shrink-0 text-right text-sm font-medium">
               {separate.mediaConfidence.toFixed(2)}
             </span>
+          }
+          onReset={() =>
+            setSeparate({
+              ...separate,
+              mediaConfidence: DEFAULT_COUNTING_THRESHOLD,
+            })
+          }
+          resetDisabled={
+            Math.abs(separate.mediaConfidence - DEFAULT_COUNTING_THRESHOLD) <
+            1e-6
           }
         />
       </div>
@@ -263,7 +277,7 @@ function LabelFilterRow({
   const isAll = includedCount === 0 || includedCount >= allCount;
 
   return (
-    <div className="grid grid-cols-2 items-center gap-3 py-3 text-sm">
+    <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
       <span>
         Labels
         <span className="mt-0.5 block text-xs text-muted-foreground">

@@ -302,8 +302,8 @@ export function VerifyFilterBar({
             defaultMinConfidence={defaultMinConfidence}
             minLabelConfidence={filterOptions?.min_label_confidence}
             clampReason={
-              `Counting uses the project's detection threshold ` +
-              `(currently ${Math.round(detectionFloor * 100)}%). ` +
+              `Counting starts at the project's detection threshold ` +
+              `(${Math.round(detectionFloor * 100)}%). ` +
               `Adjust it in the project settings.`
             }
             showClassification={!!classificationModelId}

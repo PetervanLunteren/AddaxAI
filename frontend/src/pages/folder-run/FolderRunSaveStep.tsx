@@ -18,6 +18,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import {
+  FILTER_DEBOUNCE_MS,
+  useDebouncedValue,
+} from "../../hooks/useDebouncedValue";
 
 import { Card, CardContent } from "../../components/ui/card";
 import {
@@ -107,7 +111,13 @@ export function FolderRunSaveStep() {
     form.separate,
     form.labelTree?.all_leaf_ids ?? [],
   );
-  const mediaConfidence = form.separate.mediaConfidence;
+  // Debounce the slider so a drag fires one preview call after it
+  // settles, not a query per step (the preview does 3 SELECTs + a
+  // per-file loop). The slider handle and % readout stay live.
+  const mediaConfidence = useDebouncedValue(
+    form.separate.mediaConfidence,
+    FILTER_DEBOUNCE_MS,
+  );
   const { data: preview, isLoading: previewLoading } = useQuery({
     queryKey: [
       "folder-run-output-preview",

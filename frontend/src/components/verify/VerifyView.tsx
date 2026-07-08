@@ -17,6 +17,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
+  FILTER_DEBOUNCE_MS,
+  useDebouncedValue,
+} from "../../hooks/useDebouncedValue";
+import {
   CircleHelp,
   Image as ImageIcon,
   Layers,
@@ -62,18 +66,6 @@ const EVENTS_SORT_MODES = ["newest", "oldest", "random"] as const;
 // 48 = LCM(1,2,3,4), so every page lays out cleanly at every grid breakpoint
 // (1/2/3/4 columns). Avoids orphan rows on intermediate pages.
 const PAGE_SIZE = 48;
-const FILTER_DEBOUNCE_MS = 300;
-
-/** Debounce a value by `delay` ms. Compares by JSON serialization. */
-function useDebouncedValue<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  const serialized = JSON.stringify(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(JSON.parse(serialized)), delay);
-    return () => clearTimeout(timer);
-  }, [serialized, delay]);
-  return debounced;
-}
 
 /** Parse filter state from URL search params. */
 function filtersFromSearchParams(sp: URLSearchParams): EventFilterParams {

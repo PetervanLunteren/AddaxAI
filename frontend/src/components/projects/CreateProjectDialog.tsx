@@ -14,6 +14,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
 import { projectsApi, type ProjectCreate, type ProjectResponse } from "../../api/projects";
+import { DEFAULT_COUNTING_THRESHOLD } from "../../lib/confidence";
 import { ImageDropZone } from "./ImageDropZone";
 import { invalidateModelMetadata, modelsApi } from "../../api/models";
 import { useTaskProgress } from "../../hooks/useTaskProgress";
@@ -122,7 +123,7 @@ export function CreateProjectDialog({
       excluded_classes: lastSelection?.excluded_classes ?? [],
       country_code: lastSelection?.country_code ?? null,
       state_code: lastSelection?.state_code ?? null,
-      detection_threshold: 0.5,
+      detection_threshold: DEFAULT_COUNTING_THRESHOLD,
       event_smoothing: true,
       smoothing_strength: "normal" as const,
       taxonomic_rollup: true,
