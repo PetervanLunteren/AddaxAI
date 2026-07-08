@@ -94,6 +94,57 @@ def order_indices(
     return [i for _, i in non_null] + nulls
 
 
+def order_events_by_deployment(metas: list[dict]) -> list[int]:
+    """Deployment-grouped chronological order for the no-embedding event
+    sort. Keeps each camera's (deployment's) events together instead of
+    interleaving cameras by time, so a multi-camera project reviews one
+    camera at a time.
+
+    Cameras are ordered by their most recent event; within a camera,
+    events are newest-first; within an event, by capture sequence.
+    Detections with no event sort to the end. For a single-deployment
+    folder run every detection shares one deployment, so this reduces
+    exactly to the plain chronological ``order_indices("events", ...)``.
+
+    Only the no-embedding fallback uses this; the similarity path keeps
+    the plain chronological baseline (grouping there is by appearance,
+    not camera).
+    """
+    n = len(metas)
+
+    # Each deployment's newest event start = its recency for camera order.
+    dep_newest: dict[str, str] = {}
+    for m in metas:
+        dep = m.get("deployment_id")
+        if dep is None:
+            continue
+        start = m.get("event_start_local") or ""
+        if dep not in dep_newest or start > dep_newest[dep]:
+            dep_newest[dep] = start
+
+    with_event = [i for i in range(n) if metas[i].get("event_id")]
+    no_event = [i for i in range(n) if not metas[i].get("event_id")]
+
+    # Stable multi-pass, weakest key first: sequence within event, then
+    # event (newest first), then camera (newest activity first).
+    with_event.sort(key=lambda i: metas[i].get("event_sequence") or 0)
+    with_event.sort(
+        key=lambda i: (
+            metas[i].get("event_start_local") or "",
+            metas[i].get("event_id") or "",
+        ),
+        reverse=True,
+    )
+    with_event.sort(
+        key=lambda i: (
+            dep_newest.get(metas[i].get("deployment_id"), ""),
+            metas[i].get("deployment_id") or "",
+        ),
+        reverse=True,
+    )
+    return with_event + no_event
+
+
 def suggestions_order(
     metas: list[dict],
     top_labels: list[str | None],

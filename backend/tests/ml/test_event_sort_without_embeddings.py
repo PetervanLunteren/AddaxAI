@@ -326,3 +326,71 @@ def test_event_sort_similarity_groups_similar_events(sort_db):
         d["detection_id"] for d in result["detections"]
     }
     assert event_seq[-1] == "D"
+
+
+# ── No-embedding fallback: deployment grouping ───────────────────────
+
+from observation_sort import (  # noqa: E402
+    order_events_by_deployment,
+    order_indices,
+)
+
+
+def test_order_events_by_deployment_groups_cameras():
+    # DEP1 has the newest event (01-05) so it leads; its two events stay
+    # together (01-05 then 01-01) even though DEP2's event (01-03) is
+    # chronologically between them.
+    metas = [
+        _meta_dep("DEP1", "E1a", "2024-01-05", 0),  # 0
+        _meta_dep("DEP1", "E1b", "2024-01-01", 0),  # 1
+        _meta_dep("DEP2", "E2a", "2024-01-03", 0),  # 2
+    ]
+    assert order_events_by_deployment(metas) == [0, 1, 2]
+    # Plain chronological would interleave the cameras.
+    assert order_indices("events", [], metas) == [0, 2, 1]
+
+
+def test_order_events_by_deployment_single_deployment_is_chronological():
+    metas = [
+        _meta_dep("D", "E1", "2024-01-01", 1),
+        _meta_dep("D", "E1", "2024-01-01", 0),
+        _meta_dep("D", "E2", "2024-01-02", 0),
+    ]
+    # One camera: identical to plain chronological (event newest-first,
+    # within event by sequence).
+    assert order_events_by_deployment(metas) == order_indices(
+        "events", [], metas
+    )
+
+
+def _meta_dep(deployment_id, event_id, start, seq):
+    return {
+        "deployment_id": deployment_id,
+        "event_id": event_id,
+        "event_start_local": start,
+        "event_sequence": seq,
+    }
+
+
+def test_event_sort_no_embeddings_groups_by_deployment(sort_db):
+    db_path, s = sort_db
+    p = make_project(s)  # no embedding model
+    dep1 = make_deployment(s, project_id=p.id)
+    dep2 = make_deployment(s, project_id=p.id)
+    # dep1's newest event is the most recent overall, so dep1 leads and
+    # its two events stay together despite dep2's event falling between
+    # them in time.
+    d1_new = _detection_in_event(
+        s, dep1.id, event_id="d1-new", start=datetime(2024, 1, 5, 12)
+    )
+    d1_old = _detection_in_event(
+        s, dep1.id, event_id="d1-old", start=datetime(2024, 1, 1, 12)
+    )
+    d2 = _detection_in_event(
+        s, dep2.id, event_id="d2", start=datetime(2024, 1, 3, 12)
+    )
+    s.commit()
+
+    result = do_sort(db_path, p.id, {"sort": "events", "filters": {}})
+    ids = [d["detection_id"] for d in result["detections"]]
+    assert ids == [d1_new.id, d1_old.id, d2.id]

@@ -797,7 +797,12 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
     # script's dir to sys.path[0], so this resolves without the full
     # `app.ml.inference.*` package import (which would require pydantic
     # and other main-backend deps the conda ML env does not have).
-    from observation_sort import VALID_SORTS, order_indices, suggestions_order
+    from observation_sort import (
+        VALID_SORTS,
+        order_events_by_deployment,
+        order_indices,
+        suggestions_order,
+    )
 
     filters = params.get("filters", {})
     sort_mode = params.get("sort", "similarity")
@@ -826,7 +831,10 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
                 det_ids, metas, vector_by_id
             )
         else:
-            final_order = order_indices("events", [], metas)
+            # No (or too few) embeddings: chronological, grouped by
+            # camera. A single-deployment folder run reduces to plain
+            # chronological automatically.
+            final_order = order_events_by_deployment(metas)
         detections = [
             _build_summary(det_ids[i], metas[i]) for i in final_order
         ]
