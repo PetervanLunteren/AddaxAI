@@ -74,7 +74,6 @@ const projectSchema = z.object({
   event_smoothing: z.boolean(),
   smoothing_strength: z.enum(["mild", "normal", "aggressive"]),
   taxonomic_rollup: z.boolean(),
-  taxonomic_rollup_threshold: z.number().min(0.1).max(1.0),
   independence_interval: z.number().min(0),
 });
 
@@ -127,7 +126,6 @@ export function CreateProjectDialog({
       event_smoothing: true,
       smoothing_strength: "normal" as const,
       taxonomic_rollup: true,
-      taxonomic_rollup_threshold: 0.65,
       independence_interval: 1800, // Will be converted from minutes in UI
     },
   });

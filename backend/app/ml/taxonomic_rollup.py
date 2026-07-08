@@ -15,16 +15,15 @@ import csv
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# ROLLUP_THRESHOLD is fixed policy (not per-project); it lives in
+# app.core.confidence with the rest of the confidence defaults and is
+# re-exported here because every rollup function defaults to it.
+from app.core.confidence import ROLLUP_THRESHOLD
 from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 TAXONOMY_LEVELS = ["class", "order", "family", "genus", "species"]  # broadest → most specific
-# Documented default for the rollup confidence threshold. Callers pass
-# the per-project ``Project.taxonomic_rollup_threshold`` value at runtime;
-# this constant stays as the canonical default so test data, fixtures, and
-# any caller without a project context all agree on the same number.
-ROLLUP_THRESHOLD = 0.65
 
 
 def format_scientific_name_from_taxonomy_row(
@@ -249,10 +248,9 @@ def rollup_single_detection(
             in the project's country. Rollup candidates are checked
             against this set.
         threshold: Confidence floor for Path B and for the kingdom-level
-            fallback. Callers pass the per-project
-            ``Project.taxonomic_rollup_threshold`` so the DB value is
-            authoritative; the default ``ROLLUP_THRESHOLD`` (0.65) is
-            kept for tests and any caller without a project context.
+            fallback. Defaults to the fixed ``ROLLUP_THRESHOLD`` (0.65,
+            in app.core.confidence); the parameter stays overridable so
+            tests can exercise other values.
 
     Returns:
         None if no rollup found (keep raw top-1 as-is).
@@ -396,10 +394,9 @@ def apply_taxonomic_rollup_to_results(
         taxonomy_csv_path: Path to taxonomy.csv
         excluded_names: Lowercase names of excluded species (enables Path A)
         allowed_taxonomy_keys: Geofence taxonomy keys allowed in the country
-        threshold: Confidence floor for Path B and kingdom fallback. Pass
-            ``Project.taxonomic_rollup_threshold`` for the canonical
-            per-project value; ``ROLLUP_THRESHOLD`` (0.65) is kept as
-            the documented default.
+        threshold: Confidence floor for Path B and kingdom fallback.
+            Defaults to the fixed ``ROLLUP_THRESHOLD`` (0.65, in
+            app.core.confidence); overridable for tests.
 
     Returns:
         RollupResult with the modified dict and list of new rolled-up entries.

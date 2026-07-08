@@ -26,6 +26,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import __version__ as APP_VERSION
+from app.core.confidence import ROLLUP_THRESHOLD
 from app.core.config import get_settings
 from app.core.logging_config import get_logger
 from app.ml.manifest_manager import ManifestManager
@@ -293,7 +294,7 @@ def _build_readme_text(
     lines.append(_kv("Smoothing strength", project.smoothing_strength))
     lines.append(_kv("Taxonomic rollup", project.taxonomic_rollup))
     lines.append(
-        _kv("Rollup threshold", project.taxonomic_rollup_threshold)
+        _kv("Rollup threshold", ROLLUP_THRESHOLD)
     )
     lines.append(
         _kv(

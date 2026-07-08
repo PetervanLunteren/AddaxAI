@@ -10,9 +10,9 @@
  * Continue PATCHes `step=save` server-side and navigates onward.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { ArrowLeft, ArrowRight, ChevronDown, Pencil } from "lucide-react";
 
 import { Button } from "../../components/ui/button";
@@ -24,43 +24,11 @@ import { folderRunsApi } from "../../api/folder-runs";
 import { DEFAULT_COUNTING_THRESHOLD } from "../../lib/confidence";
 import { useFolderRun } from "./FolderRunLayout";
 
-/** Default floor for the grid's detection-confidence filter. Folder
- * runs store every detection down to the 0.1 inference floor; showing
- * all of it by default buries the reviewer in near-noise boxes, so the
- * grid opens pre-filtered at 0.2. It is an ordinary filter: the user
- * can drop it to the floor (or clear it) in the filter bar. Affects
- * this review grid only — data exports always contain everything. */
-const DEFAULT_GRID_MIN_CONFIDENCE = DEFAULT_COUNTING_THRESHOLD;
-
 export function FolderRunLabelsStep() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { runId, run, isLoading } = useFolderRun();
   const [editorOpen, setEditorOpen] = useState(false);
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  // Seed the grid's confidence filter once per mount, and only when
-  // the URL doesn't already carry one, so a user-cleared or user-set
-  // filter is never overridden within the session.
-  const seededMinConfidenceRef = useRef(false);
-  useEffect(() => {
-    if (seededMinConfidenceRef.current) return;
-    seededMinConfidenceRef.current = true;
-    if (!searchParams.has("lbl_min_confidence")) {
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          next.set(
-            "lbl_min_confidence",
-            String(DEFAULT_GRID_MIN_CONFIDENCE),
-          );
-          return next;
-        },
-        { replace: true },
-      );
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   // Track bulk-selection size from the embedded LabelsView. While a
   // selection is live, the sticky Back / Continue bar is hidden so the
   // floating BulkActionBar has the bottom of the viewport to itself.
@@ -139,6 +107,7 @@ export function FolderRunLabelsStep() {
           <LabelsView
             projectId={runId}
             onSelectionChange={setSelectionCount}
+            defaultMinConfidence={DEFAULT_COUNTING_THRESHOLD}
             toolbarExtra={
               <AnalysisSettingsButton
                 runId={runId}

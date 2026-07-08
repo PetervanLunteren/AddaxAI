@@ -6,8 +6,8 @@
  * Scope is the tuning params only. The model/species selection (classification
  * model, embedding model, country/state, excluded classes) is a deliberate
  * user choice, not a default, so it is intentionally excluded. Note the
- * project-only `taxonomic_rollup_threshold` is not here either; Settings resets
- * that one separately.
+ * The rollup threshold is fixed policy (backend
+ * app/core/confidence.py), not a setting, so it is not here.
  */
 
 import {

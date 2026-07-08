@@ -39,7 +39,6 @@ export interface ProjectCreate {
   event_smoothing: boolean;
   smoothing_strength: string;
   taxonomic_rollup: boolean;
-  taxonomic_rollup_threshold: number;
   independence_interval: number;
   min_cluster_size: number;
   min_samples: number;
@@ -68,7 +67,6 @@ export interface ProjectUpdate {
   event_smoothing?: boolean | null;
   smoothing_strength?: string | null;
   taxonomic_rollup?: boolean | null;
-  taxonomic_rollup_threshold?: number | null;
   independence_interval?: number | null;
   min_cluster_size?: number | null;
   min_samples?: number | null;
@@ -99,7 +97,6 @@ export interface ProjectResponse {
   event_smoothing: boolean;
   smoothing_strength: string;
   taxonomic_rollup: boolean;
-  taxonomic_rollup_threshold: number;
   independence_interval: number;
   min_cluster_size: number;
   min_samples: number;

@@ -496,7 +496,7 @@ def test_top5_only_used_for_sums(taxonomy_lookup, class_id_to_name):
 
 # ---------------------------------------------------------------------
 # Threshold parameter (regression: was hardcoded to 0.65 in-module
-# despite Project.taxonomic_rollup_threshold being a configurable field)
+# despite the rollup threshold being a fixed policy value)
 # ---------------------------------------------------------------------
 
 

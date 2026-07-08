@@ -31,3 +31,11 @@ not implemented yet.
 MD_OUTPUT_CONFIDENCE_THRESHOLD = 0.005
 DEFAULT_CLASSIFICATION_GATE = 0.1
 DEFAULT_COUNTING_THRESHOLD = 0.2
+
+# ROLLUP_THRESHOLD — the confidence below which taxonomic rollup rolls a
+# species call up the tree (species -> genus -> family -> ...). Fixed
+# policy, not a preference: it is never user-facing or per-project, and
+# most users should not think about it. The rollup functions in
+# app/ml/taxonomic_rollup.py default to this; it lives here so all
+# confidence policy sits in one file.
+ROLLUP_THRESHOLD = 0.65

@@ -18,7 +18,6 @@ def _make_project_mock(**overrides):
         event_smoothing=True,
         smoothing_strength="normal",
         taxonomic_rollup=True,
-        taxonomic_rollup_threshold=0.65,
         independence_interval=1800,
         excluded_classes=[],
         country_code=None,

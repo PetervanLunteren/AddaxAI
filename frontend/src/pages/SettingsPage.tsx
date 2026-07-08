@@ -116,7 +116,6 @@ const settingsSchema = z.object({
   event_smoothing: z.boolean(),
   smoothing_strength: z.enum(["mild", "normal", "aggressive"]),
   taxonomic_rollup: z.boolean(),
-  taxonomic_rollup_threshold: z.number().min(0.1).max(1.0),
   independence_interval: z.number().min(0),
   // null = use the per-pipeline default; integer = user override
   detection_batch_size: z.number().int().min(1).max(256).nullable(),
@@ -296,7 +295,6 @@ export default function SettingsPage() {
       event_smoothing: true,
       smoothing_strength: "normal" as const,
       taxonomic_rollup: true,
-      taxonomic_rollup_threshold: 0.65,
       independence_interval: 1800,
       detection_batch_size: null,
       classification_batch_size: null,
@@ -321,7 +319,6 @@ export default function SettingsPage() {
         event_smoothing: project.event_smoothing,
         smoothing_strength: (project.smoothing_strength || "normal") as "mild" | "normal" | "aggressive",
         taxonomic_rollup: project.taxonomic_rollup,
-        taxonomic_rollup_threshold: project.taxonomic_rollup_threshold,
         independence_interval: project.independence_interval,
         detection_batch_size: project.detection_batch_size ?? null,
         classification_batch_size: project.classification_batch_size ?? null,
@@ -760,7 +757,6 @@ export default function SettingsPage() {
         event_smoothing: project.event_smoothing,
         smoothing_strength: (project.smoothing_strength || "normal") as "mild" | "normal" | "aggressive",
         taxonomic_rollup: project.taxonomic_rollup,
-        taxonomic_rollup_threshold: project.taxonomic_rollup_threshold,
         independence_interval: project.independence_interval,
         detection_batch_size: project.detection_batch_size ?? null,
         classification_batch_size: project.classification_batch_size ?? null,
@@ -1297,8 +1293,6 @@ export default function SettingsPage() {
                       // dirty-check baseline. This way isDirty becomes true and the user
                       // must press "Save changes" to persist the defaults.
                       restoreAdvancedDefaults(form.setValue);
-                      // Project-only setting, not in the shared advanced set.
-                      form.setValue("taxonomic_rollup_threshold", 0.65, { shouldDirty: true });
                     }}
                     disabled={updateMutation.isPending}
                   >

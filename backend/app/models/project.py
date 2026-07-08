@@ -110,9 +110,8 @@ class Project(Base):
     taxonomic_rollup: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
     )
-    taxonomic_rollup_threshold: Mapped[float] = mapped_column(
-        Float, nullable=False, default=0.65
-    )
+    # The rollup confidence threshold is fixed policy
+    # (app.core.confidence.ROLLUP_THRESHOLD), not a per-project setting.
     independence_interval: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1800  # seconds
     )

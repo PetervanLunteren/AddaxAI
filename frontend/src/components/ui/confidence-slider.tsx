@@ -12,7 +12,7 @@
  * - ``clampReason`` (a resting boundary, often the slider's default
  *   position) renders as a quiet one-line caption — always true, never
  *   alarming, must not shout.
- * - ``warnBelow`` (reached only by a deliberate drag) renders as a
+ * - ``adviseBelow`` (reached only by a deliberate drag) renders as a
  *   compact warning callout — the user did something that deserves a
  *   real flag.
  *
@@ -22,6 +22,8 @@
  */
 
 import type { ReactNode } from "react";
+
+import { RotateCcw } from "lucide-react";
 
 import { Callout } from "./callout";
 import { Slider } from "./slider";
@@ -40,11 +42,19 @@ interface ConfidenceSliderProps {
   /** Quiet caption shown while the (low) handle rests on a clamped
    * minimum above the scale min. */
   clampReason?: string;
-  /** Advisory (not a clamp): a compact warning callout shown while the
-   * (low) handle sits below ``value``. */
-  warnBelow?: { value: number; message: string };
+  /** Advisory (not a clamp): a compact info callout shown while the
+   * (low) handle sits below ``value``. Info, not warning: the user did
+   * something deliberate and supported; the message provides context,
+   * the container must not imply a mistake. */
+  adviseBelow?: { value: number; message: string };
   /** Rendered right of the track, aligned with it (caller styles it). */
   valueLabel?: ReactNode;
+  /** When provided, a small ghost reset icon renders after the value
+   * label — always, so the row never shifts while dragging. Pair with
+   * ``resetDisabled`` to make it inert while already at the default. */
+  onReset?: () => void;
+  /** Dims and disables the reset icon (already at the default). */
+  resetDisabled?: boolean;
   className?: string;
 }
 
@@ -53,8 +63,10 @@ export function ConfidenceSlider({
   onChange,
   effectiveMin = CONFIDENCE_SCALE_MIN,
   clampReason,
-  warnBelow,
+  adviseBelow,
   valueLabel,
+  onReset,
+  resetDisabled = false,
   className,
 }: ConfidenceSliderProps) {
   const values = Array.isArray(value) ? value : [value];
@@ -85,16 +97,28 @@ export function ConfidenceSlider({
           className={className ?? "flex-1"}
         />
         {valueLabel}
+        {onReset && (
+          <button
+            type="button"
+            title="Reset to default"
+            aria-label="Reset to default"
+            onClick={onReset}
+            disabled={resetDisabled}
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
       {atClampedMin && clampReason && (
         <p className="mt-1.5 text-xs text-muted-foreground">
           {clampReason}
         </p>
       )}
-      {warnBelow && shown[0] < warnBelow.value - 1e-9 && (
+      {adviseBelow && shown[0] < adviseBelow.value - 1e-9 && (
         <div className="mt-2">
-          <Callout variant="warning" size="compact">
-            {warnBelow.message}
+          <Callout variant="info" size="compact">
+            {adviseBelow.message}
           </Callout>
         </div>
       )}

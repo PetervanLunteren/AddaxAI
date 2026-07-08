@@ -1,6 +1,11 @@
 # TODO
 
+There are errors on the github pages on every push... investigate. 
+
 The confidence sliders and threhsold values thourghout the app are incosistemtly percentages and 0-1 values. AUdit and make it all percentages. That means all user facing stuff like info captions, sliders, visualisation thngs on images and videos, etc. 
+
+Why would events sorting in the labels page be restricted to embeddings? It doesnt make sense to require embeddings for sorting on events, right? 
+
 
 "Also used as the starting point for your next run." is not needed. Users dont need to kow that some of this also is used by the inference time. Perhaps this will suffice: "Applies to the results below without re-running the models. "
 

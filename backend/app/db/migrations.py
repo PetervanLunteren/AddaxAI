@@ -254,6 +254,16 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
             "of the gate an analysis ran with, for mixed-gate projects)"
         ),
     ),
+    _Fingerprint(
+        revision="e7f8a9b0c1d2",
+        table=None,
+        column=None,
+        description=(
+            "drop projects.taxonomic_rollup_threshold (rollup threshold "
+            "is fixed policy, not per-project) — column removal, not "
+            "fingerprintable via PRAGMA table_info presence"
+        ),
+    ),
 )
 
 

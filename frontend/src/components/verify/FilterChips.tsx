@@ -35,6 +35,10 @@ interface FilterChipsProps {
   displayLabels?: Record<string, string>;
   /** Project detection_threshold — used to detect when det range is "default". */
   detectionFloor?: number;
+  /** The page's default verification value: no chip when the filter
+   *  equals it (a default is not a filter). Counts defaults to "all",
+   *  the Labels page to "unverified". */
+  verificationDefault?: string;
   /** Override the verification chip wording (the Counts page uses
    *  "Confirmed" / "Unconfirmed"; defaults to "Verified" / "Unverified"). */
   verificationLabels?: Record<string, string>;
@@ -50,6 +54,9 @@ function formatLabel(raw: string, displayLabels?: Record<string, string>): strin
 const VERIFICATION_LABELS: Record<string, string> = {
   verified: "Verified",
   unverified: "Unverified",
+  // Only ever a chip on the Labels page, where "unverified" is the
+  // default and showing everything is the explicit deviation.
+  all: "All",
 };
 
 const FLAGGED_LABELS: Record<string, string> = {
@@ -74,6 +81,7 @@ export function FilterChips({
   siteNames,
   displayLabels,
   detectionFloor = 0,
+  verificationDefault = "all",
   verificationLabels = VERIFICATION_LABELS,
 }: FilterChipsProps) {
   const chips: { key: string; label: string; onRemove: () => void }[] = [];
@@ -139,7 +147,7 @@ export function FilterChips({
   }
 
   // Verification chip
-  if (filters.verification && filters.verification !== "all") {
+  if (filters.verification && filters.verification !== verificationDefault) {
     chips.push({
       key: "verification",
       label: verificationLabels[filters.verification] ?? filters.verification,

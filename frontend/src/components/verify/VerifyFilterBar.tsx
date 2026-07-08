@@ -85,6 +85,15 @@ interface VerifyFilterBarProps {
    *  stops at the project threshold with a reason) or "open" (Labels,
    *  full scale so the user can dig into the low-confidence tail). */
   confidenceFloorMode?: "clamp" | "open";
+  /** Resting position of the det slider's low handle when no explicit
+   *  min filter is set (a default, not a filter). Falls back to
+   *  ``detectionFloor``. */
+  defaultMinConfidence?: number;
+  /** The page's default verification value. The select rests on it
+   *  when no explicit filter is set, choosing it clears the filter,
+   *  and it never renders a chip. Counts defaults to "all"; the
+   *  Labels page passes "unverified". */
+  verificationDefault?: VerificationFilter;
 }
 
 export function VerifyFilterBar({
@@ -97,6 +106,8 @@ export function VerifyFilterBar({
   verificationOptions,
   showLikedFlaggedEmpty = true,
   confidenceFloorMode = "clamp",
+  defaultMinConfidence,
+  verificationDefault = "all",
 }: VerifyFilterBarProps) {
   const [labelModalOpen, setLabelModalOpen] = useState(false);
 
@@ -253,11 +264,16 @@ export function VerifyFilterBar({
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">{isEventScope ? "Confirmed" : "Verified"}</label>
           <Select
-            value={filters.verification ?? "all"}
+            value={filters.verification ?? verificationDefault}
             onValueChange={(v) =>
               onChange({
                 ...filters,
-                verification: v === "all" ? undefined : (v as VerificationFilter),
+                // Choosing the page default clears the filter (a
+                // default is not a filter); anything else is explicit.
+                verification:
+                  v === verificationDefault
+                    ? undefined
+                    : (v as VerificationFilter),
               })
             }
           >
@@ -283,6 +299,7 @@ export function VerifyFilterBar({
             onChange={onChange}
             detectionFloor={detectionFloor}
             confidenceFloorMode={confidenceFloorMode}
+            defaultMinConfidence={defaultMinConfidence}
             minLabelConfidence={filterOptions?.min_label_confidence}
             clampReason={
               `Counting uses the project's detection threshold ` +
@@ -301,6 +318,7 @@ export function VerifyFilterBar({
       <FilterChips
         filters={filters}
         onChange={onChange}
+        verificationDefault={verificationDefault}
         siteNames={siteNames}
         displayLabels={filterOptions ? speciesLabelMap(filterOptions) : undefined}
         detectionFloor={detectionFloor}

@@ -17,7 +17,6 @@ export const REPROCESS_TRIGGER_FIELDS = [
   "event_smoothing",
   "smoothing_strength",
   "taxonomic_rollup",
-  "taxonomic_rollup_threshold",
   "independence_interval",
   "excluded_classes",
 ] as const;
@@ -25,7 +24,7 @@ export const REPROCESS_TRIGGER_FIELDS = [
 /** True when any reprocess-triggering setting differs between two form
  * snapshots. Fields absent from both snapshots are skipped: not every
  * form carries every trigger field (the folder-run panel has no
- * taxonomic_rollup_threshold or excluded_classes). */
+ * excluded_classes). */
 export function hasReprocessChanges(
   before: Record<string, unknown>,
   after: Record<string, unknown>,

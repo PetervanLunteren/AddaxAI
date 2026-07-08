@@ -42,6 +42,9 @@ interface VerifyMoreFiltersProps {
   confidenceFloorMode?: "clamp" | "open";
   /** Reason shown while the handle rests on a clamped floor. */
   clampReason?: string;
+  /** Resting position of the det slider when no explicit min filter is
+   *  set. Falls back to ``detectionFloor``. */
+  defaultMinConfidence?: number;
   /** When false, the classification slider is hidden (no cls model). */
   showClassification?: boolean;
   /** Lowest classification confidence in the project (data-driven cls
@@ -57,6 +60,7 @@ export function VerifyMoreFilters({
   detectionFloor = 0,
   confidenceFloorMode = "clamp",
   clampReason,
+  defaultMinConfidence,
   showClassification = false,
   minLabelConfidence,
   showLikedFlaggedEmpty = true,
@@ -187,6 +191,7 @@ export function VerifyMoreFilters({
           detectionFloor={detectionFloor}
           floorMode={confidenceFloorMode}
           clampReason={clampReason}
+          defaultMinConfidence={defaultMinConfidence}
           showClassification={showClassification}
           minLabelConfidence={minLabelConfidence}
         />
