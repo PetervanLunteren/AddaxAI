@@ -542,6 +542,77 @@ def _pick_dense_seed(index, vectors: np.ndarray) -> int:
     return int(density.argmax())
 
 
+def _greedy_walk(
+    index, vectors: np.ndarray, *, progress_phase: str | None = None
+) -> list[int]:
+    """Greedy nearest-neighbour chain over ``vectors`` (already added to
+    ``index``): start at a dense seed, then always jump to the nearest
+    unvisited neighbour, so adjacent positions in the returned order look
+    alike. Used for the per-detection similarity sort and for ordering
+    events by their representative vectors. Emits progress only when
+    ``progress_phase`` is set (the detection walk; the event walk is a
+    handful of vectors and needs none).
+    """
+    n = len(vectors)
+    current = _pick_dense_seed(index, vectors)
+
+    if progress_phase:
+        _emit_progress(progress_phase, 0, n)
+
+    visited = np.zeros(n, dtype=bool)
+    order = np.empty(n, dtype=np.int64)
+    for step in range(n):
+        order[step] = current
+        visited[current] = True
+
+        if progress_phase and (step + 1) % PROGRESS_LOOP_EVERY == 0:
+            _emit_progress(progress_phase, step + 1, n)
+
+        if step == n - 1:
+            break
+
+        # Search for k nearest neighbours (enough to find an unvisited one)
+        k = min(64, n)
+        while True:
+            sims, idxs = index.search(vectors[current].reshape(1, -1), k)
+            for idx in idxs[0]:
+                if idx >= 0 and not visited[idx]:
+                    current = int(idx)
+                    break
+            else:
+                # All k neighbours visited — widen search
+                if k >= n:
+                    # All visited (shouldn't happen), pick first unvisited
+                    remaining = np.where(~visited)[0]
+                    current = int(remaining[0])
+                    break
+                k = min(k * 2, n)
+                continue
+            break
+
+    if progress_phase:
+        _emit_progress(progress_phase, n, n)
+
+    return order.tolist()
+
+
+def _greedy_order(vectors: np.ndarray) -> list[int]:
+    """Build a FAISS index over ``vectors`` and return the greedy
+    nearest-neighbour chain order.
+
+    Convenience wrapper for callers that don't also need the index (the
+    event-similarity sort). The per-detection similarity path builds its
+    own index because it reuses it for the neighbour signals. Isolating
+    the FAISS dependency here also lets the event-ordering logic be
+    unit-tested without FAISS by patching this function.
+    """
+    import faiss
+
+    index = faiss.IndexFlatIP(vectors.shape[1])
+    index.add(vectors)
+    return _greedy_walk(index, vectors)
+
+
 def _compute_neighbor_signals(
     index,
     vectors: np.ndarray,
@@ -620,6 +691,86 @@ def _compute_neighbor_signals(
     return agreement_scores, top_labels
 
 
+# ── Event sort ordered by similarity ─────────────────────────────────────
+
+
+def _order_events_by_similarity(
+    det_ids: list[str],
+    metas: list[dict],
+    vector_by_id: dict[str, np.ndarray],
+) -> list[int]:
+    """Order detections for "Sort by event" using embedding similarity.
+
+    Events stay atomic: a whole event's detections stay together, in
+    capture-sequence order. The events themselves are ordered by a
+    greedy nearest-neighbour walk over one representative vector each,
+    so visually similar (usually same-species) events sit next to each
+    other. Each event's representative is its most-confident detection
+    that has an embedding. Events with no embedded detection, and
+    detections with no event, fall back to the chronological order.
+
+    Returns the final index order into ``metas`` / ``det_ids``.
+    """
+    from observation_sort import order_indices
+
+    # Chronological baseline: within-event by sequence, events by time
+    # desc, no-event detections last. Reordering events on top of this
+    # gives within-event sequence and the rep-less / no-event tail for
+    # free.
+    base_order = order_indices("events", [], metas)
+
+    # Group baseline indices by event, preserving first-seen (= time)
+    # event order and within-event sequence order.
+    event_to_indices: dict[str, list[int]] = {}
+    events_in_time_order: list[str] = []
+    no_event: list[int] = []
+    for i in base_order:
+        eid = metas[i].get("event_id")
+        if not eid:
+            no_event.append(i)
+            continue
+        if eid not in event_to_indices:
+            event_to_indices[eid] = []
+            events_in_time_order.append(eid)
+        event_to_indices[eid].append(i)
+
+    # Representative vector per event: the most-confident detection that
+    # has an embedding. No averaging, so a mixed event places by its
+    # clearest crop instead of a meaningless centroid.
+    rep_vec: dict[str, np.ndarray] = {}
+    for eid, idxs in event_to_indices.items():
+        best_i = -1
+        best_conf = -1.0
+        for i in idxs:
+            if det_ids[i] in vector_by_id:
+                conf = metas[i].get("confidence") or 0.0
+                if conf > best_conf:
+                    best_conf = conf
+                    best_i = i
+        if best_i >= 0:
+            rep_vec[eid] = vector_by_id[det_ids[best_i]]
+
+    # Greedy-walk the events that have a representative.
+    rep_eids = [eid for eid in events_in_time_order if eid in rep_vec]
+    if len(rep_eids) >= 2:
+        mat = np.stack([rep_vec[eid] for eid in rep_eids])
+        ordered_rep_eids = [rep_eids[j] for j in _greedy_order(mat)]
+    else:
+        ordered_rep_eids = rep_eids
+
+    # Assemble: similarity-ordered events first, remaining (rep-less)
+    # events in time order, no-event detections last.
+    emitted = set(ordered_rep_eids)
+    final: list[int] = []
+    for eid in ordered_rep_eids:
+        final.extend(event_to_indices[eid])
+    for eid in events_in_time_order:
+        if eid not in emitted:
+            final.extend(event_to_indices[eid])
+    final.extend(no_event)
+    return final
+
+
 # ── Similarity sort ──────────────────────────────────────────────────────
 
 def do_sort(db_path: str, project_id: str, params: dict) -> dict:
@@ -654,9 +805,35 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
     if sort_mode not in VALID_SORTS:
         raise ValueError(f"Unknown sort mode: {sort_mode}")
 
-    # Metadata sorts (event / time) don't use embeddings: load the full
-    # detection population so detections without an embedding are still
-    # shown and ordered. Only similarity / suggestions need the vectors.
+    # "Sort by event": always show the full detection population grouped
+    # by event (embedded or not). With embeddings, order the still-atomic
+    # events by similarity of their representative crops so same-species
+    # events sit together; without embeddings, keep chronological order.
+    if sort_mode == "events":
+        det_ids, metas = _load_metadata(
+            db_path, project_id, filters, max_detections=max_detections
+        )
+        if not det_ids:
+            return {"detections": [], "total_detections": 0}
+        vectors, emb_ids, _ = _load_embeddings(
+            db_path, project_id, filters, max_detections=max_detections
+        )
+        if len(emb_ids) >= 2:
+            vector_by_id = {
+                emb_ids[k]: vectors[k] for k in range(len(emb_ids))
+            }
+            final_order = _order_events_by_similarity(
+                det_ids, metas, vector_by_id
+            )
+        else:
+            final_order = order_indices("events", [], metas)
+        detections = [
+            _build_summary(det_ids[i], metas[i]) for i in final_order
+        ]
+        return {"detections": detections, "total_detections": len(final_order)}
+
+    # Other metadata sorts (newest / oldest / cls_low): full population,
+    # ordered by timestamp / label confidence, no embeddings.
     if sort_mode not in EMBEDDING_SORTS:
         det_ids, metas = _load_metadata(
             db_path, project_id, filters, max_detections=max_detections
@@ -702,44 +879,7 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
     needs_chain = sort_mode in ("similarity", "similarity_reverse")
     similarity_order: list[int] = []
     if needs_chain:
-        current = _pick_dense_seed(index, vectors)
-
-        _emit_progress("sort", 0, n)
-
-        # Greedy walk: always jump to nearest unvisited neighbor
-        visited = np.zeros(n, dtype=bool)
-        order = np.empty(n, dtype=np.int64)
-        for step in range(n):
-            order[step] = current
-            visited[current] = True
-
-            if (step + 1) % PROGRESS_LOOP_EVERY == 0:
-                _emit_progress("sort", step + 1, n)
-
-            if step == n - 1:
-                break
-
-            # Search for k nearest neighbors (enough to find an unvisited one)
-            k = min(64, n)
-            while True:
-                sims, idxs = index.search(vectors[current].reshape(1, -1), k)
-                for idx in idxs[0]:
-                    if idx >= 0 and not visited[idx]:
-                        current = int(idx)
-                        break
-                else:
-                    # All k neighbors visited — widen search
-                    if k >= n:
-                        # All visited (shouldn't happen), pick first unvisited
-                        remaining = np.where(~visited)[0]
-                        current = int(remaining[0])
-                        break
-                    k = min(k * 2, n)
-                    continue
-                break
-
-        _emit_progress("sort", n, n)
-        similarity_order = order.tolist()
+        similarity_order = _greedy_walk(index, vectors, progress_phase="sort")
 
     # Per-detection neighbour signals (agreement + descendant-filtered
     # suggestion). Shared with do_cohorts so the two paths can never

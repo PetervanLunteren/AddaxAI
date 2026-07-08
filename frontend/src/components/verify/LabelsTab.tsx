@@ -1287,26 +1287,6 @@ export function LabelsTab({
     return mode ? resolveSpeciesName(mode) : null;
   }, [selectedIds, allDetections]);
 
-  // No embeddings: only similarity sort is blocked (it needs the
-  // vectors). Event sort works without them, so let it fall through to
-  // the grid and point the user at it here.
-  if (stats && stats.embedded_detections === 0 && lblSort !== "events") {
-    return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-          <Layers className="h-12 w-12 text-muted-foreground/50 mb-4" />
-          <p className="text-lg font-medium text-muted-foreground">
-            Sort by similarity needs embeddings
-          </p>
-          <p className="text-sm text-muted-foreground mt-1 max-w-md">
-            Switch to Sort by event to review these detections, or run an
-            analysis with an embedding model to enable similarity sorting.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
   const hasResults = sortResult !== null;
   // Show the loading view when a sort is running AND we have nothing
   // useful to show in the meantime: either no result yet (first
@@ -1367,6 +1347,12 @@ export function LabelsTab({
   });
   const unprocessedCount = unprocessed?.count ?? 0;
 
+  // Similarity sort with no embeddings: rendered as a content-area
+  // branch below (NOT a full early return), so the toolbar with the
+  // sort dropdown stays visible and the user can switch to event sort.
+  const similarityNeedsEmbeddings =
+    !!stats && stats.embedded_detections === 0 && lblSort !== "events";
+
   const handleProcessUnprocessed = async () => {
     try {
       const { job_id } = await projectsApi.reEmbed(projectId, {
@@ -1397,51 +1383,6 @@ export function LabelsTab({
         defaultMinConfidence={defaultMinConfidence}
         verificationDefault="unverified"
       />
-
-      {/* Warning when embeddings are incomplete. Only relevant to
-          Sort by similarity, which shows the embedded set only. Sort by
-          event already shows every detection, so it is suppressed there. */}
-      {lblSort !== "events" && stats && stats.missing_embeddings > 0 && (
-        <Callout
-          variant="warning"
-          title={`${stats.missing_embeddings} detection${
-            stats.missing_embeddings !== 1 ? "s are" : " is"
-          } not shown`}
-          action={
-            <Button variant="outline" size="sm" className="shrink-0" onClick={handleEmbedNow}>
-              Embed now
-            </Button>
-          }
-        >
-          Sort by similarity only shows detections that have an embedding. Embeddings can be missing when embedding was switched off in settings, an error occurred during analysis, or detections were added manually via event verification. Switch to Sort by event to see all of them, or click 'Embed now' to embed the rest.
-        </Callout>
-      )}
-
-      {/* Unprocessed low-confidence tail in the selected range. Same as
-          above: only meaningful for Sort by similarity. */}
-      {lblSort !== "events" && unprocessedCount > 0 && (
-        <Callout
-          variant="info"
-          title={`${unprocessedCount.toLocaleString()} more detection${
-            unprocessedCount !== 1 ? "s" : ""
-          } available in this confidence range`}
-          action={
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0"
-              onClick={handleProcessUnprocessed}
-            >
-              Process now
-            </Button>
-          }
-        >
-          These detections sit below the confidence at which this
-          analysis identified species, so they were never processed for
-          review. Process them to show them here as unlabeled animals.
-          Your data exports include them either way.
-        </Callout>
-      )}
 
       <ReEmbedModal
         open={!!reEmbedJobId}
@@ -1506,6 +1447,56 @@ export function LabelsTab({
         </div>
       </VerifyToolbar>
 
+      {/* Warning when embeddings are PARTIAL: the grid shows the
+          embedded ones and this offers to fill the rest. Requires
+          embedded > 0 so it never overlaps the zero-embedding empty
+          card below, and so "Embed now" is only offered when a working
+          embedding model exists. Suppressed in event mode (shows all). */}
+      {lblSort !== "events" &&
+        stats &&
+        stats.embedded_detections > 0 &&
+        stats.missing_embeddings > 0 && (
+        <Callout
+          variant="warning"
+          title={`${stats.missing_embeddings} detection${
+            stats.missing_embeddings !== 1 ? "s are" : " is"
+          } not shown`}
+          action={
+            <Button variant="outline" size="sm" className="shrink-0" onClick={handleEmbedNow}>
+              Embed now
+            </Button>
+          }
+        >
+          Sort by similarity only shows detections that have an embedding. Embeddings can be missing when embedding was switched off in settings, or an error occurred during analysis. Switch to Sort by event to see all of them, or click 'Embed now' to embed them.
+        </Callout>
+      )}
+
+      {/* Unprocessed low-confidence tail in the selected range. Same as
+          above: only meaningful for Sort by similarity. */}
+      {lblSort !== "events" && unprocessedCount > 0 && (
+        <Callout
+          variant="info"
+          title={`${unprocessedCount.toLocaleString()} more detection${
+            unprocessedCount !== 1 ? "s" : ""
+          } available in this confidence range`}
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={handleProcessUnprocessed}
+            >
+              Process now
+            </Button>
+          }
+        >
+          These detections sit below the confidence at which this
+          analysis identified species, so they were never processed for
+          review. Process them to show them here as unlabeled animals.
+          Your data exports include them either way.
+        </Callout>
+      )}
+
       {sortError ? (
         // Persistent error card. The common case is the max-detections
         // cap: the subprocess refuses to load a result set larger than
@@ -1528,6 +1519,37 @@ export function LabelsTab({
             >
               Try again
             </Button>
+          </CardContent>
+        </Card>
+      ) : similarityNeedsEmbeddings ? (
+        // No embeddings: similarity has nothing to walk. Event sort
+        // works without them, so the sort dropdown stays visible above.
+        // Simple rule: a model is set -> offer to embed; no model ->
+        // nudge to where you pick one (settings for a project, the setup
+        // step for a folder run), with no action.
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <Layers className="h-12 w-12 text-muted-foreground/50 mb-4" />
+            <p className="text-lg font-medium text-muted-foreground">
+              Sort by similarity needs embeddings
+            </p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-md">
+              {project?.embedding_model_id
+                ? "Switch to Sort by event to review these detections, or embed them to enable similarity sorting."
+                : project?.mode === "folder_run"
+                  ? "Switch to Sort by event to review these detections, or run an analysis with an embedding model to enable similarity sorting."
+                  : "Switch to Sort by event to review these detections, or pick an embedding model in the project settings to enable similarity sorting."}
+            </p>
+            {project?.embedding_model_id && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={handleEmbedNow}
+              >
+                Embed now
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : isLoading || !hasResults ? (
