@@ -642,16 +642,19 @@ export function LabelsTab({
   // chips, and URL all update live off the undebounced state.
   const debouncedSortKey = useDebouncedValue(sortKey, FILTER_DEBOUNCE_MS);
 
+  // Event sort needs no embeddings (it orders by capture time / event),
+  // so it may run even when embedded_detections is 0. Similarity still
+  // requires embeddings.
+  const canSort =
+    lblSort === "events" ? !!stats : (stats?.embedded_detections ?? 0) > 0;
+
   // Auto-sort on mount and when filters or sort mode settle.
   useEffect(() => {
-    if (
-      stats?.embedded_detections &&
-      debouncedSortKey !== lastSortKeyRef.current
-    ) {
+    if (canSort && debouncedSortKey !== lastSortKeyRef.current) {
       lastSortKeyRef.current = debouncedSortKey;
       sortMutation.mutate(lblSort);
     }
-  }, [debouncedSortKey, stats?.embedded_detections]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSortKey, canSort]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Flat detection list for selection model
   const allDetections = useMemo((): DetectionSummary[] => {
@@ -1284,18 +1287,20 @@ export function LabelsTab({
     return mode ? resolveSpeciesName(mode) : null;
   }, [selectedIds, allDetections]);
 
-  // No embeddings state
-  if (stats && stats.embedded_detections === 0) {
+  // No embeddings: only similarity sort is blocked (it needs the
+  // vectors). Event sort works without them, so let it fall through to
+  // the grid and point the user at it here.
+  if (stats && stats.embedded_detections === 0 && lblSort !== "events") {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-16 text-center">
           <Layers className="h-12 w-12 text-muted-foreground/50 mb-4" />
           <p className="text-lg font-medium text-muted-foreground">
-            No embeddings yet
+            Sort by similarity needs embeddings
           </p>
           <p className="text-sm text-muted-foreground mt-1 max-w-md">
-            Run an analysis with an embedding model selected to use this tab.
-            Embeddings are computed from detection crops using DINOv2.
+            Switch to Sort by event to review these detections, or run an
+            analysis with an embedding model to enable similarity sorting.
           </p>
         </CardContent>
       </Card>
@@ -1393,8 +1398,10 @@ export function LabelsTab({
         verificationDefault="unverified"
       />
 
-      {/* Warning when embeddings are incomplete */}
-      {stats && stats.missing_embeddings > 0 && (
+      {/* Warning when embeddings are incomplete. Only relevant to
+          Sort by similarity, which shows the embedded set only. Sort by
+          event already shows every detection, so it is suppressed there. */}
+      {lblSort !== "events" && stats && stats.missing_embeddings > 0 && (
         <Callout
           variant="warning"
           title={`${stats.missing_embeddings} detection${
@@ -1406,12 +1413,13 @@ export function LabelsTab({
             </Button>
           }
         >
-          This grid only shows detections that have an embedding, no matter which sort mode you pick. Embeddings can be missing when embedding was switched off in settings, an error occurred during analysis, or detections were added manually via event verification. Click 'Embed now' to fix this.
+          Sort by similarity only shows detections that have an embedding. Embeddings can be missing when embedding was switched off in settings, an error occurred during analysis, or detections were added manually via event verification. Switch to Sort by event to see all of them, or click 'Embed now' to embed the rest.
         </Callout>
       )}
 
-      {/* Unprocessed low-confidence tail in the selected range */}
-      {unprocessedCount > 0 && (
+      {/* Unprocessed low-confidence tail in the selected range. Same as
+          above: only meaningful for Sort by similarity. */}
+      {lblSort !== "events" && unprocessedCount > 0 && (
         <Callout
           variant="info"
           title={`${unprocessedCount.toLocaleString()} more detection${

@@ -1,9 +1,8 @@
 # TODO
 
-
-The confidence sliders and threhsold values thourghout the app are incosistemtly percentages and 0-1 values. AUdit and make it all percentages. That means all user facing stuff like info captions, sliders, visualisation thngs on images and videos, etc. 
-
 Why would events sorting in the labels page be restricted to embeddings? It doesnt make sense to require embeddings for sorting on events, right? 
+
+
 
 
 "Also used as the starting point for your next run." is not needed. Users dont need to kow that some of this also is used by the inference time. Perhaps this will suffice: "Applies to the results below without re-running the models. "
@@ -503,6 +502,7 @@ in the outputs CSVs, there are redundant columns like eventID, deploymentID etc.
 - [ ] also include the fallback date reader from filename (...addaxai-YYYYMMDD-HHMMSS.ext)
 
 ## Nice to haves
+- [ ] If there are new detections there is a mechanism that lets the user re-embed them so they are added later in the process. Can we do that for classification too? Imagine this scenario: User runs folder run at all the defaults with csl model SpeciesNet. IIn labels page it sets the det thresh to 0.01-1 to include all detections. there is an option to add embeddings for the ones that did not get embeddings right away, but the ones without a cls label will always remain null ( or effetively "animal"). How difficult would it be to have a similar mechanism as the embedding, but then for classifications? Is it hard to do? Can we reuse the embedding logic? Dont bother if its hard to do, since its a pretty nice use case, so KISS. ALso DRY YAGNI. Be honest, no sugar coating. 
 - [ ] The labels page now either sorts on events or on similarity. It would be nice if there wqould be a hybrid version, where it keeps events together, but still sorts the events on similarity. What do you think? Perhaps by comnparing the centroid of each event with each other? Or would you thnk this is a feature that will not yield good results? Be honest, no sugar coating. KISS DRY YAGNI
 - [ ] REMOVE THE MAX-DETECTIONS KNOB - the "max detections" view option is a memory guard for the similarity-sort subprocess leaked into the UI; users only meet it when the grid errors on large selections. Replace with auto-capping: when a filter selection exceeds the limit, load the cap-sized subset and show a notice ("Showing the first 20,000 of 34,512 detections, narrow the filters to see the rest") instead of erroring. Then delete the knob from LabelsSettings and the error card. Medium effort: backend sort script + UI notice; must not silently mislead about what is loaded.
 - [ ] APT REPO FOR LINUX UPDATES - host a small signed apt repository so Linux users add it once and then get AddaxAI updates through Ubuntu's normal Software Updater. Currently a new deb opened in the App Center shows a greyed-out "Installed" button with no update path (App Center limitation for sideloaded debs), so BETA.md tells users to run `sudo apt install ./AddaxAI-amd64.deb` by hand. An apt repo also removes the "Unknown publisher / potentially unsafe" warning on the install page. Only worth it if Linux uptake grows beyond the current handful of users.

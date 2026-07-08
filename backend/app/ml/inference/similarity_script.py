@@ -64,8 +64,13 @@ def _emit_progress(phase: str, done: int, total: int) -> None:
 
 # ── SQL ──────────────────────────────────────────────────────────────────
 
-BASE_SQL = """
-SELECT de.detection_id, de.vector, de.l2_norm,
+# Detection + file + event columns shared by both load paths. `d.id AS
+# detection_id` equals the embedding table's detection_id via the join,
+# so the two queries return the same column set (the embedding path just
+# adds the vector). Selecting the same columns lets `_row_to_meta` and
+# `_build_query` serve both without branching.
+_DETECTION_COLUMNS = """
+       d.id AS detection_id,
        d.label, d.label_taxonomy_id, d.label_confidence, d.scientific_name,
        d.common_name,
        d.confidence, d.category,
@@ -87,18 +92,53 @@ SELECT de.detection_id, de.vector, de.l2_norm,
            AS event_sequence,
        (SELECT e.event_start_local FROM event_files ef
         JOIN events e ON e.id = ef.event_id
-        WHERE ef.file_id = f.id LIMIT 1) AS event_start_local
-FROM detection_embeddings de
-JOIN detections d ON d.id = de.detection_id
+        WHERE ef.file_id = f.id LIMIT 1) AS event_start_local"""
+
+# File / deployment / site joins + the project scope, shared by both
+# queries. Ends on the WHERE so `_build_query` can append " AND ..."
+# filter clauses.
+_COMMON_JOINS = """
 JOIN files f ON f.id = d.file_id
 JOIN deployments dep ON dep.id = f.deployment_id
 LEFT JOIN sites s ON s.id = dep.site_id
-WHERE dep.project_id = ?
+WHERE dep.project_id = ?"""
+
+# Similarity / suggestions path: needs the embedding vector, so the base
+# table is detection_embeddings (only embedded detections appear).
+BASE_SQL = f"""
+SELECT de.vector, de.l2_norm,
+{_DETECTION_COLUMNS}
+FROM detection_embeddings de
+JOIN detections d ON d.id = de.detection_id
+{_COMMON_JOINS}
 """
 
+# Metadata-only path (event / time sorts): no embedding needed, so the
+# base table is detections. Every detection passing the filters is
+# included, embedded or not.
+METADATA_SQL = f"""
+SELECT
+{_DETECTION_COLUMNS}
+FROM detections d
+{_COMMON_JOINS}
+"""
 
-def _build_query(project_id: str, filters: dict) -> tuple[str, list]:
-    """Build filtered SQL query from filter dict. Returns (sql, params)."""
+# Sort modes that require the embedding vector. Everything else is a
+# metadata-only ordering (event / time) that works without embeddings.
+EMBEDDING_SORTS = frozenset({"similarity", "similarity_reverse", "suggestions"})
+
+
+def _build_query(
+    project_id: str, filters: dict, base_sql: str = BASE_SQL
+) -> tuple[str, list]:
+    """Build filtered SQL query from filter dict. Returns (sql, params).
+
+    ``base_sql`` is the SELECT ending on ``WHERE dep.project_id = ?``;
+    the filter clauses are appended with AND. Defaults to the embedding
+    query (``BASE_SQL``); the metadata sort path passes ``METADATA_SQL``.
+    The filter clauses only reference ``d.`` / ``f.`` / ``dep.`` columns,
+    so they are valid against both bases.
+    """
     clauses: list[str] = []
     params: list = [project_id]
 
@@ -168,11 +208,88 @@ def _build_query(project_id: str, filters: dict) -> tuple[str, list]:
         clauses.append("d.verified = ?")
         params.append(1 if filters["verified"] else 0)
 
-    sql = BASE_SQL
+    sql = base_sql
     if clauses:
         sql += " AND " + " AND ".join(clauses)
 
     return sql, params
+
+
+def _row_to_meta(row: sqlite3.Row) -> dict:
+    """Build the per-detection metadata dict shared by both load paths.
+
+    Reads only detection / file / event columns (no embedding fields),
+    so it works for rows from either ``BASE_SQL`` or ``METADATA_SQL``.
+    """
+    ts = row["captured_at_local"]
+    if ts and not isinstance(ts, str):
+        ts = str(ts)
+
+    event_start = row["event_start_local"]
+    if event_start and not isinstance(event_start, str):
+        event_start = str(event_start)
+
+    return {
+        "label": row["label"],
+        "label_taxonomy_id": row["label_taxonomy_id"],
+        "label_confidence": row["label_confidence"],
+        "scientific_name": row["scientific_name"],
+        "common_name": row["common_name"],
+        "confidence": row["confidence"],
+        "category": row["category"],
+        "verified": bool(row["verified"]),
+        "suggestion_dismissed": bool(row["suggestion_dismissed"]),
+        "classification_method": row["classification_method"],
+        "file_id": row["file_id"],
+        "deployment_id": row["deployment_id"],
+        "captured_at_local": ts,
+        "site_name": row["site_name"],
+        "event_id": row["event_id"],
+        "event_sequence": row["event_sequence"],
+        "event_start_local": event_start,
+        "bbox_x": row["bbox_x"],
+        "bbox_y": row["bbox_y"],
+        "bbox_width": row["bbox_width"],
+        "bbox_height": row["bbox_height"],
+        "width_px": row["width_px"],
+        "height_px": row["height_px"],
+    }
+
+
+def _load_metadata(
+    db_path: str, project_id: str, filters: dict,
+    max_detections: int = MAX_DETECTIONS,
+) -> tuple[list[str], list[dict]]:
+    """Load detections for the metadata sorts, returning (ids, metas).
+
+    Same filters and ``project_floor`` as the embedding path, but reads
+    ``FROM detections`` so detections without an embedding are included.
+    No vectors, no FAISS, no progress bar (a plain SQL read is fast).
+    """
+    sql, params = _build_query(project_id, filters, METADATA_SQL)
+
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        count_sql = f"SELECT COUNT(*) FROM ({sql})"
+        total = conn.execute(count_sql, params).fetchone()[0] or 0
+        if total == 0:
+            return [], []
+        if total > max_detections:
+            raise ValueError(
+                f"Too many detections ({total}, current limit {max_detections}). "
+                "Narrow the result by species, site, or date, or raise the "
+                "limit in the Observations view options (gear icon)."
+            )
+
+        detection_ids: list[str] = []
+        metas: list[dict] = []
+        for row in conn.execute(sql, params):
+            detection_ids.append(row["detection_id"])
+            metas.append(_row_to_meta(row))
+        return detection_ids, metas
+    finally:
+        conn.close()
 
 
 def _load_embeddings(
@@ -219,42 +336,7 @@ def _load_embeddings(
                 vec = vec / l2_norm
             vectors.append(vec)
             detection_ids.append(row["detection_id"])
-
-            ts = row["captured_at_local"]
-            if ts and isinstance(ts, str):
-                pass
-            elif ts:
-                ts = str(ts)
-
-            event_start = row["event_start_local"]
-            if event_start and not isinstance(event_start, str):
-                event_start = str(event_start)
-
-            metadata_list.append({
-                "label": row["label"],
-                "label_taxonomy_id": row["label_taxonomy_id"],
-                "label_confidence": row["label_confidence"],
-                "scientific_name": row["scientific_name"],
-                "common_name": row["common_name"],
-                "confidence": row["confidence"],
-                "category": row["category"],
-                "verified": bool(row["verified"]),
-                "suggestion_dismissed": bool(row["suggestion_dismissed"]),
-                "classification_method": row["classification_method"],
-                "file_id": row["file_id"],
-                "deployment_id": row["deployment_id"],
-                "captured_at_local": ts,
-                "site_name": row["site_name"],
-                "event_id": row["event_id"],
-                "event_sequence": row["event_sequence"],
-                "event_start_local": event_start,
-                "bbox_x": row["bbox_x"],
-                "bbox_y": row["bbox_y"],
-                "bbox_width": row["bbox_width"],
-                "bbox_height": row["bbox_height"],
-                "width_px": row["width_px"],
-                "height_px": row["height_px"],
-            })
+            metadata_list.append(_row_to_meta(row))
 
             if (i + 1) % PROGRESS_LOAD_EVERY == 0:
                 _emit_progress("load", i + 1, total)
@@ -560,8 +642,6 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
       by descending count. Skips the greedy walk because the embedding
       chain is irrelevant here.
     """
-    import faiss
-
     # `observation_sort` is a sibling file. Python prepends the running
     # script's dir to sys.path[0], so this resolves without the full
     # `app.ml.inference.*` package import (which would require pydantic
@@ -573,6 +653,24 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
     max_detections = int(params.get("max_detections", MAX_DETECTIONS))
     if sort_mode not in VALID_SORTS:
         raise ValueError(f"Unknown sort mode: {sort_mode}")
+
+    # Metadata sorts (event / time) don't use embeddings: load the full
+    # detection population so detections without an embedding are still
+    # shown and ordered. Only similarity / suggestions need the vectors.
+    if sort_mode not in EMBEDDING_SORTS:
+        det_ids, metas = _load_metadata(
+            db_path, project_id, filters, max_detections=max_detections
+        )
+        if not det_ids:
+            return {"detections": [], "total_detections": 0}
+        # similarity_order is unused for the metadata orderings.
+        final_order = order_indices(sort_mode, [], metas)
+        detections = [
+            _build_summary(det_ids[i], metas[i]) for i in final_order
+        ]
+        return {"detections": detections, "total_detections": len(final_order)}
+
+    import faiss
 
     vectors, det_ids, metas = _load_embeddings(
         db_path, project_id, filters, max_detections=max_detections
