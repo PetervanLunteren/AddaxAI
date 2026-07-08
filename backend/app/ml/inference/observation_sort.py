@@ -106,9 +106,10 @@ def order_events_by_deployment(metas: list[dict]) -> list[int]:
     folder run every detection shares one deployment, so this reduces
     exactly to the plain chronological ``order_indices("events", ...)``.
 
-    Only the no-embedding fallback uses this; the similarity path keeps
-    the plain chronological baseline (grouping there is by appearance,
-    not camera).
+    Used by the no-embedding event sort and as the baseline for the
+    similarity event sort, so the embedless tail (events with no
+    embedded detection) is camera-grouped in both. Events that do have
+    a representative are reordered by appearance on top of this.
     """
     n = len(metas)
 

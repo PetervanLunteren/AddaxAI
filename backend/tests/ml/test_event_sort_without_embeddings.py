@@ -394,3 +394,33 @@ def test_event_sort_no_embeddings_groups_by_deployment(sort_db):
     result = do_sort(db_path, p.id, {"sort": "events", "filters": {}})
     ids = [d["detection_id"] for d in result["detections"]]
     assert ids == [d1_new.id, d1_old.id, d2.id]
+
+
+def test_order_events_by_similarity_keeps_partial_event_intact(monkeypatch):
+    # Event X has one embedded (x_emb, the representative) and one NON
+    # embedded detection (x_plain); event Y is embedded. Both of X's
+    # detections must stay together in the block, in sequence order,
+    # even though x_plain has no vector.
+    metas = [
+        _meta("X", 0, "2024-01-02T00:00", 0.9),  # 0: x_emb (embedded)
+        _meta("X", 1, "2024-01-02T00:00", 0.4),  # 1: x_plain (NOT embedded)
+        _meta("Y", 0, "2024-01-01T00:00", 0.8),  # 2: y_emb (embedded)
+    ]
+    det_ids = ["x_emb", "x_plain", "y_emb"]
+    vector_by_id = {
+        "x_emb": np.array([1.0, 0.0], dtype=np.float32),
+        "y_emb": np.array([0.0, 1.0], dtype=np.float32),
+    }
+    # Identity walk over rep events [X, Y].
+    monkeypatch.setattr(
+        "app.ml.inference.similarity_script._greedy_order",
+        lambda mat: list(range(len(mat))),
+    )
+    order = _order_events_by_similarity(det_ids, metas, vector_by_id)
+
+    # X block first (both its detections, sequence order), then Y.
+    assert order == [0, 1, 2]
+    # The non-embedded detection is present and adjacent to its event's
+    # embedded one (not split off to a tail).
+    pos = {det_ids[i]: p for p, i in enumerate(order)}
+    assert abs(pos["x_emb"] - pos["x_plain"]) == 1

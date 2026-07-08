@@ -706,23 +706,26 @@ def _order_events_by_similarity(
     greedy nearest-neighbour walk over one representative vector each,
     so visually similar (usually same-species) events sit next to each
     other. Each event's representative is its most-confident detection
-    that has an embedding. Events with no embedded detection, and
-    detections with no event, fall back to the chronological order.
+    that has an embedding. Events with no embedded detection (nothing to
+    compare) fall to a chronological, camera-grouped tail; detections
+    with no event go last.
 
     Returns the final index order into ``metas`` / ``det_ids``.
     """
-    from observation_sort import order_indices
+    from observation_sort import order_events_by_deployment
 
-    # Chronological baseline: within-event by sequence, events by time
-    # desc, no-event detections last. Reordering events on top of this
-    # gives within-event sequence and the rep-less / no-event tail for
-    # free.
-    base_order = order_indices("events", [], metas)
+    # Baseline: chronological, grouped by camera (within-event by
+    # sequence, no-event last). The similarity walk overrides the order
+    # of events that have a representative; events without one keep this
+    # baseline, so the embedless tail is camera-grouped just like the
+    # no-embedding fallback. Single-deployment folder runs reduce to
+    # plain chronological.
+    base_order = order_events_by_deployment(metas)
 
     # Group baseline indices by event, preserving first-seen (= time)
     # event order and within-event sequence order.
     event_to_indices: dict[str, list[int]] = {}
-    events_in_time_order: list[str] = []
+    events_in_baseline_order: list[str] = []
     no_event: list[int] = []
     for i in base_order:
         eid = metas[i].get("event_id")
@@ -731,7 +734,7 @@ def _order_events_by_similarity(
             continue
         if eid not in event_to_indices:
             event_to_indices[eid] = []
-            events_in_time_order.append(eid)
+            events_in_baseline_order.append(eid)
         event_to_indices[eid].append(i)
 
     # Representative vector per event: the most-confident detection that
@@ -751,7 +754,7 @@ def _order_events_by_similarity(
             rep_vec[eid] = vector_by_id[det_ids[best_i]]
 
     # Greedy-walk the events that have a representative.
-    rep_eids = [eid for eid in events_in_time_order if eid in rep_vec]
+    rep_eids = [eid for eid in events_in_baseline_order if eid in rep_vec]
     if len(rep_eids) >= 2:
         mat = np.stack([rep_vec[eid] for eid in rep_eids])
         ordered_rep_eids = [rep_eids[j] for j in _greedy_order(mat)]
@@ -764,7 +767,7 @@ def _order_events_by_similarity(
     final: list[int] = []
     for eid in ordered_rep_eids:
         final.extend(event_to_indices[eid])
-    for eid in events_in_time_order:
+    for eid in events_in_baseline_order:
         if eid not in emitted:
             final.extend(event_to_indices[eid])
     final.extend(no_event)
