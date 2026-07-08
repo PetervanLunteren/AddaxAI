@@ -18,6 +18,7 @@ from app.api.schemas.label import (
     SearchRequest,
     SortRequest,
 )
+from app.core.confidence import DEFAULT_CLASSIFICATION_GATE
 from app.db.base import get_db
 from app.models import Deployment, Detection, DetectionEmbedding, File, Project
 from app.services.label_service import (
@@ -207,7 +208,11 @@ def get_label_stats(
     # the below-gate tail is deliberately unprocessed and must not
     # count as "missing" here (the grid's separate unprocessed-range
     # banner owns that population, with its own backfill action).
-    gate = project.classification_gate if project else 0.1
+    gate = (
+        project.classification_gate
+        if project
+        else DEFAULT_CLASSIFICATION_GATE
+    )
     above_gate_or_verified = or_(
         Detection.confidence >= gate,
         Detection.verified == True,  # noqa: E712

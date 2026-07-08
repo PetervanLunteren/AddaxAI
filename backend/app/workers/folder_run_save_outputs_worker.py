@@ -32,6 +32,7 @@ from typing import Any
 
 from app.api.crud import job as job_crud
 from app.api.crud import project as project_crud
+from app.core.confidence import DEFAULT_COUNTING_THRESHOLD
 from app.core.job_cancellation import (
     JobCancelledError,
     clear_cancel,
@@ -129,7 +130,9 @@ async def process_save_outputs_job(job_id: str) -> None:
         # modules only; the data exports are always the complete record.
         # Falls back to the schema default for jobs enqueued by an older
         # frontend that did not send the field.
-        media_confidence = float(payload.get("media_confidence", 0.2))
+        media_confidence = float(
+            payload.get("media_confidence", DEFAULT_COUNTING_THRESHOLD)
+        )
         media_active = bool(
             payload.get("separate_folders") or draw_bboxes or anonymise
         )

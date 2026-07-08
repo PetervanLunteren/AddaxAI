@@ -21,6 +21,7 @@ import { AnalysisSettingsButton } from "../../components/folder-run/AnalysisSett
 import { StepHeader } from "../../components/folder-run/StepHeader";
 import { LabelsView } from "../../components/verify/LabelsView";
 import { folderRunsApi } from "../../api/folder-runs";
+import { DEFAULT_COUNTING_THRESHOLD } from "../../lib/confidence";
 import { useFolderRun } from "./FolderRunLayout";
 
 /** Default floor for the grid's detection-confidence filter. Folder
@@ -29,7 +30,7 @@ import { useFolderRun } from "./FolderRunLayout";
  * grid opens pre-filtered at 0.2. It is an ordinary filter: the user
  * can drop it to the floor (or clear it) in the filter bar. Affects
  * this review grid only — data exports always contain everything. */
-const DEFAULT_GRID_MIN_CONFIDENCE = 0.2;
+const DEFAULT_GRID_MIN_CONFIDENCE = DEFAULT_COUNTING_THRESHOLD;
 
 export function FolderRunLabelsStep() {
   const navigate = useNavigate();

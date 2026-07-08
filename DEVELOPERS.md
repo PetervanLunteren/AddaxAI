@@ -173,6 +173,8 @@ Coverage is collected automatically (`--cov=app` in `pyproject.toml`).
 Three confidence values exist and must not be confused:
 
 1. **MD output** — MegaDetector always runs untresholded (`MD_OUTPUT_CONFIDENCE_THRESHOLD = 0.005`, MD's own internal default). Everything above it is stored: raw results.json, database, and the folder-run data exports (which bypass all thresholds by design).
+
+All confidence defaults live in `backend/app/core/confidence.py`, mirrored by `frontend/src/lib/confidence.ts` — change them there, never as literals at call sites.
 2. **`Project.classification_gate`** (default 0.1) — detection confidence above which animal crops are classified and embedded. Inference-time; changing it applies to new analyses. Gating both per-crop model passes is what keeps the untresholded MD output from multiplying compute.
 3. **`Project.detection_threshold`** (default 0.2) — the counting/visualization filter described below. Folder runs pin it to the classification gate.
 

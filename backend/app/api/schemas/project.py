@@ -13,6 +13,11 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.confidence import (
+    DEFAULT_CLASSIFICATION_GATE,
+    DEFAULT_COUNTING_THRESHOLD,
+)
+
 ProjectMode = Literal["folder_run", "research"]
 
 
@@ -83,13 +88,13 @@ class ProjectBase(BaseModel):
 
     # Detection and processing settings
     detection_threshold: float = Field(
-        default=0.2,
+        default=DEFAULT_COUNTING_THRESHOLD,
         ge=0.0,
         le=1.0,
         description="Counting / visualization confidence filter (0.0-1.0)",
     )
     classification_gate: float = Field(
-        default=0.1,
+        default=DEFAULT_CLASSIFICATION_GATE,
         ge=0.01,
         le=1.0,
         description=(

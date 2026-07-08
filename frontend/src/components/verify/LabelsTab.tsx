@@ -36,6 +36,10 @@ import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
 import { Card, CardContent } from "../ui/card";
 import { Progress } from "../ui/progress";
+import {
+  DEFAULT_CLASSIFICATION_GATE,
+  MD_OUTPUT_CONFIDENCE_THRESHOLD,
+} from "../../lib/confidence";
 import { invalidateProjectData } from "../../lib/invalidate-project";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
 import { CropGrid } from "./CropGrid";
@@ -1275,7 +1279,8 @@ export function LabelsTab({
   // Purely data-driven (embedding-existence, not settings), so it is
   // also correct for projects whose deployments ran under different
   // gates.
-  const classificationGate = project?.classification_gate ?? 0.1;
+  const classificationGate =
+    project?.classification_gate ?? DEFAULT_CLASSIFICATION_GATE;
   const detectionFloorValue = project?.detection_threshold ?? 0;
   const effectiveFloor = Math.min(
     detectionFloorValue,
@@ -1295,7 +1300,7 @@ export function LabelsTab({
     queryFn: () =>
       labelsApi.unprocessedCount(
         projectId,
-        Math.max(effectiveFloor, 0.005),
+        Math.max(effectiveFloor, MD_OUTPUT_CONFIDENCE_THRESHOLD),
         unprocessedRangeMax,
       ),
     enabled:
@@ -1307,7 +1312,10 @@ export function LabelsTab({
   const handleProcessUnprocessed = async () => {
     try {
       const { job_id } = await projectsApi.reEmbed(projectId, {
-        min_confidence: Math.max(effectiveFloor, 0.005),
+        min_confidence: Math.max(
+          effectiveFloor,
+          MD_OUTPUT_CONFIDENCE_THRESHOLD,
+        ),
       });
       setReEmbedJobId(job_id);
     } catch (err: unknown) {

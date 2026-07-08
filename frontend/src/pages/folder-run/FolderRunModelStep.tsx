@@ -79,6 +79,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
+import { DEFAULT_CLASSIFICATION_GATE } from "../../lib/confidence";
 import { ConfidenceSlider } from "../../components/ui/confidence-slider";
 import { SETTING_CAPTIONS } from "../../lib/settingCaptions";
 import { Slider } from "../../components/ui/slider";
@@ -251,7 +252,7 @@ export function FolderRunModelStep() {
       classification_batch_size: null,
       embedding_batch_size: null,
       video_fps: 1.0,
-      classification_gate: 0.1,
+      classification_gate: DEFAULT_CLASSIFICATION_GATE,
       event_smoothing: true,
       smoothing_strength: "normal",
       taxonomic_rollup: true,
@@ -1137,15 +1138,15 @@ export function FolderRunModelStep() {
                           label="Classify detections above"
                           description={SETTING_CAPTIONS.classificationGate}
                         >
-                          <div className="flex items-center justify-between gap-4">
-                            <ConfidenceSlider
-                              value={field.value}
-                              onChange={(vals) => field.onChange(vals[0])}
-                            />
-                            <span className="min-w-[3.5rem] text-right text-sm font-medium">
-                              {field.value.toFixed(2)}
-                            </span>
-                          </div>
+                          <ConfidenceSlider
+                            value={field.value}
+                            onChange={(vals) => field.onChange(vals[0])}
+                            valueLabel={
+                              <span className="min-w-[3.5rem] shrink-0 text-right text-sm font-medium">
+                                {field.value.toFixed(2)}
+                              </span>
+                            }
+                          />
                           <FormMessage />
                         </SettingRow>
                       )}

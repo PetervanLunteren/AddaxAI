@@ -10,6 +10,10 @@
  * that one separately.
  */
 
+import {
+  DEFAULT_CLASSIFICATION_GATE,
+  DEFAULT_COUNTING_THRESHOLD,
+} from "./confidence";
 import type {
   FieldValues,
   Path,
@@ -20,8 +24,8 @@ import type {
 export const ADVANCED_SETTINGS_DEFAULTS = {
   detection_model_id: "MD5A-0-0",
   video_fps: 1.0,
-  detection_threshold: 0.2,
-  classification_gate: 0.1,
+  detection_threshold: DEFAULT_COUNTING_THRESHOLD,
+  classification_gate: DEFAULT_CLASSIFICATION_GATE,
   event_smoothing: true,
   smoothing_strength: "normal",
   taxonomic_rollup: true,

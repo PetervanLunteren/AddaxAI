@@ -41,10 +41,13 @@ from app.api.schemas.deployment_queue import (
 )
 from app.api.schemas.job import JobCreate
 from app.api.schemas.project import ProjectCreate, ProjectResponse
+from app.core.confidence import (
+    DEFAULT_CLASSIFICATION_GATE,
+    DEFAULT_COUNTING_THRESHOLD,
+)
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
-from app.ml.detection import DEFAULT_CLASSIFICATION_GATE
 from app.ml.postprocessing_outputs._output_context import MEDIA_SUBDIR
 from app.ml.postprocessing_outputs.output_preview import (
     build_output_preview,
@@ -163,7 +166,9 @@ class SaveOutputsRequest(BaseModel):
     # left out of the separated copies, drawn boxes, blurs, and EXIF
     # tags. Data exports (CSV / XLSX / recognition JSON) ignore it: they
     # are always the complete record of the run.
-    media_confidence: float = Field(0.2, ge=0.0, le=1.0)
+    media_confidence: float = Field(
+        DEFAULT_COUNTING_THRESHOLD, ge=0.0, le=1.0
+    )
     separate_folders: bool = False
     # How media copies are grouped at the output root. ``taxonomic``
     # nests Class/Order/Family/Genus/species; ``flat`` is one folder
@@ -216,7 +221,9 @@ class OutputPreviewRequest(BaseModel):
     excluded_label_ids: list[str] = Field(default_factory=list)
     # Media-output confidence, mirroring the save request so the
     # preview counts match what the save will write.
-    media_confidence: float = Field(0.2, ge=0.0, le=1.0)
+    media_confidence: float = Field(
+        DEFAULT_COUNTING_THRESHOLD, ge=0.0, le=1.0
+    )
     # Copy empty captures too; off by default. Mirrors the save
     # request so the preview matches what will be written.
     include_empty: bool = False
@@ -737,7 +744,7 @@ def get_output_preview(
         db,
         run_id,
         media_confidence=(
-            payload.media_confidence if payload else 0.2
+            payload.media_confidence if payload else DEFAULT_COUNTING_THRESHOLD
         ),
         excluded_label_ids=excluded,
         include_empty=bool(payload.include_empty) if payload else False,

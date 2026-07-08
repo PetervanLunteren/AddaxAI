@@ -82,6 +82,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
+import {
+  DEFAULT_CLASSIFICATION_GATE,
+  DEFAULT_COUNTING_THRESHOLD,
+} from "../lib/confidence";
 import { ConfidenceSlider } from "../components/ui/confidence-slider";
 import { SETTING_CAPTIONS } from "../lib/settingCaptions";
 import { ClassificationModelGroupedItems } from "../components/models/ClassificationModelGroupedItems";
@@ -287,8 +291,8 @@ export default function SettingsPage() {
       state_code: null,
       timezone: "",
       video_fps: 1.0,
-      detection_threshold: 0.2,
-      classification_gate: 0.1,
+      detection_threshold: DEFAULT_COUNTING_THRESHOLD,
+      classification_gate: DEFAULT_CLASSIFICATION_GATE,
       event_smoothing: true,
       smoothing_strength: "normal" as const,
       taxonomic_rollup: true,
@@ -1140,13 +1144,13 @@ export default function SettingsPage() {
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-4">
-                          <ConfidenceSlider
-                            value={field.value}
-                            onChange={(vals) => field.onChange(vals[0])}
-                          />
-                          <span className="text-sm font-medium min-w-[3.5rem] text-right">{field.value.toFixed(2)}</span>
-                        </div>
+                        <ConfidenceSlider
+                          value={field.value}
+                          onChange={(vals) => field.onChange(vals[0])}
+                          valueLabel={
+                            <span className="text-sm font-medium min-w-[3.5rem] shrink-0 text-right">{field.value.toFixed(2)}</span>
+                          }
+                        />
                         <FormMessage />
                       </div>
                     </div>
@@ -1166,13 +1170,13 @@ export default function SettingsPage() {
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-4">
-                          <ConfidenceSlider
-                            value={field.value}
-                            onChange={(vals) => field.onChange(vals[0])}
-                          />
-                          <span className="text-sm font-medium min-w-[3rem] text-right">{field.value.toFixed(2)}</span>
-                        </div>
+                        <ConfidenceSlider
+                          value={field.value}
+                          onChange={(vals) => field.onChange(vals[0])}
+                          valueLabel={
+                            <span className="text-sm font-medium min-w-[3rem] shrink-0 text-right">{field.value.toFixed(2)}</span>
+                          }
+                        />
                         <FormMessage />
                       </div>
                     </div>

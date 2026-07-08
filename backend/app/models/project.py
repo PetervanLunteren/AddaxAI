@@ -15,6 +15,10 @@ from typing import TYPE_CHECKING
 from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.confidence import (
+    DEFAULT_CLASSIFICATION_GATE,
+    DEFAULT_COUNTING_THRESHOLD,
+)
 from app.db.base import Base
 
 if TYPE_CHECKING:
@@ -92,10 +96,10 @@ class Project(Base):
     # MegaDetector itself always runs untresholded (0.005, see
     # app/ml/detection); neither setting affects what is stored.
     detection_threshold: Mapped[float] = mapped_column(
-        Float, nullable=False, default=0.2
+        Float, nullable=False, default=DEFAULT_COUNTING_THRESHOLD
     )
     classification_gate: Mapped[float] = mapped_column(
-        Float, nullable=False, default=0.1
+        Float, nullable=False, default=DEFAULT_CLASSIFICATION_GATE
     )
     event_smoothing: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True

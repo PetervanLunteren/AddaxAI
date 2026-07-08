@@ -25,6 +25,7 @@ import {
 } from "../../../api/folder-runs";
 import { eventsApi } from "../../../api/events";
 import type { LabelTreeResponse } from "../../../api/types";
+import { DEFAULT_COUNTING_THRESHOLD } from "../../../lib/confidence";
 import { isElectron } from "../../../lib/platform";
 import { getSpeciesNameMode } from "../../../lib/species-name-mode";
 import {
@@ -205,7 +206,8 @@ export function useSaveOutputsForm({
     groupEvents: persisted?.groupEvents ?? true,
     speciesLast: persisted?.speciesLast ?? false,
     copyEmpties: persisted?.copyEmpties ?? false,
-    mediaConfidence: persisted?.mediaConfidence ?? 0.2,
+    mediaConfidence:
+      persisted?.mediaConfidence ?? DEFAULT_COUNTING_THRESHOLD,
     includedLabelIds: [],
   }));
   const [visualise, setVisualise] = useState<VisualiseState>(() => ({

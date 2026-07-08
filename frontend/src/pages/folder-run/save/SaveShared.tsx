@@ -208,17 +208,17 @@ export function MediaBody({
             The data files always include everything.
           </span>
         </span>
-        <div className="flex items-center justify-between gap-4">
-          <ConfidenceSlider
-            value={separate.mediaConfidence}
-            onChange={(vals) =>
-              setSeparate({ ...separate, mediaConfidence: vals[0] })
-            }
-          />
-          <span className="min-w-[3rem] text-right text-sm font-medium">
-            {separate.mediaConfidence.toFixed(2)}
-          </span>
-        </div>
+        <ConfidenceSlider
+          value={separate.mediaConfidence}
+          onChange={(vals) =>
+            setSeparate({ ...separate, mediaConfidence: vals[0] })
+          }
+          valueLabel={
+            <span className="min-w-[3rem] shrink-0 text-right text-sm font-medium">
+              {separate.mediaConfidence.toFixed(2)}
+            </span>
+          }
+        />
       </div>
 
       <CaptionedCheckbox

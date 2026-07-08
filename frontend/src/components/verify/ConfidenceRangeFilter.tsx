@@ -7,7 +7,7 @@
  *
  * The detection slider's low handle behaviour depends on the page:
  * - ``floorMode="clamp"`` (Counts): the handle stops at the project's
- *   detection threshold, with a reason callout while it rests there —
+ *   detection threshold, with a quiet caption while it rests there —
  *   counting is governed by the threshold setting, not this filter.
  * - ``floorMode="open"`` (Labels): the handle goes down to the scale
  *   minimum; digging below the threshold makes the grid show the
@@ -27,11 +27,12 @@ import {
   CONFIDENCE_SCALE_MIN,
   ConfidenceSlider,
 } from "../ui/confidence-slider";
+import { DEFAULT_COUNTING_THRESHOLD } from "../../lib/confidence";
 import type { EventFilterParams } from "../../api/types";
 
-// Below this detection confidence, most boxes are false positives.
-// Purely advisory: the slider still goes there, with a warning.
-const DETECTION_NOISE_ADVISORY = 0.2;
+// Below the counting default, most boxes are false positives. Purely
+// advisory: the slider still goes there, with a warning.
+const DETECTION_NOISE_ADVISORY = DEFAULT_COUNTING_THRESHOLD;
 
 interface ConfidenceRangeFilterProps {
   filters: EventFilterParams;
@@ -41,7 +42,7 @@ interface ConfidenceRangeFilterProps {
   detectionFloor: number;
   /** Whether the low handle stops at the floor or the scale minimum. */
   floorMode: "clamp" | "open";
-  /** Reason shown while the handle rests on the clamped floor. */
+  /** Caption shown while the handle rests on the clamped floor. */
   clampReason?: string;
   /** Whether to render the classification slider at all. */
   showClassification: boolean;
@@ -92,35 +93,35 @@ export function ConfidenceRangeFilter({
         <label className="text-xs font-medium text-muted-foreground">
           Detection confidence
         </label>
-        <div className="flex items-center gap-3">
-          <ConfidenceSlider
-            className="h-9 px-2"
-            value={[detMin, detMax]}
-            effectiveMin={detEffectiveMin}
-            clampReason={floorMode === "clamp" ? clampReason : undefined}
-            warnBelow={{
-              value: DETECTION_NOISE_ADVISORY,
-              message:
-                "Most detections below 20% are false positives. " +
-                "Expect noise when reviewing this range.",
-            }}
-            onChange={([nextMin, nextMax]) => {
-              onChange({
-                ...filters,
-                // At the resting floor = no filter. Below it (open
-                // mode) or above it are deliberate choices and persist.
-                min_confidence:
-                  Math.abs(nextMin - detectionFloor) < 1e-6
-                    ? undefined
-                    : nextMin,
-                max_confidence: nextMax < 1 - 1e-6 ? nextMax : undefined,
-              });
-            }}
-          />
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-            {pct(detMin)} – {pct(detMax)}
-          </span>
-        </div>
+        <ConfidenceSlider
+          className="h-9 px-2 flex-1"
+          value={[detMin, detMax]}
+          effectiveMin={detEffectiveMin}
+          clampReason={floorMode === "clamp" ? clampReason : undefined}
+          warnBelow={{
+            value: DETECTION_NOISE_ADVISORY,
+            message:
+              "Most detections below 20% are false positives. " +
+              "Expect noise when reviewing this range.",
+          }}
+          valueLabel={
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+              {pct(detMin)} – {pct(detMax)}
+            </span>
+          }
+          onChange={([nextMin, nextMax]) => {
+            onChange({
+              ...filters,
+              // At the resting floor = no filter. Below it (open
+              // mode) or above it are deliberate choices and persist.
+              min_confidence:
+                Math.abs(nextMin - detectionFloor) < 1e-6
+                  ? undefined
+                  : nextMin,
+              max_confidence: nextMax < 1 - 1e-6 ? nextMax : undefined,
+            });
+          }}
+        />
       </div>
 
       {showClassification && (
@@ -128,30 +129,30 @@ export function ConfidenceRangeFilter({
           <label className="text-xs font-medium text-muted-foreground">
             Classification confidence
           </label>
-          <div className="flex items-center gap-3">
-            <ConfidenceSlider
-              className="h-9 px-2"
-              value={[clsMin, clsMax]}
-              effectiveMin={clsEffectiveMin}
-              clampReason={
-                `This run has no classifications below ` +
-                `${Math.round(clsEffectiveMin * 100)}%.`
-              }
-              onChange={([nextMin, nextMax]) => {
-                onChange({
-                  ...filters,
-                  // Resting on the clamp selects everything -> no filter.
-                  min_label_confidence:
-                    nextMin > clsEffectiveMin + 1e-6 ? nextMin : undefined,
-                  max_label_confidence:
-                    nextMax < 1 - 1e-6 ? nextMax : undefined,
-                });
-              }}
-            />
-            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-              {pct(clsMin)} – {pct(clsMax)}
-            </span>
-          </div>
+          <ConfidenceSlider
+            className="h-9 px-2 flex-1"
+            value={[clsMin, clsMax]}
+            effectiveMin={clsEffectiveMin}
+            clampReason={
+              `No classifications below ` +
+              `${Math.round(clsEffectiveMin * 100)}% in this run.`
+            }
+            valueLabel={
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                {pct(clsMin)} – {pct(clsMax)}
+              </span>
+            }
+            onChange={([nextMin, nextMax]) => {
+              onChange({
+                ...filters,
+                // Resting on the clamp selects everything -> no filter.
+                min_label_confidence:
+                  nextMin > clsEffectiveMin + 1e-6 ? nextMin : undefined,
+                max_label_confidence:
+                  nextMax < 1 - 1e-6 ? nextMax : undefined,
+              });
+            }}
+          />
         </div>
       )}
     </>
