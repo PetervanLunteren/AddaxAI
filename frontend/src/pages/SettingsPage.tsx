@@ -7,13 +7,13 @@
  * - Explicit error handling
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Save, RotateCcw, Undo2, Check, X } from "lucide-react";
+import { Save, RotateCcw, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { invalidateModelMetadata, modelsApi } from "../api/models";
@@ -28,6 +28,11 @@ import {
   hasReprocessChanges,
   startReprocessIfNeeded,
 } from "../lib/reprocessSettings";
+import {
+  buildSaveResults,
+  fetchStats,
+  type ProjectStats,
+} from "../lib/reprocessStats";
 import { restoreAdvancedDefaults } from "../lib/advancedSettingsDefaults";
 import { ModelSelect } from "../components/models/ModelSelect";
 import { NoClassifierNotice } from "../components/models/NoClassifierNotice";
@@ -35,11 +40,6 @@ import { ModelInfoSheet } from "../components/models/ModelInfoSheet";
 import { ModelStatusBadge } from "../components/projects/ModelStatusBadge";
 import { ModelPreparationView } from "../components/projects/ModelPreparationView";
 import { ModelPreparationErrorView } from "../components/projects/ModelPreparationErrorView";
-import {
-  SaveResultsModal,
-  type SaveResults,
-  type StatSnapshot,
-} from "../components/projects/SaveResultsModal";
 import { ReEmbedModal } from "../components/projects/ReEmbedModal";
 import {
   AlertDialog,
@@ -53,6 +53,7 @@ import {
 } from "../components/ui/alert-dialog";
 
 import { useTaskProgress } from "../hooks/useTaskProgress";
+import { useReprocessSummary } from "../hooks/useReprocessSummary";
 import {
   Tooltip,
   TooltipContent,
@@ -137,32 +138,6 @@ type SettingsFormData = z.infer<typeof settingsSchema>;
 // BatchSizeRow lives in components/analyses/BatchSizeRow.tsx and is
 // shared between this page and the folder-run setup step. Imported above.
 
-/** Fetch observation and event snapshots for the current project settings. */
-async function fetchStats(
-  projectId: string,
-  threshold: number,
-  interval: number,
-): Promise<{
-  observations: StatSnapshot;
-  independent_observations: StatSnapshot;
-  events: StatSnapshot;
-}> {
-  const [detectionCount, labelStats, indepObsStats, eventStats] = await Promise.all([
-    projectsApi.getDetectionCount(projectId, threshold),
-    projectsApi.getLabelStats(projectId, threshold),
-    projectsApi.getIndependentObservationStats(projectId, interval, threshold),
-    projectsApi.getIndependentEventStats(projectId, interval, threshold),
-  ]);
-  return {
-    observations: { total: detectionCount.count, labels: labelStats },
-    independent_observations: {
-      total: indepObsStats.total,
-      labels: indepObsStats.labels,
-    },
-    events: { total: eventStats.total, labels: eventStats.labels },
-  };
-}
-
 export default function SettingsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const queryClient = useQueryClient();
@@ -181,18 +156,12 @@ export default function SettingsPage() {
   // Unified save flow state
   const [saveJobId, setSaveJobId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false); // shows modal before job ID is known
-  const [saveResults, setSaveResults] = useState<SaveResults | null>(null);
-  const [toastResults, setToastResults] = useState<SaveResults | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Stores before-stats + new settings values while reprocessing runs
+  const { showSummary, summaryUI } = useReprocessSummary();
+  // Stores before-stats + the new threshold while reprocessing runs (the
+  // after-stats fetch needs the threshold for the Detections card).
   const pendingBeforeStats = useRef<{
-    before: {
-      observations: StatSnapshot;
-      independent_observations: StatSnapshot;
-      events: StatSnapshot;
-    };
+    before: ProjectStats;
     newThreshold: number;
-    newInterval: number;
   } | null>(null);
 
   // Classification model removal confirmation
@@ -203,57 +172,6 @@ export default function SettingsPage() {
   const [reEmbedJobId, setReEmbedJobId] = useState<string | null>(null);
   const [reEmbedDetectionCount, setReEmbedDetectionCount] = useState(0);
   const pendingFormData = useRef<SettingsFormData | null>(null);
-
-  /** Show the save toast. When before/after stats are identical the
-   * change didn't touch any counts (e.g., switching to a new model
-   * that only affects future analyses), so fall back to a plain
-   * "Settings saved!" without the "See effect" link that would open
-   * an empty diff modal. Equal totals aren't enough: relabel /
-   * rollup changes can shuffle counts between labels and net to zero
-   * at the aggregate level, so also compare per-label counts. */
-  const showSaveToast = useCallback((results: SaveResults) => {
-    const snapshotsDiffer = (
-      before: { total: number; labels: { label: string; count: number }[] },
-      after: { total: number; labels: { label: string; count: number }[] },
-    ): boolean => {
-      if (before.total !== after.total) return true;
-      const beforeByLabel = new Map(
-        before.labels.map((l) => [l.label, l.count]),
-      );
-      const afterByLabel = new Map(after.labels.map((l) => [l.label, l.count]));
-      const allLabels = new Set([
-        ...beforeByLabel.keys(),
-        ...afterByLabel.keys(),
-      ]);
-      for (const label of allLabels) {
-        if ((beforeByLabel.get(label) ?? 0) !== (afterByLabel.get(label) ?? 0)) {
-          return true;
-        }
-      }
-      return false;
-    };
-
-    const changed =
-      snapshotsDiffer(results.observations.before, results.observations.after) ||
-      snapshotsDiffer(
-        results.independent_observations.before,
-        results.independent_observations.after,
-      ) ||
-      snapshotsDiffer(results.events.before, results.events.after);
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    if (!changed) {
-      setToastResults(null);
-      toast.success("Settings saved!");
-      return;
-    }
-    setToastResults(results);
-    toastTimerRef.current = setTimeout(() => setToastResults(null), 5000);
-  }, []);
-
-  const dismissSaveToast = useCallback(() => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setToastResults(null);
-  }, []);
 
   // Fetch current project
   const { data: project, isLoading: projectLoading } = useQuery({
@@ -530,25 +448,9 @@ export default function SettingsPage() {
       }
 
       try {
-        const afterStats = await fetchStats(
-          projectId, pending.newThreshold, pending.newInterval,
-        );
-        const results: SaveResults = {
-          observations: {
-            before: pending.before.observations,
-            after: afterStats.observations,
-          },
-          independent_observations: {
-            before: pending.before.independent_observations,
-            after: afterStats.independent_observations,
-          },
-          events: {
-            before: pending.before.events,
-            after: afterStats.events,
-          },
-        };
+        const afterStats = await fetchStats(projectId, pending.newThreshold);
         pendingBeforeStats.current = null;
-        showSaveToast(results);
+        showSummary(buildSaveResults(pending.before, afterStats));
       } catch {
         pendingBeforeStats.current = null;
         toast.success("Settings saved!");
@@ -644,7 +546,6 @@ export default function SettingsPage() {
       const beforeStatsPromise = fetchStats(
         projectId,
         currentValues.counting_threshold,
-        currentValues.independence_interval,
       );
 
       // 2. Save settings. Empty timezone means "Auto" — send null so the
@@ -667,7 +568,6 @@ export default function SettingsPage() {
           pendingBeforeStats.current = {
             before: beforeStats,
             newThreshold: data.counting_threshold,
-            newInterval: data.independence_interval,
           };
           return; // Progress modal takes over; toast shown in onComplete
         }
@@ -677,26 +577,9 @@ export default function SettingsPage() {
 
       // 4. No reprocess needed — await before-stats and fetch after-stats
       const beforeStats = await beforeStatsPromise;
-      const afterStats = await fetchStats(
-        projectId, data.counting_threshold, data.independence_interval,
-      );
+      const afterStats = await fetchStats(projectId, data.counting_threshold);
 
-      const results: SaveResults = {
-        observations: {
-          before: beforeStats.observations,
-          after: afterStats.observations,
-        },
-        independent_observations: {
-          before: beforeStats.independent_observations,
-          after: afterStats.independent_observations,
-        },
-        events: {
-          before: beforeStats.events,
-          after: afterStats.events,
-        },
-      };
-
-      showSaveToast(results);
+      showSummary(buildSaveResults(beforeStats, afterStats));
     } catch (error: any) {
       setIsSaving(false);
       toast.error(error.message || "Failed to save settings");
@@ -1395,42 +1278,8 @@ export default function SettingsPage() {
           }
         />
 
-        {/* Save toast */}
-        {toastResults && (
-          <div
-            className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-lg"
-            style={{ animation: "toast-slide-up 0.2s ease-out" }}
-          >
-            <Check className="h-4 w-4 flex-shrink-0 text-primary" />
-            <span className="text-sm">
-              Settings saved!{" "}
-              <button
-                onClick={() => {
-                  setSaveResults(toastResults);
-                  dismissSaveToast();
-                }}
-                className="font-medium text-primary hover:underline"
-              >
-                See effect
-              </button>
-            </span>
-            <button
-              onClick={dismissSaveToast}
-              className="ml-1 text-gray-400 hover:text-gray-600"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
-
-        {/* Save Results Modal */}
-        {saveResults && (
-          <SaveResultsModal
-            open={saveResults !== null}
-            onOpenChange={(open) => !open && setSaveResults(null)}
-            results={saveResults}
-          />
-        )}
+        {/* Save toast + effect-on-statistics modal */}
+        {summaryUI}
 
         {/* Model Preparation Error Dialog */}
         <Dialog open={preparationStage === "error"} onOpenChange={(open) => !open && setPreparationStage("form")}>

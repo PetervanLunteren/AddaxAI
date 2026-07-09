@@ -573,6 +573,71 @@ def test_split_duplicates_straddling_event(client, db, tmp_path):
     assert obs_b[0].max_n_file_id is None
 
 
+def test_split_preserves_human_count_and_confirmation(client, db, tmp_path):
+    """Human counts and the confirmed flag are holy: a split copies
+    observations, so a confirmed event with a human count override must
+    survive on every child."""
+    root, d = _seed_deployment_with_files(
+        db, tmp_path, {"siteA": 2, "siteB": 2}
+    )
+    files = list(db.execute(select(File)).scalars())
+    from app.models.event import event_files
+    ev = Event(
+        deployment_id=d.id,
+        event_start_local=datetime(2024, 1, 5, 10, 0),
+        event_end_local=datetime(2024, 1, 5, 10, 30),
+        file_count=len(files),
+        confirmed=True,
+    )
+    db.add(ev)
+    db.flush()
+    for seq, f in enumerate(files):
+        db.execute(
+            event_files.insert().values(
+                event_id=ev.id, file_id=f.id, sequence_number=seq
+            )
+        )
+    # AI counted 3, human overrode to 7.
+    db.add(
+        EventObservation(
+            event_id=ev.id,
+            label="deer",
+            category="animal",
+            max_n=3,
+            human_count=7,
+        )
+    )
+    db.commit()
+
+    _seed_parent_results_json(root, d.project_id, files)
+
+    resp = client.post(f"/api/deployments/{d.id}/split", json={"depth": 1})
+    assert resp.status_code == 200
+
+    children = list(db.execute(select(Deployment)).scalars())
+    by_folder = {c.folder_path: c for c in children}
+    for folder in (str(root / "siteA"), str(root / "siteB")):
+        evs = list(
+            db.execute(
+                select(Event).where(
+                    Event.deployment_id == by_folder[folder].id
+                )
+            ).scalars()
+        )
+        assert len(evs) == 1
+        assert evs[0].confirmed is True
+        obs = list(
+            db.execute(
+                select(EventObservation).where(
+                    EventObservation.event_id == evs[0].id
+                )
+            ).scalars()
+        )
+        assert len(obs) == 1
+        assert obs[0].human_count == 7
+        assert obs[0].effective_count == 7
+
+
 # ---------------------------------------------------------------------------
 # Best frame path rewrite
 # ---------------------------------------------------------------------------

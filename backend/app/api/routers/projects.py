@@ -15,7 +15,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, text
+from sqlalchemy import distinct, func, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -36,8 +36,9 @@ from app.api.schemas.project import (
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
-from app.models import Deployment, Detection, File, Job, Project
+from app.models import Deployment, Detection, Event, File, Job, Project
 from app.models.detection_embedding import DetectionEmbedding
+from app.models.event_observation import EventObservation
 from app.models.label_taxonomy import LabelTaxonomy
 
 # Query-only type. The DB column is one of the two real modes, but the
@@ -827,131 +828,71 @@ def get_label_stats(
 @router.get("/{project_id}/independent-observation-stats")
 def get_independent_observation_stats(
     project_id: str,
-    interval: float = 1800,
-    threshold: float = 0.0,
     db: Session = Depends(get_db),
 ) -> dict:
     """
-    Sum MaxN (peak individuals per event) across events, per label.
+    Sum the effective per-event count across events, per label.
 
-    For each (deployment, label), consecutive files within `interval`
-    seconds form one independent event. MaxN = max number of
-    detections of that label in any single file within the event.
-    Returns ``{total, labels}`` where total is the grand sum across
-    all labels and labels is the per-label breakdown.
+    Reads the materialized ``event_observations`` (the same source the
+    dashboard "Observations" and exports use), so it honours human counts
+    (``effective_count`` = ``human_count`` if set, else the AI ``max_n``)
+    and human-added/removed species. Interval and threshold are baked
+    into that materialized state at analysis/reprocess time, so they are
+    not query parameters here. Animal labels only (person/vehicle are not
+    part of label refinement). Returns ``{total, labels}``.
     """
-    sql = text("""
-        WITH file_counts AS (
-            SELECT
-                dep.id AS deployment_id,
-                f.id AS file_id,
-                f.captured_at_local AS ts,
-                d.label,
-                COUNT(*) AS file_count
-            FROM detections d
-            JOIN files f ON d.file_id = f.id
-            JOIN deployments dep ON f.deployment_id = dep.id
-            WHERE dep.project_id = :project_id
-              AND d.label IS NOT NULL
-              AND (:threshold <= 0 OR d.confidence >= :threshold OR d.verified = 1)
-            GROUP BY dep.id, f.id, f.captured_at_local, d.label
-        ),
-        ordered AS (
-            SELECT *, LAG(ts) OVER (
-                PARTITION BY deployment_id, label ORDER BY ts
-            ) AS prev_ts
-            FROM file_counts
-        ),
-        with_flags AS (
-            SELECT *,
-                CASE
-                    WHEN prev_ts IS NULL
-                      OR (julianday(ts) - julianday(prev_ts)) * 86400 > :interval
-                    THEN 1 ELSE 0
-                END AS new_event
-            FROM ordered
-        ),
-        with_events AS (
-            SELECT *, SUM(new_event) OVER (
-                PARTITION BY deployment_id, label ORDER BY ts
-            ) AS event_id
-            FROM with_flags
-        ),
-        event_max AS (
-            SELECT deployment_id, label, event_id, MAX(file_count) AS max_n
-            FROM with_events
-            GROUP BY deployment_id, label, event_id
+    rows = (
+        db.query(
+            EventObservation.label,
+            func.sum(EventObservation.effective_count).label("count"),
         )
-        SELECT label, SUM(max_n) AS total_max_n
-        FROM event_max
-        GROUP BY label
-        ORDER BY total_max_n DESC
-    """)
-
-    rows = db.execute(
-        sql,
-        {"project_id": project_id, "interval": interval, "threshold": threshold},
-    ).fetchall()
+        .join(Event, Event.id == EventObservation.event_id)
+        .join(Deployment, Event.deployment_id == Deployment.id)
+        .filter(Deployment.project_id == project_id)
+        .filter(EventObservation.category == "animal")
+        .filter(EventObservation.label.isnot(None))
+        .group_by(EventObservation.label)
+        .order_by(func.sum(EventObservation.effective_count).desc())
+        .all()
+    )
 
     total = sum(row[1] for row in rows)
-    label_counts = [{"label": row[0], "count": row[1]} for row in rows]
+    label_counts = [{"label": row[0], "count": int(row[1])} for row in rows]
     return {"total": total, "labels": label_counts}
 
 
 @router.get("/{project_id}/independent-event-stats")
 def get_independent_event_stats(
     project_id: str,
-    interval: float = 1800,
-    threshold: float = 0.0,
     db: Session = Depends(get_db),
 ) -> dict:
     """
     Count independent events per label for a project.
 
-    Groups consecutive detections of the same label within a deployment
-    that are within `interval` seconds of each other as a single event.
-    Optionally filters by detection confidence threshold.
-
-    Returns {total: int, labels: [{label, count}]}.
+    Reads the materialized ``event_observations`` (the same source the
+    dashboard "frequency" bars use): each label's count is the number of
+    distinct events it appears in. This honours human-added/removed
+    species and verified labels. Event grouping (the independence
+    interval) is baked into that materialized state, so it is not a query
+    parameter here. Animal labels only. Returns ``{total, labels}``.
     """
-    sql = text("""
-        WITH ordered AS (
-            SELECT
-                d.label,
-                dep.id AS deployment_id,
-                f.captured_at_local,
-                LAG(f.captured_at_local) OVER (
-                    PARTITION BY dep.id, d.label
-                    ORDER BY f.captured_at_local
-                ) AS prev_captured_at_local
-            FROM detections d
-            JOIN files f ON d.file_id = f.id
-            JOIN deployments dep ON f.deployment_id = dep.id
-            JOIN sites s ON dep.site_id = s.id
-            WHERE s.project_id = :project_id
-              AND d.label IS NOT NULL
-              AND (:threshold <= 0 OR d.confidence >= :threshold OR d.verified = 1)
-        ),
-        events AS (
-            SELECT label
-            FROM ordered
-            WHERE prev_captured_at_local IS NULL
-               OR (julianday(captured_at_local) - julianday(prev_captured_at_local)) * 86400
-                  > :interval
+    rows = (
+        db.query(
+            EventObservation.label,
+            func.count(distinct(Event.id)).label("count"),
         )
-        SELECT label, COUNT(*) AS event_count
-        FROM events
-        GROUP BY label
-        ORDER BY event_count DESC
-    """)
-
-    rows = db.execute(
-        sql,
-        {"project_id": project_id, "interval": interval, "threshold": threshold},
-    ).fetchall()
+        .join(Event, Event.id == EventObservation.event_id)
+        .join(Deployment, Event.deployment_id == Deployment.id)
+        .filter(Deployment.project_id == project_id)
+        .filter(EventObservation.category == "animal")
+        .filter(EventObservation.label.isnot(None))
+        .group_by(EventObservation.label)
+        .order_by(func.count(distinct(Event.id)).desc())
+        .all()
+    )
 
     total = sum(row[1] for row in rows)
-    label_counts = [{"label": row[0], "count": row[1]} for row in rows]
+    label_counts = [{"label": row[0], "count": int(row[1])} for row in rows]
 
     return {"total": total, "labels": label_counts}
 

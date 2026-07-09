@@ -920,10 +920,11 @@ def get_event_verification_stats(
         .one()
     )
 
-    # Query 3: observation counts (MaxN-based from event_observations)
+    # Query 3: observation counts (effective_count from event_observations:
+    # human_count when set, else the AI max_n).
     obs_q = (
         db.query(
-            func.coalesce(func.sum(EventObservation.max_n), 0),
+            func.coalesce(func.sum(EventObservation.effective_count), 0),
         )
         .join(Event, Event.id == EventObservation.event_id)
         .filter(Event.id.in_(select(event_ids_subq.c.id)))
@@ -932,7 +933,7 @@ def get_event_verification_stats(
 
     # Per-detection counts for the Observations verification progress.
     # Denominator and numerator share the same filter so the ratio is
-    # meaningful (sharing it with `total_observations`, which is a MaxN
+    # meaningful (sharing it with `total_observations`, an effective-count
     # sum, would give nonsense like 23 / 12).
     det_total_q = (
         db.query(func.count(Detection.id))

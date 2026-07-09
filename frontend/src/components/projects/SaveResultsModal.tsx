@@ -1,11 +1,13 @@
 /**
  * Modal showing before/after statistics after a settings change.
  *
- * Three cards mirroring the camera-trap stats hierarchy:
+ * Three cards, named to match the rest of the app (dashboard cards,
+ * site/deployment sheets, statistics.py):
  * 1. Detections — raw count above confidence threshold.
- * 2. Independent observations — MaxN (peak individuals) per event,
- *    summed across events. The number most ecology analyses feed on.
- * 3. Independent events — distinct events after independence grouping.
+ * 2. Observations — MaxN (peak individuals) per event, summed across
+ *    events. What the app calls "Observations" everywhere else and the
+ *    number most ecology analyses feed on.
+ * 3. Events — distinct events after independence grouping.
  *
  * Each card shows total before → after plus a collapsible per-label
  * breakdown with a trailing "N other labels unchanged" line.
@@ -20,6 +22,12 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Card, CardContent } from "../ui/card";
+import {
+  ALL_METRICS,
+  METRIC_FIELD,
+  METRIC_META,
+  type SaveMetric,
+} from "../../lib/saveMetrics";
 
 // --- Types ---
 
@@ -46,6 +54,8 @@ interface SaveResultsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   results: SaveResults;
+  /** Subset + order of cards to show. Defaults to all three. */
+  metrics?: SaveMetric[];
 }
 
 // --- Helpers ---
@@ -180,19 +190,22 @@ export function SaveResultsModal({
   open,
   onOpenChange,
   results,
+  metrics = ALL_METRICS,
 }: SaveResultsModalProps) {
-  const [detectionsExpanded, setDetectionsExpanded] = useState(false);
-  const [indepObsExpanded, setIndepObsExpanded] = useState(false);
-  const [eventsExpanded, setEventsExpanded] = useState(false);
+  const [expanded, setExpanded] = useState<Set<SaveMetric>>(new Set());
 
   // Reset collapse state each time modal opens
   useEffect(() => {
-    if (open) {
-      setDetectionsExpanded(false);
-      setIndepObsExpanded(false);
-      setEventsExpanded(false);
-    }
+    if (open) setExpanded(new Set());
   }, [open]);
+
+  const toggle = (metric: SaveMetric) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(metric)) next.delete(metric);
+      else next.add(metric);
+      return next;
+    });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -202,30 +215,20 @@ export function SaveResultsModal({
         </DialogHeader>
 
         <div className="space-y-3 overflow-y-auto min-h-0">
-          <StatCard
-            title="Observations"
-            subtitle="All observations above confidence threshold"
-            before={results.observations.before}
-            after={results.observations.after}
-            expanded={detectionsExpanded}
-            onToggle={() => setDetectionsExpanded(!detectionsExpanded)}
-          />
-          <StatCard
-            title="Independent observations"
-            subtitle="Maximum individuals per event, summed across events"
-            before={results.independent_observations.before}
-            after={results.independent_observations.after}
-            expanded={indepObsExpanded}
-            onToggle={() => setIndepObsExpanded(!indepObsExpanded)}
-          />
-          <StatCard
-            title="Independent events"
-            subtitle="Distinct events after independence grouping"
-            before={results.events.before}
-            after={results.events.after}
-            expanded={eventsExpanded}
-            onToggle={() => setEventsExpanded(!eventsExpanded)}
-          />
+          {metrics.map((metric) => {
+            const { before, after } = results[METRIC_FIELD[metric]];
+            return (
+              <StatCard
+                key={metric}
+                title={METRIC_META[metric].title}
+                subtitle={METRIC_META[metric].subtitle}
+                before={before}
+                after={after}
+                expanded={expanded.has(metric)}
+                onToggle={() => toggle(metric)}
+              />
+            );
+          })}
         </div>
       </DialogContent>
     </Dialog>

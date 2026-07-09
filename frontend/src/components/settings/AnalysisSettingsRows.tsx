@@ -73,16 +73,6 @@ export function AnalysisSettingsRows({
 
   return (
     <>
-      <Row
-        label="Independence interval"
-        caption={withNote(SETTING_CAPTIONS.independenceInterval, intervalNote)}
-      >
-        <IntervalControl
-          value={values.independence_interval}
-          onChange={onIntervalChange}
-        />
-      </Row>
-
       {showClassifierFields && (
         <Row
           label="Smoothing"
@@ -100,6 +90,16 @@ export function AnalysisSettingsRows({
           />
         </Row>
       )}
+
+      <Row
+        label="Independence interval"
+        caption={withNote(SETTING_CAPTIONS.independenceInterval, intervalNote)}
+      >
+        <IntervalControl
+          value={values.independence_interval}
+          onChange={onIntervalChange}
+        />
+      </Row>
 
       {showClassifierFields && (
         <Row

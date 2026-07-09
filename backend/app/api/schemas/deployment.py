@@ -187,7 +187,8 @@ class DeploymentInfoResponse(BaseModel):
     total_size_bytes: int
     verification: DeploymentVerification
     event_count: int
-    # Sum of EventObservation.max_n across all events in this deployment.
+    # Sum of EventObservation.effective_count (human_count when set, else
+    # the AI max_n) across all events in this deployment.
     observation_count: int
     detection_categories: DeploymentDetectionCategories
     # Top 5 species by observation count within this deployment. Empty

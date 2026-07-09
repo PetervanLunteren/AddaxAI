@@ -18,7 +18,7 @@
  * mechanism as the setup step's model choices).
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
@@ -26,12 +26,19 @@ import { toast } from "sonner";
 import { projectsApi } from "../../api/projects";
 import type { ProjectResponse } from "../../api/types";
 import { useTaskProgress } from "../../hooks/useTaskProgress";
+import { useReprocessSummary } from "../../hooks/useReprocessSummary";
+import type { SaveMetric } from "../../lib/saveMetrics";
 import { invalidateProjectData } from "../../lib/invalidate-project";
 import { saveLastUsedSettings } from "../../lib/folderRunSettings";
 import {
   hasReprocessChanges,
   startReprocessIfNeeded,
 } from "../../lib/reprocessSettings";
+import {
+  buildSaveResults,
+  fetchStats,
+  type ProjectStats,
+} from "../../lib/reprocessStats";
 import {
   AnalysisSettingsRows,
   type AnalysisSettingsValues,
@@ -46,6 +53,12 @@ import {
   SheetHeader,
   SheetTitle,
 } from "../ui/sheet";
+
+// Refining a folder run is about labels and their grouping, not
+// abundance interpretation, so the summary shows detections (what
+// smoothing/rollup relabel) and events (what the interval regroups),
+// but not observations (MaxN, a Counts-step concern).
+const FOLDER_RUN_METRICS: SaveMetric[] = ["detections", "events"];
 
 function valuesFromProject(project: ProjectResponse): AnalysisSettingsValues {
   return {
@@ -79,12 +92,21 @@ export function AnalysisSettingsButton({
   // id exists; jobId drives the progress modal afterwards.
   const [isApplying, setIsApplying] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
+  // Before-stats captured at apply time; diffed against after-stats once
+  // the reprocess finishes to show the "how the DB changed" summary.
+  const pendingBeforeStats = useRef<ProjectStats | null>(null);
+  const { showSummary, summaryUI } = useReprocessSummary(
+    "Changes applied",
+    FOLDER_RUN_METRICS,
+  );
 
   const dirty = hasReprocessChanges(
     valuesFromProject(project) as unknown as Record<string, unknown>,
     values as unknown as Record<string, unknown>,
   );
 
+  // Invalidate queries and re-sort the grid onto the reprocessed labels.
+  // The caller shows the toast (summary or plain), so this stays quiet.
   const finish = () => {
     invalidateProjectData(queryClient, runId);
     queryClient.invalidateQueries({ queryKey: ["folder-run", runId] });
@@ -92,15 +114,29 @@ export function AnalysisSettingsButton({
     // query invalidation alone won't refresh it. Tell the host to
     // re-sort onto the reprocessed labels.
     onApplied?.();
-    toast.success("Analysis settings applied");
   };
 
   const progress = useTaskProgress({
     taskId: jobId,
-    onComplete: () => {
+    onComplete: async () => {
       setJobId(null);
       setIsApplying(false);
       finish();
+      const before = pendingBeforeStats.current;
+      pendingBeforeStats.current = null;
+      if (!before) {
+        toast.success("Changes applied");
+        return;
+      }
+      // Threshold is unchanged (this slideout has no threshold control).
+      // The reprocess has already rewritten the materialized observations
+      // that the after-stats read from.
+      try {
+        const after = await fetchStats(runId, project.counting_threshold);
+        showSummary(buildSaveResults(before, after));
+      } catch {
+        toast.success("Changes applied");
+      }
     },
   });
 
@@ -108,17 +144,26 @@ export function AnalysisSettingsButton({
     setIsApplying(true);
     setOpen(false);
     try {
+      // Capture before-stats before the PATCH rewrites project settings.
+      pendingBeforeStats.current = await fetchStats(
+        runId, project.counting_threshold,
+      );
       await projectsApi.update(runId, values);
       // Sticky settings: the next run's analysis seeds from these.
       saveLastUsedSettings(values);
       const newJobId = await startReprocessIfNeeded(runId);
       if (newJobId) {
         setJobId(newJobId);
-        return; // modal takes over; finish() runs onComplete
+        return; // modal takes over; summary shown in onComplete
       }
+      // No classifications to reprocess: the DB is unchanged, so there is
+      // nothing to diff.
+      pendingBeforeStats.current = null;
       setIsApplying(false);
       finish();
+      toast.success("Changes applied");
     } catch (err) {
+      pendingBeforeStats.current = null;
       setIsApplying(false);
       toast.error(
         err instanceof Error ? err.message : "Could not apply settings",
@@ -138,16 +183,15 @@ export function AnalysisSettingsButton({
         onClick={() => setOpen(true)}
       >
         <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
-        Analysis settings
+        Refine results
       </Button>
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-4xl">
-          <SheetHeader>
-            <SheetTitle>Analysis settings</SheetTitle>
+          <SheetHeader className="space-y-1">
+            <SheetTitle>Refine results</SheetTitle>
             <SheetDescription>
-              Applied to the results below without re-running the models.
-              Also used as the starting point for your next run.
+              Applies to the results below without re-running the models.
             </SheetDescription>
           </SheetHeader>
           <div className="mt-2 space-y-0 divide-y">
@@ -193,6 +237,8 @@ export function AnalysisSettingsButton({
         progress={progress.progress}
         fallbackMessage="Saving settings..."
       />
+
+      {summaryUI}
     </>
   );
 }

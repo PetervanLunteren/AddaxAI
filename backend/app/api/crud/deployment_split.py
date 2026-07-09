@@ -665,6 +665,9 @@ def _reassign_events(
                     max(timestamps) if timestamps else event.event_end_local
                 ),
                 file_count=len(files_here),
+                # Observations are duplicated as-is, so the human's
+                # confirmation still holds for each child event.
+                confirmed=event.confirmed,
             )
             db.add(new_event)
             db.flush()
@@ -690,6 +693,9 @@ def _reassign_events(
                         category=obs.category,
                         max_n=obs.max_n,
                         max_n_file_id=max_n_file_id,
+                        # Carry the human count override so a split never
+                        # silently drops a confirmed count.
+                        human_count=obs.human_count,
                     )
                 )
 

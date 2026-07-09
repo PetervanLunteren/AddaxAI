@@ -171,6 +171,75 @@ def test_get_independent_event_stats_empty(client, db):
     assert data["labels"] == []
 
 
+def _add_observation(db, *, event_id, label, category="animal", max_n=1, human_count=None):
+    from app.models.event_observation import EventObservation
+
+    db.add(
+        EventObservation(
+            event_id=event_id,
+            label=label,
+            label_taxonomy_id=None,
+            category=category,
+            max_n=max_n,
+            human_count=human_count,
+        )
+    )
+    db.flush()
+
+
+def test_independent_observation_stats_honours_human_count(client, db):
+    """Abundance uses effective_count (human_count when set, not raw max_n),
+    counts human-only species, and excludes person/vehicle."""
+    from datetime import datetime
+
+    from tests.conftest import make_deployment, make_event_with_files
+
+    p = make_project(db)
+    dep = make_deployment(db, project_id=p.id)
+    ev = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 1, 12, 0, 0)
+    )
+    # AI said 2 lions, human confirmed 5.
+    _add_observation(db, event_id=ev.id, label="lion", max_n=2, human_count=5)
+    # Human added a species the AI missed (max_n=0).
+    _add_observation(db, event_id=ev.id, label="fox", max_n=0, human_count=1)
+    # Person is not part of label refinement and must be excluded.
+    _add_observation(db, event_id=ev.id, label="person", category="person", max_n=4)
+
+    resp = client.get(f"/api/projects/{p.id}/independent-observation-stats")
+    assert resp.status_code == 200
+    data = resp.json()
+    labels = {row["label"]: row["count"] for row in data["labels"]}
+    assert labels == {"lion": 5, "fox": 1}
+    assert data["total"] == 6
+
+
+def test_independent_event_stats_from_observations(client, db):
+    """Frequency counts distinct events per label from the materialized
+    observations (so human-added species count, person is excluded)."""
+    from datetime import datetime
+
+    from tests.conftest import make_deployment, make_event_with_files
+
+    p = make_project(db)
+    dep = make_deployment(db, project_id=p.id)
+    ev1 = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 1, 12, 0, 0)
+    )
+    ev2 = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 2, 12, 0, 0)
+    )
+    _add_observation(db, event_id=ev1.id, label="lion", max_n=1)
+    _add_observation(db, event_id=ev2.id, label="lion", max_n=2)
+    _add_observation(db, event_id=ev1.id, label="person", category="person", max_n=1)
+
+    resp = client.get(f"/api/projects/{p.id}/independent-event-stats")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["labels"] == [{"label": "lion", "count": 2}]
+    assert data["total"] == 2
+
+
 # --- Reprocess / Re-embed ---
 
 

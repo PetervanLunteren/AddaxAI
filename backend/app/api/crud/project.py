@@ -350,10 +350,11 @@ def get_project_stats(db: Session, project_id: str) -> dict[str, int] | None:
         or 0
     )
 
-    # Count observations (sum of MaxN from event_observations)
+    # Count observations (sum of effective_count from event_observations:
+    # human_count when set, else the AI max_n).
     observation_count = (
         db.scalar(
-            select(func.coalesce(func.sum(EventObservation.max_n), 0))
+            select(func.coalesce(func.sum(EventObservation.effective_count), 0))
             .join(Event, Event.id == EventObservation.event_id)
             .join(Deployment, Event.deployment_id == Deployment.id)
             .where(Deployment.project_id == project_id)
@@ -414,7 +415,7 @@ def get_all_projects_stats(
     obs_rows = db.execute(
         select(
             Deployment.project_id,
-            func.coalesce(func.sum(EventObservation.max_n), 0),
+            func.coalesce(func.sum(EventObservation.effective_count), 0),
         )
         .join(Event, Event.deployment_id == Deployment.id)
         .join(EventObservation, EventObservation.event_id == Event.id)

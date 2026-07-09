@@ -196,7 +196,7 @@ def get_site_info(db: Session, site_id: str):
 
         observation_count = (
             db.scalar(
-                select(func.coalesce(func.sum(EventObservation.max_n), 0))
+                select(func.coalesce(func.sum(EventObservation.effective_count), 0))
                 .select_from(EventObservation)
                 .join(Event, Event.id == EventObservation.event_id)
                 .where(Event.deployment_id.in_(deployment_ids))
@@ -211,7 +211,7 @@ def get_site_info(db: Session, site_id: str):
                         case(
                             (
                                 EventObservation.category == "animal",
-                                EventObservation.max_n,
+                                EventObservation.effective_count,
                             ),
                             else_=0,
                         )
@@ -223,7 +223,7 @@ def get_site_info(db: Session, site_id: str):
                         case(
                             (
                                 EventObservation.category == "person",
-                                EventObservation.max_n,
+                                EventObservation.effective_count,
                             ),
                             else_=0,
                         )
@@ -235,7 +235,7 @@ def get_site_info(db: Session, site_id: str):
                         case(
                             (
                                 EventObservation.category == "vehicle",
-                                EventObservation.max_n,
+                                EventObservation.effective_count,
                             ),
                             else_=0,
                         )
@@ -265,7 +265,7 @@ def get_site_info(db: Session, site_id: str):
                 EventObservation.label,
                 LabelTaxonomy.scientific_name,
                 LabelTaxonomy.common_name,
-                func.sum(EventObservation.max_n),
+                func.sum(EventObservation.effective_count),
             )
             .select_from(EventObservation)
             .join(Event, Event.id == EventObservation.event_id)
@@ -280,7 +280,7 @@ def get_site_info(db: Session, site_id: str):
                 LabelTaxonomy.scientific_name,
                 LabelTaxonomy.common_name,
             )
-            .order_by(func.sum(EventObservation.max_n).desc())
+            .order_by(func.sum(EventObservation.effective_count).desc())
             .limit(5)
         ).all()
         top_species = [

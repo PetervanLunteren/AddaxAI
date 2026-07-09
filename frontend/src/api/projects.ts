@@ -225,26 +225,21 @@ export const projectsApi = {
     api.get<GBIFSuggestion[]>(`/api/projects/gbif/suggest?q=${encodeURIComponent(query)}`),
 
   /**
-   * Get independent event counts per label for a given interval
+   * Independent events per label, from the materialized event
+   * observations (honours human-added/removed species). The independence
+   * interval is baked into that materialized state, so it is not a param.
    */
-  getIndependentEventStats: (
-    id: string,
-    interval: number,
-    threshold?: number,
-  ) =>
+  getIndependentEventStats: (id: string) =>
     api.get<{ total: number; labels: { label: string; count: number }[] }>(
-      `/api/projects/${id}/independent-event-stats?interval=${interval}${threshold ? `&threshold=${threshold}` : ""}`
+      `/api/projects/${id}/independent-event-stats`
     ),
 
   /**
-   * Sum of MaxN (peak individuals per event), per label, for a given interval
+   * Sum of the effective per-event count (human count when set, else the
+   * AI MaxN), per label, from the materialized event observations.
    */
-  getIndependentObservationStats: (
-    id: string,
-    interval: number,
-    threshold?: number,
-  ) =>
+  getIndependentObservationStats: (id: string) =>
     api.get<{ total: number; labels: { label: string; count: number }[] }>(
-      `/api/projects/${id}/independent-observation-stats?interval=${interval}${threshold ? `&threshold=${threshold}` : ""}`
+      `/api/projects/${id}/independent-observation-stats`
     ),
 };
