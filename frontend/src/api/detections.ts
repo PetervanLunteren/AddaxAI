@@ -10,6 +10,19 @@ import type {
   DetectionUpdate,
 } from "./types";
 
+/** The reverted state of one detection returned by
+ *  bulk-revert-to-original — enough to patch a grid crop in place. */
+export interface RevertedDetection {
+  detection_id: string;
+  label: string | null;
+  category: string;
+  label_confidence: number | null;
+  label_taxonomy_id: string | null;
+  scientific_name: string | null;
+  common_name: string | null;
+  verified: boolean;
+}
+
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < arr.length; i += size) {
@@ -95,6 +108,24 @@ export const detectionsApi = {
       )
     );
     return { updated_count: results.reduce((sum, r) => sum + r.updated_count, 0) };
+  },
+
+  /** Revert detections to the model's original prediction (undo of a
+   *  human relabel / verify). Auto-batches in chunks of 500. Returns the
+   *  reverted rows so the caller can patch its grid in place. */
+  bulkRevertToOriginal: async (
+    ids: string[],
+  ): Promise<{ reverted: RevertedDetection[] }> => {
+    const chunks = chunkArray(ids, 500);
+    const results = await Promise.all(
+      chunks.map((chunk) =>
+        api.post<{ reverted: RevertedDetection[] }>(
+          "/api/detections/bulk-revert-to-original",
+          { detection_ids: chunk },
+        ),
+      ),
+    );
+    return { reverted: results.flatMap((r) => r.reverted) };
   },
 
   /** Dismiss/undismiss a cohort of suggestions (auto-batches in chunks of 500).

@@ -506,6 +506,19 @@ export function LabelsTab({
   // newly selected event into view.
   const cropGridRef = useRef<CropGridHandle>(null);
 
+  // Undo stack: one entry per label action, holding just the affected
+  // detection ids. Undo reverts them to the model's original prediction
+  // (the original_* columns), so no pre-state snapshot is needed.
+  // In-memory / session-scoped. `undoDepth` mirrors the stack length to
+  // drive the button (a ref alone wouldn't re-render).
+  const undoStackRef = useRef<string[][]>([]);
+  const [undoDepth, setUndoDepth] = useState(0);
+  const pushUndo = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    undoStackRef.current = [...undoStackRef.current, ids];
+    setUndoDepth(undoStackRef.current.length);
+  }, []);
+
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
     selectionAnchorRef.current = null;
@@ -858,9 +871,58 @@ export function LabelsTab({
     [lblSort, patchLocalDetections, projectId, queryClient],
   );
 
+  // Same optimistic patch as applyDetectionAction, but also records the
+  // action on the undo stack. Every label action (verify / relabel /
+  // mark) goes through this; only handleUndo itself uses the plain
+  // applyDetectionAction, so undoing never re-stacks.
+  const applyUndoableAction = useCallback(
+    (ids: string[], patch: (d: DetectionSummary) => DetectionSummary) => {
+      applyDetectionAction(ids, patch);
+      pushUndo(ids);
+    },
+    [applyDetectionAction, pushUndo],
+  );
+
+  // Undo the most recent label action: revert its detections to the
+  // model's original prediction and pop the stack. Works with no active
+  // selection (it acts on history, not the current selection).
+  const handleUndo = useCallback(async () => {
+    const stack = undoStackRef.current;
+    if (stack.length === 0) return;
+    const ids = stack[stack.length - 1];
+    try {
+      const { reverted } = await detectionsApi.bulkRevertToOriginal(ids);
+      const byId = new Map(reverted.map((r) => [r.detection_id, r]));
+      applyDetectionAction(ids, (d) => {
+        const r = byId.get(d.detection_id);
+        if (!r) return d;
+        return {
+          ...d,
+          label: r.label,
+          category: r.category,
+          label_confidence: r.label_confidence,
+          label_taxonomy_id: r.label_taxonomy_id,
+          scientific_name: r.scientific_name,
+          common_name: r.common_name,
+          verified: r.verified,
+          neighbor_top_label: null,
+          neighbor_top_scientific_name: null,
+        };
+      });
+      undoStackRef.current = stack.slice(0, -1);
+      setUndoDepth(undoStackRef.current.length);
+      // Bring the reverted crops back into view so the user can re-act.
+      // No success toast: the crops reappearing (unverified) is the
+      // confirmation, and the verify workflow is toast-fatigued already.
+      setSelectedIds(new Set(ids));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Undo failed");
+    }
+  }, [applyDetectionAction]);
+
   const handleBulkRelabel = useCallback(
     (ids: string[], label: string | null, category: string, displayName: string) => {
-      applyDetectionAction(ids, (d) => ({
+      applyUndoableAction(ids, (d) => ({
         ...d,
         label,
         category,
@@ -1000,7 +1062,7 @@ export function LabelsTab({
       detectionsApi
         .bulkRelabel(ids, "false detection", undefined)
         .then(() => {
-          applyDetectionAction(ids, (d) => ({
+          applyUndoableAction(ids, (d) => ({
             ...d,
             label: "false detection",
             common_name: "False detection",
@@ -1020,7 +1082,7 @@ export function LabelsTab({
 
   const handleBulkMarkFalse = useCallback(
     (ids: string[]) => {
-      applyDetectionAction(ids, (d) => ({
+      applyUndoableAction(ids, (d) => ({
         ...d,
         label: "false detection",
         common_name: "False detection",
@@ -1046,7 +1108,7 @@ export function LabelsTab({
       detectionsApi
         .bulkRelabel(ids, "unknown", undefined)
         .then(() => {
-          applyDetectionAction(ids, (d) => ({
+          applyUndoableAction(ids, (d) => ({
             ...d,
             label: "unknown",
             common_name: "Unknown",
@@ -1067,7 +1129,7 @@ export function LabelsTab({
   // Patch-only variant: the BulkActionBar already ran the API call.
   const handleBulkMarkUnknown = useCallback(
     (ids: string[]) => {
-      applyDetectionAction(ids, (d) => ({
+      applyUndoableAction(ids, (d) => ({
         ...d,
         label: "unknown",
         common_name: "Unknown",
@@ -1085,7 +1147,7 @@ export function LabelsTab({
 
   const handleBulkVerify = useCallback(
     (ids: string[]) => {
-      applyDetectionAction(ids, (d) => ({ ...d, verified: true }));
+      applyUndoableAction(ids, (d) => ({ ...d, verified: true }));
       advanceSelectionAfter(ids);
     },
     [applyDetectionAction, advanceSelectionAfter]
@@ -1117,7 +1179,7 @@ export function LabelsTab({
       detectionsApi
         .bulkRelabel(ids, modeLabel, modeCategory)
         .then(() => {
-          applyDetectionAction(ids, (d) => ({
+          applyUndoableAction(ids, (d) => ({
             ...d,
             label: modeLabel,
             category: modeCategory,
@@ -1129,9 +1191,9 @@ export function LabelsTab({
             verified: true,
           }));
           advanceSelectionAfter(ids);
-          toast.success(
-            `Relabelled ${ids.length} to ${resolveSpeciesName(mode)}`,
-          );
+          // No success toast: this fires on every E->M in a run of
+          // hundreds of events. The grid updating (crops verified /
+          // relabelled) is the confirmation; errors still toast.
         })
         .catch((err: Error) => toast.error(err.message));
     },
@@ -1142,6 +1204,18 @@ export function LabelsTab({
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      // Undo: Cmd+Z on macOS, Ctrl+Z on Windows/Linux (the standard
+      // everywhere). Shift is excluded to leave room for a future redo.
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        !e.shiftKey &&
+        (e.key === "z" || e.key === "Z")
+      ) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
 
       if (e.key === "Escape") {
         if (detailDetection) {
@@ -1229,7 +1303,7 @@ export function LabelsTab({
         e.preventDefault();
         const ids = Array.from(selectedIds);
         detectionsApi.bulkRelabel(ids, label.label, label.category).then(() => {
-          applyDetectionAction(ids, (d) => ({
+          applyUndoableAction(ids, (d) => ({
             ...d,
             label: label.label ?? label.category,
             category: label.category,
@@ -1247,7 +1321,7 @@ export function LabelsTab({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds, detailDetection, allDetections, resultSort, handleActionComplete, shortcutLabels, applyDetectionAction, handleMarkFalse, handleMarkUnknown, handleMatchMajority, handleBulkVerify, advanceSelectionAfter]);
+  }, [selectedIds, detailDetection, allDetections, resultSort, handleActionComplete, shortcutLabels, applyUndoableAction, handleMarkFalse, handleMarkUnknown, handleMatchMajority, handleBulkVerify, advanceSelectionAfter, handleUndo]);
 
   // Click outside grid to deselect
   useEffect(() => {
@@ -1638,6 +1712,8 @@ export function LabelsTab({
         projectId={projectId}
         relabelOpen={relabelOpen}
         onRelabelOpenChange={setRelabelOpen}
+        onUndo={handleUndo}
+        canUndo={undoDepth > 0}
       />
 
       <LabelsWelcomePopover open={showWelcome} onDismiss={handleDismissWelcome} />
@@ -1654,7 +1730,7 @@ export function LabelsTab({
         labelOptions={labelOptions}
         labelOptionsLoading={labelOptionsLoading}
         onRelabel={(detectionId, label, category) => {
-          applyDetectionAction([detectionId], (d) => ({
+          applyUndoableAction([detectionId], (d) => ({
             ...d,
             label,
             category,
@@ -1670,7 +1746,7 @@ export function LabelsTab({
           }));
         }}
         onMarkFalse={(detectionId) => {
-          applyDetectionAction([detectionId], (d) => ({
+          applyUndoableAction([detectionId], (d) => ({
             ...d,
             label: "false detection",
             common_name: "False detection",
@@ -1682,7 +1758,7 @@ export function LabelsTab({
           }));
         }}
         onMarkUnknown={(detectionId) => {
-          applyDetectionAction([detectionId], (d) => ({
+          applyUndoableAction([detectionId], (d) => ({
             ...d,
             label: "unknown",
             common_name: "Unknown",
@@ -1694,7 +1770,7 @@ export function LabelsTab({
           }));
         }}
         onVerify={(detectionId, verified = true) => {
-          applyDetectionAction([detectionId], (d) => ({ ...d, verified }));
+          applyUndoableAction([detectionId], (d) => ({ ...d, verified }));
         }}
         position={
           detailDetection

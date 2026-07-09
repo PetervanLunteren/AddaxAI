@@ -37,6 +37,10 @@ const GRID_SHORTCUTS: ReadonlyArray<readonly [string, string]> = [
   ["M", "Relabel to most common in selection"],
   [navigator.platform.includes("Mac") ? "Cmd + A" : "Ctrl + A", "Select all"],
   ["E", "Select next event to check (event sort)"],
+  [
+    navigator.platform.includes("Mac") ? "Cmd + Z" : "Ctrl + Z",
+    "Undo last action",
+  ],
   ["Esc", "Deselect / close"],
 ];
 

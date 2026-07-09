@@ -1,7 +1,6 @@
 # TODO
 
-The prcess for label verification and event comfirmation can be quick. That is what we designed it for, so it s working. That is great. But mistakes can happen. NOw the user needst to change a filter to see verified ones, then relabel them. Can we make this faster? Like an UNDO button or so? Just invetigate and report with estimated effort. KISS DRY YAGNI. Can we make it undo unlimited? Just like CNTR+Z on windows? maybe only the labels is enough for the undo, as counts confirmation you can go back to the previous one with the arrows right?
-
+when verifying labels, it often shows a taost saying it verified them succesfully, but the user is do this for hours on end.... and it covers the floating bar wich is annoying... what do do about this? Arent toasts for infrequent things? What is best here? in terms of UX UI
 
 "Also used as the starting point for your next run." is not needed. Users dont need to kow that some of this also is used by the inference time. Perhaps this will suffice: "Applies to the results below without re-running the models. "
 
@@ -58,7 +57,7 @@ in the outputs CSVs, there are redundant columns like eventID, deploymentID etc.
 - [ ] projects menu sidebar: the "Per class performance" text is too long. Propose shorter alternative. Perhaps class performace? 
 - [ ] Now that we work with different confidence thresholds, investigate how it works in projects mode, and what we need. Where do we need confidence sliders there? Not in the settings anymore rigght? The labels, counts, have the own. ... IDK. investigate what is going on, and whether or not we need to change somnething. Audit. 
 - [ ]  
-- [ ] when verifying labels, it often shows a taost saying it verified them succesfully, but the user is do this for hours on end.... and it covers the floating bar wich is annoying... what do do about this? Arent toasts for infrequent things? What is best here? in terms of UX UI
+- [ ] 
 - [ ] SHould we name the folder run buttons [back] [continue] to [previous step] and [next step]?
 - [ ] SHould we make the folder run steps clickable? now they are only clickable if you have visited it in that run already. But why not just have users click step 5 directly after processing... ?
 - [ ] in the counts confirmation modal, would it make sense to add an option to edit the label of an already present species row? for instance, sometimes you'll get an event with a deer in a garden with a bucnh of chickens. It will suggest: deer x1, and bird x5. But the user wants deer x1, and chicken x5. Now he has to remove the biurd row and add a new one, choose chicken, and add 5 counts. If the label can change, that will be much faster. It doesnt have to be a button (as little visual clutter as possible), perhaps just by clickin on the word "bird"?

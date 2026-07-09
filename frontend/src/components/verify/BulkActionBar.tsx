@@ -7,12 +7,20 @@
 
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Ban, Check, CheckCheck, CircleHelp, Tag, X } from "lucide-react";
+import { Ban, Check, CheckCheck, CircleHelp, Tag, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { detectionsApi } from "../../api/detections";
 import { LabelPicker } from "./LabelPicker";
 import type { LabelOption } from "../../hooks/useLabelOptions";
+
+// Undo shortcut hint: Cmd+Z on macOS, Ctrl+Z elsewhere (the platform
+// standard for undo on all three OSes).
+const UNDO_KBD =
+  typeof navigator !== "undefined" &&
+  navigator.platform.toLowerCase().includes("mac")
+    ? "⌘Z"
+    : "Ctrl+Z";
 
 interface BulkActionBarProps {
   selectedIds: Set<string>;
@@ -38,6 +46,11 @@ interface BulkActionBarProps {
   /** Controlled state for the relabel picker (keyboard shortcut). */
   relabelOpen?: boolean;
   onRelabelOpenChange?: (open: boolean) => void;
+  /** Undo the last label action (revert to the model's prediction).
+   *  Acts on history, not the current selection. Hidden when nothing
+   *  is on the undo stack. */
+  onUndo?: () => void;
+  canUndo?: boolean;
 }
 
 export function BulkActionBar({
@@ -55,6 +68,8 @@ export function BulkActionBar({
   projectId,
   relabelOpen: relabelOpenProp,
   onRelabelOpenChange,
+  onUndo,
+  canUndo,
 }: BulkActionBarProps) {
   const [relabelOpenLocal, setRelabelOpenLocal] = useState(false);
   const relabelOpen = relabelOpenProp ?? relabelOpenLocal;
@@ -212,6 +227,21 @@ export function BulkActionBar({
           />
         </div>
       </div>
+
+      {onUndo && canUndo && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onUndo}
+          title="Undo the last action"
+        >
+          <Undo2 className="h-4 w-4 mr-1" />
+          Undo
+          <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
+            {UNDO_KBD}
+          </kbd>
+        </Button>
+      )}
 
       <Button
         variant="outline"

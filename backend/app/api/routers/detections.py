@@ -179,6 +179,10 @@ class BulkRelabelRequest(BaseModel):
     category: str | None = None
 
 
+class BulkRevertRequest(BaseModel):
+    detection_ids: list[str] = Field(..., max_length=500)
+
+
 class BulkDismissRequest(BaseModel):
     detection_ids: list[str] = Field(..., max_length=500)
     # True hides the cohort from suggestions; False undoes a dismiss.
@@ -352,3 +356,80 @@ def bulk_relabel_detections(
 
     _recalculate_max_n(db, body.detection_ids)
     return {"updated_count": len(detections)}
+
+
+@router.post("/bulk-revert-to-original")
+def bulk_revert_to_original(
+    body: BulkRevertRequest,
+    db: Session = Depends(get_db),
+):
+    """Undo human label edits / verifications (max 500).
+
+    Restores each detection to the model's original prediction from the
+    ``original_*`` columns (which relabeling never overwrites): label,
+    label_confidence, taxonomy FK, and display names, with
+    classification_method reset to "machine" (its fresh-processed
+    value). Clears the verified flag. Category is left as-is — there is
+    no original category stored, and the label actions do not change it.
+
+    Powers the labels grid's Undo. Returns the reverted rows so the
+    client can patch its grid in place without a re-sort.
+    """
+    from app.api.crud.detection import _resolve_detection_taxonomy
+    from app.ml.taxonomic_rollup import resolve_label_names
+    from app.models.label_taxonomy import LabelTaxonomy
+
+    detections = (
+        db.query(Detection)
+        .filter(Detection.id.in_(body.detection_ids))
+        .all()
+    )
+    if not detections:
+        raise HTTPException(status_code=404, detail="No detections found")
+
+    reverted: list[dict] = []
+    for det in detections:
+        orig = det.original_label
+        if orig:
+            tax_id = _resolve_detection_taxonomy(db, det, orig)
+            tax = db.query(LabelTaxonomy).get(tax_id) if tax_id else None
+            common, scientific = resolve_label_names(orig, tax, det.category or "")
+            det.label = orig
+            det.label_confidence = det.original_label_confidence
+            det.label_taxonomy_id = tax_id
+            det.scientific_name = scientific
+            det.common_name = common
+            det.classification_method = "machine"
+        else:
+            det.label = None
+            det.label_confidence = None
+            det.label_taxonomy_id = None
+            det.scientific_name = None
+            det.common_name = None
+            det.classification_method = None
+        det.verified = False
+        det.verified_at_utc = None
+        reverted.append(
+            {
+                "detection_id": det.id,
+                "label": det.label,
+                "category": det.category,
+                "label_confidence": det.label_confidence,
+                "label_taxonomy_id": det.label_taxonomy_id,
+                "scientific_name": det.scientific_name,
+                "common_name": det.common_name,
+                "verified": det.verified,
+            }
+        )
+
+    file_crud.recompute_file_verified_for_detections(db, body.detection_ids)
+    db.commit()
+
+    # Unverifying can flip observation_type back (a box that only passed
+    # because it was verified no longer counts), so recompute per file.
+    file_ids = {det.file_id for det in detections}
+    for fid in file_ids:
+        file_crud.recalculate_observation_type(db, fid)
+
+    _recalculate_max_n(db, body.detection_ids)
+    return {"reverted": reverted}

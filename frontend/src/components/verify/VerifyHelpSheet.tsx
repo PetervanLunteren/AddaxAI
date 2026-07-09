@@ -147,6 +147,13 @@ function LabelsGuide() {
           in the toolbar lists them all and lets you set the{" "}
           <Kbd>1</Kbd>-<Kbd>5</Kbd> slots.
         </p>
+        <p>
+          Made a mistake? <Kbd>{navigator.platform.includes("Mac")
+            ? "Cmd + Z"
+            : "Ctrl + Z"}</Kbd> undoes your last action (or use the Undo
+          button on the action bar), stepping back as many times as you
+          need.
+        </p>
       </Section>
 
       <Section title="Sorting">

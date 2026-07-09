@@ -236,3 +236,91 @@ def test_create_detection_rejects_half_set_bbox(client, db):
         },
     )
     assert resp.status_code == 422
+
+
+def test_bulk_revert_to_original_restores_ai_label(client, db):
+    """Undo: a human relabel + verify is reverted to the model's
+    original prediction, verified cleared, method back to machine."""
+    f = _setup_file(db)
+    det = make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        label="deer",
+        label_confidence=0.42,
+        original_label="deer",
+        original_label_confidence=0.42,
+        classification_method="machine",
+        verified=False,
+    )
+    # Simulate a human match-majority: relabel + verify.
+    client.post(
+        "/api/detections/bulk-relabel",
+        json={"detection_ids": [det.id], "label": "elk"},
+    )
+    db.refresh(det)
+    assert det.label == "elk" and det.verified is True
+    assert det.classification_method == "human"
+
+    resp = client.post(
+        "/api/detections/bulk-revert-to-original",
+        json={"detection_ids": [det.id]},
+    )
+    assert resp.status_code == 200
+    reverted = resp.json()["reverted"]
+    assert reverted[0]["detection_id"] == det.id
+    assert reverted[0]["label"] == "deer"
+    assert reverted[0]["verified"] is False
+
+    db.refresh(det)
+    assert det.label == "deer"
+    assert det.label_confidence == 0.42
+    assert det.verified is False
+    assert det.classification_method == "machine"
+
+
+def test_bulk_revert_unverifies_a_plain_verify(client, db):
+    """A detection that was only verified (label untouched) reverts to
+    unverified with its label intact."""
+    f = _setup_file(db)
+    det = make_detection(
+        db, file_id=f.id, label="fox", original_label="fox", verified=False
+    )
+    client.post(
+        "/api/detections/bulk-verify",
+        json={"detection_ids": [det.id], "verified": True},
+    )
+    db.refresh(det)
+    assert det.verified is True
+
+    client.post(
+        "/api/detections/bulk-revert-to-original",
+        json={"detection_ids": [det.id]},
+    )
+    db.refresh(det)
+    assert det.verified is False
+    assert det.label == "fox"
+
+
+def test_bulk_revert_no_original_clears_label(client, db):
+    """A detection with no original AI label (e.g. added by hand) reverts
+    to an unlabeled, unverified state."""
+    f = _setup_file(db)
+    det = make_detection(
+        db, file_id=f.id, label="dog", original_label=None, verified=True
+    )
+    client.post(
+        "/api/detections/bulk-revert-to-original",
+        json={"detection_ids": [det.id]},
+    )
+    db.refresh(det)
+    assert det.label is None
+    assert det.verified is False
+
+
+def test_bulk_revert_404_for_unknown(client):
+    resp = client.post(
+        "/api/detections/bulk-revert-to-original",
+        json={"detection_ids": ["nope"]},
+    )
+    assert resp.status_code == 404
