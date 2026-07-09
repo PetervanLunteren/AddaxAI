@@ -48,7 +48,7 @@ import {
 import { invalidateProjectData } from "../../lib/invalidate-project";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
 import { CropGrid } from "./CropGrid";
-import type { TileSize } from "./CropGrid";
+import type { CropGridHandle, TileSize } from "./CropGrid";
 import { BulkActionBar } from "./BulkActionBar";
 import { DetectionDetailModal } from "./DetectionDetailModal";
 import { SuggestionsToolbarPill } from "./SuggestionsToolbarPill";
@@ -502,6 +502,9 @@ export function LabelsTab({
   // Selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const selectionAnchorRef = useRef<string | null>(null);
+  // Imperative handle to the grid so the "E" shortcut can scroll the
+  // newly selected event into view.
+  const cropGridRef = useRef<CropGridHandle>(null);
 
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
@@ -1202,7 +1205,12 @@ export function LabelsTab({
       ) {
         e.preventDefault();
         const ids = firstUnverifiedEventDetectionIds(allDetections);
-        if (ids.length > 0) setSelectedIds(new Set(ids));
+        if (ids.length > 0) {
+          setSelectedIds(new Set(ids));
+          // Bring the newly selected event into view (it is usually
+          // below the fold after verifying the ones above it).
+          cropGridRef.current?.scrollToDetection(ids[0]);
+        }
         return;
       }
 
@@ -1589,6 +1597,7 @@ export function LabelsTab({
       ) : (
         <div style={{ paddingBottom: selectedIds.size > 0 ? 80 : 0 }}>
           <CropGrid
+            ref={cropGridRef}
             detections={allDetections}
             selectedIds={selectedIds}
             onSelect={handleSelect}

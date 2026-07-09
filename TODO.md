@@ -1,7 +1,5 @@
 # TODO
 
-lables page/step - on events sorting, when pressing 'E' shotcut, it should auto scroll/focus on the first crop of the new selection. Now you have to scroll upwards every time your lower. 
-
 The prcess for label verification and event comfirmation can be quick. That is what we designed it for, so it s working. That is great. But mistakes can happen. NOw the user needst to change a filter to see verified ones, then relabel them. Can we make this faster? Like an UNDO button or so? Just invetigate and report with estimated effort. KISS DRY YAGNI. Can we make it undo unlimited? Just like CNTR+Z on windows? maybe only the labels is enough for the undo, as counts confirmation you can go back to the previous one with the arrows right?
 
 

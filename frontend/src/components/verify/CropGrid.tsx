@@ -9,7 +9,7 @@
  * event and surfaces a "Select" link to select that event's crops.
  */
 
-import { memo, useRef, useMemo, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
+import { forwardRef, memo, useImperativeHandle, useRef, useMemo, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "../ui/button";
 import { CropCard } from "./CropCard";
@@ -175,7 +175,15 @@ const GridCell = memo(function GridCell({
   );
 });
 
-export function CropGrid({
+export interface CropGridHandle {
+  /** Scroll the given detection's row to the top of the viewport
+   *  (jumping to the event's divider header when it has one). Used by
+   *  the "E" shortcut so the newly selected event is in view. */
+  scrollToDetection: (detectionId: string) => void;
+}
+
+export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
+  function CropGrid({
   detections,
   selectedIds,
   onSelect,
@@ -186,7 +194,7 @@ export function CropGrid({
   onSelectEvent,
   tileSize = "M",
   dividers = "none",
-}: CropGridProps) {
+}: CropGridProps, ref) {
   const listRef = useRef<HTMLDivElement>(null);
   const columns = useColumns(tileSize);
 
@@ -278,6 +286,26 @@ export function CropGrid({
     scrollMargin: listRef.current?.offsetTop ?? 0,
     measureElement: (el) => el.getBoundingClientRect().height,
   });
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      scrollToDetection(detectionId: string) {
+        const idx = rows.findIndex(
+          (r) =>
+            r.type === "cards" &&
+            r.detections.some((d) => d.detection_id === detectionId),
+        );
+        if (idx < 0) return;
+        // Land on the event's divider header when there is one, so the
+        // reader gets the event label plus its first crops in view.
+        const target =
+          idx > 0 && rows[idx - 1].type === "divider" ? idx - 1 : idx;
+        virtualizer.scrollToIndex(target, { align: "start" });
+      },
+    }),
+    [rows, virtualizer],
+  );
 
   return (
     <div
@@ -512,7 +540,7 @@ export function CropGrid({
         })}
     </div>
   );
-}
+});
 
 
 // ── Grouping helpers (used by the dividers union above) ─────────────────
