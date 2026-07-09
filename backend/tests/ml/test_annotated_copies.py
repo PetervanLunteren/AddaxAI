@@ -52,7 +52,7 @@ def test_requires_at_least_one_effect(db, tmp_path):
             _ctx(tmp_path / "out"),
             draw_bboxes=False,
             anonymise=False,
-            media_confidence=0.5,
+            media_threshold=0.5,
         )
 
 
@@ -72,7 +72,7 @@ def test_visualise_only_writes_bboxes_and_skips_blur(db, tmp_path):
         _ctx(target),
         draw_bboxes=True,
         anonymise=False,
-        media_confidence=0.5,
+        media_threshold=0.5,
     )
 
     assert result.written_count == 1
@@ -97,7 +97,7 @@ def test_anonymise_only_writes_blur_and_skips_bboxes(db, tmp_path):
         _ctx(target),
         draw_bboxes=False,
         anonymise=True,
-        media_confidence=0.5,
+        media_threshold=0.5,
     )
 
     assert result.written_count == 1
@@ -135,7 +135,7 @@ def test_combined_writes_one_image_with_blur_and_bboxes(db, tmp_path):
         _ctx(target),
         draw_bboxes=True,
         anonymise=True,
-        media_confidence=0.5,
+        media_threshold=0.5,
     )
 
     assert result.written_count == 1
@@ -162,7 +162,7 @@ def test_no_separation_fallback_uses_output_root(db, tmp_path):
         _ctx(target),
         draw_bboxes=True,
         anonymise=False,
-        media_confidence=0.5,
+        media_threshold=0.5,
     )
     assert (target / "IMG_001.jpg").is_file()
 
@@ -196,7 +196,7 @@ def test_multi_placement_writes_to_every_destination(db, tmp_path):
         ctx,
         draw_bboxes=True,
         anonymise=False,
-        media_confidence=0.5,
+        media_threshold=0.5,
     )
 
     assert result.written_count == 2
@@ -242,7 +242,7 @@ def test_video_annotated_best_frame_lands_at_recorded_still(db, tmp_path):
         ctx,
         draw_bboxes=True,
         anonymise=False,
-        media_confidence=0.5,
+        media_threshold=0.5,
     )
 
     assert result.written_count == 1
@@ -268,7 +268,7 @@ def test_no_change_skip_when_only_anonymise_and_no_targets(db, tmp_path):
         _ctx(target),
         draw_bboxes=False,
         anonymise=True,
-        media_confidence=0.5,
+        media_threshold=0.5,
     )
 
     assert result.written_count == 0
@@ -295,7 +295,7 @@ def test_missing_source_is_skipped(db, tmp_path):
         _ctx(target),
         draw_bboxes=True,
         anonymise=False,
-        media_confidence=0.5,
+        media_threshold=0.5,
     )
 
     assert result.written_count == 0
@@ -321,7 +321,7 @@ def test_excluded_label_skips_file(db, tmp_path):
         draw_bboxes=True,
         anonymise=False,
         excluded_label_ids=frozenset({"dog"}),
-        media_confidence=0.5,
+        media_threshold=0.5,
     )
 
     assert result.written_count == 0
@@ -337,5 +337,5 @@ def test_unknown_project_raises(db, tmp_path):
             _ctx(tmp_path / "out"),
             draw_bboxes=True,
             anonymise=False,
-            media_confidence=0.5,
+            media_threshold=0.5,
         )

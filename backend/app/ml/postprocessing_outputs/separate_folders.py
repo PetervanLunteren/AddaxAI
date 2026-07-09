@@ -496,7 +496,7 @@ def separate_into_folders(
     project_id: str,
     ctx: OutputContext,
     *,
-    media_confidence: float,
+    media_threshold: float,
     mode: SeparateMode = "copy",
     group_by: SeparateGroupBy = "taxonomic",
     include_empty: bool = True,
@@ -532,7 +532,7 @@ def separate_into_folders(
     ``skipped_excluded``). A mixed file still goes through, filed under
     its most confident non-excluded label.
 
-    ``media_confidence`` is the media-output confidence threshold picked
+    ``media_threshold`` is the media-output confidence threshold picked
     on the Save step: detections below it (unless verified) do not count
     towards placement, and a file's effective observation type is
     re-derived at this threshold rather than trusting the stored
@@ -547,7 +547,7 @@ def separate_into_folders(
 
     target_dir = ctx.output_root
     target_dir.mkdir(parents=True, exist_ok=True)
-    threshold = media_confidence
+    threshold = media_threshold
     taxonomy_map = _build_taxonomy_map(db, project)
 
     # Empty map = per-file placement; populated = whole events grouped.
@@ -658,7 +658,7 @@ def separate_into_folders(
                     file,
                     project,
                     APP_VERSION,
-                    media_confidence=threshold,
+                    media_threshold=threshold,
                     excluded_label_ids=excluded_label_ids,
                 )
                 if tag_set is not None:

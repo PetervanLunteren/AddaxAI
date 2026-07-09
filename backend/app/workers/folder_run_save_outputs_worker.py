@@ -130,8 +130,8 @@ async def process_save_outputs_job(job_id: str) -> None:
         # modules only; the data exports are always the complete record.
         # Falls back to the schema default for jobs enqueued by an older
         # frontend that did not send the field.
-        media_confidence = float(
-            payload.get("media_confidence", DEFAULT_COUNTING_THRESHOLD)
+        media_threshold = float(
+            payload.get("media_threshold", DEFAULT_COUNTING_THRESHOLD)
         )
         media_active = bool(
             payload.get("separate_folders") or draw_bboxes or anonymise
@@ -235,7 +235,7 @@ async def process_save_outputs_job(job_id: str) -> None:
                         db,
                         project.id,
                         ctx,
-                        media_confidence=media_confidence,
+                        media_threshold=media_threshold,
                         mode="copy",
                         group_by=payload.get(
                             "separate_group_by", "flat"
@@ -257,7 +257,7 @@ async def process_save_outputs_job(job_id: str) -> None:
                         db,
                         project.id,
                         ctx,
-                        media_confidence=media_confidence,
+                        media_threshold=media_threshold,
                         draw_bboxes=draw_bboxes,
                         anonymise=anonymise,
                         excluded_label_ids=excluded_frozen,
@@ -286,7 +286,7 @@ async def process_save_outputs_job(job_id: str) -> None:
                         db,
                         project.id,
                         output_root,
-                        media_confidence=media_confidence,
+                        media_threshold=media_threshold,
                     ).to_dict()
                 raise ValueError(f"Unknown module: {m}")
 

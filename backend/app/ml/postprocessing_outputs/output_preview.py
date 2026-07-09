@@ -144,7 +144,7 @@ def build_output_preview(
     db: Session,
     project_id: str,
     *,
-    media_confidence: float,
+    media_threshold: float,
     excluded_label_ids: frozenset[str] | None = None,
     include_empty: bool = True,
     name_mode: NameMode = "common",
@@ -158,7 +158,7 @@ def build_output_preview(
     one destination folder; ``excluded_label_ids`` drops a file when
     every passing identified detection is excluded (counted in
     ``dropped_by_filter``); ``group_events`` buckets a whole event into
-    one folder, the event's main species. ``media_confidence`` is the
+    one folder, the event's main species. ``media_threshold`` is the
     Save step's media-output confidence, applied exactly as the real run
     applies it (placement, blank skip, filter drops).
 
@@ -171,7 +171,7 @@ def build_output_preview(
     if project is None:
         raise ValueError(f"Project {project_id!r} not found")
 
-    threshold = media_confidence
+    threshold = media_threshold
     excluded = excluded_label_ids or frozenset()
 
     file_rows = db.execute(

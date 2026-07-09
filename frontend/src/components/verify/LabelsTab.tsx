@@ -43,6 +43,7 @@ import { Progress } from "../ui/progress";
 import {
   DEFAULT_CLASSIFICATION_GATE,
   MD_OUTPUT_CONFIDENCE_THRESHOLD,
+  formatConfidencePct,
 } from "../../lib/confidence";
 import { invalidateProjectData } from "../../lib/invalidate-project";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
@@ -424,11 +425,15 @@ export function LabelsTab({
     v === "events" ||
     v === "suggestions";
 
-  // A saved sort that is no longer offered (the retired cls_low /
-  // similarity_reverse / newest / oldest modes) falls back to similarity.
+  // Default to event sort: it always produces a usable grid (similarity-
+  // clustered events with embeddings, chronological without) and enables
+  // the E->M keyboard flow, so a new user never hits the "needs
+  // embeddings" card. A user's own choice persists and wins here; the
+  // fallback also catches saved sorts that are no longer offered (the
+  // retired cls_low / similarity_reverse / newest / oldest modes).
   const initialSort: LabelSort = isLabelSort(savedSettings.sort)
     ? savedSettings.sort
-    : "similarity";
+    : "events";
   const [lblSort, _setLblSort] = useState<LabelSort>(initialSort);
   const setLblSort = useCallback(
     (v: LabelSort) => {
@@ -1421,7 +1426,13 @@ export function LabelsTab({
           />
           {sortResult && (
             <div className="ml-2">
-              <VerifyProgressPill pct={verifiedPct} label="verified" />
+              <VerifyProgressPill
+                pct={verifiedPct}
+                label="verified"
+                title={`Verified share of detections at or above ${formatConfidencePct(
+                  project?.counting_threshold ?? 0,
+                )} detection threshold. Detections you view below it aren't counted here.`}
+              />
             </div>
           )}
         </div>

@@ -114,8 +114,8 @@ export function FolderRunSaveStep() {
   // Debounce the slider so a drag fires one preview call after it
   // settles, not a query per step (the preview does 3 SELECTs + a
   // per-file loop). The slider handle and % readout stay live.
-  const mediaConfidence = useDebouncedValue(
-    form.separate.mediaConfidence,
+  const mediaThreshold = useDebouncedValue(
+    form.separate.mediaThreshold,
     FILTER_DEBOUNCE_MS,
   );
   const { data: preview, isLoading: previewLoading } = useQuery({
@@ -128,11 +128,11 @@ export function FolderRunSaveStep() {
       groupBy,
       speciesLast,
       excluded,
-      mediaConfidence,
+      mediaThreshold,
     ],
     queryFn: () =>
       folderRunsApi.getOutputPreview(runId!, {
-        media_confidence: mediaConfidence,
+        media_threshold: mediaThreshold,
         include_empty: includeEmpty,
         name_mode: nameMode,
         group_events: groupEvents,

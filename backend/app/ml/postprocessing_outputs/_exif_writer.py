@@ -70,12 +70,12 @@ def build_tag_set(
     project: Project,
     app_version: str,
     *,
-    media_confidence: float,
+    media_threshold: float,
     excluded_label_ids: frozenset[str] | None = None,
 ) -> DetectionTagSet | None:
     """Build the tag set for one file, threshold-aware.
 
-    ``media_confidence`` is the Save step's media-output confidence:
+    ``media_threshold`` is the Save step's media-output confidence:
     detections below it (unless verified) are left out of the tags,
     matching what the media copies show.
 
@@ -88,7 +88,7 @@ def build_tag_set(
     never excluded by the species filter; only labelled detections
     are subject to it.
     """
-    threshold = media_confidence
+    threshold = media_threshold
     rows = db.execute(
         select(Detection)
         .where(Detection.file_id == file.id)
@@ -186,7 +186,7 @@ def build_tag_set(
         "classification_model": project.classification_model_id,
         # The media-output confidence the user picked on the Save step:
         # the tag set only carries detections at or above it.
-        "media_confidence": float(media_confidence),
+        "media_threshold": float(media_threshold),
         "detections": detections_payload,
     }
     user_comment_json = json.dumps(user_comment, separators=(",", ":"))

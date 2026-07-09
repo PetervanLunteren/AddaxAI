@@ -70,12 +70,21 @@ interface VerifyProgressPillProps {
   pct: number;
   /** Trailing text, e.g. "events verified" / "files verified". */
   label: string;
+  /** Optional native tooltip explaining what population the % covers. */
+  title?: string;
 }
 
-export function VerifyProgressPill({ pct, label }: VerifyProgressPillProps) {
+export function VerifyProgressPill({
+  pct,
+  label,
+  title,
+}: VerifyProgressPillProps) {
   const clamped = Math.max(0, Math.min(100, pct));
   return (
-    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+    <div
+      title={title}
+      className="flex items-center gap-1.5 text-xs text-muted-foreground"
+    >
       <div className="relative h-2 w-20 overflow-hidden rounded-full bg-muted">
         <div
           className="h-full transition-all duration-500 ease-out rounded-full"

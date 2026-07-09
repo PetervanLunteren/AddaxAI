@@ -187,7 +187,7 @@ export interface OutputPreview {
 export interface OutputPreviewRequest {
   /** Media-output confidence, mirroring the save request so the
    * previewed counts match what the save will write. */
-  media_confidence?: number;
+  media_threshold?: number;
   /** Copy empty captures (no animal / person / vehicle) too. Off /
    * omitted = empties are skipped, matching the save request. */
   include_empty?: boolean;
@@ -212,7 +212,7 @@ export interface SaveOutputsRequest {
   /** Media-output confidence: detections below it (unless verified) are
    * left out of the separated copies, drawn boxes, blurs, and EXIF
    * tags. The data exports always contain every detection. */
-  media_confidence?: number;
+  media_threshold?: number;
   separate_folders?: boolean;
   separate_group_by?: SeparateGroupBy;
   /** Keep a burst together: every file in an event goes to one folder

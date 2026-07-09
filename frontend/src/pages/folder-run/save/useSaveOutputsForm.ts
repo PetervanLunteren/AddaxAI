@@ -47,7 +47,7 @@ export interface SeparateState {
   /** Media-output confidence: detections below it (unless verified)
    * are left out of the copies, drawn boxes, and blurs. The data
    * exports always contain everything regardless. */
-  mediaConfidence: number;
+  mediaThreshold: number;
   /** Leaf ids the user chose to include (empty = all species). The
    * request sends the complement as ``excluded_label_ids``; the data
    * exports ignore it. */
@@ -79,7 +79,7 @@ function buildRequest(
 ): SaveOutputsRequest {
   return {
     output_dir: outputDir,
-    media_confidence: separate.mediaConfidence,
+    media_threshold: separate.mediaThreshold,
     separate_folders: separate.enabled,
     separate_group_by: separate.groupBy,
     group_events: separate.groupEvents,
@@ -206,8 +206,8 @@ export function useSaveOutputsForm({
     groupEvents: persisted?.groupEvents ?? true,
     speciesLast: persisted?.speciesLast ?? false,
     copyEmpties: persisted?.copyEmpties ?? false,
-    mediaConfidence:
-      persisted?.mediaConfidence ?? DEFAULT_COUNTING_THRESHOLD,
+    mediaThreshold:
+      persisted?.mediaThreshold ?? DEFAULT_COUNTING_THRESHOLD,
     includedLabelIds: [],
   }));
   const [visualise, setVisualise] = useState<VisualiseState>(() => ({
@@ -258,7 +258,7 @@ export function useSaveOutputsForm({
       groupEvents: separate.groupEvents,
       speciesLast: separate.speciesLast,
       copyEmpties: separate.copyEmpties,
-      mediaConfidence: separate.mediaConfidence,
+      mediaThreshold: separate.mediaThreshold,
       drawBoxes: visualise.enabled,
       blur: anonymise.enabled,
     });

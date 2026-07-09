@@ -163,7 +163,7 @@ class SaveOutputsRequest(BaseModel):
     # left out of the separated copies, drawn boxes, blurs, and EXIF
     # tags. Data exports (CSV / XLSX / recognition JSON) ignore it: they
     # are always the complete record of the run.
-    media_confidence: float = Field(
+    media_threshold: float = Field(
         DEFAULT_COUNTING_THRESHOLD, ge=0.0, le=1.0
     )
     separate_folders: bool = False
@@ -218,7 +218,7 @@ class OutputPreviewRequest(BaseModel):
     excluded_label_ids: list[str] = Field(default_factory=list)
     # Media-output confidence, mirroring the save request so the
     # preview counts match what the save will write.
-    media_confidence: float = Field(
+    media_threshold: float = Field(
         DEFAULT_COUNTING_THRESHOLD, ge=0.0, le=1.0
     )
     # Copy empty captures too; off by default. Mirrors the save
@@ -741,8 +741,8 @@ def get_output_preview(
     preview = build_output_preview(
         db,
         run_id,
-        media_confidence=(
-            payload.media_confidence if payload else DEFAULT_COUNTING_THRESHOLD
+        media_threshold=(
+            payload.media_threshold if payload else DEFAULT_COUNTING_THRESHOLD
         ),
         excluded_label_ids=excluded,
         include_empty=bool(payload.include_empty) if payload else False,
@@ -809,7 +809,7 @@ async def save_outputs(
             payload={
                 "run_id": run_id,
                 "output_dir": str(output_root),
-                "media_confidence": payload.media_confidence,
+                "media_threshold": payload.media_threshold,
                 "separate_folders": payload.separate_folders,
                 "separate_group_by": payload.separate_group_by,
                 "group_events": payload.group_events,

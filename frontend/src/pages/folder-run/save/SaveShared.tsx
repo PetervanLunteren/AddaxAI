@@ -209,28 +209,29 @@ export function MediaBody({
         <span>
           Confidence
           <span className="mt-0.5 block text-xs text-muted-foreground">
-            Detections below this score are left out of the copies
+            Detections below this score are left out, except ones you
+            verified
           </span>
         </span>
         <ConfidenceSlider
-          value={separate.mediaConfidence}
+          value={separate.mediaThreshold}
           onChange={(vals) =>
-            setSeparate({ ...separate, mediaConfidence: vals[0] })
+            setSeparate({ ...separate, mediaThreshold: vals[0] })
           }
           adviseBelow={DETECTION_CONFIDENCE_ADVICE}
           valueLabel={
             <span className="min-w-[3rem] shrink-0 text-right text-sm font-medium">
-              {formatConfidencePct(separate.mediaConfidence)}
+              {formatConfidencePct(separate.mediaThreshold)}
             </span>
           }
           onReset={() =>
             setSeparate({
               ...separate,
-              mediaConfidence: DEFAULT_COUNTING_THRESHOLD,
+              mediaThreshold: DEFAULT_COUNTING_THRESHOLD,
             })
           }
           resetDisabled={
-            Math.abs(separate.mediaConfidence - DEFAULT_COUNTING_THRESHOLD) <
+            Math.abs(separate.mediaThreshold - DEFAULT_COUNTING_THRESHOLD) <
             1e-6
           }
         />

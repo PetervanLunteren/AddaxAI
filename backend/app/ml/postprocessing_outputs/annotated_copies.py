@@ -496,7 +496,7 @@ def write_annotated_copies(
     project_id: str,
     ctx: OutputContext,
     *,
-    media_confidence: float,
+    media_threshold: float,
     draw_bboxes: bool,
     anonymise: bool,
     excluded_label_ids: frozenset[str] | None = None,
@@ -505,7 +505,7 @@ def write_annotated_copies(
     """Apply the requested per-file effects and write the result to
     every destination the file lives at under ``ctx``.
 
-    ``media_confidence`` is the Save step's media-output confidence:
+    ``media_threshold`` is the Save step's media-output confidence:
     only detections at or above it (or verified) get drawn / blurred,
     matching the separation module's placement rule.
 
@@ -525,7 +525,7 @@ def write_annotated_copies(
     if project is None:
         raise ValueError(f"Project {project_id!r} not found")
 
-    threshold = media_confidence
+    threshold = media_threshold
 
     files = db.execute(
         select(File)
@@ -606,7 +606,7 @@ def write_annotated_copies(
                 file,
                 project,
                 APP_VERSION,
-                media_confidence=threshold,
+                media_threshold=threshold,
                 excluded_label_ids=excluded_label_ids,
             )
 

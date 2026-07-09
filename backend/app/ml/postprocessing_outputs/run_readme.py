@@ -217,7 +217,7 @@ def _build_readme_text(
     verification: tuple[int, int],
     geofence_summary: str,
     manifest_mgr: ManifestManager,
-    media_confidence: float,
+    media_threshold: float,
 ) -> str:
     """Compose the README body. Returns a single newline-delimited
     string ready to write to disk."""
@@ -269,7 +269,7 @@ def _build_readme_text(
     # Media copies (separated folders, drawn boxes, blurs) only show
     # detections at or above this confidence. The data exports (CSV,
     # XLSX, recognition JSON) always contain every detection.
-    lines.append(_kv("Media output confidence", format_confidence_pct(media_confidence)))
+    lines.append(_kv("Media output threshold", format_confidence_pct(media_threshold)))
     lines.append(
         _kv("Data exports", "complete, no confidence filter")
     )
@@ -348,11 +348,11 @@ def write_run_readme(
     project_id: str,
     target_dir: Path,
     *,
-    media_confidence: float,
+    media_threshold: float,
 ) -> RunReadmeResult:
     """Write the run summary at ``target_dir/addaxai-summary.txt``.
 
-    ``media_confidence`` is the Save step's media-output confidence,
+    ``media_threshold`` is the Save step's media-output confidence,
     reported so a reader knows which detections the media copies show.
     The data exports are always complete and say so in the summary.
 
@@ -399,7 +399,7 @@ def write_run_readme(
         verification=verification,
         geofence_summary=geofence_summary,
         manifest_mgr=manifest_mgr,
-        media_confidence=media_confidence,
+        media_threshold=media_threshold,
     )
 
     output_path = target_dir / SUMMARY_FILENAME
