@@ -159,7 +159,7 @@ def load_json_to_database(
         # so a file whose every box is below threshold ingests as "blank".
         _dep = db.get(Deployment, deployment_id)
         _proj = db.get(Project, _dep.project_id) if _dep else None
-        detection_threshold = _proj.detection_threshold if _proj else 0.0
+        counting_threshold = _proj.counting_threshold if _proj else 0.0
 
         # Track statistics
         total_files = 0
@@ -435,7 +435,7 @@ def load_json_to_database(
             # (over threshold; verified is always False at ingestion). A
             # file with only sub-threshold boxes reads as "blank".
             file_record.observation_type = derive_observation_type(
-                file_detection_records, detection_threshold
+                file_detection_records, counting_threshold
             )
 
         # Commit all records

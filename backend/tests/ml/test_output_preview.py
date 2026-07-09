@@ -99,7 +99,7 @@ def test_unmapped_label_falls_back_to_other(db):
     project = make_project(
         db,
         name="prev-other",
-        detection_threshold=0.5,
+        counting_threshold=0.5,
         classification_model_id="test-model",
     )
     dep = make_deployment(db, project_id=project.id)
@@ -115,7 +115,7 @@ def test_full_taxonomy_yields_full_nested_path(db):
     project = make_project(
         db,
         name="prev-full-tree",
-        detection_threshold=0.5,
+        counting_threshold=0.5,
         classification_model_id="test-model",
     )
     _add_taxonomy(
@@ -142,7 +142,7 @@ def test_multi_species_counts_main_species_only(db):
     """A dog + wolf file is one placement, in its main species' (dog)
     leaf — never both."""
     project = make_project(
-        db, name="prev-multi", detection_threshold=0.5
+        db, name="prev-multi", counting_threshold=0.5
     )
     dep = make_deployment(db, project_id=project.id)
     f = _animal_file(db, dep.id)
@@ -156,7 +156,7 @@ def test_multi_species_counts_main_species_only(db):
 
 def test_low_confidence_detection_is_ignored(db):
     project = make_project(
-        db, name="prev-thresh", detection_threshold=0.5
+        db, name="prev-thresh", counting_threshold=0.5
     )
     dep = make_deployment(db, project_id=project.id)
     f = _animal_file(db, dep.id)
@@ -171,7 +171,7 @@ def test_low_confidence_detection_is_ignored(db):
 
 def test_verified_below_threshold_still_placed(db):
     project = make_project(
-        db, name="prev-verified", detection_threshold=0.5
+        db, name="prev-verified", counting_threshold=0.5
     )
     dep = make_deployment(db, project_id=project.id)
     f = _animal_file(db, dep.id)
@@ -186,7 +186,7 @@ def test_verified_below_threshold_still_placed(db):
 
 def test_animal_without_passing_label_falls_back(db):
     project = make_project(
-        db, name="prev-fallback", detection_threshold=0.5
+        db, name="prev-fallback", counting_threshold=0.5
     )
     dep = make_deployment(db, project_id=project.id)
     f = _animal_file(db, dep.id)
@@ -250,7 +250,7 @@ def test_source_subfolder_nested_under_species(db, tmp_path):
     """Species-first: the preserved source subfolder sits under the
     species folder, so the preview shows the full combined path."""
     project = make_project(
-        db, name="prev-subdir", detection_threshold=0.5
+        db, name="prev-subdir", counting_threshold=0.5
     )
     source = tmp_path / "source"
     dep = make_deployment(
@@ -275,7 +275,7 @@ def test_species_last_puts_source_subfolder_on_top(db, tmp_path):
     """Species-last flips the order: source subfolder on top, species
     inside it (the camtrapR station/species layout)."""
     project = make_project(
-        db, name="prev-species-last", detection_threshold=0.5
+        db, name="prev-species-last", counting_threshold=0.5
     )
     source = tmp_path / "source"
     dep = make_deployment(
@@ -301,7 +301,7 @@ def test_none_mode_mirrors_source_tree_and_lists_root_files(db, tmp_path):
     """``group_by="none"`` drops the species folder: subfolders feed the
     tree, loose source-root files feed the capped root-file list."""
     project = make_project(
-        db, name="prev-none", detection_threshold=0.5
+        db, name="prev-none", counting_threshold=0.5
     )
     source = tmp_path / "source"
     dep = make_deployment(
@@ -335,7 +335,7 @@ def test_none_mode_mirrors_source_tree_and_lists_root_files(db, tmp_path):
 
 def test_excluded_label_ids_drops_file_from_tree(db):
     project = make_project(
-        db, name="prev-excl", detection_threshold=0.5
+        db, name="prev-excl", counting_threshold=0.5
     )
     dep = make_deployment(db, project_id=project.id)
     f = _animal_file(db, dep.id)
@@ -354,7 +354,7 @@ def test_excluded_label_ids_partial_inclusion(db):
     """File with dog + wolf, exclude wolf → in scope, single
     placement under the dog leaf only."""
     project = make_project(
-        db, name="prev-partial", detection_threshold=0.5
+        db, name="prev-partial", counting_threshold=0.5
     )
     dep = make_deployment(db, project_id=project.id)
     f = _animal_file(db, dep.id)
@@ -396,7 +396,7 @@ def test_excluded_filter_matches_taxonomy_id(db):
     project = make_project(
         db,
         name="prev-excl-by-id",
-        detection_threshold=0.5,
+        counting_threshold=0.5,
         classification_model_id="test-model",
     )
     taxon = _add_taxonomy(

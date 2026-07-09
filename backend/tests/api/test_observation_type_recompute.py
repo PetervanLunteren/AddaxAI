@@ -19,7 +19,7 @@ from tests.conftest import (
 
 
 def test_sub_threshold_only_file_is_blank(db):
-    project = make_project(db, name="obs-sub", detection_threshold=0.5)
+    project = make_project(db, name="obs-sub", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     f = make_file(db, deployment_id=dep.id, observation_type="animal")
     make_detection(db, file_id=f.id, category="animal", confidence=0.33)
@@ -31,7 +31,7 @@ def test_sub_threshold_only_file_is_blank(db):
 
 
 def test_passing_detection_keeps_animal(db):
-    project = make_project(db, name="obs-pass", detection_threshold=0.5)
+    project = make_project(db, name="obs-pass", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     f = make_file(db, deployment_id=dep.id, observation_type="blank")
     make_detection(db, file_id=f.id, category="animal", confidence=0.9)
@@ -43,7 +43,7 @@ def test_passing_detection_keeps_animal(db):
 
 
 def test_verified_sub_threshold_counts(db):
-    project = make_project(db, name="obs-verified", detection_threshold=0.5)
+    project = make_project(db, name="obs-verified", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     f = make_file(db, deployment_id=dep.id, observation_type="blank")
     make_detection(
@@ -57,7 +57,7 @@ def test_verified_sub_threshold_counts(db):
 
 
 def test_threshold_change_flips_files_project_wide(db):
-    project = make_project(db, name="obs-thresh", detection_threshold=0.5)
+    project = make_project(db, name="obs-thresh", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     f = make_file(db, deployment_id=dep.id, observation_type="animal")
     make_detection(db, file_id=f.id, category="animal", confidence=0.4)
@@ -69,7 +69,7 @@ def test_threshold_change_flips_files_project_wide(db):
     assert f.observation_type == "blank"
 
     # Lower the threshold below the box → it passes again → animal.
-    project.detection_threshold = 0.3
+    project.counting_threshold = 0.3
     db.commit()
     changed = recalculate_observation_types_for_project(db, project.id)
     db.refresh(f)

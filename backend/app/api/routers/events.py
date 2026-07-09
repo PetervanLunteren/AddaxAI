@@ -120,7 +120,7 @@ def _apply_project_threshold(
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         return filters
-    filters["project_floor"] = project.detection_threshold
+    filters["project_floor"] = project.counting_threshold
     return filters
 
 

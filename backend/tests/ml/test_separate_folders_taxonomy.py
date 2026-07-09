@@ -70,7 +70,7 @@ def test_writes_full_five_level_nested_path(db, tmp_path):
     project = make_project(
         db,
         name="sep-tree-full",
-        detection_threshold=0.5,
+        counting_threshold=0.5,
         classification_model_id="test-model",
     )
     _add_taxonomy(
@@ -114,7 +114,7 @@ def test_scientific_mode_uses_scientific_name_leaf(db, tmp_path):
     project = make_project(
         db,
         name="sep-tree-sci",
-        detection_threshold=0.5,
+        counting_threshold=0.5,
         classification_model_id="test-model",
     )
     _add_taxonomy(
@@ -158,7 +158,7 @@ def test_scientific_mode_falls_back_to_label_without_scientific_name(db, tmp_pat
     project = make_project(
         db,
         name="sep-tree-sci-fallback",
-        detection_threshold=0.5,
+        counting_threshold=0.5,
         classification_model_id="test-model",
     )
     _add_taxonomy(
@@ -198,7 +198,7 @@ def test_truncates_at_deepest_known_rank(db, tmp_path):
     project = make_project(
         db,
         name="sep-tree-trunc",
-        detection_threshold=0.5,
+        counting_threshold=0.5,
         classification_model_id="test-model",
     )
     _add_taxonomy(
@@ -232,7 +232,7 @@ def test_multi_species_lands_in_main_species_leaf(db, tmp_path):
     project = make_project(
         db,
         name="sep-tree-multi",
-        detection_threshold=0.5,
+        counting_threshold=0.5,
         classification_model_id="test-model",
     )
     _add_taxonomy(
@@ -278,7 +278,7 @@ def test_unmapped_label_falls_back_to_other(db, tmp_path):
     project = make_project(
         db,
         name="sep-tree-unmapped",
-        detection_threshold=0.5,
+        counting_threshold=0.5,
         classification_model_id="test-model",
     )
     dep = make_deployment(db, project_id=project.id)
@@ -304,7 +304,7 @@ def test_unmapped_label_falls_back_to_other(db, tmp_path):
 
 def test_excluded_label_ids_drops_animal_file(db, tmp_path):
     """Animal file whose only label is excluded → skipped_excluded."""
-    project = make_project(db, name="sep-excl", detection_threshold=0.5)
+    project = make_project(db, name="sep-excl", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _make_source(tmp_path, "IMG_001.jpg")
     f = make_file(
@@ -332,7 +332,7 @@ def test_excluded_label_ids_partial_keeps_file_in_remaining_folders(
     """File with dog + wolf, exclude wolf → file in Other/dog/ only,
     single placement, not multi."""
     project = make_project(
-        db, name="sep-partial-excl", detection_threshold=0.5
+        db, name="sep-partial-excl", counting_threshold=0.5
     )
     dep = make_deployment(db, project_id=project.id)
     src = _make_source(tmp_path, "IMG_001.jpg")
@@ -362,7 +362,7 @@ def test_flat_mode_places_single_segment_per_species(db, tmp_path):
     project = make_project(
         db,
         name="sep-flat",
-        detection_threshold=0.5,
+        counting_threshold=0.5,
         classification_model_id="test-model",
     )
     _add_taxonomy(
@@ -389,7 +389,7 @@ def test_flat_mode_places_single_segment_per_species(db, tmp_path):
 
 
 def test_flat_mode_multi_species_main_only(db, tmp_path):
-    project = make_project(db, name="sep-flat-multi", detection_threshold=0.5)
+    project = make_project(db, name="sep-flat-multi", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _make_source(tmp_path, "IMG_001.jpg")
     f = make_file(

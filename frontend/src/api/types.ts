@@ -34,7 +34,7 @@ export interface ProjectCreate {
    *  let the backend auto-derive it from the first site's coordinates. */
   timezone?: string | null;
   video_fps: number;
-  detection_threshold: number;
+  counting_threshold: number;
   classification_gate: number;
   event_smoothing: boolean;
   smoothing_strength: string;
@@ -62,7 +62,7 @@ export interface ProjectUpdate {
   /** IANA timezone name, optional on update. */
   timezone?: string | null;
   video_fps?: number | null;
-  detection_threshold?: number | null;
+  counting_threshold?: number | null;
   classification_gate?: number | null;
   event_smoothing?: boolean | null;
   smoothing_strength?: string | null;
@@ -92,7 +92,7 @@ export interface ProjectResponse {
   /** IANA timezone name, or null when unset (auto-derives from site coords). */
   timezone: string | null;
   video_fps: number;
-  detection_threshold: number;
+  counting_threshold: number;
   classification_gate: number;
   event_smoothing: boolean;
   smoothing_strength: string;
@@ -602,7 +602,7 @@ export interface EventFilterParams {
   favorited?: FavoritedFilter;
   empty?: EmptyFilter;
   /** Detector confidence (Detection.confidence) range. Min handle is
-   *  clamped client-side at the project's detection_threshold. */
+   *  clamped client-side at the project's counting_threshold. */
   min_confidence?: number;
   max_confidence?: number;
   /** Classifier confidence (Detection.label_confidence) range. NULL

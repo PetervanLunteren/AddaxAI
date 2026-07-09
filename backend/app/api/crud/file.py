@@ -13,10 +13,10 @@ from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, File, Project
 
 
-def _get_detection_threshold(db: Session, file: File) -> float:
+def _get_counting_threshold(db: Session, file: File) -> float:
     """Get the project's detection threshold for a file."""
     row = (
-        db.query(Project.detection_threshold)
+        db.query(Project.counting_threshold)
         .join(Deployment, Deployment.project_id == Project.id)
         .filter(Deployment.id == file.deployment_id)
         .first()
@@ -173,7 +173,7 @@ def recompute_file_verified(db: Session, file_ids: Iterable[str]) -> None:
     for f in files:
         dep_id = f.deployment_id
         if dep_id not in threshold_cache:
-            threshold_cache[dep_id] = _get_detection_threshold(db, f)
+            threshold_cache[dep_id] = _get_counting_threshold(db, f)
         floor = threshold_cache[dep_id]
 
         rows = (
@@ -234,7 +234,7 @@ def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:
             file.verified_at_utc = now
             # Only verify detections above the project's detection threshold
             # (below-threshold detections are not visible to the user)
-            threshold = _get_detection_threshold(db, file)
+            threshold = _get_counting_threshold(db, file)
             det_filter = [
                 Detection.file_id == file_id,
                 Detection.verified == False,  # noqa: E712
@@ -280,7 +280,7 @@ def _project_threshold_for_file(db: Session, file: File) -> float:
     the pre-threshold behaviour).
     """
     row = (
-        db.query(Project.detection_threshold)
+        db.query(Project.counting_threshold)
         .join(Deployment, Deployment.project_id == Project.id)
         .filter(Deployment.id == file.deployment_id)
         .first()
@@ -324,7 +324,7 @@ def recalculate_observation_types_for_project(
     project = db.get(Project, project_id)
     if project is None:
         return 0
-    threshold = project.detection_threshold
+    threshold = project.counting_threshold
 
     files = (
         db.query(File)

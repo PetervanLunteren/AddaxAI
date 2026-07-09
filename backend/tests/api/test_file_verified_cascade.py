@@ -16,7 +16,7 @@ from tests.conftest import (
 
 
 def _file_with_two_detections(db, threshold=0.5):
-    project = make_project(db, detection_threshold=threshold)
+    project = make_project(db, counting_threshold=threshold)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id, project_id=project.id)
     f = make_file(db, deployment_id=dep.id, verified=False)

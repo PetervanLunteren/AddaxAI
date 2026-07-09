@@ -753,9 +753,9 @@ def test_save_outputs_data_only_creates_no_media_dir(client, tmp_path):
     assert not (source / ".addaxai-output").exists()
 
 
-def test_create_sets_detection_threshold_to_counting_default(client):
+def test_create_sets_counting_threshold_to_counting_default(client):
     """Folder runs use the same single interpretation floor as projects
-    mode: detection_threshold defaults to DEFAULT_COUNTING_THRESHOLD,
+    mode: counting_threshold defaults to DEFAULT_COUNTING_THRESHOLD,
     decoupled from the classification gate. The grid, counts, and the
     verification pills all measure over it, so they agree; data exports
     bypass the threshold entirely."""
@@ -771,7 +771,7 @@ def test_create_sets_detection_threshold_to_counting_default(client):
     )
     assert resp.status_code == 201
     body = resp.json()
-    assert body["project"]["detection_threshold"] == DEFAULT_COUNTING_THRESHOLD
+    assert body["project"]["counting_threshold"] == DEFAULT_COUNTING_THRESHOLD
 
 
 def test_legacy_counts_and_summary_steps_resume_on_labels(client, db):

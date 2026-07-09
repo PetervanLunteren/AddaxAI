@@ -36,7 +36,7 @@ import type { EventFilterParams } from "../../api/types";
 interface ConfidenceRangeFilterProps {
   filters: EventFilterParams;
   onChange: (next: EventFilterParams) => void;
-  /** Project's detection_threshold; the det slider's resting position
+  /** Project's counting_threshold; the det slider's resting position
    * when no filter is set, and its clamp in ``floorMode="clamp"``. */
   detectionFloor: number;
   /** Whether the low handle stops at the floor or the scale minimum. */

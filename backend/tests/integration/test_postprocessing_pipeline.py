@@ -223,7 +223,7 @@ def test_label_exclusion_applied_before_smoothing(deployment_scaffold):
     s["project"].event_smoothing = True
     s["project"].taxonomic_rollup = False
     s["project"].independence_interval = 1800
-    s["project"].detection_threshold = 0.5
+    s["project"].counting_threshold = 0.5
     db.flush()
 
     json_path = s["artifacts"] / "results.json"

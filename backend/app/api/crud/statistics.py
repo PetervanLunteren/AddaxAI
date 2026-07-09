@@ -69,9 +69,9 @@ def _apply_filters(
     return query
 
 
-def _get_detection_threshold(db: Session, project_id: str) -> float:
+def _get_counting_threshold(db: Session, project_id: str) -> float:
     """Look up the project's detection confidence threshold."""
-    threshold = db.query(Project.detection_threshold).filter(
+    threshold = db.query(Project.counting_threshold).filter(
         Project.id == project_id
     ).scalar()
     return threshold if threshold is not None else 0.0
@@ -1224,7 +1224,7 @@ def get_verification_progress_by_label(
     `false detection` rows are excluded since they are not a real class.
     Sorted by total descending so the highest-support classes come first.
     """
-    threshold = _get_detection_threshold(db, project_id)
+    threshold = _get_counting_threshold(db, project_id)
 
     query = (
         select(

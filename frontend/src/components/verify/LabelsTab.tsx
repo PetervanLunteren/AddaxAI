@@ -1300,7 +1300,7 @@ export function LabelsTab({
   // gates.
   const classificationGate =
     project?.classification_gate ?? DEFAULT_CLASSIFICATION_GATE;
-  const detectionFloorValue = project?.detection_threshold ?? 0;
+  const detectionFloorValue = project?.counting_threshold ?? 0;
   const effectiveFloor = Math.min(
     detectionFloorValue,
     lblFilters.min_confidence ?? detectionFloorValue,
@@ -1357,7 +1357,7 @@ export function LabelsTab({
         onChange={handleFilterBarChange}
         projectId={projectId}
         classificationModelId={classificationModelId}
-        detectionFloor={project?.detection_threshold ?? 0}
+        detectionFloor={project?.counting_threshold ?? 0}
         countBy="detection"
         showLikedFlaggedEmpty={false}
         confidenceFloorMode="open"

@@ -385,7 +385,7 @@ def get_deployment_info(db: Session, deployment_id: str):
     """
     from sqlalchemy import case
 
-    from app.api.crud.statistics import _apply_threshold, _get_detection_threshold
+    from app.api.crud.statistics import _apply_threshold, _get_counting_threshold
     from app.api.schemas.deployment import (
         DeploymentDetectionCategories,
         DeploymentFileCounts,
@@ -563,7 +563,7 @@ def get_deployment_info(db: Session, deployment_id: str):
     # filter (per CONVENTIONS.md). Classification mean uses the same
     # filter plus `label_confidence IS NOT NULL` so we only average over
     # detections that were actually classified.
-    threshold = _get_detection_threshold(db, project_id)
+    threshold = _get_counting_threshold(db, project_id)
     detection_q = _apply_threshold(
         select(func.avg(Detection.confidence))
         .join(File, Detection.file_id == File.id)

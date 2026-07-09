@@ -31,7 +31,7 @@ def _threshold_clause(threshold: float):
 def calculate_max_n_for_event(
     db: Session,
     event_id: str,
-    detection_threshold: float,
+    counting_threshold: float,
 ) -> list[EventObservation]:
     """
     Recalculate the AI-derived MaxN per species for a single event, while
@@ -84,7 +84,7 @@ def calculate_max_n_for_event(
         .join(File, File.id == Detection.file_id)
         .join(event_files, event_files.c.file_id == File.id)
         .filter(event_files.c.event_id == event_id)
-        .filter(_threshold_clause(detection_threshold))
+        .filter(_threshold_clause(counting_threshold))
         .group_by(
             Detection.file_id,
             Detection.frame_number,
@@ -230,7 +230,7 @@ def recalculate_max_n_for_project(
     if not project:
         raise ValueError(f"Project {project_id} not found")
 
-    threshold = project.detection_threshold
+    threshold = project.counting_threshold
 
     # Get all event IDs for this project
     event_ids = (
@@ -255,11 +255,11 @@ def recalculate_max_n_for_project(
 def recalculate_max_n_for_events(
     db: Session,
     event_ids: list[str],
-    detection_threshold: float,
+    counting_threshold: float,
 ) -> None:
     """Recalculate MaxN for specific events (after verify/relabel)."""
     for event_id in event_ids:
-        calculate_max_n_for_event(db, event_id, detection_threshold)
+        calculate_max_n_for_event(db, event_id, counting_threshold)
 
 
 def get_event_ids_for_detections(
@@ -502,9 +502,9 @@ def get_project_threshold_for_detections(
     db: Session,
     detection_ids: list[str],
 ) -> float:
-    """Get the project detection_threshold for the given detections."""
+    """Get the project counting_threshold for the given detections."""
     row = (
-        db.query(Project.detection_threshold)
+        db.query(Project.counting_threshold)
         .join(Deployment, Deployment.project_id == Project.id)
         .join(File, File.deployment_id == Deployment.id)
         .join(Detection, Detection.file_id == File.id)

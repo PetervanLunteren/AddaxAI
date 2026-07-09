@@ -79,14 +79,14 @@ def main() -> None:
         opts = json.load(f)
 
     event_smoothing = opts.get("event_smoothing", False)
-    detection_threshold = opts.get("detection_threshold", 0.15)
+    counting_threshold = opts.get("counting_threshold", 0.15)
     smoothing_strength = opts.get("smoothing_strength", "normal")
     smoother_input = opts.get("smoother_input")
 
     # Configure smoothing options
     options = ClassificationSmoothingOptions()
     options.propagate_classifications_through_taxonomy = True
-    options.detection_confidence_threshold = detection_threshold
+    options.detection_confidence_threshold = counting_threshold
     options.detection_category_names_to_smooth = ["animal"]
 
     # Apply strength preset

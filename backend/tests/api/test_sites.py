@@ -124,7 +124,7 @@ def _build_site_info_fixture(db):
     """Site with 2 deployments, mixed file types, a classified
     detection, a verified below-threshold detection, and one event +
     observation. Used by the happy-path test."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(
         db,
         project_id=project.id,
@@ -242,7 +242,7 @@ def test_site_info_not_found(client):
 
 
 def test_site_info_empty_site(client, db):
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(
         db, project_id=project.id, name="Empty", latitude=0.0, longitude=0.0
     )
@@ -266,7 +266,7 @@ def test_site_info_trap_nights_from_file_spans(client, db):
     deployment with no files contributes 0. The manually-set
     start_date_local / end_date_local on the Deployment row are no
     longer consulted for this calculation."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(
         db, project_id=project.id, name="Mixed", latitude=0.0, longitude=0.0
     )

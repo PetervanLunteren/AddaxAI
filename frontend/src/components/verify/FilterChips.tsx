@@ -33,7 +33,7 @@ interface FilterChipsProps {
   onChange: (filters: EventFilterParams) => void;
   siteNames: Record<string, string>;
   displayLabels?: Record<string, string>;
-  /** Project detection_threshold — used to detect when det range is "default". */
+  /** Project counting_threshold — used to detect when det range is "default". */
   detectionFloor?: number;
   /** The page's default verification value: no chip when the filter
    *  equals it (a default is not a filter). Counts defaults to "all",

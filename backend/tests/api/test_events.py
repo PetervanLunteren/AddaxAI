@@ -462,7 +462,7 @@ def test_event_verify_and_count_endpoints(client, db):
     from app.api.crud.event_observation import calculate_max_n_for_event
     from app.models.label_taxonomy import LabelTaxonomy
 
-    p = make_project(db, detection_threshold=0.5)
+    p = make_project(db, counting_threshold=0.5)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
     ev = make_event_with_files(

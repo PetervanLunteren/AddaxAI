@@ -191,7 +191,7 @@ export function VerifyView({ projectId }: VerifyViewProps) {
     queryKey: ["project", projectId],
     queryFn: () => projectsApi.get(projectId),
   });
-  const detectionThreshold = project?.detection_threshold ?? 0;
+  const detectionThreshold = project?.counting_threshold ?? 0;
 
   // Get total event count (unfiltered)
   const { data: totalCountData } = useQuery({

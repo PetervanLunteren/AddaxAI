@@ -223,7 +223,7 @@ def test_preview_folder_not_found(client):
 def _build_info_fixture(db):
     """Project + site + deployment with mixed images/videos and a few
     classified, verified, and below-threshold detections."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id, name="Camp A")
     dep = make_deployment(
         db,
@@ -334,7 +334,7 @@ def test_deployment_info_not_found(client):
 
 
 def test_deployment_info_empty_deployment(client, db):
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id, name="Empty Camp")
     dep = make_deployment(db, site_id=site.id, folder_path=None)
 
@@ -351,7 +351,7 @@ def test_deployment_info_empty_deployment(client, db):
 
 
 def test_deployment_info_images_only(client, db):
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id, name="Images Camp")
     dep = make_deployment(db, site_id=site.id)
     make_file(db, deployment_id=dep.id, file_type="image", file_format="jpg")
@@ -362,7 +362,7 @@ def test_deployment_info_images_only(client, db):
 
 
 def test_deployment_info_videos_only(client, db):
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id, name="Videos Camp")
     dep = make_deployment(db, site_id=site.id)
     make_file(db, deployment_id=dep.id, file_type="video", file_format="mp4")
@@ -374,7 +374,7 @@ def test_deployment_info_videos_only(client, db):
 def test_deployment_info_no_classifications(client, db):
     """A detection with no `label_confidence` should produce a null
     classification mean, even when the detection mean is populated."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id, name="Det Only")
     dep = make_deployment(db, site_id=site.id)
     f = make_file(db, deployment_id=dep.id, file_type="image", file_format="jpg")
@@ -388,7 +388,7 @@ def test_deployment_info_no_classifications(client, db):
 def test_deployment_info_verified_below_threshold_is_counted(client, db):
     """A verified detection with confidence < threshold must still count
     in the mean because of the verified override rule."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id, name="Camp V")
     dep = make_deployment(db, site_id=site.id)
     f = make_file(db, deployment_id=dep.id, file_type="image", file_format="jpg")

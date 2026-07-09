@@ -119,7 +119,7 @@ def test_info_block_carries_reproducibility_settings(db, tmp_path):
     settings = addaxai["settings"]
     # No detection threshold: the file is the complete record, nothing
     # in it is threshold-filtered (Dan's must-fix).
-    assert "detection_threshold" not in settings
+    assert "counting_threshold" not in settings
     assert settings["taxonomic_rollup"] is True
     assert settings["country_code"] == "NLD"
     assert "taxonomic_rollup_threshold" not in settings

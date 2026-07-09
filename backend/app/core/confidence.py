@@ -17,7 +17,7 @@ an animal detection is classified AND embedded. Configurable per
 project via ``Project.classification_gate``.
 
 DEFAULT_COUNTING_THRESHOLD — default detection confidence for what
-gets counted and visualized: ``Project.detection_threshold``, the
+gets counted and visualized: ``Project.counting_threshold``, the
 save step's media confidence, and the labels grid's seeded filter all
 default to it. Below this value most detections are false positives,
 which is also why the grid shows its noise advisory there.

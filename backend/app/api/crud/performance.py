@@ -263,7 +263,7 @@ def get_classification_performance(
         raise ValueError(f"Project {project_id} not found")
 
     has_classifier = project.classification_model_id is not None
-    threshold = project.detection_threshold
+    threshold = project.counting_threshold
 
     # User-facing scope: only detections that would appear in the Verify
     # page (confidence at or above the project threshold, OR already

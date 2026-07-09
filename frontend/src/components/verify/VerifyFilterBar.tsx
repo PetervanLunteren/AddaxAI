@@ -72,7 +72,7 @@ interface VerifyFilterBarProps {
   onChange: (next: EventFilterParams) => void;
   projectId: string;
   classificationModelId?: string | null;
-  /** Project's detection_threshold; clamps the floor of the det slider. */
+  /** Project's counting_threshold; clamps the floor of the det slider. */
   detectionFloor?: number;
   /** Which unit the label-tree counts are aggregated on. */
   countBy?: "event" | "file" | "detection";

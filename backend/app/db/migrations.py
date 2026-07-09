@@ -264,6 +264,16 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
             "fingerprintable via PRAGMA table_info presence"
         ),
     ),
+    _Fingerprint(
+        revision="f8a9b0c1d2e3",
+        table="projects",
+        column="counting_threshold",
+        description=(
+            "rename projects.detection_threshold -> counting_threshold "
+            "(named for its purpose, matching DEFAULT_COUNTING_THRESHOLD "
+            "and classification_gate)"
+        ),
+    ),
 )
 
 

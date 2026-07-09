@@ -351,7 +351,7 @@ export function EventDetailModal({
       (new Date(cur).getTime() - new Date(prev).getTime()) / 1000,
     );
   })();
-  const detectionThreshold = project?.detection_threshold ?? 0;
+  const detectionThreshold = project?.counting_threshold ?? 0;
   const imageFilter =
     brightness !== 50 || contrast !== 50
       ? `brightness(${brightness / 50}) contrast(${contrast / 50})`

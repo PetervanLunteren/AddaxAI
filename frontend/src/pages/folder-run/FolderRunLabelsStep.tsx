@@ -111,7 +111,7 @@ export function FolderRunLabelsStep() {
             projectId={runId}
             onSelectionChange={setSelectionCount}
             // No explicit default floor: like projects mode, the grid
-            // rests at the project's detection_threshold (the backend
+            // rests at the project's counting_threshold (the backend
             // applies it as the threshold-or-verified floor), so the
             // grid, counts, and verification pill all measure the same
             // population.

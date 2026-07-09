@@ -90,12 +90,12 @@ class Project(Base):
 
     # Detection and processing settings.
     #
-    # detection_threshold is the counting / visualization filter (what
+    # counting_threshold is the counting / visualization filter (what
     # the app shows and counts); classification_gate is the detection
     # confidence above which animal crops are classified and embedded.
     # MegaDetector itself always runs untresholded (0.005, see
     # app/ml/detection); neither setting affects what is stored.
-    detection_threshold: Mapped[float] = mapped_column(
+    counting_threshold: Mapped[float] = mapped_column(
         Float, nullable=False, default=DEFAULT_COUNTING_THRESHOLD
     )
     classification_gate: Mapped[float] = mapped_column(

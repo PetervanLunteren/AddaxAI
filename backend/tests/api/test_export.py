@@ -80,8 +80,8 @@ def _run_camtrap_dp_export(client, db, project_id: str):
 # ---------------------------------------------------------------------------
 
 
-def _build_simple_project(db, *, timezone: str = "UTC", detection_threshold: float = 0.5):
-    project = make_project(db, timezone=timezone, detection_threshold=detection_threshold)
+def _build_simple_project(db, *, timezone: str = "UTC", counting_threshold: float = 0.5):
+    project = make_project(db, timezone=timezone, counting_threshold=counting_threshold)
     site = make_site(db, project_id=project.id, name="alpha", latitude=52.1, longitude=5.1)
     deployment = make_deployment(
         db,
@@ -319,7 +319,7 @@ def test_export_detections_tsv_and_xlsx(client, db):
 
 
 def test_export_detections_respects_threshold_and_verified_override(client, db):
-    project, _site, deployment = _build_simple_project(db, detection_threshold=0.5)
+    project, _site, deployment = _build_simple_project(db, counting_threshold=0.5)
     f = make_file(db, deployment_id=deployment.id)
     # Below threshold, unverified → excluded.
     make_detection(db, file_id=f.id, category="animal", confidence=0.3, label="fox")
@@ -399,7 +399,7 @@ def test_export_observations_event_level(client, db):
     # Two deer on the same frame → AI MaxN of 2 for the event.
     make_detection(db, file_id=ev.files[0].id, category="animal", confidence=0.9, label="deer")
     make_detection(db, file_id=ev.files[0].id, category="animal", confidence=0.8, label="deer")
-    obs = calculate_max_n_for_event(db, ev.id, project.detection_threshold)
+    obs = calculate_max_n_for_event(db, ev.id, project.counting_threshold)
     # Human bumps the deer count above the per-frame max.
     set_human_count(db, obs[0].id, 5)
     db.commit()
@@ -441,7 +441,7 @@ def test_export_spreadsheet_is_multi_sheet_workbook(client, db):
         event_start_local=datetime(2024, 6, 15, 9, 0, 0),
     )
     make_detection(db, file_id=ev.files[0].id, category="animal", confidence=0.9, label="deer")
-    calculate_max_n_for_event(db, ev.id, project.detection_threshold)
+    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
     db.commit()
 
     resp = client.get(f"/api/projects/{project.id}/export/spreadsheet")
@@ -725,7 +725,7 @@ def test_export_camtrap_dp_emits_media_and_event_rows(client, db):
     db.add(tax)
     db.flush()
     det.label_taxonomy_id = tax.id
-    obs = calculate_max_n_for_event(db, ev.id, project.detection_threshold)
+    obs = calculate_max_n_for_event(db, ev.id, project.counting_threshold)
     db.flush()
     # Human bumps the deer count to 3 (more than any single frame showed).
     set_human_count(db, obs[0].id, 3)

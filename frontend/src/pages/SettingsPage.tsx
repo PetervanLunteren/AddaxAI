@@ -110,7 +110,7 @@ const settingsSchema = z.object({
   // Empty string means "Auto (derive from site location)".
   timezone: z.string(),
   video_fps: z.number().min(0.1).max(10),
-  detection_threshold: z.number().min(0).max(1),
+  counting_threshold: z.number().min(0).max(1),
   classification_gate: z.number().min(0.01).max(1),
   event_smoothing: z.boolean(),
   smoothing_strength: z.enum(["mild", "normal", "aggressive"]),
@@ -289,7 +289,7 @@ export default function SettingsPage() {
       state_code: null,
       timezone: "",
       video_fps: 1.0,
-      detection_threshold: DEFAULT_COUNTING_THRESHOLD,
+      counting_threshold: DEFAULT_COUNTING_THRESHOLD,
       classification_gate: DEFAULT_CLASSIFICATION_GATE,
       event_smoothing: true,
       smoothing_strength: "normal" as const,
@@ -313,7 +313,7 @@ export default function SettingsPage() {
         state_code: project.state_code || null,
         timezone: project.timezone ?? "",
         video_fps: project.video_fps,
-        detection_threshold: project.detection_threshold,
+        counting_threshold: project.counting_threshold,
         classification_gate: project.classification_gate,
         event_smoothing: project.event_smoothing,
         smoothing_strength: (project.smoothing_strength || "normal") as "mild" | "normal" | "aggressive",
@@ -643,7 +643,7 @@ export default function SettingsPage() {
       // 1. Start fetching before-stats in the background (don't await yet)
       const beforeStatsPromise = fetchStats(
         projectId,
-        currentValues.detection_threshold,
+        currentValues.counting_threshold,
         currentValues.independence_interval,
       );
 
@@ -666,7 +666,7 @@ export default function SettingsPage() {
           const beforeStats = await beforeStatsPromise;
           pendingBeforeStats.current = {
             before: beforeStats,
-            newThreshold: data.detection_threshold,
+            newThreshold: data.counting_threshold,
             newInterval: data.independence_interval,
           };
           return; // Progress modal takes over; toast shown in onComplete
@@ -678,7 +678,7 @@ export default function SettingsPage() {
       // 4. No reprocess needed — await before-stats and fetch after-stats
       const beforeStats = await beforeStatsPromise;
       const afterStats = await fetchStats(
-        projectId, data.detection_threshold, data.independence_interval,
+        projectId, data.counting_threshold, data.independence_interval,
       );
 
       const results: SaveResults = {
@@ -751,7 +751,7 @@ export default function SettingsPage() {
         state_code: project.state_code || null,
         timezone: project.timezone ?? "",
         video_fps: project.video_fps,
-        detection_threshold: project.detection_threshold,
+        counting_threshold: project.counting_threshold,
         classification_gate: project.classification_gate,
         event_smoothing: project.event_smoothing,
         smoothing_strength: (project.smoothing_strength || "normal") as "mild" | "normal" | "aggressive",
@@ -1155,7 +1155,7 @@ export default function SettingsPage() {
                 {/* Detection Threshold */}
                 <FormField
                   control={form.control}
-                  name="detection_threshold"
+                  name="counting_threshold"
                   render={({ field }) => (
                     <div className="grid grid-cols-2 items-center gap-8 py-6">
                       <div className="space-y-1">

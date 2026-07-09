@@ -24,7 +24,7 @@ import type {
 export const ADVANCED_SETTINGS_DEFAULTS = {
   detection_model_id: "MD5A-0-0",
   video_fps: 1.0,
-  detection_threshold: DEFAULT_COUNTING_THRESHOLD,
+  counting_threshold: DEFAULT_COUNTING_THRESHOLD,
   classification_gate: DEFAULT_CLASSIFICATION_GATE,
   event_smoothing: true,
   smoothing_strength: "normal",
@@ -42,7 +42,7 @@ const ADVANCED_KEYS = Object.keys(ADVANCED_SETTINGS_DEFAULTS) as AdvancedKey[];
 /** True if any advanced setting in `values` deviates from its default.
  * Keys absent from `values` are skipped: not every consumer form carries
  * every advanced setting (the folder-run setup step has no
- * detection_threshold; that lives on the project Settings page only). */
+ * counting_threshold; that lives on the project Settings page only). */
 export function isAnyAdvancedNonDefault(values: Record<string, unknown>): boolean {
   return ADVANCED_KEYS.some(
     (key) => key in values && values[key] !== ADVANCED_SETTINGS_DEFAULTS[key],

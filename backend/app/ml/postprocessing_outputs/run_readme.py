@@ -377,10 +377,10 @@ def write_run_readme(
 
     file_counts = _file_counts(db, project_id)
     detection_counts = _detection_counts_by_category(
-        db, project_id, project.detection_threshold
+        db, project_id, project.counting_threshold
     )
     top_species = _top_species(
-        db, project_id, project.detection_threshold
+        db, project_id, project.counting_threshold
     )
     verification = _verification_stats(db, project_id)
 

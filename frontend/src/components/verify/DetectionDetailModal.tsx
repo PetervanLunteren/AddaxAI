@@ -195,7 +195,7 @@ export function DetectionDetailModal({
     queryFn: () => projectsApi.get(projectId!),
     enabled: open && !!projectId,
   });
-  const detectionThreshold = project?.detection_threshold ?? 0;
+  const detectionThreshold = project?.counting_threshold ?? 0;
 
   // Fetch 10 nearest neighbors for the Label Agreement thumbnails
   const { data: neighborsData } = useQuery({

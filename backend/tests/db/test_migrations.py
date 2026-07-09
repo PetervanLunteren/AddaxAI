@@ -228,6 +228,16 @@ def test_init_db_repairs_db_stamped_at_wrong_revision(
                 "ALTER TABLE deployments DROP COLUMN classification_gate_used"
             )
         )
+        # projects.counting_threshold is the newest detectable schema
+        # (f8a9b0c1d2e3 renamed it from detection_threshold). Rename it
+        # back to the original name so the schema truly looks initial and
+        # the fingerprint walk doesn't stop at that revision.
+        conn.execute(
+            text(
+                "ALTER TABLE projects "
+                "RENAME COLUMN counting_threshold TO detection_threshold"
+            )
+        )
 
     # alembic_version row stays at head — that is exactly the bug.
     assert get_current_revision(engine) == head
@@ -248,6 +258,9 @@ def test_init_db_repairs_db_stamped_at_wrong_revision(
     assert "warnings" in deployments_cols
     assert "mode" in projects_cols
     assert "folder_run_state" in projects_cols
+    # The rename was re-applied: new name present, old name gone.
+    assert "counting_threshold" in projects_cols
+    assert "detection_threshold" not in projects_cols
     assert get_current_revision(engine) == head
 
 

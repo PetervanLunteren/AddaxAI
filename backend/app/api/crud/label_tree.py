@@ -46,7 +46,7 @@ def build_label_filter_tree(
     if not project:
         return None
 
-    threshold = project.detection_threshold
+    threshold = project.counting_threshold
 
     # Scope the counts to the active site + date filters so the tree matches
     # the slice the user has narrowed to (see SIMON_FEEDBACK B11). Both clauses

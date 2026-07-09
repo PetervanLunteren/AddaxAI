@@ -158,10 +158,10 @@ def test_unknown_project_raises(db, tmp_path):
 
 def test_detections_export_ignores_project_threshold(db, tmp_path):
     """The folder-run data exports are the complete record: a detection
-    below the project's detection_threshold still appears in
+    below the project's counting_threshold still appears in
     addaxai-detections.csv (Dan's must-fix). Thresholding is an in-app /
     media-output concern only."""
-    project = make_project(db, name="csv-complete", detection_threshold=0.5)
+    project = make_project(db, name="csv-complete", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     file = make_file(
         db,

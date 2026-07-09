@@ -35,7 +35,7 @@ import type {
 interface VerifyMoreFiltersProps {
   filters: EventFilterParams;
   onChange: (next: EventFilterParams) => void;
-  /** Project's detection_threshold; the det slider's resting floor. */
+  /** Project's counting_threshold; the det slider's resting floor. */
   detectionFloor?: number;
   /** Whether the det slider's low handle stops at the floor ("clamp",
    * Counts) or goes down the full scale ("open", Labels). */

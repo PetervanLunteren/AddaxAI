@@ -8,7 +8,7 @@ here does. Row shapes line up 1:1 with the column orders declared in
 Conventions
 -----------
 
-* ``Detection.confidence >= project.detection_threshold OR Detection.verified``
+* ``Detection.confidence >= project.counting_threshold OR Detection.verified``
   is the user-facing filter (see DEVELOPERS.md "Detection threshold and
   verified override").
 * ``Project.excluded_classes`` filters animal detections whose
@@ -286,7 +286,7 @@ def get_scoped_detection_rows(
     """
     threshold_clause = (
         or_(
-            Detection.confidence >= project.detection_threshold,
+            Detection.confidence >= project.counting_threshold,
             Detection.verified.is_(True),
         )
         if apply_threshold

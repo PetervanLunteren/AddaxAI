@@ -178,7 +178,7 @@ def test_smoothing_strength_passed_to_subprocess(db):
         classification_model_id=None,
         excluded_classes=[],
         taxonomic_rollup=False,
-        detection_threshold=0.5,
+        counting_threshold=0.5,
     )
 
     captured_opts = {}
@@ -320,7 +320,7 @@ def test_smoothing_failure_returns_rollup_results(db):
         classification_model_id=None,
         excluded_classes=[],
         taxonomic_rollup=False,
-        detection_threshold=0.5,
+        counting_threshold=0.5,
     )
 
     def crashing_subprocess(args, **kwargs):

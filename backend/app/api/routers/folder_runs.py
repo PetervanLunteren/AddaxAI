@@ -510,7 +510,7 @@ def create_folder_run(
     # the Setup step, so that's the right resume target if they close
     # the tab now.
     #
-    # detection_threshold is the one in-app interpretation floor, same
+    # counting_threshold is the one in-app interpretation floor, same
     # as projects mode: every read path (labels grid default, label
     # tree, lookup summary) and every verification pill measures over
     # it, so they always agree. Storage is unaffected (MegaDetector runs
@@ -521,7 +521,7 @@ def create_folder_run(
         name=name,
         timezone="UTC",
         mode="folder_run",
-        detection_threshold=DEFAULT_COUNTING_THRESHOLD,
+        counting_threshold=DEFAULT_COUNTING_THRESHOLD,
         folder_run_state={
             "step": "setup",
             "source_folder": payload.source_folder,
@@ -589,7 +589,7 @@ def lookup_folder_run(
     # human verification on them. The threshold-or-verified rule is
     # the same one used everywhere else (DEVELOPERS.md "Detection
     # threshold and verified override").
-    threshold = existing.detection_threshold
+    threshold = existing.counting_threshold
     deployment_ids_subq = (
         select(Deployment.id)
         .where(Deployment.project_id == existing.id)

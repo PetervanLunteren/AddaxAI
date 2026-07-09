@@ -57,7 +57,7 @@ def test_requires_at_least_one_effect(db, tmp_path):
 
 
 def test_visualise_only_writes_bboxes_and_skips_blur(db, tmp_path):
-    project = make_project(db, name="vis-only", detection_threshold=0.5)
+    project = make_project(db, name="vis-only", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _write_jpeg(tmp_path / "src" / "animal.jpg")
     file = make_file(
@@ -82,7 +82,7 @@ def test_visualise_only_writes_bboxes_and_skips_blur(db, tmp_path):
 
 
 def test_anonymise_only_writes_blur_and_skips_bboxes(db, tmp_path):
-    project = make_project(db, name="blur-only", detection_threshold=0.5)
+    project = make_project(db, name="blur-only", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _write_jpeg(tmp_path / "src" / "person.jpg")
     file = make_file(
@@ -108,7 +108,7 @@ def test_anonymise_only_writes_blur_and_skips_bboxes(db, tmp_path):
 def test_combined_writes_one_image_with_blur_and_bboxes(db, tmp_path):
     """Both flags on: one image per source, blurred first, then boxes
     drawn over the obscured pixels. Counts both effects."""
-    project = make_project(db, name="combined", detection_threshold=0.5)
+    project = make_project(db, name="combined", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _write_jpeg(tmp_path / "src" / "mixed.jpg")
     file = make_file(
@@ -147,7 +147,7 @@ def test_combined_writes_one_image_with_blur_and_bboxes(db, tmp_path):
 def test_no_separation_fallback_uses_output_root(db, tmp_path):
     """With no resolved paths on the context, the destination is
     ``output_root/<original_name>``."""
-    project = make_project(db, name="no-sep", detection_threshold=0.5)
+    project = make_project(db, name="no-sep", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _write_jpeg(tmp_path / "src" / "IMG_001.jpg")
     file = make_file(
@@ -170,7 +170,7 @@ def test_no_separation_fallback_uses_output_root(db, tmp_path):
 def test_multi_placement_writes_to_every_destination(db, tmp_path):
     """When separation placed the file in two label folders, the
     annotated copy is written to both."""
-    project = make_project(db, name="multi-placement", detection_threshold=0.5)
+    project = make_project(db, name="multi-placement", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _write_jpeg(tmp_path / "src" / "multi.jpg")
     file = make_file(
@@ -208,7 +208,7 @@ def test_video_annotated_best_frame_lands_at_recorded_still(db, tmp_path):
     """For a video, separation records the best-frame JPEG
     (``clip_still.jpg``); annotation overwrites that same file with the
     boxed version. The video container is never written."""
-    project = make_project(db, name="video-anno", detection_threshold=0.5)
+    project = make_project(db, name="video-anno", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     # The video file itself doesn't need to exist on disk — we read the
     # best-frame JPEG.
@@ -253,7 +253,7 @@ def test_video_annotated_best_frame_lands_at_recorded_still(db, tmp_path):
 def test_no_change_skip_when_only_anonymise_and_no_targets(db, tmp_path):
     """Anonymise only + an animal-only file (no person / vehicle) → no
     visible change, file skipped to avoid identical copies."""
-    project = make_project(db, name="no-targets", detection_threshold=0.5)
+    project = make_project(db, name="no-targets", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _write_jpeg(tmp_path / "src" / "fox.jpg")
     file = make_file(
@@ -277,7 +277,7 @@ def test_no_change_skip_when_only_anonymise_and_no_targets(db, tmp_path):
 
 
 def test_missing_source_is_skipped(db, tmp_path):
-    project = make_project(db, name="missing-src", detection_threshold=0.5)
+    project = make_project(db, name="missing-src", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     # File row points at a path that doesn't exist on disk.
     file = make_file(
@@ -305,7 +305,7 @@ def test_missing_source_is_skipped(db, tmp_path):
 def test_excluded_label_skips_file(db, tmp_path):
     """File-level filter drops animal files whose every passing label
     is in the exclusion set — same rule as separate_folders."""
-    project = make_project(db, name="excl", detection_threshold=0.5)
+    project = make_project(db, name="excl", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _write_jpeg(tmp_path / "src" / "dog.jpg")
     file = make_file(

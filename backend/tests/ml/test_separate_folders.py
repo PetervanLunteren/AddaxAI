@@ -39,7 +39,7 @@ def test_separate_routes_animal_to_other_when_no_taxonomy(db, tmp_path):
     """An animal label with no LabelTaxonomy row lands under
     ``Other/<label>/`` — the taxonomic-tree fallback for unmapped
     labels."""
-    project = make_project(db, name="sep-animal", detection_threshold=0.5)
+    project = make_project(db, name="sep-animal", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _make_source(tmp_path, "IMG_001.jpg")
     file = make_file(
@@ -65,7 +65,7 @@ def test_separate_routes_animal_to_other_when_no_taxonomy(db, tmp_path):
 
 
 def test_separate_animal_without_label_falls_back_to_animal_folder(db, tmp_path):
-    project = make_project(db, name="sep-animal-nolbl", detection_threshold=0.5)
+    project = make_project(db, name="sep-animal-nolbl", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _make_source(tmp_path, "IMG_002.jpg")
     file = make_file(
@@ -90,7 +90,7 @@ def test_separate_threshold_filters_low_confidence_detections(db, tmp_path):
     effectively empty for the media outputs: it routes to the blank
     folder regardless of the stored observation_type (derived at the
     project threshold, which the media outputs no longer trust)."""
-    project = make_project(db, name="sep-thresh", detection_threshold=0.5)
+    project = make_project(db, name="sep-thresh", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _make_source(tmp_path, "IMG_003.jpg")
     file = make_file(
@@ -287,7 +287,7 @@ def test_move_relocates_file_and_rewrites_db(db, tmp_path):
 def test_multi_species_lands_in_main_species_folder(db, tmp_path):
     """A dog + wolf file lands once, in its most confident species'
     folder (dog) — never in both."""
-    project = make_project(db, name="multi-main", detection_threshold=0.5)
+    project = make_project(db, name="multi-main", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _make_source(tmp_path, "IMG_M01.jpg", b"multi-species")
     file = make_file(
@@ -315,7 +315,7 @@ def test_multi_species_lands_in_main_species_folder(db, tmp_path):
 
 def test_multi_species_repeated_labels_dedupe(db, tmp_path):
     """A file with three `dog` detections places once in Other/dog/."""
-    project = make_project(db, name="multi-dedupe", detection_threshold=0.5)
+    project = make_project(db, name="multi-dedupe", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _make_source(tmp_path, "IMG_M02.jpg")
     file = make_file(
@@ -340,7 +340,7 @@ def test_multi_species_repeated_labels_dedupe(db, tmp_path):
 def test_main_species_is_highest_confidence(db, tmp_path):
     """A low-confidence wolf doesn't change the folder; the file lands
     in its main species (dog)."""
-    project = make_project(db, name="multi-thresh", detection_threshold=0.5)
+    project = make_project(db, name="multi-thresh", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src = _make_source(tmp_path, "IMG_M03.jpg")
     file = make_file(

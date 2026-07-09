@@ -26,7 +26,7 @@ def test_duplicate_copies_settings_sites_and_requeues_deployments(db):
     source = make_project(
         db,
         name="Source",
-        detection_threshold=0.7,
+        counting_threshold=0.7,
         independence_interval=600,
         taxonomic_rollup=False,
     )
@@ -42,7 +42,7 @@ def test_duplicate_copies_settings_sites_and_requeues_deployments(db):
     new = duplicate_project(db, source.id, _params("Copy A"))
     assert new is not None
     # Settings carried over.
-    assert new.detection_threshold == 0.7
+    assert new.counting_threshold == 0.7
     assert new.independence_interval == 600
     assert new.taxonomic_rollup is False
     # User-chosen fields from the request.
@@ -69,13 +69,13 @@ def test_duplicate_copies_settings_sites_and_requeues_deployments(db):
 def test_duplicate_without_settings_uses_defaults(db):
     from tests.conftest import make_project
 
-    source = make_project(db, name="Source2", detection_threshold=0.9)
+    source = make_project(db, name="Source2", counting_threshold=0.9)
     new = duplicate_project(
         db, source.id, _params("Copy B", copy_settings=False)
     )
     assert new is not None
     # Default, not the source's 0.9.
-    assert new.detection_threshold == 0.2
+    assert new.counting_threshold == 0.2
 
 
 def test_duplicate_without_sites_or_deployments(db):

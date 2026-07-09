@@ -236,7 +236,7 @@ def get_label_stats(
     # report e.g. 95% while every on-screen label is verified,
     # because below-threshold / not-yet-embedded detections drag it
     # down even though they never appear here.
-    threshold = project.detection_threshold if project else 0.0
+    threshold = project.counting_threshold if project else 0.0
     has_embedding = exists().where(
         DetectionEmbedding.detection_id == Detection.id
     )

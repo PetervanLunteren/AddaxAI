@@ -199,7 +199,7 @@ def _apply_event_filters(
     are excluded automatically when the bounds are set (correct
     behaviour: a NULL cannot satisfy a range).
 
-    `project_floor` is the project's `detection_threshold`, applied as
+    `project_floor` is the project's `counting_threshold`, applied as
     `(Detection.confidence >= floor OR Detection.verified == True)`. This
     is the global override rule. `min_confidence` (the user's slider) is
     applied LITERALLY without OR-verified — a verified low-confidence
@@ -995,7 +995,7 @@ def get_filter_options(db: Session, project_id: str) -> dict:
     at least one visible detection appear as options.
     """
     project = db.query(Project).filter(Project.id == project_id).first()
-    threshold = project.detection_threshold if project else 0.0
+    threshold = project.counting_threshold if project else 0.0
 
     # Threshold clause: confidence >= threshold OR verified
     threshold_clause = or_(

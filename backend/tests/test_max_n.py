@@ -83,7 +83,7 @@ def _make_event_with_detections(db, deployment_id, event_start_local, file_specs
 
 def test_basic_max_n(db):
     """MaxN picks the peak count across images for a single species."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -104,7 +104,7 @@ def test_basic_max_n(db):
 
 def test_multi_species_max_n(db):
     """Each species gets its own MaxN within the same event."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -126,7 +126,7 @@ def test_multi_species_max_n(db):
 
 def test_threshold_filtering(db):
     """Detections below threshold are excluded unless verified."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -147,7 +147,7 @@ def test_threshold_filtering(db):
 
 def test_verified_below_threshold_included(db):
     """Verified detections below threshold are included in MaxN."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -171,7 +171,7 @@ def test_verified_below_threshold_included(db):
 
 def test_blank_event_no_observations(db):
     """Events with no detections get no EventObservation rows."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -189,7 +189,7 @@ def test_blank_event_no_observations(db):
 
 def test_peak_file_id_correct(db):
     """max_n_file_id points to the file where MaxN was observed."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -209,7 +209,7 @@ def test_peak_file_id_correct(db):
 
 def test_recalculate_max_n_for_project(db):
     """Project-wide recalculation updates all events."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -237,7 +237,7 @@ def test_recalculate_max_n_for_project(db):
 
 def test_recalculation_replaces_old_values(db):
     """Recalculating replaces old EventObservation rows, not appends."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -259,7 +259,7 @@ def test_recalculation_replaces_old_values(db):
 
 def test_get_event_ids_for_detections(db):
     """Helper finds event IDs containing the given detection IDs."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -273,7 +273,7 @@ def test_get_event_ids_for_detections(db):
 
 def test_person_and_vehicle_max_n(db):
     """MaxN applies to person and vehicle categories too."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -295,7 +295,7 @@ def test_max_n_counts_no_bbox_observations(db):
     toward MaxN. Two user-added observations of "deer" on the same
     video file should be MaxN=2 — they collapse into one (file, frame,
     label) group because both have frame_number=None."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -332,7 +332,7 @@ def test_max_n_groups_per_frame_for_videos(db):
     two more on a different frame don't add up to 4. This is the core
     promise of adding `frame_number` to the GROUP BY — MaxN is the
     peak per-frame count, not the per-video total."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -370,7 +370,7 @@ def test_max_n_groups_per_frame_for_videos(db):
 def test_human_count_overrides_and_survives_recompute(db):
     """A human count overrides the AI MaxN for the effective count and
     is preserved when MaxN is later recomputed."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -400,7 +400,7 @@ def test_human_count_overrides_and_survives_recompute(db):
 def test_add_human_species_creates_human_only_row_and_survives(db):
     """A species the AI never detected is stored as a human-only row
     (max_n=0, no frame) and survives a recompute."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -428,7 +428,7 @@ def test_add_human_species_creates_human_only_row_and_survives(db):
 def test_recompute_clears_event_verified_when_counts_change(db):
     """The event sign-off survives a no-op recompute but clears when the
     species/count set actually changes."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -460,7 +460,7 @@ def test_dashboard_total_observations_uses_effective_count(db):
     (human override, else MaxN), not the raw AI MaxN."""
     from app.api.crud.statistics import get_dashboard_overview
 
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
     ev, _files, _ = _make_event_with_detections(
@@ -480,7 +480,7 @@ def test_dashboard_total_observations_uses_effective_count(db):
 def test_remove_ai_species_via_zero_count_survives_recompute(db):
     """Removing an AI species in the Counts panel sets human_count=0, which
     survives a recompute (the durable representation of 'not present')."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -505,7 +505,7 @@ def test_remove_ai_species_via_zero_count_survives_recompute(db):
 def test_reset_event_to_ai_drops_human_edits(db):
     """reset_event_to_ai clears overrides on AI rows, deletes human-only
     rows, and clears the event sign-off."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -537,7 +537,7 @@ def test_reset_event_to_ai_drops_human_edits(db):
 def test_list_event_observations_order_is_stable_under_count_edits(db):
     """Row order follows AI MaxN (then label), never the editable count, so
     bumping a count does not reshuffle the list under the user."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -626,7 +626,7 @@ def _make_event_with_frames(db, deployment_id, event_start_local, file_specs):
 
 def test_video_non_best_frame_label_is_gated_out(db):
     """A label that only appears on a non-best frame is dropped."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -649,7 +649,7 @@ def test_video_non_best_frame_label_is_gated_out(db):
 
 def test_video_best_frame_species_counts_peak_across_frames(db):
     """An allowed species still takes its peak count across all frames."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -676,7 +676,7 @@ def test_video_best_frame_species_counts_peak_across_frames(db):
 
 def test_video_verified_non_best_frame_species_survives(db):
     """A human-verified species survives even off the best frame."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -700,7 +700,7 @@ def test_video_verified_non_best_frame_species_survives(db):
 
 def test_image_multispecies_is_not_gated(db):
     """Images are never gated: every species in a photo is kept."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -723,7 +723,7 @@ def test_image_multispecies_is_not_gated(db):
 def test_multi_video_event_gates_per_file(db):
     """The gate is per video: a species allowed in one video is not
     rescued for another video where it's only a non-best-frame label."""
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
@@ -759,7 +759,7 @@ def test_event_card_chips_match_best_frame_gate(db):
     be gated against the event's EventObservation rows)."""
     from app.api.crud.event import get_events_by_project
 
-    project = make_project(db, detection_threshold=0.5)
+    project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 

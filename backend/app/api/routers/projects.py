@@ -462,10 +462,10 @@ def update_project(
             except Exception as e:
                 logger.warning(f"Could not validate excluded_classes: {e}")
 
-    # Check if detection_threshold is being changed (affects MaxN)
+    # Check if counting_threshold is being changed (affects MaxN)
     threshold_changing = (
-        project.detection_threshold is not None
-        and project.model_dump(exclude_unset=True).get("detection_threshold") is not None
+        project.counting_threshold is not None
+        and project.model_dump(exclude_unset=True).get("counting_threshold") is not None
     )
 
     # Debug: log what the frontend sent for excluded_classes
@@ -750,7 +750,7 @@ def get_detection_stats(project_id: str, db: Session = Depends(get_db)) -> dict:
     Respects project detection threshold; verified detections always included.
     """
     project = db.query(Project).filter(Project.id == project_id).first()
-    threshold = project.detection_threshold if project else 0.0
+    threshold = project.counting_threshold if project else 0.0
 
     stats = (
         db.query(Detection.category, func.count(Detection.id).label("count"))

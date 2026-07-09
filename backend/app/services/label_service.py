@@ -245,7 +245,7 @@ def _apply_project_threshold(
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if project:
-        floor = project.detection_threshold
+        floor = project.counting_threshold
         if filters.min_confidence is not None:
             floor = min(floor, filters.min_confidence)
         filters = filters.model_copy(update={"project_floor": floor})
@@ -311,7 +311,7 @@ def stream_cohorts(
         "min_count": min_count,
         "max_cohorts": max_cohorts,
         "filters": {
-            "project_floor": project.detection_threshold if project else 0.0,
+            "project_floor": project.counting_threshold if project else 0.0,
         },
     }
     return stream_labels_subprocess("cohorts", project_id, params)
@@ -496,7 +496,7 @@ async def stream_cohorts_async(
         "min_count": min_count,
         "max_cohorts": max_cohorts,
         "filters": {
-            "project_floor": project.detection_threshold if project else 0.0,
+            "project_floor": project.counting_threshold if project else 0.0,
         },
     }
     async for chunk in stream_labels_subprocess_async(

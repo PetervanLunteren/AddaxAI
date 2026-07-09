@@ -96,7 +96,7 @@ def test_get_file_image_not_in_db(client):
 
 
 def test_label_tree_count_by_file(client, db):
-    p = make_project(db, detection_threshold=0.5)
+    p = make_project(db, counting_threshold=0.5)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
     # Build a tiny taxonomy: one species "wolf" under mammalia/carnivora/canidae/canis

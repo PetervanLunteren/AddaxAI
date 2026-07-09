@@ -488,7 +488,7 @@ export function FolderRunModelStep() {
       embedding_batch_size: data.embedding_batch_size,
       video_fps: data.video_fps,
       classification_gate: data.classification_gate,
-      // detection_threshold is left at its created default
+      // counting_threshold is left at its created default
       // (DEFAULT_COUNTING_THRESHOLD) — the one in-app floor, decoupled
       // from the gate, so the grid, counts, and verification pills all
       // agree. The gate is a separate inference knob.
@@ -620,7 +620,7 @@ export function FolderRunModelStep() {
       embedding_batch_size: data.embedding_batch_size,
       video_fps: data.video_fps,
       classification_gate: data.classification_gate,
-      // detection_threshold is left at its created default
+      // counting_threshold is left at its created default
       // (DEFAULT_COUNTING_THRESHOLD) — the one in-app floor, decoupled
       // from the gate, so the grid, counts, and verification pills all
       // agree. The gate is a separate inference knob.

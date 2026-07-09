@@ -69,7 +69,7 @@ def test_readme_carries_run_metadata(db, tmp_path):
         db,
         name="readme-meta",
         timezone="Europe/Amsterdam",
-        detection_threshold=0.5,
+        counting_threshold=0.5,
         country_code="NLD",
     )
     make_deployment(
@@ -99,7 +99,7 @@ def test_readme_carries_run_metadata(db, tmp_path):
 
 def test_readme_lists_top_species(db, tmp_path):
     project = make_project(
-        db, name="readme-species", detection_threshold=0.5
+        db, name="readme-species", counting_threshold=0.5
     )
     dep = make_deployment(db, project_id=project.id)
     for n, label in enumerate(["dog", "wolf", "cat"]):

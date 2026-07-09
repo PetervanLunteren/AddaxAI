@@ -87,7 +87,7 @@ class ProjectBase(BaseModel):
     )
 
     # Detection and processing settings
-    detection_threshold: float = Field(
+    counting_threshold: float = Field(
         default=DEFAULT_COUNTING_THRESHOLD,
         ge=0.0,
         le=1.0,
@@ -214,7 +214,7 @@ class ProjectUpdate(BaseModel):
             return v
         return _validate_iana_timezone(v)
     video_fps: float | None = Field(None, ge=0.1, le=10.0)
-    detection_threshold: float | None = Field(None, ge=0.0, le=1.0)
+    counting_threshold: float | None = Field(None, ge=0.0, le=1.0)
     classification_gate: float | None = Field(None, ge=0.01, le=1.0)
     event_smoothing: bool | None = None
     smoothing_strength: str | None = Field(None, pattern="^(mild|normal|aggressive)$")

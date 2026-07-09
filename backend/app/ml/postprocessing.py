@@ -349,7 +349,7 @@ def run_postprocessing_for_deployment(
     smoothing_options = {
         "event_smoothing": project.event_smoothing,
         "smoothing_strength": project.smoothing_strength,
-        "detection_threshold": project.detection_threshold,
+        "counting_threshold": project.counting_threshold,
         "smoother_input": smoother_input,
     }
 
@@ -627,7 +627,7 @@ def update_database_from_smoothed_results(
     if _dep is not None:
         _proj = db.get(Project, _dep.project_id)
         if _proj is not None:
-            threshold = _proj.detection_threshold
+            threshold = _proj.counting_threshold
     for file_id in changed_file_ids:
         file_record = db.query(File).filter(File.id == file_id).first()
         if not file_record:
