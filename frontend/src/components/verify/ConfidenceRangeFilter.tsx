@@ -43,11 +43,6 @@ interface ConfidenceRangeFilterProps {
   floorMode: "clamp" | "open";
   /** Caption shown while the handle rests on the clamped floor. */
   clampReason?: string;
-  /** Resting position of the det slider's low handle when no explicit
-   *  min filter is set (a page default, not a filter — moving the
-   *  handle away from it creates the filter; moving it back clears
-   *  it). Falls back to ``detectionFloor``. */
-  defaultMinConfidence?: number;
   /** Whether to render the classification slider at all. */
   showClassification: boolean;
   /** Lowest classification confidence present in the project (from the
@@ -63,7 +58,6 @@ export function ConfidenceRangeFilter({
   detectionFloor,
   floorMode,
   clampReason,
-  defaultMinConfidence,
   showClassification,
   minLabelConfidence,
 }: ConfidenceRangeFilterProps) {
@@ -82,9 +76,6 @@ export function ConfidenceRangeFilter({
         )
       : CONFIDENCE_SCALE_MIN;
 
-  // Where the low handle rests when no explicit filter is set.
-  const detRestingMin = defaultMinConfidence ?? detectionFloor;
-
   // A reset icon shows only while a slider is off its default.
   const detDirty =
     filters.min_confidence !== undefined ||
@@ -94,7 +85,7 @@ export function ConfidenceRangeFilter({
     filters.max_label_confidence !== undefined;
 
   // Effective slider values: fall back to defaults when filter is unset.
-  const detMin = filters.min_confidence ?? detRestingMin;
+  const detMin = filters.min_confidence ?? detectionFloor;
   const detMax = filters.max_confidence ?? 1;
   const clsMin = filters.min_label_confidence ?? clsEffectiveMin;
   const clsMax = filters.max_label_confidence ?? 1;
@@ -127,10 +118,10 @@ export function ConfidenceRangeFilter({
           onChange={([nextMin, nextMax]) => {
             onChange({
               ...filters,
-              // At the resting default = no filter. Below it (open
+              // At the resting floor = no filter. Below it (open
               // mode) or above it are deliberate choices and persist.
               min_confidence:
-                Math.abs(nextMin - detRestingMin) < 1e-6
+                Math.abs(nextMin - detectionFloor) < 1e-6
                   ? undefined
                   : nextMin,
               max_confidence: nextMax < 1 - 1e-6 ? nextMax : undefined,

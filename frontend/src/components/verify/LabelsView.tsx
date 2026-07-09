@@ -22,9 +22,6 @@ export interface LabelsViewProps {
   /** Forwarded to LabelsTab's toolbar slot (the folder-run Labels step
    *  puts its "Analysis settings" button there). */
   toolbarExtra?: ReactNode;
-  /** Forwarded to LabelsTab: the grid's default min-confidence floor
-   *  (a default, not a filter). */
-  defaultMinConfidence?: number;
   /** Forwarded to LabelsTab: bump to force a re-sort onto refreshed
    *  labels (e.g. after a reprocess). */
   refreshSignal?: number;
@@ -34,7 +31,6 @@ export function LabelsView({
   projectId,
   onSelectionChange,
   toolbarExtra,
-  defaultMinConfidence,
   refreshSignal,
 }: LabelsViewProps) {
   const { data: project } = useQuery({
@@ -48,7 +44,6 @@ export function LabelsView({
       classificationModelId={project?.classification_model_id ?? null}
       onSelectionChange={onSelectionChange}
       toolbarExtra={toolbarExtra}
-      defaultMinConfidence={defaultMinConfidence}
       refreshSignal={refreshSignal}
     />
   );

@@ -753,12 +753,13 @@ def test_save_outputs_data_only_creates_no_media_dir(client, tmp_path):
     assert not (source / ".addaxai-output").exists()
 
 
-def test_create_pins_detection_threshold_to_inference_floor(client):
-    """Folder runs pin the display threshold to the classification gate
-    at creation (the setup step keeps the two in sync afterwards): the
-    grid and counts show exactly what was classified, while data
-    exports bypass the threshold entirely."""
-    from app.ml.detection import DEFAULT_CLASSIFICATION_GATE
+def test_create_sets_detection_threshold_to_counting_default(client):
+    """Folder runs use the same single interpretation floor as projects
+    mode: detection_threshold defaults to DEFAULT_COUNTING_THRESHOLD,
+    decoupled from the classification gate. The grid, counts, and the
+    verification pills all measure over it, so they agree; data exports
+    bypass the threshold entirely."""
+    from app.core.confidence import DEFAULT_COUNTING_THRESHOLD
 
     resp = client.post(
         "/api/folder-runs",
@@ -770,7 +771,7 @@ def test_create_pins_detection_threshold_to_inference_floor(client):
     )
     assert resp.status_code == 201
     body = resp.json()
-    assert body["project"]["detection_threshold"] == DEFAULT_CLASSIFICATION_GATE
+    assert body["project"]["detection_threshold"] == DEFAULT_COUNTING_THRESHOLD
 
 
 def test_legacy_counts_and_summary_steps_resume_on_labels(client, db):

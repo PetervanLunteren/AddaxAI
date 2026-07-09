@@ -488,11 +488,10 @@ export function FolderRunModelStep() {
       embedding_batch_size: data.embedding_batch_size,
       video_fps: data.video_fps,
       classification_gate: data.classification_gate,
-      // Folder runs pin the display floor to the gate: the grid, label
-      // tree, and counts show exactly the detections that were
-      // classified / embedded, while the data exports stay complete
-      // regardless (they bypass the threshold).
-      detection_threshold: data.classification_gate,
+      // detection_threshold is left at its created default
+      // (DEFAULT_COUNTING_THRESHOLD) — the one in-app floor, decoupled
+      // from the gate, so the grid, counts, and verification pills all
+      // agree. The gate is a separate inference knob.
       event_smoothing: data.event_smoothing,
       smoothing_strength: data.smoothing_strength,
       taxonomic_rollup: data.taxonomic_rollup,
@@ -621,11 +620,10 @@ export function FolderRunModelStep() {
       embedding_batch_size: data.embedding_batch_size,
       video_fps: data.video_fps,
       classification_gate: data.classification_gate,
-      // Folder runs pin the display floor to the gate: the grid, label
-      // tree, and counts show exactly the detections that were
-      // classified / embedded, while the data exports stay complete
-      // regardless (they bypass the threshold).
-      detection_threshold: data.classification_gate,
+      // detection_threshold is left at its created default
+      // (DEFAULT_COUNTING_THRESHOLD) — the one in-app floor, decoupled
+      // from the gate, so the grid, counts, and verification pills all
+      // agree. The gate is a separate inference knob.
       event_smoothing: data.event_smoothing,
       smoothing_strength: data.smoothing_strength,
       taxonomic_rollup: data.taxonomic_rollup,

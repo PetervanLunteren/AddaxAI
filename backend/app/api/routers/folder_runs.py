@@ -41,10 +41,7 @@ from app.api.schemas.deployment_queue import (
 )
 from app.api.schemas.job import JobCreate
 from app.api.schemas.project import ProjectCreate, ProjectResponse
-from app.core.confidence import (
-    DEFAULT_CLASSIFICATION_GATE,
-    DEFAULT_COUNTING_THRESHOLD,
-)
+from app.core.confidence import DEFAULT_COUNTING_THRESHOLD
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
@@ -513,17 +510,18 @@ def create_folder_run(
     # the Setup step, so that's the right resume target if they close
     # the tab now.
     #
-    # detection_threshold is pinned to the MD inference floor: a folder
-    # run has no in-app interpretation threshold. The DB never stores
-    # detections below the floor, so every shared read path (labels
-    # grid, label tree, lookup summary, exports) sees the complete
-    # record. Filtering is the labels grid's own confidence slider and
-    # the Save step's media confidence, not a project setting.
+    # detection_threshold is the one in-app interpretation floor, same
+    # as projects mode: every read path (labels grid default, label
+    # tree, lookup summary) and every verification pill measures over
+    # it, so they always agree. Storage is unaffected (MegaDetector runs
+    # untresholded, everything >= 0.005 is stored) and the data exports
+    # stay complete (they bypass the threshold). The classification gate
+    # is a separate inference knob and no longer pinned to this.
     project_create = ProjectCreate(
         name=name,
         timezone="UTC",
         mode="folder_run",
-        detection_threshold=DEFAULT_CLASSIFICATION_GATE,
+        detection_threshold=DEFAULT_COUNTING_THRESHOLD,
         folder_run_state={
             "step": "setup",
             "source_folder": payload.source_folder,

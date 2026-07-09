@@ -85,10 +85,6 @@ interface VerifyFilterBarProps {
    *  stops at the project threshold with a reason) or "open" (Labels,
    *  full scale so the user can dig into the low-confidence tail). */
   confidenceFloorMode?: "clamp" | "open";
-  /** Resting position of the det slider's low handle when no explicit
-   *  min filter is set (a default, not a filter). Falls back to
-   *  ``detectionFloor``. */
-  defaultMinConfidence?: number;
   /** The page's default verification value. The select rests on it
    *  when no explicit filter is set, choosing it clears the filter,
    *  and it never renders a chip. Counts defaults to "all"; the
@@ -106,7 +102,6 @@ export function VerifyFilterBar({
   verificationOptions,
   showLikedFlaggedEmpty = true,
   confidenceFloorMode = "clamp",
-  defaultMinConfidence,
   verificationDefault = "all",
 }: VerifyFilterBarProps) {
   const [labelModalOpen, setLabelModalOpen] = useState(false);
@@ -299,7 +294,6 @@ export function VerifyFilterBar({
             onChange={onChange}
             detectionFloor={detectionFloor}
             confidenceFloorMode={confidenceFloorMode}
-            defaultMinConfidence={defaultMinConfidence}
             minLabelConfidence={filterOptions?.min_label_confidence}
             clampReason={
               `Counting starts at the project's detection threshold ` +

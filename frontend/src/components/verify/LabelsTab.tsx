@@ -120,11 +120,6 @@ interface LabelsTabProps {
   /** Extra control rendered at the start of the toolbar row. The
    *  folder-run Labels step slots its "Analysis settings" button here. */
   toolbarExtra?: ReactNode;
-  /** Detection-confidence floor applied when the user has set no
-   *  explicit min filter. A default, not a filter: it does not render
-   *  a chip, count in the More badge, or react to "Clear all". The
-   *  slider rests at it. */
-  defaultMinConfidence?: number;
   /** Bumping this re-runs the sort even when filters are unchanged.
    *  Used to refresh the grid after a reprocess rewrites labels. */
   refreshSignal?: number;
@@ -362,7 +357,6 @@ export function LabelsTab({
   classificationModelId,
   onSelectionChange,
   toolbarExtra,
-  defaultMinConfidence,
   refreshSignal,
 }: LabelsTabProps) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -372,19 +366,6 @@ export function LabelsTab({
   const lblFilters = useMemo(
     () => lblFiltersFromSearchParams(searchParams),
     [searchParams],
-  );
-
-  // Default floor applied at query time, never in the URL: an unset
-  // min means the page default silently applies (no chip, no badge,
-  // untouched by "Clear all"); an explicit URL value is a user filter
-  // and renders as one.
-  const effectiveLblFilters = useMemo(
-    () =>
-      defaultMinConfidence !== undefined &&
-      lblFilters.min_confidence === undefined
-        ? { ...lblFilters, min_confidence: defaultMinConfidence }
-        : lblFilters,
-    [lblFilters, defaultMinConfidence],
   );
 
   const setLblFilters = useCallback(
@@ -601,7 +582,7 @@ export function LabelsTab({
       labelsApi.sortStream(
         projectId,
         {
-          filters: toLabelFilters(effectiveLblFilters),
+          filters: toLabelFilters(lblFilters),
           sort,
           max_detections: maxDetections,
         },
@@ -631,7 +612,7 @@ export function LabelsTab({
   // maxDetections is part of the key so raising or lowering the cap
   // in the view-options popover triggers a fresh sort with the new
   // candidate pool — otherwise the old result would stay stale.
-  const filtersKey = JSON.stringify(toLabelFilters(effectiveLblFilters));
+  const filtersKey = JSON.stringify(toLabelFilters(lblFilters));
   const sortKey =
     `${filtersKey}|${lblSort}|${maxDetections}|${refreshSignal ?? 0}`;
   const lastSortKeyRef = useRef<string | null>(null);
@@ -1322,11 +1303,11 @@ export function LabelsTab({
   const detectionFloorValue = project?.detection_threshold ?? 0;
   const effectiveFloor = Math.min(
     detectionFloorValue,
-    effectiveLblFilters.min_confidence ?? detectionFloorValue,
+    lblFilters.min_confidence ?? detectionFloorValue,
   );
   const unprocessedRangeMax = Math.min(
     classificationGate,
-    effectiveLblFilters.max_confidence ?? 1,
+    lblFilters.max_confidence ?? 1,
   );
   const { data: unprocessed } = useQuery({
     queryKey: [
@@ -1380,7 +1361,6 @@ export function LabelsTab({
         countBy="detection"
         showLikedFlaggedEmpty={false}
         confidenceFloorMode="open"
-        defaultMinConfidence={defaultMinConfidence}
         verificationDefault="unverified"
       />
 

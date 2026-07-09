@@ -21,7 +21,6 @@ import { AnalysisSettingsButton } from "../../components/folder-run/AnalysisSett
 import { StepHeader } from "../../components/folder-run/StepHeader";
 import { LabelsView } from "../../components/verify/LabelsView";
 import { folderRunsApi } from "../../api/folder-runs";
-import { DEFAULT_COUNTING_THRESHOLD } from "../../lib/confidence";
 import { useFolderRun } from "./FolderRunLayout";
 
 export function FolderRunLabelsStep() {
@@ -111,16 +110,11 @@ export function FolderRunLabelsStep() {
           <LabelsView
             projectId={runId}
             onSelectionChange={setSelectionCount}
-            // Rest the grid floor at the gate when it is higher than
-            // the counting default: below the gate nothing was
-            // embedded, so resting there would show fewer results than
-            // the floor implies AND trip the "unprocessed detections"
-            // banner on arrival. Dragging below the gate still works
-            // (and then the banner is a wanted offer, not a nag).
-            defaultMinConfidence={Math.max(
-              DEFAULT_COUNTING_THRESHOLD,
-              run.project.classification_gate,
-            )}
+            // No explicit default floor: like projects mode, the grid
+            // rests at the project's detection_threshold (the backend
+            // applies it as the threshold-or-verified floor), so the
+            // grid, counts, and verification pill all measure the same
+            // population.
             refreshSignal={reprocessNonce}
             toolbarExtra={
               <AnalysisSettingsButton
