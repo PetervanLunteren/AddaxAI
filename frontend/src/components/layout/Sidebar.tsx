@@ -9,7 +9,13 @@
  */
 
 import { useRef, useState } from "react";
-import { NavLink, useLocation, useParams } from "react-router-dom";
+import {
+  NavLink,
+  useLocation,
+  useMatch,
+  useParams,
+  useResolvedPath,
+} from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -133,10 +139,15 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
 
   return (
     <TooltipProvider delayDuration={200}>
+      {/* Rail width is 72px, not the usual 64px, so that collapsing does
+          not shift the icons sideways. Expanded, an icon centre sits at
+          nav `p-4` + row `px-3` + half a 16px icon = 36px. A 72px rail
+          with the same `p-4` centres its icons on 36px too, so they stay
+          put. Keep the two in step if either padding changes. */}
       <aside
         className={cn(
           "fixed left-0 top-0 flex h-screen flex-col border-r bg-white transition-[width] duration-200",
-          collapsed ? "w-16" : "w-64",
+          collapsed ? "w-[72px]" : "w-64",
         )}
       >
         {/* Logo/Brand */}
@@ -166,9 +177,12 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
             (mirrors AddaxAI-Connect) so the workspace context lives at the
             top, where users expect it. In the rail the name has no room,
             so it collapses to just the back arrow with a tooltip. */}
+        {/* Both variants are pinned to the same height so the nav below
+            starts at the same y in either state and the icons do not
+            walk up the screen when the rail collapses. */}
         {projectId &&
           (collapsed ? (
-            <div className="shrink-0 border-b p-4">
+            <div className="flex h-[77px] shrink-0 items-center border-b px-4">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <NavLink
@@ -183,7 +197,7 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
               </Tooltip>
             </div>
           ) : (
-            <div className="shrink-0 border-b px-4 py-4">
+            <div className="flex h-[77px] shrink-0 flex-col justify-center border-b px-4">
               <div className="border-l-[3px] border-primary pl-3">
                 <p className="truncate text-base font-bold leading-tight text-primary">
                   {project?.name || "Loading..."}
@@ -223,9 +237,15 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
 
 // Collapsed centers the icon on the rail's centerline (one clean
 // vertical axis); expanded left-aligns the icon + label.
+//
+// `h-9` rather than `py-2`: an expanded row is sized by its `text-sm`
+// label (20px line box + padding), a collapsed row only holds the 16px
+// icon. Padding alone would make the rail's rows 4px shorter each and
+// walk every icon up the screen. A fixed height keeps both states on
+// the same 40px pitch (36px row + `gap-1`).
 const parentLinkClass = (isActive: boolean, collapsed = false) =>
   cn(
-    "flex w-full items-center gap-3 rounded-lg py-2 text-sm font-medium transition-colors",
+    "flex h-9 w-full items-center gap-3 rounded-lg text-sm font-medium transition-colors",
     collapsed ? "justify-center px-0" : "px-3",
     isActive
       ? "bg-primary/10 text-primary"
@@ -236,7 +256,7 @@ const parentLinkClass = (isActive: boolean, collapsed = false) =>
 // the collapsed back-to-projects arrow.
 const utilityRowClass = (collapsed = false) =>
   cn(
-    "flex w-full items-center gap-3 rounded-lg py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
+    "flex h-9 w-full items-center gap-3 rounded-lg text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
     collapsed ? "justify-center px-0" : "px-3",
   );
 
@@ -258,9 +278,26 @@ const flyoutChildClass = (isActive: boolean) =>
       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
   );
 
+/**
+ * Active-state check using the same primitives NavLink uses internally.
+ *
+ * We resolve `isActive` ourselves so `className` is always a plain
+ * string. NavLink also accepts a `({ isActive }) => string` callback,
+ * but that shape breaks the moment the link is wrapped in a Radix
+ * `asChild` trigger: Slot clones the child and merges props before
+ * NavLink ever runs, and its className merge is a string join, so the
+ * callback gets stringified into the class attribute and every style
+ * is lost.
+ */
+function useIsActive(to: string): boolean {
+  const resolved = useResolvedPath(to);
+  return useMatch({ path: resolved.pathname, end: false }) !== null;
+}
+
 function LeafNavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
+  const isActive = useIsActive(item.to);
   const link = (
-    <NavLink to={item.to} className={({ isActive }) => parentLinkClass(isActive, collapsed)}>
+    <NavLink to={item.to} className={parentLinkClass(isActive, collapsed)}>
       <item.icon className="h-4 w-4 shrink-0" />
       {!collapsed && item.label}
     </NavLink>

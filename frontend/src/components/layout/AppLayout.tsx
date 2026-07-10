@@ -31,10 +31,13 @@ export function AppLayout() {
   return (
     <div className="flex min-h-screen">
       <Sidebar collapsed={collapsed} onToggleCollapsed={toggleCollapsed} />
+      {/* Margins track the rail widths in Sidebar.tsx. 72px, not 64px,
+          so the collapsed rail's icons keep the same centre as the
+          expanded one's. */}
       <main
         className={cn(
           "flex-1 bg-gradient-to-br from-slate-50 to-slate-100 transition-[margin] duration-200",
-          collapsed ? "ml-16" : "ml-64",
+          collapsed ? "ml-[72px]" : "ml-64",
         )}
       >
         {/* No breadcrumb here: the sidebar already shows the project

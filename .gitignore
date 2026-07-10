@@ -86,6 +86,9 @@ htmlcov/
 # Linter caches
 .ruff_cache/
 
+# Playwright MCP screenshots and snapshots
+.playwright-mcp/
+
 # Alembic
 alembic/versions/*.pyc
 
