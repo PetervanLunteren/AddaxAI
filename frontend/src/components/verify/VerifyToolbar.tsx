@@ -43,6 +43,9 @@ interface VerifyToolbarIconProps {
   title: string;
   onClick: () => void;
   disabled?: boolean;
+  /** Toggle icons pass this so an enabled state reads as "on" (teal),
+   *  not just a swapped glyph the user has to hunt for. */
+  active?: boolean;
 }
 
 export function VerifyToolbarIcon({
@@ -50,15 +53,21 @@ export function VerifyToolbarIcon({
   title,
   onClick,
   disabled = false,
+  active = false,
 }: VerifyToolbarIconProps) {
   return (
     <button
       type="button"
       title={title}
       aria-label={title}
+      aria-pressed={active}
       onClick={onClick}
       disabled={disabled}
-      className={VERIFY_TOOLBAR_ICON_CLASS}
+      className={cn(
+        VERIFY_TOOLBAR_ICON_CLASS,
+        active &&
+          "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+      )}
     >
       <Icon className="h-4 w-4" />
     </button>

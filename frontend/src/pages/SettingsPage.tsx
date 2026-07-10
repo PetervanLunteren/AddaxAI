@@ -37,6 +37,7 @@ import {
   type ProjectStats,
 } from "../lib/reprocessStats";
 import { restoreAdvancedDefaults } from "../lib/advancedSettingsDefaults";
+import { useSidebarCollapsed } from "../components/layout/sidebar-context";
 import { ModelSelect } from "../components/models/ModelSelect";
 import { NoClassifierNotice } from "../components/models/NoClassifierNotice";
 import { ModelInfoSheet } from "../components/models/ModelInfoSheet";
@@ -144,6 +145,9 @@ type SettingsFormData = z.infer<typeof settingsSchema>;
 export default function SettingsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const queryClient = useQueryClient();
+  // The sticky save bar is `fixed` and spans the content area, so its
+  // left edge has to track the sidebar/rail width.
+  const sidebarCollapsed = useSidebarCollapsed();
   const [excludedClasses, setExcludedClasses] = useState<string[]>([]);
   const [showModelInfo, setShowModelInfo] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
@@ -1181,7 +1185,11 @@ export default function SettingsPage() {
                 and label appear only when the form is dirty. Stays inside
                 the <form> so the Save button's type="submit" still
                 triggers form.handleSubmit. */}
-            <div className="fixed bottom-0 left-64 right-0 z-40 border-t bg-card/95 backdrop-blur-sm">
+            <div
+              className={`fixed bottom-0 right-0 z-40 border-t bg-card/95 backdrop-blur-sm transition-[left] duration-200 ${
+                sidebarCollapsed ? "left-16" : "left-64"
+              }`}
+            >
               <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   {isDirty && (

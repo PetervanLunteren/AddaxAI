@@ -13,9 +13,22 @@ import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { eventsApi } from "../api/events";
 import { VerifyView } from "../components/verify/VerifyView";
+import { WideModeContext, useWideMode } from "../components/verify/wide-mode";
+import { cn } from "../lib/utils";
 
 export default function CountsPage() {
   const { projectId } = useParams<{ projectId: string }>();
+  const wideMode = useWideMode();
+
+  // Wide mode drops the readable-width cap so the gallery fills the
+  // content area; the normal view keeps the app-wide max-w-7xl. The
+  // toggle lives in the view's toolbar (VerifyView).
+  const shell = (vertical: string) =>
+    cn(
+      "px-4 sm:px-6 lg:px-8",
+      vertical,
+      wideMode.wide ? "w-full" : "mx-auto max-w-7xl",
+    );
 
   // Drive the subtitle from the unfiltered event count. Same query key
   // as VerifyView's internal totalCountData, so the TanStack cache
@@ -30,22 +43,22 @@ export default function CountsPage() {
   return (
     <div className="min-h-screen">
       <header className="border-b bg-white/80 backdrop-blur-sm">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Counts</h1>
-              <p className="text-sm text-muted-foreground">
-                {totalEvents > 0
-                  ? "Check the AI's counts, adjust any that are wrong (optional)"
-                  : "Run a deployment analysis to get started"}
-              </p>
-            </div>
+        <div className={shell("py-4")}>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Counts</h1>
+            <p className="text-sm text-muted-foreground">
+              {totalEvents > 0
+                ? "Check the AI's counts, adjust any that are wrong (optional)"
+                : "Run a deployment analysis to get started"}
+            </p>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <VerifyView projectId={projectId!} />
+      <main className={shell("py-8")}>
+        <WideModeContext.Provider value={wideMode}>
+          <VerifyView projectId={projectId!} />
+        </WideModeContext.Provider>
       </main>
     </div>
   );

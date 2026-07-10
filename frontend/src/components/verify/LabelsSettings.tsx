@@ -35,9 +35,7 @@ export function LabelsSettings({
           <LayoutGrid className="h-4 w-4" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-72 space-y-4">
-        <p className="text-sm font-medium">View options</p>
-
+      <PopoverContent align="end" className="w-72">
         <div className="space-y-1.5">
           <p className="text-sm">Tile size</p>
           <TileSizeToggle value={tileSize} onChange={onTileSizeChange} />

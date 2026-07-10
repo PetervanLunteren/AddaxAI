@@ -2,9 +2,7 @@
 
 
 
-I just implemented a full screen option to this verification page on this repo: /Users/peter/Documents/Repos/dronewild-webapp/ investigate how that works. WOuld it make sense to add that option to the space cramped pages in this app too? So for labels and counts? What do you think? Be honest. Worth the effort, or not? 
-
-
+We just implemented the collapse sidebar feature for the projects view. Have a look yoursef (MCP/playwright is installed globally), and tell me what you think. I wnat the collapse to only remove the words, and leave the icons there. They should not move over the screen, nor should they change color or size. What do you find, and how to solve this? 
 
 
 

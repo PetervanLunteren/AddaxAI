@@ -20,6 +20,7 @@ import {
   TooltipTrigger,
 } from "../ui/tooltip";
 import { cn } from "../../lib/utils";
+import { columnsForWidth, useWideModeValue } from "./wide-mode";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import type { CohortItem, DetectionSummary } from "../../api/types";
@@ -118,21 +119,62 @@ const COHORT_DIVIDER_HEIGHT = 84;
 // Breathing room between cohort cards.
 const COHORT_GAP_HEIGHT = 16;
 
-function useColumns(tileSize: TileSize = "M"): number {
-  const [cols, setCols] = useState(COLUMN_PRESETS[tileSize][1]);
+// Minimum tile width (px) per size in wide mode, tuned so the measured
+// container yields the same column counts as the viewport presets at the
+// normal capped width (~1216px content), then adds columns as it widens.
+const MIN_TILE: Record<TileSize, number> = { S: 80, M: 124, L: 290 };
+// Inter-tile gap (px) matching GAP_CLASS, needed for the fit math.
+const GAP_PX: Record<TileSize, number> = { S: 8, M: 12, L: 16 };
+
+/**
+ * Column count for the crop grid.
+ *
+ * Normal mode: viewport breakpoints (unchanged, so the default view is
+ * byte-identical to before). Wide mode: measured from the grid
+ * container's width so removing the page width cap (or widening the
+ * window) adds columns instead of just enlarging crops.
+ */
+function useColumns(
+  tileSize: TileSize,
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  fullWidth: boolean,
+): number {
+  const preset = COLUMN_PRESETS[tileSize];
+  const [cols, setCols] = useState(preset[1]);
   useEffect(() => {
-    const preset = COLUMN_PRESETS[tileSize];
-    function update() {
+    function fromViewport(): number {
       const w = window.innerWidth;
-      if (w < 640) setCols(preset[0]);
-      else if (w < 1024) setCols(preset[1]);
-      else if (w < 1280) setCols(preset[2]);
-      else setCols(preset[3]);
+      if (w < 640) return preset[0];
+      if (w < 1024) return preset[1];
+      if (w < 1280) return preset[2];
+      return preset[3];
+    }
+    function update() {
+      if (!fullWidth) {
+        setCols(fromViewport());
+        return;
+      }
+      const el = containerRef.current;
+      const w = el ? el.clientWidth : window.innerWidth;
+      setCols(
+        Math.max(
+          preset[0],
+          columnsForWidth(w, MIN_TILE[tileSize], GAP_PX[tileSize]),
+        ),
+      );
     }
     update();
     window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, [tileSize]);
+    let ro: ResizeObserver | undefined;
+    if (fullWidth && containerRef.current) {
+      ro = new ResizeObserver(update);
+      ro.observe(containerRef.current);
+    }
+    return () => {
+      window.removeEventListener("resize", update);
+      ro?.disconnect();
+    };
+  }, [tileSize, fullWidth, containerRef, preset]);
   return cols;
 }
 
@@ -176,10 +218,12 @@ const GridCell = memo(function GridCell({
 });
 
 export interface CropGridHandle {
-  /** Scroll the given detection's row to the top of the viewport
-   *  (jumping to the event's divider header when it has one). Used by
-   *  the "E" shortcut so the newly selected event is in view. */
-  scrollToDetection: (detectionId: string) => void;
+  /** Scroll the given detection's row into view (jumping to the event's
+   *  divider header when it has one). `align` "start" pins it to the top
+   *  (the "E" event jump); "auto" scrolls the minimum to make it visible
+   *  and is a no-op when it already is (the post-action advance, so the
+   *  grid doesn't lurch on every keypress). Defaults to "start". */
+  scrollToDetection: (detectionId: string, align?: "start" | "auto") => void;
 }
 
 export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
@@ -196,7 +240,8 @@ export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
   dividers = "none",
 }: CropGridProps, ref) {
   const listRef = useRef<HTMLDivElement>(null);
-  const columns = useColumns(tileSize);
+  const fullWidth = useWideModeValue();
+  const columns = useColumns(tileSize, listRef, fullWidth);
 
   // Selection store — individual GridCells subscribe to their own selection
   // state via useSyncExternalStore, avoiding full grid re-renders.
@@ -290,7 +335,7 @@ export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
   useImperativeHandle(
     ref,
     () => ({
-      scrollToDetection(detectionId: string) {
+      scrollToDetection(detectionId: string, align: "start" | "auto" = "start") {
         const idx = rows.findIndex(
           (r) =>
             r.type === "cards" &&
@@ -301,7 +346,7 @@ export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
         // reader gets the event label plus its first crops in view.
         const target =
           idx > 0 && rows[idx - 1].type === "divider" ? idx - 1 : idx;
-        virtualizer.scrollToIndex(target, { align: "start" });
+        virtualizer.scrollToIndex(target, { align });
       },
     }),
     [rows, virtualizer],

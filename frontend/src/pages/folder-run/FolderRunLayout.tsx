@@ -24,6 +24,7 @@ import { createContext, useContext } from "react";
 import { Link, Outlet, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { StepProgress } from "../../components/folder-run/StepProgress";
+import { WideModeContext, useWideMode } from "../../components/verify/wide-mode";
 import {
   folderRunsApi,
   type FolderRunResponse,
@@ -84,7 +85,13 @@ export function FolderRunLayout() {
   // verify grid / dashboard / save preview, which sit at this same 7xl
   // width in research-projects mode too. The Setup form keeps its two
   // equal-column rows here as well, just at the wider width.
-  const mainMaxWidth = "max-w-7xl";
+  // Wide mode (Labels toolbar toggle) un-caps just the Edit/Labels step
+  // to the full window width. Owned here, above the step, so un-capping
+  // is a plain max-width change: no transform/full-bleed, which would
+  // break the step's fixed/sticky bars (verify, relabel, prev/next).
+  const wideMode = useWideMode();
+  const mainMaxWidth =
+    currentStep === "labels" && wideMode.wide ? "max-w-none" : "max-w-7xl";
 
   return (
     <FolderRunContext.Provider value={{ runId, run, isLoading }}>
@@ -136,7 +143,9 @@ export function FolderRunLayout() {
         <main
           className={`mx-auto ${mainMaxWidth} px-4 py-8 sm:px-6 lg:px-8`}
         >
-          <Outlet />
+          <WideModeContext.Provider value={wideMode}>
+            <Outlet />
+          </WideModeContext.Provider>
         </main>
       </div>
     </FolderRunContext.Provider>

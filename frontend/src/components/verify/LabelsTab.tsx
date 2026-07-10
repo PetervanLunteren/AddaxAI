@@ -27,6 +27,8 @@ import {
   CircleHelp,
   Layers,
   Loader2,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -54,6 +56,7 @@ import { DetectionDetailModal } from "./DetectionDetailModal";
 import { SuggestionsToolbarPill } from "./SuggestionsToolbarPill";
 import { VerifyFilterBar } from "./VerifyFilterBar";
 import { SortSelector } from "./SortSelector";
+import { useWideModeControls } from "./wide-mode";
 import {
   VerifyProgressPill,
   VerifyToolbar,
@@ -453,6 +456,7 @@ export function LabelsTab({
 
   const [tileSize, _setTileSize] = useState<TileSize>(savedSettings.tileSize ?? "M");
   const setTileSize = useCallback((v: TileSize) => { _setTileSize(v); persistSetting("tileSize", v); }, [persistSetting]);
+  const { wide, toggle: toggleWide } = useWideModeControls();
 
   // Verification filter is the bar's "Verified" select; default unverified.
   const verificationFilter: LabelsVerification =
@@ -503,6 +507,12 @@ export function LabelsTab({
   // Imperative handle to the grid so the "E" shortcut can scroll the
   // newly selected event into view.
   const cropGridRef = useRef<CropGridHandle>(null);
+  // Detection to scroll to after the next render. The post-action advance
+  // sets this instead of scrolling inline: the action removes the acted
+  // cards, so scrolling has to wait until the grid has re-rendered with
+  // the shorter list, or it lands on a stale offset. Consumed by the
+  // effect below.
+  const pendingScrollRef = useRef<string | null>(null);
 
   // Undo stack: one entry per label action, holding just the affected
   // detection ids. Undo reverts them to the model's original prediction
@@ -732,6 +742,11 @@ export function LabelsTab({
       const pick = (id: string) => {
         selectionAnchorRef.current = id;
         setSelectedIds(new Set([id]));
+        // Keep the advanced card in view so a keyboard-only pass never
+        // needs the mouse. Deferred to the post-render effect because the
+        // acted cards are being removed this same tick; "auto" then only
+        // scrolls when it would otherwise be off-screen.
+        pendingScrollRef.current = id;
       };
       for (let i = lastIdx + 1; i < order.length; i++) {
         const id = order[i].detection_id;
@@ -745,6 +760,16 @@ export function LabelsTab({
     },
     [clearSelection],
   );
+
+  // Runs the queued advance-scroll after the grid has re-rendered with the
+  // post-action rows. Child (grid) effects run before this parent effect,
+  // so the virtualizer has re-measured and the target offset is correct.
+  useEffect(() => {
+    const id = pendingScrollRef.current;
+    if (id == null) return;
+    pendingScrollRef.current = null;
+    cropGridRef.current?.scrollToDetection(id, "auto");
+  });
 
   const handleSelect = useCallback(
     (detectionId: string, e: React.MouseEvent) => {
@@ -1503,6 +1528,12 @@ export function LabelsTab({
           onExit={exitSuggestionsMode}
         />
         <div className="ml-auto flex items-center gap-1">
+          <VerifyToolbarIcon
+            icon={wide ? Minimize2 : Maximize2}
+            title={wide ? "Exit full width" : "Full width"}
+            onClick={toggleWide}
+            active={wide}
+          />
           <VerifyToolbarIcon
             icon={CircleHelp}
             title="Help"

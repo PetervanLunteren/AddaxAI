@@ -25,6 +25,8 @@ import {
   Image as ImageIcon,
   Layers,
   Loader2,
+  Maximize2,
+  Minimize2,
   Video as VideoIcon,
 } from "lucide-react";
 import { eventsApi } from "../../api/events";
@@ -60,6 +62,8 @@ import {
   VerifyToolbarIcon,
 } from "./VerifyToolbar";
 import { StatusBadgeCluster } from "./StatusBadgeCluster";
+import { columnsForWidth, useWideModeControls } from "./wide-mode";
+import { cn } from "../../lib/utils";
 
 const EVENTS_SORT_MODES = ["newest", "oldest", "random"] as const;
 
@@ -139,6 +143,22 @@ export interface VerifyViewProps {
 
 export function VerifyView({ projectId }: VerifyViewProps) {
   const [searchParams, setSearchParams] = useSearchParams();
+  // Wide mode: measure the gallery container and fit as many event cards
+  // as its width allows. Normal mode keeps the viewport-breakpoint grid.
+  // The grid node is held in state (callback ref) so the observer also
+  // attaches when the grid mounts after data loads, not just on toggle.
+  const { wide, toggle: toggleWide } = useWideModeControls();
+  const [gridNode, setGridNode] = useState<HTMLDivElement | null>(null);
+  const [wideCols, setWideCols] = useState(4);
+  useEffect(() => {
+    if (!wide || !gridNode) return;
+    const measure = () =>
+      setWideCols(columnsForWidth(gridNode.clientWidth, 290, 16));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(gridNode);
+    return () => ro.disconnect();
+  }, [wide, gridNode]);
   const [page, setPage] = useState(0);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -288,6 +308,12 @@ export function VerifyView({ projectId }: VerifyViewProps) {
           />
           <div className="ml-auto flex items-center gap-1">
             <VerifyToolbarIcon
+              icon={wide ? Minimize2 : Maximize2}
+              title={wide ? "Exit full width" : "Full width"}
+              onClick={toggleWide}
+              active={wide}
+            />
+            <VerifyToolbarIcon
               icon={CircleHelp}
               title="Help"
               onClick={() => setHelpOpen(true)}
@@ -341,9 +367,17 @@ export function VerifyView({ projectId }: VerifyViewProps) {
       ) : (
         <>
           <div
-            className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 transition-opacity ${
-              isPlaceholderData ? "opacity-60" : ""
-            }`}
+            ref={setGridNode}
+            className={cn(
+              "grid gap-4 transition-opacity",
+              !wide && "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
+              isPlaceholderData && "opacity-60",
+            )}
+            style={
+              wide
+                ? { gridTemplateColumns: `repeat(${wideCols}, minmax(0, 1fr))` }
+                : undefined
+            }
           >
             {events.map((event) => (
               <EventCard
