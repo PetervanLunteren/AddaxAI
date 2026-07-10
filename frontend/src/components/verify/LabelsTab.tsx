@@ -60,7 +60,6 @@ import {
   VerifyToolbarIcon,
 } from "./VerifyToolbar";
 import { LabelsSettings } from "./LabelsSettings";
-import { LABELS_MAX_DETECTIONS_DEFAULT } from "./labelsViewOptions";
 import { LabelsKeyboardPopover } from "./LabelsKeyboardPopover";
 import { VerifyHelpSheet } from "./VerifyHelpSheet";
 import { LabelsWelcomePopover } from "./LabelsWelcomePopover";
@@ -200,6 +199,10 @@ function lblFiltersToSearchParams(
 
 /** Convert LabelsFilterState → LabelFilters for API calls. */
 function toLabelFilters(f: LabelsFilterState): LabelFilters {
+  // The Verified filter scopes the sort server-side so the cap counts the
+  // pool the user is actually looking at. "unverified" is the default;
+  // "all" omits the clause.
+  const ver = f.verification ?? "unverified";
   return {
     labels: f.labels,
     site_ids: f.site_ids,
@@ -209,6 +212,7 @@ function toLabelFilters(f: LabelsFilterState): LabelFilters {
     max_confidence: f.max_confidence,
     min_label_confidence: f.min_label_confidence,
     max_label_confidence: f.max_label_confidence,
+    verified: ver === "all" ? undefined : ver === "verified",
   };
 }
 
@@ -318,7 +322,7 @@ function LabelsLoadingState({
       )}
       {showNarrowTip && (
         <p className="text-xs text-muted-foreground">
-          Narrow by species or date to speed this up.
+          Narrow the filters to speed this up.
         </p>
       )}
     </div>
@@ -326,6 +330,7 @@ function LabelsLoadingState({
 }
 
 const PHASE_LABELS: Record<LabelsProgressEvent["phase"], string> = {
+  detections: "Loading detections",
   load: "Loading embeddings",
   sort: "Ordering by similarity",
   neighbors: "Comparing neighbours",
@@ -340,6 +345,9 @@ const PHASE_RANGES: Record<
   LabelsProgressEvent["phase"],
   { start: number; end: number }
 > = {
+  // The metadata sorts (event / time) emit only this phase, so it spans
+  // the whole bar. The embedding sorts use load → sort → neighbours below.
+  detections: { start: 0, end: 100 },
   load: { start: 0, end: 33 },
   sort: { start: 33, end: 66 },
   neighbors: { start: 66, end: 100 },
@@ -429,8 +437,8 @@ export function LabelsTab({
   // clustered events with embeddings, chronological without) and enables
   // the E->M keyboard flow, so a new user never hits the "needs
   // embeddings" card. A user's own choice persists and wins here; the
-  // fallback also catches saved sorts that are no longer offered (the
-  // retired cls_low / similarity_reverse / newest / oldest modes).
+  // fallback also catches saved sorts that are no longer offered (older
+  // builds had time / confidence modes here).
   const initialSort: LabelSort = isLabelSort(savedSettings.sort)
     ? savedSettings.sort
     : "events";
@@ -450,21 +458,6 @@ export function LabelsTab({
   const verificationFilter: LabelsVerification =
     lblFilters.verification ?? "unverified";
 
-  // Max-detections cap for similarity sort. Per-user / per-browser
-  // memory budget; lives next to tileSize because it's tuned at the same
-  // surface and persisted the same way.
-  const [maxDetections, _setMaxDetections] = useState<number>(
-    typeof savedSettings.maxDetections === "number"
-      ? savedSettings.maxDetections
-      : LABELS_MAX_DETECTIONS_DEFAULT,
-  );
-  const setMaxDetections = useCallback(
-    (v: number) => {
-      _setMaxDetections(v);
-      persistSetting("maxDetections", v);
-    },
-    [persistSetting],
-  );
 
   // Toolbar sheet/popover state (welcome popover only; keyboard and
   // settings are self-contained popovers anchored to their toolbar
@@ -481,6 +474,11 @@ export function LabelsTab({
 
   // Explicit sorting flag — avoids isPending getting stuck in Strict Mode
   const [isSorting, setIsSorting] = useState(false);
+  // A "background" sort refreshes data after an in-grid action (verify /
+  // relabel) and must NOT blank the grid. Every other sort (filter change,
+  // sort switch, load more, try again) is blocking: it shows the loading
+  // state, like a fresh load, so the reload is never silent.
+  const [isBackgroundSort, setIsBackgroundSort] = useState(false);
   // Last sort error (e.g. the max-detections cap). Held so the grid
   // body can show an explicit, persistent error card instead of a
   // toast that fades and leaves a spinner spinning forever.
@@ -599,24 +597,24 @@ export function LabelsTab({
   // sort-mode flip would race the in-flight result against the latest
   // `lblSort` state and paint the wrong dividers on the response.
   const sortMutation = useMutation({
-    mutationFn: (sort: LabelSort) =>
+    mutationFn: (vars: { sort: LabelSort; background?: boolean }) =>
       labelsApi.sortStream(
         projectId,
         {
           filters: toLabelFilters(lblFilters),
-          sort,
-          max_detections: maxDetections,
+          sort: vars.sort,
         },
         setProgress,
       ),
-    onMutate: () => {
+    onMutate: (vars) => {
       setIsSorting(true);
+      setIsBackgroundSort(!!vars.background);
       setProgress(null);
       setSortError(null);
     },
-    onSuccess: (data, sort) => {
+    onSuccess: (data, vars) => {
       setSortResult(data);
-      setResultSort(sort);
+      setResultSort(vars.sort);
       clearSelection();
       setIsSorting(false);
       setProgress(null);
@@ -629,13 +627,11 @@ export function LabelsTab({
     },
   });
 
-  // Stable key for filter + sort comparison; drives auto re-sort.
-  // maxDetections is part of the key so raising or lowering the cap
-  // in the view-options popover triggers a fresh sort with the new
-  // candidate pool — otherwise the old result would stay stale.
+  // Stable key for filter + sort comparison; drives auto re-sort. The
+  // Verified filter is inside toLabelFilters, so switching it re-sorts
+  // (the cap counts the current verified pool, server-side).
   const filtersKey = JSON.stringify(toLabelFilters(lblFilters));
-  const sortKey =
-    `${filtersKey}|${lblSort}|${maxDetections}|${refreshSignal ?? 0}`;
+  const sortKey = `${filtersKey}|${lblSort}|${refreshSignal ?? 0}`;
   const lastSortKeyRef = useRef<string | null>(null);
 
   // Debounce the key so a slider drag (or any rapid filter change)
@@ -654,7 +650,7 @@ export function LabelsTab({
   useEffect(() => {
     if (canSort && debouncedSortKey !== lastSortKeyRef.current) {
       lastSortKeyRef.current = debouncedSortKey;
-      sortMutation.mutate(lblSort);
+      sortMutation.mutate({ sort: lblSort });
     }
   }, [debouncedSortKey, canSort]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -683,6 +679,27 @@ export function LabelsTab({
   const totalCount = useMemo(
     () => sortResult?.detections.length ?? 0,
     [sortResult],
+  );
+
+  // The subprocess caps a huge selection to the newest slice (a memory
+  // guard); `total_matching` is the uncapped pool. When it exceeds what we
+  // loaded, we show a notice and let the user reload.
+  const loadedCount = sortResult?.total_detections ?? 0;
+  const totalMatching = sortResult?.total_matching ?? 0;
+  const isCapped = totalMatching > loadedCount;
+  // Name the actual cap: similarity / suggestions walk embeddings (cap
+  // 20k), event sort renders detections (cap 50k). Keyed off the sort
+  // that produced the current result, not the dropdown.
+  const capNoun =
+    resultSort === "similarity" || resultSort === "suggestions"
+      ? "embedded detections"
+      : "detections";
+  // Re-run the current sort. It's a reload, not pagination: the Verified
+  // filter scopes the sort server-side, so once you've verified some crops
+  // they drop out of the pool and the newest ones that didn't fit come in.
+  const reload = useCallback(
+    () => sortMutation.mutate({ sort: lblSort }),
+    [sortMutation, lblSort],
   );
 
   // Latest grid order, read by advanceSelectionAfter so it can stay stable.
@@ -772,8 +789,10 @@ export function LabelsTab({
   }, []);
 
   const handleActionComplete = useCallback(() => {
-    // Re-run the current sort to refresh data
-    sortMutation.mutate(lblSort);
+    // Re-run the current sort to refresh data. Background: this fires after
+    // an in-grid verify/relabel, so it must reconcile without blanking the
+    // grid the user is working in.
+    sortMutation.mutate({ sort: lblSort, background: true });
     queryClient.invalidateQueries({ queryKey: ["label-tree"] });
     // Cohort counts feed the toolbar pill; any relabel / verify path
     // can change which detections still belong in a cohort. Invalidate
@@ -797,7 +816,7 @@ export function LabelsTab({
     queryClient.invalidateQueries({
       queryKey: ["labels-unprocessed", projectId],
     });
-    sortMutation.mutate(lblSort);
+    sortMutation.mutate({ sort: lblSort });
   }, [lblSort, queryClient, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Patch detections in local state without refetching. */
@@ -1357,16 +1376,12 @@ export function LabelsTab({
 
   const hasResults = sortResult !== null;
   // Show the loading view when a sort is running AND we have nothing
-  // useful to show in the meantime: either no result yet (first
-  // entry), or the lingering result came from a DIFFERENT sort mode
-  // (e.g. switching suggestions → similarity). In the latter case the
-  // stale result would otherwise render frozen — wrong dividers, wrong
-  // population — until the new sort lands, which reads as "stuck".
-  // Showing the same progress view as first entry keeps the two
-  // consistent. A same-mode re-sort (refresh, bulk action, filter
-  // tweak) keeps the current grid in place, no flash.
-  const isLoading =
-    isSorting && (!hasResults || resultSort !== lblSort);
+  // Show the loading state (no grid, just the progress bar) for every
+  // blocking sort — first load, sort switch, filter change, load more,
+  // try again — so a reload is never silent. Only a background sort (the
+  // post-action reconcile in handleActionComplete) keeps the current grid
+  // in place, so verifying doesn't blank the grid you're working in.
+  const isLoading = isSorting && !isBackgroundSort;
 
   const handleEmbedNow = async () => {
     try {
@@ -1503,8 +1518,6 @@ export function LabelsTab({
           <LabelsSettings
             tileSize={tileSize}
             onTileSizeChange={setTileSize}
-            maxDetections={maxDetections}
-            onMaxDetectionsChange={setMaxDetections}
           />
           {sortResult && (
             <div className="ml-2">
@@ -1588,7 +1601,7 @@ export function LabelsTab({
               variant="outline"
               size="sm"
               className="mt-4"
-              onClick={() => sortMutation.mutate(lblSort)}
+              onClick={() => sortMutation.mutate({ sort: lblSort })}
             >
               Try again
             </Button>
@@ -1653,8 +1666,35 @@ export function LabelsTab({
       ) : allDetections.length === 0 && totalCount > 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
           <Check className="h-8 w-8 mb-3 text-muted-foreground/60" />
-          <p className="text-sm">All {totalCount} labels in this view are verified.</p>
-          <p className="text-xs mt-1">Switch the Verified filter to &quot;All&quot; to see them.</p>
+          {isCapped ? (
+            <>
+              <p className="text-sm">
+                You&apos;ve verified all {loadedCount.toLocaleString()} loaded
+                labels.
+              </p>
+              <p className="text-xs mt-1">
+                {(totalMatching - loadedCount).toLocaleString()} more aren&apos;t
+                loaded yet.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={reload}
+              >
+                Reload
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm">
+                All {totalCount} labels in this view are verified.
+              </p>
+              <p className="text-xs mt-1">
+                Switch the Verified filter to &quot;All&quot; to see them.
+              </p>
+            </>
+          )}
         </div>
       ) : allDetections.length === 0 ? (
         <Card>
@@ -1670,6 +1710,28 @@ export function LabelsTab({
         </Card>
       ) : (
         <div style={{ paddingBottom: selectedIds.size > 0 ? 80 : 0 }}>
+          {isCapped && (
+            <Callout
+              variant="info"
+              size="compact"
+              className="mb-3"
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7"
+                  onClick={reload}
+                >
+                  Reload
+                </Button>
+              }
+            >
+              Showing the newest {loadedCount.toLocaleString()} of{" "}
+              {totalMatching.toLocaleString()} {capNoun}, capped to stay
+              responsive. Verify some and reload to bring in more, or narrow the
+              filters.
+            </Callout>
+          )}
           <CropGrid
             ref={cropGridRef}
             detections={allDetections}

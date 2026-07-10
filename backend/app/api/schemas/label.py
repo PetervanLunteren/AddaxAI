@@ -17,10 +17,6 @@ from app.utils.datetime_serialization import serialize_local_datetime
 
 LabelSort = Literal[
     "similarity",
-    "similarity_reverse",
-    "newest",
-    "oldest",
-    "cls_low",
     # Group detections by their event, events newest first. Grouping is
     # the point, so the grid auto-shows event dividers in this mode.
     "events",
@@ -52,38 +48,26 @@ class LabelFilters(BaseModel):
     verified: bool | None = None
 
 
-_DEFAULT_MAX_DETECTIONS = 20000
-
 
 class SortRequest(BaseModel):
     """Request body for the Labels sort endpoint.
 
-    ``max_detections`` is the per-user memory budget for one sort,
-    set in the Labels view-options popover (localStorage on
-    the client). Defaults to 20000 when the client omits it.
+    The result is capped to a fixed memory budget (the sort subprocess
+    loads the newest slice and reports the uncapped total); there is no
+    client-tunable limit.
     """
 
     filters: LabelFilters = Field(default_factory=LabelFilters)
     sort: LabelSort = "similarity"
-    max_detections: int = Field(
-        default=_DEFAULT_MAX_DETECTIONS, ge=1000, le=50000
-    )
 
 
 class SearchRequest(BaseModel):
-    """Request body for the Labels search endpoint.
-
-    ``max_detections`` mirrors the sort endpoint — same per-user cap
-    drives the underlying neighbour query.
-    """
+    """Request body for the Labels search endpoint."""
 
     anchor_detection_id: str
     filters: LabelFilters = Field(default_factory=LabelFilters)
     limit: int = Field(100, ge=1, le=500)
     threshold: float = Field(0.0, ge=-1.0, le=1.0)
-    max_detections: int = Field(
-        default=_DEFAULT_MAX_DETECTIONS, ge=1000, le=50000
-    )
 
 
 class CropBbox(BaseModel):

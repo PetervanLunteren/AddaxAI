@@ -1,7 +1,6 @@
 # TODO
 
 
-REMOVE THE MAX-DETECTIONS KNOB - the "max detections" view option is a memory guard for the similarity-sort subprocess leaked into the UI; users only meet it when the grid errors on large selections. Replace with auto-capping: when a filter selection exceeds the limit, load the cap-sized subset and show a notice ("Showing the first 20,000 of 34,512 detections") instead of erroring. Then delete the knob from LabelsSettings and the error card. Medium effort: backend sort script + UI notice; must not silently mislead about what is loaded. How would it work if the user has a dataset of 30K detections? Where would the notice be? At the top or at the bottom? And what happens if the user starts verifying and the first 3000 have already be verified. Does the user need a hard reload of the page to get another new 3000 in the grid so were at the 20K cap again? How would that work? Lets discuss. Lets make a plan for this. 
 
 I just implemented a full screen option to this verification page on this repo: /Users/peter/Documents/Repos/dronewild-webapp/ investigate how that works. WOuld it make sense to add that option to the space cramped pages in this app too? So for labels and counts? What do you think? Be honest. Worth the effort, or not? 
 

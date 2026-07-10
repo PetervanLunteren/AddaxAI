@@ -30,14 +30,22 @@ import json
 import sqlite3
 import sys
 from collections import Counter
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
 
-# Hard fallback if the parent doesn't pass --max-detections. Real value
-# comes from the per-user cap stored in the Observations view-options
-# popover (localStorage) and forwarded through the sort/search request.
-MAX_DETECTIONS = 20_000
+# Two independent limits (see the sort load paths):
+#   MAX_EMBEDDINGS — the FAISS budget: the most embedding vectors held in
+#     RAM and walked. Similarity walks every embedded detection; event sort
+#     walks one representative per event. This is the sharp memory/compute
+#     limit, so it stays tight.
+#   MAX_DETECTIONS — the payload/grid budget: the most detections returned
+#     to (and rendered by) the frontend. No FAISS cost, so it can be larger.
+# For similarity the two coincide (it loads FROM embeddings); for event /
+# time sorts the detection budget is what usually binds.
+MAX_EMBEDDINGS = 20_000
+MAX_DETECTIONS = 50_000
 
 # How often to emit progress events during long loops. Tuned for ~50ms
 # between updates at typical scales: 500 rows per SQL emission, 200
@@ -123,10 +131,15 @@ FROM detections d
 {_COMMON_JOINS}
 """
 
-# Sort modes that require the embedding vector. Everything else is a
-# metadata-only ordering (event / time) that works without embeddings.
-EMBEDDING_SORTS = frozenset({"similarity", "similarity_reverse", "suggestions"})
-
+# Which filtered detections have an embedding — ids only, no vectors. Used
+# by "Sort by event" to pick one representative per event without loading
+# every embedded vector.
+PRESENCE_SQL = f"""
+SELECT de.detection_id AS detection_id
+FROM detection_embeddings de
+JOIN detections d ON d.id = de.detection_id
+{_COMMON_JOINS}
+"""
 
 def _build_query(
     project_id: str, filters: dict, base_sql: str = BASE_SQL
@@ -259,12 +272,20 @@ def _row_to_meta(row: sqlite3.Row) -> dict:
 def _load_metadata(
     db_path: str, project_id: str, filters: dict,
     max_detections: int = MAX_DETECTIONS,
-) -> tuple[list[str], list[dict]]:
-    """Load detections for the metadata sorts, returning (ids, metas).
+) -> tuple[list[str], list[dict], int]:
+    """Load detections for the metadata sorts, returning (ids, metas, total).
 
     Same filters and ``project_floor`` as the embedding path, but reads
     ``FROM detections`` so detections without an embedding are included.
-    No vectors, no FAISS, no progress bar (a plain SQL read is fast).
+    No vectors, no FAISS. Emits ``"detections"`` load progress: this is the
+    dominant cost of the event / time sorts now that the cap is up to 50k
+    rows, so it drives a real progress bar instead of a spinner.
+
+    Capped to the newest ``max_detections`` by capture time (a memory
+    guard); the caller reorders this subset. ``total`` is the uncapped
+    count of the matching pool, so callers can tell the user when the
+    result was capped. Dateless detections sort last, so they are the
+    first dropped when capping.
     """
     sql, params = _build_query(project_id, filters, METADATA_SQL)
 
@@ -274,32 +295,34 @@ def _load_metadata(
         count_sql = f"SELECT COUNT(*) FROM ({sql})"
         total = conn.execute(count_sql, params).fetchone()[0] or 0
         if total == 0:
-            return [], []
-        if total > max_detections:
-            raise ValueError(
-                f"Too many detections ({total}, current limit {max_detections}). "
-                "Narrow the result by species, site, or date, or raise the "
-                "limit in the Observations view options (gear icon)."
-            )
+            return [], [], 0
 
+        loaded = min(total, max_detections)
+        load_sql = f"{sql} ORDER BY f.captured_at_local DESC LIMIT ?"
+        _emit_progress("detections", 0, loaded)
         detection_ids: list[str] = []
         metas: list[dict] = []
-        for row in conn.execute(sql, params):
+        for i, row in enumerate(conn.execute(load_sql, [*params, max_detections])):
             detection_ids.append(row["detection_id"])
             metas.append(_row_to_meta(row))
-        return detection_ids, metas
+            if (i + 1) % PROGRESS_LOAD_EVERY == 0:
+                _emit_progress("detections", i + 1, loaded)
+        _emit_progress("detections", loaded, loaded)
+        return detection_ids, metas, total
     finally:
         conn.close()
 
 
 def _load_embeddings(
-    db_path: str, project_id: str, filters: dict, max_detections: int = MAX_DETECTIONS
-) -> tuple[np.ndarray, list[str], list[dict]]:
-    """Load embeddings from SQLite, returning (vectors, ids, metadata).
+    db_path: str, project_id: str, filters: dict, max_embeddings: int = MAX_EMBEDDINGS
+) -> tuple[np.ndarray, list[str], list[dict], int]:
+    """Load embeddings from SQLite, returning (vectors, ids, metadata, total).
 
-    Streams the result set so the caller can report progress: a COUNT(*)
-    pass establishes the total, then row-by-row iteration emits a
-    progress event every PROGRESS_LOAD_EVERY rows.
+    Streams the result set so the caller can report progress. Capped to
+    the newest ``max_embeddings`` by capture time (the FAISS budget; the
+    greedy walk holds every vector in RAM). ``total`` is the uncapped
+    count of the matching pool so callers can tell the user when the
+    result was capped.
     """
     sql, params = _build_query(project_id, filters)
 
@@ -308,23 +331,21 @@ def _load_embeddings(
     try:
         # COUNT(*) on a wrapped subquery: clean and dialect-portable, and
         # SQLite plans it cheaply because the planner can short-circuit
-        # the SELECT list. Used purely to size the progress bar.
+        # the SELECT list. Gives both the progress size and the uncapped
+        # total returned to the caller.
         count_sql = f"SELECT COUNT(*) FROM ({sql})"
         total = conn.execute(count_sql, params).fetchone()[0] or 0
 
         if total == 0:
-            return np.empty((0, 0), dtype=np.float32), [], []
+            return np.empty((0, 0), dtype=np.float32), [], [], 0
 
-        if total > max_detections:
-            raise ValueError(
-                f"Too many detections ({total}, current limit {max_detections}). "
-                "Narrow the result by species, site, or date, or raise the "
-                "limit in the Observations view options (gear icon)."
-            )
+        # Load only the newest cap by capture time (dateless rows last).
+        loaded = min(total, max_embeddings)
+        load_sql = f"{sql} ORDER BY f.captured_at_local DESC LIMIT ?"
 
-        _emit_progress("load", 0, total)
+        _emit_progress("load", 0, loaded)
 
-        cursor = conn.execute(sql, params)
+        cursor = conn.execute(load_sql, [*params, max_embeddings])
         vectors: list[np.ndarray] = []
         detection_ids: list[str] = []
         metadata_list: list[dict] = []
@@ -339,14 +360,67 @@ def _load_embeddings(
             metadata_list.append(_row_to_meta(row))
 
             if (i + 1) % PROGRESS_LOAD_EVERY == 0:
-                _emit_progress("load", i + 1, total)
+                _emit_progress("load", i + 1, loaded)
 
-        _emit_progress("load", total, total)
+        _emit_progress("load", loaded, loaded)
     finally:
         conn.close()
 
     vectors_f32 = np.stack(vectors)
-    return vectors_f32, detection_ids, metadata_list
+    return vectors_f32, detection_ids, metadata_list, total
+
+
+def _load_embedding_presence(
+    db_path: str, project_id: str, filters: dict
+) -> set[str]:
+    """Detection ids (matching the filters) that have an embedding.
+
+    Ids only, no vectors, so it stays cheap even for a large pool. Lets
+    the event sort pick each event's representative crop without loading
+    every embedded vector.
+    """
+    sql, params = _build_query(project_id, filters, PRESENCE_SQL)
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        return {row["detection_id"] for row in conn.execute(sql, params)}
+    finally:
+        conn.close()
+
+
+def _load_vectors_by_id(
+    db_path: str, detection_ids: list[str]
+) -> dict[str, np.ndarray]:
+    """Load unit-normalised vectors for specific detection ids only.
+
+    Chunked to respect SQLite's bound-variable limit. Used to fetch just
+    the event representatives (one per event) rather than every vector.
+    """
+    if not detection_ids:
+        return {}
+    out: dict[str, np.ndarray] = {}
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        for start in range(0, len(detection_ids), 900):
+            chunk = detection_ids[start : start + 900]
+            placeholders = ",".join("?" for _ in chunk)
+            rows = conn.execute(
+                "SELECT detection_id, vector, l2_norm FROM detection_embeddings "
+                f"WHERE detection_id IN ({placeholders})",
+                chunk,
+            )
+            for row in rows:
+                vec = np.frombuffer(
+                    row["vector"], dtype=np.float16
+                ).astype(np.float32)
+                l2_norm = row["l2_norm"]
+                if l2_norm and l2_norm > 0:
+                    vec = vec / l2_norm
+                out[row["detection_id"]] = vec
+    finally:
+        conn.close()
+    return out
 
 
 # Ordering of Linnaean ranks used by the descendant filter. A row with
@@ -697,7 +771,9 @@ def _compute_neighbor_signals(
 def _order_events_by_similarity(
     det_ids: list[str],
     metas: list[dict],
-    vector_by_id: dict[str, np.ndarray],
+    has_embedding: set[str],
+    load_vectors: Callable[[list[str]], dict[str, np.ndarray]],
+    max_embeddings: int = MAX_EMBEDDINGS,
 ) -> list[int]:
     """Order detections for "Sort by event" using embedding similarity.
 
@@ -709,6 +785,11 @@ def _order_events_by_similarity(
     that has an embedding. Events with no embedded detection (nothing to
     compare) fall to a chronological, camera-grouped tail; detections
     with no event go last.
+
+    ``has_embedding`` is the set of ``det_ids`` that have a vector;
+    ``load_vectors`` fetches vectors for a list of ids. Only the chosen
+    representatives (one per event) are loaded, not every embedded
+    detection.
 
     Returns the final index order into ``metas`` / ``det_ids``.
     """
@@ -737,29 +818,36 @@ def _order_events_by_similarity(
             events_in_baseline_order.append(eid)
         event_to_indices[eid].append(i)
 
-    # Representative vector per event: the most-confident detection that
-    # has an embedding. No averaging, so a mixed event places by its
-    # clearest crop instead of a meaningless centroid.
-    rep_vec: dict[str, np.ndarray] = {}
+    # Representative detection per event: the most-confident one that has
+    # an embedding. No averaging, so a mixed event places by its clearest
+    # crop instead of a meaningless centroid.
+    rep_det: dict[str, str] = {}
     for eid, idxs in event_to_indices.items():
         best_i = -1
         best_conf = -1.0
         for i in idxs:
-            if det_ids[i] in vector_by_id:
+            if det_ids[i] in has_embedding:
                 conf = metas[i].get("confidence") or 0.0
                 if conf > best_conf:
                     best_conf = conf
                     best_i = i
         if best_i >= 0:
-            rep_vec[eid] = vector_by_id[det_ids[best_i]]
+            rep_det[eid] = det_ids[best_i]
 
-    # Greedy-walk the events that have a representative.
-    rep_eids = [eid for eid in events_in_baseline_order if eid in rep_vec]
-    if len(rep_eids) >= 2:
-        mat = np.stack([rep_vec[eid] for eid in rep_eids])
-        ordered_rep_eids = [rep_eids[j] for j in _greedy_order(mat)]
+    # Load vectors for just the representatives, then greedy-walk the
+    # events that have one. Cap the walk at the FAISS budget: only the
+    # first `max_embeddings` events (baseline / time order) are similarity
+    # ordered; any beyond that keep their baseline order in the tail, so a
+    # project with more events than the budget still loads.
+    rep_eids = [eid for eid in events_in_baseline_order if eid in rep_det]
+    walk_eids = rep_eids[:max_embeddings]
+    rep_vectors = load_vectors([rep_det[eid] for eid in walk_eids])
+    walk_eids = [eid for eid in walk_eids if rep_det[eid] in rep_vectors]
+    if len(walk_eids) >= 2:
+        mat = np.stack([rep_vectors[rep_det[eid]] for eid in walk_eids])
+        ordered_rep_eids = [walk_eids[j] for j in _greedy_order(mat)]
     else:
-        ordered_rep_eids = rep_eids
+        ordered_rep_eids = walk_eids
 
     # Assemble: similarity-ordered events first, remaining (rep-less)
     # events in time order, no-event detections last.
@@ -777,19 +865,12 @@ def _order_events_by_similarity(
 # ── Similarity sort ──────────────────────────────────────────────────────
 
 def do_sort(db_path: str, project_id: str, params: dict) -> dict:
-    """Sort detections for the Observations grid.
+    """Sort detections for the Observations grid, chosen by ``params["sort"]``:
 
-    Always loads embeddings and computes neighbor agreement / top label
-    via FAISS, since the suspicious filter depends on those fields
-    regardless of the visible order. The final ordering is then chosen
-    by ``params["sort"]``:
-
-    - `similarity` (default): greedy nearest-neighbor walk so adjacent
-      tiles look alike.
-    - `similarity_reverse`: same chain, reversed.
-    - `newest` / `oldest`: by `captured_at_local`, NULL last.
-    - `cls_low`: by `label_confidence` ascending, NULL last (verify
-      hardest cases first).
+    - `similarity` (default): loads embeddings and does a greedy
+      nearest-neighbour walk (via FAISS) so adjacent tiles look alike.
+    - `events`: groups detections by event and orders the events by the
+      similarity of one representative crop each (embedded or not).
     - `suggestions`: cohort-grouped review mode. Filters to unverified
       detections that carry a descendant-promotion suggestion, groups
       them by `(label, suggested_label, category)`, and orders cohorts
@@ -800,16 +881,12 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
     # script's dir to sys.path[0], so this resolves without the full
     # `app.ml.inference.*` package import (which would require pydantic
     # and other main-backend deps the conda ML env does not have).
-    from observation_sort import (
-        VALID_SORTS,
-        order_events_by_deployment,
-        order_indices,
-        suggestions_order,
-    )
+    from observation_sort import VALID_SORTS, suggestions_order
 
     filters = params.get("filters", {})
     sort_mode = params.get("sort", "similarity")
     max_detections = int(params.get("max_detections", MAX_DETECTIONS))
+    max_embeddings = int(params.get("max_embeddings", MAX_EMBEDDINGS))
     if sort_mode not in VALID_SORTS:
         raise ValueError(f"Unknown sort mode: {sort_mode}")
 
@@ -818,65 +895,52 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
     # events by similarity of their representative crops so same-species
     # events sit together; without embeddings, keep chronological order.
     if sort_mode == "events":
-        det_ids, metas = _load_metadata(
+        det_ids, metas, total_matching = _load_metadata(
             db_path, project_id, filters, max_detections=max_detections
         )
         if not det_ids:
-            return {"detections": [], "total_detections": 0}
-        vectors, emb_ids, _ = _load_embeddings(
-            db_path, project_id, filters, max_detections=max_detections
+            return {"detections": [], "total_detections": 0, "total_matching": 0}
+        # Order events by similarity of one representative crop each,
+        # loading only those rep vectors (not every embedded detection).
+        # With no embeddings this falls back to chronological, camera-grouped
+        # order; a single-deployment folder run reduces to plain chronological.
+        final_order = _order_events_by_similarity(
+            det_ids,
+            metas,
+            _load_embedding_presence(db_path, project_id, filters),
+            lambda ids: _load_vectors_by_id(db_path, ids),
+            max_embeddings=max_embeddings,
         )
-        if len(emb_ids) >= 2:
-            vector_by_id = {
-                emb_ids[k]: vectors[k] for k in range(len(emb_ids))
-            }
-            final_order = _order_events_by_similarity(
-                det_ids, metas, vector_by_id
-            )
-        else:
-            # No (or too few) embeddings: chronological, grouped by
-            # camera. A single-deployment folder run reduces to plain
-            # chronological automatically.
-            final_order = order_events_by_deployment(metas)
         detections = [
             _build_summary(det_ids[i], metas[i]) for i in final_order
         ]
-        return {"detections": detections, "total_detections": len(final_order)}
+        return {
+            "detections": detections,
+            "total_detections": len(final_order),
+            "total_matching": total_matching,
+        }
 
-    # Other metadata sorts (newest / oldest / cls_low): full population,
-    # ordered by timestamp / label confidence, no embeddings.
-    if sort_mode not in EMBEDDING_SORTS:
-        det_ids, metas = _load_metadata(
-            db_path, project_id, filters, max_detections=max_detections
-        )
-        if not det_ids:
-            return {"detections": [], "total_detections": 0}
-        # similarity_order is unused for the metadata orderings.
-        final_order = order_indices(sort_mode, [], metas)
-        detections = [
-            _build_summary(det_ids[i], metas[i]) for i in final_order
-        ]
-        return {"detections": detections, "total_detections": len(final_order)}
-
+    # similarity / suggestions: load embeddings and run FAISS.
     import faiss
 
-    vectors, det_ids, metas = _load_embeddings(
-        db_path, project_id, filters, max_detections=max_detections
+    vectors, det_ids, metas, total_matching = _load_embeddings(
+        db_path, project_id, filters, max_embeddings=max_embeddings
     )
 
     n = len(det_ids)
     if n == 0:
-        return {"detections": [], "total_detections": 0}
+        return {"detections": [], "total_detections": 0, "total_matching": 0}
 
     # Single detection — no sorting needed. Suggestions mode also
     # falls through here because a lone detection has no neighbours to
     # disagree with, so there's nothing to review.
     if n == 1:
         if sort_mode == "suggestions":
-            return {"detections": [], "total_detections": 0}
+            return {"detections": [], "total_detections": 0, "total_matching": 0}
         return {
             "detections": [_build_summary(det_ids[0], metas[0])],
             "total_detections": 1,
+            "total_matching": total_matching,
         }
 
     # Build FAISS index for fast nearest-neighbor lookup
@@ -884,12 +948,10 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
     index = faiss.IndexFlatIP(dim)
     index.add(vectors)
 
-    # Greedy walk only matters for the `similarity` chain orders. Skip
-    # it for suggestions and the metadata-based sorts so we don't pay
-    # for an order we throw away.
-    needs_chain = sort_mode in ("similarity", "similarity_reverse")
+    # The greedy walk only matters for the `similarity` order. Skip it
+    # for suggestions so we don't pay for an order we throw away.
     similarity_order: list[int] = []
-    if needs_chain:
+    if sort_mode == "similarity":
         similarity_order = _greedy_walk(index, vectors, progress_phase="sort")
 
     # Per-detection neighbour signals (agreement + descendant-filtered
@@ -916,7 +978,8 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
             max_cohorts=int(params.get("max_cohorts", 200)),
         )
     else:
-        final_order = order_indices(sort_mode, similarity_order, metas)
+        # similarity: the greedy-walk order.
+        final_order = similarity_order
 
     # Map raw label string → scientific / common name from the same
     # project's taxonomy. Used to render the suggested neighbor label with
@@ -950,7 +1013,11 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
         for i in final_order
     ]
 
-    return {"detections": detections, "total_detections": len(final_order)}
+    return {
+        "detections": detections,
+        "total_detections": len(final_order),
+        "total_matching": total_matching,
+    }
 
 
 # ── Cohorts ──────────────────────────────────────────────────────────────
@@ -984,8 +1051,8 @@ def do_cohorts(db_path: str, project_id: str, params: dict) -> dict:
         raise ValueError(f"max_cohorts must be >= 1, got {max_cohorts}")
 
     filters = params.get("filters", {})
-    vectors, det_ids, metas = _load_embeddings(
-        db_path, project_id, filters, max_detections=MAX_DETECTIONS
+    vectors, det_ids, metas, _ = _load_embeddings(
+        db_path, project_id, filters, max_embeddings=MAX_EMBEDDINGS
     )
 
     n = len(det_ids)
@@ -1200,10 +1267,10 @@ def do_search(db_path: str, project_id: str, params: dict) -> dict:
     filters = params.get("filters", {})
     limit = params.get("limit", 100)
     threshold = params.get("threshold", 0.0)
-    max_detections = int(params.get("max_detections", MAX_DETECTIONS))
+    max_embeddings = int(params.get("max_embeddings", MAX_EMBEDDINGS))
 
-    vectors, det_ids, metas = _load_embeddings(
-        db_path, project_id, filters, max_detections=max_detections
+    vectors, det_ids, metas, _ = _load_embeddings(
+        db_path, project_id, filters, max_embeddings=max_embeddings
     )
 
     # Find or load anchor

@@ -25,11 +25,9 @@ const RANDOM_SEED_MAX = 2 ** 31;
 
 const SORT_LABELS: Record<VerifySort, string> = {
   similarity: "Sort by similarity",
-  similarity_reverse: "Sort by similarity (outliers first)",
   newest: "Sort by newest first",
   oldest: "Sort by oldest first",
   random: "Sort in random order",
-  cls_low: "Sort by lowest confidence",
   events: "Sort by event",
 };
 

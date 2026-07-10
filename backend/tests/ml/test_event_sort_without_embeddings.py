@@ -143,10 +143,10 @@ def test_metadata_load_includes_non_embedded_detections(sort_db):
     s.commit()
 
     # Metadata path sees both; embedding path sees only the embedded one.
-    ids_meta, _ = _load_metadata(db_path, p.id, {})
+    ids_meta, _, _ = _load_metadata(db_path, p.id, {})
     assert set(ids_meta) == {embedded.id, plain.id}
 
-    _, ids_emb, _ = _load_embeddings(db_path, p.id, {})
+    _, ids_emb, _, _ = _load_embeddings(db_path, p.id, {})
     assert set(ids_emb) == {embedded.id}
 
 
@@ -187,10 +187,65 @@ def test_metadata_load_applies_project_floor(sort_db):
     )
     s.commit()
 
-    ids, _ = _load_metadata(db_path, p.id, {"project_floor": 0.2})
+    ids, _, _ = _load_metadata(db_path, p.id, {"project_floor": 0.2})
     # Below-floor unverified is excluded; verified overrides the floor.
     assert low_verified.id in ids
     assert low_unverified.id not in ids
+
+
+def test_sort_caps_to_newest_and_reports_uncapped_total(sort_db):
+    """Over the cap, do_sort loads the newest `cap` by capture time and
+    reports the uncapped total (no error)."""
+    db_path, s = sort_db
+    p = make_project(s)
+    dep = make_deployment(s, project_id=p.id)
+    _detection_in_event(s, dep.id, event_id="e1", start=datetime(2024, 1, 1, 12))
+    d2 = _detection_in_event(s, dep.id, event_id="e2", start=datetime(2024, 1, 2, 12))
+    d3 = _detection_in_event(s, dep.id, event_id="e3", start=datetime(2024, 1, 3, 12))
+    s.commit()
+
+    result = do_sort(
+        db_path, p.id, {"sort": "events", "filters": {}, "max_detections": 2}
+    )
+    ids = [d["detection_id"] for d in result["detections"]]
+    assert ids == [d3.id, d2.id]  # newest two, newest event first
+    assert result["total_detections"] == 2
+    assert result["total_matching"] == 3
+
+
+def test_sort_under_cap_matches_total(sort_db):
+    """Under the cap, everything loads and total_matching == total_detections."""
+    db_path, s = sort_db
+    p = make_project(s)
+    dep = make_deployment(s, project_id=p.id)
+    _detection_in_event(s, dep.id, event_id="e1", start=datetime(2024, 1, 1, 12))
+    _detection_in_event(s, dep.id, event_id="e2", start=datetime(2024, 1, 2, 12))
+    s.commit()
+
+    result = do_sort(db_path, p.id, {"sort": "events", "filters": {}})
+    assert result["total_detections"] == 2
+    assert result["total_matching"] == 2
+
+
+def test_sort_verified_filter_scopes_the_cap(sort_db):
+    """The cap and total_matching count only the current verified-filter
+    pool: with verified=False, verified detections are excluded entirely."""
+    db_path, s = sort_db
+    p = make_project(s)
+    dep = make_deployment(s, project_id=p.id)
+    u1 = _detection_in_event(s, dep.id, event_id="e1", start=datetime(2024, 1, 1, 12))
+    u2 = _detection_in_event(s, dep.id, event_id="e2", start=datetime(2024, 1, 2, 12))
+    _detection_in_event(
+        s, dep.id, event_id="e3", start=datetime(2024, 1, 3, 12), verified=True
+    )
+    s.commit()
+
+    result = do_sort(
+        db_path, p.id, {"sort": "events", "filters": {"verified": False}}
+    )
+    ids = {d["detection_id"] for d in result["detections"]}
+    assert ids == {u1.id, u2.id}
+    assert result["total_matching"] == 2
 
 
 # ── Event ordering by similarity ─────────────────────────────────────
@@ -246,7 +301,16 @@ def test_order_events_by_similarity_assembly(monkeypatch):
         "app.ml.inference.similarity_script._greedy_order", fake_greedy_order
     )
 
-    order = _order_events_by_similarity(det_ids, metas, vector_by_id)
+    has_embedding = set(vector_by_id)
+    requested: list[str] = []
+
+    def load_vectors(ids):
+        requested.extend(ids)
+        return {i: vector_by_id[i] for i in ids}
+
+    order = _order_events_by_similarity(
+        det_ids, metas, has_embedding, load_vectors
+    )
 
     # Walk said [B, A] reversed -> events emitted A then B; within A the
     # sequence order (a0 seq0 before a1 seq1); then the rep-less event C;
@@ -256,6 +320,9 @@ def test_order_events_by_similarity_assembly(monkeypatch):
     mat = captured["mat"]
     assert np.allclose(mat[0], vb)  # B's representative
     assert np.allclose(mat[1], va)  # A's representative = a1, not a0
+    # Only the two representatives were loaded, not a0 (embedded but not
+    # its event's rep) or the rep-less / no-event detections.
+    assert set(requested) == {"a1", "b0"}
 
 
 def test_order_events_by_similarity_no_reps_is_time_order(monkeypatch):
@@ -269,9 +336,44 @@ def test_order_events_by_similarity_no_reps_is_time_order(monkeypatch):
     monkeypatch.setattr(
         "app.ml.inference.similarity_script._greedy_order", called
     )
-    order = _order_events_by_similarity(det_ids, metas, {})
+    order = _order_events_by_similarity(det_ids, metas, set(), lambda ids: {})
     called.assert_not_called()
     assert order == [1, 0]  # newest event (B) first
+
+
+def test_order_events_by_similarity_caps_walk_at_max_embeddings(monkeypatch):
+    # Three embedded events; with a FAISS budget of 2, only the newest two
+    # are similarity-walked (and their vectors loaded); the third keeps its
+    # baseline (chronological) place in the tail and isn't loaded.
+    metas = [
+        _meta("A", 0, "2024-01-01T00:00", 0.9),
+        _meta("B", 0, "2024-01-02T00:00", 0.9),
+        _meta("C", 0, "2024-01-03T00:00", 0.9),
+    ]
+    det_ids = ["a", "b", "c"]
+    vecs = {
+        "a": np.array([1.0, 0.0], dtype=np.float32),
+        "b": np.array([0.0, 1.0], dtype=np.float32),
+        "c": np.array([1.0, 1.0], dtype=np.float32),
+    }
+    requested: list[str] = []
+
+    def load_vectors(ids):
+        requested.extend(ids)
+        return {i: vecs[i] for i in ids}
+
+    # Identity walk over the (capped) rep set.
+    monkeypatch.setattr(
+        "app.ml.inference.similarity_script._greedy_order",
+        lambda mat: list(range(len(mat))),
+    )
+    order = _order_events_by_similarity(
+        det_ids, metas, set(vecs), load_vectors, max_embeddings=2
+    )
+    # Baseline is time-desc [C, B, A]; walk the first two, A falls to tail.
+    assert order == [2, 1, 0]
+    # Only the two walked reps were loaded — A's vector was over budget.
+    assert set(requested) == {"c", "b"}
 
 
 # ── FAISS-gated: real greedy walk ────────────────────────────────────
@@ -330,10 +432,7 @@ def test_event_sort_similarity_groups_similar_events(sort_db):
 
 # ── No-embedding fallback: deployment grouping ───────────────────────
 
-from observation_sort import (  # noqa: E402
-    order_events_by_deployment,
-    order_indices,
-)
+from observation_sort import order_events_by_deployment  # noqa: E402
 
 
 def test_order_events_by_deployment_groups_cameras():
@@ -345,9 +444,9 @@ def test_order_events_by_deployment_groups_cameras():
         _meta_dep("DEP1", "E1b", "2024-01-01", 0),  # 1
         _meta_dep("DEP2", "E2a", "2024-01-03", 0),  # 2
     ]
+    # Plain chronological would interleave the cameras ([0, 2, 1]);
+    # deployment grouping keeps DEP1's two events together.
     assert order_events_by_deployment(metas) == [0, 1, 2]
-    # Plain chronological would interleave the cameras.
-    assert order_indices("events", [], metas) == [0, 2, 1]
 
 
 def test_order_events_by_deployment_single_deployment_is_chronological():
@@ -356,11 +455,9 @@ def test_order_events_by_deployment_single_deployment_is_chronological():
         _meta_dep("D", "E1", "2024-01-01", 0),
         _meta_dep("D", "E2", "2024-01-02", 0),
     ]
-    # One camera: identical to plain chronological (event newest-first,
-    # within event by sequence).
-    assert order_events_by_deployment(metas) == order_indices(
-        "events", [], metas
-    )
+    # One camera: plain chronological (event newest-first, within event
+    # by ascending sequence) — E2 (01-02), then E1 (01-01) seq 0 then 1.
+    assert order_events_by_deployment(metas) == [2, 1, 0]
 
 
 def _meta_dep(deployment_id, event_id, start, seq):
@@ -416,7 +513,12 @@ def test_order_events_by_similarity_keeps_partial_event_intact(monkeypatch):
         "app.ml.inference.similarity_script._greedy_order",
         lambda mat: list(range(len(mat))),
     )
-    order = _order_events_by_similarity(det_ids, metas, vector_by_id)
+    order = _order_events_by_similarity(
+        det_ids,
+        metas,
+        set(vector_by_id),
+        lambda ids: {i: vector_by_id[i] for i in ids},
+    )
 
     # X block first (both its detections, sequence order), then Y.
     assert order == [0, 1, 2]

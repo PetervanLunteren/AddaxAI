@@ -578,18 +578,13 @@ export type EmptyFilter = "all" | "show_only" | "hide";
 
 /** Sort modes shared across the verify tabs.
  *
- * Events and Files use the first four. Observations uses similarity by
- * default and supports `similarity_reverse`; the metadata-only modes
- * (`newest`, `oldest`, `cls_low`) are also available. `random` only
- * applies to Events / Files (it relies on a stable seed for paginated
- * grids and is not meaningful for the Observations grid). */
+ * The Events / Files galleries use `newest` / `oldest` / `random`; the
+ * Observations grid uses `similarity` / `events` (see `LabelSort`). */
 export type VerifySort =
   | "newest"
   | "oldest"
   | "random"
-  | "cls_low"
   | "similarity"
-  | "similarity_reverse"
   | "events";
 
 export interface EventFilterParams {
@@ -852,28 +847,16 @@ export interface LabelFilters {
   verified?: boolean;
 }
 
-/** Subset of VerifySort that is valid for Observations.
+/** Sort modes for the Observations (Labels) grid.
  *
- * `suggestions` is a cohort-grouped review mode that filters the grid
- * to unverified detections with a descendant-promotion candidate and
- * orders them by cohort size desc, agreement asc. It's reachable only
- * via the toolbar's review pill, never the sort dropdown. */
-export type LabelSort =
-  | "similarity"
-  | "similarity_reverse"
-  | "newest"
-  | "oldest"
-  | "cls_low"
-  | "events"
-  | "suggestions";
+ * The dropdown offers `similarity` and `events`. `suggestions` is a
+ * cohort-grouped review mode reachable only via the toolbar's review
+ * pill, never the dropdown. */
+export type LabelSort = "similarity" | "events" | "suggestions";
 
 export interface SortRequest {
   filters?: LabelFilters;
   sort?: LabelSort;
-  /** Per-user memory budget for one sort, set in the Observations
-   * view-options popover (localStorage). Backend defaults to 20000
-   * when omitted. */
-  max_detections?: number;
 }
 
 export interface SearchRequest {
@@ -881,9 +864,6 @@ export interface SearchRequest {
   filters?: LabelFilters;
   limit?: number;
   threshold?: number;
-  /** Same cap the sort endpoint takes; bounds the candidate pool the
-   * subprocess loads. */
-  max_detections?: number;
 }
 
 export interface CropBbox {
@@ -933,7 +913,11 @@ export interface DetectionSummary {
 
 export interface SortResponse {
   detections: DetectionSummary[];
+  /** Detections actually returned (after the memory-guard cap). */
   total_detections: number;
+  /** Uncapped size of the matching pool. When it exceeds
+   * `total_detections`, the result was capped to the newest subset. */
+  total_matching: number;
 }
 
 export interface SearchResponse {

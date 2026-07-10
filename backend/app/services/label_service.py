@@ -144,7 +144,7 @@ def stream_labels_subprocess(
         bufsize=1,
     )
 
-    # 60s base + 6s per 1k cap. 20k → 180s, 50k → 360s. Subprocess
+    # 60s base + 6s per 1k of the fixed cap (20k → 180s). Subprocess
     # progress reaches us steadily so this is a hard ceiling, not the
     # typical wait. process.wait() at the end enforces it.
     cap = int(params.get("max_detections", 20000))
@@ -259,7 +259,6 @@ def _build_sort_params(
     return {
         "filters": _filters_to_dict(filters),
         "sort": body.sort,
-        "max_detections": body.max_detections,
     }
 
 
@@ -272,7 +271,6 @@ def _build_search_params(
         "anchor_detection_id": body.anchor_detection_id,
         "limit": body.limit,
         "threshold": body.threshold,
-        "max_detections": body.max_detections,
     }
 
 

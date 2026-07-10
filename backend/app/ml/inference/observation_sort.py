@@ -12,86 +12,10 @@ from __future__ import annotations
 VALID_SORTS: frozenset[str] = frozenset(
     {
         "similarity",
-        "similarity_reverse",
-        "newest",
-        "oldest",
-        "cls_low",
         "events",
         "suggestions",
     }
 )
-
-
-def order_indices(
-    sort_mode: str,
-    similarity_order: list[int],
-    metas: list[dict],
-) -> list[int]:
-    """Pick the final index order for the requested sort mode.
-
-    `similarity_order` is the greedy-walk order; it is returned as-is for
-    `similarity` and reversed for `similarity_reverse`. The metadata-based
-    sorts ignore embeddings and order by `captured_at_local` or
-    `label_confidence`. NULL values (missing timestamp or unscored
-    detection) sort to the end so they don't dominate the head of the
-    grid.
-
-    `suggestions` is intentionally NOT handled here. It needs the
-    neighbour signals (`top_labels`, `agreement_scores`) that this
-    module doesn't see; do_sort branches on it and calls
-    `suggestions_order` directly.
-    """
-    if sort_mode not in VALID_SORTS:
-        raise ValueError(f"Unknown sort mode: {sort_mode}")
-    if sort_mode == "suggestions":
-        raise ValueError(
-            "sort_mode='suggestions' is handled by do_sort, not order_indices"
-        )
-
-    n = len(metas)
-    if sort_mode == "similarity":
-        return list(similarity_order)
-    if sort_mode == "similarity_reverse":
-        return list(reversed(similarity_order))
-
-    if sort_mode in ("newest", "oldest"):
-        descending = sort_mode == "newest"
-        with_ts = [(metas[i].get("captured_at_local"), i) for i in range(n)]
-        non_null = [(ts, i) for ts, i in with_ts if ts]
-        nulls = [i for ts, i in with_ts if not ts]
-        non_null.sort(key=lambda kv: kv[0], reverse=descending)
-        return [i for _, i in non_null] + nulls
-
-    if sort_mode == "events":
-        # Group detections by their event. Events are ordered newest
-        # first (matching the Counts page default); within an event,
-        # chronological by sequence_number so a burst reads in capture
-        # order. Detections with no event (event clustering not run, or
-        # an orphaned file) sort to the end, like the timestamp sorts.
-        #
-        # The sort is stable, so we sort by the weakest key first
-        # (sequence ascending) then the strongest (event_start
-        # descending). event_id breaks ties between events that share a
-        # start time so their detections never interleave.
-        with_event = [(metas[i].get("event_id"), i) for i in range(n)]
-        non_null = [i for eid, i in with_event if eid]
-        nulls = [i for eid, i in with_event if not eid]
-        non_null.sort(key=lambda i: (metas[i].get("event_sequence") or 0))
-        non_null.sort(
-            key=lambda i: (
-                metas[i].get("event_start_local") or "",
-                metas[i].get("event_id") or "",
-            ),
-            reverse=True,
-        )
-        return non_null + nulls
-
-    # cls_low
-    with_lc = [(metas[i].get("label_confidence"), i) for i in range(n)]
-    non_null = [(lc, i) for lc, i in with_lc if lc is not None]
-    nulls = [i for lc, i in with_lc if lc is None]
-    non_null.sort(key=lambda kv: kv[0])
-    return [i for _, i in non_null] + nulls
 
 
 def order_events_by_deployment(metas: list[dict]) -> list[int]:
@@ -104,7 +28,7 @@ def order_events_by_deployment(metas: list[dict]) -> list[int]:
     events are newest-first; within an event, by capture sequence.
     Detections with no event sort to the end. For a single-deployment
     folder run every detection shares one deployment, so this reduces
-    exactly to the plain chronological ``order_indices("events", ...)``.
+    exactly to plain chronological (newest-first) event order.
 
     Used by the no-embedding event sort and as the baseline for the
     similarity event sort, so the embedless tail (events with no

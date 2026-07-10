@@ -21,7 +21,11 @@ import type {
   SortResponse,
 } from "./types";
 
-export type LabelsProgressPhase = "load" | "sort" | "neighbors";
+export type LabelsProgressPhase =
+  | "detections"
+  | "load"
+  | "sort"
+  | "neighbors";
 
 export interface LabelsProgressEvent {
   type: "progress";
