@@ -6,6 +6,7 @@ Events are time-clustered groups of files within a deployment.
 
 import uuid
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime, time
 
 from sqlalchemy import Integer, delete, exists, func, insert, or_, select
@@ -346,6 +347,66 @@ def _apply_event_filters(
     return query
 
 
+@dataclass
+class _EventCarry:
+    """The human layer of an event, kept across a regeneration so a new
+    event covering the same files can inherit it."""
+
+    confirmed: bool
+    prior: list  # list[PriorObs]
+
+
+def _snapshot_event_carry(
+    db: Session, deployment_ids: list[str]
+) -> dict[frozenset, _EventCarry]:
+    """Snapshot each event's confirmed flag + observation rows, keyed by its
+    exact set of file IDs. Files are partitioned across events, so the keys
+    are unique. Used to carry human confirmations/counts onto regenerated
+    events with the same grouping."""
+    from app.api.crud.event_observation import PriorObs
+
+    carry: dict[frozenset, _EventCarry] = {}
+    if not deployment_ids:
+        return carry
+
+    events = (
+        db.query(Event.id, Event.confirmed)
+        .filter(Event.deployment_id.in_(deployment_ids))
+        .all()
+    )
+    if not events:
+        return carry
+    event_ids = [e.id for e in events]
+
+    files_by_event: dict[str, set[str]] = defaultdict(set)
+    for eid, fid in db.query(
+        event_files.c.event_id, event_files.c.file_id
+    ).filter(event_files.c.event_id.in_(event_ids)):
+        files_by_event[eid].add(fid)
+
+    obs_by_event: dict[str, list] = defaultdict(list)
+    for o in db.query(EventObservation).filter(
+        EventObservation.event_id.in_(event_ids)
+    ):
+        obs_by_event[o.event_id].append(
+            PriorObs(
+                label=o.label,
+                label_taxonomy_id=o.label_taxonomy_id,
+                category=o.category,
+                human_count=o.human_count,
+                effective_count=o.effective_count,
+            )
+        )
+
+    for e in events:
+        fileset = frozenset(files_by_event.get(e.id, set()))
+        if fileset:
+            carry[fileset] = _EventCarry(
+                confirmed=e.confirmed, prior=obs_by_event.get(e.id, [])
+            )
+    return carry
+
+
 def generate_events_for_project(db: Session, project_id: str) -> int:
     """
     Generate events for all deployments in a project.
@@ -355,8 +416,16 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
     — the single source of truth shared with the smoothing adapter, so
     events and smoother inputs never disagree.
 
+    Human confirmations (`Event.confirmed`) and manual counts
+    (`EventObservation.human_count`) are carried onto any regenerated event
+    whose file set is unchanged, so a reprocess that doesn't actually
+    regroup an event never loses its count verification. Events that merge
+    or split (an interval change) find no match and reset to unconfirmed
+    AI counts.
+
     Returns total event count created.
     """
+    from app.api.crud.event_observation import calculate_max_n_for_event
     from app.models import Project
     from app.services.event_clustering import cluster_files_into_events
 
@@ -365,14 +434,18 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
         raise ValueError(f"Project {project_id} not found")
 
     independence_interval = project.independence_interval  # seconds
+    threshold = project.counting_threshold
 
     # Get all deployments for this project
     deployments = (
         db.query(Deployment).filter(Deployment.project_id == project_id).all()
     )
+    deployment_ids = [d.id for d in deployments]
+
+    # Snapshot the human layer before deleting, then re-attach by file set.
+    carry = _snapshot_event_carry(db, deployment_ids)
 
     # Delete existing events for all deployments in this project
-    deployment_ids = [d.id for d in deployments]
     if deployment_ids:
         db.execute(delete(Event).where(Event.deployment_id.in_(deployment_ids)))
 
@@ -388,18 +461,174 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
         )
 
         for cluster in cluster_files_into_events(files, independence_interval):
-            _create_event(db, deployment.id, cluster)
+            event = _create_event(db, deployment.id, cluster)
+            carried = carry.get(frozenset(f.id for f in cluster))
+            if carried is not None:
+                event.confirmed = carried.confirmed
+            # Rebuild MaxN, carrying the human layer for a matched event.
+            # calculate_max_n_for_event still clears `confirmed` if the
+            # species/count set changed (e.g. smoothing relabelled a crop).
+            calculate_max_n_for_event(
+                db,
+                event.id,
+                threshold,
+                prior=carried.prior if carried is not None else None,
+            )
             total_events += 1
 
     db.flush()
-
-    # Calculate MaxN observations for all events
-    from app.api.crud.event_observation import recalculate_max_n_for_project
-
-    recalculate_max_n_for_project(db, project_id)
-
     db.commit()
     return total_events
+
+
+def _format_event_range(start, end) -> str | None:
+    """A human range like "Jan 05, 2024 10:00–10:30" from naive local event
+    bounds (camera wall-clock; no tz conversion). None for dateless events."""
+    if start is None:
+        return None
+    if end is None or end.date() == start.date():
+        tail = (end or start).strftime("%H:%M")
+        return f"{start:%b %d, %Y} {start:%H:%M}–{tail}"
+    return f"{start:%b %d, %Y %H:%M} – {end:%b %d, %Y %H:%M}"
+
+
+def _regroup_example(
+    db: Session,
+    event_id: str,
+    start,
+    end,
+    event_files_set: set[str],
+    new_filesets: set[frozenset],
+) -> dict:
+    """A concrete "here's what you'll lose" example for one confirmed event
+    that regroups: its confirmed animal counts, its time range, and how many
+    new events its files land in (1 = merged into a bigger event, >1 = split)."""
+    observations = [
+        {"label": o.label, "count": o.effective_count}
+        for o in db.query(EventObservation)
+        .filter(
+            EventObservation.event_id == event_id,
+            EventObservation.category == "animal",
+            EventObservation.label.isnot(None),
+        )
+        .all()
+    ]
+    maps_to = sum(1 for fs in new_filesets if fs & event_files_set)
+    return {
+        "time_range": _format_event_range(start, end),
+        "observations": observations,
+        "maps_to": maps_to,
+    }
+
+
+def count_regroup_impact(
+    db: Session, project_id: str, independence_interval: int
+) -> dict:
+    """How much count verification a regrouping at `independence_interval`
+    would reset.
+
+    An event's confirmation and manual counts survive a regeneration only
+    when its exact file set still forms one cluster. This clusters the
+    project's files at the candidate interval and counts the currently
+    confirmed events (and manual-count rows) whose file set would no longer
+    survive, plus one concrete `example` of a confirmed event that regroups.
+    Read-only. Returns ``{confirmed_at_risk, counts_at_risk, total_confirmed,
+    example}``.
+    """
+    from app.services.event_clustering import cluster_files_into_events
+
+    deployments = (
+        db.query(Deployment).filter(Deployment.project_id == project_id).all()
+    )
+    deployment_ids = [d.id for d in deployments]
+    empty = {
+        "confirmed_at_risk": 0,
+        "counts_at_risk": 0,
+        "total_confirmed": 0,
+        "example": None,
+    }
+    if not deployment_ids:
+        return empty
+
+    new_filesets: set[frozenset] = set()
+    for dep in deployments:
+        files = (
+            db.query(File)
+            .filter(File.deployment_id == dep.id)
+            .filter(File.file_type.in_(["image", "video"]))
+            .all()
+        )
+        for cluster in cluster_files_into_events(files, independence_interval):
+            new_filesets.add(frozenset(f.id for f in cluster))
+
+    events = (
+        db.query(
+            Event.id,
+            Event.confirmed,
+            Event.event_start_local,
+            Event.event_end_local,
+        )
+        .filter(Event.deployment_id.in_(deployment_ids))
+        .all()
+    )
+    if not events:
+        return empty
+    event_ids = [e.id for e in events]
+
+    files_by_event: dict[str, set[str]] = defaultdict(set)
+    for eid, fid in db.query(
+        event_files.c.event_id, event_files.c.file_id
+    ).filter(event_files.c.event_id.in_(event_ids)):
+        files_by_event[eid].add(fid)
+
+    human_by_event: dict[str, int] = defaultdict(int)
+    for (eid,) in db.query(EventObservation.event_id).filter(
+        EventObservation.event_id.in_(event_ids),
+        EventObservation.human_count.isnot(None),
+    ):
+        human_by_event[eid] += 1
+
+    total_confirmed = confirmed_at_risk = counts_at_risk = 0
+    example_event = None  # earliest affected confirmed event, for the example
+    for e in events:
+        survives = frozenset(files_by_event.get(e.id, set())) in new_filesets
+        if e.confirmed:
+            total_confirmed += 1
+            if not survives:
+                confirmed_at_risk += 1
+                if example_event is None or _starts_before(e, example_event):
+                    example_event = e
+        if not survives:
+            counts_at_risk += human_by_event.get(e.id, 0)
+
+    example = (
+        _regroup_example(
+            db,
+            example_event.id,
+            example_event.event_start_local,
+            example_event.event_end_local,
+            files_by_event.get(example_event.id, set()),
+            new_filesets,
+        )
+        if example_event is not None
+        else None
+    )
+
+    return {
+        "confirmed_at_risk": confirmed_at_risk,
+        "counts_at_risk": counts_at_risk,
+        "total_confirmed": total_confirmed,
+        "example": example,
+    }
+
+
+def _starts_before(a, b) -> bool:
+    """True when event `a` starts before `b`; dateless (None) sorts last."""
+    if a.event_start_local is None:
+        return False
+    if b.event_start_local is None:
+        return True
+    return a.event_start_local < b.event_start_local
 
 
 def _create_event(db: Session, deployment_id: str, files: list[File]) -> Event:

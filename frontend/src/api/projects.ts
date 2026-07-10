@@ -153,6 +153,25 @@ export const projectsApi = {
     ),
 
   /**
+   * How much count verification a change to the independence interval
+   * would reset (events regroup; confirmations/manual counts on regrouped
+   * events are lost).
+   */
+  regroupPreview: (id: string, independenceInterval: number) =>
+    api.get<{
+      confirmed_at_risk: number;
+      counts_at_risk: number;
+      total_confirmed: number;
+      example: {
+        time_range: string | null;
+        observations: { label: string; count: number }[];
+        maps_to: number;
+      } | null;
+    }>(
+      `/api/projects/${id}/regroup-preview?independence_interval=${independenceInterval}`
+    ),
+
+  /**
    * Get count of detections at or above a confidence threshold
    */
   getDetectionCount: (id: string, threshold: number) =>
@@ -223,16 +242,6 @@ export const projectsApi = {
    */
   gbifSuggest: (query: string) =>
     api.get<GBIFSuggestion[]>(`/api/projects/gbif/suggest?q=${encodeURIComponent(query)}`),
-
-  /**
-   * Independent events per label, from the materialized event
-   * observations (honours human-added/removed species). The independence
-   * interval is baked into that materialized state, so it is not a param.
-   */
-  getIndependentEventStats: (id: string) =>
-    api.get<{ total: number; labels: { label: string; count: number }[] }>(
-      `/api/projects/${id}/independent-event-stats`
-    ),
 
   /**
    * Sum of the effective per-event count (human count when set, else the

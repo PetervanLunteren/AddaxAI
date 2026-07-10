@@ -7,29 +7,17 @@
  * the new process swaps the file in before init_db runs and a safety
  * snapshot of the current DB lands in the ring buffer.
  *
- * Type-to-confirm `RESTORE` mirrors the Reset dialog's UX. The DB
- * swap is destructive in spirit even though the safety snapshot makes
- * it recoverable. Reset still uses quitApp because its intent is
- * "wipe and walk away"; Restore relaunches because the user is
- * waiting for their old data to come back.
+ * Type-to-confirm `RESTORE`, gated on a backup file being chosen first.
  */
 
 import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { AlertTriangle, FileSearch } from "lucide-react";
+import { FileSearch } from "lucide-react";
 import { backupApi } from "../../api/backup";
 import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../ui/dialog";
-import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { TypeToConfirmDialog } from "../ui/type-to-confirm-dialog";
 
 interface RestoreBackupDialogProps {
   open: boolean;
@@ -43,13 +31,12 @@ export function RestoreBackupDialog({
   onOpenChange,
 }: RestoreBackupDialogProps) {
   const [sourcePath, setSourcePath] = useState<string | null>(null);
-  const [confirmText, setConfirmText] = useState("");
   const [pickError, setPickError] = useState<string | null>(null);
 
+  // The typed word resets inside TypeToConfirmDialog; reset the rest here.
   useEffect(() => {
     if (!open) {
       setSourcePath(null);
-      setConfirmText("");
       setPickError(null);
     }
   }, [open]);
@@ -85,98 +72,52 @@ export function RestoreBackupDialog({
     },
   });
 
-  const isConfirmValid = confirmText === "RESTORE" && sourcePath !== null;
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-destructive" />
-            Restore database from backup
-          </DialogTitle>
-          <DialogDescription>
-            Replaces the current project database with the contents of a
-            backup file. AddaxAI restarts to finish the swap. A safety
-            snapshot of the current database is saved to the backups
-            folder before the swap, so this is reversible.
-          </DialogDescription>
-        </DialogHeader>
+    <TypeToConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Restore database from backup"
+      description="Replaces the current project database with the contents of a backup file. AddaxAI restarts to finish the swap. A safety snapshot of the current database is saved to the backups folder before the swap, so this is reversible."
+      confirmWord="RESTORE"
+      confirmLabel="Restore and restart"
+      pendingLabel="Restoring…"
+      onConfirm={() => restore.mutate()}
+      isPending={restore.isPending}
+      disabled={sourcePath === null}
+      variant="destructive"
+    >
+      <Callout variant="info">
+        <strong>Your original images and videos are never touched.</strong>{" "}
+        Only the SQLite database file is swapped.
+      </Callout>
 
-        <div className="space-y-4">
-          <Callout variant="info">
-            <strong>Your original images and videos are never touched.</strong>{" "}
-            Only the SQLite database file is swapped.
-          </Callout>
-
-          <div className="space-y-2">
-            <Label>Backup file</Label>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={pick}
-                disabled={restore.isPending}
-              >
-                <FileSearch className="h-4 w-4 mr-2" />
-                Choose backup file…
-              </Button>
-              {sourcePath && (
-                <span className="text-xs text-muted-foreground truncate max-w-[18rem]">
-                  {sourcePath}
-                </span>
-              )}
-            </div>
-            {pickError && (
-              <p className="text-sm text-destructive">{pickError}</p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="confirm-restore">
-              Please type{" "}
-              <span className="font-mono font-semibold bg-muted px-1.5 py-0.5 rounded">
-                RESTORE
-              </span>{" "}
-              to confirm
-            </Label>
-            <Input
-              id="confirm-restore"
-              value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value)}
-              placeholder="RESTORE"
-              autoComplete="off"
-              disabled={!sourcePath || restore.isPending}
-            />
-          </div>
-
-          {restore.isError && (
-            <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-              {(restore.error as Error)?.message ??
-                "Restore failed. The backup file may be corrupt."}
-            </div>
-          )}
-        </div>
-
-        <DialogFooter>
+      <div className="space-y-2">
+        <Label>Backup file</Label>
+        <div className="flex items-center gap-2">
           <Button
             type="button"
             variant="outline"
-            onClick={() => onOpenChange(false)}
+            onClick={pick}
             disabled={restore.isPending}
           >
-            Cancel
+            <FileSearch className="h-4 w-4 mr-2" />
+            Choose backup file…
           </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={() => restore.mutate()}
-            disabled={!isConfirmValid || restore.isPending}
-          >
-            {restore.isPending ? "Restoring…" : "Restore and restart"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          {sourcePath && (
+            <span className="text-xs text-muted-foreground truncate max-w-[18rem]">
+              {sourcePath}
+            </span>
+          )}
+        </div>
+        {pickError && <p className="text-sm text-destructive">{pickError}</p>}
+      </div>
+
+      {restore.isError && (
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+          {(restore.error as Error)?.message ??
+            "Restore failed. The backup file may be corrupt."}
+        </div>
+      )}
+    </TypeToConfirmDialog>
   );
 }

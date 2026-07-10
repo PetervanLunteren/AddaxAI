@@ -31,7 +31,9 @@ import type { SaveMetric } from "../../lib/saveMetrics";
 import { invalidateProjectData } from "../../lib/invalidate-project";
 import { saveLastUsedSettings } from "../../lib/folderRunSettings";
 import {
+  fetchRegroupImpact,
   hasReprocessChanges,
+  type RegroupImpact,
   startReprocessIfNeeded,
 } from "../../lib/reprocessSettings";
 import {
@@ -39,6 +41,7 @@ import {
   fetchStats,
   type ProjectStats,
 } from "../../lib/reprocessStats";
+import { RegroupConfirmDialog } from "../settings/RegroupConfirmDialog";
 import {
   AnalysisSettingsRows,
   type AnalysisSettingsValues,
@@ -54,11 +57,9 @@ import {
   SheetTitle,
 } from "../ui/sheet";
 
-// Refining a folder run is about labels and their grouping, not
-// abundance interpretation, so the summary shows detections (what
-// smoothing/rollup relabel) and events (what the interval regroups),
-// but not observations (MaxN, a Counts-step concern).
-const FOLDER_RUN_METRICS: SaveMetric[] = ["detections", "events"];
+// Refining a folder run is label triage, so the summary shows only the
+// Labels diff. Counts are a Counts-step concern and stay in projects mode.
+const FOLDER_RUN_METRICS: SaveMetric[] = ["labels"];
 
 function valuesFromProject(project: ProjectResponse): AnalysisSettingsValues {
   return {
@@ -92,10 +93,14 @@ export function AnalysisSettingsButton({
   // id exists; jobId drives the progress modal afterwards.
   const [isApplying, setIsApplying] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
+  // Set when an interval change would regroup confirmed events; drives the
+  // type-to-confirm gate before the reprocess actually runs.
+  const [regroupImpact, setRegroupImpact] = useState<RegroupImpact | null>(null);
   // Before-stats captured at apply time; diffed against after-stats once
   // the reprocess finishes to show the "how the DB changed" summary.
   const pendingBeforeStats = useRef<ProjectStats | null>(null);
   const { showSummary, summaryUI } = useReprocessSummary(
+    runId,
     "Changes applied",
     FOLDER_RUN_METRICS,
   );
@@ -140,7 +145,27 @@ export function AnalysisSettingsButton({
     },
   });
 
+  // Button handler: warn first if the interval change would regroup
+  // confirmed events, otherwise apply straight away.
   const apply = async () => {
+    try {
+      const impact = await fetchRegroupImpact(
+        runId,
+        project.independence_interval,
+        values.independence_interval,
+      );
+      if (impact) {
+        setRegroupImpact(impact);
+        setOpen(false); // hand over to the confirm dialog
+        return;
+      }
+    } catch {
+      // Preview failed: don't block the user, fall through and apply.
+    }
+    await runApply();
+  };
+
+  const runApply = async () => {
     setIsApplying(true);
     setOpen(false);
     try {
@@ -237,6 +262,21 @@ export function AnalysisSettingsButton({
         progress={progress.progress}
         fallbackMessage="Saving settings..."
       />
+
+      {regroupImpact && (
+        <RegroupConfirmDialog
+          open
+          onOpenChange={(o) => !o && setRegroupImpact(null)}
+          impact={regroupImpact}
+          fromInterval={project.independence_interval}
+          toInterval={values.independence_interval}
+          isPending={isApplying || !!jobId}
+          onConfirm={() => {
+            setRegroupImpact(null);
+            runApply();
+          }}
+        />
+      )}
 
       {summaryUI}
     </>

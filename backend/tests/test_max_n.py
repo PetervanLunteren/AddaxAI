@@ -781,3 +781,181 @@ def test_event_card_chips_match_best_frame_gate(db):
     summaries = get_events_by_project(db, project.id, project_floor=0.5)
     assert len(summaries) == 1
     assert summaries[0]["labels"] == ["leopard"]  # carnivora chip gated out
+
+
+# ---------------------------------------------------------------------------
+# Preservation of the human layer across event regeneration (interval change)
+# ---------------------------------------------------------------------------
+
+
+def _file_with_dets(db, deployment_id, ts, dets):
+    """One file at time `ts` with `dets` = [(label, category, confidence)]."""
+    f = make_file(db, deployment_id=deployment_id, captured_at_local=ts)
+    for label, category, confidence in dets:
+        make_detection(
+            db, file_id=f.id, category=category, confidence=confidence, label=label
+        )
+    return f
+
+
+def _events(db, deployment_id):
+    return (
+        db.query(Event)
+        .filter(Event.deployment_id == deployment_id)
+        .order_by(Event.event_start_local)
+        .all()
+    )
+
+
+def test_generate_preserves_confirmed_and_human_count_when_unchanged(db):
+    """A reprocess that doesn't regroup an event (same interval) keeps its
+    confirmation and manual count."""
+    from app.api.crud.event import generate_events_for_project
+
+    project = make_project(db, counting_threshold=0.5, independence_interval=300)
+    dep = make_deployment(db, project_id=project.id)
+    # A close cow pair (one event) and a far-off bear (a second event).
+    _file_with_dets(db, dep.id, datetime(2024, 1, 1, 12, 0, 0), [("cow", "animal", 0.9)])
+    _file_with_dets(db, dep.id, datetime(2024, 1, 1, 12, 0, 30), [("cow", "animal", 0.9)])
+    _file_with_dets(db, dep.id, datetime(2024, 1, 1, 12, 10, 0), [("bear", "animal", 0.9)])
+    db.commit()
+
+    generate_events_for_project(db, project.id)
+    cow_event = _events(db, dep.id)[0]
+    cow_obs = (
+        db.query(EventObservation)
+        .filter_by(event_id=cow_event.id, label="cow")
+        .one()
+    )
+    cow_obs.human_count = 5
+    cow_event.confirmed = True
+    db.commit()
+
+    # Regenerate at the same interval: grouping is identical.
+    generate_events_for_project(db, project.id)
+
+    cow_event2 = _events(db, dep.id)[0]
+    assert cow_event2.confirmed is True
+    cow_obs2 = (
+        db.query(EventObservation)
+        .filter_by(event_id=cow_event2.id, label="cow")
+        .one()
+    )
+    assert cow_obs2.human_count == 5
+    assert cow_obs2.effective_count == 5
+
+
+def test_generate_interval_change_resets_merged_but_keeps_unaffected(db):
+    """Widening the interval merges some events (reset) but leaves others
+    untouched (preserved)."""
+    from app.api.crud.event import generate_events_for_project
+
+    project = make_project(db, counting_threshold=0.5, independence_interval=300)
+    # dep1: cow pair + far bear -> merges into one at a wide interval.
+    dep1 = make_deployment(db, project_id=project.id)
+    _file_with_dets(db, dep1.id, datetime(2024, 1, 1, 12, 0, 0), [("cow", "animal", 0.9)])
+    _file_with_dets(db, dep1.id, datetime(2024, 1, 1, 12, 0, 30), [("cow", "animal", 0.9)])
+    _file_with_dets(db, dep1.id, datetime(2024, 1, 1, 12, 10, 0), [("bear", "animal", 0.9)])
+    # dep2: a single deer file -> always its own event, unaffected.
+    dep2 = make_deployment(db, project_id=project.id)
+    _file_with_dets(db, dep2.id, datetime(2024, 1, 1, 12, 0, 0), [("deer", "animal", 0.9)])
+    db.commit()
+
+    generate_events_for_project(db, project.id)
+    cow_event = _events(db, dep1.id)[0]
+    deer_event = _events(db, dep2.id)[0]
+    db.query(EventObservation).filter_by(event_id=cow_event.id, label="cow").one().human_count = 4
+    db.query(EventObservation).filter_by(event_id=deer_event.id, label="deer").one().human_count = 2
+    cow_event.confirmed = True
+    deer_event.confirmed = True
+    db.commit()
+
+    # Widen the interval so dep1's two events merge.
+    project.independence_interval = 3600
+    db.commit()
+    generate_events_for_project(db, project.id)
+
+    dep1_events = _events(db, dep1.id)
+    assert len(dep1_events) == 1  # merged
+    merged = dep1_events[0]
+    assert merged.confirmed is False  # regrouped -> reset
+    cow_after = (
+        db.query(EventObservation).filter_by(event_id=merged.id, label="cow").one()
+    )
+    assert cow_after.human_count is None  # reverted to AI count
+
+    deer_after_event = _events(db, dep2.id)[0]
+    assert deer_after_event.confirmed is True  # unchanged grouping -> preserved
+    deer_after = (
+        db.query(EventObservation)
+        .filter_by(event_id=deer_after_event.id, label="deer")
+        .one()
+    )
+    assert deer_after.human_count == 2
+
+
+def test_generate_relabel_unconfirms_preserved_event(db):
+    """Same interval, but a label change inside a preserved event (e.g.
+    smoothing) still clears the confirmation, per the existing rule."""
+    from app.api.crud.event import generate_events_for_project
+    from app.models import Detection
+
+    project = make_project(db, counting_threshold=0.5, independence_interval=300)
+    dep = make_deployment(db, project_id=project.id)
+    _file_with_dets(db, dep.id, datetime(2024, 1, 1, 12, 0, 0), [("cow", "animal", 0.9)])
+    db.commit()
+
+    generate_events_for_project(db, project.id)
+    event = _events(db, dep.id)[0]
+    event.confirmed = True
+    db.commit()
+
+    # Relabel the detection (grouping unchanged, species set changes).
+    db.query(Detection).update({"label": "elk"})
+    db.commit()
+    generate_events_for_project(db, project.id)
+
+    event2 = _events(db, dep.id)[0]
+    assert event2.confirmed is False
+
+
+def test_count_regroup_impact(db):
+    """Preview counts confirmed events / manual counts a regroup would reset,
+    and is zero when the interval is unchanged."""
+    from app.api.crud.event import count_regroup_impact, generate_events_for_project
+
+    project = make_project(db, counting_threshold=0.5, independence_interval=300)
+    dep1 = make_deployment(db, project_id=project.id)
+    _file_with_dets(db, dep1.id, datetime(2024, 1, 1, 12, 0, 0), [("cow", "animal", 0.9)])
+    _file_with_dets(db, dep1.id, datetime(2024, 1, 1, 12, 0, 30), [("cow", "animal", 0.9)])
+    _file_with_dets(db, dep1.id, datetime(2024, 1, 1, 12, 10, 0), [("bear", "animal", 0.9)])
+    dep2 = make_deployment(db, project_id=project.id)
+    _file_with_dets(db, dep2.id, datetime(2024, 1, 1, 12, 0, 0), [("deer", "animal", 0.9)])
+    db.commit()
+
+    generate_events_for_project(db, project.id)
+    cow_event = _events(db, dep1.id)[0]
+    deer_event = _events(db, dep2.id)[0]
+    db.query(EventObservation).filter_by(event_id=cow_event.id, label="cow").one().human_count = 4
+    cow_event.confirmed = True
+    deer_event.confirmed = True
+    db.commit()
+
+    # Widening merges dep1's cow event; dep2's deer event is unaffected.
+    merging = count_regroup_impact(db, project.id, 3600)
+    assert merging["total_confirmed"] == 2
+    assert merging["confirmed_at_risk"] == 1
+    assert merging["counts_at_risk"] == 1
+    # The example points at the regrouped cow event: its confirmed count,
+    # its time range, and that its files land in one merged event.
+    example = merging["example"]
+    assert example is not None
+    assert example["observations"] == [{"label": "cow", "count": 4}]
+    assert example["maps_to"] == 1
+    assert example["time_range"] is not None
+
+    # Same interval: nothing at risk, no example.
+    unchanged = count_regroup_impact(db, project.id, 300)
+    assert unchanged["confirmed_at_risk"] == 0
+    assert unchanged["counts_at_risk"] == 0
+    assert unchanged["example"] is None

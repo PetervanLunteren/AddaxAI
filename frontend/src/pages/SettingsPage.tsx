@@ -25,9 +25,12 @@ import {
 import { AnalysisSettingsRows } from "../components/settings/AnalysisSettingsRows";
 import { ApplySettingsModal } from "../components/settings/ApplySettingsModal";
 import {
+  fetchRegroupImpact,
   hasReprocessChanges,
+  type RegroupImpact,
   startReprocessIfNeeded,
 } from "../lib/reprocessSettings";
+import { RegroupConfirmDialog } from "../components/settings/RegroupConfirmDialog";
 import {
   buildSaveResults,
   fetchStats,
@@ -156,7 +159,7 @@ export default function SettingsPage() {
   // Unified save flow state
   const [saveJobId, setSaveJobId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false); // shows modal before job ID is known
-  const { showSummary, summaryUI } = useReprocessSummary();
+  const { showSummary, summaryUI } = useReprocessSummary(projectId ?? "");
   // Stores before-stats + the new threshold while reprocessing runs (the
   // after-stats fetch needs the threshold for the Detections card).
   const pendingBeforeStats = useRef<{
@@ -172,6 +175,12 @@ export default function SettingsPage() {
   const [reEmbedJobId, setReEmbedJobId] = useState<string | null>(null);
   const [reEmbedDetectionCount, setReEmbedDetectionCount] = useState(0);
   const pendingFormData = useRef<SettingsFormData | null>(null);
+
+  // Interval-change regroup confirmation. When an interval change would
+  // reset confirmed counts, we hold the pending save until the user types
+  // the confirm word.
+  const [regroupImpact, setRegroupImpact] = useState<RegroupImpact | null>(null);
+  const pendingRegroupData = useRef<SettingsFormData | null>(null);
 
   // Fetch current project
   const { data: project, isLoading: projectLoading } = useQuery({
@@ -486,7 +495,10 @@ export default function SettingsPage() {
     },
   });
 
-  const onSubmit = async (data: SettingsFormData) => {
+  const saveSettings = async (
+    data: SettingsFormData,
+    regroupConfirmed = false,
+  ) => {
     if (!projectId) return;
 
     // Validate that at least one label remains included
@@ -500,9 +512,26 @@ export default function SettingsPage() {
       }
     }
 
+    const currentValues = form.formState.defaultValues as SettingsFormData;
+
+    // Gate (outermost): an interval change that would reset confirmed counts
+    // must be confirmed first, before any save or re-embed. Preview failures
+    // don't block the save.
+    if (!regroupConfirmed) {
+      const impact = await fetchRegroupImpact(
+        projectId,
+        currentValues.independence_interval,
+        data.independence_interval,
+      ).catch(() => null);
+      if (impact) {
+        pendingRegroupData.current = data;
+        setRegroupImpact(impact);
+        return;
+      }
+    }
+
     // Intercept embedding model change — confirm only when replacing an existing model
     // and there are detections to re-embed. Skip for "none" → model (first-time enable).
-    const currentValues = form.formState.defaultValues as SettingsFormData;
     const oldEmbModel = currentValues.embedding_model_id || "none";
     const newEmbModel = data.embedding_model_id || "none";
     if (oldEmbModel !== newEmbModel && oldEmbModel !== "none" && newEmbModel !== "none") {
@@ -686,7 +715,7 @@ export default function SettingsPage() {
         {/* Settings form */}
         <TooltipProvider>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" key={project?.id}>
+            <form onSubmit={form.handleSubmit((data) => saveSettings(data))} className="space-y-6" key={project?.id}>
             {/* Card: Models */}
             <Card>
               <CardHeader>
@@ -1280,6 +1309,26 @@ export default function SettingsPage() {
 
         {/* Save toast + effect-on-statistics modal */}
         {summaryUI}
+
+        {/* Interval-change regroup confirmation */}
+        {regroupImpact && (
+          <RegroupConfirmDialog
+            open
+            onOpenChange={(o) => !o && setRegroupImpact(null)}
+            impact={regroupImpact}
+            fromInterval={
+              form.formState.defaultValues?.independence_interval ?? 0
+            }
+            toInterval={pendingRegroupData.current?.independence_interval ?? 0}
+            isPending={isSaving || !!saveJobId}
+            onConfirm={() => {
+              setRegroupImpact(null);
+              const data = pendingRegroupData.current;
+              pendingRegroupData.current = null;
+              if (data) saveSettings(data, true);
+            }}
+          />
+        )}
 
         {/* Model Preparation Error Dialog */}
         <Dialog open={preparationStage === "error"} onOpenChange={(open) => !open && setPreparationStage("form")}>

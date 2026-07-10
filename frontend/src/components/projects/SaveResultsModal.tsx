@@ -1,20 +1,12 @@
 /**
- * Modal showing before/after statistics after a settings change.
- *
- * Three cards, named to match the rest of the app (dashboard cards,
- * site/deployment sheets, statistics.py):
- * 1. Detections — raw count above confidence threshold.
- * 2. Observations — MaxN (peak individuals) per event, summed across
- *    events. What the app calls "Observations" everywhere else and the
- *    number most ecology analyses feed on.
- * 3. Events — distinct events after independence grouping.
- *
- * Each card shows total before → after plus a collapsible per-label
- * breakdown with a trailing "N other labels unchanged" line.
+ * Modal showing before/after statistics after a settings change, named
+ * for the two things users verify: Labels (detections per species) and
+ * Counts (individuals per species). Each card lists the per-species
+ * changes with a trailing "N other labels unchanged" line, or "No
+ * change." when that card was untouched. Which cards show is set by the
+ * `metrics` prop (folder-run refine shows Labels only).
  */
 
-import { useEffect, useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -42,12 +34,19 @@ export interface StatSnapshot {
 }
 
 export interface SaveResults {
-  /** Raw detection counts above threshold. */
+  /** Per-label detection counts (the "Labels" card). */
   observations: { before: StatSnapshot; after: StatSnapshot };
-  /** MaxN per event, summed across events. */
+  /** Per-species effective_count, human count where set (the "Counts" card). */
   independent_observations: { before: StatSnapshot; after: StatSnapshot };
-  /** Distinct events after independence grouping. */
-  events: { before: StatSnapshot; after: StatSnapshot };
+}
+
+/** Verified labels / confirmed counts that reprocessing leaves untouched.
+ * Shown as footer lines so a small (or zero) diff still tells its story. */
+export interface Protection {
+  verifiedLabels: number;
+  totalLabels: number;
+  confirmedCounts: number;
+  totalCounts: number;
 }
 
 interface SaveResultsModalProps {
@@ -56,18 +55,14 @@ interface SaveResultsModalProps {
   results: SaveResults;
   /** Subset + order of cards to show. Defaults to all three. */
   metrics?: SaveMetric[];
+  /** Verified/confirmed share, rendered as footer lines. */
+  protection?: Protection | null;
 }
 
 // --- Helpers ---
 
 function normalizeLabel(s: string): string {
   return s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
-}
-
-function Code({ children }: { children: React.ReactNode }) {
-  return (
-    <code className="bg-muted px-1.5 py-0.5 rounded text-xs">{children}</code>
-  );
 }
 
 function formatDelta(before: number, after: number): string {
@@ -107,15 +102,11 @@ function StatCard({
   subtitle,
   before,
   after,
-  expanded,
-  onToggle,
 }: {
   title: string;
   subtitle: string;
   before: StatSnapshot;
   after: StatSnapshot;
-  expanded: boolean;
-  onToggle: () => void;
 }) {
   const diff = computeLabelDiff(before.labels, after.labels);
   const totalLabels = new Set([
@@ -130,54 +121,31 @@ function StatCard({
         <p className="text-sm font-medium">{title}</p>
         <p className="text-xs text-muted-foreground">{subtitle}</p>
 
-        <p className="text-sm text-muted-foreground mt-1">
-          <Code>{before.total.toLocaleString()}</Code>
-          {" \u2192 "}
-          <Code>{after.total.toLocaleString()}</Code>
-          {" "}<Code>({formatDelta(before.total, after.total)})</Code>
-        </p>
-
-        {diff.length > 0 && (
-          <>
-            <button
-              type="button"
-              onClick={onToggle}
-              className="text-xs text-muted-foreground hover:underline flex items-center gap-1 mt-1"
-            >
-              {expanded ? (
-                <ChevronUp className="h-3 w-3" />
-              ) : (
-                <ChevronDown className="h-3 w-3" />
-              )}
-              {expanded ? "Hide" : "Show"} breakdown ({diff.length} label
-              {diff.length === 1 ? "" : "s"} changed)
-            </button>
-
-            {expanded && (
-              <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
-                {diff.map(({ label, before: b, after: a }) => (
-                  <div
-                    key={label}
-                    className="flex justify-between items-center text-xs text-muted-foreground"
-                  >
-                    <span>{normalizeLabel(label)}</span>
-                    <span className="tabular-nums">
-                      <SmallCode>{b}</SmallCode>
-                      {" \u2192 "}
-                      <SmallCode>{a}</SmallCode>
-                      {" "}<SmallCode>({formatDelta(b, a)})</SmallCode>
-                    </span>
-                  </div>
-                ))}
-                {unchangedCount > 0 && (
-                  <p className="text-xs text-muted-foreground italic pt-1">
-                    {unchangedCount} other label
-                    {unchangedCount === 1 ? "" : "s"} unchanged
-                  </p>
-                )}
+        {diff.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic mt-2">No change.</p>
+        ) : (
+          <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
+            {diff.map(({ label, before: b, after: a }) => (
+              <div
+                key={label}
+                className="flex justify-between items-center text-xs text-muted-foreground"
+              >
+                <span>{normalizeLabel(label)}</span>
+                <span className="tabular-nums">
+                  <SmallCode>{b}</SmallCode>
+                  {" \u2192 "}
+                  <SmallCode>{a}</SmallCode>
+                  {" "}<SmallCode>({formatDelta(b, a)})</SmallCode>
+                </span>
               </div>
+            ))}
+            {unchangedCount > 0 && (
+              <p className="text-xs text-muted-foreground italic pt-1">
+                {unchangedCount} other label
+                {unchangedCount === 1 ? "" : "s"} unchanged
+              </p>
             )}
-          </>
+          </div>
         )}
       </CardContent>
     </Card>
@@ -186,26 +154,21 @@ function StatCard({
 
 // --- Component ---
 
+function pct(part: number, total: number): number {
+  return total > 0 ? Math.round((part / total) * 100) : 0;
+}
+
 export function SaveResultsModal({
   open,
   onOpenChange,
   results,
   metrics = ALL_METRICS,
+  protection,
 }: SaveResultsModalProps) {
-  const [expanded, setExpanded] = useState<Set<SaveMetric>>(new Set());
-
-  // Reset collapse state each time modal opens
-  useEffect(() => {
-    if (open) setExpanded(new Set());
-  }, [open]);
-
-  const toggle = (metric: SaveMetric) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(metric)) next.delete(metric);
-      else next.add(metric);
-      return next;
-    });
+  const showLabelsProtection =
+    !!protection && metrics.includes("labels") && protection.totalLabels > 0;
+  const showCountsProtection =
+    !!protection && metrics.includes("counts") && protection.totalCounts > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -224,12 +187,27 @@ export function SaveResultsModal({
                 subtitle={METRIC_META[metric].subtitle}
                 before={before}
                 after={after}
-                expanded={expanded.has(metric)}
-                onToggle={() => toggle(metric)}
               />
             );
           })}
         </div>
+
+        {(showLabelsProtection || showCountsProtection) && protection && (
+          <div className="border-t pt-3 mt-1 space-y-0.5 text-xs text-muted-foreground">
+            {showLabelsProtection && (
+              <p>
+                {pct(protection.verifiedLabels, protection.totalLabels)}% of
+                labels are verified and were left unchanged.
+              </p>
+            )}
+            {showCountsProtection && (
+              <p>
+                {pct(protection.confirmedCounts, protection.totalCounts)}% of
+                counts are confirmed and were left unchanged.
+              </p>
+            )}
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

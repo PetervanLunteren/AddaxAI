@@ -42,6 +42,50 @@ export function hasReprocessChanges(
   return false;
 }
 
+/** Seconds → a tidy minutes label, e.g. 300 → "5 min", matching the
+ * IntervalControl's minute-based presets. */
+export function formatInterval(seconds: number): string {
+  if (seconds <= 0) return "disabled";
+  const mins =
+    seconds % 60 === 0
+      ? String(seconds / 60)
+      : String(Number((seconds / 60).toFixed(4)));
+  return `${mins} min`;
+}
+
+export interface RegroupExample {
+  time_range: string | null;
+  observations: { label: string; count: number }[];
+  /** How many new events this event's files land in (1 = merged, >1 = split). */
+  maps_to: number;
+}
+
+export interface RegroupImpact {
+  confirmed_at_risk: number;
+  counts_at_risk: number;
+  total_confirmed: number;
+  example: RegroupExample | null;
+}
+
+/**
+ * When the independence interval changed, return how much confirmed count
+ * work a regroup would reset, but only if any is actually at risk. Returns
+ * null when the interval is unchanged or nothing would be lost, i.e. when
+ * no warning is needed. Shared by both apply surfaces so the gate can't drift.
+ */
+export async function fetchRegroupImpact(
+  projectId: string,
+  oldInterval: number,
+  newInterval: number,
+): Promise<RegroupImpact | null> {
+  if (newInterval === oldInterval) return null;
+  const impact = await projectsApi.regroupPreview(projectId, newInterval);
+  if (impact.confirmed_at_risk === 0 && impact.counts_at_risk === 0) {
+    return null;
+  }
+  return impact;
+}
+
 /**
  * Kick off a reprocess job when the project has classifications to
  * reprocess. Returns the job id to track, or null when there is

@@ -162,15 +162,6 @@ def test_get_label_stats_empty(client, db):
     assert resp.json() == []
 
 
-def test_get_independent_event_stats_empty(client, db):
-    p = make_project(db)
-    resp = client.get(f"/api/projects/{p.id}/independent-event-stats")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["total"] == 0
-    assert data["labels"] == []
-
-
 def _add_observation(db, *, event_id, label, category="animal", max_n=1, human_count=None):
     from app.models.event_observation import EventObservation
 
@@ -214,30 +205,18 @@ def test_independent_observation_stats_honours_human_count(client, db):
     assert data["total"] == 6
 
 
-def test_independent_event_stats_from_observations(client, db):
-    """Frequency counts distinct events per label from the materialized
-    observations (so human-added species count, person is excluded)."""
-    from datetime import datetime
-
-    from tests.conftest import make_deployment, make_event_with_files
-
+def test_regroup_preview_empty(client, db):
     p = make_project(db)
-    dep = make_deployment(db, project_id=p.id)
-    ev1 = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 1, 12, 0, 0)
+    resp = client.get(
+        f"/api/projects/{p.id}/regroup-preview?independence_interval=1800"
     )
-    ev2 = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 2, 12, 0, 0)
-    )
-    _add_observation(db, event_id=ev1.id, label="lion", max_n=1)
-    _add_observation(db, event_id=ev2.id, label="lion", max_n=2)
-    _add_observation(db, event_id=ev1.id, label="person", category="person", max_n=1)
-
-    resp = client.get(f"/api/projects/{p.id}/independent-event-stats")
     assert resp.status_code == 200
-    data = resp.json()
-    assert data["labels"] == [{"label": "lion", "count": 2}]
-    assert data["total"] == 2
+    assert resp.json() == {
+        "confirmed_at_risk": 0,
+        "counts_at_risk": 0,
+        "total_confirmed": 0,
+        "example": None,
+    }
 
 
 # --- Reprocess / Re-embed ---

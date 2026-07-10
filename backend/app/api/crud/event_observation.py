@@ -8,6 +8,7 @@ event_observations table.
 
 import uuid
 from collections import defaultdict
+from dataclasses import dataclass
 
 from sqlalchemy import delete, func, or_
 from sqlalchemy.orm import Session
@@ -18,6 +19,21 @@ from app.models.event import event_files
 from app.models.event_observation import EventObservation
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class PriorObs:
+    """A snapshot of one prior EventObservation, enough to carry the human
+    layer (human_count, human-only rows) and detect an effective-set change.
+    Its attribute names mirror EventObservation so `calculate_max_n_for_event`
+    can read either interchangeably. Used to carry the human layer of a
+    deleted event onto its regenerated replacement (same file set)."""
+
+    label: str | None
+    label_taxonomy_id: str | None
+    category: str
+    human_count: int | None
+    effective_count: int
 
 
 def _threshold_clause(threshold: float):
@@ -32,10 +48,17 @@ def calculate_max_n_for_event(
     db: Session,
     event_id: str,
     counting_threshold: float,
+    prior: list[PriorObs] | None = None,
 ) -> list[EventObservation]:
     """
     Recalculate the AI-derived MaxN per species for a single event, while
     preserving the human-authoritative data layered on top.
+
+    `prior` supplies the human layer to carry when the event was just
+    (re)created and has no rows of its own yet, e.g. during an interval
+    change where a deleted event's replacement covers the same files. When
+    None, the event's own current rows are used (the normal relabel/verify
+    path).
 
     Algorithm:
     1. Count detections per (file, frame, taxonomy) and take the maximum
@@ -98,9 +121,12 @@ def calculate_max_n_for_event(
     )
 
     # Snapshot the existing rows so the human layer survives the rebuild
-    # and so we can detect whether the effective set changed.
+    # and so we can detect whether the effective set changed. A caller can
+    # pass `prior` instead (a freshly recreated event has no rows of its own).
     existing = (
-        db.query(EventObservation)
+        prior
+        if prior is not None
+        else db.query(EventObservation)
         .filter(EventObservation.event_id == event_id)
         .all()
     )

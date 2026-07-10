@@ -5,7 +5,11 @@ REMOVE THE MAX-DETECTIONS KNOB - the "max detections" view option is a memory gu
 
 I just implemented a full screen option to this verification page on this repo: /Users/peter/Documents/Repos/dronewild-webapp/ investigate how that works. WOuld it make sense to add that option to the space cramped pages in this app too? So for labels and counts? What do you think? Be honest. Worth the effort, or not? 
 
-"Where everything gets written. Defaults to the folder you analysed; your originals are never overwritten." -> Where everything gets written. Defaults to the folder you analysed. Your originals are never overwritten.
+
+
+
+
+"Where everything gets written. Defaults to the folder you analysed; your originals are never overwritten." -> "Where everything gets written. Defaults to the folder you analysed. Your originals are never overwritten."
 
 "Your media sorted into folders, videos as a best-frame image" -> Your media sorted into folders. Videos are written as best-frame images.
 
@@ -494,7 +498,7 @@ in the outputs CSVs, there are redundant columns like eventID, deploymentID etc.
 
 ## Nice to haves
 - [ ] If there are new detections there is a mechanism that lets the user re-embed them so they are added later in the process. Can we do that for classification too? Imagine this scenario: User runs folder run at all the defaults with csl model SpeciesNet. IIn labels page it sets the det thresh to 0.01-1 to include all detections. there is an option to add embeddings for the ones that did not get embeddings right away, but the ones without a cls label will always remain null ( or effetively "animal"). How difficult would it be to have a similar mechanism as the embedding, but then for classifications? Is it hard to do? Can we reuse the embedding logic? Dont bother if its hard to do, since its a pretty nice use case, so KISS. ALso DRY YAGNI. Be honest, no sugar coating. 
-- [ ] 
+- [ ] Take a look at https://huggingface.co/conservationxlabs/miewid-msv3. IS that a better embedding model than DINOv2? 
 - [ ] 
 - [ ] APT REPO FOR LINUX UPDATES - host a small signed apt repository so Linux users add it once and then get AddaxAI updates through Ubuntu's normal Software Updater. Currently a new deb opened in the App Center shows a greyed-out "Installed" button with no update path (App Center limitation for sideloaded debs), so BETA.md tells users to run `sudo apt install ./AddaxAI-amd64.deb` by hand. An apt repo also removes the "Unknown publisher / potentially unsafe" warning on the install page. Only worth it if Linux uptake grows beyond the current handful of users.
 - [ ] SUBSAHARA GEOFILE - Add a geolocation file for the Sub Saharan model too, like SpeciesNet, so users of the SSmodel can also prefil by country. 

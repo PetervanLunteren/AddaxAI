@@ -15,7 +15,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import distinct, func, or_, text
+from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -861,40 +861,22 @@ def get_independent_observation_stats(
     return {"total": total, "labels": label_counts}
 
 
-@router.get("/{project_id}/independent-event-stats")
-def get_independent_event_stats(
+@router.get("/{project_id}/regroup-preview")
+def get_regroup_preview(
     project_id: str,
+    independence_interval: int,
     db: Session = Depends(get_db),
 ) -> dict:
     """
-    Count independent events per label for a project.
-
-    Reads the materialized ``event_observations`` (the same source the
-    dashboard "frequency" bars use): each label's count is the number of
-    distinct events it appears in. This honours human-added/removed
-    species and verified labels. Event grouping (the independence
-    interval) is baked into that materialized state, so it is not a query
-    parameter here. Animal labels only. Returns ``{total, labels}``.
+    How much count verification a change to `independence_interval` would
+    reset. Changing the interval re-clusters events; an event's confirmation
+    and manual counts only survive when its file set still forms one cluster.
+    Returns ``{confirmed_at_risk, counts_at_risk, total_confirmed}`` so the UI
+    can warn before regrouping. Read-only.
     """
-    rows = (
-        db.query(
-            EventObservation.label,
-            func.count(distinct(Event.id)).label("count"),
-        )
-        .join(Event, Event.id == EventObservation.event_id)
-        .join(Deployment, Event.deployment_id == Deployment.id)
-        .filter(Deployment.project_id == project_id)
-        .filter(EventObservation.category == "animal")
-        .filter(EventObservation.label.isnot(None))
-        .group_by(EventObservation.label)
-        .order_by(func.count(distinct(Event.id)).desc())
-        .all()
-    )
+    from app.api.crud import event as crud_event
 
-    total = sum(row[1] for row in rows)
-    label_counts = [{"label": row[0], "count": int(row[1])} for row in rows]
-
-    return {"total": total, "labels": label_counts}
+    return crud_event.count_regroup_impact(db, project_id, independence_interval)
 
 
 @router.post(
