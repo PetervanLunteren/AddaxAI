@@ -267,6 +267,12 @@ interface RunQueueModalProps {
    * callback so the caller can chain navigation after close. When
    * omitted, the projects-mode default is rendered. */
   renderTerminalFooter?: (info: RunQueueTerminalInfo) => React.ReactNode;
+  /** Folder-run "What next?" body rows on a successful completion,
+   * mirroring the projects-mode rows the modal renders itself. Receives
+   * the same terminal info as the footer (close + isClosing) so the
+   * caller can close before navigating. Keeps the folder-run navigation
+   * (updateStep + navigate) out of this shared component. Folder-run only. */
+  renderTerminalNextSteps?: (info: RunQueueTerminalInfo) => React.ReactNode;
   /** Whether to delete completed/failed queue entries on close.
    * Projects mode wants this (true, default) because the queue is a
    * scratch list. Folder-run mode wants this off so the entry stays
@@ -289,6 +295,7 @@ export function RunQueueModal({
   queueEntryIds,
   onAnalysisComplete,
   renderTerminalFooter,
+  renderTerminalNextSteps,
   deleteQueueEntriesOnClose = true,
   mode = "projects",
 }: RunQueueModalProps) {
@@ -449,7 +456,7 @@ export function RunQueueModal({
           <DialogDescription>
             {isComplete
               ? mode === "folder-run"
-                ? "Your folder has been analysed. AddaxAI suggested a species and a count for everything it found. The next steps let you review and correct them before saving."
+                ? "Your folder has been analysed. AddaxAI suggested a species for everything it found. You can review and edit the labels, or go straight to saving."
                 : "AddaxAI filled in a suggested species label and a count for everything it found. You can accept these as they are, but the AI makes mistakes, so a quick review is recommended."
               : hasCancelled
                 ? mode === "folder-run"
@@ -636,6 +643,24 @@ export function RunQueueModal({
               />
             </div>
           )}
+
+          {/* Folder-run "What next?" — the caller supplies the rows so its
+              step navigation stays out of this shared component. */}
+          {isComplete &&
+            mode === "folder-run" &&
+            successCount > 0 &&
+            renderTerminalNextSteps && (
+              <div className="space-y-2 pt-1">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  What next?
+                </p>
+                {renderTerminalNextSteps({
+                  kind: "completed",
+                  close: handleClose,
+                  isClosing,
+                })}
+              </div>
+            )}
 
           {!inTerminalState && (
             <>

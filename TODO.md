@@ -1,24 +1,5 @@
 # TODO
 
-New point / feature request:
-
-
-
-  it would be really nice to be able to have a "load .csv" button here that loads the same .csv format that I use for restrict_to_taxa_list.  This is
-  always how I run SpeciesNet for users now (instead of using the geofence), and IMO it creates much cleaner results than the default geofence.
-  Definitely not required, but a useful future feature for us to chat about.
-
-  https://megadetector.readthedocs.io/en/latest/postprocessing.html#megadetector.postprocessing.classification_postprocessing.restrict_to_taxa_list
-
-
-  ------
-
-
-  There is already a save and load option in the species selection modals. It woiuld be great if we could change the current format (JSON) to match the
-  same as restrict to taxa list. Here is an example:
-
-  /Users/peter/Downloads/mapped_taxonomy.csv
-
 ## Priority 1
 - [ ] ORPHANED BACKEND PROCESS - the packaged app can leave its backend running after quit, and the next launch then silently talks to the stale backend. Observed on Peters mac (2026-07-07): /Applications/AddaxAI.app backend orphaned on port 8000, PPID 1. Three causes in electron/src/main.ts: (1) stopBackend() sends SIGTERM blind, never verifies exit, no SIGKILL fallback; uvicorn graceful shutdown can hang forever on open connections (an open browser tab is enough). (2) the relaunch path uses app.exit(0), which skips before-quit/will-quit entirely, so stopBackend never runs on relaunch. (3) force-quit/crash. Worst consequence: after an update, the new app fails to bind 8000 but the health check gets an answer from the STALE old-version backend and uses it -> new frontend on old backend, schema drift, unexplainable bugs. Fix ideas: SIGTERM then wait then SIGKILL; call stopBackend explicitly before app.exit in the relaunch path; on startup, verify the /health version matches the app version and kill/refuse a stale backend.
 - [ ] projects menu sidebar: the "Per class performance" text is too long. Propose shorter alternative. Perhaps class performace? 
@@ -458,6 +439,11 @@ New point / feature request:
 - [ ] REPEAT DETECTION ELIMINATION
 - [ ] WLIDBOOKS INTEGRATION
 - [ ] EARTHRANGER/GUNDI integration
+- [ ] CONSUME restrict_to_taxa_list - Get the most out of “vanilla SpeciesNet”. In particular, many issues that might make fine-tuning seem like a good option can be resolved by just remapping SpeciesNet’s outputs differently, instead of using the standard SpeciesNet geofence (a list of taxa that are allowed in each country (or US state)). You can do this with the restrict_to_taxa_list function, which takes a list of SpeciesNet taxa in a .csv file, and maps them to whatever labels you want. In addition to mapping one species to another, you could, for example, map all birds that aren’t otherwise mapped to an “other bird” label. This skill or this app can help you make those .csv files. More generally, I have some “pro tips” for getting the most out of MegaDetector and SpeciesNet here.
+            https://megadetector.readthedocs.io/en/latest/postprocessing.html#megadetector.postprocessing.classification_postprocessing.restrict_to_taxa_list
+            https://github.com/agentmorris/agentmorrispublic/blob/main/skills/speciesnet-taxonomy-mapping/SKILL.md
+            http://dmorris.net/speciesnet-taxonomy-mapper
+            http://lila.science/speciesnet-pro-tips
 
 ## Documentation
 - [ ] Make a tutorial on how to move data between computers. "The difficulty is that AddaxAI uses three data sources, and all are required. The raw images and videos (to show you while doing verification)The internal JSON files hidden in the processed folders (to reprocess after settings are changed)The internal AddaxAI database (stores all detections, verification statuses, etc)If we want to move everything to a new computer, we must move all three of these components. Luckily, components 1 and 2 are together, so if you have the images on an external drive, you can just plug it into a new computer. Then, you also need to move the DB, which means you must back it up manually, move the DB file to the new computer, and then restore from the there. "

@@ -45,13 +45,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import * as z from "zod";
 import {
+  ArrowRight,
   ChevronDown,
   Loader2,
   RotateCcw,
   Sparkles,
+  Tag,
 } from "lucide-react";
 
 import { Button } from "../../components/ui/button";
+import { NextStepRow } from "../../components/ui/next-step-row";
 import { Callout } from "../../components/ui/callout";
 import {
   DETECTION_IMAGE_SIZE_DEFAULT,
@@ -598,7 +601,12 @@ export function FolderRunModelStep() {
 
   const skipAnalysis = () => {
     if (!lookupRun) return;
-    navigate(`/folder-runs/${lookupRun.id}/labels`);
+    // Go to the furthest step the run reached, so skipping the re-run
+    // never drags the user backward (e.g. from an already-reached save
+    // step down to labels). A run that never advanced past setup falls
+    // forward to labels, the first post-analysis step.
+    const target = lookupRun.step === "setup" ? "labels" : lookupRun.step;
+    navigate(`/folder-runs/${lookupRun.id}/${target}`);
   };
 
   /** Re-run handler. The destructive path depends on whether the
@@ -1419,43 +1427,42 @@ export function FolderRunModelStep() {
           projectId={runId}
           mode="folder-run"
           deleteQueueEntriesOnClose={false}
-          renderTerminalFooter={({ kind, close, isClosing }) => {
-            const advance = async () => {
+          renderTerminalNextSteps={({ close, isClosing }) => {
+            // Close, then wipe the cache (the run regenerated detections,
+            // events, observations, files, and every derived stat), set
+            // the server-side step, and navigate. Re-set the folder-run
+            // entry so the layout doesn't flash a refetch.
+            const goTo = (step: "labels" | "save") => async () => {
               await close();
-              // The run regenerated detections, events, observations,
-              // files, and every derived stat. Drop the whole cache so
-              // the Edit step and dashboard load fresh data instead of
-              // stale pre-run ids and counts. (Re-set the folder-run
-              // entry below so the layout doesn't flash a refetch.)
               queryClient.invalidateQueries();
-              const next = await folderRunsApi.updateStep(
-                runId,
-                "labels",
-              );
+              const next = await folderRunsApi.updateStep(runId, step);
               queryClient.setQueryData(["folder-run", runId], next);
-              navigate(`/folder-runs/${runId}/labels`);
+              navigate(`/folder-runs/${runId}/${step}`);
             };
-            if (kind === "completed") {
-              return (
-                <Button
-                  disabled={isClosing}
-                  onClick={advance}
-                  className="gap-2"
-                >
-                  Continue
-                </Button>
-              );
-            }
             return (
-              <Button
-                variant="outline"
-                disabled={isClosing}
-                onClick={close}
-              >
-                Close
-              </Button>
+              <>
+                <NextStepRow
+                  icon={Tag}
+                  title="Review and edit labels"
+                  description="The human-in-the-loop step: edit the species AddaxAI assigned."
+                  disabled={isClosing}
+                  onClick={goTo("labels")}
+                />
+                <NextStepRow
+                  icon={ArrowRight}
+                  title="Go straight to saving"
+                  description="Keep the AI labels as they are and save the results or media copies for further analysis."
+                  disabled={isClosing}
+                  onClick={goTo("save")}
+                />
+              </>
             );
           }}
+          renderTerminalFooter={({ close, isClosing }) => (
+            <Button variant="outline" disabled={isClosing} onClick={close}>
+              Close
+            </Button>
+          )}
         />
       )}
     </>
