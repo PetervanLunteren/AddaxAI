@@ -6,7 +6,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Stage, Layer, Rect, Text, Image as KonvaImage, Transformer, Shape, Circle, Group } from "react-konva";
+import { Stage, Layer, Rect, Text, Image as KonvaImage, Transformer, Shape, Group } from "react-konva";
 import { useMutation } from "@tanstack/react-query";
 import { detectionsApi } from "../../api/detections";
 import { getDetectionColor, shouldDrawBbox } from "../../lib/detection-utils";
@@ -14,12 +14,9 @@ import { basename } from "../../lib/path-utils";
 import {
   roundedRectPath,
   computePillLayout,
-  PILL_PAD_X,
   PILL_PAD_Y,
-  DOT_R,
   LINE_GAP,
-  FONT_SM,
-  FONT_LG,
+  FONT,
   TEXT_START_X,
   BBOX_CORNER_RADIUS,
   BBOX_OPACITY,
@@ -627,10 +624,8 @@ export function AnnotationCanvas({
             const color = getDetectionColor(detection);
             const isSelected = selectedDetectionId === detection.id;
             const pill = computePillLayout(detection);
-            // Read-only focus: a slightly bolder colored line so it stays
-            // dominant, flanked by thin casing hairlines (white one line in,
-            // black one line out). Offset by half the colored width plus half
-            // the hairline so they sit beside the color, never over it.
+            // Read-only focus uses a slightly bolder colored line so it
+            // stays dominant.
             const colorW = readOnly
               ? isSelected
                 ? 2.9
@@ -638,14 +633,11 @@ export function AnnotationCanvas({
               : isSelected
                 ? 3
                 : 2;
-            const caseW = 0.48;
-            // In read-only mode keep the line + hairlines a constant screen
-            // width by dividing out the zoom, so zooming into a small animal
-            // gives a thin border (not one scaled up to eat the pixels).
+            // In read-only mode keep the line a constant screen width by
+            // dividing out the zoom, so zooming into a small animal gives a
+            // thin border (not one scaled up to eat the pixels).
             const zDiv = readOnly ? zoom : 1;
             const lineW = colorW / zDiv;
-            const hairW = caseW / zDiv;
-            const caseOff = (colorW + caseW) / 2 / zDiv;
 
             // Clamp the pill so it stays inside the stage. Without this, a
             // bbox near the right edge of the image pushes its label pill
@@ -658,39 +650,6 @@ export function AnnotationCanvas({
 
             return (
               <React.Fragment key={detection.id}>
-                {/* Read-only focus has no dim to provide contrast, so the
-                    colored line gets a single black hairline just outside it
-                    (carries it on light backgrounds) and a single white
-                    hairline just inside (on dark ones): white / color / black,
-                    not a symmetric sandwich. */}
-                {readOnly && (
-                  <>
-                    <Rect
-                      x={x - caseOff}
-                      y={y - caseOff}
-                      width={w + caseOff * 2}
-                      height={h + caseOff * 2}
-                      stroke="rgba(0,0,0,0.6)"
-                      strokeWidth={hairW}
-                      fill="transparent"
-                      cornerRadius={BBOX_CORNER_RADIUS + caseOff}
-                      listening={false}
-                    />
-                    {w - caseOff * 2 > 0 && h - caseOff * 2 > 0 && (
-                      <Rect
-                        x={x + caseOff}
-                        y={y + caseOff}
-                        width={w - caseOff * 2}
-                        height={h - caseOff * 2}
-                        stroke="rgba(255,255,255,0.7)"
-                        strokeWidth={hairW}
-                        fill="transparent"
-                        cornerRadius={Math.max(0, BBOX_CORNER_RADIUS - caseOff)}
-                        listening={false}
-                      />
-                    )}
-                  </>
-                )}
                 {/* Bounding box (stroke only, rounded) */}
                 <Rect
                   id={`det-${detection.id}`}
@@ -745,38 +704,20 @@ export function AnnotationCanvas({
                     fill={PILL_BG}
                     cornerRadius={BBOX_CORNER_RADIUS}
                   />
-                  <Circle
-                    x={PILL_PAD_X + DOT_R}
-                    y={pill.pillHeight / 2}
-                    radius={DOT_R}
-                    fill={pill.color}
+                  <Text
+                    x={TEXT_START_X}
+                    y={PILL_PAD_Y}
+                    text={pill.categoryText}
+                    fill="white"
+                    fontSize={FONT}
                   />
-                  {pill.hasLabel ? (
-                    <>
-                      <Text
-                        x={TEXT_START_X}
-                        y={PILL_PAD_Y}
-                        text={pill.categoryText}
-                        fill="rgba(255,255,255,0.7)"
-                        fontSize={FONT_SM}
-                      />
-                      <Text
-                        x={TEXT_START_X}
-                        y={PILL_PAD_Y + FONT_SM + LINE_GAP}
-                        text={pill.labelText}
-                        fill="white"
-                        fontSize={FONT_LG}
-                        fontStyle="bold"
-                      />
-                    </>
-                  ) : (
+                  {pill.hasLabel && (
                     <Text
                       x={TEXT_START_X}
-                      y={PILL_PAD_Y}
-                      text={pill.categoryText}
+                      y={PILL_PAD_Y + FONT + LINE_GAP}
+                      text={pill.labelText}
                       fill="white"
-                      fontSize={FONT_LG}
-                      fontStyle="bold"
+                      fontSize={FONT}
                     />
                   )}
                 </Group>

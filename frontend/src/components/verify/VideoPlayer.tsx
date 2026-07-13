@@ -15,12 +15,9 @@ import { splitPath } from "../../lib/path-utils";
 import {
   computePillLayout,
   roundedRectPath,
-  PILL_PAD_X,
   PILL_PAD_Y,
-  DOT_R,
   LINE_GAP,
-  FONT_SM,
-  FONT_LG,
+  FONT,
   TEXT_START_X,
   BBOX_STROKE_WIDTH,
   BBOX_OPACITY,
@@ -150,30 +147,12 @@ function drawOverlaysOnCanvas(
     ctx.fillStyle = PILL_BG;
     ctx.fill();
 
-    // Color dot
-    ctx.beginPath();
-    ctx.arc(
-      x + (PILL_PAD_X + DOT_R) * scale,
-      pillY + ph / 2,
-      DOT_R * scale,
-      0, Math.PI * 2,
-    );
-    ctx.fillStyle = pill.color;
-    ctx.fill();
-
-    // Text
+    // Text — both lines share one font, regular white.
+    ctx.font = `${FONT * scale}px Arial, sans-serif`;
+    ctx.fillStyle = "white";
+    ctx.fillText(pill.categoryText, x + TEXT_START_X * scale, pillY + PILL_PAD_Y * scale);
     if (pill.hasLabel) {
-      ctx.font = `${FONT_SM * scale}px Arial, sans-serif`;
-      ctx.fillStyle = "rgba(255,255,255,0.7)";
-      ctx.fillText(pill.categoryText, x + TEXT_START_X * scale, pillY + PILL_PAD_Y * scale);
-
-      ctx.font = `bold ${FONT_LG * scale}px Arial, sans-serif`;
-      ctx.fillStyle = "white";
-      ctx.fillText(pill.labelText, x + TEXT_START_X * scale, pillY + (PILL_PAD_Y + FONT_SM + LINE_GAP) * scale);
-    } else {
-      ctx.font = `bold ${FONT_LG * scale}px Arial, sans-serif`;
-      ctx.fillStyle = "white";
-      ctx.fillText(pill.categoryText, x + TEXT_START_X * scale, pillY + PILL_PAD_Y * scale);
+      ctx.fillText(pill.labelText, x + TEXT_START_X * scale, pillY + (PILL_PAD_Y + FONT + LINE_GAP) * scale);
     }
   }
 
@@ -575,47 +554,26 @@ export function VideoPlayer({
                     rx={BBOX_CORNER_RADIUS}
                     fill={PILL_BG}
                   />
-                  <circle
-                    cx={PILL_PAD_X + DOT_R}
-                    cy={pill.pillHeight / 2}
-                    r={DOT_R}
-                    fill={pill.color}
-                  />
-                  {pill.hasLabel ? (
-                    <>
-                      <text
-                        x={TEXT_START_X}
-                        y={PILL_PAD_Y}
-                        fill="rgba(255,255,255,0.7)"
-                        fontSize={FONT_SM}
-                        fontFamily="Arial, sans-serif"
-                        dominantBaseline="hanging"
-                      >
-                        {pill.categoryText}
-                      </text>
-                      <text
-                        x={TEXT_START_X}
-                        y={PILL_PAD_Y + FONT_SM + LINE_GAP}
-                        fill="white"
-                        fontSize={FONT_LG}
-                        fontWeight="bold"
-                        fontFamily="Arial, sans-serif"
-                        dominantBaseline="hanging"
-                      >
-                        {pill.labelText}
-                      </text>
-                    </>
-                  ) : (
+                  <text
+                    x={TEXT_START_X}
+                    y={PILL_PAD_Y}
+                    fill="white"
+                    fontSize={FONT}
+                    fontFamily="Arial, sans-serif"
+                    dominantBaseline="hanging"
+                  >
+                    {pill.categoryText}
+                  </text>
+                  {pill.hasLabel && (
                     <text
                       x={TEXT_START_X}
-                      y={PILL_PAD_Y}
+                      y={PILL_PAD_Y + FONT + LINE_GAP}
                       fill="white"
-                      fontSize={FONT_LG}
-                      fontWeight="bold"
+                      fontSize={FONT}
                       fontFamily="Arial, sans-serif"
                       dominantBaseline="hanging"
                     >
-                      {pill.categoryText}
+                      {pill.labelText}
                     </text>
                   )}
                 </g>

@@ -13,12 +13,9 @@ import type { DetectionResponse } from "../api/types";
 // ── Layout constants ──────────────────────────────────────────────
 export const PILL_PAD_X = 6;
 export const PILL_PAD_Y = 4;
-export const DOT_R = 4;
-export const DOT_GAP = 5;
 export const LINE_GAP = 2;
-export const FONT_SM = 10;
-export const FONT_LG = 12;
-export const TEXT_START_X = PILL_PAD_X + DOT_R * 2 + DOT_GAP; // 19
+export const FONT = 10; // both pill lines share one size
+export const TEXT_START_X = PILL_PAD_X; // no dot, text starts at the pad
 
 export const BBOX_STROKE_WIDTH = 2;
 export const BBOX_OPACITY = 0.5;
@@ -107,13 +104,13 @@ export function computePillLayout(detection: DetectionResponse): PillLayout {
   let pillHeight: number;
   let pillWidth: number;
   if (hasLabel) {
-    pillHeight = PILL_PAD_Y + FONT_SM + LINE_GAP + FONT_LG + PILL_PAD_Y;
-    const w1 = measureTextWidth(categoryText, FONT_SM, false);
-    const w2 = measureTextWidth(labelText, FONT_LG, true);
+    pillHeight = PILL_PAD_Y + FONT + LINE_GAP + FONT + PILL_PAD_Y;
+    const w1 = measureTextWidth(categoryText, FONT, false);
+    const w2 = measureTextWidth(labelText, FONT, false);
     pillWidth = TEXT_START_X + Math.max(w1, w2) + PILL_PAD_X;
   } else {
-    pillHeight = PILL_PAD_Y + FONT_LG + PILL_PAD_Y;
-    const tw = measureTextWidth(categoryText, FONT_LG, true);
+    pillHeight = PILL_PAD_Y + FONT + PILL_PAD_Y;
+    const tw = measureTextWidth(categoryText, FONT, false);
     pillWidth = TEXT_START_X + tw + PILL_PAD_X;
   }
 

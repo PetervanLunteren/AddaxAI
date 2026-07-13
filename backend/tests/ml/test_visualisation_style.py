@@ -21,6 +21,7 @@ from app.ml.postprocessing_outputs._visualisation_style import (
     _fnv1a_position,
     category_color,
     detection_color,
+    render_metrics,
     species_color,
 )
 
@@ -88,3 +89,13 @@ def test_detection_color_prefers_label_over_category():
     unlabelled = detection_color(None, "animal")
     assert labelled == species_color("dog")
     assert unlabelled == category_color("animal")
+
+
+def test_render_metrics_single_font_and_no_dot():
+    """The simplified pill uses one font for both lines and has no dot,
+    so text starts flush with the horizontal padding (no dot offset)."""
+    m = render_metrics(4000, 3000)
+    # One shared font size (both pill lines use it).
+    assert isinstance(m.font, int) and m.font > 0
+    # No dot: text starts at the padding, not past a dot + gap.
+    assert m.text_start_x == m.pad_x

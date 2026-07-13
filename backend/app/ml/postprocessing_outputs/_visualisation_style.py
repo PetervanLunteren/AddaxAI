@@ -4,8 +4,8 @@ This module is the Python-side mirror of the canvas rendering used by
 the verify page in the frontend. The visualised-images postprocess
 output reads its colours and layout from here so a labelled JPEG
 written to disk looks like what the user sees in the verify grid:
-rounded bounding box outlines, rounded label pills with a coloured
-species dot, white text on a dim background.
+rounded bounding box outlines and rounded label pills with white
+text on a dark background.
 
 Canonical references (keep the COLOUR algorithm in sync — single spec,
 two implementations):
@@ -27,9 +27,9 @@ of the displayed image. A saved JPEG has no such render-time scaling,
 so fixed pixels there are illegible on a multi-megapixel photo. Instead
 `render_metrics(width, height)` derives every size as a fraction of the
 image, tuned to roughly match the on-screen overlay's relative size.
-The export also uses stronger contrast than the live grid (more opaque
-box stroke + pill, plus a dark casing behind the stroke) because the
-JPEG is viewed full-size without the grid's spotlight-dim backdrop.
+The export uses a more opaque box stroke and pill than the live grid
+because the JPEG is viewed full-size without the grid's spotlight-dim
+backdrop.
 """
 
 from __future__ import annotations
@@ -126,30 +126,24 @@ def detection_color(
 # Contrast / fill constants (resolution-independent).
 # ─────────────────────────────────────────────────────────────────
 STROKE_ALPHA = 235  # box outline alpha — near-solid so it reads on busy scenes
-CASING_RGBA = (0, 0, 0, 90)  # dark casing drawn behind the coloured stroke
 PILL_BG_RGBA = (0, 0, 0, 175)  # pill background, more solid than the live grid
 
 WHITE = (255, 255, 255)
-WHITE_DIM = (255, 255, 255, 190)  # category line — slightly dimmed
 
 
 # ─────────────────────────────────────────────────────────────────
 # Image-proportional layout. Every size is a fraction of the image so
 # the result looks the same on a 1 MP or a 24 MP photo. Floors keep
 # small images legible. Ratios are tuned to sit close to the frontend
-# overlay's on-screen relative size.
+# overlay's on-screen relative size. Both pill lines share one font.
 # ─────────────────────────────────────────────────────────────────
-_FONT_LG_FRACTION = 0.026  # large (species) line height as a fraction of image height
-_FONT_LG_MIN = 15
-_FONT_SM_RATIO = 0.80  # category line relative to the species line
-_FONT_SM_MIN = 12
+_FONT_FRACTION = 0.014  # text line height as a fraction of image height
+_FONT_MIN = 12
 _STROKE_FRACTION = 0.0040  # box stroke as a fraction of the long side
 _STROKE_MIN = 3
 _RADIUS_RATIO = 2.2  # corner radius relative to stroke width
-_PAD_X_RATIO = 0.55  # pill horizontal padding relative to the species font
-_PAD_Y_RATIO = 0.45  # pill vertical padding relative to the species font
-_DOT_R_RATIO = 0.33  # species dot radius relative to the species font
-_DOT_GAP_RATIO = 0.45  # gap after the dot relative to the species font
+_PAD_X_RATIO = 0.55  # pill horizontal padding relative to the font
+_PAD_Y_RATIO = 0.45  # pill vertical padding relative to the font
 _LINE_GAP_RATIO = 0.18  # gap between the two text lines
 
 
@@ -157,15 +151,11 @@ _LINE_GAP_RATIO = 0.18  # gap between the two text lines
 class RenderMetrics:
     """Pixel sizes for one image, derived from its dimensions."""
 
-    font_sm: int
-    font_lg: int
+    font: int
     stroke: int
-    casing: int  # extra width added under the coloured stroke for the dark casing
     radius: int
     pad_x: int
     pad_y: int
-    dot_r: int
-    dot_gap: int
     line_gap: int
     text_start_x: int
 
@@ -173,22 +163,15 @@ class RenderMetrics:
 def render_metrics(width: int, height: int) -> RenderMetrics:
     """Resolution-aware layout sizes for an image of ``width`` x ``height``."""
     long_side = max(width, height)
-    font_lg = max(_FONT_LG_MIN, round(height * _FONT_LG_FRACTION))
-    font_sm = max(_FONT_SM_MIN, round(font_lg * _FONT_SM_RATIO))
+    font = max(_FONT_MIN, round(height * _FONT_FRACTION))
     stroke = max(_STROKE_MIN, round(long_side * _STROKE_FRACTION))
-    dot_r = round(font_lg * _DOT_R_RATIO)
-    dot_gap = round(font_lg * _DOT_GAP_RATIO)
-    pad_x = round(font_lg * _PAD_X_RATIO)
+    pad_x = round(font * _PAD_X_RATIO)
     return RenderMetrics(
-        font_sm=font_sm,
-        font_lg=font_lg,
+        font=font,
         stroke=stroke,
-        casing=max(2, stroke // 2),
         radius=round(stroke * _RADIUS_RATIO),
         pad_x=pad_x,
-        pad_y=round(font_lg * _PAD_Y_RATIO),
-        dot_r=dot_r,
-        dot_gap=dot_gap,
-        line_gap=round(font_lg * _LINE_GAP_RATIO),
-        text_start_x=pad_x + dot_r * 2 + dot_gap,
+        pad_y=round(font * _PAD_Y_RATIO),
+        line_gap=round(font * _LINE_GAP_RATIO),
+        text_start_x=pad_x,
     )

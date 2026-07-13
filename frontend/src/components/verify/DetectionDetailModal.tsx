@@ -26,8 +26,8 @@ import { ContextCard } from "./ContextCard";
 import {
   computePillLayout,
   svgRoundedRectPath,
-  PILL_PAD_X, PILL_PAD_Y, DOT_R, LINE_GAP,
-  FONT_SM, FONT_LG, TEXT_START_X,
+  PILL_PAD_Y, LINE_GAP,
+  FONT, TEXT_START_X,
   BBOX_STROKE_WIDTH, BBOX_OPACITY, BBOX_CORNER_RADIUS,
   DIM_FILL, PILL_BG,
 } from "../../lib/detection-overlay";
@@ -468,44 +468,24 @@ export function DetectionDetailModal({
                         rx={BBOX_CORNER_RADIUS}
                         fill={PILL_BG}
                       />
-                      <circle
-                        cx={PILL_PAD_X + DOT_R}
-                        cy={pill.pillHeight / 2}
-                        r={DOT_R}
-                        fill={pill.color}
-                      />
-                      {pill.hasLabel ? (
-                        <>
-                          <text
-                            x={TEXT_START_X} y={PILL_PAD_Y}
-                            fill="rgba(255,255,255,0.7)"
-                            fontSize={FONT_SM}
-                            fontFamily="Arial, sans-serif"
-                            dominantBaseline="hanging"
-                          >
-                            {pill.categoryText}
-                          </text>
-                          <text
-                            x={TEXT_START_X} y={PILL_PAD_Y + FONT_SM + LINE_GAP}
-                            fill="white"
-                            fontSize={FONT_LG}
-                            fontWeight="bold"
-                            fontFamily="Arial, sans-serif"
-                            dominantBaseline="hanging"
-                          >
-                            {pill.labelText}
-                          </text>
-                        </>
-                      ) : (
+                      <text
+                        x={TEXT_START_X} y={PILL_PAD_Y}
+                        fill="white"
+                        fontSize={FONT}
+                        fontFamily="Arial, sans-serif"
+                        dominantBaseline="hanging"
+                      >
+                        {pill.categoryText}
+                      </text>
+                      {pill.hasLabel && (
                         <text
-                          x={TEXT_START_X} y={PILL_PAD_Y}
+                          x={TEXT_START_X} y={PILL_PAD_Y + FONT + LINE_GAP}
                           fill="white"
-                          fontSize={FONT_LG}
-                          fontWeight="bold"
+                          fontSize={FONT}
                           fontFamily="Arial, sans-serif"
                           dominantBaseline="hanging"
                         >
-                          {pill.categoryText}
+                          {pill.labelText}
                         </text>
                       )}
                     </g>
