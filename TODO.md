@@ -1,28 +1,5 @@
 # TODO
 
-Can we make the metrics card an info card (shared helper - investigate)? '/Users/peter/Desktop/Screenshot 2026-07-10 at 15.56.20.png' And perhaps the "A database snapshot from ..." note a caption? Or what would you recommend? in terms of UI UX? How to make it consistent with the rest of the app?
-            Analysed 10 Jul 2026 · MegaDetector v5a + SpeciesNet 4.0.2a
-            39 files · 35 observations · 8 species
-            0 of 35 labels verified (0%)
-            0 of 7 counts confirmed (0%)
-
-
-We should remove the DOWNLOAD CSV button on the ananlysis complete windows if there are warnings or errors. It is confusing as users think they are the results. Perhaps rename it (logs?) or just remove it, what do you think? 
-            Analysis complete
-            Your folder has been analysed. AddaxAI suggested a species and a count for everything it found. The next steps let you review and correct them before saving.
-
-            Processed 41 images and 4 videos. See details below: 3 files skipped.
-            3 issues3 warnings
-
-            Download CSV
-
-Should we make the scheck labels step of fodler mode more clear buttons? Now its is still a bit confusing for the users, as it doesnt show anything, and you'll have to click "Show editor. How can we make this clearer? Perhaps by doing the buttons like, "I want to review the AI labels" and "Skip label cleanup and go straight to the results step" or something like that? What do you think? 
-
-
-
-
-
-
 ## Priority 1
 - [ ] ORPHANED BACKEND PROCESS - the packaged app can leave its backend running after quit, and the next launch then silently talks to the stale backend. Observed on Peters mac (2026-07-07): /Applications/AddaxAI.app backend orphaned on port 8000, PPID 1. Three causes in electron/src/main.ts: (1) stopBackend() sends SIGTERM blind, never verifies exit, no SIGKILL fallback; uvicorn graceful shutdown can hang forever on open connections (an open browser tab is enough). (2) the relaunch path uses app.exit(0), which skips before-quit/will-quit entirely, so stopBackend never runs on relaunch. (3) force-quit/crash. Worst consequence: after an update, the new app fails to bind 8000 but the health check gets an answer from the STALE old-version backend and uses it -> new frontend on old backend, schema drift, unexplainable bugs. Fix ideas: SIGTERM then wait then SIGKILL; call stopBackend explicitly before app.exit in the relaunch path; on startup, verify the /health version matches the app version and kill/refuse a stale backend.
 - [ ] projects menu sidebar: the "Per class performance" text is too long. Propose shorter alternative. Perhaps class performace? 
@@ -461,6 +438,7 @@ Should we make the scheck labels step of fodler mode more clear buttons? Now its
 - [ ] DOCUMENTATION (see items below)
 - [ ] REPEAT DETECTION ELIMINATION
 - [ ] WLIDBOOKS INTEGRATION
+- [ ] EARTHRANGER/GUNDI integration
 
 ## Documentation
 - [ ] Make a tutorial on how to move data between computers. "The difficulty is that AddaxAI uses three data sources, and all are required. The raw images and videos (to show you while doing verification)The internal JSON files hidden in the processed folders (to reprocess after settings are changed)The internal AddaxAI database (stores all detections, verification statuses, etc)If we want to move everything to a new computer, we must move all three of these components. Luckily, components 1 and 2 are together, so if you have the images on an external drive, you can just plug it into a new computer. Then, you also need to move the DB, which means you must back it up manually, move the DB file to the new computer, and then restore from the there. "

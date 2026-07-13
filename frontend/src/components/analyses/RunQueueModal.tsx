@@ -194,9 +194,13 @@ function LogTable({ rows }: LogTableProps) {
             )}
           </span>
         </p>
+        {/* "Logs", not "Download CSV": next to the analysis-complete
+            screen a bare "CSV" reads as the run's results, but this file
+            is the issue log (skipped files, errors). The download icon
+            carries the verb, so the label is just the object. */}
         <Button variant="outline" onClick={handleDownload}>
           <Download className="h-4 w-4 mr-2" />
-          Download CSV
+          Logs
         </Button>
       </div>
 

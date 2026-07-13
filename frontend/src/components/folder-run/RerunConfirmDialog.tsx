@@ -9,6 +9,7 @@
  */
 
 import { Button } from "../ui/button";
+import { Callout } from "../ui/callout";
 import {
   Dialog,
   DialogContent,
@@ -51,8 +52,11 @@ export function RerunConfirmDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {/* Neutral summary of what the run holds, so the user can weigh
+            the cost. Not a Callout: Callout is for advisories, not a
+            status readout (see its docstring). */}
         {run && (
-          <div className="rounded-md border bg-card-background p-3 text-xs text-muted-foreground">
+          <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
             <p>{formatRunSummary(run)}</p>
             <p className="mt-1">{formatRunCounts(run)}</p>
             {formatLabelsVerified(run) && (
@@ -64,17 +68,18 @@ export function RerunConfirmDialog({
           </div>
         )}
 
-        <div className="space-y-1.5">
-          {hasProgress && (
-            <p className="text-sm font-medium">
-              Your verification and count progress will be lost.
-            </p>
-          )}
-          <p className="text-sm text-muted-foreground">
-            A database snapshot from earlier today is in your backups
-            folder if you change your mind.
-          </p>
-        </div>
+        {/* Consequence + reassurance follow the app's destructive-confirm
+            shape (see DeleteSiteDialog): a warning Callout for what's
+            lost, an info Callout for the safety net. */}
+        {hasProgress && (
+          <Callout variant="warning">
+            Your verification and count progress will be lost.
+          </Callout>
+        )}
+        <Callout variant="info">
+          A database snapshot from earlier today is in your backups folder
+          if you change your mind.
+        </Callout>
 
         <DialogFooter>
           <Button variant="outline" onClick={onCancel} disabled={isBusy}>
