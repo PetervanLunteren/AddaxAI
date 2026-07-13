@@ -68,8 +68,14 @@ class Detection(Base):
     common_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     scientific_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
-    # Raw top-1 classifier output captured at JSON load time.
-    # Never mutated by postprocessing, rollup, or user relabels.
+    # The machine's final label (after exclusion, geofence rollup, and
+    # smoothing) = exactly what the UI shows before any human relabel.
+    # Written by the machine pipeline (JSON load, then postprocessing);
+    # never touched by human relabel or verify, so on a verified/relabelled
+    # detection it preserves what the AI said. Hence for a non-verified
+    # detection original_label == label, and the "ai_classification_label"
+    # export column shows the surfaced call, not the raw pre-rollup one
+    # (that stays only in results.json on disk).
     # NULL for detector-only projects, person/vehicle detections,
     # and detections analysed before this column existed.
     original_label: Mapped[str | None] = mapped_column(String(100), nullable=True)

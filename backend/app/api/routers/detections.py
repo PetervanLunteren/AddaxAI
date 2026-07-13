@@ -365,12 +365,13 @@ def bulk_revert_to_original(
 ):
     """Undo human label edits / verifications (max 500).
 
-    Restores each detection to the model's original prediction from the
-    ``original_*`` columns (which relabeling never overwrites): label,
-    label_confidence, taxonomy FK, and display names, with
-    classification_method reset to "machine" (its fresh-processed
-    value). Clears the verified flag. Category is left as-is — there is
-    no original category stored, and the label actions do not change it.
+    Restores each detection to the machine's final label from the
+    ``original_*`` columns (the surfaced post-rollup / post-smoothing call,
+    which relabeling never overwrites): label, label_confidence, taxonomy
+    FK, and display names, with classification_method reset to "machine"
+    (its fresh-processed value). Clears the verified flag. Category is left
+    as-is — there is no original category stored, and the label actions do
+    not change it.
 
     Powers the labels grid's Undo. Returns the reverted rows so the
     client can patch its grid in place without a re-sort.

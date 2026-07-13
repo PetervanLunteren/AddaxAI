@@ -60,6 +60,36 @@ def test_patch_relabel_stamps_human_confidence(client, db):
     assert data["label_confidence"] == 1.0
 
 
+def test_relabel_and_verify_leave_original_label_untouched(client, db):
+    """The AI's final call (original_label) survives a human relabel and a
+    verify, so ai_classification_label keeps showing what the model said."""
+    f = _setup_file(db)
+    det = make_detection(
+        db,
+        file_id=f.id,
+        label="equidae",
+        label_confidence=0.98,
+        original_label="equidae",
+        original_label_confidence=0.98,
+        classification_method="machine",
+    )
+
+    # Human relabels to a species.
+    resp = client.patch(f"/api/detections/{det.id}", json={"label": "plains zebra"})
+    assert resp.status_code == 200
+    db.refresh(det)
+    assert det.label == "plains zebra"
+    assert det.classification_method == "human"
+    assert det.original_label == "equidae"           # AI call preserved
+
+    # Human verifies; still no change to the AI call.
+    resp = client.patch(f"/api/detections/{det.id}/verify", json={"verified": True})
+    assert resp.status_code == 200
+    db.refresh(det)
+    assert det.verified is True
+    assert det.original_label == "equidae"
+
+
 def test_patch_relabel_honours_explicit_confidence(client, db):
     """An explicit label_confidence in the payload still wins over the 1.0 default."""
     f = _setup_file(db)

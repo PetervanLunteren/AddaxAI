@@ -1,9 +1,11 @@
 """
 CRUD for the confusion matrix + classification report insight views.
 
-Per-detection comparison of original machine prediction
-(Detection.original_label captured at JSON load) vs current label
-(after human verification or relabel). Only verified detections count.
+Per-detection comparison of the machine's final label
+(Detection.original_label, i.e. the label the UI showed after rollup /
+smoothing) vs current label (after human verification or relabel). Only
+verified detections count, so a label the human confirmed as-is lands on
+the diagonal and a relabel lands off it.
 Metrics are computed server-side so the React page stays thin and the
 math is unit-testable in isolation.
 
@@ -254,8 +256,9 @@ def get_classification_performance(
     Build the confusion matrix + metrics for the given project.
 
     Ground truth = verified detections' current label. Prediction =
-    their original machine label. Detections with no prediction (NULL
-    original_label on animal detections, typically pre-migration rows)
+    the machine's final label (Detection.original_label, what the UI
+    showed after rollup / smoothing). Detections with no prediction (NULL
+    original_label on animal detections, typically pre-column rows)
     are excluded and surfaced in `skipped_no_prediction`.
     """
     project = db.query(Project).filter(Project.id == project_id).first()

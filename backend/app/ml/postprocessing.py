@@ -619,6 +619,18 @@ def update_database_from_smoothed_results(
                 changed_file_ids.add(det.file_id)
                 updated += 1
 
+    # Mirror the machine-final label into original_label so exports, the
+    # confusion matrix, and "revert to AI" show the label the UI showed,
+    # not the raw pre-rollup classifier call. Runs after every label write
+    # above (rollup, smoothing, excluded->NULL sweep), so it captures the
+    # final state. Verified detections are frozen: human judgment outranks
+    # the machine, and postprocessing never touches them.
+    for det in detections:
+        if det.verified:
+            continue
+        det.original_label = det.label
+        det.original_label_confidence = det.label_confidence
+
     # Recompute observation_type for files with changed detections, from
     # the file's passing detections (over the project threshold or
     # verified), so a file left with only sub-threshold boxes reads "blank".

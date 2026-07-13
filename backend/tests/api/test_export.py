@@ -192,10 +192,48 @@ def test_export_detections_records_ai_vs_human_labels(client, db):
         return row[headers.index(name)]
 
     assert cell("classification_label") == "possum"       # current
-    assert cell("ai_classification_label") == "wallaby"    # AI original, retained
+    assert cell("ai_classification_label") == "wallaby"    # AI's final call, retained
     assert float(cell("ai_classification_confidence")) == pytest.approx(0.42)
     assert cell("classification_method") == "human"
     assert cell("is_verified") == "TRUE"
+
+
+def test_export_ai_label_matches_current_when_unverified(client, db):
+    """For an untouched machine detection, ai_classification_label equals
+    classification_label: both show the surfaced (post-rollup) call, so the
+    export never exposes a label the user never saw."""
+    project, _site, deployment = _build_simple_project(db)
+    f = make_file(
+        db, deployment_id=deployment.id, captured_at_local=datetime(2024, 6, 1, 9, 0, 0)
+    )
+    # Machine-final label mirrored into original_label (what postprocessing does).
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=0.9,
+        label="equidae",
+        label_confidence=0.98,
+        original_label="equidae",
+        original_label_confidence=0.98,
+        classification_method="machine",
+        verified=False,
+    )
+    db.commit()
+
+    resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
+    assert resp.status_code == 200
+    rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
+    headers, data = rows[0], rows[1:]
+    row = data[0]
+
+    def cell(name: str) -> str:
+        return row[headers.index(name)]
+
+    assert cell("classification_label") == "equidae"
+    assert cell("ai_classification_label") == "equidae"   # same as current
+    assert cell("classification_method") == "machine"
+    assert cell("is_verified") == "FALSE"
 
 
 def test_export_scope_by_site_and_deployment(client, db):

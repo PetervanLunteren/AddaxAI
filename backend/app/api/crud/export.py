@@ -88,11 +88,14 @@ OBSERVATIONS_SCHEMA = (
 #                     nothing was classified (person, vehicle, unclassified).
 #   classification_confidence — score for that label: the classifier's
 #                     score, or 1.0 when a human assigned it.
-#   ai_classification_label — the AI's original top-1 species call, kept
-#                     even after a human relabel (so "AI said X, human
-#                     changed to Y" is visible). Empty for detector-only,
+#   ai_classification_label — the AI's final label (after geofence rollup
+#                     and smoothing) = what the UI showed, kept even after
+#                     a human relabel (so "AI said X, human changed to Y"
+#                     is visible). Equals classification_label until a human
+#                     changes it. The raw pre-rollup call is not exported;
+#                     it stays in results.json. Empty for detector-only,
 #                     person / vehicle, and pre-column detections.
-#   ai_classification_confidence — the AI's score for that original call.
+#   ai_classification_confidence — the AI's score for that final call.
 #   classification_method — who set the current label: machine or human.
 #   is_verified     — this detection is human-verified (grouped with the
 #                     label columns above so the provenance reads together).

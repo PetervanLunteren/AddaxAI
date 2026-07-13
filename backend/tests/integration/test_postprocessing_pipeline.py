@@ -134,6 +134,70 @@ def test_update_db_from_smoothed_results(deployment_scaffold):
     assert updated_dets[2].label == "lion"
 
 
+def test_original_label_mirrors_machine_final_label(deployment_scaffold):
+    """After postprocessing, a non-verified detection's original_label tracks
+    the machine-final label (what the UI shows), while a verified detection's
+    is frozen. This is what makes ai_classification_label ==
+    classification_label for unverified rows and preserves the AI's call after
+    a human relabel."""
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    _load_basic_images(s)
+
+    # At load, every detection is raw "lion" for both label and original_label.
+    dets = db.query(Detection).join(File).order_by(File.captured_at_local.asc()).all()
+    assert all(d.label == "lion" and d.original_label == "lion" for d in dets)
+
+    # Freeze the first detection as a human verification of "lion".
+    dets[0].verified = True
+    dets[0].verified_at_utc = datetime.now(UTC)
+    db.commit()
+
+    # Machine reprocessing rolls every detection to "zebra".
+    files = (
+        db.query(File)
+        .filter(File.deployment_id == s["deployment"].id)
+        .order_by(File.captured_at_local.asc())
+        .all()
+    )
+    smoothed_images = [
+        {
+            "file": str(Path(f.file_path).relative_to(deploy_dir)),
+            "detections": [
+                {
+                    "category": "1",
+                    "conf": 0.9,
+                    "bbox": [0.1, 0.2, 0.3, 0.4],
+                    "classifications": [[2, 0.8], [1, 0.2]],
+                },
+            ],
+        }
+        for f in files
+    ]
+    smoothed = build_detection_json(
+        smoothed_images,
+        classification_categories={"1": "lion", "2": "zebra", "3": "giraffe"},
+    )
+
+    update_database_from_smoothed_results(
+        deployment_id=s["deployment"].id,
+        smoothed_results=smoothed,
+        deployment_folder=deploy_dir,
+        db=db,
+    )
+
+    result = db.query(Detection).join(File).order_by(File.captured_at_local.asc()).all()
+    # Verified detection: label and original_label both frozen at "lion".
+    assert result[0].verified is True
+    assert result[0].label == "lion"
+    assert result[0].original_label == "lion"
+    # Non-verified detections: original_label mirrors the machine-final "zebra".
+    for d in result[1:]:
+        assert d.label == "zebra"
+        assert d.original_label == "zebra"
+        assert d.original_label_confidence == d.label_confidence
+
+
 def test_smoothing_matches_by_bbox_and_frame(deployment_scaffold):
     """Matching works for images (path+bbox) and video frames (path+bbox+frame_number)."""
     s = deployment_scaffold
