@@ -177,22 +177,6 @@ export function diffPaths(
 }
 
 /**
- * Shorten a path in the middle while preserving the leaf segment,
- * since the leaf is what users recognize. Returns the original path
- * unchanged if it's already shorter than `maxLen`.
- */
-export function truncateMiddle(path: string, maxLen = 60): string {
-  if (path.length <= maxLen) return path;
-  const i = lastSepIndex(path);
-  const leaf = i >= 0 ? path.slice(i) : "";
-  const keepStart = Math.max(1, maxLen - leaf.length - 1);
-  if (leaf.length + 4 > maxLen) {
-    return path.slice(0, maxLen - 1) + "…";
-  }
-  return path.slice(0, keepStart) + "…" + leaf;
-}
-
-/**
  * Group items by their common path prefix. Subdivides aggressively so
  * each returned group has the *deepest* meaningful prefix, not just the
  * global LCP across all items.

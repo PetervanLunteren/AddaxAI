@@ -16,6 +16,7 @@ from unittest.mock import patch
 import pytest
 
 from app.api.crud import export_formats
+from app.models import File
 from app.models.label_taxonomy import LabelTaxonomy
 from tests.conftest import (
     make_deployment,
@@ -286,6 +287,96 @@ def test_export_files_includes_empties(client, db):
     # DST-correct per-file offset (datetime lives on the files table now).
     assert by_id[f_animal.id][dt_i].endswith("+02:00")
     assert by_id[f_blank.id][dt_i].endswith("+01:00")
+
+
+def test_event_id_is_blank_when_a_file_has_no_event(client, db):
+    """`event_id` must never stand in a file id for a missing event: a
+    consumer joining files.csv to counts.csv on event_id would match
+    nothing and never know why. Blank says "no event", which is true.
+
+    In practice every image / video is clustered into exactly one event
+    (date-less files become singleton events), so this only fires when
+    events have not been generated yet.
+    """
+    project, _site, deployment = _build_simple_project(db)
+    f_no_event = make_file(
+        db,
+        deployment_id=deployment.id,
+        captured_at_local=datetime(2024, 6, 1, 12, 0, 0),
+        observation_type="animal",
+    )
+    db.commit()
+
+    resp = client.get(f"/api/projects/{project.id}/export/files?format=csv")
+    assert resp.status_code == 200
+    rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
+    headers = rows[0]
+    fid_i = headers.index("file_id")
+    eid_i = headers.index("event_id")
+
+    row = next(r for r in rows[1:] if r[fid_i] == f_no_event.id)
+    assert row[eid_i] == ""
+    assert row[eid_i] != f_no_event.id
+
+
+def test_detections_event_id_is_blank_when_a_file_has_no_event(client, db):
+    """Same contract as the files export: the detections table must not
+    stand a file id in for a missing event either."""
+    project, _site, deployment = _build_simple_project(db)
+    f_no_event = make_file(
+        db,
+        deployment_id=deployment.id,
+        captured_at_local=datetime(2024, 6, 1, 12, 0, 0),
+        observation_type="animal",
+    )
+    make_detection(db, file_id=f_no_event.id, confidence=0.9)
+    db.commit()
+
+    resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
+    assert resp.status_code == 200
+    rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
+    headers = rows[0]
+    fid_i = headers.index("file_id")
+    eid_i = headers.index("event_id")
+
+    row = next(r for r in rows[1:] if r[fid_i] == f_no_event.id)
+    assert row[eid_i] == ""
+    assert row[eid_i] != f_no_event.id
+
+
+def test_event_id_carries_the_real_event_id_when_clustered(client, db):
+    """The other half of the contract: a clustered file reports its
+    actual event id, in both the files and the detections table, so a
+    join against counts.csv resolves."""
+    project, _site, deployment = _build_simple_project(db)
+    event = make_event_with_files(
+        db,
+        deployment_id=deployment.id,
+        event_start_local=datetime(2024, 6, 1, 12, 0, 0),
+    )
+    clustered = (
+        db.query(File).filter(File.deployment_id == deployment.id).one()
+    )
+    make_detection(db, file_id=clustered.id, confidence=0.9)
+    db.commit()
+
+    files_resp = client.get(f"/api/projects/{project.id}/export/files?format=csv")
+    files_rows = list(csv.reader(io.StringIO(files_resp.content.decode("utf-8"))))
+    fh = files_rows[0]
+    frow = next(
+        r for r in files_rows[1:] if r[fh.index("file_id")] == clustered.id
+    )
+    assert frow[fh.index("event_id")] == event.id
+
+    det_resp = client.get(
+        f"/api/projects/{project.id}/export/detections?format=csv"
+    )
+    det_rows = list(csv.reader(io.StringIO(det_resp.content.decode("utf-8"))))
+    dh = det_rows[0]
+    drow = next(
+        r for r in det_rows[1:] if r[dh.index("file_id")] == clustered.id
+    )
+    assert drow[dh.index("event_id")] == event.id
 
 
 def test_export_detections_tsv_and_xlsx(client, db):

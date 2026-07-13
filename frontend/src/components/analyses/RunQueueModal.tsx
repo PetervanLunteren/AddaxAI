@@ -19,7 +19,6 @@ import {
   Tag,
   Tally5,
   LayoutDashboard,
-  ChevronRight,
 } from "lucide-react";
 import { basename } from "@/lib/path-utils";
 import {
@@ -32,6 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
+import { NextStepRow } from "@/components/ui/next-step-row";
 import { useTaskProgress } from "@/hooks/useTaskProgress";
 import { AnalysisProgress } from "./AnalysisProgress";
 import {
@@ -164,41 +164,6 @@ function severityBadge(severity: Severity) {
     <span className="inline-flex items-center rounded-md bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[11px] font-medium">
       Warning
     </span>
-  );
-}
-
-/**
- * A clickable "what next" row in the completion modal: icon + a short
- * action title + a one-line description of where it takes you. Used so
- * the post-analysis step is self-explanatory instead of a bare button.
- */
-function NextStepRow({
-  icon: Icon,
-  title,
-  description,
-  onClick,
-  disabled,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  description: string;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-    >
-      <Icon className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-      <div className="flex-1">
-        <p className="text-sm font-medium">{title}</p>
-        <p className="text-xs text-muted-foreground">{description}</p>
-      </div>
-      <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-    </button>
   );
 }
 

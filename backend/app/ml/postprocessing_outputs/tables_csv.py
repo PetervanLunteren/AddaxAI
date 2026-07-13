@@ -8,7 +8,9 @@ event-level counts) live in projects mode only — a folder run has no
 sites, no real deployment, and no confirmed counts.
 
 Both tables wrap the shared ``export_crud`` builders, so a column added
-there shows up in projects-mode exports and here automatically.
+there shows up in projects-mode exports and here automatically. The
+columns that say nothing in a folder run are then trimmed by
+``_table_columns.folder_run_table``; see that module for which and why.
 
 Writes ``addaxai-files.csv`` and ``addaxai-detections.csv`` under
 ``target_dir`` (the user's output dir, which defaults to the source
@@ -26,6 +28,7 @@ from sqlalchemy.orm import Session
 from app.api.crud import export as export_crud
 from app.api.crud import export_formats
 from app.core.logging_config import get_logger
+from app.ml.postprocessing_outputs._table_columns import folder_run_table
 from app.models import Project
 
 logger = get_logger(__name__)
@@ -73,8 +76,12 @@ def write_tables_csv(
     scoped = export_crud.get_scoped_detection_rows(
         db, project, apply_threshold=False
     )
-    files_headers, files_rows = export_crud.build_files_rows(db, project)
-    det_headers, det_rows = export_crud.build_detection_rows(db, project, scoped)
+    files_headers, files_rows = folder_run_table(
+        *export_crud.build_files_rows(db, project)
+    )
+    det_headers, det_rows = folder_run_table(
+        *export_crud.build_detection_rows(db, project, scoped)
+    )
 
     files_path = target_dir / FILES_FILENAME
     with open(files_path, "wb") as f:

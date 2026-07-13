@@ -19,6 +19,7 @@ import { Button } from "../../../components/ui/button";
 import { Callout } from "../../../components/ui/callout";
 import { Card, CardContent } from "../../../components/ui/card";
 import { ConfidenceSlider } from "../../../components/ui/confidence-slider";
+import { NextStepRow } from "../../../components/ui/next-step-row";
 import {
   DEFAULT_COUNTING_THRESHOLD,
   DETECTION_CONFIDENCE_ADVICE,
@@ -101,7 +102,7 @@ export function OutputFolderField({
           <span className="block text-sm font-semibold">Output folder</span>
           <span className="mt-0.5 block text-xs text-muted-foreground">
             Where everything gets written. Defaults to the folder you
-            analysed; your originals are never overwritten.
+            analysed. Your originals are never overwritten.
           </span>
         </div>
         <FolderSelector
@@ -137,6 +138,10 @@ export function MediaBody({
   // Grouping only makes sense once there are species subfolders; with
   // "No subfolders" every file lands flat at the root.
   const showGrouping = separate.groupBy !== "none";
+  // Rows read as three blocks: where the copies go (folder structure and
+  // the two rows it gates), what gets copied (labels, confidence,
+  // empties), then what the copies look like (boxes, blur). The rows
+  // carry no headings, so the order is the only thing grouping them.
   return (
     <div className="divide-y [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
       <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
@@ -238,6 +243,13 @@ export function MediaBody({
       </div>
 
       <CaptionedCheckbox
+        checked={separate.copyEmpties}
+        onChange={(v) => setSeparate({ ...separate, copyEmpties: v })}
+        label="Copy empty files"
+        caption="Images and videos with no animals, people, or vehicles"
+      />
+
+      <CaptionedCheckbox
         checked={visualise.enabled}
         onChange={(v) => setVisualise({ enabled: v })}
         label="Draw detection boxes"
@@ -248,12 +260,6 @@ export function MediaBody({
         onChange={(v) => setAnonymise({ enabled: v })}
         label="Blur people and vehicles"
         caption="People and vehicles blurred on each file"
-      />
-      <CaptionedCheckbox
-        checked={separate.copyEmpties}
-        onChange={(v) => setSeparate({ ...separate, copyEmpties: v })}
-        label="Also copy empty files"
-        caption="Images and videos with no animals, people, or vehicles"
       />
     </div>
   );
@@ -283,7 +289,7 @@ function LabelFilterRow({
       <span>
         Labels
         <span className="mt-0.5 block text-xs text-muted-foreground">
-          Which labels to copy and visualise
+          Which labels to copy and draw boxes for
         </span>
       </span>
       <Button
@@ -402,32 +408,46 @@ export function CompletionDialog({
             </DialogDescription>
           </DialogHeader>
 
+          {/* One line, ellipsis at the start, so the leaf folder (the
+              part the user recognises) always survives. An rtl base
+              direction puts the ellipsis on the left; `bdi` isolates the
+              path so its own left-to-right order is kept. Without it the
+              leading "/" is a neutral character and bidi reordering
+              moves it to the far right. Full path on hover. */}
           <div className="rounded-md border bg-muted/30 p-3 text-xs">
             <p className="mb-1 text-muted-foreground">Saved to</p>
-            <code className="break-all font-mono">{result.output_dir}</code>
+            <code
+              className="block truncate text-left font-mono [direction:rtl]"
+              title={result.output_dir}
+            >
+              <bdi>{result.output_dir}</bdi>
+            </code>
           </div>
 
           {issues.length > 0 && <IssuesPanel issues={issues} />}
 
-          {/* Bridge to projects mode. A folder run deliberately does no
-              ecological interpretation; this is the one place we point
-              at where that lives. */}
-          <div className="flex items-start gap-3 rounded-md border p-3">
-            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-            <div className="flex-1">
-              <p className="text-xs text-muted-foreground">
-                Want species counts, dashboards, and maps for this
-                folder? Turn the run into a project.
-              </p>
-              <Button
-                onClick={() => setPromoteOpen(true)}
-                variant="outline"
-                size="sm"
-                className="mt-2"
-              >
-                Turn into a project
-              </Button>
-            </div>
+          {/* Same shape as the projects-mode completion modal: the steps
+              that take you somewhere are rows, and "start over" stays in
+              the footer. "Turn into a project" is the bridge to projects
+              mode; a folder run deliberately does no ecological
+              interpretation, and this is the one place we point at where
+              that lives. */}
+          <div className="space-y-2 pt-1">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              What next?
+            </p>
+            <NextStepRow
+              icon={FolderOpen}
+              title="Open output folder"
+              description="Show the files AddaxAI wrote."
+              onClick={handleOpenResults}
+            />
+            <NextStepRow
+              icon={Sparkles}
+              title="Turn into a project"
+              description="Get species counts, dashboards, and maps for this folder."
+              onClick={() => setPromoteOpen(true)}
+            />
           </div>
 
           <DialogFooter>
@@ -436,10 +456,6 @@ export function CompletionDialog({
               onClick={() => navigate("/folder-runs/new")}
             >
               Analyse another folder
-            </Button>
-            <Button onClick={handleOpenResults} className="gap-2">
-              <FolderOpen className="h-4 w-4" />
-              Open output folder
             </Button>
           </DialogFooter>
         </DialogContent>

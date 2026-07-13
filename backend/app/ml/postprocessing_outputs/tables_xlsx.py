@@ -4,8 +4,9 @@ One workbook with two sheets, Files and Detections — the same two
 tables as the folder-run CSV export, in one file. A folder run is "run
 AI without ecological interpretation", so the projects-mode sheets
 (Deployments, Counts) are intentionally absent. The sheets wrap the
-shared ``export_crud`` builders, so columns stay identical to the
-projects Export page's spreadsheet.
+shared ``export_crud`` builders and are trimmed to the same column set
+as the folder-run CSVs; see ``_table_columns`` for which columns and
+why.
 
 Writes ``<target_dir>/addaxai-spreadsheet.xlsx``.
 """
@@ -20,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.api.crud import export as export_crud
 from app.api.crud import export_formats
 from app.core.logging_config import get_logger
+from app.ml.postprocessing_outputs._table_columns import folder_run_table
 from app.models import Project
 
 logger = get_logger(__name__)
@@ -60,9 +62,11 @@ def write_tables_xlsx(
     scoped = export_crud.get_scoped_detection_rows(
         db, project, apply_threshold=False
     )
-    files_headers, files_rows = export_crud.build_files_rows(db, project)
-    det_headers, det_rows = export_crud.build_detection_rows(
-        db, project, scoped
+    files_headers, files_rows = folder_run_table(
+        *export_crud.build_files_rows(db, project)
+    )
+    det_headers, det_rows = folder_run_table(
+        *export_crud.build_detection_rows(db, project, scoped)
     )
     sheets = [
         ("Files", files_headers, files_rows),

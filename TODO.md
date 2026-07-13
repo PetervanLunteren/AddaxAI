@@ -1,49 +1,24 @@
 # TODO
 
+Can we make the metrics card an info card (shared helper - investigate)? '/Users/peter/Desktop/Screenshot 2026-07-10 at 15.56.20.png' And perhaps the "A database snapshot from ..." note a caption? Or what would you recommend? in terms of UI UX? How to make it consistent with the rest of the app?
+            Analysed 10 Jul 2026 · MegaDetector v5a + SpeciesNet 4.0.2a
+            39 files · 35 observations · 8 species
+            0 of 35 labels verified (0%)
+            0 of 7 counts confirmed (0%)
 
 
-We just implemented the collapse sidebar feature for the projects view. Have a look yoursef (MCP/playwright is installed globally), and tell me what you think. I wnat the collapse to only remove the words, and leave the icons there. They should not move over the screen, nor should they change color or size. What do you find, and how to solve this? 
+We should remove the DOWNLOAD CSV button on the ananlysis complete windows if there are warnings or errors. It is confusing as users think they are the results. Perhaps rename it (logs?) or just remove it, what do you think? 
+            Analysis complete
+            Your folder has been analysed. AddaxAI suggested a species and a count for everything it found. The next steps let you review and correct them before saving.
+
+            Processed 41 images and 4 videos. See details below: 3 files skipped.
+            3 issues3 warnings
+
+            Download CSV
+
+Should we make the scheck labels step of fodler mode more clear buttons? Now its is still a bit confusing for the users, as it doesnt show anything, and you'll have to click "Show editor. How can we make this clearer? Perhaps by doing the buttons like, "I want to review the AI labels" and "Skip label cleanup and go straight to the results step" or something like that? What do you think? 
 
 
-
-"Where everything gets written. Defaults to the folder you analysed; your originals are never overwritten." -> "Where everything gets written. Defaults to the folder you analysed. Your originals are never overwritten."
-
-"Your media sorted into folders, videos as a best-frame image" -> Your media sorted into folders. Videos are written as best-frame images.
-
-What do we think of this order? Is it logical? 
-            Folder structure
-            How the copies are organised
-
-            Nested by taxonomy
-            Keep events together
-            The whole event goes to the folder of its most confident species
-
-            Folder order
-            Whether species or your original folders sit on top
-
-            Species folder first
-            Labels
-            Which labels to copy and visualise
-
-            All labels
-            Confidence
-            Detections below this score are left out of the copies. The data files always include everything.
-            0.20
-            Draw detection boxes
-            Boxes and labels on each file
-
-            Blur people and vehicles
-            People and vehicles blurred on each file
-
-            Also copy empty files
-            Images and videos with no animals, people, or vehicles
-
-
-"Detections below this score are left out of the copies. The data files always include everything." -> Detections below this score are left out
-
-Should we make the actions all in the same row card format? With a title + caption? Now its a mix. '/Users/peter/Desktop/Screenshot 2026-07-07 at 13.30.03.png' Perhaps a bit more following this format? '/Users/peter/Desktop/Screenshot 2026-07-07 at 13.36.01.png'
-
-in the outputs CSVs, there are redundant columns like eventID, deploymentID etc. These are not needed in folder run. Investiogate what is currently there, and what can be hidden for folder mode runs. Make sure the porojects exports remain exactly the same, so you only edit the folder run exports. BTW, the full CSV/XSLX exports are still present on projects mode exports, right? With deployments, events, trap days, etc. ? 
 
 
 

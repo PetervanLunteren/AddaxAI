@@ -186,7 +186,7 @@ export function FolderRunSaveStep() {
             data exports. */}
         <GroupCard
           title="Save copies of your media"
-          caption="Your media sorted into folders, videos as a best-frame image"
+          caption="Your media sorted into folders. Videos are written as best-frame images."
           enabled={form.separate.enabled}
           onEnabledChange={(v) =>
             form.setSeparate({ ...form.separate, enabled: v })

@@ -1,8 +1,8 @@
 """Tests for the tables_xlsx postprocess output module.
 
 The row schemas are covered by the export-layer tests; this wrapper just
-makes sure one workbook with the Detections and Counts sheets lands at the
-right path.
+makes sure one workbook with the Files and Detections sheets lands at the
+right path, trimmed to the folder-run column set.
 """
 
 from pathlib import Path
@@ -65,6 +65,14 @@ def test_writes_two_sheet_workbook(db, tmp_path):
 
     wb = load_workbook(output_path)
     assert wb.sheetnames == ["Files", "Detections"]
+
+    # Same trimmed column set as the folder-run CSVs.
+    for sheet in ("Files", "Detections"):
+        headers = [c.value for c in wb[sheet][1]]
+        assert "deployment_id" not in headers
+        assert "notes" not in headers
+        assert "file_id" in headers
+        assert "event_id" in headers
 
 
 def test_unknown_project_raises(db, tmp_path):

@@ -517,6 +517,9 @@ def build_detection_rows(
     place / paths live in files.csv) but carries the full FK id set
     (file_id, deployment_id, event_id) for direct linkability. Files with no
     detections do not appear here; per-event counts live in counts.csv.
+
+    `event_id` is blank when the file has no event, so every non-empty
+    value resolves in the events table. See the note on `_FILES_HEADERS`.
     """
     grouped = list(_group_rows_by_file(scoped_rows))
     event_map = _events_by_file(db, [f.id for f, _d, _s, _dets in grouped])
@@ -525,7 +528,7 @@ def build_detection_rows(
     for file_obj, deployment, _site, detections in grouped:
         deployment_id = deployment.id if deployment is not None else ""
         event = event_map.get(file_obj.id)
-        event_id = event.id if event else file_obj.id
+        event_id = event.id if event else ""
         for detection, taxonomy in detections:
             rows.append(
                 [detection.id, file_obj.id, deployment_id, event_id]
@@ -659,10 +662,12 @@ def build_deployments_rows(
 # Mirrors the Camtrap-DP media table. Location lives in deployments.csv;
 # join on deployment_id.
 #
-# event_id fallback: a file with no event (e.g. no timestamp, so it never
-# got clustered) carries its own file_id here so the column is never empty.
-# Event and file ids are disjoint UUIDs, so this never collides with a real
-# event_id; just don't assume every files.event_id exists as an event.
+# event_id is blank when a file has no event, never a stand-in id. Every
+# image / video lands in exactly one cluster once events are generated
+# (date-less files become singleton events with NULL bounds), so in
+# practice the column is always populated. If it ever is blank, that means
+# what it says: no event. Every non-empty value resolves in the events
+# table.
 _FILES_HEADERS = [
     "file_id",
     "deployment_id",
@@ -699,7 +704,7 @@ def build_files_rows(
     rows: list[list[Any]] = []
     for file_obj, deployment, _site, _detections in grouped:
         event = event_map.get(file_obj.id)
-        event_id = event.id if event else file_obj.id
+        event_id = event.id if event else ""
         rows.append(
             [
                 file_obj.id,
@@ -1096,6 +1101,13 @@ def build_camtrap_dp_tables(
             ]
         )
 
+        # Unlike files.csv / detections.csv, a missing event here falls back
+        # to the file id on purpose. CamTrap-DP has no events resource:
+        # eventID is a grouping key inside observations.csv, paired with the
+        # eventStart / eventEnd written just below (the file's own capture
+        # time). So an unclustered file is its own single-media event and the
+        # row stays self-consistent. A blank eventID would instead merge every
+        # unclustered file into one event under a GROUP BY.
         event = _file_event(db, file_obj.id)
         event_id = event.id if event else file_obj.id
         event_start = _iso_datetime(
