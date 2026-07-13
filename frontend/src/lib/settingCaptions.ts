@@ -15,6 +15,16 @@ import {
  * analyses only"); the folder-run wizard sets everything before the single
  * run, so it uses the base caption alone.
  */
+/**
+ * The three batch-size captions share one message: the default is picked for
+ * the hardware, and it is a power-user knob, not a speed dial (raising it does
+ * not make CPU inference faster, and too large a value crashes a GPU run). One
+ * helper keeps them identical so they cannot drift, as they had.
+ */
+const batchSizeCaption = (subject: string): string =>
+  `How many ${subject} at once. The default is set for your hardware. ` +
+  "Leave it unless you know what you are doing.";
+
 export const SETTING_CAPTIONS = {
   detectionThreshold:
     "Hide detections below this confidence score from counts and views. " +
@@ -36,4 +46,9 @@ export const SETTING_CAPTIONS = {
     "The pixel size images are resized to before detection. Larger can find small or distant animals but is slower and uses more memory. The model default is best in most cases.",
   imageAugmentation:
     "A slower detection mode that can find a few more animals in difficult images, but may add false positives. Off by default.",
+  detectionBatchSize: batchSizeCaption("images the detection model handles"),
+  classificationBatchSize: batchSizeCaption(
+    "crops the classification model handles",
+  ),
+  embeddingBatchSize: batchSizeCaption("crops the embedding model handles"),
 } as const;

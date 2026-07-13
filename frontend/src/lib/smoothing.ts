@@ -12,7 +12,7 @@ export const SMOOTHING_LEVELS: readonly CaptionedOption[] = [
   {
     value: "off",
     label: "Off",
-    caption: "Keeps the AI's labels as is, mistakes included.",
+    caption: "Keeps the AI's labels as is, outliers included.",
   },
   {
     value: "mild",

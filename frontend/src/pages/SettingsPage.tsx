@@ -931,7 +931,7 @@ export default function SettingsPage() {
                         control={form.control}
                         name="detection_batch_size"
                         label="Detection batch size"
-                        description="Images processed per batch by the detection model."
+                        description={SETTING_CAPTIONS.detectionBatchSize}
                         defaultGpu={detectionModel.default_batch_size_gpu}
                         defaultCpu={detectionModel.default_batch_size_cpu}
                       />
@@ -941,7 +941,7 @@ export default function SettingsPage() {
                         control={form.control}
                         name="classification_batch_size"
                         label="Classification batch size"
-                        description="Crops processed per batch by the classification model."
+                        description={SETTING_CAPTIONS.classificationBatchSize}
                         defaultGpu={classificationModel.default_batch_size_gpu}
                         defaultCpu={classificationModel.default_batch_size_cpu}
                       />
@@ -951,7 +951,7 @@ export default function SettingsPage() {
                         control={form.control}
                         name="embedding_batch_size"
                         label="Embedding batch size"
-                        description="Crops processed per batch by the embedding model."
+                        description={SETTING_CAPTIONS.embeddingBatchSize}
                         defaultGpu={embeddingModel.default_batch_size_gpu}
                         defaultCpu={embeddingModel.default_batch_size_cpu}
                       />

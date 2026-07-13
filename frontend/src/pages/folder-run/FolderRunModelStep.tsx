@@ -1059,43 +1059,6 @@ export function FolderRunModelStep() {
                       )}
                     />
 
-                    {detectionModel && (
-                      <BatchSizeRow
-                        control={form.control}
-                        name="detection_batch_size"
-                        label="Detection batch size"
-                        description="Images processed per batch by the detection model. Higher values are faster but use more memory."
-                        defaultGpu={detectionModel.default_batch_size_gpu}
-                        defaultCpu={detectionModel.default_batch_size_cpu}
-                      />
-                    )}
-
-                    {hasClassifier && classificationModel && (
-                      <BatchSizeRow
-                        control={form.control}
-                        name="classification_batch_size"
-                        label="Classification batch size"
-                        description="Crops processed per batch by the classification model. Higher values are faster but use more memory."
-                        defaultGpu={
-                          classificationModel.default_batch_size_gpu
-                        }
-                        defaultCpu={
-                          classificationModel.default_batch_size_cpu
-                        }
-                      />
-                    )}
-
-                    {hasEmbedding && embeddingModel && (
-                      <BatchSizeRow
-                        control={form.control}
-                        name="embedding_batch_size"
-                        label="Embedding batch size"
-                        description="Crops processed per batch by the embedding model. Higher values are faster but use more memory."
-                        defaultGpu={embeddingModel.default_batch_size_gpu}
-                        defaultCpu={embeddingModel.default_batch_size_cpu}
-                      />
-                    )}
-
                     <FormField
                       control={form.control}
                       name="video_fps"
@@ -1211,6 +1174,45 @@ export function FolderRunModelStep() {
                         </SettingRow>
                       )}
                     />
+
+                    {/* Batch sizes last: pure performance knobs that most
+                        users should not touch (see their captions). */}
+                    {detectionModel && (
+                      <BatchSizeRow
+                        control={form.control}
+                        name="detection_batch_size"
+                        label="Detection batch size"
+                        description={SETTING_CAPTIONS.detectionBatchSize}
+                        defaultGpu={detectionModel.default_batch_size_gpu}
+                        defaultCpu={detectionModel.default_batch_size_cpu}
+                      />
+                    )}
+
+                    {hasClassifier && classificationModel && (
+                      <BatchSizeRow
+                        control={form.control}
+                        name="classification_batch_size"
+                        label="Classification batch size"
+                        description={SETTING_CAPTIONS.classificationBatchSize}
+                        defaultGpu={
+                          classificationModel.default_batch_size_gpu
+                        }
+                        defaultCpu={
+                          classificationModel.default_batch_size_cpu
+                        }
+                      />
+                    )}
+
+                    {hasEmbedding && embeddingModel && (
+                      <BatchSizeRow
+                        control={form.control}
+                        name="embedding_batch_size"
+                        label="Embedding batch size"
+                        description={SETTING_CAPTIONS.embeddingBatchSize}
+                        defaultGpu={embeddingModel.default_batch_size_gpu}
+                        defaultCpu={embeddingModel.default_batch_size_cpu}
+                      />
+                    )}
 
                     {/* The retroactive analysis settings (independence
                         interval, smoothing, taxonomic rollup) have no UI
