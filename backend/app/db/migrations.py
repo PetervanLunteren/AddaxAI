@@ -274,6 +274,15 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
             "and classification_gate)"
         ),
     ),
+    _Fingerprint(
+        revision="1a2b3c4d5e6f",
+        table="projects",
+        column="detection_augment",
+        description=(
+            "add projects.detection_augment + detection_image_size "
+            "(advanced MegaDetector inference options)"
+        ),
+    ),
 )
 
 

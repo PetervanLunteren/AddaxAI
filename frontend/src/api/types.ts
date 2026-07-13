@@ -45,6 +45,8 @@ export interface ProjectCreate {
   detection_batch_size: number | null;
   classification_batch_size: number | null;
   embedding_batch_size: number | null;
+  detection_augment: boolean;
+  detection_image_size: number | null;
   mode?: ProjectMode;
   folder_run_state?: Record<string, unknown> | null;
 }
@@ -73,6 +75,8 @@ export interface ProjectUpdate {
   detection_batch_size?: number | null;
   classification_batch_size?: number | null;
   embedding_batch_size?: number | null;
+  detection_augment?: boolean | null;
+  detection_image_size?: number | null;
   /** Promotion sets this to "research". */
   mode?: ProjectMode | null;
   folder_run_state?: Record<string, unknown> | null;
@@ -103,6 +107,8 @@ export interface ProjectResponse {
   detection_batch_size: number | null;
   classification_batch_size: number | null;
   embedding_batch_size: number | null;
+  detection_augment: boolean;
+  detection_image_size: number | null;
   postprocessing_settings_hash: string | null;
   thumbnail_path: string | null;
   created_at_utc: string;

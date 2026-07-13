@@ -56,6 +56,52 @@ def _seconds_to_tqdm_time(seconds: float) -> str:
     return f"{m:02d}:{s:02d}"
 
 
+def _build_run_detector_batch_cmd(
+    *,
+    python_path: Path,
+    model_path: Path,
+    file_list_json: Path,
+    output_file: Path,
+    confidence_threshold: float,
+    batch_size: int | None,
+    image_size: int | None,
+    augment: bool,
+) -> list[str]:
+    """Assemble the ``run_detector_batch`` command line.
+
+    Pure and side-effect free so the flag logic is unit-testable without
+    spawning the subprocess. The three trailing entries (model, file list,
+    output) are positional; optional inference flags are inserted before them
+    with ``insert(-3)``. ``image_size`` and ``augment`` are only added when
+    set, mirroring the existing ``batch_size`` behaviour (None/False = let
+    MegaDetector use its own default). Note ``--include_image_size`` (below)
+    is a different flag: it adds image dimensions to the output, unrelated to
+    the ``--image_size`` inference-resize override.
+    """
+    cmd = [
+        str(python_path),
+        "-m",
+        "megadetector.detection.run_detector_batch",
+        "--include_image_size",
+        "--include_exif_tags",
+        "datetimeoriginal,gpsinfo",
+        "--threshold",
+        str(confidence_threshold),
+        str(model_path),
+        str(file_list_json),
+        str(output_file),
+    ]
+    if batch_size is not None:
+        cmd.insert(-3, "--batch_size")
+        cmd.insert(-3, str(batch_size))
+    if image_size is not None:
+        cmd.insert(-3, "--image_size")
+        cmd.insert(-3, str(image_size))
+    if augment:
+        cmd.insert(-3, "--augment")
+    return cmd
+
+
 class MegaDetectorV1000(DetectionModel):
     """
     MegaDetector v1000 implementation.
@@ -220,6 +266,8 @@ class MegaDetectorV1000(DetectionModel):
         deployment_folder: Path,
         confidence_threshold: float,
         batch_size: int | None = None,
+        image_size: int | None = None,
+        augment: bool = False,
         progress_callback: Callable[[str, float], None] | None = None,
         output_path: Path | None = None,
         job_id: str | None = None,
@@ -237,6 +285,10 @@ class MegaDetectorV1000(DetectionModel):
             batch_size: Number of images processed in parallel. None means let
                 MegaDetector use its own default (1). A non-None integer is
                 the user's Custom override from the project settings.
+            image_size: Override the detector's long-edge resize size. None
+                means use MegaDetector's model-native default.
+            augment: Run detection with image augmentation (slower, may add
+                false positives). From the project's detection_augment setting.
             progress_callback: Optional callback(message, progress)
             output_path: Optional explicit output path. If provided, results are written
                 here instead of the default .addaxai/detection_results.json.
@@ -287,25 +339,16 @@ class MegaDetectorV1000(DetectionModel):
                     json.dump([str(p) for p in image_paths], f)
 
                 # Build command — pass file list instead of folder
-                cmd = [
-                    str(self.python_path),
-                    "-m",
-                    "megadetector.detection.run_detector_batch",
-                    "--include_image_size",
-                    "--include_exif_tags",
-                    "datetimeoriginal,gpsinfo",
-                    "--threshold",
-                    str(confidence_threshold),
-                    str(self.model_path),
-                    str(file_list_json),
-                    str(temp_output),
-                ]
-
-                # Only override batch size when the user explicitly set a
-                # Custom value. None = let MegaDetector use its own default.
-                if batch_size is not None:
-                    cmd.insert(-3, "--batch_size")
-                    cmd.insert(-3, str(batch_size))
+                cmd = _build_run_detector_batch_cmd(
+                    python_path=self.python_path,
+                    model_path=self.model_path,
+                    file_list_json=file_list_json,
+                    output_file=temp_output,
+                    confidence_threshold=confidence_threshold,
+                    batch_size=batch_size,
+                    image_size=image_size,
+                    augment=augment,
+                )
 
                 logger.info(f"Running command: {' '.join(cmd)}")
 

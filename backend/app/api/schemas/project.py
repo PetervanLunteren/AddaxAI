@@ -40,7 +40,7 @@ class ProjectBase(BaseModel):
         None, description="Classification model ID or null for detection-only"
     )
     embedding_model_id: str | None = Field(
-        "DINOV2-VITB14", description="Embedding model ID or null to skip embeddings"
+        "DINOV2-VITS14", description="Embedding model ID or null to skip embeddings"
     )
     excluded_classes: list[str] = Field(
         default_factory=list, description="Species classes to exclude from classification"
@@ -141,6 +141,18 @@ class ProjectBase(BaseModel):
         description="Override embedding model batch size (null = use default)",
     )
 
+    # MegaDetector inference options (advanced, inference-time).
+    detection_augment: bool = Field(
+        default=False,
+        description="Run MegaDetector with image augmentation (slower)",
+    )
+    detection_image_size: int | None = Field(
+        default=None,
+        ge=320,
+        le=4096,
+        description="Override detector long-edge image size (null = model default)",
+    )
+
     # Workflow mode. 'research' = full project workspace (Sites,
     # Deployments, Insights). 'folder_run' = legacy-style point-at-a-
     # folder workflow with a hidden single deployment. Defaults to
@@ -225,6 +237,8 @@ class ProjectUpdate(BaseModel):
     detection_batch_size: int | None = Field(None, ge=1, le=256)
     classification_batch_size: int | None = Field(None, ge=1, le=256)
     embedding_batch_size: int | None = Field(None, ge=1, le=256)
+    detection_augment: bool | None = None
+    detection_image_size: int | None = Field(None, ge=320, le=4096)
     mode: ProjectMode | None = None
     folder_run_state: dict | None = None
 

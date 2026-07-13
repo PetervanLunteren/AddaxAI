@@ -29,6 +29,45 @@ from app.utils.subprocess_env import clean_python_env
 logger = get_logger(__name__)
 
 
+def _build_process_video_cmd(
+    *,
+    python_path: Path,
+    model_path: Path,
+    video_folder: Path,
+    output_json: Path,
+    time_sample: float,
+    confidence_threshold: float,
+    image_size: int | None,
+    augment: bool,
+) -> list[str]:
+    """Assemble the ``process_video`` command line.
+
+    Pure and side-effect free so the flag logic is unit-testable without
+    spawning the subprocess. Optional inference flags (image size, augment)
+    are appended only when set, mirroring the image detector; process_video
+    accepts them as ``--image_size N`` and ``--augment`` (store_true).
+    """
+    command = [
+        str(python_path),
+        "-m",
+        "megadetector.detection.process_video",
+        str(model_path),
+        str(video_folder),
+        "--output_json_file",
+        str(output_json),
+        "--recursive",
+        "--time_sample",
+        str(time_sample),
+        "--json_confidence_threshold",
+        str(confidence_threshold),
+    ]
+    if image_size is not None:
+        command += ["--image_size", str(image_size)]
+    if augment:
+        command.append("--augment")
+    return command
+
+
 class VideoDetectionModel:
     """
     MegaDetector video detection wrapper.
@@ -71,6 +110,8 @@ class VideoDetectionModel:
         output_json: Path,
         fps: float,
         confidence_threshold: float,
+        image_size: int | None = None,
+        augment: bool = False,
         progress_callback: Callable[[str, float], None] | None = None,
         job_id: str | None = None,
     ) -> Path:
@@ -86,6 +127,10 @@ class VideoDetectionModel:
             output_json: Path to output JSON file
             fps: Frames per second to extract (converted to time_sample)
             confidence_threshold: Minimum confidence for detections
+            image_size: Override the detector's long-edge resize size. None
+                means use MegaDetector's model-native default.
+            augment: Run detection with image augmentation (slower, may add
+                false positives). From the project's detection_augment setting.
             progress_callback: Optional callback(message, progress)
 
         Returns:
@@ -103,20 +148,16 @@ class VideoDetectionModel:
             f"(time_sample={time_sample})"
         )
 
-        command = [
-            str(self.python_path),
-            "-m",
-            "megadetector.detection.process_video",
-            str(self.model_path),
-            str(video_folder),
-            "--output_json_file",
-            str(output_json),
-            "--recursive",
-            "--time_sample",
-            str(time_sample),
-            "--json_confidence_threshold",
-            str(confidence_threshold),
-        ]
+        command = _build_process_video_cmd(
+            python_path=self.python_path,
+            model_path=self.model_path,
+            video_folder=video_folder,
+            output_json=output_json,
+            time_sample=time_sample,
+            confidence_threshold=confidence_threshold,
+            image_size=image_size,
+            augment=augment,
+        )
 
         logger.info(f"Running command: {' '.join(command)}")
 

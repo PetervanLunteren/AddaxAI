@@ -33,7 +33,44 @@ export const ADVANCED_SETTINGS_DEFAULTS = {
   detection_batch_size: null,
   classification_batch_size: null,
   embedding_batch_size: null,
+  detection_augment: false,
+  detection_image_size: null,
 } as const;
+
+/**
+ * Choices for the "Detection image size" select, shared by the project
+ * Settings page and the folder-run model step. The value is the long-edge
+ * pixel size MegaDetector resizes to before detection; the "default" sentinel
+ * maps to null (omit the flag, MD uses its model-native size). Only larger
+ * steps are offered, since the reason to change it is spotting small or
+ * distant animals, and MegaDetector advises against changing it otherwise.
+ */
+export const DETECTION_IMAGE_SIZE_DEFAULT = "default";
+export const DETECTION_IMAGE_SIZE_OPTIONS: readonly {
+  value: string;
+  label: string;
+}[] = [
+  { value: DETECTION_IMAGE_SIZE_DEFAULT, label: "Model default (1280)" },
+  { value: "1920", label: "1920" },
+  { value: "2560", label: "2560" },
+];
+
+/**
+ * Choices for the "Video frame rate" select, shared by the project Settings
+ * page and the folder-run model step so they can't drift. Values are the
+ * sampling rate in fps; the sub-1 range is labelled as "1 frame every N
+ * seconds" because it reads clearer than a fractional fps.
+ */
+export const VIDEO_FPS_OPTIONS: readonly { value: string; label: string }[] = [
+  { value: "0.1", label: "1 frame every 10 seconds" },
+  { value: "0.25", label: "1 frame every 4 seconds" },
+  { value: "0.5", label: "1 frame every 2 seconds" },
+  { value: "1", label: "1 frame per second" },
+  { value: "2", label: "2 frames per second" },
+  { value: "3", label: "3 frames per second" },
+  { value: "4", label: "4 frames per second" },
+  { value: "10", label: "10 frames per second" },
+];
 
 type AdvancedKey = keyof typeof ADVANCED_SETTINGS_DEFAULTS;
 

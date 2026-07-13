@@ -34,6 +34,7 @@ _DUPLICATE_SETTINGS_COLUMNS = (
     "shortcut_labels",
     "video_fps",
     "counting_threshold",
+    "classification_gate",
     "event_smoothing",
     "smoothing_strength",
     "taxonomic_rollup",
@@ -43,6 +44,8 @@ _DUPLICATE_SETTINGS_COLUMNS = (
     "detection_batch_size",
     "classification_batch_size",
     "embedding_batch_size",
+    "detection_augment",
+    "detection_image_size",
 )
 
 

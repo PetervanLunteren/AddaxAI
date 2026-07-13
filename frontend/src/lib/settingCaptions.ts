@@ -32,4 +32,8 @@ export const SETTING_CAPTIONS = {
     "Looks at all photos grouped into one event and changes an odd-one-out label to match the rest. Example: a burst that is mostly red deer with one stray roe deer gets the stray corrected to red deer.",
   taxonomicRollup:
     "When the model can't confidently name the exact species, it labels the animal with a broader group instead, such as genus or family. Example: unsure between two deer species, it labels the animal 'deer' rather than guessing one. On by default.",
+  detectionImageSize:
+    "The pixel size images are resized to before detection. Larger can find small or distant animals but is slower and uses more memory. The model default is best in most cases.",
+  imageAugmentation:
+    "A slower detection mode that can find a few more animals in difficult images, but may add false positives. Off by default.",
 } as const;

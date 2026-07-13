@@ -324,6 +324,49 @@ def test_update_project_batch_size_negative_is_rejected(client, db):
     assert resp.status_code == 422
 
 
+def test_create_project_default_detection_inference_options(client):
+    """A new project has augmentation off and no image-size override."""
+    resp = client.post(
+        "/api/projects", json={"name": "det-default", "timezone": "UTC"}
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["detection_augment"] is False
+    assert data["detection_image_size"] is None
+
+
+def test_update_project_detection_inference_options_persist(client, db):
+    p = make_project(db)
+    resp = client.patch(
+        f"/api/projects/{p.id}",
+        json={"detection_augment": True, "detection_image_size": 1920},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["detection_augment"] is True
+    assert data["detection_image_size"] == 1920
+
+    # Reload via GET to confirm persistence
+    data = client.get(f"/api/projects/{p.id}").json()
+    assert data["detection_augment"] is True
+    assert data["detection_image_size"] == 1920
+
+
+def test_update_project_detection_image_size_to_null(client, db):
+    """Clearing the override reverts to the model default (null)."""
+    p = make_project(db)
+    client.patch(f"/api/projects/{p.id}", json={"detection_image_size": 2560})
+    resp = client.patch(f"/api/projects/{p.id}", json={"detection_image_size": None})
+    assert resp.status_code == 200
+    assert resp.json()["detection_image_size"] is None
+
+
+def test_update_project_detection_image_size_out_of_range_is_rejected(client, db):
+    p = make_project(db)
+    resp = client.patch(f"/api/projects/{p.id}", json={"detection_image_size": 10})
+    assert resp.status_code == 422
+
+
 def test_update_project_batch_size_too_large_is_rejected(client, db):
     p = make_project(db)
     resp = client.patch(f"/api/projects/{p.id}", json={"embedding_batch_size": 999})

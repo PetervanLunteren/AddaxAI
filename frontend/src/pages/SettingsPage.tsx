@@ -36,7 +36,12 @@ import {
   fetchStats,
   type ProjectStats,
 } from "../lib/reprocessStats";
-import { restoreAdvancedDefaults } from "../lib/advancedSettingsDefaults";
+import {
+  DETECTION_IMAGE_SIZE_DEFAULT,
+  DETECTION_IMAGE_SIZE_OPTIONS,
+  VIDEO_FPS_OPTIONS,
+  restoreAdvancedDefaults,
+} from "../lib/advancedSettingsDefaults";
 import { useSidebarCollapsed } from "../components/layout/sidebar-context";
 import { ModelSelect } from "../components/models/ModelSelect";
 import { NoClassifierNotice } from "../components/models/NoClassifierNotice";
@@ -85,6 +90,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
+import { Switch } from "../components/ui/switch";
 import {
   DEFAULT_CLASSIFICATION_GATE,
   DEFAULT_COUNTING_THRESHOLD,
@@ -115,6 +121,8 @@ const settingsSchema = z.object({
   // Empty string means "Auto (derive from site location)".
   timezone: z.string(),
   video_fps: z.number().min(0.1).max(10),
+  detection_augment: z.boolean(),
+  detection_image_size: z.number().int().nullable(),
   counting_threshold: z.number().min(0).max(1),
   classification_gate: z.number().min(0.01).max(1),
   event_smoothing: z.boolean(),
@@ -126,16 +134,6 @@ const settingsSchema = z.object({
   classification_batch_size: z.number().int().min(1).max(256).nullable(),
   embedding_batch_size: z.number().int().min(1).max(256).nullable(),
 });
-
-const VIDEO_FPS_OPTIONS = [
-  { value: "0.1", label: "1 frame every 10 seconds" },
-  { value: "0.25", label: "1 frame every 4 seconds" },
-  { value: "0.5", label: "1 frame every 2 seconds" },
-  { value: "1", label: "1 frame per second" },
-  { value: "2", label: "2 frames per second" },
-  { value: "4", label: "4 frames per second" },
-  { value: "10", label: "10 frames per second" },
-];
 
 type SettingsFormData = z.infer<typeof settingsSchema>;
 
@@ -214,12 +212,14 @@ export default function SettingsPage() {
     defaultValues: {
       detection_model_id: "MD5A-0-0",
       classification_model_id: null,
-      embedding_model_id: "DINOV2-VITB14",
+      embedding_model_id: "DINOV2-VITS14",
       excluded_classes: [],
       country_code: null,
       state_code: null,
       timezone: "",
       video_fps: 1.0,
+      detection_augment: false,
+      detection_image_size: null,
       counting_threshold: DEFAULT_COUNTING_THRESHOLD,
       classification_gate: DEFAULT_CLASSIFICATION_GATE,
       event_smoothing: true,
@@ -244,6 +244,8 @@ export default function SettingsPage() {
         state_code: project.state_code || null,
         timezone: project.timezone ?? "",
         video_fps: project.video_fps,
+        detection_augment: project.detection_augment,
+        detection_image_size: project.detection_image_size,
         counting_threshold: project.counting_threshold,
         classification_gate: project.classification_gate,
         event_smoothing: project.event_smoothing,
@@ -667,6 +669,8 @@ export default function SettingsPage() {
         state_code: project.state_code || null,
         timezone: project.timezone ?? "",
         video_fps: project.video_fps,
+        detection_augment: project.detection_augment,
+        detection_image_size: project.detection_image_size,
         counting_threshold: project.counting_threshold,
         classification_gate: project.classification_gate,
         event_smoothing: project.event_smoothing,
@@ -1036,6 +1040,76 @@ export default function SettingsPage() {
                             ))}
                           </SelectContent>
                         </Select>
+                        <FormMessage />
+                      </div>
+                    </div>
+                  )}
+                />
+
+                {/* Detection image size (inference-time) */}
+                <FormField
+                  control={form.control}
+                  name="detection_image_size"
+                  render={({ field }) => (
+                    <div className="grid grid-cols-2 items-center gap-8 py-6">
+                      <div className="space-y-1">
+                        <FormLabel>Detection image size</FormLabel>
+                        <FormDescription className="text-sm">
+                          {SETTING_CAPTIONS.detectionImageSize} Applies to new analyses only.
+                        </FormDescription>
+                      </div>
+                      <div className="space-y-2">
+                        <Select
+                          key={String(field.value)}
+                          value={
+                            field.value == null
+                              ? DETECTION_IMAGE_SIZE_DEFAULT
+                              : String(field.value)
+                          }
+                          onValueChange={(val) =>
+                            field.onChange(
+                              val === DETECTION_IMAGE_SIZE_DEFAULT
+                                ? null
+                                : parseInt(val, 10),
+                            )
+                          }
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {DETECTION_IMAGE_SIZE_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </div>
+                    </div>
+                  )}
+                />
+
+                {/* Image augmentation (inference-time) */}
+                <FormField
+                  control={form.control}
+                  name="detection_augment"
+                  render={({ field }) => (
+                    <div className="grid grid-cols-2 items-center gap-8 py-6">
+                      <div className="space-y-1">
+                        <FormLabel>Image augmentation</FormLabel>
+                        <FormDescription className="text-sm">
+                          {SETTING_CAPTIONS.imageAugmentation} Applies to new analyses only.
+                        </FormDescription>
+                      </div>
+                      <div className="space-y-2">
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
                         <FormMessage />
                       </div>
                     </div>

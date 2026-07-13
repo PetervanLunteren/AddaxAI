@@ -118,6 +118,24 @@ export function ProjectSettingsModal({
             <p className="text-sm font-medium text-gray-700 mb-1">Video frame rate</p>
             <p className="text-sm text-gray-900">{project.video_fps} FPS</p>
           </div>
+
+          {/* Detection image size */}
+          <div>
+            <p className="text-sm font-medium text-gray-700 mb-1">Detection image size</p>
+            <p className="text-sm text-gray-900">
+              {project.detection_image_size
+                ? `${project.detection_image_size} px`
+                : "Model default"}
+            </p>
+          </div>
+
+          {/* Image augmentation */}
+          <div>
+            <p className="text-sm font-medium text-gray-700 mb-1">Image augmentation</p>
+            <p className="text-sm text-gray-900">
+              {project.detection_augment ? "On" : "Off"}
+            </p>
+          </div>
         </div>
 
         <DialogFooter>

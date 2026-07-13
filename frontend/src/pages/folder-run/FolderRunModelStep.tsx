@@ -54,10 +54,14 @@ import {
 import { Button } from "../../components/ui/button";
 import { Callout } from "../../components/ui/callout";
 import {
+  DETECTION_IMAGE_SIZE_DEFAULT,
+  DETECTION_IMAGE_SIZE_OPTIONS,
+  VIDEO_FPS_OPTIONS,
   isAnyAdvancedNonDefault,
   restoreAdvancedDefaults,
 } from "../../lib/advancedSettingsDefaults";
 import { Card, CardContent } from "../../components/ui/card";
+import { Switch } from "../../components/ui/switch";
 import {
   Collapsible,
   CollapsibleContent,
@@ -133,17 +137,7 @@ const NO_EMBEDDING = "none";
 // Default embedding model for brand-new users (no saved settings yet).
 // Returning users get their last-used choice from localStorage, and
 // resumed runs seed from the project row.
-const DEFAULT_EMBEDDING = "DINOV2-VITB14";
-
-const VIDEO_FPS_OPTIONS = [
-  { value: "0.1", label: "1 frame every 10 seconds" },
-  { value: "0.25", label: "1 frame every 4 seconds" },
-  { value: "0.5", label: "1 frame every 2 seconds" },
-  { value: "1", label: "1 frame per second" },
-  { value: "2", label: "2 frames per second" },
-  { value: "4", label: "4 frames per second" },
-  { value: "10", label: "10 frames per second" },
-];
+const DEFAULT_EMBEDDING = "DINOV2-VITS14";
 
 const settingsSchema = z.object({
   folder_path: z.string().min(1, "Pick a folder"),
@@ -157,6 +151,8 @@ const settingsSchema = z.object({
   classification_batch_size: z.number().int().min(1).max(256).nullable(),
   embedding_batch_size: z.number().int().min(1).max(256).nullable(),
   video_fps: z.number().min(0.1).max(10),
+  detection_augment: z.boolean(),
+  detection_image_size: z.number().int().nullable(),
   classification_gate: z.number().min(0.01).max(1),
   event_smoothing: z.boolean(),
   smoothing_strength: z.enum(["mild", "normal", "aggressive"]),
@@ -252,6 +248,8 @@ export function FolderRunModelStep() {
       classification_batch_size: null,
       embedding_batch_size: null,
       video_fps: 1.0,
+      detection_augment: false,
+      detection_image_size: null,
       classification_gate: DEFAULT_CLASSIFICATION_GATE,
       event_smoothing: true,
       smoothing_strength: "normal",
@@ -290,6 +288,8 @@ export function FolderRunModelStep() {
         run.project.classification_batch_size ?? null,
       embedding_batch_size: run.project.embedding_batch_size ?? null,
       video_fps: run.project.video_fps,
+      detection_augment: run.project.detection_augment,
+      detection_image_size: run.project.detection_image_size,
       classification_gate: run.project.classification_gate,
       event_smoothing: run.project.event_smoothing,
       smoothing_strength: (run.project.smoothing_strength ??
@@ -487,6 +487,8 @@ export function FolderRunModelStep() {
       classification_batch_size: data.classification_batch_size,
       embedding_batch_size: data.embedding_batch_size,
       video_fps: data.video_fps,
+      detection_augment: data.detection_augment,
+      detection_image_size: data.detection_image_size,
       classification_gate: data.classification_gate,
       // counting_threshold is left at its created default
       // (DEFAULT_COUNTING_THRESHOLD) — the one in-app floor, decoupled
@@ -619,6 +621,8 @@ export function FolderRunModelStep() {
       classification_batch_size: data.classification_batch_size,
       embedding_batch_size: data.embedding_batch_size,
       video_fps: data.video_fps,
+      detection_augment: data.detection_augment,
+      detection_image_size: data.detection_image_size,
       classification_gate: data.classification_gate,
       // counting_threshold is left at its created default
       // (DEFAULT_COUNTING_THRESHOLD) — the one in-app floor, decoupled
@@ -1123,6 +1127,64 @@ export function FolderRunModelStep() {
                               ))}
                             </SelectContent>
                           </Select>
+                          <FormMessage />
+                        </SettingRow>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="detection_image_size"
+                      render={({ field }) => (
+                        <SettingRow
+                          label="Detection image size"
+                          description={SETTING_CAPTIONS.detectionImageSize}
+                        >
+                          <Select
+                            key={String(field.value)}
+                            value={
+                              field.value == null
+                                ? DETECTION_IMAGE_SIZE_DEFAULT
+                                : String(field.value)
+                            }
+                            onValueChange={(v) =>
+                              field.onChange(
+                                v === DETECTION_IMAGE_SIZE_DEFAULT
+                                  ? null
+                                  : parseInt(v, 10),
+                              )
+                            }
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {DETECTION_IMAGE_SIZE_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </SettingRow>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="detection_augment"
+                      render={({ field }) => (
+                        <SettingRow
+                          label="Image augmentation"
+                          description={SETTING_CAPTIONS.imageAugmentation}
+                        >
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
                           <FormMessage />
                         </SettingRow>
                       )}

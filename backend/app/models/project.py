@@ -60,7 +60,7 @@ class Project(Base):
         String(100), nullable=True
     )
     embedding_model_id: Mapped[str | None] = mapped_column(
-        String(100), nullable=True, default="DINOV2-VITB14"
+        String(100), nullable=True, default="DINOV2-VITS14"
     )
     excluded_classes: Mapped[list[str]] = mapped_column(
         JSON, nullable=False, default=list
@@ -145,6 +145,19 @@ class Project(Base):
         Integer, nullable=True
     )
     embedding_batch_size: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+
+    # MegaDetector inference options (advanced, rarely needed). Both are
+    # inference-time: they change the raw detector pass, so they apply to
+    # future analyses only (like detection_model_id), never retroactively.
+    # detection_augment: run the detector on augmented copies and merge
+    # (slower, may add false positives). detection_image_size: override the
+    # long-edge resize; NULL = MegaDetector's model-native default (1280).
+    detection_augment: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    detection_image_size: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )
 

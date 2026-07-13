@@ -119,7 +119,7 @@ export function CreateProjectDialog({
       description: "",
       detection_model_id: "MD5A-0-0",
       classification_model_id: lastSelection?.classification_model_id ?? null,
-      embedding_model_id: lastSelection?.embedding_model_id ?? "DINOV2-VITB14",
+      embedding_model_id: lastSelection?.embedding_model_id ?? "DINOV2-VITS14",
       excluded_classes: lastSelection?.excluded_classes ?? [],
       country_code: lastSelection?.country_code ?? null,
       state_code: lastSelection?.state_code ?? null,

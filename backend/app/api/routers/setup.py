@@ -3,7 +3,7 @@ First-run setup endpoints.
 
 The desktop app is gated by a one-time setup wizard on first launch.
 Setup has two parts: install env-addaxai-base via micromamba, and
-download the default model weights (MDv5A + DINOv2-B) from HuggingFace.
+download the default model weights (MDv5A + DINOv2-S) from HuggingFace.
 Both run in a background thread driven by POST /api/setup/install-env;
 the wizard polls /api/setup/status at ~1.5s and watches progress.
 
@@ -54,11 +54,11 @@ _DEFAULT_MODELS: tuple[dict, ...] = (
     {
         "type_dir": "emb",
         "category": "embedding",
-        "model_id": "DINOV2-VITB14",
-        "friendly_name": "DINOv2 ViT-B/14",
+        "model_id": "DINOV2-VITS14",
+        "friendly_name": "DINOv2 ViT-S/14",
         "emoji": "🧠",
-        "model_fname": "dinov2_vitb14_pretrain.pth",
-        "hf_repo": "Addax-Data-Science/DINOV2-VITB14",
+        "model_fname": "dinov2_vits14_pretrain.pth",
+        "hf_repo": "Addax-Data-Science/DINOV2-VITS14",
     },
 )
 

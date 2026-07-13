@@ -228,10 +228,19 @@ def test_init_db_repairs_db_stamped_at_wrong_revision(
                 "ALTER TABLE deployments DROP COLUMN classification_gate_used"
             )
         )
-        # projects.counting_threshold is the newest detectable schema
-        # (f8a9b0c1d2e3 renamed it from detection_threshold). Rename it
-        # back to the original name so the schema truly looks initial and
-        # the fingerprint walk doesn't stop at that revision.
+        # projects.detection_augment + detection_image_size are the newest
+        # detectable schema (1a2b3c4d5e6f, advanced MegaDetector inference
+        # options). Drop so the fingerprint walk doesn't stop at head.
+        conn.execute(
+            text("ALTER TABLE projects DROP COLUMN detection_augment")
+        )
+        conn.execute(
+            text("ALTER TABLE projects DROP COLUMN detection_image_size")
+        )
+        # projects.counting_threshold is also detectable (f8a9b0c1d2e3
+        # renamed it from detection_threshold). Rename it back to the
+        # original name so the schema truly looks initial and the
+        # fingerprint walk doesn't stop at that revision.
         conn.execute(
             text(
                 "ALTER TABLE projects "

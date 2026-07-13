@@ -27,8 +27,11 @@ def test_duplicate_copies_settings_sites_and_requeues_deployments(db):
         db,
         name="Source",
         counting_threshold=0.7,
+        classification_gate=0.3,
         independence_interval=600,
         taxonomic_rollup=False,
+        detection_augment=True,
+        detection_image_size=1920,
     )
     site = make_site(db, project_id=source.id, name="Cam 1")
     make_deployment(
@@ -43,8 +46,11 @@ def test_duplicate_copies_settings_sites_and_requeues_deployments(db):
     assert new is not None
     # Settings carried over.
     assert new.counting_threshold == 0.7
+    assert new.classification_gate == 0.3
     assert new.independence_interval == 600
     assert new.taxonomic_rollup is False
+    assert new.detection_augment is True
+    assert new.detection_image_size == 1920
     # User-chosen fields from the request.
     assert new.name == "Copy A"
     assert new.classification_model_id == "SPECIESNET-v4-0-2-A"
