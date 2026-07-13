@@ -157,9 +157,11 @@ export function SpeciesSelectionModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Configure label selection</DialogTitle>
+          <DialogTitle>Species at your site</DialogTitle>
           <DialogDescription>
-            Select which labels to include in classifications
+            This sets which species the AI can identify. If it finds one you
+            didn't select, it uses the nearest broader group you kept instead
+            (e.g., its family).
           </DialogDescription>
         </DialogHeader>
 

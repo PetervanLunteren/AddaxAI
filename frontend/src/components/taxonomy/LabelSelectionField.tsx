@@ -71,7 +71,7 @@ export function useLabelSelectionCaption(modelId: string): string {
   });
   return geofence?.has_geofence && geofence.countries
     ? "Filter species to the country where your cameras are."
-    : "Pick which species the model can predict, to cut false positives.";
+    : "Pick which species the AI can identify, to cut false positives.";
 }
 
 interface LabelSelectionFieldProps {

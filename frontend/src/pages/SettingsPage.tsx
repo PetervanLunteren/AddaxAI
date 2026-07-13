@@ -961,19 +961,18 @@ export default function SettingsPage() {
               );
             })()}
 
-            {/* Card 3: Label selection */}
+            {/* Card 3: Species selection. Two-column row (label + caption
+                left, control right) to match the other settings rows. The
+                caption comes from the shared useLabelSelectionCaption hook. */}
             {hasClassificationModel && taxonomy && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Label selection</CardTitle>
-                  <CardDescription>
-                    Choose which labels the AI can predict.
-                  </CardDescription>
+                  <CardTitle>Species selection</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-0 divide-y border-t">
                   <div className="grid grid-cols-2 items-center gap-8 py-6">
                     <div className="space-y-1">
-                      <FormLabel>Label selection</FormLabel>
+                      <FormLabel>Species selection</FormLabel>
                       <FormDescription className="text-sm">
                         {labelCaption}
                       </FormDescription>

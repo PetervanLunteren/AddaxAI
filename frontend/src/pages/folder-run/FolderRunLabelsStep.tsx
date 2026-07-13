@@ -90,13 +90,12 @@ export function FolderRunLabelsStep() {
       <div className="space-y-6">
         <StepHeader
           title="Check labels"
-          caption="Review the AI's suggested labels, or skip to saving."
+          caption="Review the AI's suggested labels, or skip straight to saving."
         />
-        {/* Constrained, not full-width: the rows only hold a title + a
-            one-line caption, so a 7xl-wide card is mostly empty. Both
-            rows share this container's width and its left edge with the
-            header and Back button. */}
-        <div className="max-w-xl space-y-2">
+        {/* Two side-by-side cards for the either/or choice: this fills the
+            width (a single full-width row would be mostly empty) and reads
+            as a fork. Stacks on narrow screens. */}
+        <div className="grid gap-4 sm:grid-cols-2">
           <NextStepRow
             icon={Tag}
             title="Review the labels"

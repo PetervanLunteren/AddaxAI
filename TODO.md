@@ -1,17 +1,23 @@
 # TODO
 
-These two cards half width look odd. SHould we make the choices live next to each other so they fill the full width of the page? 
-        http://localhost:5173/folder-runs/bd641df6-4f72-4894-bc3b-1ac30f9b1a50/labels
-            Check labels
-            Review the AI's suggested labels, or skip to saving.
-
-            Review the labels
-            Check and edit 35 observations across 8 species, in a grid.
-
-            Skip to saving
-            Keep the AI labels as they are and go to the save step.
+New point / feature request:
 
 
+
+  it would be really nice to be able to have a "load .csv" button here that loads the same .csv format that I use for restrict_to_taxa_list.  This is
+  always how I run SpeciesNet for users now (instead of using the geofence), and IMO it creates much cleaner results than the default geofence.
+  Definitely not required, but a useful future feature for us to chat about.
+
+  https://megadetector.readthedocs.io/en/latest/postprocessing.html#megadetector.postprocessing.classification_postprocessing.restrict_to_taxa_list
+
+
+  ------
+
+
+  There is already a save and load option in the species selection modals. It woiuld be great if we could change the current format (JSON) to match the
+  same as restrict to taxa list. Here is an example:
+
+  /Users/peter/Downloads/mapped_taxonomy.csv
 
 ## Priority 1
 - [ ] ORPHANED BACKEND PROCESS - the packaged app can leave its backend running after quit, and the next launch then silently talks to the stale backend. Observed on Peters mac (2026-07-07): /Applications/AddaxAI.app backend orphaned on port 8000, PPID 1. Three causes in electron/src/main.ts: (1) stopBackend() sends SIGTERM blind, never verifies exit, no SIGKILL fallback; uvicorn graceful shutdown can hang forever on open connections (an open browser tab is enough). (2) the relaunch path uses app.exit(0), which skips before-quit/will-quit entirely, so stopBackend never runs on relaunch. (3) force-quit/crash. Worst consequence: after an update, the new app fails to bind 8000 but the health check gets an answer from the STALE old-version backend and uses it -> new frontend on old backend, schema drift, unexplainable bugs. Fix ideas: SIGTERM then wait then SIGKILL; call stopBackend explicitly before app.exit in the relaunch path; on startup, verify the /health version matches the app version and kill/refuse a stale backend.
