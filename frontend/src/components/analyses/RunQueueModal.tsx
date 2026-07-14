@@ -645,10 +645,16 @@ export function RunQueueModal({
           )}
 
           {/* Folder-run "What next?" — the caller supplies the rows so its
-              step navigation stays out of this shared component. */}
+              step navigation stays out of this shared component. A folder
+              run has one deployment, so `isComplete` already means it
+              succeeded (failure -> hasError, cancel -> hasCancelled). We do
+              NOT gate on successCount here: that count comes from a queue
+              query that only starts fetching once terminal, so gating on it
+              would drop these rows until that async fetch lands (and hide
+              them entirely if it is slow or fails). The rows only navigate,
+              so they need no entry data. */}
           {isComplete &&
             mode === "folder-run" &&
-            successCount > 0 &&
             renderTerminalNextSteps && (
               <div className="space-y-2 pt-1">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

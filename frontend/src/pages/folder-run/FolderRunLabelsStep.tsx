@@ -61,7 +61,7 @@ export function FolderRunLabelsStep() {
     <div className="space-y-6 pb-24">
       <StepHeader
         title="Check labels"
-        caption="Fix any labels the AI got wrong, then continue."
+        caption="This step is optional. Fix any labels the AI got wrong, or go straight to saving."
       />
       <LabelsView
         projectId={runId}
