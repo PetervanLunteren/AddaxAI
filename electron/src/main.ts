@@ -9,15 +9,20 @@
  */
 
 import { app, BrowserWindow, crashReporter, session, shell, ipcMain, dialog, Menu } from 'electron';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, execSync, ChildProcess } from 'child_process';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
+// Populated by spawnBackend's handlers so waitForBackend can explain a
+// startup death instead of waiting out the timer.
+let backendSpawnError: Error | null = null;
+let lastBackendExit: { code: number | null; signal: string | null } | null = null;
 const BACKEND_PORT = 8000;
 const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
+const LOGS_DIR = path.join(os.homedir(), 'AddaxAI', 'logs');
 
 /**
  * Parse `--timelapse <folder>` out of process.argv.
@@ -101,7 +106,7 @@ app.on('second-instance', (_event, argv) => {
       mainWindow.show();
       mainWindow.focus();
     } else {
-      void createWindow(route);
+      void reopenWindow(route);
     }
     return;
   }
@@ -110,7 +115,7 @@ app.on('second-instance', (_event, argv) => {
     mainWindow.show();
     mainWindow.focus();
   } else {
-    void createWindow();
+    void reopenWindow();
   }
 });
 
@@ -185,167 +190,424 @@ function writeShutdownSentinel(): void {
 
 snapshotPreviousShutdown();
 
+const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+type HealthBody = { status?: string; version?: string };
+
+// How long a backend that never dies is allowed to take before we give
+// up. First launch does the slow one-time work (PyInstaller unpack,
+// alembic migrations, backups) behind /health, so this is generous.
+const BACKEND_READY_TIMEOUT_MS = 180000;
+
 /**
- * Start the FastAPI backend server
+ * One IPv4 GET to /health. Resolves the parsed JSON body on a 200, or
+ * null when nothing answers / it times out / the status is not 200.
+ * A 200 with a non-JSON body (some other server on the port) resolves
+ * to `{}`, which `isAddaxaiHealth` then rejects.
  */
-async function startBackend(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    console.log('[Electron] Starting backend server...');
-
-    const isDev = !app.isPackaged;
-
-    let backendExecutable: string;
-    let backendCwd: string;
-    let backendArgs: string[] = [];
-
-    if (isDev) {
-      // Development: Use venv Python with uvicorn
-      const backendDir = path.join(__dirname, '..', '..', 'backend');
-      const pythonPath = path.join(backendDir, 'venv', 'bin', 'python');
-
-      if (!fs.existsSync(pythonPath)) {
-        reject(new Error(`Python not found: ${pythonPath}`));
-        return;
-      }
-
-      backendExecutable = pythonPath;
-      backendCwd = backendDir;
-      backendArgs = [
-        '-m', 'uvicorn',
-        'app.main:app',
-        '--host', '127.0.0.1',
-        '--port', String(BACKEND_PORT),
-        '--log-level', 'info'
-      ];
-
-      console.log('[Electron] Development mode - using venv Python');
-    } else {
-      // Production: Use PyInstaller bundled executable
-      // Windows requires .exe extension, macOS/Linux do not
-      const exeName = process.platform === 'win32' ? 'backend.exe' : 'backend';
-      backendExecutable = path.join(process.resourcesPath, 'backend', exeName);
-      backendCwd = process.cwd(); // Current working directory for database/files
-
-      if (!fs.existsSync(backendExecutable)) {
-        reject(new Error(`Backend executable not found: ${backendExecutable}`));
-        return;
-      }
-
-      console.log('[Electron] Production mode - using PyInstaller executable');
-    }
-
-    console.log('[Electron] Starting backend:', backendExecutable);
-
-    backendProcess = spawn(backendExecutable, backendArgs, {
-      cwd: backendCwd,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        ...(isDev ? { PYTHONPATH: backendCwd } : {})
-      }
+function probeHealth(timeoutMs = 2000): Promise<HealthBody | null> {
+  const http = require('http');
+  return new Promise((resolve) => {
+    const req = http.get(
+      {
+        hostname: '127.0.0.1',
+        port: BACKEND_PORT,
+        path: '/health',
+        family: 4, // Force IPv4
+        timeout: timeoutMs,
+      },
+      (res: any) => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          resolve(null);
+          return;
+        }
+        let body = '';
+        res.on('data', (chunk: any) => {
+          body += chunk;
+        });
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(body));
+          } catch {
+            resolve({});
+          }
+        });
+      },
+    );
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(null);
     });
-
-    // Log backend output
-    backendProcess.stdout?.on('data', (data) => {
-      console.log('[Backend]', data.toString().trim());
-    });
-
-    backendProcess.stderr?.on('data', (data) => {
-      console.error('[Backend Error]', data.toString().trim());
-    });
-
-    backendProcess.on('error', (error) => {
-      console.error('[Electron] Failed to start backend:', error);
-      reject(error);
-    });
-
-    backendProcess.on('exit', (code, signal) => {
-      console.log(`[Electron] Backend exited with code ${code} and signal ${signal}`);
-      backendProcess = null;
-    });
-
-    // Wait for backend to be ready
-    waitForBackend(BACKEND_URL)
-      .then(() => {
-        console.log('[Electron] Backend is ready');
-        resolve();
-      })
-      .catch(reject);
   });
 }
 
 /**
- * Wait for backend to respond to health check
+ * Is this /health body from an AddaxAI backend (vs some unrelated server
+ * that happens to hold the port)? Our backend always returns
+ * `{status: "healthy", version: "..."}`.
  */
-async function waitForBackend(url: string, maxAttempts = 30): Promise<void> {
-  const http = require('http');
+function isAddaxaiHealth(body: HealthBody | null): boolean {
+  return !!body && body.status === 'healthy' && typeof body.version === 'string';
+}
 
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      const healthCheck = await new Promise<boolean>((resolve) => {
-        // Use explicit options to force IPv4 connection
-        const options = {
-          hostname: '127.0.0.1',
-          port: BACKEND_PORT,
-          path: '/health',
-          family: 4, // Force IPv4
-          timeout: 2000
-        };
-
-        const req = http.get(options, (res: any) => {
-          console.log(`[Electron] Health check response: ${res.statusCode}`);
-          resolve(res.statusCode === 200);
-        });
-        req.on('error', (err: any) => {
-          console.log(`[Electron] Health check error: ${err.message}`);
-          resolve(false);
-        });
-        req.on('timeout', () => {
-          console.log(`[Electron] Health check timeout`);
-          req.destroy();
-          resolve(false);
-        });
+/**
+ * Kill whatever process is *listening* on `port`. Best-effort and
+ * guarded: a missing tool or no-match just logs and returns. Only ever
+ * called once we have already confirmed (via /health) that the listener
+ * is a stale AddaxAI backend, never a foreign process.
+ *
+ * Critically, this must match only the LISTEN socket, not clients
+ * connected to the port. Our own probeHealth opens a client connection
+ * to 8000, so a broad `lsof -ti tcp:8000` returns Electron's own pid too
+ * and we would SIGKILL ourselves. We restrict to the listening socket
+ * and, belt-and-suspenders, never kill our own process.
+ */
+function killProcessOnPort(port: number): void {
+  const pids = new Set<number>();
+  try {
+    if (process.platform === 'win32') {
+      const out = execSync(`netstat -ano -p tcp | findstr LISTENING`, {
+        encoding: 'utf8',
       });
-
-      if (healthCheck) {
-        console.log(`[Electron] Backend health check passed after ${i + 1} attempts`);
-        return;
+      for (const line of out.split('\n')) {
+        const parts = line.trim().split(/\s+/);
+        // TCP  <local>  <foreign>  LISTENING  <pid>
+        const local = parts[1];
+        const pid = Number(parts[4]);
+        if (local && local.endsWith(`:${port}`) && Number.isInteger(pid)) {
+          pids.add(pid);
+        }
       }
-    } catch (error) {
-      console.log(`[Electron] Health check exception:`, error);
+    } else {
+      const out = execSync(`lsof -t -iTCP:${port} -sTCP:LISTEN`, {
+        encoding: 'utf8',
+      });
+      for (const s of out.split('\n').map((x) => x.trim()).filter(Boolean)) {
+        const pid = Number(s);
+        if (Number.isInteger(pid)) pids.add(pid);
+      }
     }
-
-    console.log(`[Electron] Waiting for backend... (attempt ${i + 1}/${maxAttempts})`);
-    await new Promise(resolve => setTimeout(resolve, 1000));
+  } catch {
+    // lsof / findstr exit non-zero when nothing matches — that's fine.
   }
-  throw new Error('Backend failed to start within 30 seconds');
+
+  pids.delete(process.pid); // never kill ourselves
+  if (pids.size === 0) {
+    console.log(`[Electron] killProcessOnPort(${port}): no listener found`);
+    return;
+  }
+  for (const pid of pids) {
+    try {
+      if (process.platform === 'win32') {
+        execSync(`taskkill /PID ${pid} /F`);
+      } else {
+        process.kill(pid, 'SIGKILL');
+      }
+    } catch {
+      /* already gone */
+    }
+  }
 }
 
 /**
- * Stop the backend server
+ * Resolve the backend command for the current mode. Throws if the
+ * executable / interpreter is missing.
  */
-function stopBackend(): void {
-  if (backendProcess) {
-    console.log('[Electron] Stopping backend server...');
-    backendProcess.kill('SIGTERM');
-    backendProcess = null;
+function resolveBackendCommand(): {
+  executable: string;
+  cwd: string;
+  args: string[];
+  isDev: boolean;
+} {
+  const isDev = !app.isPackaged;
+
+  if (isDev) {
+    // Development: venv Python with uvicorn
+    const backendDir = path.join(__dirname, '..', '..', 'backend');
+    const pythonPath = path.join(backendDir, 'venv', 'bin', 'python');
+    if (!fs.existsSync(pythonPath)) {
+      throw new Error(`Python not found: ${pythonPath}`);
+    }
+    return {
+      executable: pythonPath,
+      cwd: backendDir,
+      args: [
+        '-m', 'uvicorn',
+        'app.main:app',
+        '--host', '127.0.0.1',
+        '--port', String(BACKEND_PORT),
+        '--log-level', 'info',
+      ],
+      isDev,
+    };
+  }
+
+  // Production: PyInstaller bundled executable (.exe on Windows).
+  const exeName = process.platform === 'win32' ? 'backend.exe' : 'backend';
+  const executable = path.join(process.resourcesPath, 'backend', exeName);
+  if (!fs.existsSync(executable)) {
+    throw new Error(`Backend executable not found: ${executable}`);
+  }
+  return { executable, cwd: process.cwd(), args: [], isDev };
+}
+
+/**
+ * Spawn the backend process and wire up logging. Records early failures
+ * (`backendSpawnError`) and the exit code (`lastBackendExit`) so
+ * `waitForBackend` can fail fast instead of waiting out the timer when
+ * the process dies during startup.
+ */
+function spawnBackend(): void {
+  backendSpawnError = null;
+  lastBackendExit = null;
+
+  const { executable, cwd, args, isDev } = resolveBackendCommand();
+  console.log(
+    `[Electron] Starting backend (${isDev ? 'development' : 'production'}):`,
+    executable,
+  );
+
+  const proc = spawn(executable, args, {
+    cwd,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      ...(isDev ? { PYTHONPATH: cwd } : {}),
+    },
+  });
+  backendProcess = proc;
+
+  proc.stdout?.on('data', (data) => {
+    console.log('[Backend]', data.toString().trim());
+  });
+  proc.stderr?.on('data', (data) => {
+    console.error('[Backend Error]', data.toString().trim());
+  });
+  proc.on('error', (error) => {
+    backendSpawnError = error;
+    console.error('[Electron] Failed to start backend:', error);
+  });
+  proc.on('exit', (code, signal) => {
+    console.log(`[Electron] Backend exited with code ${code} and signal ${signal}`);
+    lastBackendExit = { code, signal };
+    if (backendProcess === proc) backendProcess = null;
+  });
+}
+
+/**
+ * Bring up a backend we own on BACKEND_PORT.
+ *
+ * Pre-flight: if something already answers /health, either it is a
+ * stale AddaxAI backend (orphan from a previous run, or an old version
+ * left after an update) — kill it and claim the port — or it is a
+ * foreign process, in which case we refuse with a clear error. Then
+ * spawn our own and wait for it, and finally re-check the version so we
+ * never end up silently talking to a survivor.
+ */
+async function ensureBackend(): Promise<void> {
+  const existing = await probeHealth(1500);
+  if (existing) {
+    if (isAddaxaiHealth(existing)) {
+      console.warn(
+        `[Electron] A backend is already on port ${BACKEND_PORT} ` +
+          `(version ${existing.version}); reclaiming the port.`,
+      );
+      killProcessOnPort(BACKEND_PORT);
+      // Wait for the port to actually free up (max ~5s).
+      for (let i = 0; i < 10; i++) {
+        if (!(await probeHealth(500))) break;
+        await delay(500);
+      }
+    } else {
+      throw new Error(
+        `Port ${BACKEND_PORT} is in use by another application. Quit ` +
+          `whatever is using it and relaunch AddaxAI.`,
+      );
+    }
+  }
+
+  spawnBackend();
+  await waitForBackend();
+
+  // Defensive: confirm we are talking to OUR backend, not a survivor
+  // that our uvicorn failed to displace (e.g. it never freed the port).
+  const health = await probeHealth(2000);
+  const expected = app.getVersion();
+  if (health?.version && health.version !== expected) {
+    throw new Error(
+      `A different AddaxAI backend (version ${health.version}) is running ` +
+        `on port ${BACKEND_PORT} and could not be replaced. Fully quit any ` +
+        `other AddaxAI window and relaunch.`,
+    );
+  }
+  console.log('[Electron] Backend is ready');
+}
+
+/**
+ * Wait for our backend to answer /health. Polls while the process is
+ * alive; fails fast if it exits during startup (no waiting out the
+ * timer); gives up after BACKEND_READY_TIMEOUT_MS for a wedged-but-alive
+ * backend.
+ */
+async function waitForBackend(): Promise<void> {
+  const start = Date.now();
+  while (true) {
+    if (!backendProcess) {
+      const detail = backendSpawnError
+        ? backendSpawnError.message
+        : lastBackendExit
+          ? `exit code ${lastBackendExit.code}`
+          : 'unknown reason';
+      throw new Error(
+        `The backend stopped while starting up (${detail}). See the logs ` +
+          `for details.`,
+      );
+    }
+    const health = await probeHealth(2000);
+    if (isAddaxaiHealth(health)) return;
+    if (Date.now() - start > BACKEND_READY_TIMEOUT_MS) {
+      throw new Error(
+        'The backend is taking longer than expected to start. See the ' +
+          'logs for details.',
+      );
+    }
+    await delay(1000);
   }
 }
 
 /**
- * Create the main application window
+ * Stop the backend: SIGTERM, wait up to 5s for a clean exit, then
+ * SIGKILL. uvicorn's graceful shutdown can hang forever on an open
+ * connection, so the SIGKILL fallback is what guarantees no orphan.
  */
-async function createWindow(initialPath?: string): Promise<void> {
+async function stopBackend(): Promise<void> {
+  const proc = backendProcess;
+  backendProcess = null;
+  if (!proc || proc.exitCode !== null || proc.signalCode !== null) return;
+  console.log('[Electron] Stopping backend server...');
+  await new Promise<void>((resolve) => {
+    const kill9 = setTimeout(() => {
+      try {
+        proc.kill('SIGKILL');
+      } catch {
+        /* already gone */
+      }
+      resolve();
+    }, 5000);
+    proc.once('exit', () => {
+      clearTimeout(kill9);
+      resolve();
+    });
+    try {
+      proc.kill('SIGTERM');
+    } catch {
+      clearTimeout(kill9);
+      resolve();
+    }
+  });
+}
+
+/**
+ * Stop the backend and mark the shutdown clean. The single path every
+ * quit / relaunch funnels through so the backend is always terminated
+ * and the crash sentinel is always written.
+ */
+async function gracefulShutdown(): Promise<void> {
+  await stopBackend();
+  writeShutdownSentinel();
+}
+
+/**
+ * A minimal self-contained HTML page (splash / error). Rendered from a
+ * data: URL so no asset has to be bundled. No CSP is set so the error
+ * page's inline button handlers can call window.electronAPI (exposed by
+ * the preload, which loads for these pages too).
+ */
+function shellPage(bodyHtml: string): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+    :root { color-scheme: light dark; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex; align-items: center; justify-content: center;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: #0f6064; color: #ffffff; text-align: center; padding: 2rem;
+    }
+    .box { max-width: 30rem; }
+    h1 { font-size: 1.25rem; font-weight: 600; margin: 0 0 0.75rem; }
+    p { margin: 0.5rem 0; line-height: 1.5; opacity: 0.92; }
+    .msg { opacity: 0.85; font-size: 0.9rem; }
+    .path { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.8rem; opacity: 0.8; }
+    .spinner {
+      width: 2.25rem; height: 2.25rem; margin: 0 auto 1rem;
+      border: 3px solid rgba(255,255,255,0.3); border-top-color: #ffffff;
+      border-radius: 50%; animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .actions { margin-top: 1.25rem; display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; }
+    button {
+      font: inherit; padding: 0.5rem 0.9rem; border-radius: 0.4rem;
+      border: 1px solid rgba(255,255,255,0.5); background: rgba(255,255,255,0.12);
+      color: #ffffff; cursor: pointer;
+    }
+    button:hover { background: rgba(255,255,255,0.22); }
+  </style></head><body><div class="box">${bodyHtml}</div></body></html>`;
+}
+
+function splashHtml(): string {
+  return shellPage(
+    `<div class="spinner"></div><h1>Starting AddaxAI…</h1>` +
+      `<p class="msg">First launch can take a minute while it sets things up.</p>`,
+  );
+}
+
+function errorHtml(message: string): string {
+  // Escape the backend message for safe HTML interpolation.
+  const safe = message
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  // A JS string literal for the onclick, with its quotes HTML-escaped so
+  // they don't terminate the double-quoted attribute. The browser decodes
+  // &quot; back to " when parsing the attribute value.
+  const logsArg = JSON.stringify(LOGS_DIR).replace(/"/g, '&quot;');
+  const pathText = LOGS_DIR.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  return shellPage(
+    `<h1>AddaxAI could not start</h1>` +
+      `<p class="msg">${safe}</p>` +
+      `<p class="path">${pathText}</p>` +
+      `<div class="actions">` +
+      `<button onclick="window.electronAPI.openPath(${logsArg})">Open logs folder</button>` +
+      `<button onclick="window.electronAPI.retryBackend()">Retry</button>` +
+      `<button onclick="window.electronAPI.quitApp()">Quit</button>` +
+      `</div>`,
+  );
+}
+
+function loadHtml(html: string): Promise<void> {
+  if (!mainWindow) return Promise.resolve();
+  return mainWindow.loadURL(
+    'data:text/html;charset=utf-8,' + encodeURIComponent(html),
+  );
+}
+
+/**
+ * Create the main application window and show the splash immediately.
+ * The real SPA is loaded later by loadApp() once the backend is ready;
+ * on failure showErrorPage() takes over. This is what keeps a slow or
+ * failed backend from ever presenting a white screen.
+ */
+async function createWindow(): Promise<void> {
   console.log('[Electron] Creating main window...');
-
-  const appTitle = `AddaxAI v${app.getVersion()}`;
 
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1024,
     minHeight: 768,
-    title: appTitle,
+    title: `AddaxAI v${app.getVersion()}`,
     // Show our custom application menu bar on Windows / Linux (built in
     // setupApplicationMenu). It holds every app-wide action: File (data
     // folders, backup/restore, quit), View (reload, species names), and
@@ -360,16 +622,9 @@ async function createWindow(initialPath?: string): Promise<void> {
       webSecurity: true,
       preload: path.join(__dirname, 'preload.js'), // Compiled from preload.ts
     },
-    show: false, // Don't show until ready
+    show: false, // Don't show until the splash has painted
   });
 
-  // Attach all listeners that depend on a window event BEFORE loading
-  // the URL. ready-to-show fires once when the renderer has rendered for
-  // the first time; on Windows it consistently fires *before*
-  // loadURL(...) resolves, so attaching the listener after the load
-  // (as we used to) misses the event entirely and the window stays
-  // invisible while the renderer happily polls the backend in the
-  // background. Attach early; show() is then a one-liner.
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
   });
@@ -381,46 +636,88 @@ async function createWindow(initialPath?: string): Promise<void> {
     event.preventDefault();
   });
 
-  // Clear the renderer's HTTP cache before each load. The frontend is a
-  // hashed-asset Vite SPA served from the bundled backend at a stable URL
-  // (http://localhost:8000). On app upgrade the bundle ships new asset
-  // hashes, but the renderer may still have an index.html cached from the
-  // previous install referring to hashes that no longer exist, producing a
-  // white / unstyled page on first launch. Wiping the cache at startup
-  // makes that failure mode structurally impossible. The cost is a small
-  // re-download from localhost on each launch, which is negligible.
-  await session.defaultSession.clearCache();
-
-  // Load the frontend from backend. An optional initial in-app route
-  // (e.g. /folder-runs/new?path=... from the --timelapse launcher) is
-  // appended so the SPA router lands on it directly on first paint.
-  await mainWindow.loadURL(`${BACKEND_URL}${initialPath ?? ''}`);
-
-  // Belt-and-suspenders: if ready-to-show somehow didn't fire (Electron
-  // bug, OS quirk, race we didn't anticipate), force the window visible
-  // after loadURL resolves. show() is idempotent so calling it twice
-  // is harmless. focus() ensures the window comes to the foreground on
-  // Windows where the OS may otherwise leave it behind another app.
-  if (!mainWindow.isVisible()) {
-    mainWindow.show();
-    mainWindow.focus();
-  }
-
   // Open external links in browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
   });
 
-  // Handle window close
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 
-  // Open DevTools in development
   if (!app.isPackaged) {
     mainWindow.webContents.openDevTools();
   }
+
+  await loadHtml(splashHtml());
+  if (!mainWindow.isVisible()) {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+}
+
+/**
+ * Load the real frontend SPA into the existing window. An optional
+ * in-app route (e.g. /folder-runs/new?path=... from the --timelapse
+ * launcher) is appended so the router lands on it on first paint.
+ */
+async function loadApp(route = ''): Promise<void> {
+  if (!mainWindow) return;
+
+  // Clear the renderer's HTTP cache before loading the SPA. The frontend
+  // is a hashed-asset Vite SPA served from the bundled backend at a stable
+  // URL (http://localhost:8000). On app upgrade the bundle ships new asset
+  // hashes, but the renderer may still have an index.html cached from the
+  // previous install referring to hashes that no longer exist, producing a
+  // white / unstyled page. Wiping the cache makes that structurally
+  // impossible. The cost is a small re-download from localhost, negligible.
+  await session.defaultSession.clearCache();
+  await mainWindow.loadURL(`${BACKEND_URL}${route}`);
+
+  // Belt-and-suspenders: if ready-to-show didn't fire, force visible.
+  if (!mainWindow.isVisible()) {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+}
+
+/**
+ * Replace the splash with an error page explaining why the backend did
+ * not come up, with buttons to open the logs, retry, or quit.
+ */
+async function showErrorPage(message: string): Promise<void> {
+  await loadHtml(errorHtml(message));
+  if (mainWindow && !mainWindow.isVisible()) {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+}
+
+/**
+ * Bring the backend up and load the app, showing the error page on any
+ * failure instead of quitting. Used by the initial launch and the error
+ * page's Retry button.
+ */
+async function startBackendAndLoad(route = ''): Promise<void> {
+  try {
+    await ensureBackend();
+    await loadApp(route);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[Electron] Startup failed:', message);
+    await showErrorPage(message);
+  }
+}
+
+/**
+ * Re-open a main window when one doesn't exist (macOS dock activate, or a
+ * second-instance launch). The backend is already running at this point,
+ * so we skip ensureBackend and go straight to the SPA.
+ */
+async function reopenWindow(route = ''): Promise<void> {
+  await createWindow();
+  await loadApp(route);
 }
 
 /**
@@ -683,9 +980,19 @@ ipcMain.handle('app:quit', () => {
 // process. Used by the Restore-from-backup flow so the user does not
 // have to manually double-click the app again to finish the restore.
 // Reset still uses app:quit because its intent is "wipe and walk away".
-ipcMain.handle('app:relaunch', () => {
+ipcMain.handle('app:relaunch', async () => {
   app.relaunch();
+  // app.exit() skips before-quit / will-quit, so stop the backend
+  // explicitly here or the relaunched app inherits an orphan on port 8000.
+  await gracefulShutdown();
   app.exit(0);
+});
+
+// Retry backend startup from the error page's Retry button. Re-runs the
+// full ensureBackend + loadApp path, falling back to the error page again
+// if it still fails.
+ipcMain.handle('app:retryBackend', async () => {
+  await startBackendAndLoad();
 });
 
 // Return the runtime app version (e.g. "0.2.0-beta.1"). The version is
@@ -769,23 +1076,22 @@ app.on('ready', async () => {
   try {
     setupDownloadHandler();
     setupApplicationMenu();
-    await startBackend();
+    // Show the window (splash) immediately, then bring the backend up.
+    await createWindow();
     // When launched via `AddaxAI.exe --timelapse <folder>` (Saul's
-    // Timelapse integration / shim), open the main window straight on a
-    // new folder run with the folder pre-filled.
-    //
-    // Timelapse Analyser is Windows-only, so the flag is only meaningful
-    // on Windows. On macOS/Linux we ignore it and open the main window;
-    // this is a defensive guard since the legacy shim that produces the
-    // flag is itself Windows-only.
+    // Timelapse integration / shim), land straight on a new folder run
+    // with the folder pre-filled. Timelapse Analyser is Windows-only, so
+    // the flag is only meaningful on Windows; elsewhere we ignore it.
     const timelapsePath = parseTimelapseArg(process.argv);
-    if (timelapsePath !== null && process.platform === 'win32') {
-      await createWindow(folderRunRouteForPath(timelapsePath));
-    } else {
-      await createWindow();
-    }
+    const route =
+      timelapsePath !== null && process.platform === 'win32'
+        ? folderRunRouteForPath(timelapsePath)
+        : '';
+    await startBackendAndLoad(route);
   } catch (error) {
-    console.error('[Electron] Failed to start application:', error);
+    // createWindow itself failed (very unlikely) — there is nothing to
+    // show the error in, so quit.
+    console.error('[Electron] Fatal startup error:', error);
     app.quit();
   }
 });
@@ -798,22 +1104,25 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  // On macOS, re-create window when dock icon is clicked
+  // On macOS, re-create window when dock icon is clicked. The backend is
+  // already up, so go straight to the SPA.
   if (mainWindow === null) {
-    createWindow();
+    void reopenWindow();
   }
 });
 
-app.on('before-quit', () => {
-  stopBackend();
-  // Mark this shutdown as clean. If the process is killed before this
-  // runs (SIGKILL, panic, OOM, power loss), the sentinel stays absent
-  // and the next launch detects the crash.
-  writeShutdownSentinel();
-});
-
-app.on('will-quit', () => {
-  stopBackend();
+// Guarantee the backend is stopped before the process exits. stopBackend
+// is async (SIGTERM, wait, SIGKILL), so we preventDefault the first
+// before-quit, run the shutdown, then quit again — the guard lets the
+// second pass through. If the process is killed before this runs
+// (SIGKILL, panic, OOM, power loss), the sentinel stays absent and the
+// next launch detects the crash.
+let isQuitting = false;
+app.on('before-quit', (event) => {
+  if (isQuitting) return;
+  event.preventDefault();
+  isQuitting = true;
+  void gracefulShutdown().then(() => app.quit());
 });
 
 // Handle uncaught errors

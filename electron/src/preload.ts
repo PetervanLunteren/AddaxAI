@@ -70,6 +70,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   /**
+   * Retry bringing the backend up. Used by the startup error page's
+   * Retry button when the backend failed to start.
+   */
+  retryBackend: async (): Promise<void> => {
+    return await ipcRenderer.invoke('app:retryBackend');
+  },
+
+  /**
    * Return the runtime app version (e.g. "0.2.0-beta.1"). Comes from
    * electron/package.json, which the release workflow rewrites from
    * the git tag at build time.
