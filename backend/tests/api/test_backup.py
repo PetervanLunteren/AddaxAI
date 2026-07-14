@@ -74,7 +74,7 @@ def test_snapshot_to_ring_buffer_when_no_target(client, live_db) -> None:
     path = Path(body["path"])
     assert path.is_file()
     assert path.parent.name == "backups"
-    assert _classify(path.name) == "daily"
+    assert _classify(path.name) == "manual"
     assert body["size_bytes"] == path.stat().st_size
 
 
@@ -86,7 +86,7 @@ def test_snapshot_to_target_dir(client, live_db, tmp_path: Path) -> None:
     assert resp.status_code == 200, resp.text
     path = Path(resp.json()["path"])
     assert path.parent == chosen
-    assert _classify(path.name) == "daily"
+    assert _classify(path.name) == "manual"
 
 
 def test_snapshot_to_missing_target_dir_returns_400(client, live_db, tmp_path: Path) -> None:

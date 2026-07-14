@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   FolderOpen,
   Save,
+  SlidersHorizontal,
   Sparkles,
 } from "lucide-react";
 
@@ -294,12 +295,13 @@ function LabelFilterRow({
       </span>
       <Button
         variant="outline"
-        className="w-full justify-start font-normal"
+        className="w-full justify-between font-normal"
         onClick={() => setOpen(true)}
       >
-        <span className="truncate">
+        <span className="truncate text-left">
           {isAll ? "All labels" : `${includedCount} of ${allCount} labels`}
         </span>
+        <SlidersHorizontal className="ml-1.5 h-3.5 w-3.5 shrink-0 opacity-50" />
       </Button>
       <LabelFilterModal
         preBuiltTree={labelTree.tree}
@@ -343,6 +345,12 @@ export function ExportBody({
         onChange={(v) => setExportOpts({ ...exportOpts, recognitionJson: v })}
         label="JSON"
         caption="Recognition file for Timelapse, detections only"
+      />
+      <CaptionedCheckbox
+        checked={exportOpts.summary}
+        onChange={(v) => setExportOpts({ ...exportOpts, summary: v })}
+        label="Run details"
+        caption="A text file with the models, settings, and details behind this run"
       />
     </div>
   );

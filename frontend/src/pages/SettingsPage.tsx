@@ -232,9 +232,22 @@ export default function SettingsPage() {
     },
   });
 
+  // The classification model / country as loaded from the project. The
+  // auto-reconciliation effects below (clear state on country change,
+  // drop now-invalid excluded_classes on model change) must fire only on
+  // a genuine USER change, never on initial load. Without this guard the
+  // model's taxonomy loading asynchronously re-runs the excluded_classes
+  // filter on every mount and marks the form dirty with no user action —
+  // the phantom "You have unsaved changes" that only shows up where the
+  // model is actually installed (the packaged app, not the dev box).
+  const loadedModelRef = useRef<string | null | undefined>(undefined);
+  const loadedCountryRef = useRef<string | null | undefined>(undefined);
+
   // Update form values when project loads
   useEffect(() => {
     if (project) {
+      loadedModelRef.current = project.classification_model_id ?? null;
+      loadedCountryRef.current = project.country_code || null;
       const values: SettingsFormData = {
         detection_model_id: project.detection_model_id,
         classification_model_id: project.classification_model_id ?? null,
@@ -342,15 +355,21 @@ export default function SettingsPage() {
     }
   }, [project]);
 
-  // Clear state_code when country changes away from USA
+  // Clear state_code when country changes away from USA. Only on a real
+  // user change (country differs from what loaded), never on initial load.
   useEffect(() => {
+    if (countryCode === loadedCountryRef.current) return;
     if (countryCode !== "USA" && form.getValues("state_code")) {
       form.setValue("state_code", null, { shouldDirty: true });
     }
   }, [countryCode, form]);
 
-  // Clear excluded_classes when classification model changes
+  // Clear excluded_classes when classification model changes. Skip the
+  // initial load (model still equals what the project loaded with): the
+  // saved exclusions are shown as-is, so the async taxonomy fetch can't
+  // silently dirty the form.
   useEffect(() => {
+    if (classificationModelId === loadedModelRef.current) return;
     if (classificationModelId && taxonomy?.all_classes) {
       // Filter excluded_classes to only keep classes that exist in the new model
       const currentExcluded = form.getValues("excluded_classes");

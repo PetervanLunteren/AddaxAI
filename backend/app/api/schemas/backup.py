@@ -12,7 +12,7 @@ class BackupEntryResponse(BaseModel):
     path: str
     size_bytes: int
     created_utc: datetime
-    kind: Literal["daily", "pre-upgrade"]
+    kind: Literal["daily", "pre-upgrade", "pre-restore", "manual"]
 
 
 class BackupListResponse(BaseModel):

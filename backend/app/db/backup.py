@@ -9,11 +9,18 @@ no `-wal` / `-shm` siblings.
 Storage layout under `~/AddaxAI/backups/`:
 - `addaxai-<utc-iso>.db`                        — daily rolling snapshot
 - `addaxai-pre-upgrade-<rev>-<utc-iso>.db`      — pre-upgrade snapshot
+- `addaxai-pre-restore-<utc-iso>.db`            — safety snapshot before a restore
+- `addaxai-manual-<utc-iso>.db`                 — user-initiated "back up now"
 - `.last-rolling-utc-date`                      — daily-throttle marker
 
-The ring buffer keeps the 5 newest daily files. Pre-upgrade files are
-never auto-pruned: they are the safety net for the day a migration
-eats data, and we want them to survive a string of routine restarts.
+Each automatic kind keeps its own rolling ring of the 5 newest (daily,
+pre-upgrade, pre-restore): they are full DB copies, so unbounded
+accumulation is wasted disk, and older ones span schema versions you
+can't roll back across anyway. Manual "back up now" files are the
+user's deliberate action and are never auto-pruned. The filename prefix
+is what lets the restore UI label each snapshot by kind. Backups the
+user saves to their own folder are not listed here and are theirs to
+manage.
 """
 
 import re
@@ -29,14 +36,21 @@ from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-DAILY_BACKUP_KEEP = 5
+# Ring-buffer depth applied per automatic kind (daily / pre-upgrade /
+# pre-restore). Manual backups are the user's deliberate action and are
+# never auto-pruned. DAILY_BACKUP_KEEP is kept as an alias for callers/tests.
+BACKUP_KEEP = 5
+DAILY_BACKUP_KEEP = BACKUP_KEEP
 ROLLING_MARKER_FILENAME = ".last-rolling-utc-date"
 RESTORE_MARKER_FILENAME = ".restore-on-next-launch"
 
-_DAILY_RE = re.compile(r"^addaxai-(\d{4}-\d{2}-\d{2}T\d{6}Z)\.db$")
-_PRE_UPGRADE_RE = re.compile(
-    r"^addaxai-pre-upgrade-([^-\s]+)-(\d{4}-\d{2}-\d{2}T\d{6}Z)\.db$"
-)
+_TS = r"\d{4}-\d{2}-\d{2}T\d{6}Z"
+_DAILY_RE = re.compile(rf"^addaxai-({_TS})\.db$")
+_PRE_UPGRADE_RE = re.compile(rf"^addaxai-pre-upgrade-([^-\s]+)-({_TS})\.db$")
+_PRE_RESTORE_RE = re.compile(rf"^addaxai-pre-restore-({_TS})\.db$")
+_MANUAL_RE = re.compile(rf"^addaxai-manual-({_TS})\.db$")
+
+BackupKind = Literal["daily", "pre-upgrade", "pre-restore", "manual"]
 
 
 class BackupInvalidError(RuntimeError):
@@ -50,7 +64,7 @@ class BackupEntry:
     path: Path
     size_bytes: int
     created_utc: datetime
-    kind: Literal["daily", "pre-upgrade"]
+    kind: BackupKind
 
 
 def snapshot_db(src: Path, dst: Path) -> None:
@@ -119,8 +133,9 @@ def ring_buffer_backup(settings: Settings) -> Path | None:
 def force_ring_buffer_backup(settings: Settings) -> Path:
     """Take a daily-format snapshot ignoring the daily throttle.
 
-    Used for: manual "back up now" actions, and the safety snapshot we
-    take immediately before swapping in a restored DB.
+    The daily ring buffer's forced writer. Prunes to `DAILY_BACKUP_KEEP`.
+    Manual and pre-restore snapshots have their own tagged writers below
+    so the restore UI can tell them apart from a daily rollover.
     """
     src = _live_db_path(settings)
     backups_dir = _backups_dir(settings)
@@ -131,17 +146,57 @@ def force_ring_buffer_backup(settings: Settings) -> Path:
     return dst
 
 
-def pre_upgrade_backup(settings: Settings, rev: str | None) -> Path:
-    """Snapshot the live DB to a pre-upgrade-tagged file."""
+def manual_snapshot(settings: Settings) -> Path:
+    """Snapshot the live DB to a manual-tagged file (user "back up now").
+
+    Kept indefinitely (not part of the daily cap): the user asked for it.
+    """
     src = _live_db_path(settings)
-    dst = _backups_dir(settings) / _pre_upgrade_filename(rev, _backup_timestamp())
+    dst = _backups_dir(settings) / _manual_filename(_backup_timestamp())
     snapshot_db(src, dst)
+    logger.info(f"Wrote manual backup: {dst.name}")
+    return dst
+
+
+def pre_restore_snapshot(settings: Settings) -> Path:
+    """Snapshot the live DB to a pre-restore-tagged file.
+
+    Taken right before a restore swaps a backup in, so the pre-restore
+    state stays recoverable (the "undo the restore" safety net). Rolls:
+    keeps the newest `BACKUP_KEEP`.
+    """
+    src = _live_db_path(settings)
+    backups_dir = _backups_dir(settings)
+    dst = backups_dir / _pre_restore_filename(_backup_timestamp())
+    snapshot_db(src, dst)
+    _prune_kind(backups_dir, _PRE_RESTORE_RE, keep=BACKUP_KEEP)
+    logger.info(f"Wrote pre-restore backup: {dst.name}")
+    return dst
+
+
+def pre_upgrade_backup(settings: Settings, rev: str | None) -> Path:
+    """Snapshot the live DB to a pre-upgrade-tagged file.
+
+    Rolls: keeps the newest `BACKUP_KEEP`. Older pre-upgrade snapshots
+    span schema versions you can't roll back across anyway (the app
+    refuses pre-floor DBs), and each is a full DB copy, so unbounded
+    accumulation is just wasted disk.
+    """
+    src = _live_db_path(settings)
+    backups_dir = _backups_dir(settings)
+    dst = backups_dir / _pre_upgrade_filename(rev, _backup_timestamp())
+    snapshot_db(src, dst)
+    _prune_kind(backups_dir, _PRE_UPGRADE_RE, keep=BACKUP_KEEP)
     logger.info(f"Wrote pre-upgrade backup: {dst.name}")
     return dst
 
 
 def list_ring_buffer(settings: Settings) -> list[BackupEntry]:
-    """Return all backup files (daily + pre-upgrade), newest first."""
+    """Return all tagged backup files in the app dir, newest first.
+
+    Covers daily / pre-upgrade / pre-restore / manual. Backups the user
+    saved to their own folder live outside this dir and aren't listed.
+    """
     backups_dir = _backups_dir(settings)
     entries: list[BackupEntry] = []
     for child in backups_dir.iterdir():
@@ -214,7 +269,7 @@ def restore_db(settings: Settings, source_path: Path) -> None:
 
     live = _live_db_path(settings)
     if live.is_file():
-        force_ring_buffer_backup(settings)
+        pre_restore_snapshot(settings)
 
     for sibling in (live, live.with_name(live.name + "-wal"), live.with_name(live.name + "-shm")):
         sibling.unlink(missing_ok=True)
@@ -264,30 +319,56 @@ def _pre_upgrade_filename(rev: str | None, ts: str) -> str:
     return f"addaxai-pre-upgrade-{rev_short}-{ts}.db"
 
 
-def _classify(name: str) -> Literal["daily", "pre-upgrade"] | None:
-    """Map a filename to its backup kind, or None if it's not a backup."""
+def _pre_restore_filename(ts: str) -> str:
+    return f"addaxai-pre-restore-{ts}.db"
+
+
+def _manual_filename(ts: str) -> str:
+    return f"addaxai-manual-{ts}.db"
+
+
+def _classify(name: str) -> BackupKind | None:
+    """Map a filename to its backup kind, or None if it's not a backup.
+
+    The tagged prefixes are checked before the bare daily pattern (which
+    would otherwise only match `addaxai-<ts>.db` anyway).
+    """
     if _PRE_UPGRADE_RE.match(name):
         return "pre-upgrade"
+    if _PRE_RESTORE_RE.match(name):
+        return "pre-restore"
+    if _MANUAL_RE.match(name):
+        return "manual"
     if _DAILY_RE.match(name):
         return "daily"
     return None
 
 
-def _prune_ring_buffer(backups_dir: Path, keep: int) -> list[Path]:
-    """Delete oldest daily backups beyond `keep`. Returns the deleted paths.
+def _prune_kind(
+    backups_dir: Path, pattern: re.Pattern[str], keep: int
+) -> list[Path]:
+    """Delete the oldest files matching `pattern` beyond `keep` newest.
 
-    Pre-upgrade backups are never touched.
+    Only one kind is touched per call, so each automatic kind keeps its own
+    independent ring. Manual backups have no pattern passed here, so they
+    are never pruned. Returns the deleted paths.
     """
-    daily = sorted(
-        (p for p in backups_dir.iterdir() if p.is_file() and _DAILY_RE.match(p.name)),
+    files = sorted(
+        (p for p in backups_dir.iterdir() if p.is_file() and pattern.match(p.name)),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
     deleted: list[Path] = []
-    for old in daily[keep:]:
+    for old in files[keep:]:
         try:
             old.unlink()
             deleted.append(old)
         except OSError as e:
             logger.warning(f"Could not prune {old.name}: {e}")
     return deleted
+
+
+def _prune_ring_buffer(backups_dir: Path, keep: int) -> list[Path]:
+    """Prune the daily ring buffer to `keep` newest. Thin wrapper over
+    `_prune_kind` for the daily pattern; other kinds prune themselves."""
+    return _prune_kind(backups_dir, _DAILY_RE, keep)

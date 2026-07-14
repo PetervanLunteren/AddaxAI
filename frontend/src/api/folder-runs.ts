@@ -237,6 +237,9 @@ export interface SaveOutputsRequest {
   recognition_json?: boolean;
   csv?: boolean;
   xlsx?: boolean;
+  /** Write the addaxai-run-info.txt run manifest. Omitted by older
+   * frontends, where the backend defaults it to on. */
+  run_readme?: boolean;
   /** Which species name to burn into the visualised images. Mirrors the
    * UI display preference. EXIF metadata always carries both names. */
   name_mode?: "common" | "scientific";

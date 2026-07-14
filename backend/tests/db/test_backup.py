@@ -257,10 +257,10 @@ def test_restore_db_swaps_and_creates_safety_snapshot(tmp_settings: Settings) ->
         row = conn.execute("SELECT note FROM marker").fetchone()
     assert row == ("from-source",)
 
-    # A safety snapshot of the original live DB landed in backups/.
+    # A pre-restore safety snapshot of the original live DB landed in backups/.
     backups_after = {p.name for p in (tmp_settings.user_data_dir / "backups").iterdir()}
     new_files = backups_after - backups_before
-    assert any(_classify(name) == "daily" for name in new_files)
+    assert any(_classify(name) == "pre-restore" for name in new_files)
 
 
 def test_restore_db_rejects_invalid_source(tmp_settings: Settings) -> None:

@@ -61,7 +61,10 @@ export function OutputPreviewPanel({
     visualise.enabled ||
     anonymise.enabled ||
     (exportOpts.enabled &&
-      (exportOpts.csv || exportOpts.xlsx || exportOpts.recognitionJson));
+      (exportOpts.csv ||
+        exportOpts.xlsx ||
+        exportOpts.recognitionJson ||
+        exportOpts.summary));
 
   // Tree root is the folder the user is writing to (the last segment of
   // the output path), not the project name — that's the folder these
@@ -73,8 +76,13 @@ export function OutputPreviewPanel({
   const treeRoot = outputBasename || runName || RUN_NAME_FALLBACK;
 
   return (
-    <Card className="sticky top-6">
-      <CardContent className="space-y-4 p-6">
+    // Cap the card at the viewport height (sticky 1.5rem below the top, a
+    // little breathing room at the bottom) and lay it out as a flex column,
+    // so the tree area flexes to whatever height is left and scrolls inside.
+    // A short tree still shrinks the card to its content; a long one fills
+    // the screen. Adapts to large and small displays without a fixed height.
+    <Card className="sticky top-6 flex max-h-[calc(100vh-3rem)] flex-col">
+      <CardContent className="flex min-h-0 flex-1 flex-col space-y-4 p-6">
         <div>
           <h3 className="text-sm font-semibold">Output preview</h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
@@ -93,7 +101,7 @@ export function OutputPreviewPanel({
             Pick at least one output on the left to see the preview
           </Placeholder>
         ) : (
-          <div className="overflow-hidden rounded-md border bg-muted/30">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-muted/30">
             <TreeView
               runName={treeRoot}
               folders={tree.folders}
@@ -181,10 +189,8 @@ function buildTree({
     if (exportOpts.xlsx) files.push({ name: "addaxai-spreadsheet.xlsx" });
     if (exportOpts.recognitionJson)
       files.push({ name: "addaxai-recognitions.json" });
+    if (exportOpts.summary) files.push({ name: "addaxai-run-info.txt" });
   }
-
-  // The run summary is always written.
-  files.push({ name: "addaxai-summary.txt" });
 
   return { folders, files };
 }
@@ -251,6 +257,15 @@ function sortLevels(nodes: SubFolder[]): void {
 // show the tree's shape, not every leaf.
 const MAX_CHILDREN_PER_LEVEL = 4;
 
+// Global cap on folder rows. Even with the per-level cap, a deep
+// taxonomic layout (class > order > family > genus > species >
+// deployment) across many branches stacks up into a very tall tree.
+// The preview only needs to convey the grouping shape, so we stop
+// after this many folder rows and drop a single "… more folders"
+// marker. The export / summary files always render after it (they're
+// short and the user wants to see them), and the box itself scrolls.
+const MAX_TREE_ROWS = 40;
+
 function TreeView({
   runName,
   folders,
@@ -283,14 +298,14 @@ function TreeView({
   const entries: Entry[] = [];
   entries.push({ prefix: "", name: `${runName}/` });
 
-  type TopItem =
-    | { kind: "folder"; folder: SubFolder }
-    | { kind: "file"; file: FileEntry };
-
-  const topLevel: TopItem[] = [
-    ...folders.map((f): TopItem => ({ kind: "folder", folder: f })),
-    ...files.map((f): TopItem => ({ kind: "file", file: f })),
-  ];
+  // Loose data files (CSV / XLSX / JSON / summary) render at the top, then
+  // the media tree below — the small, always-there outputs are easier to
+  // scan up top, and the media tree (which can be deep and capped) sits
+  // last. Only folder rows are budgeted by the global cap; the truncation
+  // marker is emitted inside the walk at the level it runs out, so it stays
+  // correctly indented within the media subtree.
+  let folderRows = 0;
+  let folderTruncated = false;
 
   function walkFolder(node: SubFolder, ancestorPrefix: string): void {
     const allChildren = node.children ?? [];
@@ -300,9 +315,14 @@ function TreeView({
       : allChildren.length;
     const visible = allChildren.slice(0, visibleCount);
 
-    visible.forEach((child, i) => {
-      const isLastEntryAtThisLevel =
-        !truncated && i === visible.length - 1;
+    for (let i = 0; i < visible.length; i++) {
+      if (folderRows >= MAX_TREE_ROWS) {
+        entries.push({ prefix: ancestorPrefix + "└─ ", name: "… more folders" });
+        folderTruncated = true;
+        return;
+      }
+      const child = visible[i];
+      const isLastEntryAtThisLevel = !truncated && i === visible.length - 1;
       const branch = isLastEntryAtThisLevel ? "└─ " : "├─ ";
       const descend = isLastEntryAtThisLevel ? "   " : "│  ";
       entries.push({
@@ -310,40 +330,47 @@ function TreeView({
         name: child.name,
         count: countFor(child),
       });
+      folderRows++;
       if (child.children && child.children.length > 0) {
         walkFolder(child, ancestorPrefix + descend);
+        if (folderTruncated) return;
       }
-    });
+    }
 
     if (truncated) {
-      entries.push({
-        prefix: ancestorPrefix + "└─ ",
-        name: "…",
-      });
+      entries.push({ prefix: ancestorPrefix + "└─ ", name: "…" });
     }
   }
 
-  topLevel.forEach((item, i) => {
-    const isLast = i === topLevel.length - 1;
-    const branch = isLast ? "└─ " : "├─ ";
-    const descend = isLast ? "   " : "│  ";
-    if (item.kind === "folder") {
-      entries.push({
-        prefix: branch,
-        name: item.folder.name,
-        count: countFor(item.folder),
-      });
-      walkFolder(item.folder, descend);
-    } else {
-      entries.push({
-        prefix: branch,
-        name: item.file.name,
-      });
+  const hasFolders = folders.length > 0;
+
+  // Files at the top. They're last-overall only when nothing follows them
+  // (separation off, so no media tree).
+  files.forEach((file, i) => {
+    const isLastOverall = !hasFolders && i === files.length - 1;
+    entries.push({ prefix: isLastOverall ? "└─ " : "├─ ", name: file.name });
+  });
+
+  // Media tree below the files.
+  folders.forEach((folder, i) => {
+    if (folderTruncated) return;
+    if (folderRows >= MAX_TREE_ROWS) {
+      entries.push({ prefix: "└─ ", name: "… more folders" });
+      folderTruncated = true;
+      return;
     }
+    const isLast = i === folders.length - 1;
+    entries.push({
+      prefix: isLast ? "└─ " : "├─ ",
+      name: folder.name,
+      count: countFor(folder),
+    });
+    folderRows++;
+    walkFolder(folder, isLast ? "   " : "│  ");
   });
 
   return (
-    <pre className="overflow-hidden p-3 font-mono text-[11px] leading-relaxed text-foreground">
+    <pre className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3 font-mono text-[11px] leading-relaxed text-foreground">
       {entries.map((entry, idx) => (
         <TreeRow key={idx} {...entry} />
       ))}
@@ -380,8 +407,12 @@ function TreeRow({
               <FileText className="h-3.5 w-3.5 text-muted-foreground" />
             ))}
         </span>
-        {/* Long names are cut off with an ellipsis rather than overflowing. */}
-        <span className="min-w-0 truncate">{display}</span>
+        {/* Long names are cut off with an ellipsis rather than overflowing;
+            the title exposes the full name on hover (deep nesting leaves
+            little room, so leaf names truncate early). */}
+        <span className="min-w-0 truncate" title={isMarker ? undefined : display}>
+          {display}
+        </span>
       </span>
       {countLabel && (
         <span className="shrink-0 text-muted-foreground">{countLabel}</span>

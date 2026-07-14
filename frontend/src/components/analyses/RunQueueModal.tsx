@@ -472,7 +472,7 @@ export function RunQueueModal({
                       ? mode === "folder-run"
                         ? "Preparing the analysis..."
                         : "Preparing the deployment queue..."
-                      : "AddaxAI is analysing your files."}
+                      : "AddaxAI is analysing your files..."}
           </DialogDescription>
         </DialogHeader>
 

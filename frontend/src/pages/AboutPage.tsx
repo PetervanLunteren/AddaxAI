@@ -12,9 +12,9 @@
  */
 
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { HomeButton } from "../components/layout/HomeButton";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Info, Tag } from "lucide-react";
+import { Tag } from "lucide-react";
 import { Button } from "../components/ui/button";
 
 const REPO = "PetervanLunteren/AddaxAI";
@@ -64,11 +64,12 @@ export default function AboutPage() {
       <header className="border-b bg-white/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
-            <Link to="/projects" aria-label="Back to projects">
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
+            <HomeButton />
+            <img
+              src="/branding/logo-mark.png"
+              alt="AddaxAI"
+              className="h-12 w-12 shrink-0"
+            />
             <div>
               <h1 className="text-2xl font-bold tracking-tight">About</h1>
               <span className="mt-1 inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-xs font-mono">
@@ -84,12 +85,6 @@ export default function AboutPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
-        <img
-          src="/branding/logo-wordmark.png"
-          alt="AddaxAI"
-          className="block h-32 w-auto"
-        />
-
         <section className="rounded-lg border bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold tracking-tight">What is AddaxAI</h2>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -193,15 +188,10 @@ export default function AboutPage() {
               are not all created or owned by AddaxAI: each one has its
               own developer, license, citation, and intended use. You
               are responsible for using each model in line with its
-              license. Click the{" "}
-              <span
-                aria-label="info button"
-                className="inline-flex items-center justify-center h-5 w-5 rounded border bg-white align-text-bottom"
-              >
-                <Info className="h-3 w-3" />
-              </span>{" "}
-              button next to a model in the project settings for full
-              details.
+              license. Open the{" "}
+              <span className="font-medium">Model details</span> link
+              below each model in the project settings for the full
+              information.
             </p>
           </div>
         </section>
@@ -227,15 +217,9 @@ export default function AboutPage() {
           </p>
           <p className="mt-3 text-sm text-muted-foreground">
             Citations for the individual models you used (MegaDetector,
-            DINOv2, classification models, etc.) are available by
-            clicking the{" "}
-            <span
-              aria-label="info button"
-              className="inline-flex items-center justify-center h-5 w-5 rounded border bg-white align-text-bottom"
-            >
-              <Info className="h-3 w-3" />
-            </span>{" "}
-            button next to each model in the project settings.
+            DINOv2, classification models, etc.) are available via the{" "}
+            <span className="font-medium">Model details</span> link below
+            each model in the project settings.
           </p>
         </section>
 

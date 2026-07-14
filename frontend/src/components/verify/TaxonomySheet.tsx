@@ -25,6 +25,8 @@ import {
 } from "../ui/sheet";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { FieldHeader } from "../ui/field-header";
 import { projectsApi } from "../../api/projects";
 import type {
   CustomLabelResponse,
@@ -233,16 +235,20 @@ export function TaxonomySheet({
           </SheetTitle>
           <SheetDescription>
             {isCreateMode
-              ? "Create a new custom label. Taxonomy is optional: use GBIF to look it up, or enter it manually. Scientific names often give better results (e.g., \"Panthera leo\" instead of \"lion\"). Labels like \"bait\" or \"setup\" work fine without it."
-              : "Edit your custom label. Taxonomy is optional: use GBIF to look it up, or enter it manually. Scientific names often give better results (e.g., \"Panthera leo\" instead of \"lion\"). Labels like \"bait\" or \"setup\" work fine without taxonomy."}
+              ? "Create a custom label. Taxonomy is optional."
+              : "Edit this custom label. Taxonomy is optional."}
           </SheetDescription>
         </SheetHeader>
 
         <div className="space-y-6 py-4">
           {/* Name */}
-          <div>
-            <label className="text-sm font-medium">Name</label>
+          <div className="space-y-2">
+            <FieldHeader
+              label={<Label htmlFor="label-name">Name</Label>}
+              caption="Shown on detections and in the label filters."
+            />
             <Input
+              id="label-name"
               value={labelName}
               onChange={(e) => setLabelName(e.target.value)}
               placeholder="e.g. spotted hyena"
@@ -251,12 +257,14 @@ export function TaxonomySheet({
           </div>
 
           {/* GBIF search */}
-          <div className="space-y-3">
-            <p className="text-xs font-medium text-muted-foreground">
-              GBIF lookup
-            </p>
+          <div className="space-y-2">
+            <FieldHeader
+              label={<Label htmlFor="gbif-search">GBIF lookup</Label>}
+              caption='Optional. Look up the taxonomy so the label slots into the tree. Scientific names work best, e.g. "Panthera leo" not "lion". Labels like "bait" do not need it.'
+            />
             <div className="flex gap-2">
               <Input
+                id="gbif-search"
                 ref={gbifInputRef}
                 value={gbifQuery}
                 onChange={(e) => setGbifQuery(e.target.value)}

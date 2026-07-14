@@ -1,6 +1,6 @@
 """Human-readable run summary written into every folder-run output.
 
-An `addaxai-summary.txt` at the root of the output directory carries
+An `addaxai-run-info.txt` at the root of the output directory carries
 the complete picture of the run so a user (or a colleague) opening the
 folder weeks later can see exactly what produced the deliverables:
 
@@ -11,9 +11,9 @@ folder weeks later can see exactly what produced the deliverables:
 - Results summary (by category, top species)
 - Verification state
 
-Hardcoded as an always-on output: every save run writes one. The
-file is plain text so any OS file manager renders it as a preview
-and any text editor opens it.
+Written when the Save step's "Run details" checkbox is on (the
+default). The file is plain text so any OS file manager renders it as
+a preview and any text editor opens it.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from app.models import Deployment, Detection, File, Project
 
 logger = get_logger(__name__)
 
-SUMMARY_FILENAME = "addaxai-summary.txt"
+SUMMARY_FILENAME = "addaxai-run-info.txt"
 
 
 @dataclass
@@ -350,7 +350,7 @@ def write_run_readme(
     *,
     media_threshold: float,
 ) -> RunReadmeResult:
-    """Write the run summary at ``target_dir/addaxai-summary.txt``.
+    """Write the run info at ``target_dir/addaxai-run-info.txt``.
 
     ``media_threshold`` is the Save step's media-output confidence,
     reported so a reader knows which detections the media copies show.

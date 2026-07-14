@@ -8,13 +8,14 @@
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, MoreVertical, Pencil, Copy, Trash2, ImageIcon } from "lucide-react";
 import { projectsApi, type ProjectWithStats } from "../api/projects";
 import { modelsApi } from "../api/models";
 import { logger } from "../lib/logger";
 import { API_BASE_URL } from "../lib/api-client";
 import { Button } from "../components/ui/button";
+import { HomeButton } from "../components/layout/HomeButton";
 import {
   Card,
   CardContent,
@@ -83,18 +84,12 @@ export function ProjectsPage() {
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <Link
-                to="/"
-                aria-label="Home"
-                title="Home"
-                className="shrink-0 rounded-lg transition-opacity hover:opacity-80"
-              >
-                <img
-                  src="/branding/logo-mark.png"
-                  alt="AddaxAI"
-                  className="h-12 w-12"
-                />
-              </Link>
+              <HomeButton />
+              <img
+                src="/branding/logo-mark.png"
+                alt="AddaxAI"
+                className="h-12 w-12 shrink-0"
+              />
               <div>
                 <h1 className="text-2xl font-bold tracking-tight">
                   Projects

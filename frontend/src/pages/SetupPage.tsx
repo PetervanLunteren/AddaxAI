@@ -73,8 +73,9 @@ export default function SetupPage() {
         <h1 className="text-2xl font-bold tracking-tight">Initial setup</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           The AI models and their environment need to be installed before
-          AddaxAI can analyse images. This is a one-time download and can
-          take 10 to 30 minutes depending on your internet connection.
+          AddaxAI can analyse your photos and videos. This is a one-time
+          download and can take 10 to 30 minutes depending on your internet
+          connection.
         </p>
 
         <div className="mt-6 space-y-2 text-sm">

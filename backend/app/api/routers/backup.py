@@ -31,8 +31,8 @@ from app.core.config import get_settings
 from app.core.logging_config import get_logger
 from app.db.backup import (
     BackupInvalidError,
-    force_ring_buffer_backup,
     list_ring_buffer,
+    manual_snapshot,
     schedule_restore,
     snapshot_db,
 )
@@ -52,7 +52,7 @@ def get_backup_dir() -> BackupDirResponse:
 
 @router.get("/list", response_model=BackupListResponse)
 def list_backups() -> BackupListResponse:
-    """List daily + pre-upgrade snapshots, newest first."""
+    """List app-dir snapshots (daily, pre-upgrade, pre-restore, manual), newest first."""
     settings = get_settings()
     entries = [
         BackupEntryResponse(
@@ -68,18 +68,19 @@ def list_backups() -> BackupListResponse:
 
 @router.post("/snapshot", response_model=SnapshotResponse)
 def take_snapshot(req: SnapshotRequest) -> SnapshotResponse:
-    """Write a snapshot of the live DB.
+    """Write a manual snapshot of the live DB.
 
-    Without `target_dir`: force-writes to the ring buffer (ignores the
-    daily throttle so manual "back up now" always produces a file).
+    Without `target_dir`: writes a manual-tagged file to the backups
+    folder (always produces one; ignores the daily throttle).
 
     With `target_dir`: writes to the chosen folder using the same
-    `addaxai-<utc-iso>.db` filename pattern. The folder must exist.
+    `addaxai-manual-<utc-iso>.db` filename. The folder must exist. These
+    are the user's to manage and are not listed by GET /list.
     """
     settings = get_settings()
 
     if req.target_dir is None:
-        path = force_ring_buffer_backup(settings)
+        path = manual_snapshot(settings)
         return SnapshotResponse(path=str(path), size_bytes=path.stat().st_size)
 
     target = Path(req.target_dir)
@@ -89,9 +90,9 @@ def take_snapshot(req: SnapshotRequest) -> SnapshotResponse:
             detail=f"Target folder does not exist: {target}",
         )
 
-    from app.db.backup import _backup_timestamp, _daily_filename
+    from app.db.backup import _backup_timestamp, _manual_filename
     src = settings.user_data_dir / "addaxai.db"
-    dst = target / _daily_filename(_backup_timestamp())
+    dst = target / _manual_filename(_backup_timestamp())
     snapshot_db(src, dst)
     logger.info(f"Wrote backup to user-chosen folder: {dst}")
     return SnapshotResponse(path=str(dst), size_bytes=dst.stat().st_size)

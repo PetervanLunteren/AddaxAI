@@ -89,7 +89,7 @@ _MODULE_LABELS: dict[str, str] = {
     "recognition_json": "Writing recognition JSON",
     "csv": "Writing CSV",
     "xlsx": "Writing XLSX",
-    "run_readme": "Writing run README",
+    "run_readme": "Writing run details",
 }
 
 
@@ -169,8 +169,11 @@ async def process_save_outputs_job(job_id: str) -> None:
             active_modules.append("csv")
         if payload.get("xlsx"):
             active_modules.append("xlsx")
-        # README is always written.
-        active_modules.append("run_readme")
+        # Run-info manifest (addaxai-run-info.txt). Controlled by the Save
+        # step's "Run details" checkbox; defaults to on for older frontends
+        # that don't send the flag (it used to be unconditional).
+        if payload.get("run_readme", True):
+            active_modules.append("run_readme")
 
         # Sort to match _MODULE_ORDER so the UI checklist sees a
         # consistent sequence regardless of dict-iteration quirks.

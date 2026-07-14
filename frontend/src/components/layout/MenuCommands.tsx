@@ -52,6 +52,24 @@ export function MenuCommands() {
       .catch(() => setVersion("(unknown)"));
   }, []);
 
+  // Dev-only: these dialogs are normally opened from the Electron native
+  // menu, which doesn't exist in the browser dev server. Open one straight
+  // from the URL hash so it can be previewed on localhost, e.g.
+  // http://localhost:5173/#restore (also #backup, #reset, #updates).
+  // Tree-shaken out of production builds (import.meta.env.DEV is false).
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const openFromHash = () => {
+      const h = window.location.hash.replace("#", "");
+      if (h === "restore" || h === "backup" || h === "reset" || h === "updates") {
+        setDialog(h as DialogId);
+      }
+    };
+    openFromHash();
+    window.addEventListener("hashchange", openFromHash);
+    return () => window.removeEventListener("hashchange", openFromHash);
+  }, []);
+
   // Reflect the stored species-name mode in the menu radio. Sent on mount;
   // a change reloads the page, so the next mount re-syncs the checkmark.
   useEffect(() => {
@@ -73,8 +91,11 @@ export function MenuCommands() {
 
     const exportDiagnostic = async () => {
       try {
+        // Success feedback comes from the Electron download-complete toast
+        // (DownloadCompleteToasts in App.tsx), which names the file and
+        // offers "Show in folder". A second toast here would just duplicate
+        // it — this flow only runs in Electron (native menu command).
         await diagnosticsApi.downloadDiagnosticZip();
-        toast.success("Diagnostic report saved to Downloads");
       } catch (err) {
         toast.error(`Could not build diagnostic report: ${(err as Error).message}`);
       }

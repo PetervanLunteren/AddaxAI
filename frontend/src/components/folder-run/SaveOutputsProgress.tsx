@@ -21,7 +21,7 @@ const MODULE_LABELS: Record<string, string> = {
   recognition_json: "Writing recognition JSON",
   csv: "Writing CSV",
   xlsx: "Writing XLSX",
-  run_readme: "Writing run README",
+  run_readme: "Writing run details",
 };
 
 interface SaveOutputsProgressProps {

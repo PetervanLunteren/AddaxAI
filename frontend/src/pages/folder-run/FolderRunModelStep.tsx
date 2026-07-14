@@ -8,7 +8,7 @@
  * start button before the modal opened).
  *
  * Main fields (always visible):
- * - Classification model (info button + status badge + grouped items)
+ * - Classification model ("Model details" link + status badge + grouped items)
  * - Label selection (LabelSelectionField with country / state
  *   geofilter), only when a classifier is picked
  *

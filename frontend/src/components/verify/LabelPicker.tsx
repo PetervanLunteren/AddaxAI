@@ -133,6 +133,9 @@ export function LabelPicker({
   const [taxonomyLabel, setTaxonomyLabel] = useState<CustomLabelResponse | null>(null);
   const [taxonomySheetOpen, setTaxonomySheetOpen] = useState(false);
   const pendingOptionRef = useRef<LabelOption | null>(null);
+  // Set by "Add new label" so the taxonomy sheet opens only once this
+  // dialog has finished closing (see onCloseAutoFocus below).
+  const pendingSheetRef = useRef(false);
   const [createName, setCreateName] = useState("");
   const queryClient = useQueryClient();
 
@@ -218,14 +221,20 @@ export function LabelPicker({
   const handleAddNew = useCallback(() => {
     if (!projectId) return;
     setCreateName(search.trim());
-    setOpen(false);
     setSearch("");
     // Tell the parent the picker closed. Without this a CONTROLLED
     // parent (BulkActionBar via relabelOpen) keeps thinking the picker
     // is open, and re-opens it the next time the user selects a crop.
     onOpenChange?.(false);
     setTaxonomyLabel(null);
-    setTaxonomySheetOpen(true);
+    // Defer opening the taxonomy sheet until this command dialog has fully
+    // closed (handled in DialogContent.onCloseAutoFocus). Opening it now
+    // overlaps the dialog's exit animation: two modal layers briefly
+    // coexist, each with its own dismissable/focus layer, and on Linux a
+    // click in that window (e.g. focusing the GBIF input) is misattributed
+    // and dismisses the sheet. Sequencing the two removes the race.
+    pendingSheetRef.current = true;
+    setOpen(false);
   }, [projectId, search, onOpenChange]);
 
   const handleTaxonomySheetCreated = useCallback(
@@ -303,6 +312,18 @@ export function LabelPicker({
         <DialogContent
           className="max-w-xl overflow-hidden p-0"
           onClick={(e) => e.stopPropagation()}
+          onCloseAutoFocus={(e) => {
+            // Hand off to the taxonomy sheet only after this dialog has
+            // fully closed, so the two modals never overlap. Suppress the
+            // default focus-return-to-trigger; the sheet autofocuses its
+            // own field. Normal closes (label picked, Escape) leave
+            // pendingSheetRef false and keep the default behaviour.
+            if (pendingSheetRef.current) {
+              pendingSheetRef.current = false;
+              e.preventDefault();
+              setTaxonomySheetOpen(true);
+            }
+          }}
         >
           <DialogTitle className="sr-only">Select label</DialogTitle>
           <Command shouldFilter={false}>

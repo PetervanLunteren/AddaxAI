@@ -72,8 +72,8 @@
     "win": {
       "target": ["nsis"],
       "artifactName": "${productName}-Setup.${ext}",
-      "publisherName": "Addax Data Science",
       "signtoolOptions": {
+        "publisherName": "Addax Data Science",
         "signingHashAlgorithms": ["sha256"],
         "rfc3161TimeStampServer": "http://timestamp.digicert.com"
       }

@@ -67,6 +67,9 @@ export interface ExportState {
   csv: boolean;
   xlsx: boolean;
   recognitionJson: boolean;
+  /** The addaxai-run-info.txt run manifest (models, settings, results).
+   * Default on: it's the provenance record, but now opt-out like the rest. */
+  summary: boolean;
 }
 
 function buildRequest(
@@ -95,6 +98,7 @@ function buildRequest(
     csv: exportOpts.enabled && exportOpts.csv,
     xlsx: exportOpts.enabled && exportOpts.xlsx,
     recognition_json: exportOpts.enabled && exportOpts.recognitionJson,
+    run_readme: exportOpts.enabled && exportOpts.summary,
     // Burn the user's current name preference into the visualised images
     // (EXIF still carries both names regardless).
     name_mode: getSpeciesNameMode(),
@@ -221,6 +225,7 @@ export function useSaveOutputsForm({
     csv: persisted?.csv ?? true,
     xlsx: persisted?.xlsx ?? false,
     recognitionJson: persisted?.recognitionJson ?? true,
+    summary: persisted?.summary ?? true,
   }));
 
   // Label tree for the species filter. Counts by file so the modal
@@ -253,6 +258,7 @@ export function useSaveOutputsForm({
       csv: exportOpts.csv,
       xlsx: exportOpts.xlsx,
       recognitionJson: exportOpts.recognitionJson,
+      summary: exportOpts.summary,
       mediaEnabled: separate.enabled,
       groupBy: separate.groupBy,
       groupEvents: separate.groupEvents,
@@ -309,7 +315,10 @@ export function useSaveOutputsForm({
 
   const exportPicked =
     exportOpts.enabled &&
-    (exportOpts.csv || exportOpts.xlsx || exportOpts.recognitionJson);
+    (exportOpts.csv ||
+      exportOpts.xlsx ||
+      exportOpts.recognitionJson ||
+      exportOpts.summary);
   const canSave =
     !!effectiveOutputDir &&
     !spawn.isPending &&

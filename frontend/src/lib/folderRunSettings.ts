@@ -94,6 +94,8 @@ export interface PersistedSaveOutputsSettings {
   csv: boolean;
   xlsx: boolean;
   recognitionJson: boolean;
+  /** Absent in objects stored by older versions; readers default to on. */
+  summary?: boolean;
   mediaEnabled: boolean;
   groupBy: SeparateGroupBy;
   groupEvents: boolean;

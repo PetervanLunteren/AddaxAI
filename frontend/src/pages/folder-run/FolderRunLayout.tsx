@@ -21,8 +21,9 @@
  */
 
 import { createContext, useContext } from "react";
-import { Link, Outlet, useNavigate, useParams } from "react-router-dom";
+import { Outlet, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { HomeButton } from "../../components/layout/HomeButton";
 import { StepProgress } from "../../components/folder-run/StepProgress";
 import { WideModeContext, useWideMode } from "../../components/verify/wide-mode";
 import {
@@ -103,18 +104,12 @@ export function FolderRunLayout() {
           <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <Link
-                  to="/"
-                  aria-label="Home"
-                  title="Home"
-                  className="shrink-0 rounded-lg transition-opacity hover:opacity-80"
-                >
-                  <img
-                    src="/branding/logo-mark.png"
-                    alt="AddaxAI"
-                    className="h-12 w-12"
-                  />
-                </Link>
+                <HomeButton />
+                <img
+                  src="/branding/logo-mark.png"
+                  alt="AddaxAI"
+                  className="h-12 w-12 shrink-0"
+                />
                 <div>
                   <h1 className="text-2xl font-bold tracking-tight">
                     Analyse a folder

@@ -9,7 +9,7 @@
 
 import { api } from "../lib/api-client";
 
-export type BackupKind = "daily" | "pre-upgrade";
+export type BackupKind = "daily" | "pre-upgrade" | "pre-restore" | "manual";
 
 export interface BackupEntry {
   path: string;
