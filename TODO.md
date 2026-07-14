@@ -11,8 +11,6 @@
     - update BETA.md with the Linux download + install steps once it works
     - test on the clean-install VirtualBox snapshot: double-click install, menu launch, model download, folder run, uninstall
 
-- [ ] Set up a scheduled GitHub Action to fetch download counts for all release assets via the GitHub API and store daily or weekly snapshots in a CSV for tracking downloads over time. Where to nsave the CSV? I dont know. What is customary here? What is best practises? 
-
 ## Priority 2
 - [ ] 
 
