@@ -1,0 +1,41 @@
+name: Download metrics
+
+# Weekly snapshot of release-asset download counts into a tidy CSV, so we can
+# track downloads over time (GitHub only exposes a live cumulative counter).
+# The commit is authored by GITHUB_TOKEN, which does not re-trigger workflows;
+# [skip ci] is belt-and-suspenders and signals intent to humans.
+on:
+  schedule:
+    - cron: "0 6 * * 1"        # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write              # push the CSV commit
+
+concurrency:
+  group: download-metrics
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"   # matches tests.yml
+
+      - name: Fetch download counts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/scripts/fetch_download_counts.py
+
+      - name: Commit snapshot
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add metrics/download_counts.csv
+          git diff --cached --quiet && { echo "No changes"; exit 0; }
+          git commit -m "chore(metrics): weekly download counts [skip ci]"
+          git push

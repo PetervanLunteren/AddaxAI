@@ -137,3 +137,42 @@ charged minutes per release, i.e. ~16 releases/month within the free tier.
 | Notarization stuck > 30 min | Apple servers are slow. The hook does 3 retries totalling 45 min; if all 3 time out the workflow fails. Re-run when Apple recovers |
 | `npm ci` fails on Windows | Lockfile drift (someone ran `npm install` without committing the lockfile) |
 | Linux/Windows job marked yellow | They are non-blocking; the workflow still succeeded. Look at the failed step to fix |
+
+## `download-metrics.yml`
+
+Weekly snapshot of release-asset download counts, so we can see downloads
+trend over time. GitHub only exposes a live cumulative `download_count` per
+asset with no history, so this appends a dated row per asset to
+`metrics/download_counts.csv`.
+
+### Triggers
+
+| Event | What happens |
+|-------|--------------|
+| `schedule` (Mondays 06:00 UTC) | Fetch counts and commit a snapshot. |
+| `workflow_dispatch` | Manual "run now" from the Actions tab (same job). |
+
+### Output
+
+`metrics/download_counts.csv`, tidy/long, one row per asset per snapshot:
+
+```
+snapshot_date,release_tag,asset_name,download_count
+```
+
+Each row is a running total (the counter is cumulative), so week-over-week
+deltas give new downloads. The stdlib-only fetcher lives at
+`.github/scripts/fetch_download_counts.py` (unit test alongside it; run with
+`python -m pytest .github/scripts/ -q`).
+
+### Notes
+
+- The commit is authored by the built-in `GITHUB_TOKEN`, whose pushes **do
+  not re-trigger workflows**, so the weekly commit never re-runs `tests.yml`.
+  `[skip ci]` is added as belt-and-suspenders and to signal intent.
+- `download_count` is a proxy: it counts asset downloads only — not the
+  GitHub "Source code" zip/tarball, not CDN/mirror caches — and includes
+  bots. Read the trend, not the absolute number.
+- If `main` ever gets branch protection that blocks the Actions bot from
+  pushing, this job's commit step will fail; allow `github-actions[bot]` or
+  move the CSV to a dedicated data branch.
