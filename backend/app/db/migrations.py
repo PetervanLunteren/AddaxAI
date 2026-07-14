@@ -93,9 +93,15 @@ class _Fingerprint:
 SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
     _Fingerprint(
         revision="9c173fff3bcd",
-        table="projects",
-        column=None,
-        description="initial schema",
+        table="files",
+        column="captured_at_local",
+        description=(
+            "initial schema — floor marker. files.captured_at_local is "
+            "created NOT NULL by the initial migration and is only ever made "
+            "nullable later, never dropped or renamed. Its absence means the "
+            "DB predates the oldest supported schema (e.g. a pre-*_local-"
+            "rename beta DB), so it matches no fingerprint and is refused."
+        ),
     ),
     _Fingerprint(
         revision="03e058c707df",
@@ -354,6 +360,11 @@ def upgrade_to_head() -> None:
     command.upgrade(_alembic_config(), "head")
 
 
+def _has_user_tables(engine: Engine) -> bool:
+    """True if any non-alembic table exists (i.e. the DB is not empty)."""
+    return bool(set(inspect(engine).get_table_names()) - {"alembic_version"})
+
+
 def _fingerprint_satisfied(fp: "_Fingerprint", engine: Engine) -> bool:
     """Is the live DB at or beyond the schema state this fingerprint marks?
 
@@ -444,6 +455,10 @@ def reconcile_alembic_version(engine: Engine) -> str | None:
 
     - Fresh install (no user tables): returns None. Caller lets
       `upgrade_to_head()` run all migrations from base.
+    - DB older than the floor (user tables exist but match no
+      fingerprint): raises RuntimeError with reset guidance. Running the
+      forward chain against a pre-floor schema crashes mid-migration, so
+      we refuse up front and leave the DB untouched.
     - Legacy DB without `alembic_version`: stamps at the detected
       revision and returns it. `upgrade_to_head()` then applies the
       rest.
@@ -464,7 +479,26 @@ def reconcile_alembic_version(engine: Engine) -> str | None:
     current = get_current_revision(engine)
 
     if detected is None:
-        # Empty DB. upgrade_to_head() will run everything.
+        # No fingerprint matched. Two very different situations share
+        # this signal, so split them:
+        #
+        # - Genuinely empty DB (fresh install): let upgrade_to_head()
+        #   build the whole schema from base.
+        # - User tables exist but match no fingerprint: the DB is older
+        #   than the oldest supported schema (the floor). Marching the
+        #   forward chain against it crashes mid-migration (this is the
+        #   `KeyError: 'captured_at_local'` from issue #11). Refuse
+        #   loudly and leave the DB untouched instead. The lifespan has
+        #   already snapshotted it to ~/AddaxAI/backups/ before init_db.
+        if _has_user_tables(engine):
+            raise RuntimeError(
+                "This database is from an AddaxAI version older than the "
+                "oldest supported schema and cannot be upgraded "
+                "automatically. A backup was already written to "
+                "~/AddaxAI/backups/ before this check. To continue, reset "
+                "the database (Help menu -> Restore/Reset) or move "
+                "~/AddaxAI/addaxai.db aside and relaunch to start fresh."
+            )
         return None
 
     if current is None:

@@ -51,6 +51,12 @@ PYTHONPATH=. alembic revision --autogenerate -m "short description"
 
 Review the generated file before committing. Autogenerate is helpful but imperfect: it misses index renames, check constraints, and server-default changes. Edit the upgrade/downgrade bodies if needed.
 
+**Shipped migrations are immutable.** Once a migration has shipped, never edit it or change the schema it created. Make a new migration instead. This is the one rule Alembic depends on: `upgrade head` is only reliable when every DB started at a known revision and ran the official chain forward, in order. Editing a shipped migration (or editing a model without a matching migration) makes the live schema disagree with what the recorded revision claims, and that drift is what caused the repeated startup crashes on beta-tester DBs. `test_upgrade_from_base_matches_models` in `tests/db/test_migrations.py` is the CI guard: it runs the whole chain from base and asserts the result matches `Base.metadata`, so a migration that drifts from the models fails the build.
+
+**The floor.** The initial migration (`9c173fff3bcd`) is the oldest DB shape the app knows how to upgrade. A DB older than that (an early beta from before the alembic wiring) is refused at startup with a reset message rather than crashed through a doomed upgrade; the lifespan has already snapshotted it to `~/AddaxAI/backups/` first. The floor is pinned by that revision's `_Fingerprint` marker column, `files.captured_at_local` (created NOT NULL by the initial migration, only ever made nullable later). If a future migration ever drops or renames that column, move the marker to another column the initial schema guarantees, or `detect_schema_revision` will start refusing healthy DBs.
+
+**Drift on drop/rename.** For the rare case of a supported-but-inconsistent DB (a stamp that disagrees with the live schema), guard the DDL with a presence check instead of a bare batch op, so re-running the migration can't crash on a missing column. `d4e5f6a7b8c9` is the worked example. Bare `op.batch_alter_table(...).alter_column(...)` throws `KeyError` on SQLite when the reflected table lacks the column, which is exactly the issue #11 crash.
+
 **Three startup branches handled by `init_db()`:**
 
 1. Fresh install (no DB file or empty DB): `alembic upgrade head` creates the schema from scratch.

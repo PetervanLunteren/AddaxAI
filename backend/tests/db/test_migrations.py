@@ -130,14 +130,16 @@ def test_detect_returns_none_for_empty_db(isolated_db_settings) -> None:
 
 
 def test_detect_returns_initial_for_initial_schema(isolated_db_settings) -> None:
-    """`projects` exists without the later columns → initial revision."""
+    """Floor marker `files.captured_at_local` present, no later columns → initial."""
     engine = _engine_for(isolated_db_settings)
     with engine.begin() as conn:
-        # Only the columns from the initial migration: no
-        # observations_max_detections, no warnings. We don't need the
-        # full table here; the fingerprint only checks for the table /
-        # column it knows about.
-        conn.execute(text("CREATE TABLE projects (id TEXT PRIMARY KEY)"))
+        # The initial-schema fingerprint is files.captured_at_local. We
+        # don't need the full table here; the fingerprint only checks for
+        # the table / column it knows about, and none of the newer
+        # detectable columns exist, so the walk falls through to initial.
+        conn.execute(
+            text("CREATE TABLE files (id TEXT PRIMARY KEY, captured_at_local TEXT)")
+        )
 
     assert detect_schema_revision(engine) == "9c173fff3bcd"
 
@@ -320,10 +322,14 @@ def test_reconcile_refuses_unknown_stamped_revision(isolated_db_settings) -> Non
 def test_reconcile_stamps_legacy_db_without_alembic_version(
     isolated_db_settings,
 ) -> None:
-    """User tables present but no alembic_version → stamp at detected rev."""
+    """User tables present at the floor but no alembic_version → stamp at detected rev."""
     engine = _engine_for(isolated_db_settings)
     with engine.begin() as conn:
-        conn.execute(text("CREATE TABLE projects (id TEXT PRIMARY KEY)"))
+        # Floor schema: the initial-schema marker column is present, so
+        # the DB is recognised as at-least-initial and stamped there.
+        conn.execute(
+            text("CREATE TABLE files (id TEXT PRIMARY KEY, captured_at_local TEXT)")
+        )
 
     # No alembic_version yet.
     assert get_current_revision(engine) is None
@@ -331,3 +337,61 @@ def test_reconcile_stamps_legacy_db_without_alembic_version(
     result = reconcile_alembic_version(engine)
     assert result == "9c173fff3bcd"
     assert get_current_revision(engine) == "9c173fff3bcd"
+
+
+def test_reconcile_refuses_pre_floor_db(isolated_db_settings) -> None:
+    """A DB older than the floor must fail loud instead of crashing mid-upgrade.
+
+    Reproduces issue #11 (Arky's Linux install): a legacy beta DB with
+    user tables but whose `files` table predates `captured_at_local`.
+    The old code stamped it at the initial revision on the strength of a
+    `projects` table existing, then the forward chain died with
+    `KeyError: 'captured_at_local'` in the nullable-capture-dates
+    migration. Reconcile must now refuse up front and leave the DB
+    untouched.
+    """
+    engine = _engine_for(isolated_db_settings)
+    with engine.begin() as conn:
+        # User tables exist, but none carry the floor marker column
+        # (files.captured_at_local). This is a pre-floor schema.
+        conn.execute(text("CREATE TABLE projects (id TEXT PRIMARY KEY)"))
+        conn.execute(text("CREATE TABLE files (id TEXT PRIMARY KEY, captured_at TEXT)"))
+
+    assert get_current_revision(engine) is None
+
+    with pytest.raises(RuntimeError, match=r"older than the oldest supported schema"):
+        reconcile_alembic_version(engine)
+
+    # Left untouched: no alembic_version row written.
+    assert get_current_revision(engine) is None
+
+
+def test_upgrade_from_base_matches_models(isolated_db_settings) -> None:
+    """Running the whole chain from base must produce the schema the models expect.
+
+    This is the immutability guard: it catches a future migration that
+    drifts from `Base.metadata` (references a column the chain never
+    creates, or forgets to add one), which is the class of bug that
+    produced issue #11. If this fails, the migrations and the ORM models
+    disagree and the app would crash at runtime with "no such column".
+    """
+    import app.models  # noqa: F401  # populates Base.metadata
+    from app.db.base import Base
+
+    upgrade_to_head()
+    engine = _engine_for(isolated_db_settings)
+    insp = inspect(engine)
+
+    live_tables = set(insp.get_table_names())
+    for table_name, table in Base.metadata.tables.items():
+        assert table_name in live_tables, (
+            f"Model table {table_name!r} is missing after upgrade to head. "
+            f"A migration is out of sync with the ORM models."
+        )
+        live_columns = {c["name"] for c in insp.get_columns(table_name)}
+        model_columns = {c.name for c in table.columns}
+        missing = model_columns - live_columns
+        assert not missing, (
+            f"Table {table_name!r} is missing columns {sorted(missing)} after "
+            f"upgrade to head. A migration is out of sync with the ORM models."
+        )
