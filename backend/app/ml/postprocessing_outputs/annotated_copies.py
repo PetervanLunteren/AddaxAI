@@ -44,6 +44,8 @@ Source-vs-destination semantics:
 
 from __future__ import annotations
 
+import shutil
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -479,6 +481,8 @@ def write_annotated_copies(
     anonymise: bool,
     excluded_label_ids: frozenset[str] | None = None,
     name_mode: str = "common",
+    copy_unchanged: bool = False,
+    progress_cb: Callable[[int, int], None] | None = None,
 ) -> AnnotatedCopiesResult:
     """Apply the requested per-file effects and write the result to
     every destination the file lives at under ``ctx``.
@@ -492,6 +496,15 @@ def write_annotated_copies(
     A file with nothing to draw AND nothing to blur (given the
     selected effects and the threshold + exclusion filters) is
     skipped — no point in producing an identical copy.
+
+    ``copy_unchanged`` is set by the worker when ``separate_folders`` ran
+    in deferred mode (``place_files=False``): separation planned the
+    destinations but did not write the bytes, so this module owns every
+    write. Files with a visible effect are re-encoded as before; a placed
+    file with no effect is plain-copied from its source to the planned
+    destination (so it isn't left missing). It still counts as
+    ``skipped_no_change`` — no annotation was applied — so the summary is
+    identical to the non-deferred path; only the redundant copy is gone.
     """
     if not draw_bboxes and not anonymise:
         raise ValueError(
@@ -513,8 +526,13 @@ def write_annotated_copies(
 
     result = AnnotatedCopiesResult()
 
+    total = len(files)
     with ExifBatch() as exif_batch:
-        for file in files:
+        for i, file in enumerate(files):
+            # Report files processed so far (advances through skips too). The
+            # worker throttles these before they reach the WebSocket.
+            if progress_cb is not None:
+                progress_cb(i, total)
             # Same file-level exclusion the other modules use, so the
             # whole save pipeline agrees on which files are dropped.
             if file_is_dropped_by_filter(
@@ -537,7 +555,41 @@ def write_annotated_copies(
             )
 
             if not blur_targets and not bbox_dets:
-                # No visible change would result from saving a copy.
+                # No visible change would result from re-encoding a copy.
+                # But when separation deferred the write, this placed file
+                # would be left missing, so plain-copy the source bytes to
+                # each planned destination (EXIF stamped like separation
+                # would have). ctx has no entry for files separation didn't
+                # place (excluded / blank), so those are still just skipped.
+                if copy_unchanged:
+                    dests = ctx.resolved_for(file.id)
+                    source = _source_for(file)
+                    if dests and source is not None and source.exists():
+                        tag_set = build_tag_set(
+                            db,
+                            file,
+                            project,
+                            APP_VERSION,
+                            media_threshold=threshold,
+                            excluded_label_ids=excluded_label_ids,
+                        )
+                        for dest in _resolve_destinations(file, ctx, result):
+                            dest.parent.mkdir(parents=True, exist_ok=True)
+                            try:
+                                shutil.copy2(source, dest)
+                            except OSError as e:
+                                result.errors.append(
+                                    f"Could not copy {source} -> {dest}: {e}"
+                                )
+                                continue
+                            if tag_set is not None and is_image_path(dest):
+                                try:
+                                    exif_batch.write(dest, tag_set)
+                                except Exception as e:  # noqa: BLE001
+                                    logger.warning(
+                                        f"annotated_copies: EXIF write "
+                                        f"failed for {dest}: {e}"
+                                    )
                 result.skipped_no_change += 1
                 continue
 
@@ -612,6 +664,9 @@ def write_annotated_copies(
                             f"annotated_copies: EXIF write failed "
                             f"for {dest}: {e}"
                         )
+
+    if progress_cb is not None:
+        progress_cb(total, total)
 
     logger.info(
         f"annotated_copies: project={project_id} "

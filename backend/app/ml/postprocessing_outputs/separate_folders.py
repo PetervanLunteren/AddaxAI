@@ -78,6 +78,7 @@ import re
 import shutil
 import unicodedata
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -394,21 +395,34 @@ def _folder_for_file(
     return _folder_for(labels[0])
 
 
-def _unique_destination(target_dir: Path, source_name: str) -> tuple[Path, bool]:
+def _unique_destination(
+    target_dir: Path,
+    source_name: str,
+    reserved: set[Path] | None = None,
+) -> tuple[Path, bool]:
     """Return a path inside ``target_dir`` that doesn't already exist.
 
     Appends ``_2``, ``_3``, … before the suffix until the name is free.
     Returns the path plus a flag indicating whether a rename happened.
+
+    ``reserved`` holds paths already handed out this run but not yet on
+    disk. It's what keeps names unique in ``place_files=False`` (deferred)
+    mode, where the physical write happens later in ``annotated_copies``
+    and ``candidate.exists()`` alone would keep returning the same name.
     """
     stem = Path(source_name).stem
     suffix = Path(source_name).suffix
+
+    def free(p: Path) -> bool:
+        return not p.exists() and (reserved is None or p not in reserved)
+
     candidate = target_dir / source_name
-    if not candidate.exists():
+    if free(candidate):
         return candidate, False
     counter = 2
     while True:
         candidate = target_dir / f"{stem}_{counter}{suffix}"
-        if not candidate.exists():
+        if free(candidate):
             return candidate, True
         counter += 1
 
@@ -504,6 +518,8 @@ def separate_into_folders(
     name_mode: NameMode = "common",
     group_events: bool = True,
     species_last: bool = False,
+    place_files: bool = True,
+    progress_cb: Callable[[int, int], None] | None = None,
 ) -> SeparateFoldersResult:
     """Reorganise every file in the project into subdirectories under
     ``ctx.output_root``.
@@ -540,6 +556,16 @@ def separate_into_folders(
 
     Each placement is recorded on ``ctx`` so downstream modules can find
     the file on disk without re-reading ``File.file_path``.
+
+    ``place_files`` controls whether the bytes are actually written here.
+    It's ``True`` for a separation-only run. When ``annotated_copies``
+    also runs, the worker passes ``False``: that module re-encodes the
+    annotated image (or plain-copies unchanged files) straight to the
+    destination this function planned, so copying the bytes here first
+    would just be overwritten. In deferred mode the placement is still
+    computed, the folder is created, the name is reserved, and ``ctx`` is
+    recorded, but ``_place_primary`` and the EXIF write are skipped. The
+    counts are unchanged, so the completion summary reads the same.
     """
     project = db.get(Project, project_id)
     if project is None:
@@ -569,11 +595,21 @@ def separate_into_folders(
 
     result = SeparateFoldersResult()
 
+    # Destinations handed out this run. In deferred mode the files aren't
+    # written until annotated_copies runs, so on-disk existence can't be
+    # the uniqueness check; this set is.
+    reserved: set[Path] = set()
+
     # One ExifToolHelper for the whole batch so the underlying
     # exiftool process stays alive across writes — start-up is the
     # expensive part.
+    total = len(files)
     with ExifBatch() as exif_batch:
-        for file in files:
+        for i, file in enumerate(files):
+            # Report files processed so far (advances through skips too). The
+            # worker throttles these before they reach the WebSocket.
+            if progress_cb is not None:
+                progress_cb(i, total)
             # Videos copy their best-frame JPEG, not the container; images
             # copy themselves. file_mode forces copy for videos.
             source, out_name, file_mode = _media_source(file, mode)
@@ -627,15 +663,21 @@ def separate_into_folders(
             parts = [p for p in ordered if p]
             dest_dir = target_dir.joinpath(*parts) if parts else target_dir
             dest_dir.mkdir(parents=True, exist_ok=True)
-            dest, renamed = _unique_destination(dest_dir, out_name)
-            try:
-                _place_primary(source, dest, file_mode)
-            except OSError as e:
-                result.errors.append(f"Failed to {file_mode} {source}: {e}")
-                logger.exception(
-                    f"separate_folders: {file_mode} failed for {source}"
-                )
-                continue
+            dest, renamed = _unique_destination(dest_dir, out_name, reserved)
+            reserved.add(dest)
+
+            # Move always writes here (annotated_copies reads the moved
+            # path). Copy writes here only when not deferred; when deferred,
+            # annotated_copies writes the real bytes at ``dest``.
+            if place_files or file_mode == "move":
+                try:
+                    _place_primary(source, dest, file_mode)
+                except OSError as e:
+                    result.errors.append(f"Failed to {file_mode} {source}: {e}")
+                    logger.exception(
+                        f"separate_folders: {file_mode} failed for {source}"
+                    )
+                    continue
 
             if file_mode == "move":
                 file.file_path = str(dest)
@@ -650,9 +692,10 @@ def separate_into_folders(
 
             # Silent EXIF when the placement is an image format that
             # carries EXIF (videos write best-frame JPEGs, so they do
-            # too). ``annotated_copies`` overwrites it with the same tag
-            # set if the user also asked for boxes / blur.
-            if is_image_path(dest):
+            # too). Skipped in deferred mode: ``annotated_copies`` writes
+            # the file and stamps the same tag set. When it also draws /
+            # blurs it overwrites this anyway.
+            if place_files and is_image_path(dest):
                 tag_set = build_tag_set(
                     db,
                     file,
@@ -669,6 +712,9 @@ def separate_into_folders(
                             f"separate_folders: EXIF write failed for "
                             f"{dest}: {e}"
                         )
+
+    if progress_cb is not None:
+        progress_cb(total, total)
 
     logger.info(
         f"separate_folders: project={project_id} mode={mode} "

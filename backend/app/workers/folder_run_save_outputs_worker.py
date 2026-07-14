@@ -27,6 +27,8 @@ the completion modal in the UI can render summary panels directly.
 from __future__ import annotations
 
 import asyncio
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -229,7 +231,22 @@ async def process_save_outputs_job(job_id: str) -> None:
                 status=label,
             )
 
-            def _run(m: str = module) -> dict[str, Any]:
+            # The two file-heavy modules copy / re-encode every file, so
+            # give them a per-file callback that streams "N / M" + ETA to
+            # the UI. The quick single-file writers (JSON / CSV / README)
+            # don't need one; their checklist tick is feedback enough.
+            file_cb = None
+            if module in ("separate_folders", "annotated_copies"):
+                file_cb = _make_file_progress_cb(
+                    job_id,
+                    loop,
+                    module=module,
+                    module_index=idx,
+                    total_modules=total_modules,
+                    active_modules=active_modules,
+                )
+
+            def _run(m: str = module, cb=file_cb) -> dict[str, Any]:
                 if m == "separate_folders":
                     return separate_into_folders(
                         db,
@@ -251,6 +268,12 @@ async def process_save_outputs_job(job_id: str) -> None:
                         species_last=bool(
                             payload.get("separate_species_last", False)
                         ),
+                        # When annotated_copies also runs it re-encodes /
+                        # copies the bytes straight to these destinations,
+                        # so writing them here first would just be
+                        # overwritten. Defer the physical write to it.
+                        place_files=not (draw_bboxes or anonymise),
+                        progress_cb=cb,
                     ).to_dict()
                 if m == "annotated_copies":
                     return write_annotated_copies(
@@ -262,6 +285,13 @@ async def process_save_outputs_job(job_id: str) -> None:
                         anonymise=anonymise,
                         excluded_label_ids=excluded_frozen,
                         name_mode=payload.get("name_mode", "common"),
+                        # Separation deferred its writes to us, so we own
+                        # every placed file (annotated, or plain-copied when
+                        # a file has no visible effect).
+                        copy_unchanged=bool(
+                            payload.get("separate_folders")
+                        ),
+                        progress_cb=cb,
                     ).to_dict()
                 if m == "recognition_json":
                     return write_recognition_json(
@@ -362,9 +392,12 @@ async def _emit_module_event(
     progress = (
         module_index / total_modules if total_modules > 0 else 0.0
     )
+    # No "(idx / total)" suffix: it read like a file count but was a stage
+    # count. The checklist already shows stage progress; the per-file
+    # callback owns the "N / M files" line for the heavy stages.
     await ws_manager.send_progress(
         job_id,
-        f"{status} ({module_index} / {total_modules})",
+        status,
         progress,
         data={
             "current_module": module,
@@ -373,3 +406,63 @@ async def _emit_module_event(
             "modules": active_modules,
         },
     )
+
+
+def _make_file_progress_cb(
+    job_id: str,
+    loop: asyncio.AbstractEventLoop,
+    *,
+    module: str,
+    module_index: int,
+    total_modules: int,
+    active_modules: list[str],
+) -> Callable[[int, int], None]:
+    """Per-file progress relay for one heavy module.
+
+    The module runs in an executor thread and calls this synchronously
+    per file. It throttles (at most every ~1% and every 250ms, always
+    the final tick) and schedules the async WebSocket send back on the
+    event loop via ``run_coroutine_threadsafe``. The overall bar fraction
+    blends completed stages with the fraction of the current stage's
+    files, so it advances *within* a long stage instead of only between
+    stages.
+    """
+    label = _MODULE_LABELS.get(module, module)
+    state = {"done": -1, "t": 0.0}
+
+    def cb(done: int, total: int) -> None:
+        now = time.monotonic()
+        step = max(1, total // 100)
+        is_last = done >= total
+        if (
+            not is_last
+            and done - state["done"] < step
+            and now - state["t"] < 0.25
+        ):
+            return
+        state["done"] = done
+        state["t"] = now
+
+        file_frac = done / total if total > 0 else 1.0
+        overall = (
+            (module_index + file_frac) / total_modules
+            if total_modules > 0
+            else 0.0
+        )
+
+        coro = ws_manager.send_progress(
+            job_id,
+            f"{label} ({done:,} / {total:,})",
+            overall,
+            data={
+                "current_module": module,
+                "module_index": module_index,
+                "total_modules": total_modules,
+                "modules": active_modules,
+                "file_index": done,
+                "file_total": total,
+            },
+        )
+        asyncio.run_coroutine_threadsafe(coro, loop)
+
+    return cb

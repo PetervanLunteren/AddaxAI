@@ -19,6 +19,9 @@ from app.ml.postprocessing_outputs._output_context import OutputContext
 from app.ml.postprocessing_outputs.annotated_copies import (
     write_annotated_copies,
 )
+from app.ml.postprocessing_outputs.separate_folders import (
+    separate_into_folders,
+)
 from tests.conftest import (
     make_deployment,
     make_detection,
@@ -327,6 +330,61 @@ def test_excluded_label_skips_file(db, tmp_path):
     assert result.written_count == 0
     assert result.skipped_excluded == 1
     assert not (target / "dog.jpg").exists()
+
+
+def test_deferred_separation_writes_each_file_once(db, tmp_path):
+    """Both separate + annotate: separation defers the bytes
+    (place_files=False), annotation owns every write. An effect file is
+    written by annotation; a placed no-effect file (blank, kept via
+    include_empty) is plain-copied by annotation, not left missing. No
+    file is written twice."""
+    project = make_project(db, name="deferred", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+
+    animal_src = _write_jpeg(tmp_path / "src" / "animal.jpg")
+    animal = make_file(
+        db, deployment_id=dep.id, file_path=animal_src,
+        observation_type="animal",
+    )
+    make_detection(
+        db, file_id=animal.id, category="animal", confidence=0.9, label="dog"
+    )
+
+    blank_src = _write_jpeg(tmp_path / "src" / "blank.jpg")
+    blank = make_file(
+        db, deployment_id=dep.id, file_path=blank_src,
+        observation_type="blank",
+    )  # no detections → nothing to draw
+
+    media_root = tmp_path / "out" / "addaxai-media"
+    ctx = OutputContext(output_root=media_root)
+
+    sep = separate_into_folders(
+        db, project.id, ctx,
+        media_threshold=0.5, mode="copy", group_by="none",
+        include_empty=True, group_events=False,
+        place_files=False,
+    )
+    # Placements were planned for both files, but nothing is on disk yet.
+    assert ctx.resolved_for(animal.id)
+    assert ctx.resolved_for(blank.id)
+    for dests in (ctx.resolved_for(animal.id), ctx.resolved_for(blank.id)):
+        assert not dests[0].exists()
+
+    ann = write_annotated_copies(
+        db, project.id, ctx,
+        media_threshold=0.5, draw_bboxes=True, anonymise=False,
+        copy_unchanged=True,
+    )
+
+    # Effect file drawn; blank plain-copied (still counted no-change).
+    assert ann.written_count == 1
+    assert ann.bbox_count == 1
+    assert ann.skipped_no_change == 1
+    assert ctx.resolved_for(animal.id)[0].is_file()
+    assert ctx.resolved_for(blank.id)[0].is_file()
+    # Separation counted both placements, so the summary is unchanged.
+    assert sep.copied_count == 2
 
 
 def test_unknown_project_raises(db, tmp_path):

@@ -1,7 +1,6 @@
 # TODO
 
 ## Priority 1
-- [ ] I i do the 'loop event (Space)' on an event with some images, it shows the bounding boxes with a slight lag, so the image is already updated, and there is a slight moment without any box. Also, sometimes it doesnt render the boxes at all... INvestigate. 
 - [ ] The save step pbar is like this below. But the separating files takes quite long. Why not show progress per image? Then the user gets better feedback. perhaps pbars for all stages? or just stage + percentage + ETA? or something like that. It doesnt need to be beatiful, just practical. Also, what do these stages actually mean? "Separating files" and "Writing annotated copies"?
 
                 Saving outputs

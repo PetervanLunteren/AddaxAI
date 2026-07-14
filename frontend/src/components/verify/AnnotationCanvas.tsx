@@ -112,32 +112,9 @@ export function AnnotationCanvas({
     shouldDrawBbox(d, file, detectionThreshold),
   );
 
-  // Load image. Keep the previous image on screen while the next one loads
-  // (so rapid navigation / auto-play doesn't flash black between frames), and
-  // hide the boxes while `loading` so the old image is never shown with the
-  // new file's detections. Stale loads (A → B → C where B's onload fires after
-  // C has started) are ignored via `cancelled`.
-  useEffect(() => {
-    setLoading(true);
-    let cancelled = false;
-    const img = new window.Image();
-    img.crossOrigin = "anonymous";
-    img.src = imageUrl;
-    img.onload = () => {
-      if (cancelled) return;
-      setImage(img);
-      updateStageSize(img.naturalWidth, img.naturalHeight);
-      setLoading(false);
-    };
-    img.onerror = () => {
-      if (!cancelled) setLoading(false);
-    };
-    return () => {
-      cancelled = true;
-    };
-  }, [imageUrl]);
-
-  // Update stage size based on container
+  // Update stage size based on container. Defined before the image-load
+  // effect below because that effect lists it as a dependency (a const from
+  // useCallback is in the temporal dead zone until its own line runs).
   const updateStageSize = useCallback(
     (naturalWidth: number, naturalHeight: number) => {
       if (!containerRef.current) return;
@@ -155,6 +132,43 @@ export function AnnotationCanvas({
     },
     []
   );
+
+  // Load image. Keep the previous image on screen while the next one loads
+  // (so rapid navigation / auto-play doesn't flash black between frames), and
+  // hide the boxes while `loading` so the old image is never shown with the
+  // new file's detections. Stale loads (A → B → C where B's onload fires after
+  // C has started) are ignored via `cancelled`.
+  useEffect(() => {
+    let cancelled = false;
+    const img = new window.Image();
+    img.crossOrigin = "anonymous";
+    const settle = () => {
+      if (cancelled) return;
+      setImage(img);
+      updateStageSize(img.naturalWidth, img.naturalHeight);
+      setLoading(false);
+    };
+    img.onload = settle;
+    img.onerror = () => {
+      if (!cancelled) setLoading(false);
+    };
+    img.src = imageUrl;
+    // Auto-play prefetches the next frame, so by the time we get here the
+    // image is often already cached and decoded. A cached image is `complete`
+    // as soon as `src` is set, and in that case `onload` may never fire —
+    // which would leave `loading` stuck true and the boxes never rendered
+    // (the intermittent "no boxes at all" during a loop). Resolve it
+    // synchronously instead: image + boxes swap together, with no hidden-box
+    // gap. Only mark `loading` when the bitmap genuinely isn't ready yet.
+    if (img.complete && img.naturalWidth > 0) {
+      settle();
+    } else {
+      setLoading(true);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUrl, updateStageSize]);
 
   // Resize observer
   useEffect(() => {
