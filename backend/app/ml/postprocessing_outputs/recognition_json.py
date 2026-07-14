@@ -218,10 +218,16 @@ def write_recognition_json(
     classification_total = 0
 
     for file in files:
+        # Frame order first so a video's detections read sequentially
+        # (frame_number is NULL for images, so they all tie and fall back
+        # to the confidence order MegaDetector's image format expects).
         detections = db.execute(
             select(Detection)
             .where(Detection.file_id == file.id)
-            .order_by(Detection.confidence.desc())
+            .order_by(
+                Detection.frame_number.asc(),
+                Detection.confidence.desc(),
+            )
         ).scalars().all()
 
         det_objs: list[dict] = []

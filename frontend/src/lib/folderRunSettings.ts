@@ -40,6 +40,8 @@ export interface PersistedAnalysisSettings {
   counting_threshold?: number;
   classification_gate?: number;
   video_fps?: number;
+  detection_augment?: boolean;
+  detection_image_size?: number | null;
   event_smoothing?: boolean;
   smoothing_strength?: "mild" | "normal" | "aggressive";
   taxonomic_rollup?: boolean;

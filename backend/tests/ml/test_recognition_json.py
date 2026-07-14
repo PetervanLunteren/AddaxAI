@@ -176,6 +176,43 @@ def test_detection_serialisation_matches_canonical_shape(db, tmp_path):
     assert det["classifications"] == [["1", pytest.approx(0.91)]]
 
 
+def test_video_detections_are_emitted_in_frame_order(db, tmp_path):
+    """A video's detections come out ordered by frame_number, so the JSON
+    reads sequentially rather than in the confidence order used for images."""
+    project = make_project(db, name="rj-frame-order")
+    dep = make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "src")
+    )
+    file = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=str(tmp_path / "src" / "clip.avi"),
+        file_type="video",
+        observation_type="animal",
+    )
+    # Insert out of frame order, with confidences that would scatter the
+    # frames if sorted by confidence (frame 36 is most confident, 180 least).
+    for frame, conf in [(180, 0.80), (36, 0.99), (60, 0.90)]:
+        make_detection(
+            db,
+            file_id=file.id,
+            category="animal",
+            confidence=conf,
+            frame_number=frame,
+            bbox_x=0.1,
+            bbox_y=0.1,
+            bbox_width=0.2,
+            bbox_height=0.2,
+        )
+
+    target = tmp_path / "out"
+    write_recognition_json(db, project.id, target)
+    payload = _load_json(target)
+
+    dets = payload["images"][0]["detections"]
+    assert [d["frame_number"] for d in dets] == [36, 60, 180]
+
+
 def test_classification_categories_map_built_from_labels(db, tmp_path):
     project = make_project(db, name="rj-classes")
     dep = make_deployment(
