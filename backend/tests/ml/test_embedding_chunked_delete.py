@@ -72,8 +72,18 @@ def test_chunked_delete_removes_all_existing(db, tmp_path, monkeypatch):
         **{did: np.ones(dim, dtype=np.float16) for did in det_ids},
     )
 
-    # Force several chunks so the loop is actually exercised.
-    monkeypatch.setattr(embedding_utils, "_SQL_VAR_CHUNK", 3)
+    # Force several chunks so the loop is actually exercised. The chunk size
+    # now lives in the shared iter_id_chunks default, so pin a tiny size on the
+    # name embedding_utils calls.
+    import functools
+
+    from app.db.sql_params import iter_id_chunks
+
+    monkeypatch.setattr(
+        embedding_utils,
+        "iter_id_chunks",
+        functools.partial(iter_id_chunks, size=3),
+    )
 
     inserted = embedding_utils.save_embeddings_to_db(
         npz_path, job.id, model_id, dim, db

@@ -981,3 +981,51 @@ def test_serialize_xlsx_multi_write_only_roundtrip():
         ("c",),
         ("only",),
     ]
+
+
+def test_events_by_file_survives_bound_parameter_limit(db):
+    """Regression: large folder runs crashed the save step with
+    "too many SQL variables" because `_events_by_file` built one
+    `IN (?, ?, ...)` over every scoped file id (Simon's 45k-file run).
+
+    Reproduced at small scale by lowering SQLite's bound-parameter limit
+    on the shared test connection to the old-build value (999). With more
+    than 999 files in one event scope, the un-chunked query raises; the
+    chunked helper (900 per batch) must return the full mapping instead.
+    """
+    import sqlite3
+
+    from app.api.crud.export import _events_by_file
+    from app.db.sql_params import SQL_VAR_CHUNK
+
+    project = make_project(db)
+    site = make_site(db, project_id=project.id)
+    deployment = make_deployment(db, site_id=site.id, project_id=project.id)
+
+    # One event holding more files than the (lowered) parameter limit, so the
+    # id list spans more than one chunk.
+    n_files = SQL_VAR_CHUNK + 200
+    event = make_event_with_files(
+        db,
+        deployment_id=deployment.id,
+        event_start_local=datetime(2024, 1, 1, 12, 0, 0),
+        files_verified=[False] * n_files,
+    )
+    file_ids = [
+        fid
+        for (fid,) in db.query(File.id)
+        .filter(File.deployment_id == deployment.id)
+        .all()
+    ]
+    assert len(file_ids) == n_files
+
+    raw = db.connection().connection
+    raw = getattr(raw, "dbapi_connection", raw)
+    previous = raw.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 999)
+    try:
+        result = _events_by_file(db, file_ids)
+    finally:
+        raw.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, previous)
+
+    assert len(result) == n_files
+    assert all(ev.id == event.id for ev in result.values())

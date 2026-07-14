@@ -34,6 +34,7 @@ from sqlalchemy import Row, and_, func, or_, select, true
 from sqlalchemy.orm import Session, defer
 
 from app.api.crud.export_formats import slugify
+from app.db.sql_params import iter_id_chunks
 from app.models import (
     Deployment,
     Detection,
@@ -441,15 +442,22 @@ def _file_event(
 def _events_by_file(
     db: Session, file_ids: Sequence[str]
 ) -> dict[str, Event]:
-    """Map each file id to its event in one query (avoids N+1)."""
-    if not file_ids:
-        return {}
-    stmt = (
-        select(event_files.c.file_id, Event)
-        .join(event_files, event_files.c.event_id == Event.id)
-        .where(event_files.c.file_id.in_(list(file_ids)))
-    )
-    return {fid: event for fid, event in db.execute(stmt).all()}
+    """Map each file id to its event (avoids N+1).
+
+    Chunked over ``file_ids`` to stay under SQLite's bound-parameter limit:
+    one `IN (?, ?, ...)` over every file id crashes large runs with "too many
+    SQL variables" (Simon's 45k-file folder run).
+    """
+    result: dict[str, Event] = {}
+    for chunk in iter_id_chunks(file_ids):
+        stmt = (
+            select(event_files.c.file_id, Event)
+            .join(event_files, event_files.c.event_id == Event.id)
+            .where(event_files.c.file_id.in_(chunk))
+        )
+        for fid, event in db.execute(stmt).all():
+            result[fid] = event
+    return result
 
 
 def _classifier_label(project: Project) -> str:
@@ -1203,14 +1211,16 @@ def build_camtrap_dp_tables(
     # effective count (human override, else MaxN). Mutually exclusive and
     # summable, the Camtrap-DP shape for "N individuals in this sequence".
     # The per-box media rows above remain for spatial detail.
-    if events_in_scope:
+    # Chunked over the event ids to stay under SQLite's bound-parameter limit
+    # (a large project can have >32k events in scope).
+    for chunk in iter_id_chunks(events_in_scope.keys()):
         for obs, taxonomy in (
             db.query(EventObservation, LabelTaxonomy)
             .outerjoin(
                 LabelTaxonomy,
                 LabelTaxonomy.id == EventObservation.label_taxonomy_id,
             )
-            .filter(EventObservation.event_id.in_(list(events_in_scope.keys())))
+            .filter(EventObservation.event_id.in_(chunk))
             .all()
         ):
             count = obs.effective_count

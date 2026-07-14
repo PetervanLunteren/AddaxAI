@@ -12,14 +12,11 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
+from app.db.sql_params import iter_id_chunks
 from app.models import Detection, File
 from app.models.detection_embedding import DetectionEmbedding
 
 logger = get_logger(__name__)
-
-# Max ids per `IN (...)` clause. Stays under SQLite's bound-parameter limit
-# (999 on old builds, 32766 on newer) for large detection-id lists.
-_SQL_VAR_CHUNK = 900
 
 
 def build_embedding_input(
@@ -162,12 +159,10 @@ def save_embeddings_to_db(
 
     # Delete existing embeddings for these detections with this model. Chunk the
     # id list: one `IN (?, ?, ...)` over every id blows SQLite's bound-parameter
-    # limit (SQLITE_MAX_VARIABLE_NUMBER: 999 on older builds, 32766 on newer) on
-    # large re-embeds. Simon's 50k+ detections crashed here with
-    # "too many SQL variables". 900 stays under even the old limit.
+    # limit on large re-embeds (Simon's 50k+ detections crashed here with
+    # "too many SQL variables"). See app/db/sql_params.
     existing_count = 0
-    for i in range(0, len(detection_ids), _SQL_VAR_CHUNK):
-        chunk = detection_ids[i : i + _SQL_VAR_CHUNK]
+    for chunk in iter_id_chunks(detection_ids):
         existing_count += (
             db.query(DetectionEmbedding)
             .filter(

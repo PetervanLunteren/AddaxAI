@@ -13,6 +13,7 @@ from sqlalchemy import Integer, delete, exists, func, insert, or_, select
 from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.core.logging_config import get_logger
+from app.db.sql_params import iter_id_chunks
 from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
 from app.models.event_observation import EventObservation
@@ -378,25 +379,29 @@ def _snapshot_event_carry(
         return carry
     event_ids = [e.id for e in events]
 
+    # Chunk the event-id filters: one `IN (?, ?, ...)` over every event blows
+    # SQLite's bound-parameter limit on a large project (see app/db/sql_params).
     files_by_event: dict[str, set[str]] = defaultdict(set)
-    for eid, fid in db.query(
-        event_files.c.event_id, event_files.c.file_id
-    ).filter(event_files.c.event_id.in_(event_ids)):
-        files_by_event[eid].add(fid)
+    for chunk in iter_id_chunks(event_ids):
+        for eid, fid in db.query(
+            event_files.c.event_id, event_files.c.file_id
+        ).filter(event_files.c.event_id.in_(chunk)):
+            files_by_event[eid].add(fid)
 
     obs_by_event: dict[str, list] = defaultdict(list)
-    for o in db.query(EventObservation).filter(
-        EventObservation.event_id.in_(event_ids)
-    ):
-        obs_by_event[o.event_id].append(
-            PriorObs(
-                label=o.label,
-                label_taxonomy_id=o.label_taxonomy_id,
-                category=o.category,
-                human_count=o.human_count,
-                effective_count=o.effective_count,
+    for chunk in iter_id_chunks(event_ids):
+        for o in db.query(EventObservation).filter(
+            EventObservation.event_id.in_(chunk)
+        ):
+            obs_by_event[o.event_id].append(
+                PriorObs(
+                    label=o.label,
+                    label_taxonomy_id=o.label_taxonomy_id,
+                    category=o.category,
+                    human_count=o.human_count,
+                    effective_count=o.effective_count,
+                )
             )
-        )
 
     for e in events:
         fileset = frozenset(files_by_event.get(e.id, set()))
@@ -575,18 +580,22 @@ def count_regroup_impact(
         return empty
     event_ids = [e.id for e in events]
 
+    # Chunk the event-id filters: one `IN (?, ?, ...)` over every event blows
+    # SQLite's bound-parameter limit on a large project (see app/db/sql_params).
     files_by_event: dict[str, set[str]] = defaultdict(set)
-    for eid, fid in db.query(
-        event_files.c.event_id, event_files.c.file_id
-    ).filter(event_files.c.event_id.in_(event_ids)):
-        files_by_event[eid].add(fid)
+    for chunk in iter_id_chunks(event_ids):
+        for eid, fid in db.query(
+            event_files.c.event_id, event_files.c.file_id
+        ).filter(event_files.c.event_id.in_(chunk)):
+            files_by_event[eid].add(fid)
 
     human_by_event: dict[str, int] = defaultdict(int)
-    for (eid,) in db.query(EventObservation.event_id).filter(
-        EventObservation.event_id.in_(event_ids),
-        EventObservation.human_count.isnot(None),
-    ):
-        human_by_event[eid] += 1
+    for chunk in iter_id_chunks(event_ids):
+        for (eid,) in db.query(EventObservation.event_id).filter(
+            EventObservation.event_id.in_(chunk),
+            EventObservation.human_count.isnot(None),
+        ):
+            human_by_event[eid] += 1
 
     total_confirmed = confirmed_at_risk = counts_at_risk = 0
     example_event = None  # earliest affected confirmed event, for the example
