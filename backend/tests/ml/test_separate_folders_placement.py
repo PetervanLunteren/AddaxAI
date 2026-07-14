@@ -119,6 +119,72 @@ def test_group_events_keeps_burst_in_one_folder(db, tmp_path):
     assert result.copied_count == 2
 
 
+def test_group_events_prefers_verified_over_higher_confidence(db, tmp_path):
+    """A human-verified species owns the event folder even when an unverified
+    AI box scored higher."""
+    project = make_project(db, name="grp-verified", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    fa = make_file(
+        db, deployment_id=dep.id,
+        file_path=_make_source(tmp_path, "A.jpg"), observation_type="animal",
+    )
+    fb = make_file(
+        db, deployment_id=dep.id,
+        file_path=_make_source(tmp_path, "B.jpg"), observation_type="animal",
+    )
+    make_detection(db, file_id=fa.id, confidence=0.95, label="dog")
+    make_detection(
+        db, file_id=fb.id, confidence=0.40, label="fox", verified=True
+    )
+    _link_event(db, dep.id, [fa.id, fb.id])
+
+    target = tmp_path / "out"
+    separate_into_folders(
+        db, project.id, _ctx(target), group_events=True, media_threshold=0.5
+    )
+
+    assert (target / "other" / "fox" / "A.jpg").is_file()
+    assert (target / "other" / "fox" / "B.jpg").is_file()
+    assert not (target / "other" / "dog").exists()
+
+
+def test_group_events_verified_multispecies_picks_most_common(db, tmp_path):
+    """Several verified species in one event: the most common wins, even when
+    another verified species scored higher."""
+    project = make_project(db, name="grp-common", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    file_ids: list[str] = []
+    # One verified deer at high confidence...
+    fd = make_file(
+        db, deployment_id=dep.id,
+        file_path=_make_source(tmp_path, "deer.jpg"), observation_type="animal",
+    )
+    make_detection(db, file_id=fd.id, confidence=0.9, label="deer", verified=True)
+    file_ids.append(fd.id)
+    # ...vs three verified chickens at lower confidence -> chicken is most common.
+    for i in range(3):
+        fc = make_file(
+            db, deployment_id=dep.id,
+            file_path=_make_source(tmp_path, f"chick{i}.jpg"),
+            observation_type="animal",
+        )
+        make_detection(
+            db, file_id=fc.id, confidence=0.5, label="chicken", verified=True
+        )
+        file_ids.append(fc.id)
+    _link_event(db, dep.id, file_ids)
+
+    target = tmp_path / "out"
+    separate_into_folders(
+        db, project.id, _ctx(target), group_events=True, media_threshold=0.5
+    )
+
+    # The whole event, deer file included, lands under chicken.
+    assert (target / "other" / "chicken" / "deer.jpg").is_file()
+    assert (target / "other" / "chicken" / "chick0.jpg").is_file()
+    assert not (target / "other" / "deer").exists()
+
+
 def test_group_events_off_splits_burst_per_file(db, tmp_path):
     """Same burst, grouping off: each file follows its own top label."""
     project = make_project(db, name="nogrp", counting_threshold=0.5)

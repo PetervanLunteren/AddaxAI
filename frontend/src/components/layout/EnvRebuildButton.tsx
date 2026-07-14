@@ -133,8 +133,10 @@ export function EnvRebuildButton({ envNames, onDone }: EnvRebuildButtonProps) {
             <DialogDescription>
               The environment is wiped and rebuilt to match this app
               version. This can take 10 to 30 minutes depending on your
-              machine and internet connection, and cannot be cancelled
-              once started. Keep the app open until it finishes.
+              machine and internet connection. Keep the app open so it can
+              finish, but quitting is safe: your projects and data are
+              untouched, and the rebuild simply starts over the next time
+              you open AddaxAI.
             </DialogDescription>
           </DialogHeader>
 

@@ -174,7 +174,7 @@ export function MediaBody({
           checked={separate.groupEvents}
           onChange={(v) => setSeparate({ ...separate, groupEvents: v })}
           label="Keep events together"
-          caption="The whole event goes to the folder of its most confident species"
+          caption="The whole event goes to the folder of its most confident detection"
         />
       )}
 

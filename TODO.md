@@ -3,8 +3,6 @@
 ## Priority 1
 - [ ] CHECK IF THIS IS RESOLVED: It says "You have unsaved changes" every time i open the settings page. As a test: click "reset changes" the "You have unsaved changes" is not shown anymore, no apparent changes visible. Move different page, move back to settings, it shows "You have unsaved changes" again. Bug. Investigate. The thing is, we investigated previous already but could not find anything. We could not reproduce it, but now its back, and perhaps it has to do with the electron build as opposed to the localhost dev version. That the bug is only in electron, but not in the dev version. Could that be? 
 
-- [ ] THe output preview that we worked on the scroll area before. Can we have it expand ot the available page height? So the scroll inside should be like it is now, but the card height is limited by the page hieght. Does that make sense? And is that easy? Then we accomodate large and small screens. 
-
 - [ ] LINUX DEB PACKAGE - decision (2026-07-05): ship the Linux beta as a .deb instead of the AppImage. Goal: zero terminal for the user. Double-click the .deb, install via the software center, launch AddaxAI from the app menu like any other app. Background: the AppImage aborts on launch on Ubuntu 23.10 and newer because AppArmor restricts unprivileged user namespaces and Electron's SUID chrome-sandbox fallback cannot work on a nosuid FUSE mount (confirmed on Ubuntu 26.04 in VirtualBox; --no-sandbox works but drops the sandbox). The deb solves both the crash and the chmod +x UX in one go. Implementation sketch:
     - add "deb" to the linux targets in electron/package.json (electron-builder generates the desktop entry and icons, so it appears in the app menu)
     - add a deb afterInstall script that installs an AppArmor profile granting userns (the standard Ubuntu 24.04+ electron fix) and runs apparmor_parser; afterRemove cleans it up
@@ -13,18 +11,7 @@
     - update BETA.md with the Linux download + install steps once it works
     - test on the clean-install VirtualBox snapshot: double-click install, menu launch, model download, folder run, uninstall
 
-- [ ] SHould we add an option to opt out? Just to be clear: opting out is canceling, not doing it in the backgound. NO cleverness here. Or better yet, a lot simpler. Just add to the cpation that the user can quit the app and try it again later. Some users might want to know that it is safe to quit. 
-            Updating analysis environment
-            The environment is wiped and rebuilt to match this app version. This can take several minutes and cannot be cancelled. Keep the app open until it finishes.
-
-- [ ] There is quite a lot of whitespace here ion the project create moidal info. card for no cls model. Can we make it less? Wihtout messing up the format if the bar is not there. '/Users/peter/Desktop/Screenshot 2026-07-06 at 12.29.39.png' '/Users/peter/Desktop/Screenshot 2026-07-06 at 12.29.48.png'
-
 - [ ] Set up a scheduled GitHub Action to fetch download counts for all release assets via the GitHub API and store daily or weekly snapshots in a CSV for tracking downloads over time. Where to nsave the CSV? I dont know. What is customary here? What is best practises? 
-
-- [ ] The very first time a user opens AddaxAI after a fresh install, it takes quite long to open. Can we do anything about that? Perhaps do a warmup open during the actual installation part? Or how would that work? And what would it save in terms of time the first time? KISS DRY YAGNI
-
-- [ ] folder run save step. option : "Keep events together - The whole event goes to the folder of its most confident species". Is this most confident species referring to the cls confidence? Because that if set to 100% if verified, right? Or to the det conf? Worth knowing which one it is, and if that is the desired behaviour. No action point yet, just checking and see if we want to do anything with it. 
-
 
 ## Priority 2
 - [ ] 

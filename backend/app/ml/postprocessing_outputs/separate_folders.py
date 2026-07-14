@@ -77,7 +77,7 @@ from __future__ import annotations
 import re
 import shutil
 import unicodedata
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -204,15 +204,23 @@ def build_event_primary_labels(
 ) -> dict[str, str]:
     """Map each animal file in an event to that event's primary species.
 
-    The event's primary species is the label of the highest-confidence
-    passing, non-excluded animal detection across all the event's files.
-    Only animal files that belong to an event with at least one surviving
-    species label appear in the map. A file in multiple events is assigned
-    to the event of its own most confident detection (deterministic via
-    the confidence / event_id / file_id ordering).
+    Primary-species rule, in order:
+
+    1. If the event has any human-verified labelled animal detections, the
+       primary is the *most common* verified species (most verified
+       detections; ties broken by highest detection confidence, then label).
+       Human verification is the strongest signal, so a confirmed species
+       owns the folder even when an unverified AI box scored higher.
+    2. Otherwise it's the label of the single highest detection-confidence
+       animal detection (the AI's best guess for the burst).
+
+    Only animal files in an event with at least one surviving species label
+    appear in the map. A file in multiple events is assigned to the event of
+    its own strongest detection (verified first, then confidence).
 
     Used by primary-only placement with ``group_events`` on to keep a whole
-    burst in one folder. Mirrored by the Save-step preview so the two agree.
+    burst in one folder. Mirrored by the Save-step preview (same function),
+    so the two always agree.
     """
     rows = db.execute(
         select(
@@ -220,6 +228,8 @@ def build_event_primary_labels(
             Detection.file_id,
             Detection.label,
             Detection.label_taxonomy_id,
+            Detection.confidence,
+            Detection.verified,
         )
         .join(File, File.id == Detection.file_id)
         .join(event_files, event_files.c.file_id == File.id)
@@ -233,7 +243,10 @@ def build_event_primary_labels(
                 Detection.verified == True,  # noqa: E712
             )
         )
+        # Verified first, then confidence: the first row per file is that
+        # file's strongest detection, which decides its chosen event.
         .order_by(
+            Detection.verified.desc(),
             Detection.confidence.desc(),
             event_files.c.event_id,
             Detection.file_id,
@@ -251,23 +264,48 @@ def build_event_primary_labels(
             return True
         return False
 
-    # Walk rows in confidence-descending order. The first time we see an
-    # event, that row's label is the event's primary species; the first
-    # time we see a file, that row's event is the file's chosen event.
-    event_top_label: dict[str, str] = {}
+    rows = [r for r in rows if not _is_excluded(r)]
+
+    # A file in multiple events belongs to the event of its own strongest
+    # detection. Rows are ordered verified-then-confidence, so the first row
+    # seen for a file wins.
     file_event: dict[str, str] = {}
-    for row in rows:
-        if _is_excluded(row):
-            continue
-        if row.event_id not in event_top_label:
-            event_top_label[row.event_id] = row.label
-        if row.file_id not in file_event:
-            file_event[row.file_id] = row.event_id
+    for r in rows:
+        file_event.setdefault(r.file_id, r.event_id)
+
+    # Primary species per event, following the rule in the docstring.
+    per_event: dict[str, list] = defaultdict(list)
+    for r in rows:
+        per_event[r.event_id].append(r)
+
+    event_primary: dict[str, str] = {}
+    for event_id, ev_rows in per_event.items():
+        verified = [r for r in ev_rows if r.verified]
+        if verified:
+            # Most common verified species; tie -> highest confidence, then
+            # label for a deterministic result.
+            agg: dict[str, dict] = {}
+            for r in verified:
+                key = r.label_taxonomy_id or r.label
+                a = agg.setdefault(
+                    key, {"count": 0, "conf": 0.0, "label": r.label}
+                )
+                a["count"] += 1
+                a["conf"] = max(a["conf"], r.confidence)
+            best = max(
+                agg.values(),
+                key=lambda a: (a["count"], a["conf"], a["label"]),
+            )
+            event_primary[event_id] = best["label"]
+        else:
+            # AI's best guess: the single highest-confidence detection.
+            top = max(ev_rows, key=lambda r: (r.confidence, r.label))
+            event_primary[event_id] = top.label
 
     return {
-        file_id: event_top_label[event_id]
+        file_id: event_primary[event_id]
         for file_id, event_id in file_event.items()
-        if event_id in event_top_label
+        if event_id in event_primary
     }
 
 

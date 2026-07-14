@@ -405,21 +405,25 @@ export function CreateProjectDialog({
                         models={classificationModels.filter((m) => m.model_id !== "none")}
                       />
                     </ModelSelect>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
-              {/* Model Status Badge */}
-              {classificationModelId && modelStatus && (
-                <ModelStatusBadge
-                  status={modelStatus}
-                  onPrepare={handlePrepareModel}
-                  isPreparing={false}
-                />
-              )}
-
-              {!hasClassificationModel && <NoClassifierNotice />}
+                    {/* Field status kept inside the FormItem so it sits tight
+                        to the dropdown (space-y-2) instead of the form's
+                        larger space-y-6 gap. The prep "bar" (model selected)
+                        and the detector-only notice (none selected) share this
+                        slot, so the spacing is the same whether or not the bar
+                        is there. */}
+                    {classificationModelId && modelStatus && (
+                      <ModelStatusBadge
+                        status={modelStatus}
+                        onPrepare={handlePrepareModel}
+                        isPreparing={false}
+                      />
+                    )}
+                    {!hasClassificationModel && <NoClassifierNotice />}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               {/* Label selection */}
               {hasClassificationModel && taxonomy && (
