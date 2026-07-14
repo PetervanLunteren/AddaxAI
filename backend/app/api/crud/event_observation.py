@@ -456,6 +456,103 @@ def add_human_species(
     return obs
 
 
+def relabel_observation(
+    db: Session,
+    event_observation_id: str,
+    category: str,
+    label: str | None = None,
+    label_taxonomy_id: str | None = None,
+) -> EventObservation | None:
+    """Change the species of one count row, carrying its count to the target.
+
+    Count-level relabel: the source row is removed the same way the panel's
+    X does (a human-only row is deleted, an AI row keeps its boxes but its
+    human_count drops to 0 so it hides and survives a MaxN recompute), and
+    the source's effective count is moved onto the target species. If the
+    target species already has a row in the event, the counts SUM (bird(5)
+    relabelled to deer, with deer already 1, gives deer 6); otherwise a
+    human-only row is created for it. This edits counts only, not the
+    underlying detections, exactly like add/remove on this panel. Clears the
+    event's sign-off. Returns the target row, or None when the id is unknown.
+    """
+    source = (
+        db.query(EventObservation)
+        .filter(EventObservation.id == event_observation_id)
+        .first()
+    )
+    if source is None:
+        return None
+    event_id = source.event_id
+    source_count = source.effective_count
+
+    # Resolve the target taxonomy id from the label when not supplied, so the
+    # relabel keys to the same row the AI would produce.
+    if label_taxonomy_id is None and label:
+        from app.ml.taxonomy_db import resolve_taxonomy_id
+
+        project_id = (
+            db.query(Deployment.project_id)
+            .join(Event, Event.deployment_id == Deployment.id)
+            .filter(Event.id == event_id)
+            .scalar()
+        )
+        if project_id:
+            label_taxonomy_id = resolve_taxonomy_id(label, project_id, db)
+
+    # No-op when relabelling to the species it already is.
+    same_species = (
+        (
+            label_taxonomy_id is not None
+            and label_taxonomy_id == source.label_taxonomy_id
+        )
+        or (
+            label_taxonomy_id is None
+            and source.label_taxonomy_id is None
+            and label == source.label
+            and category == source.category
+        )
+    )
+    if same_species:
+        return source
+
+    # Current count on the target species (0 if it has no row yet), read
+    # before we touch the source so the sum is correct even when source and
+    # target sit in the same event.
+    target_query = db.query(EventObservation).filter(
+        EventObservation.event_id == event_id
+    )
+    if label_taxonomy_id is not None:
+        target = target_query.filter(
+            EventObservation.label_taxonomy_id == label_taxonomy_id
+        ).first()
+    else:
+        target = target_query.filter(
+            EventObservation.label_taxonomy_id.is_(None),
+            EventObservation.label == label,
+            EventObservation.category == category,
+        ).first()
+    target_existing = target.effective_count if target is not None else 0
+    summed = target_existing + source_count
+
+    # Remove the source (same semantics as the panel's X / count-to-zero).
+    if source.max_n == 0:
+        db.delete(source)
+    else:
+        source.human_count = 0
+
+    # Move the count onto the target. add_human_species merges into the
+    # existing row (setting human_count to the summed total) or creates a
+    # human-only row, resolves taxonomy, clears the sign-off, and commits.
+    return add_human_species(
+        db,
+        event_id,
+        category=category,
+        count=summed,
+        label=label,
+        label_taxonomy_id=label_taxonomy_id,
+    )
+
+
 def delete_event_observation(
     db: Session, event_observation_id: str
 ) -> str | None:

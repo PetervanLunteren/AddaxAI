@@ -16,6 +16,7 @@ from app.api.crud.event_observation import (
     get_event_ids_for_detections,
     list_event_observations,
     recalculate_max_n_for_project,
+    relabel_observation,
     reset_event_to_ai,
     set_event_confirmed,
     set_human_count,
@@ -122,6 +123,56 @@ def test_multi_species_max_n(db):
     assert obs_by_label["cow"].max_n_file_id == files[0].id
     assert obs_by_label["bear"].max_n == 4
     assert obs_by_label["bear"].max_n_file_id == files[1].id
+
+
+def test_relabel_observation_merges_into_existing(db):
+    """Relabelling a row into a species already present sums the counts and
+    hides the source row (count-level relabel, sum-on-merge)."""
+    project = make_project(db, counting_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _, _ = _make_event_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
+        {"detections": [("bird", "animal", 0.9)] * 5 + [("deer", "animal", 0.9)]},
+    ])
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    rows = {o.label: o for o in list_event_observations(db, ev.id)}
+    bird_id = rows["bird"].id
+
+    relabel_observation(db, bird_id, category="animal", label="deer")
+
+    rows = {o.label: o for o in list_event_observations(db, ev.id)}
+    # deer took bird's 5 on top of its own 1.
+    assert rows["deer"].effective_count == 6
+    # bird is hidden: AI boxes survive (max_n=5) but effective count is 0.
+    assert rows["bird"].max_n == 5
+    assert rows["bird"].effective_count == 0
+    # The relabel un-signs the event.
+    assert db.get(Event, ev.id).confirmed is False
+
+
+def test_relabel_observation_to_new_species(db):
+    """Relabelling into a species with no existing row creates a human-only
+    row carrying the source count; the source row is hidden."""
+    project = make_project(db, counting_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _, _ = _make_event_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
+        {"detections": [("bird", "animal", 0.9)] * 5},
+    ])
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    bird_id = list_event_observations(db, ev.id)[0].id
+    relabel_observation(db, bird_id, category="animal", label="chicken")
+
+    rows = {o.label: o for o in list_event_observations(db, ev.id)}
+    assert rows["chicken"].max_n == 0
+    assert rows["chicken"].effective_count == 5
+    assert rows["bird"].effective_count == 0
 
 
 def test_threshold_filtering(db):

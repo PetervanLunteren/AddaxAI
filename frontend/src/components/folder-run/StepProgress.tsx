@@ -8,12 +8,13 @@
  * Step ordering is fixed: setup → labels → save.
  * "Completed" means a step preceding the current one.
  *
- * Direct navigation: chips up to and including the backend's
- * persisted step are clickable so users can hop straight to any step
- * they've already reached. Upcoming steps stay disabled — jumping
- * forward past unfilled requirements (no models picked, no analysis
- * run, etc.) lands the user on a page that can't function. When
- * ``furthest`` isn't known yet (e.g. the brand-new-run path before
+ * Direct navigation: before the analysis has run, only the current
+ * step and steps already reached are clickable — jumping forward past
+ * unfilled requirements (no models picked, no analysis run) lands the
+ * user on a page that can't function. Once analysis has completed
+ * (``furthest`` past "setup"), every step functions, so the whole row
+ * unlocks and the user can hop freely between Setup, Labels, and Save.
+ * When ``furthest`` isn't known yet (e.g. the brand-new-run path before
  * a run id exists) only the current step is interactive.
  */
 
@@ -54,11 +55,19 @@ export function StepProgress({
     furthest !== undefined
       ? STEPS.findIndex((s) => s.id === furthest)
       : -1;
-  // Allow nav to anything up to max(currentIndex, furthestIndex) — the
-  // URL is the source of truth for what's on screen, the backend step
-  // is the persisted "I made it this far" marker, and the user should
-  // be free to revisit either.
-  const reachableIndex = Math.max(currentIndex, furthestIndex);
+  // `step` only ever advances past "setup" via the post-processing
+  // modal (or a resumed run, which also already processed), so
+  // furthest > setup is a reliable "analysis has run" signal. Once
+  // that's true every step functions — labels has detections to edit,
+  // save has results to write — so unlock the whole row. Before that
+  // the gate still guards against clicking into a page that can't work
+  // yet (no analysis run). The URL is the source of truth for what's
+  // on screen, so the current step is always reachable too.
+  const setupIndex = STEPS.findIndex((s) => s.id === "setup");
+  const processed = furthestIndex > setupIndex;
+  const reachableIndex = processed
+    ? STEPS.length - 1
+    : Math.max(currentIndex, furthestIndex);
 
   return (
     <ol className="flex w-full items-start">

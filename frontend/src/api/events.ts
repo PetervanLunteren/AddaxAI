@@ -134,6 +134,23 @@ export const eventsApi = {
     );
   },
 
+  /** Change the species of one count row; its count moves to the target
+   *  (summing into the target species when it already has a row). */
+  relabelObservation: async (
+    eventId: string,
+    observationId: string,
+    data: {
+      category: string;
+      label?: string | null;
+      label_taxonomy_id?: string | null;
+    },
+  ): Promise<EventWithFiles> => {
+    return api.patch<EventWithFiles>(
+      `/api/events/${eventId}/observations/${observationId}/relabel`,
+      data,
+    );
+  },
+
   /** Remove the human contribution to one species. */
   deleteObservation: async (
     eventId: string,

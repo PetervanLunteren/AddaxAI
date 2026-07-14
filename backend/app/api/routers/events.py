@@ -408,6 +408,14 @@ class AddSpeciesRequest(BaseModel):
     label_taxonomy_id: str | None = None
 
 
+class RelabelObservationRequest(BaseModel):
+    """Change the species of a count row (its count carries to the target)."""
+
+    category: str
+    label: str | None = None
+    label_taxonomy_id: str | None = None
+
+
 @router.patch("/{event_id}/confirm", response_model=EventWithFiles)
 async def confirm_event(
     event_id: str,
@@ -453,6 +461,30 @@ async def set_observation_count(
 ):
     """Set (or clear) the human count for one species in the event."""
     obs = event_obs_crud.set_human_count(db, observation_id, body.count)
+    if obs is None:
+        raise HTTPException(status_code=404, detail="Observation not found")
+    return await get_event(event_id, db)
+
+
+@router.patch(
+    "/{event_id}/observations/{observation_id}/relabel",
+    response_model=EventWithFiles,
+)
+async def relabel_event_observation(
+    event_id: str,
+    observation_id: str,
+    body: RelabelObservationRequest,
+    db: Session = Depends(get_db),
+):
+    """Change the species of one count row; its count moves to the target
+    (summing into the target species when it already has a row)."""
+    obs = event_obs_crud.relabel_observation(
+        db,
+        observation_id,
+        category=body.category,
+        label=body.label,
+        label_taxonomy_id=body.label_taxonomy_id,
+    )
     if obs is None:
         raise HTTPException(status_code=404, detail="Observation not found")
     return await get_event(event_id, db)

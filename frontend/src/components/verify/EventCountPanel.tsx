@@ -80,6 +80,15 @@ export function EventCountPanel({
     onSuccess: invalidate,
     onError: onError("add the species"),
   });
+  const relabelSpecies = useMutation({
+    mutationFn: ({ obsId, opt }: { obsId: string; opt: LabelOption }) =>
+      eventsApi.relabelObservation(eventId, obsId, {
+        category: opt.category,
+        label: opt.label ?? null,
+      }),
+    onSuccess: invalidate,
+    onError: onError("change the species"),
+  });
   const removeObs = useMutation({
     mutationFn: (obsId: string) => eventsApi.deleteObservation(eventId, obsId),
     onSuccess: invalidate,
@@ -93,6 +102,7 @@ export function EventCountPanel({
   const busy =
     setCount.isPending ||
     addSpecies.isPending ||
+    relabelSpecies.isPending ||
     removeObs.isPending ||
     resetCounts.isPending;
 
@@ -117,6 +127,12 @@ export function EventCountPanel({
   };
 
   const [addOpen, setAddOpen] = useState(false);
+  // Row whose species is being changed. Clicking a row's name opens the
+  // picker; picking a species relabels the row (count-level: the count moves
+  // to the target species, summing if it already has a row). Null = closed.
+  const [relabelObs, setRelabelObs] = useState<EventObservationItem | null>(
+    null,
+  );
 
   // Active row for the keyboard accelerators. Refs keep the window listener
   // stable while still reading the latest values.
@@ -143,9 +159,9 @@ export function EventCountPanel({
   }, [visible.length, activeIndex]);
 
   // up/down pick a species row; digits set the active row's count (type fast
-  // for multi-digit); + / - nudge it by one. Bound only while the panel is
-  // mounted (i.e. the modal is open). Editing keys are ignored while typing in
-  // an input (the count field, the picker).
+  // for multi-digit); + / - nudge it by one; R relabels the active row. Bound
+  // only while the panel is mounted (i.e. the modal is open). Editing keys are
+  // ignored while typing in an input (the count field, the picker).
   useEffect(() => {
     const clearDigitBuffer = () => {
       if (digitTimerRef.current) clearTimeout(digitTimerRef.current);
@@ -169,6 +185,16 @@ export function EventCountPanel({
       }
       const rows = visibleRef.current;
       if (rows.length === 0) return;
+      // Relabel the active row — same key ("R") the Labels page binds to
+      // its relabel picker, so the muscle memory carries over.
+      if (e.key === "r" || e.key === "R") {
+        const obs = rows[activeRef.current];
+        if (!obs) return;
+        e.preventDefault();
+        clearDigitBuffer();
+        setRelabelObs(obs);
+        return;
+      }
       if (e.key === "ArrowUp") {
         e.preventDefault();
         clearDigitBuffer();
@@ -256,9 +282,18 @@ export function EventCountPanel({
                   className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
                   style={{ backgroundColor: getSpeciesColor(colorKey) }}
                 />
-                <span className="truncate" title={name}>
+                {/* Click the name to change the species (count carries over).
+                    No button: keeps the row uncluttered, the label itself is
+                    the target. */}
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setRelabelObs(obs)}
+                  className="-mx-1 -my-0.5 truncate rounded px-1 py-0.5 text-left transition-colors hover:bg-accent disabled:opacity-50 disabled:hover:bg-transparent"
+                  title={`${name} — click to change species`}
+                >
                   {name}
-                </span>
+                </button>
               </span>
               <span className="flex shrink-0 items-center gap-1">
                 <Button
@@ -335,6 +370,24 @@ export function EventCountPanel({
           onOpenChange={setAddOpen}
           value={null}
           onSelect={(option) => addSpecies.mutate(option)}
+          options={labelOptions}
+          isLoading={labelOptionsLoading}
+          projectId={projectId}
+        />
+        {/* Relabel a row: opened by clicking a species name. Shares the same
+            picker; the count carries to whatever species is chosen. */}
+        <LabelPicker
+          headless
+          forceOpen={relabelObs !== null}
+          onOpenChange={(open) => {
+            if (!open) setRelabelObs(null);
+          }}
+          value={relabelObs ? relabelObs.label ?? relabelObs.category : null}
+          onSelect={(option) => {
+            if (relabelObs) {
+              relabelSpecies.mutate({ obsId: relabelObs.id, opt: option });
+            }
+          }}
           options={labelOptions}
           isLoading={labelOptionsLoading}
           projectId={projectId}

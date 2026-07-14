@@ -1071,6 +1071,7 @@ export function EventDetailModal({
                     ["0-9", "Set count (type fast for 12, 130…)"],
                     ["+ / −", "Adjust count by 1"],
                     ["A", "Add species"],
+                    ["R", "Change species"],
                     ["← →", "Prev / next event"],
                     ["Shift + ← →", "Prev / next frame"],
                     ["Space", "Loop event"],

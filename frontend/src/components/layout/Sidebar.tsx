@@ -112,7 +112,7 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
         {
           to: `/projects/${projectId}/insights/per-class-performance`,
           icon: Table2,
-          label: "Per-class performance",
+          label: "Class performance",
         },
       ],
     },

@@ -1,13 +1,7 @@
 # TODO
 
 ## Priority 1
-- [ ] projects menu sidebar: the "Per class performance" text is too long. Propose shorter alternative. Perhaps class performace? 
-- [ ] Now that we work with different confidence thresholds, investigate how it works in projects mode, and what we need. Where do we need confidence sliders there? Not in the settings anymore rigght? The labels, counts, have the own. ... IDK. investigate what is going on, and whether or not we need to change somnething. Audit. 
-- [ ]  
-- [ ] 
-- [ ] SHould we make the folder run steps clickable? now they are only clickable if you have visited it in that run already. But why not just have users click step 5 directly after processing... ?
-- [ ] in the counts confirmation modal, would it make sense to add an option to edit the label of an already present species row? for instance, sometimes you'll get an event with a deer in a garden with a bucnh of chickens. It will suggest: deer x1, and bird x5. But the user wants deer x1, and chicken x5. Now he has to remove the biurd row and add a new one, choose chicken, and add 5 counts. If the label can change, that will be much faster. It doesnt have to be a button (as little visual clutter as possible), perhaps just by clickin on the word "bird"?
-
+- [ ] I i do the 'loop event (Space)' on an event with some images, it shows the bounding boxes with a slight lag, so the image is already updated, and there is a slight moment without any box. Also, sometimes it doesnt render the boxes at all... INvestigate. 
 - [ ] The save step pbar is like this below. But the separating files takes quite long. Why not show progress per image? Then the user gets better feedback. perhaps pbars for all stages? or just stage + percentage + ETA? or something like that. It doesnt need to be beatiful, just practical. Also, what do these stages actually mean? "Separating files" and "Writing annotated copies"?
 
                 Saving outputs

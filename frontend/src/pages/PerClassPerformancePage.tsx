@@ -117,7 +117,7 @@ export function PerClassPerformancePage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">
-                Per-class performance
+                Class performance
               </h1>
               <p className="text-sm text-muted-foreground">
                 Precision, recall, and F1 score per class
