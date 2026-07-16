@@ -873,15 +873,15 @@ def test_list_folder_runs_dedupes_by_folder_keeping_newest(client, db, tmp_path)
     assert body[0]["id"] == newest.id
 
 
-def test_list_folder_runs_caps_at_limit(client, db, tmp_path):
-    from app.api.routers.folder_runs import RECENT_RUNS_LIMIT
-
-    for i in range(RECENT_RUNS_LIMIT + 3):
+def test_list_folder_runs_returns_every_run(client, db, tmp_path):
+    """No cap: a hidden run is one the user can neither open nor delete, and
+    the dedupe needs the whole set anyway. The UI decides how many to show."""
+    for i in range(25):
         _make_run(db, str(tmp_path / f"run-{i}"))
 
     body = client.get("/api/folder-runs").json()
 
-    assert len(body) == RECENT_RUNS_LIMIT
+    assert len(body) == 25
 
 
 def test_list_folder_runs_flags_missing_folder(client, db, tmp_path):
@@ -991,6 +991,25 @@ def test_list_folder_runs_excludes_research_projects(client, db, tmp_path):
     body = client.get("/api/folder-runs").json()
 
     assert len(body) == 1
+
+
+def test_list_folder_runs_drops_a_promoted_run(client, db, tmp_path):
+    """Promoting a run flips mode to 'research' (PromoteDialog PATCHes the
+    project), and it must leave this list: GET /{run_id} 404s for a research
+    project, so a row left behind would navigate the user into a dead run.
+    """
+    run = _make_run(db, str(tmp_path))
+    assert len(client.get("/api/folder-runs").json()) == 1
+
+    # Exactly what the promote flow sends (PromoteDialog -> projectsApi.update).
+    promoted = client.patch(
+        f"/api/projects/{run.id}",
+        json={"mode": "research", "folder_run_state": None},
+    )
+    assert promoted.status_code == 200, promoted.text
+
+    assert client.get("/api/folder-runs").json() == []
+    assert client.get(f"/api/folder-runs/{run.id}").status_code == 404
 
 
 # ----------------------------------------------------------------------

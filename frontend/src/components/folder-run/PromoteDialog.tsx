@@ -91,6 +91,11 @@ export function PromoteDialog({
       queryClient.invalidateQueries({ queryKey: ["projects", "research"] });
       queryClient.invalidateQueries({ queryKey: ["folder-run", runId] });
       queryClient.invalidateQueries({ queryKey: ["projects", runId] });
+      // ...and out of the step-1 "recent runs" list, which only carries
+      // mode='folder_run' rows. This is a different key from the
+      // ["folder-run", runId] detail above, so it needs its own call:
+      // left stale, the list would keep offering a run that now 404s.
+      queryClient.invalidateQueries({ queryKey: ["folder-runs"] });
       onOpenChange(false);
       navigate(`/projects/${runId}/dashboard`);
     },

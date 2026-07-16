@@ -16,9 +16,15 @@
  *
  * Delete is irreversible: it takes the run's DB rows and its on-disk
  * `.addaxai` cache, so it sits behind a confirm naming the folder.
+ *
+ * The API returns every run, so the list starts at INITIAL_ROWS and the rest
+ * are one click away. Nothing is hidden silently: a truncated list reads as
+ * "these are your runs", and a user whose run is missing would reasonably
+ * conclude it is gone and re-run work they already did. Since the full list is
+ * already in the browser, revealing it in pages would buy nothing but clicks.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { FolderOpen, Trash2 } from "lucide-react";
@@ -83,6 +89,9 @@ function formatReview(run: FolderRunSummary): string {
   return `${Math.round((verified / total) * 100)}% labels verified`;
 }
 
+/** Rows shown before "Show all". The rest are one click away, not gone. */
+const INITIAL_ROWS = 20;
+
 interface RecentRunsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -94,12 +103,22 @@ export function RecentRunsDialog({ open, onOpenChange }: RecentRunsDialogProps) 
   const [pendingDelete, setPendingDelete] = useState<FolderRunSummary | null>(
     null,
   );
+  const [showAll, setShowAll] = useState(false);
 
   const { data: runs = [], isLoading } = useQuery({
     queryKey: ["folder-runs"],
     queryFn: folderRunsApi.list,
     enabled: open,
   });
+
+  // Reopening the dialog starts from the top again, so a one-off dig through
+  // old runs doesn't leave a long list for every visit afterwards.
+  useEffect(() => {
+    if (!open) setShowAll(false);
+  }, [open]);
+
+  const visibleRuns = showAll ? runs : runs.slice(0, INITIAL_ROWS);
+  const hiddenCount = runs.length - visibleRuns.length;
 
   const remove = useMutation({
     mutationFn: (runId: string) => folderRunsApi.remove(runId),
@@ -131,7 +150,7 @@ export function RecentRunsDialog({ open, onOpenChange }: RecentRunsDialogProps) 
                 No previous runs yet.
               </p>
             ) : (
-              runs.map((run) => {
+              visibleRuns.map((run) => {
                 const when = formatAuditWhen(run.updated_at_utc);
                 return (
                   <div
@@ -186,6 +205,23 @@ export function RecentRunsDialog({ open, onOpenChange }: RecentRunsDialogProps) 
               })
             )}
           </div>
+
+          {/* Only when something is actually hidden: with nothing left to
+              reveal, a count would just be noise. */}
+          {hiddenCount > 0 && (
+            <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
+              <span>
+                Showing {visibleRuns.length} of {runs.length} runs
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowAll(true)}
+                className="font-medium text-primary hover:underline"
+              >
+                Show all
+              </button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

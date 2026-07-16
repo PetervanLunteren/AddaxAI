@@ -68,10 +68,12 @@ router = APIRouter(prefix="/api/folder-runs", tags=["Folder runs"])
 
 FolderRunStep = Literal["setup", "labels", "save"]
 
-# How many recent runs the step-1 list shows. A cap, not pagination: the list
-# is a "pick up where you left off" shortcut, not a run manager. Older runs
-# stay reachable the way they always were — by re-picking their folder.
-RECENT_RUNS_LIMIT = 10
+# No cap on the runs returned: the "keep newest per folder" dedupe has to see
+# every run to know which one is newest, so the endpoint scans the whole set
+# either way. A limit here would only shorten the JSON, at the price of hiding
+# runs the user can then neither open nor delete. The step-1 list shows the
+# most recent handful and reveals the rest on demand, which keeps that choice
+# in the UI where it belongs.
 
 # Forward-compat: map retired step slugs so runs persisted under the old
 # names re-attach without failing FolderRunStep validation. The counts
@@ -599,15 +601,17 @@ def create_folder_run(
 
 @router.get("", response_model=list[FolderRunSummary])
 def list_folder_runs(db: Session = Depends(get_db)) -> list[FolderRunSummary]:
-    """Recent folder runs, newest first — the step-1 "Show recent runs" list.
+    """Every folder run, newest first: the step-1 "Show recent runs" list.
 
     One row per source folder: duplicate runs pointing at the same folder
     (possible for runs created before the resume logic existed) collapse to
     the most recently updated one, mirroring ``_find_existing_run``. Without
     this, a list would surface duplicates that are invisible today.
 
-    Capped at ``RECENT_RUNS_LIMIT`` so the list stays scannable instead of
-    rotting into a junk drawer.
+    Not capped, and not paginated: the dedupe above needs the full set anyway,
+    so a limit would save no work while hiding runs from the only surface that
+    can open or delete them. The UI shows the most recent handful and reveals
+    the rest on demand.
 
     ``folder_exists`` is stat'd per row so the UI can grey out runs whose
     folder moved or sits on an unplugged drive: those are not resumable, but
@@ -632,8 +636,6 @@ def list_folder_runs(db: Session = Depends(get_db)) -> list[FolderRunSummary]:
             continue
         seen_folders.add(folder_path)
         picked.append((project, folder_path))
-        if len(picked) == RECENT_RUNS_LIMIT:
-            break
 
     if not picked:
         return []
