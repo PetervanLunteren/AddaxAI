@@ -29,13 +29,9 @@ import type {
 } from "react-hook-form";
 
 import { Input } from "../ui/input";
-import {
-  FormControl,
-  FormDescription,
-  FormField,
-  FormLabel,
-  FormMessage,
-} from "../ui/form";
+import { FormControl, FormField, FormMessage } from "../ui/form";
+
+import { SettingRow } from "./SettingRow";
 import {
   Select,
   SelectContent,
@@ -70,16 +66,17 @@ export function ImageSizeRow<T extends FieldValues>({
       control={control}
       name={name}
       render={({ field }) => {
+        // null is the default (omit the flag, let the model pick its own
+        // size), so a value present == non-default. Same rule the shared
+        // advancedNonDefaultKeys applies, hence the chip agrees with the
+        // count on the section header.
         const isCustom = field.value !== null && field.value !== undefined;
         return (
-          <div className="grid grid-cols-2 items-center gap-8 py-6">
-            <div className="space-y-1">
-              <FormLabel>{label}</FormLabel>
-              <FormDescription className="text-sm">
-                {description}
-              </FormDescription>
-            </div>
-            <div className="space-y-2">
+          <SettingRow
+            label={label}
+            description={description}
+            isCustom={isCustom}
+          >
               <div className="flex gap-2">
                 <Select
                   value={isCustom ? "custom" : "default"}
@@ -133,8 +130,7 @@ export function ImageSizeRow<T extends FieldValues>({
                 )}
               </div>
               <FormMessage />
-            </div>
-          </div>
+          </SettingRow>
         );
       }}
     />

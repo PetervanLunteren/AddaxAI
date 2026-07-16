@@ -15,6 +15,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { AnalysisSettingsButton } from "../../components/folder-run/AnalysisSettingsButton";
+import { StepActionBar } from "../../components/folder-run/StepActionBar";
 import { StepHeader } from "../../components/folder-run/StepHeader";
 import { LabelsView } from "../../components/verify/LabelsView";
 import { folderRunsApi } from "../../api/folder-runs";
@@ -80,27 +81,25 @@ export function FolderRunLabelsStep() {
         }
       />
       {selectionCount === 0 && (
-        <div className="sticky bottom-0 z-30 -mx-4 border-t bg-white/80 px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
-            <Button
-              variant="outline"
-              onClick={() => navigate(`/folder-runs/${runId}/setup`)}
-              className="gap-2"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Button>
-            <Button
-              onClick={() => advance.mutate()}
-              disabled={advance.isPending}
-              size="lg"
-              className="gap-2"
-            >
-              Continue
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+        <StepActionBar>
+          <Button
+            variant="outline"
+            onClick={() => navigate(`/folder-runs/${runId}/setup`)}
+            className="gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+          <Button
+            onClick={() => advance.mutate()}
+            disabled={advance.isPending}
+            size="lg"
+            className="gap-2"
+          >
+            Continue
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </StepActionBar>
       )}
     </div>
   );

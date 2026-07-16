@@ -19,7 +19,6 @@ import { backupApi, type BackupEntry, type BackupKind } from "../../api/backup";
 import { formatAuditWhen } from "../../lib/auditTime";
 import { basename } from "../../lib/path-utils";
 import { cn } from "../../lib/utils";
-import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
 import { TypeToConfirmDialog } from "../ui/type-to-confirm-dialog";
 

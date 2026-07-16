@@ -7,6 +7,8 @@
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+
+import { StepActionBar } from "../../../components/folder-run/StepActionBar";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -101,9 +103,14 @@ export function OutputFolderField({
       <CardContent className="space-y-3 p-6">
         <div>
           <span className="block text-sm font-semibold">Output folder</span>
+          {/* "images and videos", not "originals": saving again DOES
+              overwrite the addaxai-* data files from a previous save. The
+              promise only holds for the user's own media, which is copied,
+              never modified in place (the worker pins separate_folders to
+              copy mode, and EXIF tags are written to the copy). */}
           <span className="mt-0.5 block text-xs text-muted-foreground">
             Where everything gets written. Defaults to the folder you
-            analysed. Your originals are never overwritten.
+            analysed. Your original images and videos are never overwritten.
           </span>
         </div>
         <FolderSelector
@@ -543,7 +550,10 @@ function IssuesPanel({ issues }: { issues: string[] }) {
 
 // ─────────────────────────────────────────────────────────────────
 // Bottom Back / Save bar used by all variants except A (which uses
-// per-tab save buttons).
+// per-tab save buttons). Sticky via the shared StepActionBar, the same
+// bar the Labels step uses, so the two can't drift apart. Must be
+// rendered as a direct child of the step root, not inside the options
+// column: see the layout contract in StepActionBar.
 // ─────────────────────────────────────────────────────────────────
 
 export function BackSaveBar({
@@ -555,7 +565,7 @@ export function BackSaveBar({
 }) {
   const navigate = useNavigate();
   return (
-    <div className="flex items-center justify-between">
+    <StepActionBar>
       <Button
         variant="outline"
         onClick={() => navigate(`/folder-runs/${runId}/labels`)}
@@ -573,6 +583,6 @@ export function BackSaveBar({
         <Save className="h-4 w-4" />
         {form.isSpawning ? "Starting..." : "Save outputs"}
       </Button>
-    </div>
+    </StepActionBar>
   );
 }

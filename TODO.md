@@ -3,22 +3,8 @@
 ## Priority 1
 - [ ] CHECK IF THIS IS RESOLVED: It says "You have unsaved changes" every time i open the settings page. As a test: click "reset changes" the "You have unsaved changes" is not shown anymore, no apparent changes visible. Move different page, move back to settings, it shows "You have unsaved changes" again. Bug. Investigate. The thing is, we investigated previous already but could not find anything. We could not reproduce it, but now its back, and perhaps it has to do with the electron build as opposed to the localhost dev version. That the bug is only in electron, but not in the dev version. Could that be? 
 
-
-Currently there is an issue with Linux updates. More specifically:
-
-
-
-
-- [ ] LINUX DEB PACKAGE - decision (2026-07-05): ship the Linux beta as a .deb instead of the AppImage. Goal: zero terminal for the user. Double-click the .deb, install via the software center, launch AddaxAI from the app menu like any other app. Background: the AppImage aborts on launch on Ubuntu 23.10 and newer because AppArmor restricts unprivileged user namespaces and Electron's SUID chrome-sandbox fallback cannot work on a nosuid FUSE mount (confirmed on Ubuntu 26.04 in VirtualBox; --no-sandbox works but drops the sandbox). The deb solves both the crash and the chmod +x UX in one go. Implementation sketch:
-    - add "deb" to the linux targets in electron/package.json (electron-builder generates the desktop entry and icons, so it appears in the app menu)
-    - add a deb afterInstall script that installs an AppArmor profile granting userns (the standard Ubuntu 24.04+ electron fix) and runs apparmor_parser; afterRemove cleans it up
-    - keep the AppImage as a secondary download for non-deb distros, with the --no-sandbox relaunch fallback in the main process so it at least starts
-    - CI: build-electron.yml linux job already runs --linux, so it picks up the new target; check the artifact name pattern
-    - update BETA.md with the Linux download + install steps once it works
-    - test on the clean-install VirtualBox snapshot: double-click install, menu launch, model download, folder run, uninstall
-
 ## Priority 2
-- [ ] 
+- [ ] ADD an option to only analyse images or videos. Feedback: "And Peter, I forgot to ask: is there a way to skip video detections and only analyze pictures in the case that they accidentally show up on the cameras? When we have videos show up in our data it is an error in setup by our field technicians or a camera error. Thanks!" Perhaps a advanced setting in the folder runs (project mode should always analyse everything it found), with options. anlayse all images and videos it can find, and only images, and only videos. What od you think? 
 
 ## Priority 3 
 - [ ] 

@@ -196,7 +196,6 @@ export function FolderRunSaveStep() {
         </GroupCard>
 
         <SaveErrorLine error={form.saveError} />
-        <BackSaveBar runId={runId} form={form} />
       </div>
 
       <OutputPreviewPanel
@@ -231,6 +230,11 @@ export function FolderRunSaveStep() {
         form={form}
       />
       </div>
+
+      {/* Outside the grid on purpose: the bar bleeds to the page edges, so
+          it has to sit at the step root rather than inside the options
+          column, where the bleed would align to the column instead. */}
+      <BackSaveBar runId={runId} form={form} />
     </>
   );
 }

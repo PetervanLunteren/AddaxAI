@@ -58,14 +58,28 @@ type AdvancedKey = keyof typeof ADVANCED_SETTINGS_DEFAULTS;
 
 const ADVANCED_KEYS = Object.keys(ADVANCED_SETTINGS_DEFAULTS) as AdvancedKey[];
 
-/** True if any advanced setting in `values` deviates from its default.
+/** Which advanced settings in `values` deviate from their default.
+ *
  * Keys absent from `values` are skipped: not every consumer form carries
  * every advanced setting (the folder-run setup step has no
- * counting_threshold; that lives on the project Settings page only). */
-export function isAnyAdvancedNonDefault(values: Record<string, unknown>): boolean {
-  return ADVANCED_KEYS.some(
+ * counting_threshold; that lives on the project Settings page only).
+ *
+ * Settings persist across runs by design (see lib/folderRunSettings: run 2
+ * starts identical to run 1), so a value changed once for a test silently
+ * governs every later run. Callers use the count to say so up front, while
+ * the advanced section is still collapsed. */
+export function advancedNonDefaultKeys(
+  values: Record<string, unknown>,
+): AdvancedKey[] {
+  return ADVANCED_KEYS.filter(
     (key) => key in values && values[key] !== ADVANCED_SETTINGS_DEFAULTS[key],
   );
+}
+
+/** True if any advanced setting in `values` deviates from its default.
+ * One comparison rule, shared with `advancedNonDefaultKeys`. */
+export function isAnyAdvancedNonDefault(values: Record<string, unknown>): boolean {
+  return advancedNonDefaultKeys(values).length > 0;
 }
 
 /**

@@ -38,6 +38,7 @@ import {
 } from "../lib/reprocessStats";
 import {
   VIDEO_FPS_OPTIONS,
+  advancedNonDefaultKeys,
   restoreAdvancedDefaults,
 } from "../lib/advancedSettingsDefaults";
 import { useSidebarCollapsed } from "../components/layout/sidebar-context";
@@ -99,6 +100,7 @@ import { SETTING_CAPTIONS } from "../lib/settingCaptions";
 import { ClassificationModelGroupedItems } from "../components/models/ClassificationModelGroupedItems";
 import { BatchSizeRow } from "../components/analyses/BatchSizeRow";
 import { ImageSizeRow } from "../components/analyses/ImageSizeRow";
+import { SettingRow } from "../components/analyses/SettingRow";
 import {
   Form,
   FormControl,
@@ -230,6 +232,11 @@ export default function SettingsPage() {
       embedding_batch_size: null,
     },
   });
+
+  // Which advanced settings differ from their factory default, so each row
+  // can chip itself. Same helper the folder-run setup step uses, so "what
+  // counts as default" has one definition across both flows.
+  const changedAdvanced = advancedNonDefaultKeys(form.watch());
 
   // The classification model / country as loaded from the project. The
   // auto-reconciliation effects below (clear state on country change,
@@ -1031,14 +1038,16 @@ export default function SettingsPage() {
                   control={form.control}
                   name="video_fps"
                   render={({ field }) => (
-                    <div className="grid grid-cols-2 items-center gap-8 py-6">
-                      <div className="space-y-1">
-                        <FormLabel>Video frame rate</FormLabel>
-                        <FormDescription className="text-sm">
-                          {SETTING_CAPTIONS.videoFrameRate} Applies to new analyses only.
-                        </FormDescription>
-                      </div>
-                      <div className="space-y-2">
+                    <SettingRow
+                      label="Video frame rate"
+                      isCustom={changedAdvanced.includes("video_fps")}
+                      description={
+                        <>
+                          {SETTING_CAPTIONS.videoFrameRate} Applies to new
+                          analyses only.
+                        </>
+                      }
+                    >
                         <Select
                           key={String(field.value)}
                           value={String(field.value)}
@@ -1058,8 +1067,7 @@ export default function SettingsPage() {
                           </SelectContent>
                         </Select>
                         <FormMessage />
-                      </div>
-                    </div>
+                    </SettingRow>
                   )}
                 />
 
@@ -1076,21 +1084,22 @@ export default function SettingsPage() {
                   control={form.control}
                   name="detection_augment"
                   render={({ field }) => (
-                    <div className="grid grid-cols-2 items-center gap-8 py-6">
-                      <div className="space-y-1">
-                        <FormLabel>Image augmentation</FormLabel>
-                        <FormDescription className="text-sm">
-                          {SETTING_CAPTIONS.imageAugmentation} Applies to new analyses only.
-                        </FormDescription>
-                      </div>
-                      <div className="space-y-2">
+                    <SettingRow
+                      label="Image augmentation"
+                      isCustom={changedAdvanced.includes("detection_augment")}
+                      description={
+                        <>
+                          {SETTING_CAPTIONS.imageAugmentation} Applies to new
+                          analyses only.
+                        </>
+                      }
+                    >
                         <Switch
                           checked={field.value}
                           onCheckedChange={field.onChange}
                         />
                         <FormMessage />
-                      </div>
-                    </div>
+                    </SettingRow>
                   )}
                 />
 
@@ -1099,14 +1108,16 @@ export default function SettingsPage() {
                   control={form.control}
                   name="classification_gate"
                   render={({ field }) => (
-                    <div className="grid grid-cols-2 items-center gap-8 py-6">
-                      <div className="space-y-1">
-                        <FormLabel>Classify detections above</FormLabel>
-                        <FormDescription className="text-sm">
-                          {SETTING_CAPTIONS.classificationGate} Applies to new analyses only.
-                        </FormDescription>
-                      </div>
-                      <div className="space-y-2">
+                    <SettingRow
+                      label="Classify detections above"
+                      isCustom={changedAdvanced.includes("classification_gate")}
+                      description={
+                        <>
+                          {SETTING_CAPTIONS.classificationGate} Applies to new
+                          analyses only.
+                        </>
+                      }
+                    >
                         <ConfidenceSlider
                           value={field.value}
                           onChange={(vals) => field.onChange(vals[0])}
@@ -1115,8 +1126,7 @@ export default function SettingsPage() {
                           }
                         />
                         <FormMessage />
-                      </div>
-                    </div>
+                    </SettingRow>
                   )}
                 />
 
@@ -1125,14 +1135,16 @@ export default function SettingsPage() {
                   control={form.control}
                   name="counting_threshold"
                   render={({ field }) => (
-                    <div className="grid grid-cols-2 items-center gap-8 py-6">
-                      <div className="space-y-1">
-                        <FormLabel>Detection confidence threshold</FormLabel>
-                        <FormDescription className="text-sm">
-                          {SETTING_CAPTIONS.detectionThreshold} Applies retroactively to all statistics and exports.
-                        </FormDescription>
-                      </div>
-                      <div className="space-y-2">
+                    <SettingRow
+                      label="Detection confidence threshold"
+                      isCustom={changedAdvanced.includes("counting_threshold")}
+                      description={
+                        <>
+                          {SETTING_CAPTIONS.detectionThreshold} Applies
+                          retroactively to all statistics and exports.
+                        </>
+                      }
+                    >
                         <ConfidenceSlider
                           value={field.value}
                           onChange={(vals) => field.onChange(vals[0])}
@@ -1141,8 +1153,7 @@ export default function SettingsPage() {
                           }
                         />
                         <FormMessage />
-                      </div>
-                    </div>
+                    </SettingRow>
                   )}
                 />
 

@@ -58,7 +58,7 @@ import { NextStepRow } from "../../components/ui/next-step-row";
 import { Callout } from "../../components/ui/callout";
 import {
   VIDEO_FPS_OPTIONS,
-  isAnyAdvancedNonDefault,
+  advancedNonDefaultKeys,
   restoreAdvancedDefaults,
 } from "../../lib/advancedSettingsDefaults";
 import { Card, CardContent } from "../../components/ui/card";
@@ -97,6 +97,7 @@ import {
 } from "../../components/ui/tooltip";
 
 import { BatchSizeRow } from "../../components/analyses/BatchSizeRow";
+import { SettingRow } from "../../components/analyses/SettingRow";
 import { ImageSizeRow } from "../../components/analyses/ImageSizeRow";
 import { FolderSelector } from "../../components/analyses/FolderSelector";
 import { RunQueueModal } from "../../components/analyses/RunQueueModal";
@@ -108,6 +109,7 @@ import { ClassificationModelGroupedItems } from "../../components/models/Classif
 import { ModelInfoSheet } from "../../components/models/ModelInfoSheet";
 import { ModelPreparationErrorView } from "../../components/projects/ModelPreparationErrorView";
 import { ModelPreparationView } from "../../components/projects/ModelPreparationView";
+import { Badge } from "../../components/ui/badge";
 import { ModelStatusBadge } from "../../components/projects/ModelStatusBadge";
 import {
   LabelSelectionField,
@@ -341,9 +343,14 @@ export function FolderRunModelStep() {
   const hasEmbedding =
     !!embeddingModelId && embeddingModelId !== NO_EMBEDDING;
 
-  // Show "Restore defaults" only when an advanced setting differs from its
-  // factory default (e.g. carried over from the last run via sticky settings).
-  const advancedNonDefault = isAnyAdvancedNonDefault(form.watch());
+  // Which advanced settings differ from their factory default. Settings are
+  // sticky across runs by design (lib/folderRunSettings: run 2 starts
+  // identical to run 1), so a value changed once for a test quietly governs
+  // every later run. The count is badged on the collapsed section header,
+  // because "Restore defaults" alone sits inside the section: the one place
+  // you cannot see it without already suspecting something.
+  const changedAdvanced = advancedNonDefaultKeys(form.watch());
+  const advancedNonDefault = changedAdvanced.length > 0;
 
   // Folder scan + previous-run lookup. The lookup only fires after a
   // valid scan so we don't probe folders the user is mid-typing or
@@ -973,6 +980,19 @@ export function FolderRunModelStep() {
                           advancedOpen ? "rotate-180" : ""
                         }`}
                       />
+                      {/* Visible while collapsed: this is the only warning
+                          that a setting carried over from a previous run.
+                          "custom" is the word the fields inside already use
+                          for a non-default value (BatchSizeRow, ImageSizeRow
+                          both offer Default / Custom), and unlike "changed"
+                          it doesn't imply the user did it just now. */}
+                      {advancedNonDefault && (
+                        <Badge variant="secondary" className="font-normal">
+                          {changedAdvanced.length === 1
+                            ? "1 custom setting"
+                            : `${changedAdvanced.length} custom settings`}
+                        </Badge>
+                      )}
                     </button>
                   </CollapsibleTrigger>
                   {/* Bracket the advanced fields with border-y to match
@@ -984,16 +1004,13 @@ export function FolderRunModelStep() {
                       control={form.control}
                       name="detection_model_id"
                       render={({ field }) => (
-                        <div className="grid grid-cols-2 items-center gap-8 py-6">
-                          <div className="space-y-1">
-                            <FormLabel>Detection model</FormLabel>
-                            <FormDescription className="text-sm">
-                              The model that finds animals, people, and
-                              vehicles. MegaDetector 5a is the default
-                              and works well in most regions.
-                            </FormDescription>
-                          </div>
-                          <div className="space-y-2">
+                        <SettingRow
+                          label="Detection model"
+                          isCustom={changedAdvanced.includes(
+                            "detection_model_id",
+                          )}
+                          description="The model that finds animals, people, and vehicles. MegaDetector 5a is the default and works well in most regions."
+                        >
                             <ModelSelect
                               value={field.value}
                               onValueChange={field.onChange}
@@ -1026,8 +1043,7 @@ export function FolderRunModelStep() {
                                 />
                               )}
                             <FormMessage />
-                          </div>
-                        </div>
+                        </SettingRow>
                       )}
                     />
 
@@ -1035,16 +1051,13 @@ export function FolderRunModelStep() {
                       control={form.control}
                       name="embedding_model_id"
                       render={({ field }) => (
-                        <div className="grid grid-cols-2 items-center gap-8 py-6">
-                          <div className="space-y-1">
-                            <FormLabel>Embedding model</FormLabel>
-                            <FormDescription className="text-sm">
-                              Lets you sort and group visually similar
-                              detections in the Edit step. Optional,
-                              skip if you don't need it.
-                            </FormDescription>
-                          </div>
-                          <div className="space-y-2">
+                        // No isCustom: the model choice is a deliberate
+                        // selection, not a tuning default (see
+                        // ADVANCED_SETTINGS_DEFAULTS, which excludes it).
+                        <SettingRow
+                          label="Embedding model"
+                          description="Lets you sort and group visually similar detections in the Edit step. Optional, skip if you don't need it."
+                        >
                             <ModelSelect
                               value={field.value ?? NO_EMBEDDING}
                               onValueChange={(val) =>
@@ -1094,8 +1107,7 @@ export function FolderRunModelStep() {
                                 />
                               )}
                             <FormMessage />
-                          </div>
-                        </div>
+                        </SettingRow>
                       )}
                     />
 
@@ -1105,6 +1117,7 @@ export function FolderRunModelStep() {
                       render={({ field }) => (
                         <SettingRow
                           label="Video frame rate"
+                          isCustom={changedAdvanced.includes("video_fps")}
                           description={SETTING_CAPTIONS.videoFrameRate}
                         >
                           <Select
@@ -1148,6 +1161,7 @@ export function FolderRunModelStep() {
                       render={({ field }) => (
                         <SettingRow
                           label="Image augmentation"
+                          isCustom={changedAdvanced.includes("detection_augment")}
                           description={SETTING_CAPTIONS.imageAugmentation}
                         >
                           <Switch
@@ -1165,6 +1179,7 @@ export function FolderRunModelStep() {
                       render={({ field }) => (
                         <SettingRow
                           label="Classify detections above"
+                          isCustom={changedAdvanced.includes("classification_gate")}
                           description={SETTING_CAPTIONS.classificationGate}
                         >
                           <ConfidenceSlider
@@ -1469,26 +1484,6 @@ export function FolderRunModelStep() {
         />
       )}
     </>
-  );
-}
-
-function SettingRow({
-  label,
-  description,
-  children,
-}: {
-  label: string;
-  description: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="grid grid-cols-2 items-center gap-8 py-6">
-      <div className="space-y-1">
-        <FormLabel>{label}</FormLabel>
-        <FormDescription className="text-sm">{description}</FormDescription>
-      </div>
-      <div className="space-y-2">{children}</div>
-    </div>
   );
 }
 

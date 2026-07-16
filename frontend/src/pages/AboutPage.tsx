@@ -15,7 +15,6 @@ import { useEffect, useState } from "react";
 import { HomeButton } from "../components/layout/HomeButton";
 import { useQuery } from "@tanstack/react-query";
 import { Tag } from "lucide-react";
-import { Button } from "../components/ui/button";
 
 const REPO = "PetervanLunteren/AddaxAI";
 const LICENSE_URL = `https://github.com/${REPO}?tab=MIT-1-ov-file#readme`;
