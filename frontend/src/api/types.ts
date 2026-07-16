@@ -20,6 +20,11 @@
  */
 export type ProjectMode = "folder_run" | "research";
 
+/** Which media a NEW analysis reads off disk. Mirrors the backend's
+ *  MediaFilter Literal (api/schemas/project.py). Inference-time: it can never
+ *  add files an earlier analysis skipped. */
+export type MediaFilter = "all" | "images" | "videos";
+
 export interface ProjectCreate {
   name: string;
   description?: string | null;
@@ -34,6 +39,7 @@ export interface ProjectCreate {
    *  let the backend auto-derive it from the first site's coordinates. */
   timezone?: string | null;
   video_fps: number;
+  media_filter: MediaFilter;
   counting_threshold: number;
   classification_gate: number;
   event_smoothing: boolean;
@@ -64,6 +70,7 @@ export interface ProjectUpdate {
   /** IANA timezone name, optional on update. */
   timezone?: string | null;
   video_fps?: number | null;
+  media_filter?: MediaFilter | null;
   counting_threshold?: number | null;
   classification_gate?: number | null;
   event_smoothing?: boolean | null;
@@ -96,6 +103,7 @@ export interface ProjectResponse {
   /** IANA timezone name, or null when unset (auto-derives from site coords). */
   timezone: string | null;
   video_fps: number;
+  media_filter: MediaFilter;
   counting_threshold: number;
   classification_gate: number;
   event_smoothing: boolean;

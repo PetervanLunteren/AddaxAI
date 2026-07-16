@@ -24,6 +24,7 @@
  */
 
 import type { SeparateGroupBy } from "../api/folder-runs";
+import type { MediaFilter } from "../api/types";
 
 const KEY = "addaxai.folderRun.lastSettings";
 
@@ -40,6 +41,7 @@ export interface PersistedAnalysisSettings {
   counting_threshold?: number;
   classification_gate?: number;
   video_fps?: number;
+  media_filter?: MediaFilter;
   detection_augment?: boolean;
   detection_image_size?: number | null;
   event_smoothing?: boolean;

@@ -230,9 +230,12 @@ def test_init_db_repairs_db_stamped_at_wrong_revision(
                 "ALTER TABLE deployments DROP COLUMN classification_gate_used"
             )
         )
-        # projects.detection_augment + detection_image_size are the newest
-        # detectable schema (1a2b3c4d5e6f, advanced MegaDetector inference
-        # options). Drop so the fingerprint walk doesn't stop at head.
+        # projects.media_filter is the newest detectable schema
+        # (2b3c4d5e6f7a, which media a new analysis reads off disk), with
+        # detection_augment + detection_image_size (1a2b3c4d5e6f, advanced
+        # MegaDetector inference options) behind it. Drop all three so the
+        # fingerprint walk doesn't stop at head.
+        conn.execute(text("ALTER TABLE projects DROP COLUMN media_filter"))
         conn.execute(
             text("ALTER TABLE projects DROP COLUMN detection_augment")
         )

@@ -34,6 +34,8 @@ export const SETTING_CAPTIONS = {
     "Detections below this confidence are not identified to species and " +
     "skip label review, but are still saved and exported. " +
     `The default is ${formatConfidencePct(DEFAULT_CLASSIFICATION_GATE)}.`,
+  mediaFilter:
+    "Which files the AI looks at. Use this when a camera recorded videos by mistake: skipping them is much faster than analysing them. Images and videos is the default.",
   videoFrameRate:
     "How many frames per second to extract from videos for detection. Higher values find more but take longer. One frame per second is a good default.",
   independenceInterval:

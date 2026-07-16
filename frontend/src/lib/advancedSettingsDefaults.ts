@@ -24,6 +24,7 @@ import type {
 export const ADVANCED_SETTINGS_DEFAULTS = {
   detection_model_id: "MD5A-0-0",
   video_fps: 1.0,
+  media_filter: "all",
   counting_threshold: DEFAULT_COUNTING_THRESHOLD,
   classification_gate: DEFAULT_CLASSIFICATION_GATE,
   event_smoothing: true,
@@ -43,6 +44,20 @@ export const ADVANCED_SETTINGS_DEFAULTS = {
  * sampling rate in fps; the sub-1 range is labelled as "1 frame every N
  * seconds" because it reads clearer than a fractional fps.
  */
+/**
+ * Choices for the "Media to analyse" select, shared by the project Settings
+ * page and the folder-run model step. Values match Project.media_filter on the
+ * backend ("all" | "images" | "videos"); the labels say which media the
+ * detector reads, not which it ignores, because that is the thing being
+ * chosen.
+ */
+export const MEDIA_FILTER_OPTIONS: readonly { value: string; label: string }[] =
+  [
+    { value: "all", label: "Images and videos" },
+    { value: "images", label: "Only images" },
+    { value: "videos", label: "Only videos" },
+  ];
+
 export const VIDEO_FPS_OPTIONS: readonly { value: string; label: string }[] = [
   { value: "0.1", label: "1 frame every 10 seconds" },
   { value: "0.25", label: "1 frame every 4 seconds" },

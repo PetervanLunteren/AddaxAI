@@ -20,6 +20,11 @@ from app.core.confidence import (
 
 ProjectMode = Literal["folder_run", "research"]
 
+# Which media a new analysis reads off disk. "images" is the motivating case:
+# a camera left in video mode by mistake produces videos that are noise and
+# are expensive to analyse (a frame per second, each run through the detector).
+MediaFilter = Literal["all", "images", "videos"]
+
 
 def _validate_iana_timezone(value: str) -> str:
     """Reject anything not in the system's IANA tzdata database."""
@@ -84,6 +89,13 @@ class ProjectBase(BaseModel):
         ge=0.1,
         le=10.0,
         description="Frames per second to extract from videos (0.1-10.0)",
+    )
+    media_filter: MediaFilter = Field(
+        default="all",
+        description=(
+            "Which media a new analysis reads off disk. Inference-time: "
+            "applies to future analyses only, never retroactively"
+        ),
     )
 
     # Detection and processing settings
@@ -226,6 +238,7 @@ class ProjectUpdate(BaseModel):
             return v
         return _validate_iana_timezone(v)
     video_fps: float | None = Field(None, ge=0.1, le=10.0)
+    media_filter: MediaFilter | None = None
     counting_threshold: float | None = Field(None, ge=0.0, le=1.0)
     classification_gate: float | None = Field(None, ge=0.01, le=1.0)
     event_smoothing: bool | None = None

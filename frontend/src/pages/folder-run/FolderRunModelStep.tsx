@@ -57,6 +57,7 @@ import { Button } from "../../components/ui/button";
 import { NextStepRow } from "../../components/ui/next-step-row";
 import { Callout } from "../../components/ui/callout";
 import {
+  MEDIA_FILTER_OPTIONS,
   VIDEO_FPS_OPTIONS,
   advancedNonDefaultKeys,
   restoreAdvancedDefaults,
@@ -156,6 +157,7 @@ const settingsSchema = z.object({
   classification_batch_size: z.number().int().min(1).max(256).nullable(),
   embedding_batch_size: z.number().int().min(1).max(256).nullable(),
   video_fps: z.number().min(0.1).max(10),
+  media_filter: z.enum(["all", "images", "videos"]),
   detection_augment: z.boolean(),
   detection_image_size: z.number().int().nullable(),
   classification_gate: z.number().min(0.01).max(1),
@@ -253,6 +255,7 @@ export function FolderRunModelStep() {
       classification_batch_size: null,
       embedding_batch_size: null,
       video_fps: 1.0,
+      media_filter: "all",
       detection_augment: false,
       detection_image_size: null,
       classification_gate: DEFAULT_CLASSIFICATION_GATE,
@@ -293,6 +296,7 @@ export function FolderRunModelStep() {
         run.project.classification_batch_size ?? null,
       embedding_batch_size: run.project.embedding_batch_size ?? null,
       video_fps: run.project.video_fps,
+      media_filter: run.project.media_filter,
       detection_augment: run.project.detection_augment,
       detection_image_size: run.project.detection_image_size,
       classification_gate: run.project.classification_gate,
@@ -506,6 +510,7 @@ export function FolderRunModelStep() {
       classification_batch_size: data.classification_batch_size,
       embedding_batch_size: data.embedding_batch_size,
       video_fps: data.video_fps,
+      media_filter: data.media_filter,
       detection_augment: data.detection_augment,
       detection_image_size: data.detection_image_size,
       classification_gate: data.classification_gate,
@@ -645,6 +650,7 @@ export function FolderRunModelStep() {
       classification_batch_size: data.classification_batch_size,
       embedding_batch_size: data.embedding_batch_size,
       video_fps: data.video_fps,
+      media_filter: data.media_filter,
       detection_augment: data.detection_augment,
       detection_image_size: data.detection_image_size,
       classification_gate: data.classification_gate,
@@ -1107,6 +1113,40 @@ export function FolderRunModelStep() {
                                 />
                               )}
                             <FormMessage />
+                        </SettingRow>
+                      )}
+                    />
+
+                    {/* Sits above Video frame rate: it decides whether
+                        videos are read at all, which the frame rate then
+                        only matters for. */}
+                    <FormField
+                      control={form.control}
+                      name="media_filter"
+                      render={({ field }) => (
+                        <SettingRow
+                          label="Media to analyse"
+                          isCustom={changedAdvanced.includes("media_filter")}
+                          description={SETTING_CAPTIONS.mediaFilter}
+                        >
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {MEDIA_FILTER_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
                         </SettingRow>
                       )}
                     />

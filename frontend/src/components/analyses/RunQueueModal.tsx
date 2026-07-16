@@ -56,6 +56,7 @@ interface LogRow {
 const TYPE_LABELS: Record<string, string> = {
   missing_timestamp: "No capture timestamp",
   video_processing_failure: "Could not be read",
+  skipped_by_media_filter: "Skipped by 'Media to analyse'",
   job_failed: "Deployment failed",
 };
 

@@ -126,6 +126,17 @@ class Project(Base):
         Float, nullable=False, default=1.0  # Frames per second to extract
     )
 
+    # Which media the detector runs on: "all" | "images" | "videos".
+    # Inference-time, like video_fps: it decides what a NEW analysis reads off
+    # disk, and can never add files a past analysis skipped (postprocessing
+    # re-derives from existing rows and never re-scans). Cameras left in video
+    # mode by mistake are the motivating case, so "images" skips videos.
+    # Carries through promotion to a research project like every other setting;
+    # there is deliberately no folder-run special case.
+    media_filter: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="all", server_default="all"
+    )
+
     # Clustering defaults (HDBSCAN params)
     min_cluster_size: Mapped[int] = mapped_column(
         Integer, nullable=False, default=5

@@ -36,6 +36,14 @@ logger = get_logger(__name__)
 
 SUMMARY_FILENAME = "addaxai-run-info.txt"
 
+# Human wording for Project.media_filter. Only the non-default values are ever
+# printed, so "all" is here for completeness rather than use.
+MEDIA_FILTER_LABELS = {
+    "all": "images and videos",
+    "images": "only images",
+    "videos": "only videos",
+}
+
 
 @dataclass
 class RunReadmeResult:
@@ -245,6 +253,12 @@ def _build_readme_text(
     lines.append(_section("Source media"))
     lines.append(_kv("Images", image_count))
     lines.append(_kv("Videos", video_count))
+    # Only when it excluded something. The counts above come from the
+    # database, so a filtered-out kind reads as 0 — identical to a folder
+    # that never held any. This line is what tells those two apart; without
+    # it the file quietly implies the folder had no videos.
+    if project.media_filter != "all":
+        lines.append(_kv("Media filter", MEDIA_FILTER_LABELS[project.media_filter]))
     lines.append(_kv("Earliest capture", earliest or "(no files)"))
     lines.append(_kv("Latest capture", latest or "(no files)"))
 

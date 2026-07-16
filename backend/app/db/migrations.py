@@ -289,6 +289,15 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
             "(advanced MegaDetector inference options)"
         ),
     ),
+    _Fingerprint(
+        revision="2b3c4d5e6f7a",
+        table="projects",
+        column="media_filter",
+        description=(
+            "add projects.media_filter (which media a new analysis reads "
+            "off disk: all / images / videos)"
+        ),
+    ),
 )
 
 

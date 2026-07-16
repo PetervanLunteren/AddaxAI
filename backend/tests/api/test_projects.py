@@ -89,6 +89,38 @@ def test_update_project_rejects_invalid_timezone(client, db):
     assert resp.status_code == 422
 
 
+def test_project_media_filter_defaults_to_all(client, db):
+    """Existing projects and new ones analyse everything: the setting only
+    does something once a user opts in."""
+    p = make_project(db)
+    resp = client.get(f"/api/projects/{p.id}")
+    assert resp.status_code == 200
+    assert resp.json()["media_filter"] == "all"
+
+
+def test_update_project_media_filter(client, db):
+    p = make_project(db)
+    resp = client.patch(
+        f"/api/projects/{p.id}",
+        json={"media_filter": "images"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["media_filter"] == "images"
+    db.refresh(p)
+    assert p.media_filter == "images"
+
+
+def test_update_project_rejects_invalid_media_filter(client, db):
+    """The worker treats an unrecognised filter as "analyse everything", so a
+    typo must be rejected at the door rather than silently ignored later."""
+    p = make_project(db)
+    resp = client.patch(
+        f"/api/projects/{p.id}",
+        json={"media_filter": "photos"},
+    )
+    assert resp.status_code == 422
+
+
 def test_get_project(client, db):
     p = make_project(db)
     resp = client.get(f"/api/projects/{p.id}")

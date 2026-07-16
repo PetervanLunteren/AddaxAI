@@ -155,6 +155,10 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     f"{entry.image_count} images"
                 )
 
+                announced_videos, announced_images = _announced_media_counts(
+                    project.media_filter, entry.video_count, entry.image_count
+                )
+
                 # Send initial progress IMMEDIATELY with pre-scanned counts
                 logger.info("Sending initial progress with deployment context")
                 await ws_manager.send_progress(
@@ -166,8 +170,8 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     data={
                         "deployment_index": idx,
                         "total_deployments": total_entries,
-                        "video_count": entry.video_count,
-                        "image_count": entry.image_count,
+                        "video_count": announced_videos,
+                        "image_count": announced_images,
                         "has_classifier": classification_model is not None,
                         "has_embedding": bool(project.embedding_model_id),
                     },
@@ -184,9 +188,16 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 image_files = scan_folder_for_images(folder_path)
                 logger.info("Folder scan complete")
 
-                # Update database with scanned counts
+                # Update database with scanned counts. These are what is on
+                # disk, deliberately un-filtered: the step-1 caption shows
+                # them, and they are the user's only clue that (say) videos
+                # exist in a folder a filter is about to ignore.
                 queue_crud.update_queue_counts(
                     db, entry_id, video_count=len(video_files), image_count=len(image_files)
+                )
+
+                announced_videos, announced_images = _announced_media_counts(
+                    project.media_filter, len(video_files), len(image_files)
                 )
 
                 # Send initial progress with scanned counts
@@ -200,8 +211,8 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     data={
                         "deployment_index": idx,
                         "total_deployments": total_entries,
-                        "video_count": len(video_files),
-                        "image_count": len(image_files),
+                        "video_count": announced_videos,
+                        "image_count": announced_images,
                         "has_classifier": classification_model is not None,
                         "has_embedding": bool(project.embedding_model_id),
                     },
@@ -212,7 +223,43 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 f"Found {len(video_files)} videos and {len(image_files)} images in {folder_path}"
             )
 
+            # Apply the media filter AFTER the scan: the queue counts above
+            # stay true to disk, and we learn exactly which files were
+            # dropped so they can be recorded rather than vanishing. Every
+            # downstream phase is already gated on these lists being
+            # non-empty, so emptying one skips that half of the pipeline —
+            # the same path a photo-only folder takes.
+            media_filter_skipped: list[Path] = []
+            if not media_filter_allows(project.media_filter, "video"):
+                media_filter_skipped.extend(video_files)
+                video_files = []
+            if not media_filter_allows(project.media_filter, "image"):
+                media_filter_skipped.extend(image_files)
+                image_files = []
+            if media_filter_skipped:
+                logger.info(
+                    f"Media filter '{project.media_filter}': skipping "
+                    f"{len(media_filter_skipped)} file(s) in {folder_path}"
+                )
+
             if not video_files and not image_files:
+                # Two different situations, and only one is the user's
+                # mistake. If the filter dropped files there WAS media here,
+                # so silently reporting success would be a lie; fail loudly.
+                # An empty folder is not an error and keeps its old
+                # behaviour. Other entries in the batch are unaffected.
+                if media_filter_skipped:
+                    error_msg = (
+                        f"Nothing to analyse: 'Media to analyse' is set to "
+                        f"'{project.media_filter}', and the folder contains "
+                        f"only the other kind "
+                        f"({len(media_filter_skipped)} file(s) skipped)."
+                    )
+                    logger.error(error_msg)
+                    queue_crud.update_queue_status(
+                        db, entry_id, status="failed", error=error_msg
+                    )
+                    continue
                 logger.warning(f"No images or videos found in {folder_path}, skipping")
                 queue_crud.update_queue_status(db, entry_id, status="completed")
                 continue
@@ -664,6 +711,18 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 # in one place. Their reason string comes straight from
                 # process_video so the cause is visible.
                 warning_entries: list[dict] = []
+                if media_filter_skipped:
+                    # Deliberate, not a fault — but the files are absent from
+                    # every count and export, so the deployment has to say so.
+                    # Same per-file shape as the entries below, which is what
+                    # lets the UI group them into "N files: skipped…".
+                    warning_entries.extend(
+                        {
+                            "type": "skipped_by_media_filter",
+                            "path": str(p),
+                        }
+                        for p in media_filter_skipped
+                    )
                 if result.skipped_missing_timestamp:
                     logger.info(
                         f"{len(result.skipped_missing_timestamp)} file(s) "
@@ -1052,6 +1111,41 @@ async def process_deployment_analysis(job_id: str) -> None:
 
         # Send error message
         await ws_manager.send_error(job_id, str(e))
+
+
+def media_filter_allows(media_filter: str, file_type: str) -> bool:
+    """Whether `file_type` ("image" / "video") is analysed under `media_filter`.
+
+    The single definition of the rule, deliberately dumb. Two things must
+    agree on it: the counts announced in the run header, and the file lists
+    actually handed to the detector. If they disagreed, the header would
+    promise media the run then silently skips.
+
+    `media_filter` is "all" | "images" | "videos" (Project.media_filter).
+    Anything unrecognised falls through to True: a filter we don't understand
+    must not silently drop a user's files.
+    """
+    if media_filter == "images":
+        return file_type == "image"
+    if media_filter == "videos":
+        return file_type == "video"
+    return True
+
+
+def _announced_media_counts(
+    media_filter: str, video_count: int, image_count: int
+) -> tuple[int, int]:
+    """(videos, images) for the run header: 0 for whatever the filter excludes.
+
+    The header is sent before the folder is scanned (that is the point — the
+    user sees the totals immediately), so it cannot simply count the filtered
+    lists. Running the same rule over the on-disk totals keeps the header
+    honest about what this run will actually look at.
+    """
+    return (
+        video_count if media_filter_allows(media_filter, "video") else 0,
+        image_count if media_filter_allows(media_filter, "image") else 0,
+    )
 
 
 def scan_folder_for_images(folder_path: Path) -> list[Path]:

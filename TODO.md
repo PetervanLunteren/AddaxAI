@@ -1,12 +1,13 @@
 # TODO
 
 ## Priority 1
-- [ ] CHECK IF THIS IS RESOLVED: It says "You have unsaved changes" every time i open the settings page. As a test: click "reset changes" the "You have unsaved changes" is not shown anymore, no apparent changes visible. Move different page, move back to settings, it shows "You have unsaved changes" again. Bug. Investigate. The thing is, we investigated previous already but could not find anything. We could not reproduce it, but now its back, and perhaps it has to do with the electron build as opposed to the localhost dev version. That the bug is only in electron, but not in the dev version. Could that be? 
+- [ ] THIS IS NOT YET RESOLVED: It says "You have unsaved changes" every time i open the settings page. As a test: click "reset changes" the "You have unsaved changes" is not shown anymore, no apparent changes visible. Move different page, move back to settings, it shows "You have unsaved changes" again. Bug. Investigate. The thing is, we investigated previous already but could not find anything. We could not reproduce it, but now its back, and perhaps it has to do with the electron build as opposed to the localhost dev version. That the bug is only in electron, but not in the dev version. Could that be? - we've tried to fix it twice already, and both times were not solved. How can we have aquick turnaround? Propose fix, try in electron directly? NOw with Github actions, install etc it is a slow iteration to test. Do a full audit first, then make plan. 
 
 ## Priority 2
-- [ ] ADD an option to only analyse images or videos. Feedback: "And Peter, I forgot to ask: is there a way to skip video detections and only analyze pictures in the case that they accidentally show up on the cameras? When we have videos show up in our data it is an error in setup by our field technicians or a camera error. Thanks!" Perhaps a advanced setting in the folder runs (project mode should always analyse everything it found), with options. anlayse all images and videos it can find, and only images, and only videos. What od you think? 
+- [ ]  
 
 ## Priority 3 
+- [ ] Investigate WHY full-image classifiers cannot process videos at all. `detection_worker.py` refuses the whole folder when a full-image classifier (e.g. AHDRIFT-v1) is selected and the folder contains any video ("cannot process videos. Folder contains N video file(s); use a folder with only images"). A full-image classifier labels the whole frame, and a video's best frame IS a frame, so it is not obvious why it cannot be classified like an image. If the limitation is real, the error should say why; if it is historical, the refusal can go. Note: setting "Media to analyse" to "Only images" now sidesteps the refusal (no videos reach the check), so this is no longer a dead end, just unexplained.
 - [ ] 
 
 ## After the Beta phase

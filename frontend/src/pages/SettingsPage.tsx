@@ -37,6 +37,7 @@ import {
   type ProjectStats,
 } from "../lib/reprocessStats";
 import {
+  MEDIA_FILTER_OPTIONS,
   VIDEO_FPS_OPTIONS,
   advancedNonDefaultKeys,
   restoreAdvancedDefaults,
@@ -122,6 +123,7 @@ const settingsSchema = z.object({
   // Empty string means "Auto (derive from site location)".
   timezone: z.string(),
   video_fps: z.number().min(0.1).max(10),
+  media_filter: z.enum(["all", "images", "videos"]),
   detection_augment: z.boolean(),
   detection_image_size: z.number().int().nullable(),
   counting_threshold: z.number().min(0).max(1),
@@ -219,6 +221,7 @@ export default function SettingsPage() {
       state_code: null,
       timezone: "",
       video_fps: 1.0,
+      media_filter: "all",
       detection_augment: false,
       detection_image_size: null,
       counting_threshold: DEFAULT_COUNTING_THRESHOLD,
@@ -263,6 +266,7 @@ export default function SettingsPage() {
         state_code: project.state_code || null,
         timezone: project.timezone ?? "",
         video_fps: project.video_fps,
+        media_filter: project.media_filter,
         detection_augment: project.detection_augment,
         detection_image_size: project.detection_image_size,
         counting_threshold: project.counting_threshold,
@@ -694,6 +698,7 @@ export default function SettingsPage() {
         state_code: project.state_code || null,
         timezone: project.timezone ?? "",
         video_fps: project.video_fps,
+        media_filter: project.media_filter,
         detection_augment: project.detection_augment,
         detection_image_size: project.detection_image_size,
         counting_threshold: project.counting_threshold,
@@ -1033,6 +1038,44 @@ export default function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-0 divide-y border-t">
+                {/* Media to analyse — above the frame rate, which only
+                    matters once videos are being read at all. */}
+                <FormField
+                  control={form.control}
+                  name="media_filter"
+                  render={({ field }) => (
+                    <SettingRow
+                      label="Media to analyse"
+                      isCustom={changedAdvanced.includes("media_filter")}
+                      description={
+                        <>
+                          {SETTING_CAPTIONS.mediaFilter} Applies to new
+                          analyses only.
+                        </>
+                      }
+                    >
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {MEDIA_FILTER_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </SettingRow>
+                  )}
+                />
+
                 {/* Video Frame Rate */}
                 <FormField
                   control={form.control}

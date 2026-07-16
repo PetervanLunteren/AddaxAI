@@ -168,6 +168,39 @@ def test_readme_includes_settings_block(db, tmp_path):
     assert "2.0" in text
 
 
+def test_readme_names_the_media_filter_when_it_excluded_something(db, tmp_path):
+    """A filtered-out kind is counted from the database, so it reads "Videos
+    0" — identical to a folder that never held any. This line is the only
+    thing telling those two apart; without it the file quietly implies the
+    folder had no videos."""
+    project = make_project(
+        db, name="readme-filter", timezone="UTC", media_filter="images"
+    )
+    make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "src")
+    )
+
+    target = tmp_path / "out"
+    write_run_readme(db, project.id, target, media_threshold=0.5)
+    text = (target / SUMMARY_FILENAME).read_text()
+
+    assert "Media filter" in text
+    assert "only images" in text
+
+
+def test_readme_omits_the_media_filter_by_default(db, tmp_path):
+    """Nothing was excluded, so the line would be noise on every run."""
+    project = make_project(db, name="readme-nofilter", timezone="UTC")
+    make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "src")
+    )
+
+    target = tmp_path / "out"
+    write_run_readme(db, project.id, target, media_threshold=0.5)
+
+    assert "Media filter" not in (target / SUMMARY_FILENAME).read_text()
+
+
 def test_readme_unknown_project_raises(db, tmp_path):
     with pytest.raises(ValueError, match="not found"):
         write_run_readme(db, "no-such-id", tmp_path / "out", media_threshold=0.5)
