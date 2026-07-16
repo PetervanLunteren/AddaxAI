@@ -6310,7 +6310,7 @@ def set_up_unknown_model(title, model_dict, model_type):
         taxon_mapping_csv_path = os.path.join(model_dir, "taxon-mapping.csv")
         if not os.path.exists(taxon_mapping_csv_path):
             try:
-                response = requests.get(taxon_mapping_csv_url, timeout=1)
+                response = requests.get(taxon_mapping_csv_url, timeout=(5, 15))
                 if response.status_code == 200:
                     with open(taxon_mapping_csv_path, 'wb') as file:
                         file.write(response.content)
@@ -6365,16 +6365,17 @@ def fetch_latest_model_info():
         start_time = time.time()
         release_info_url = "https://api.github.com/repos/PetervanLunteren/AddaxAI/releases"
         model_info_url = f"https://raw.githubusercontent.com/PetervanLunteren/AddaxAI/main/model_info/model_info_v{corresponding_model_info_version}.json"
-        try:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:66.0) Gecko/20100101 Firefox/66.0",
-                "Accept-Encoding": "*",
-                "Connection": "keep-alive"
-            }
-            model_info_response = requests.get(model_info_url, timeout=1, headers=headers)
-            release_info_response = requests.get(release_info_url, timeout=1, headers=headers)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:66.0) Gecko/20100101 Firefox/66.0",
+            "Accept-Encoding": "*",
+            "Connection": "keep-alive"
+        }
 
-            # model info
+        # model info
+        # separate try block from the release info, so that a failing release check
+        # does not throw away a model list that downloaded fine
+        try:
+            model_info_response = requests.get(model_info_url, timeout=(5, 15), headers=headers)
             if model_info_response.status_code == 200:
                 with open(model_info_fpath, 'wb') as file:
                     file.write(model_info_response.content)
@@ -6398,7 +6399,15 @@ def fetch_latest_model_info():
                             show_model_info(title = model_id, model_dict = model_dict, new_model = True)
                             set_up_unknown_model(title = model_id, model_dict = model_dict, model_type = typ)
 
-            # release info
+        except requests.exceptions.Timeout:
+            print("Model info request timed out. Model list not updated.")
+
+        except Exception as e:
+            print(f"Could not update model info: {e}")
+
+        # release info
+        try:
+            release_info_response = requests.get(release_info_url, timeout=(5, 15), headers=headers)
             if release_info_response.status_code == 200:
                 print("Checking release info")
 
@@ -6450,10 +6459,10 @@ def fetch_latest_model_info():
                     json.dump(already_shown_releases, f)
 
         except requests.exceptions.Timeout:
-            print("Request timed out. File download stopped.")
+            print("Release info request timed out. Release check skipped.")
 
         except Exception as e:
-            print(f"Could not update model and version info: {e}")
+            print(f"Could not update version info: {e}")
 
         # update root so that the new models show up in the dropdown menu, 
         # but also the correct species for the existing models
