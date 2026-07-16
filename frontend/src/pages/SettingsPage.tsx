@@ -241,22 +241,17 @@ export default function SettingsPage() {
   // counts as default" has one definition across both flows.
   const changedAdvanced = advancedNonDefaultKeys(form.watch());
 
-  // The classification model / country as loaded from the project. The
-  // auto-reconciliation effects below (clear state on country change,
-  // drop now-invalid excluded_classes on model change) must fire only on
-  // a genuine USER change, never on initial load. Without this guard the
-  // model's taxonomy loading asynchronously re-runs the excluded_classes
-  // filter on every mount and marks the form dirty with no user action —
-  // the phantom "You have unsaved changes" that only shows up where the
-  // model is actually installed (the packaged app, not the dev box).
+  // The classification model as loaded from the project. The excluded_classes
+  // filter below must fire only on a genuine USER model change, never on the
+  // initial load, or it would drop saved exclusions and dirty the form with no
+  // user action. Compare against this ref, never against a watch() value: the
+  // two are written in different commits (see the note on that effect).
   const loadedModelRef = useRef<string | null | undefined>(undefined);
-  const loadedCountryRef = useRef<string | null | undefined>(undefined);
 
   // Update form values when project loads
   useEffect(() => {
     if (project) {
       loadedModelRef.current = project.classification_model_id ?? null;
-      loadedCountryRef.current = project.country_code || null;
       const values: SettingsFormData = {
         detection_model_id: project.detection_model_id,
         classification_model_id: project.classification_model_id ?? null,
@@ -280,15 +275,6 @@ export default function SettingsPage() {
         embedding_batch_size: project.embedding_batch_size ?? null,
       };
       form.reset(values);
-
-      // WORKAROUND: Set state_code again after a tick to ensure the field is rendered
-      // This handles the race condition where the state field is conditionally rendered
-      // based on country_code === "USA"
-      if (project.state_code) {
-        setTimeout(() => {
-          form.setValue("state_code", project.state_code);
-        }, 0);
-      }
     }
   }, [project, form]);
 
@@ -365,26 +351,31 @@ export default function SettingsPage() {
     }
   }, [project]);
 
-  // Clear state_code when country changes away from USA. Only on a real
-  // user change (country differs from what loaded), never on initial load.
-  useEffect(() => {
-    if (countryCode === loadedCountryRef.current) return;
-    if (countryCode !== "USA" && form.getValues("state_code")) {
-      form.setValue("state_code", null, { shouldDirty: true });
-    }
-  }, [countryCode, form]);
+  // There is deliberately no "clear state_code when the country changes"
+  // effect. The location picker sets country AND state together (see
+  // onLocationChange below), so state is already null before any such effect
+  // could run — it had no reachable job. What it DID do was fire on mount:
+  // with the project already cached, it ran in the same commit as the reset
+  // above and compared a stale watched country against a freshly-written ref,
+  // then nulled a freshly-reset state_code with shouldDirty. That was the
+  // phantom "You have unsaved changes". FolderRunModelStep uses the same
+  // picker with no such effect and never had the bug.
 
-  // Clear excluded_classes when classification model changes. Skip the
-  // initial load (model still equals what the project loaded with): the
-  // saved exclusions are shown as-is, so the async taxonomy fetch can't
-  // silently dirty the form.
+  // Drop excluded classes the newly-picked model doesn't have.
   useEffect(() => {
-    if (classificationModelId === loadedModelRef.current) return;
-    if (classificationModelId && taxonomy?.all_classes) {
-      // Filter excluded_classes to only keep classes that exist in the new model
+    // Read the LIVE value, not the watched one. When the project is already
+    // in the react-query cache, this effect and the project-load effect above
+    // run in the SAME commit: the watched value is still the pre-reset
+    // default while the ref and the form are already updated. Comparing
+    // stale-to-fresh is exactly what produced the phantom-dirty bug in the
+    // sibling effect this replaced. `classificationModelId` stays in the deps
+    // as the trigger; only the read moves.
+    const modelId = form.getValues("classification_model_id");
+    if (modelId === loadedModelRef.current) return;
+    if (modelId && taxonomy?.all_classes) {
       const currentExcluded = form.getValues("excluded_classes");
-      const validExcluded = currentExcluded.filter(cls =>
-        taxonomy.all_classes.includes(cls)
+      const validExcluded = currentExcluded.filter((cls) =>
+        taxonomy.all_classes.includes(cls),
       );
 
       // Only update if some classes were removed
