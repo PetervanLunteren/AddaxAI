@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Check, FileSearch } from "lucide-react";
 import { backupApi, type BackupEntry, type BackupKind } from "../../api/backup";
+import { formatAuditWhen } from "../../lib/auditTime";
 import { basename } from "../../lib/path-utils";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
@@ -66,36 +67,6 @@ function formatBytes(n: number): string {
   const mb = kb / 1024;
   if (mb < 999.95) return `${mb.toFixed(1)} MB`;
   return `${(mb / 1024).toFixed(1)} GB`;
-}
-
-/** Human "when" for an audit timestamp (backups are absolute server-local
- * moments, so they render in the viewer's own timezone). Returns a relative
- * headline ("Today, 14:03" / "Yesterday, …" / "3 days ago") plus the full
- * date as a secondary line. */
-function formatWhen(iso: string): { rel: string; abs: string } {
-  const d = new Date(iso);
-  const time = d.toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const abs = d.toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-
-  const startOfDay = (x: Date) =>
-    new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const days = Math.round(
-    (startOfDay(new Date()) - startOfDay(d)) / 86_400_000,
-  );
-
-  let rel: string;
-  if (days <= 0) rel = `Today, ${time}`;
-  else if (days === 1) rel = `Yesterday, ${time}`;
-  else if (days < 7) rel = `${days} days ago`;
-  else rel = abs;
-  return { rel, abs };
 }
 
 export function RestoreBackupDialog({
@@ -200,7 +171,7 @@ export function RestoreBackupDialog({
           ) : (
             entries.map((e) => {
               const f = FLAVOUR[e.kind];
-              const when = formatWhen(e.created_utc);
+              const when = formatAuditWhen(e.created_utc);
               const isSel = !customPath && selectedPath === e.path;
               return (
                 <button

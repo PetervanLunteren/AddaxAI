@@ -29,7 +29,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, distinct, func, or_, select
+from sqlalchemy import and_, case, distinct, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.crud import deployment_queue as crud_queue
@@ -67,6 +67,11 @@ router = APIRouter(prefix="/api/folder-runs", tags=["Folder runs"])
 
 
 FolderRunStep = Literal["setup", "labels", "save"]
+
+# How many recent runs the step-1 list shows. A cap, not pagination: the list
+# is a "pick up where you left off" shortcut, not a run manager. Older runs
+# stay reachable the way they always were — by re-picking their folder.
+RECENT_RUNS_LIMIT = 10
 
 # Forward-compat: map retired step slugs so runs persisted under the old
 # names re-attach without failing FolderRunStep validation. The counts
@@ -120,6 +125,34 @@ class FolderRunStepUpdate(BaseModel):
     """Request body for PATCH /api/folder-runs/{id}/step."""
 
     step: FolderRunStep
+
+
+class FolderRunSummary(BaseModel):
+    """One row in the step-1 "Show recent runs" list.
+
+    Deliberately thin: enough to recognise a run (where it was, how big,
+    when, how far the review got) and to decide whether it can be resumed.
+    The step is not carried: resuming goes through ``GET /{run_id}``, which
+    reads the persisted step itself.
+
+    ``detection_count`` / ``verified_detection_count`` are the two halves of
+    the "labels verified" fraction the row shows, matching the metric the
+    dashboard and the re-run dialog use. ``detection_count`` is 0 for a run
+    whose analysis has not produced anything yet, which the UI renders as
+    "not analysed yet" rather than a meaningless 0%.
+
+    ``folder_exists`` is false when the source folder has moved, been
+    deleted, or lives on a drive that isn't plugged in: the UI greys those
+    out rather than letting the user resume into missing files.
+    """
+
+    id: str
+    folder_path: str
+    updated_at_utc: datetime
+    file_count: int
+    detection_count: int
+    verified_detection_count: int
+    folder_exists: bool
 
 
 class FolderRunResponse(BaseModel):
@@ -562,6 +595,129 @@ def create_folder_run(
         queue_entry=DeploymentQueueResponse.model_validate(queue_entry),
         step="setup",
     )
+
+
+@router.get("", response_model=list[FolderRunSummary])
+def list_folder_runs(db: Session = Depends(get_db)) -> list[FolderRunSummary]:
+    """Recent folder runs, newest first — the step-1 "Show recent runs" list.
+
+    One row per source folder: duplicate runs pointing at the same folder
+    (possible for runs created before the resume logic existed) collapse to
+    the most recently updated one, mirroring ``_find_existing_run``. Without
+    this, a list would surface duplicates that are invisible today.
+
+    Capped at ``RECENT_RUNS_LIMIT`` so the list stays scannable instead of
+    rotting into a junk drawer.
+
+    ``folder_exists`` is stat'd per row so the UI can grey out runs whose
+    folder moved or sits on an unplugged drive: those are not resumable, but
+    can still be deleted.
+
+    Declared above ``GET /{run_id}`` for the same route-ordering reason as
+    ``/lookup`` (FastAPI matches in declaration order).
+    """
+    # A folder run has at most one queue entry, so this join yields one row
+    # per run. Sorted newest-first, which makes the dedupe below "keep newest".
+    rows = db.execute(
+        select(Project, DeploymentQueue.folder_path)
+        .join(DeploymentQueue, DeploymentQueue.project_id == Project.id)
+        .where(Project.mode == "folder_run")
+        .order_by(Project.updated_at_utc.desc())
+    ).all()
+
+    picked: list[tuple[Project, str]] = []
+    seen_folders: set[str] = set()
+    for project, folder_path in rows:
+        if not folder_path or folder_path in seen_folders:
+            continue
+        seen_folders.add(folder_path)
+        picked.append((project, folder_path))
+        if len(picked) == RECENT_RUNS_LIMIT:
+            break
+
+    if not picked:
+        return []
+
+    project_ids = [p.id for p, _ in picked]
+
+    # One grouped count for the whole page rather than a query per row.
+    file_counts = dict(
+        db.execute(
+            select(Deployment.project_id, func.count(File.id))
+            .join(File, File.deployment_id == Deployment.id)
+            .where(Deployment.project_id.in_(project_ids))
+            .group_by(Deployment.project_id)
+        ).all()
+    )
+
+    # Both halves of the "labels verified" fraction in one grouped query.
+    # The denominator is the detections the run actually shows, so it carries
+    # the threshold + verified override (DEVELOPERS.md "Detection threshold
+    # and verified override"). The threshold is per-project, hence the join to
+    # Project to compare against that run's own column rather than a scalar.
+    # Verified detections always pass the filter, so they are a subset of the
+    # counted set and can be summed in the same pass.
+    label_counts = {
+        project_id: (total, verified or 0)
+        for project_id, total, verified in db.execute(
+            select(
+                Deployment.project_id,
+                func.count(Detection.id),
+                func.sum(case((Detection.verified.is_(True), 1), else_=0)),
+            )
+            .select_from(Detection)
+            .join(File, Detection.file_id == File.id)
+            .join(Deployment, File.deployment_id == Deployment.id)
+            .join(Project, Deployment.project_id == Project.id)
+            .where(Deployment.project_id.in_(project_ids))
+            .where(
+                or_(
+                    Detection.confidence >= Project.counting_threshold,
+                    Detection.verified.is_(True),
+                )
+            )
+            .group_by(Deployment.project_id)
+        ).all()
+    }
+
+    summaries: list[FolderRunSummary] = []
+    for project, folder_path in picked:
+        detection_count, verified_detection_count = label_counts.get(
+            project.id, (0, 0)
+        )
+        summaries.append(
+            FolderRunSummary(
+                id=project.id,
+                folder_path=folder_path,
+                updated_at_utc=project.updated_at_utc,
+                file_count=file_counts.get(project.id, 0),
+                detection_count=detection_count,
+                verified_detection_count=verified_detection_count,
+                folder_exists=Path(folder_path).is_dir(),
+            )
+        )
+    return summaries
+
+
+@router.delete("/{run_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_folder_run(run_id: str, db: Session = Depends(get_db)) -> None:
+    """Delete a folder run and everything it produced.
+
+    Delegates to ``crud_project.delete_folder_run``, which cascades the DB
+    rows AND removes the on-disk ``.addaxai/projects/<id>/`` cache.
+    ``delete_project`` would leave that cache behind, so it must not be used
+    here. Irreversible: any verification work in the run goes with it.
+
+    404s for an unknown id or a research project, mirroring ``_load_run``.
+    """
+    project = crud_project.get_project(db, run_id)
+    if project is None or project.mode != "folder_run":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Folder run with id '{run_id}' not found",
+        )
+    crud_project.delete_folder_run(db, run_id)
+    logger.info(f"Deleted folder run: project_id={run_id}")
 
 
 @router.get("/lookup", response_model=FolderRunLookupResponse | None)

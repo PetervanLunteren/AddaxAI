@@ -153,7 +153,8 @@ class Project(Base):
     # future analyses only (like detection_model_id), never retroactively.
     # detection_augment: run the detector on augmented copies and merge
     # (slower, may add false positives). detection_image_size: override the
-    # long-edge resize; NULL = MegaDetector's model-native default (1280).
+    # long-edge resize; NULL = omit the flag so MegaDetector uses its own
+    # model-native size (which differs per detection model).
     detection_augment: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )

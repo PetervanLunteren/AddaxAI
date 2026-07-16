@@ -38,24 +38,6 @@ export const ADVANCED_SETTINGS_DEFAULTS = {
 } as const;
 
 /**
- * Choices for the "Detection image size" select, shared by the project
- * Settings page and the folder-run model step. The value is the long-edge
- * pixel size MegaDetector resizes to before detection; the "default" sentinel
- * maps to null (omit the flag, MD uses its model-native size). Only larger
- * steps are offered, since the reason to change it is spotting small or
- * distant animals, and MegaDetector advises against changing it otherwise.
- */
-export const DETECTION_IMAGE_SIZE_DEFAULT = "default";
-export const DETECTION_IMAGE_SIZE_OPTIONS: readonly {
-  value: string;
-  label: string;
-}[] = [
-  { value: DETECTION_IMAGE_SIZE_DEFAULT, label: "Model default (1280)" },
-  { value: "1920", label: "1920" },
-  { value: "2560", label: "2560" },
-];
-
-/**
  * Choices for the "Video frame rate" select, shared by the project Settings
  * page and the folder-run model step so they can't drift. Values are the
  * sampling rate in fps; the sub-1 range is labelled as "1 frame every N

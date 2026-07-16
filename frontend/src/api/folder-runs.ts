@@ -269,10 +269,39 @@ export interface SaveOutputsResult {
   run_readme?: RunReadmeResult;
 }
 
+/** One row in the step-1 "Show recent runs" list. `folder_exists` is false
+ *  when the source folder moved, was deleted, or sits on a drive that isn't
+ *  plugged in — those runs can't be resumed, only deleted.
+ *
+ *  No `step`: resuming goes through `get(runId)`, which carries the persisted
+ *  step itself.
+ *
+ *  `detection_count` / `verified_detection_count` are the two halves of the
+ *  row's "labels verified" fraction, using the same metric as the dashboard
+ *  and RerunConfirmDialog. `detection_count` is 0 when the run has nothing
+ *  analysed yet. */
+export interface FolderRunSummary {
+  id: string;
+  folder_path: string;
+  updated_at_utc: string;
+  file_count: number;
+  detection_count: number;
+  verified_detection_count: number;
+  folder_exists: boolean;
+}
+
 export const folderRunsApi = {
   /** Create a folder run. Returns the new project + queue entry. */
   create: (payload: FolderRunCreate) =>
     api.post<FolderRunResponse>("/api/folder-runs", payload),
+
+  /** Recent folder runs, newest first, one per source folder, capped
+   *  backend-side. Powers the step-1 "Show recent runs" list. */
+  list: () => api.get<FolderRunSummary[]>("/api/folder-runs"),
+
+  /** Delete a folder run: its DB rows and its on-disk .addaxai cache.
+   *  Irreversible — caller surfaces a confirm. */
+  remove: (runId: string) => api.delete<void>(`/api/folder-runs/${runId}`),
 
   /** Resume an existing folder run by id (the project id). */
   get: (runId: string) =>

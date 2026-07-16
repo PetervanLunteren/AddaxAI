@@ -57,8 +57,6 @@ import { Button } from "../../components/ui/button";
 import { NextStepRow } from "../../components/ui/next-step-row";
 import { Callout } from "../../components/ui/callout";
 import {
-  DETECTION_IMAGE_SIZE_DEFAULT,
-  DETECTION_IMAGE_SIZE_OPTIONS,
   VIDEO_FPS_OPTIONS,
   isAnyAdvancedNonDefault,
   restoreAdvancedDefaults,
@@ -99,9 +97,11 @@ import {
 } from "../../components/ui/tooltip";
 
 import { BatchSizeRow } from "../../components/analyses/BatchSizeRow";
+import { ImageSizeRow } from "../../components/analyses/ImageSizeRow";
 import { FolderSelector } from "../../components/analyses/FolderSelector";
 import { RunQueueModal } from "../../components/analyses/RunQueueModal";
 import { CompletedRunNotice } from "../../components/folder-run/CompletedRunNotice";
+import { RecentRunsDialog } from "../../components/folder-run/RecentRunsDialog";
 import { RerunConfirmDialog } from "../../components/folder-run/RerunConfirmDialog";
 import { StepHeader } from "../../components/folder-run/StepHeader";
 import { ClassificationModelGroupedItems } from "../../components/models/ClassificationModelGroupedItems";
@@ -357,6 +357,15 @@ export function FolderRunModelStep() {
     enabled: lookupReady,
     staleTime: 30_000,
   });
+  // Recent runs: the caption link only appears when there is no folder
+  // picked yet AND there is at least one previous run, so it never links to
+  // an empty list. The dialog owns the resume / delete behaviour.
+  const [recentRunsOpen, setRecentRunsOpen] = useState(false);
+  const { data: recentRuns = [] } = useQuery({
+    queryKey: ["folder-runs"],
+    queryFn: folderRunsApi.list,
+  });
+
   // Dialog visibility for the destructive Re-run / discard flow.
   const [rerunOpen, setRerunOpen] = useState(false);
   // Set when a start / re-run finds nothing pending to process, so we
@@ -812,14 +821,37 @@ export function FolderRunModelStep() {
                           </FormDescription>
                         </div>
                         <div className="space-y-2">
-                          <FormControl>
-                            <FolderSelector
-                              value={field.value || null}
-                              onChange={(v) => field.onChange(v ?? "")}
-                              hideLabel
-                              compactScanResult
-                            />
-                          </FormControl>
+                          {/* space-y-1 puts the link 4px under the field, the
+                              same slot (and style) the scan caption's "Adjust
+                              dates" link uses once a folder is picked. Only
+                              one of the two is ever visible. */}
+                          <div className="space-y-1">
+                            <FormControl>
+                              <FolderSelector
+                                value={field.value || null}
+                                onChange={(v) => field.onChange(v ?? "")}
+                                hideLabel
+                                compactScanResult
+                              />
+                            </FormControl>
+                            {/* Re-entry shortcut: a folder run persists its
+                                step, but the only way back into one is
+                                re-finding its folder. Offered only while no
+                                folder is picked (so it never competes with the
+                                configure-a-run flow) and only when there is
+                                something to show. */}
+                            {!field.value && recentRuns.length > 0 && (
+                              <p className="pl-3 text-xs">
+                                <button
+                                  type="button"
+                                  onClick={() => setRecentRunsOpen(true)}
+                                  className="font-medium text-primary hover:underline"
+                                >
+                                  Show recent runs
+                                </button>
+                              </p>
+                            )}
+                          </div>
                           <FormMessage />
                         </div>
                       </div>
@@ -1103,45 +1135,11 @@ export function FolderRunModelStep() {
                       )}
                     />
 
-                    <FormField
+                    <ImageSizeRow
                       control={form.control}
                       name="detection_image_size"
-                      render={({ field }) => (
-                        <SettingRow
-                          label="Detection image size"
-                          description={SETTING_CAPTIONS.detectionImageSize}
-                        >
-                          <Select
-                            key={String(field.value)}
-                            value={
-                              field.value == null
-                                ? DETECTION_IMAGE_SIZE_DEFAULT
-                                : String(field.value)
-                            }
-                            onValueChange={(v) =>
-                              field.onChange(
-                                v === DETECTION_IMAGE_SIZE_DEFAULT
-                                  ? null
-                                  : parseInt(v, 10),
-                              )
-                            }
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {DETECTION_IMAGE_SIZE_OPTIONS.map((opt) => (
-                                <SelectItem key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </SettingRow>
-                      )}
+                      label="Detection image size"
+                      description={SETTING_CAPTIONS.detectionImageSize}
                     />
 
                     <FormField
@@ -1362,6 +1360,11 @@ export function FolderRunModelStep() {
         modelId={hasEmbedding ? embeddingModelId : null}
         open={showEmbInfo}
         onOpenChange={setShowEmbInfo}
+      />
+
+      <RecentRunsDialog
+        open={recentRunsOpen}
+        onOpenChange={setRecentRunsOpen}
       />
 
       <Dialog

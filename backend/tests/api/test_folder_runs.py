@@ -11,7 +11,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tests.conftest import make_project
+from tests.conftest import (
+    make_deployment,
+    make_detection,
+    make_file,
+    make_project,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -794,3 +799,221 @@ def test_legacy_counts_and_summary_steps_resume_on_labels(client, db):
 
         follow_up = client.get(f"/api/folder-runs/{run_id}")
         assert follow_up.json()["step"] == "labels", legacy
+
+
+# ----------------------------------------------------------------------
+# GET /api/folder-runs — the step-1 "Show recent runs" list
+# ----------------------------------------------------------------------
+
+
+def _make_run(db, folder_path: str, *, updated=None, **kw):
+    """A folder run built straight in the DB.
+
+    Built directly rather than through POST /api/folder-runs because that
+    endpoint is create-or-resume (it returns the existing run for a folder,
+    so it cannot produce the duplicates the dedupe test needs) and because
+    an explicit ``updated_at_utc`` makes the ordering assertions
+    deterministic.
+    """
+    from datetime import UTC, datetime
+
+    from app.models import DeploymentQueue
+
+    project = make_project(
+        db,
+        mode="folder_run",
+        folder_run_state={"step": "setup"},
+        updated_at_utc=updated or datetime(2026, 1, 1, tzinfo=UTC),
+        **kw,
+    )
+    db.add(DeploymentQueue(project_id=project.id, folder_path=folder_path))
+    db.flush()
+    return project
+
+
+def _add_detections(db, project, *specs: tuple[float, bool]):
+    """Give a run one file carrying ``(confidence, verified)`` detections."""
+    deployment = make_deployment(db, project_id=project.id)
+    file = make_file(db, deployment_id=deployment.id)
+    for confidence, verified in specs:
+        make_detection(
+            db, file_id=file.id, confidence=confidence, verified=verified
+        )
+    db.flush()
+
+
+def test_list_folder_runs_newest_first(client, db, tmp_path):
+    from datetime import UTC, datetime
+
+    older = _make_run(db, str(tmp_path), updated=datetime(2026, 1, 1, tzinfo=UTC))
+    newer = _make_run(
+        db, str(tmp_path / "newer"), updated=datetime(2026, 6, 1, tzinfo=UTC)
+    )
+    (tmp_path / "newer").mkdir()
+
+    body = client.get("/api/folder-runs").json()
+
+    assert [r["id"] for r in body] == [newer.id, older.id]
+    assert body[0]["folder_path"] == str(tmp_path / "newer")
+    assert body[0]["file_count"] == 0
+
+
+def test_list_folder_runs_dedupes_by_folder_keeping_newest(client, db, tmp_path):
+    """Duplicate runs on one folder (possible for runs made before the
+    resume logic) collapse to the most recent, mirroring _find_existing_run.
+    Without this the list would surface duplicates that are invisible today."""
+    from datetime import UTC, datetime
+
+    _make_run(db, str(tmp_path), updated=datetime(2026, 1, 1, tzinfo=UTC))
+    newest = _make_run(db, str(tmp_path), updated=datetime(2026, 5, 1, tzinfo=UTC))
+
+    body = client.get("/api/folder-runs").json()
+
+    assert len(body) == 1
+    assert body[0]["id"] == newest.id
+
+
+def test_list_folder_runs_caps_at_limit(client, db, tmp_path):
+    from app.api.routers.folder_runs import RECENT_RUNS_LIMIT
+
+    for i in range(RECENT_RUNS_LIMIT + 3):
+        _make_run(db, str(tmp_path / f"run-{i}"))
+
+    body = client.get("/api/folder-runs").json()
+
+    assert len(body) == RECENT_RUNS_LIMIT
+
+
+def test_list_folder_runs_flags_missing_folder(client, db, tmp_path):
+    """A folder that moved / was deleted / is on an unplugged drive is
+    reported so the UI can grey it out instead of resuming into nothing."""
+    _make_run(db, str(tmp_path))
+    _make_run(db, str(tmp_path / "does-not-exist"))
+
+    by_path = {r["folder_path"]: r for r in client.get("/api/folder-runs").json()}
+
+    assert by_path[str(tmp_path)]["folder_exists"] is True
+    assert by_path[str(tmp_path / "does-not-exist")]["folder_exists"] is False
+
+
+def test_list_folder_runs_reports_labels_verified(client, db, tmp_path):
+    """The two halves of the row's "labels verified" fraction."""
+    run = _make_run(db, str(tmp_path), counting_threshold=0.2)
+    _add_detections(db, run, (0.9, True), (0.9, False), (0.9, False), (0.9, False))
+
+    body = client.get("/api/folder-runs").json()
+
+    assert body[0]["detection_count"] == 4
+    assert body[0]["verified_detection_count"] == 1
+
+
+def test_list_folder_runs_labels_verified_applies_threshold_override(
+    client, db, tmp_path
+):
+    """The denominator counts what the run actually shows, so it carries the
+    threshold + verified override: a low-confidence detection is excluded
+    unless a human verified it (DEVELOPERS.md "Detection threshold and
+    verified override"). Getting this wrong would report a percentage against
+    a denominator the user never sees."""
+    run = _make_run(db, str(tmp_path), counting_threshold=0.5)
+    _add_detections(
+        db,
+        run,
+        (0.9, False),  # passes on confidence
+        (0.1, True),  # below threshold, but verified: still counted
+        (0.1, False),  # below threshold, unverified: excluded
+    )
+
+    body = client.get("/api/folder-runs").json()
+
+    assert body[0]["detection_count"] == 2
+    assert body[0]["verified_detection_count"] == 1
+
+
+def test_list_folder_runs_labels_verified_uses_each_runs_own_threshold(
+    client, db, tmp_path
+):
+    """Thresholds are per-project, so a page of runs must not be counted
+    against one shared value."""
+    strict = _make_run(db, str(tmp_path / "strict"), counting_threshold=0.5)
+    loose = _make_run(db, str(tmp_path / "loose"), counting_threshold=0.05)
+    for run in (strict, loose):
+        _add_detections(db, run, (0.1, False))
+
+    by_id = {r["id"]: r for r in client.get("/api/folder-runs").json()}
+
+    assert by_id[strict.id]["detection_count"] == 0
+    assert by_id[loose.id]["detection_count"] == 1
+
+
+def test_list_folder_runs_reports_zero_for_unanalysed_run(client, db, tmp_path):
+    """A run with nothing analysed has no fraction to show; the UI renders
+    "not analysed yet" off these zeros rather than a meaningless 0%."""
+    _make_run(db, str(tmp_path))
+
+    body = client.get("/api/folder-runs").json()
+
+    assert body[0]["file_count"] == 0
+    assert body[0]["detection_count"] == 0
+    assert body[0]["verified_detection_count"] == 0
+
+
+def test_list_folder_runs_distinguishes_empty_result_from_unanalysed(
+    client, db, tmp_path
+):
+    """Two runs report zero detections for very different reasons, and the
+    row must not call both "not analysed yet": a folder of empty images WAS
+    analysed, and saying otherwise invites the user to re-run it.
+
+    ``file_count`` is what separates them, because File rows are only written
+    when results load (ml/json_pipeline.py). Pinned here so a future change to
+    when files are created cannot silently break the distinction.
+    """
+    unanalysed = _make_run(db, str(tmp_path / "unanalysed"))
+    empty_result = _make_run(db, str(tmp_path / "empty-result"))
+    # Analysed, three images, every one of them blank: files, no detections.
+    deployment = make_deployment(db, project_id=empty_result.id)
+    for _ in range(3):
+        make_file(db, deployment_id=deployment.id)
+    db.flush()
+
+    by_id = {r["id"]: r for r in client.get("/api/folder-runs").json()}
+
+    assert by_id[unanalysed.id]["file_count"] == 0
+    assert by_id[empty_result.id]["file_count"] == 3
+    assert by_id[empty_result.id]["detection_count"] == 0
+
+
+def test_list_folder_runs_excludes_research_projects(client, db, tmp_path):
+    _make_run(db, str(tmp_path))
+    make_project(db, mode="research")
+
+    body = client.get("/api/folder-runs").json()
+
+    assert len(body) == 1
+
+
+# ----------------------------------------------------------------------
+# DELETE /api/folder-runs/{run_id}
+# ----------------------------------------------------------------------
+
+
+def test_delete_folder_run_removes_it(client, db, tmp_path):
+    run = _make_run(db, str(tmp_path))
+
+    assert client.delete(f"/api/folder-runs/{run.id}").status_code == 204
+    assert client.get(f"/api/folder-runs/{run.id}").status_code == 404
+    assert client.get("/api/folder-runs").json() == []
+
+
+def test_delete_folder_run_unknown_id_404(client):
+    assert client.delete("/api/folder-runs/does-not-exist").status_code == 404
+
+
+def test_delete_folder_run_refuses_research_project(client, db):
+    """A research project must not be deletable through the folder-run
+    endpoint — it would take a real project's data with it."""
+    project = make_project(db, mode="research")
+
+    assert client.delete(f"/api/folder-runs/{project.id}").status_code == 404
+    assert db.get(type(project), project.id) is not None

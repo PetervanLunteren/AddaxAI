@@ -37,8 +37,6 @@ import {
   type ProjectStats,
 } from "../lib/reprocessStats";
 import {
-  DETECTION_IMAGE_SIZE_DEFAULT,
-  DETECTION_IMAGE_SIZE_OPTIONS,
   VIDEO_FPS_OPTIONS,
   restoreAdvancedDefaults,
 } from "../lib/advancedSettingsDefaults";
@@ -100,6 +98,7 @@ import { ConfidenceSlider } from "../components/ui/confidence-slider";
 import { SETTING_CAPTIONS } from "../lib/settingCaptions";
 import { ClassificationModelGroupedItems } from "../components/models/ClassificationModelGroupedItems";
 import { BatchSizeRow } from "../components/analyses/BatchSizeRow";
+import { ImageSizeRow } from "../components/analyses/ImageSizeRow";
 import {
   Form,
   FormControl,
@@ -1065,50 +1064,11 @@ export default function SettingsPage() {
                 />
 
                 {/* Detection image size (inference-time) */}
-                <FormField
+                <ImageSizeRow
                   control={form.control}
                   name="detection_image_size"
-                  render={({ field }) => (
-                    <div className="grid grid-cols-2 items-center gap-8 py-6">
-                      <div className="space-y-1">
-                        <FormLabel>Detection image size</FormLabel>
-                        <FormDescription className="text-sm">
-                          {SETTING_CAPTIONS.detectionImageSize} Applies to new analyses only.
-                        </FormDescription>
-                      </div>
-                      <div className="space-y-2">
-                        <Select
-                          key={String(field.value)}
-                          value={
-                            field.value == null
-                              ? DETECTION_IMAGE_SIZE_DEFAULT
-                              : String(field.value)
-                          }
-                          onValueChange={(val) =>
-                            field.onChange(
-                              val === DETECTION_IMAGE_SIZE_DEFAULT
-                                ? null
-                                : parseInt(val, 10),
-                            )
-                          }
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {DETECTION_IMAGE_SIZE_OPTIONS.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </div>
-                    </div>
-                  )}
+                  label="Detection image size"
+                  description={`${SETTING_CAPTIONS.detectionImageSize} Applies to new analyses only.`}
                 />
 
                 {/* Image augmentation (inference-time) */}
