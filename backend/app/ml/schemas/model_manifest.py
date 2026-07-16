@@ -19,6 +19,23 @@ ModelRegion = Literal[
     "global", "africa", "americas", "asia", "europe", "oceania"
 ]
 
+# HuggingFace org that hosts the model repos. A manifest may override the
+# repo with an explicit `hf_repo`; everything else follows the convention
+# `<DEFAULT_HF_ORG>/<model_id>`.
+DEFAULT_HF_ORG = "Addax-Data-Science"
+
+
+def resolve_hf_repo(model_id: str, hf_repo: str | None = None) -> str:
+    """
+    Return the HuggingFace repo id for a model.
+
+    Always go through this helper rather than rebuilding the convention
+    at the call site. Forgetting the `hf_repo or ...` half is exactly how
+    the catalog's taxonomy download ended up pinned to the default org
+    and silently 404'ing for the one model that overrides it.
+    """
+    return hf_repo or f"{DEFAULT_HF_ORG}/{model_id}"
+
 
 class ModelManifest(BaseModel):
     """

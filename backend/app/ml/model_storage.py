@@ -19,7 +19,7 @@ from huggingface_hub import HfApi
 from app.core.job_cancellation import JobCancelledError
 from app.core.logging_config import get_logger
 from app.ml.hf_downloader import HuggingFaceRepoDownloader
-from app.ml.schemas.model_manifest import ModelManifest
+from app.ml.schemas.model_manifest import ModelManifest, resolve_hf_repo
 
 logger = get_logger(__name__)
 
@@ -181,7 +181,7 @@ class ModelStorage:
             return model_path
 
         # Determine HF repo
-        hf_repo = manifest.hf_repo or f"Addax-Data-Science/{manifest.model_id}"
+        hf_repo = resolve_hf_repo(manifest.model_id, manifest.hf_repo)
         logger.info(f"Downloading {hf_repo} to {model_path}")
 
         if progress_callback:

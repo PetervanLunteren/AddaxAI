@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.logging_config import get_logger
+from app.ml.schemas.model_manifest import resolve_hf_repo
 
 logger = get_logger(__name__)
 
@@ -126,20 +127,25 @@ class ModelCatalogUpdater:
         )
         return local_models
 
-    def download_taxonomy(self, model_id: str, model_dir: Path) -> None:
+    def download_taxonomy(
+        self, model_id: str, model_dir: Path, hf_repo: str | None = None
+    ) -> None:
         """
         Download taxonomy.csv from HuggingFace repo.
 
         Args:
             model_id: Model ID (used to construct HF repo URL)
             model_dir: Local directory to save taxonomy.csv
+            hf_repo: Explicit repo override from the manifest. None means
+                     follow the `<DEFAULT_HF_ORG>/<model_id>` convention.
 
         Raises:
             Never raises - logs errors and continues
         """
-        # Construct HuggingFace URL
-        hf_repo = f"Addax-Data-Science/{model_id}"
-        taxonomy_url = f"https://huggingface.co/{hf_repo}/resolve/main/taxonomy.csv?download=true"
+        taxonomy_url = (
+            f"https://huggingface.co/{resolve_hf_repo(model_id, hf_repo)}"
+            f"/resolve/main/taxonomy.csv?download=true"
+        )
         taxonomy_path = model_dir / "taxonomy.csv"
 
         try:
@@ -166,10 +172,10 @@ class ModelCatalogUpdater:
     ) -> str:
         """
         Idempotently sync the local manifest.json for a model with the
-        central catalog. Creates the model directory and downloads
-        taxonomy.csv on first appearance, refreshes the manifest in place
-        when the catalog has newer content (citation, URL, license,
-        friendly_name etc.), no-ops when content is identical.
+        central catalog. Creates the model directory, refreshes the
+        manifest in place when the catalog has newer content (citation,
+        URL, license, friendly_name etc.), no-ops when content is
+        identical, and fetches taxonomy.csv whenever it is missing.
 
         Returns one of "created" / "updated" / "unchanged" so the caller
         can decide what to surface in the UI. Never raises; logs and
@@ -183,32 +189,45 @@ class ModelCatalogUpdater:
 
         try:
             # Compare existing content. Identical bytes-or-equivalent
-            # JSON means nothing to do; the catalog hasn't moved.
+            # JSON means the catalog hasn't moved and the file is left
+            # alone, but we still fall through to the taxonomy check.
+            unchanged = False
             if manifest_path.exists():
                 try:
                     with open(manifest_path) as f:
                         existing = json.load(f)
-                    if existing == manifest_data:
-                        return "unchanged"
+                    unchanged = existing == manifest_data
                 except (json.JSONDecodeError, OSError) as e:
                     logger.warning(
                         f"Existing manifest at {manifest_path} unreadable, "
                         f"will overwrite: {e}"
                     )
 
-            model_dir.mkdir(parents=True, exist_ok=True)
-            with open(manifest_path, "w") as f:
-                json.dump(manifest_data, f, indent=2)
+            if not unchanged:
+                model_dir.mkdir(parents=True, exist_ok=True)
+                with open(manifest_path, "w") as f:
+                    json.dump(manifest_data, f, indent=2)
+
+            # Taxonomy ships in the HF repo, not the catalog, so fetch it
+            # whenever it is missing rather than only on first creation.
+            # This check must sit outside the `unchanged` branch: a stub
+            # whose taxonomy never landed (model published before its
+            # taxonomy.csv existed, or first synced while offline) has a
+            # perfectly unchanged manifest, so an early return would leave
+            # it broken forever, on a flat label list with no rollup.
+            # Present file means no request, so once a model's taxonomy is
+            # on disk this costs nothing; a repo that genuinely has no
+            # taxonomy.csv pays one cheap 404 per launch.
+            if model_type == "cls" and not (model_dir / "taxonomy.csv").exists():
+                self.download_taxonomy(
+                    model_id, model_dir, manifest_data.get("hf_repo")
+                )
+
+            if unchanged:
+                return "unchanged"
 
             if is_new_dir:
                 logger.info(f"Created manifest stub for {model_type}/{model_id}")
-                # Taxonomy ships alongside the model on first appearance.
-                # No re-download on refresh: taxonomy lives in the HF
-                # repo, not the catalog, and catalog refresh shouldn't
-                # imply HF revision drift (that's the model-revision
-                # drift TODO).
-                if model_type == "cls":
-                    self.download_taxonomy(model_id, model_dir)
                 return "created"
 
             logger.info(f"Refreshed manifest for {model_type}/{model_id}")
@@ -263,7 +282,7 @@ class ModelCatalogUpdater:
             # Legacy install. Skip per "unknown but valid" rule.
             return None
 
-        hf_repo = local.get("hf_repo") or f"Addax-Data-Science/{model_id}"
+        hf_repo = resolve_hf_repo(model_id, local.get("hf_repo"))
         try:
             info = HfApi().model_info(hf_repo)
             remote = getattr(info, "sha", None)
