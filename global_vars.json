@@ -37,6 +37,5 @@
     "var_keep_series": false,
     "var_keep_series_species": [],
     "var_keep_series_seconds": 5.0,
-    "var_gundi_upload": false,
-    "var_gundi_api_key": ""
+    "var_gundi_upload": false
 }

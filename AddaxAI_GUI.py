@@ -66,6 +66,7 @@ import time
 import glob
 import random
 import signal
+import threading
 import shutil
 import pickle
 import folium
@@ -123,7 +124,30 @@ GUNDI_BASE_URLS = {
     "stage": "https://sensors.api.stage.gundiservice.org/v2",
 }
 GUNDI_ENV = os.environ.get("ADDAXAI_GUNDI_ENV", "prod").lower()
-GUNDI_BASE_URL = GUNDI_BASE_URLS.get(GUNDI_ENV, GUNDI_BASE_URLS["prod"])
+if GUNDI_ENV not in GUNDI_BASE_URLS:
+    # never fall back silently — a typo must not send test events to production
+    sys.exit(f"Unknown ADDAXAI_GUNDI_ENV value '{GUNDI_ENV}' — expected one of: {', '.join(sorted(GUNDI_BASE_URLS))}")
+GUNDI_BASE_URL = GUNDI_BASE_URLS[GUNDI_ENV]
+
+# the Gundi API key is stored in its own file outside the AddaxAI folder (never
+# in global_vars.json, which is tracked in git) so the credential cannot end up
+# in a commit or a shared settings file
+GUNDI_KEY_FILE = os.path.join(AddaxAI_files, "gundi-api-key.txt")
+
+def load_gundi_api_key():
+    try:
+        with open(GUNDI_KEY_FILE) as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+def save_gundi_api_key(key):
+    try:
+        with open(GUNDI_KEY_FILE, 'w') as f:
+            f.write(key.strip())
+        os.chmod(GUNDI_KEY_FILE, 0o600)
+    except Exception as e:
+        print(f"Could not save Gundi API key: {e}")
 
 # set environment variables
 if os.name == 'nt': # windows
@@ -198,6 +222,17 @@ def load_global_vars():
         variables = json.load(file)
     return variables
 global_vars = load_global_vars()
+
+# backfill settings keys added in newer versions, so that installs upgrading
+# in place (whose persisted global_vars.json predates these keys) keep working
+# (write_global_vars only updates keys already present, so without this the
+# new keys would never be saved)
+_added_setting_defaults = {"var_gundi_upload": False}
+if any(k not in global_vars for k in _added_setting_defaults):
+    for _k, _v in _added_setting_defaults.items():
+        global_vars.setdefault(_k, _v)
+    with open(os.path.join(AddaxAI_files, "AddaxAI", "global_vars.json"), 'w') as _f:
+        json.dump(global_vars, _f, indent=4)
 
 # language settings
 languages_available = ['English', 'Español', 'Français']
@@ -850,12 +885,13 @@ def upload_to_gundi(src_dir, thresh, api_key, progress_window):
 
     global cancel_var
     errors = []
-    gundi_base_url = GUNDI_BASE_URL
-    print(f"Gundi endpoint: {gundi_base_url} (env: {GUNDI_ENV})\n")
+    print(f"Gundi endpoint: {GUNDI_BASE_URL} (env: {GUNDI_ENV})\n")
 
     # open recognition file
     recognition_file = os.path.join(src_dir, "image_recognition_file.json")
     if not os.path.isfile(recognition_file):
+        progress_window.update_values(process="gundi", status="done")
+        root.update()
         return errors
 
     with open(recognition_file) as f:
@@ -865,95 +901,224 @@ def upload_to_gundi(src_dir, thresh, api_key, progress_window):
     label_map = data.get('detection_categories', {})
     cls_label_map = data.get('classification_categories', {})
 
-    # first pass: count uploadable detections (have GPS and above threshold)
+    # model provenance comes from the recognition file that actually produced
+    # the results, not from the (freely changeable) model dropdowns
+    det_model_name = data.get('info', {}).get('detector') or var_det_model.get()
+    cls_model_name = var_cls_model.get() if cls_label_map else ""
+
+    # helper to normalise EXIF values that may arrive as bytes
+    def exif_str(value):
+        if isinstance(value, bytes):
+            value = value.decode(errors="ignore")
+        return str(value).replace('\x00', '').strip()
+
+    # first pass: collect uploadable detections (above threshold with GPS).
+    # runs in a worker thread so the GUI stays responsive while every image
+    # is opened; the progress row shows the load screen meanwhile
+    progress_window.update_values(process="gundi", status="load")
+    root.update()
+
     uploadable = []
-    skipped_no_gps = 0
-    for image in data['images']:
-        file = image['file']
-        filepath = os.path.join(src_dir, file)
-        if not os.path.isfile(filepath):
-            continue
+    scan = {"skipped_no_gps": 0, "skipped_missing": 0}
 
-        # extract GPS
-        try:
-            gps = gpsphoto.getGPSData(filepath)
-        except:
-            gps = {}
-        if 'Latitude' not in gps or 'Longitude' not in gps:
-            skipped_no_gps += 1
-            continue
+    def scan_worker():
+        for image in data['images']:
+            if cancel_var:
+                break
+            file = image['file']
+            filepath = os.path.join(src_dir, file)
 
-        # extract EXIF metadata
-        try:
-            img_for_exif = PIL.Image.open(filepath)
-            metadata = {
-                PIL.ExifTags.TAGS[k]: v
-                for k, v in img_for_exif._getexif().items()
-                if k in PIL.ExifTags.TAGS
-            }
-            img_for_exif.close()
-        except:
-            metadata = {}
-
-        # check manually verified status
-        manually_checked = image.get('manually_checked', False)
-
-        for detection in image.get('detections', []):
-            conf = detection['conf']
-            if conf < thresh:
+            # only look at images with at least one detection above threshold
+            detections = [d for d in image.get('detections', []) if d['conf'] >= thresh]
+            if not detections:
                 continue
 
-            # get species label
-            cat_id = detection['category']
-            if 'classifications' in detection and len(detection['classifications']) > 0:
-                cls_id = detection['classifications'][0][0]
-                label = cls_label_map.get(cls_id, label_map.get(cat_id, "unknown"))
-            else:
-                label = label_map.get(cat_id, "unknown")
+            if not os.path.isfile(filepath):
+                scan["skipped_missing"] += 1
+                continue
 
-            uploadable.append({
-                'filepath': filepath,
-                'file': file,
-                'label': label,
-                'conf': conf,
-                'detection': detection,
-                'gps': gps,
-                'metadata': metadata,
-                'manually_checked': manually_checked,
-            })
+            # extract GPS
+            try:
+                gps = gpsphoto.getGPSData(filepath)
+            except Exception:
+                gps = {}
+            if 'Latitude' not in gps or 'Longitude' not in gps:
+                scan["skipped_no_gps"] += 1
+                continue
+
+            # camera make/model from EXIF (tags 271/272), timestamp via the
+            # shared helper (EXIF, filename pattern, or file mtime)
+            make = model = ""
+            try:
+                img_for_exif = PIL.Image.open(filepath)
+                exif = img_for_exif.getexif()
+                make = exif_str(exif.get(271, ""))
+                model = exif_str(exif.get(272, ""))
+                img_for_exif.close()
+            except Exception:
+                pass
+            timestamp = get_image_timestamp(src_dir, file)
+
+            manually_checked = image.get('manually_checked', False)
+
+            for detection in detections:
+                # get species label
+                cat_id = detection['category']
+                if 'classifications' in detection and len(detection['classifications']) > 0:
+                    cls_id = detection['classifications'][0][0]
+                    label = cls_label_map.get(cls_id, label_map.get(cat_id, "unknown"))
+                else:
+                    label = label_map.get(cat_id, "unknown")
+
+                uploadable.append({
+                    'filepath': filepath,
+                    'file': file,
+                    'label': label,
+                    'conf': detection['conf'],
+                    'bbox': detection.get('bbox', [0, 0, 0, 0]),
+                    'gps': gps,
+                    'make': make,
+                    'model': model,
+                    'timestamp': timestamp,
+                    'manually_checked': manually_checked,
+                })
+
+    scan_thread = threading.Thread(target=scan_worker, daemon=True)
+    scan_thread.start()
+    while scan_thread.is_alive():
+        root.update()
+        time.sleep(0.05)
 
     total = len(uploadable)
+    skipped_no_gps = scan["skipped_no_gps"]
+    skipped_missing = scan["skipped_missing"]
 
     # warn if no uploadable detections
     if total == 0:
-        if skipped_no_gps > 0:
+        if skipped_no_gps > 0 or skipped_missing > 0:
             mb.showwarning(warning_txt[lang_idx],
-                [f"No images with GPS coordinates found. {skipped_no_gps} image(s) were skipped because they lack GPS data. Gundi upload requires GPS coordinates.",
-                 f"No se encontraron imágenes con coordenadas GPS. Se omitieron {skipped_no_gps} imagen(es) por falta de datos GPS. La carga a Gundi requiere coordenadas GPS.",
-                 f"Aucune image avec coordonnées GPS trouvée. {skipped_no_gps} image(s) ignorée(s) car elles n'ont pas de données GPS. L'envoi vers Gundi nécessite des coordonnées GPS."][lang_idx])
+                [f"No detections could be uploaded to Gundi. {skipped_no_gps} image(s) were skipped because they lack GPS coordinates and {skipped_missing} image(s) were not found on disk.",
+                 f"No se pudo subir ninguna detección a Gundi. Se omitieron {skipped_no_gps} imagen(es) por falta de coordenadas GPS y {skipped_missing} imagen(es) no se encontraron en el disco.",
+                 f"Aucune détection n'a pu être envoyée vers Gundi. {skipped_no_gps} image(s) ont été ignorées faute de coordonnées GPS et {skipped_missing} image(s) sont introuvables sur le disque."][lang_idx])
         progress_window.update_values(process="gundi", status="done")
         root.update()
         return errors
 
     # warn about skipped images
-    if skipped_no_gps > 0:
+    if skipped_no_gps > 0 or skipped_missing > 0:
         mb.showinfo(information_txt[lang_idx],
-            [f"{skipped_no_gps} image(s) without GPS coordinates will be skipped. {total} detection(s) will be uploaded to Gundi.",
-             f"{skipped_no_gps} imagen(es) sin coordenadas GPS se omitirán. Se subirán {total} detección(es) a Gundi.",
-             f"{skipped_no_gps} image(s) sans coordonnées GPS seront ignorée(s). {total} détection(s) seront envoyée(s) vers Gundi."][lang_idx])
+            [f"{skipped_no_gps} image(s) without GPS coordinates and {skipped_missing} missing image(s) will be skipped. {total} detection(s) will be uploaded to Gundi.",
+             f"Se omitirán {skipped_no_gps} imagen(es) sin coordenadas GPS y {skipped_missing} imagen(es) no encontradas. Se subirán {total} detección(es) a Gundi.",
+             f"{skipped_no_gps} image(s) sans coordonnées GPS et {skipped_missing} image(s) introuvables seront ignorées. {total} détection(s) seront envoyées vers Gundi."][lang_idx])
 
-    # upload loop
+    # upload loop: network I/O runs in a worker thread so the tkinter mainloop
+    # keeps pumping (UI stays responsive, cancel button keeps working); the
+    # main thread only updates the progress display
+    progress = {"i": 0, "uploaded": 0, "done": False}
+
+    def upload_worker():
+        session = requests.Session()
+        session.headers["apikey"] = api_key
+        try:
+            for item in uploadable:
+                if cancel_var:
+                    break
+
+                # build timestamp (get_image_timestamp falls back to file
+                # mtime, so it is virtually never None)
+                if item['timestamp'] is not None:
+                    iso_timestamp = item['timestamp'].strftime('%Y-%m-%dT%H:%M:%SZ')
+                else:
+                    iso_timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+
+                # build event payload
+                verified_str = " (verified)" if item['manually_checked'] else ""
+                event_payload = {
+                    "title": f"{item['label']} detected ({int(item['conf'] * 100)}% confidence){verified_str}",
+                    "event_type": "wildlife_observation",
+                    "recorded_at": iso_timestamp,
+                    "location": {
+                        "lat": item['gps']['Latitude'],
+                        "lon": item['gps']['Longitude']
+                    },
+                    "status": "new",
+                    "source": "AddaxAI",
+                    "event_details": {
+                        "species": item['label'],
+                        "confidence": round(item['conf'], 4),
+                        "camera_make": item['make'],
+                        "camera_model": item['model'],
+                        "detection_model": det_model_name,
+                        "classification_model": cls_model_name,
+                        "human_verified": item['manually_checked'],
+                        "altitude": item['gps'].get('Altitude', ''),
+                        "bbox": item['bbox'],
+                        "addaxai_version": current_AA_version,
+                        "image_filename": os.path.basename(item['file'])
+                    }
+                }
+
+                # POST event; retry once on server error or connection problem.
+                # every non-success exit of this loop records an error so no
+                # failed event can vanish silently
+                object_id = None
+                event_error = None
+                for attempt in range(2):
+                    try:
+                        resp = session.post(f"{GUNDI_BASE_URL}/events/",
+                                            json=event_payload,
+                                            timeout=30)
+                        if resp.status_code in (200, 201):
+                            object_id = resp.json().get('object_id')
+                            if not object_id:
+                                event_error = f"Event creation returned HTTP {resp.status_code} without object_id: {resp.text[:200]}"
+                            break
+                        elif resp.status_code >= 500 and attempt == 0:
+                            time.sleep(1)
+                            continue
+                        else:
+                            event_error = f"Event creation failed: HTTP {resp.status_code} - {resp.text[:200]}"
+                            break
+                    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                        if attempt == 0:
+                            time.sleep(1)
+                            continue
+                        event_error = f"Event creation failed: {str(e)[:200]}"
+                        break
+                    except Exception as e:
+                        event_error = f"Event creation failed: {str(e)[:200]}"
+                        break
+
+                if event_error:
+                    errors.append((item['file'], event_error))
+                elif object_id:
+                    # POST attachment
+                    try:
+                        with open(item['filepath'], 'rb') as photo:
+                            resp_att = session.post(f"{GUNDI_BASE_URL}/events/{object_id}/attachments/",
+                                                    files={"file1": photo},
+                                                    timeout=60)
+                        if resp_att.status_code in (200, 201):
+                            progress["uploaded"] += 1
+                        else:
+                            errors.append((item['file'], f"Attachment upload failed: HTTP {resp_att.status_code} - {resp_att.text[:200]}"))
+                    except Exception as e:
+                        errors.append((item['file'], f"Attachment upload failed: {str(e)[:200]}"))
+
+                progress["i"] += 1
+
+                # rate limiting
+                time.sleep(0.1)
+        finally:
+            session.close()
+            progress["done"] = True
+
     start_time = time.time()
-    headers_json = {"apikey": api_key, "Content-Type": "application/json"}
-    headers_file = {"apikey": api_key}
-    uploaded = 0
+    upload_thread = threading.Thread(target=upload_worker, daemon=True)
+    upload_thread.start()
 
-    for i, item in enumerate(uploadable):
-        if cancel_var:
-            break
-        errors_before = len(errors)
-
-        # progress update
+    while True:
+        i = progress["i"]
         elapsed_time = str(datetime.timedelta(seconds=round(time.time() - start_time)))
         if i > 0:
             time_left = str(datetime.timedelta(seconds=round(((time.time() - start_time) * total / i) - (time.time() - start_time))))
@@ -961,114 +1126,26 @@ def upload_to_gundi(src_dir, thresh, api_key, progress_window):
             time_left = "..."
         progress_window.update_values(process="gundi",
                                       status="running",
-                                      cur_it=i + 1,
+                                      cur_it=min(i + 1, total),
                                       tot_it=total,
                                       time_ela=elapsed_time,
                                       time_rem=time_left,
                                       cancel_func=cancel)
         root.update()
-
-        # build timestamp from EXIF
-        iso_timestamp = ""
-        for dt_key in ['DateTimeOriginal', 'DateTime', 'DateTimeDigitized']:
-            try:
-                raw = str(item['metadata'][dt_key])
-                dt = datetime.datetime.strptime(raw, '%Y:%m:%d %H:%M:%S')
-                iso_timestamp = dt.strftime('%Y-%m-%dT%H:%M:%SZ')
-                break
-            except:
-                continue
-        if not iso_timestamp:
-            iso_timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-
-        # build bbox in absolute pixels
-        det = item['detection']
-        bbox_raw = det.get('bbox', [0, 0, 0, 0])
-
-        # build event payload
-        verified_str = " (verified)" if item['manually_checked'] else ""
-        event_payload = {
-            "title": f"{item['label']} detected ({int(item['conf'] * 100)}% confidence){verified_str}",
-            "event_type": "wildlife_observation",
-            "recorded_at": iso_timestamp,
-            "location": {
-                "lat": item['gps']['Latitude'],
-                "lon": item['gps']['Longitude']
-            },
-            "status": "new",
-            "source": "AddaxAI",
-            "event_details": {
-                "species": item['label'],
-                "confidence": round(item['conf'], 4),
-                "camera_make": str(item['metadata'].get('Make', '')),
-                "camera_model": str(item['metadata'].get('Model', '')),
-                "detection_model": var_det_model.get(),
-                "classification_model": var_cls_model.get(),
-                "human_verified": item['manually_checked'],
-                "altitude": item['gps'].get('Altitude', ''),
-                "bbox": bbox_raw,
-                "addaxai_version": current_AA_version,
-                "image_filename": os.path.basename(item['file'])
-            }
-        }
-
-        # POST event with retry
-        object_id = None
-        for attempt in range(2):
-            try:
-                resp = requests.post(f"{gundi_base_url}/events/",
-                                     json=event_payload,
-                                     headers=headers_json,
-                                     timeout=30)
-                if resp.status_code in (200, 201):
-                    object_id = resp.json().get('object_id')
-                    break
-                elif resp.status_code >= 500:
-                    time.sleep(1)
-                    continue
-                else:
-                    errors.append((item['file'], f"Event creation failed: HTTP {resp.status_code} - {resp.text[:200]}"))
-                    break
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                if attempt == 0:
-                    time.sleep(1)
-                    continue
-                errors.append((item['file'], f"Event creation failed: {str(e)[:200]}"))
-                break
-            except Exception as e:
-                errors.append((item['file'], f"Event creation failed: {str(e)[:200]}"))
-                break
-
-        # POST attachment if event was created
-        if object_id:
-            try:
-                with open(item['filepath'], 'rb') as photo:
-                    resp_att = requests.post(f"{gundi_base_url}/events/{object_id}/attachments/",
-                                             files={"file1": photo},
-                                             headers=headers_file,
-                                             timeout=60)
-                if resp_att.status_code not in (200, 201):
-                    errors.append((item['file'], f"Attachment upload failed: HTTP {resp_att.status_code} - {resp_att.text[:200]}"))
-            except Exception as e:
-                errors.append((item['file'], f"Attachment upload failed: {str(e)[:200]}"))
-
-        # count fully successful uploads (event + attachment)
-        if object_id and len(errors) == errors_before:
-            uploaded += 1
-
-        # rate limiting
-        time.sleep(0.1)
+        if progress["done"]:
+            break
+        time.sleep(0.05)
 
     # done
     progress_window.update_values(process="gundi", status="done")
     root.update()
 
     # confirm success to the user (failures are reported by the caller)
-    if uploaded > 0 and not errors and not cancel_var:
+    if progress["uploaded"] > 0 and not errors and not cancel_var:
         mb.showinfo(information_txt[lang_idx],
-            [f"{uploaded} event(s) successfully uploaded to Gundi.",
-             f"{uploaded} evento(s) subido(s) correctamente a Gundi.",
-             f"{uploaded} evenement(s) envoye(s) avec succes vers Gundi."][lang_idx])
+            [f"{progress['uploaded']} event(s) successfully uploaded to Gundi.",
+             f"{progress['uploaded']} evento(s) subido(s) correctamente a Gundi.",
+             f"{progress['uploaded']} événement(s) envoyé(s) avec succès vers Gundi."][lang_idx])
 
     return errors
 
@@ -1553,9 +1630,12 @@ def start_postprocess():
         "var_vis_blur": var_vis_blur.get(),
         "var_plt": var_plt.get(),
         "var_thresh": var_thresh.get(),
-        "var_gundi_upload": var_gundi_upload.get(),
-        "var_gundi_api_key": var_gundi_api_key.get()
+        "var_gundi_upload": var_gundi_upload.get()
     })
+
+    # the API key is stored in its own file outside the AddaxAI folder, never
+    # in global_vars.json (which is tracked in git)
+    save_gundi_api_key(var_gundi_api_key.get())
 
     # fix user input
     src_dir = var_choose_folder.get()
@@ -1610,7 +1690,7 @@ def start_postprocess():
         mb.showerror(error_txt[lang_idx],
             ["Gundi API key is required. Please enter your API key in the Gundi options.",
              "Se requiere la clave API de Gundi. Introduzca su clave API en las opciones de Gundi.",
-             "La cle API Gundi est requise. Veuillez saisir votre cle API dans les options Gundi."][lang_idx])
+             "La clé API Gundi est requise. Veuillez saisir votre clé API dans les options Gundi."][lang_idx])
         return
 
     # warn user if the original files will be overwritten with visualized files
@@ -1650,26 +1730,29 @@ def start_postprocess():
     progress_window.open()
 
     try:
-        # postprocess images
-        if img_json:
-            postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type = "img", keep_series_species=keep_series_species)
-
-        # postprocess videos
-        if vid_json and not cancel_var:
-            postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type = "vid", keep_series_species=keep_series_species)
-
-        # upload to gundi (images only)
-        if gundi and img_json and not cancel_var:
+        # upload to gundi (images only) — this must run BEFORE postprocessing,
+        # because file separation with 'Move' placement relocates the images
+        # out of src_dir and the upload would find nothing to send
+        if gundi and img_json:
             gundi_errors = upload_to_gundi(src_dir, thresh, gundi_api_key, progress_window)
             if gundi_errors:
+                os.makedirs(dst_dir, exist_ok=True)
                 error_log = os.path.join(dst_dir, "gundi_upload_errors.txt")
                 with open(error_log, 'w') as f:
                     for fpath, err in gundi_errors:
                         f.write(f"{fpath}: {err}\n")
                 mb.showwarning(warning_txt[lang_idx],
                     [f"{len(gundi_errors)} event(s) failed to upload to Gundi. See\n\n'{error_log}'\n\nfor details.",
-                     f"{len(gundi_errors)} evento(s) no se pudieron subir a Gundi. Consulte\n\n'{error_log}'\n\npara mas detalles.",
-                     f"{len(gundi_errors)} evenement(s) n'ont pas pu etre envoyes vers Gundi. Voir\n\n'{error_log}'\n\npour plus de details."][lang_idx])
+                     f"{len(gundi_errors)} evento(s) no se pudieron subir a Gundi. Consulte\n\n'{error_log}'\n\npara más detalles.",
+                     f"{len(gundi_errors)} événement(s) n'ont pas pu être envoyés vers Gundi. Voir\n\n'{error_log}'\n\npour plus de détails."][lang_idx])
+
+        # postprocess images
+        if img_json and not cancel_var:
+            postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type = "img", keep_series_species=keep_series_species)
+
+        # postprocess videos
+        if vid_json and not cancel_var:
+            postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type = "vid", keep_series_species=keep_series_species)
 
         # complete
         complete_frame(fth_step)
@@ -9721,10 +9804,12 @@ def enable_frame(frame):
         toggle_keep_series_frame()
         toggle_exp_frame()
         toggle_vis_frame()
+        toggle_gundi_frame()
         sep_frame.configure(relief = 'solid')
         keep_series_frame.configure(relief = 'solid')
         exp_frame.configure(relief = 'solid')
         vis_frame.configure(relief = 'solid')
+        gundi_frame.configure(relief = 'solid')
 
 # remove checkmarks and complete buttons
 def uncomplete_frame(frame):
@@ -9913,6 +9998,7 @@ def reset_values():
     var_exp_format.set(dpd_options_exp_format[lang_idx][global_vars['var_exp_format_idx']])
     var_gundi_upload.set(False)
     var_gundi_api_key.set("")
+    save_gundi_api_key("")
 
     write_global_vars({
         "var_det_model_idx": dpd_options_model[lang_idx].index(var_det_model.get()),
@@ -9943,8 +10029,7 @@ def reset_values():
         "var_crp_files": var_crp_files.get(),
         "var_exp": var_exp.get(),
         "var_exp_format_idx": dpd_options_exp_format[lang_idx].index(var_exp_format.get()),
-        "var_gundi_upload": var_gundi_upload.get(),
-        "var_gundi_api_key": var_gundi_api_key.get()
+        "var_gundi_upload": var_gundi_upload.get()
     })
 
     # update keep-series trigger display
@@ -9976,6 +10061,7 @@ def reset_values():
     toggle_exp_frame()
     toggle_vis_frame()
     toggle_sep_frame()
+    toggle_gundi_frame()
     toggle_keep_series_frame()
     toggle_image_size_for_deploy()
     resize_canvas_to_content()
@@ -10715,12 +10801,12 @@ chb_plt = Checkbutton(fth_step, variable=var_plt, anchor="w")
 chb_plt.grid(row=row_plt, column=1, sticky='nesw', padx=5)
 
 # gundi upload
-lbl_gundi_upload_txt = ["Upload events to Gundi", "Subir eventos a Gundi", "Envoyer les events vers Gundi"]
+lbl_gundi_upload_txt = ["Upload events to Gundi", "Subir eventos a Gundi", "Envoyer les événements vers Gundi"]
 row_gundi_upload = 7
 lbl_gundi_upload = Label(fth_step, text=lbl_gundi_upload_txt[lang_idx], width=1, anchor="w")
 lbl_gundi_upload.grid(row=row_gundi_upload, sticky='nesw', pady=2)
 var_gundi_upload = BooleanVar()
-var_gundi_upload.set(global_vars['var_gundi_upload'])
+var_gundi_upload.set(global_vars.get('var_gundi_upload', False))
 chb_gundi_upload = Checkbutton(fth_step, variable=var_gundi_upload, anchor="w", command=toggle_gundi_frame)
 chb_gundi_upload.grid(row=row_gundi_upload, column=1, sticky='nesw', padx=5)
 
@@ -10735,11 +10821,11 @@ gundi_frame.columnconfigure(1, weight=1, minsize=widget_width - subframe_correct
 gundi_frame.grid_forget()
 
 # api key entry
-lbl_gundi_api_key_txt = ["API key", "Clave API", "Cle API"]
+lbl_gundi_api_key_txt = ["API key", "Clave API", "Clé API"]
 lbl_gundi_api_key = Label(gundi_frame, text="     " + lbl_gundi_api_key_txt[lang_idx], pady=2, width=1, anchor="w")
 lbl_gundi_api_key.grid(row=0, sticky='nesw')
 var_gundi_api_key = StringVar()
-var_gundi_api_key.set(global_vars['var_gundi_api_key'])
+var_gundi_api_key.set(load_gundi_api_key())
 ent_gundi_api_key = Entry(gundi_frame, textvariable=var_gundi_api_key, show="*")
 ent_gundi_api_key.grid(row=0, column=1, sticky='nesw', padx=5)
 
@@ -11294,12 +11380,12 @@ def write_help_tab():
     help_text.insert(END, ["Upload detection events to Gundi (gundi.earth), a conservation data integration platform. Each detection with GPS coordinates "
                            "will be sent as an event including species, confidence, camera metadata, and the original photo. Requires a Gundi API key "
                            "from the Gundi Portal. Images without GPS coordinates will be skipped.\n\n",
-                           "Suba eventos de deteccion a Gundi (gundi.earth), una plataforma de integracion de datos de conservacion. Cada deteccion con "
-                           "coordenadas GPS se enviara como un evento incluyendo especie, confianza, metadatos de la camara y la foto original. Requiere "
-                           "una clave API de Gundi del Portal Gundi. Las imagenes sin coordenadas GPS se omitiran.\n\n",
-                           "Envoyez les evenements de detection vers Gundi (gundi.earth), une plateforme d'integration de donnees de conservation. Chaque "
-                           "detection avec coordonnees GPS sera envoyee comme evenement incluant l'espece, la confiance, les metadonnees de la camera et "
-                           "la photo originale. Necessite une cle API Gundi du portail Gundi. Les images sans coordonnees GPS seront ignorees.\n\n"][lang_idx])
+                           "Suba eventos de detección a Gundi (gundi.earth), una plataforma de integración de datos de conservación. Cada detección con "
+                           "coordenadas GPS se enviará como un evento incluyendo especie, confianza, metadatos de la cámara y la foto original. Requiere "
+                           "una clave API de Gundi del Portal Gundi. Las imágenes sin coordenadas GPS se omitirán.\n\n",
+                           "Envoyez les événements de détection vers Gundi (gundi.earth), une plateforme d'intégration de données de conservation. Chaque "
+                           "détection avec coordonnées GPS sera envoyée comme événement incluant l'espèce, la confiance, les métadonnées de la caméra et "
+                           "la photo originale. Nécessite une clé API Gundi du portail Gundi. Les images sans coordonnées GPS seront ignorées.\n\n"][lang_idx])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
