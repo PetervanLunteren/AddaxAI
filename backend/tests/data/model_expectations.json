@@ -14,6 +14,7 @@
   ],
   "models": {
     "HWI-ADS-v1": {
+      "source": "legacy",
       "legacy_key": "Hawaiʻi, USA - AI Puaʻa v1.0",
       "legacy_type": "addax-sppnet",
       "legacy_env": "pytorch",
@@ -49,6 +50,7 @@
       ]
     },
     "VIC-ADS-v1": {
+      "source": "legacy",
       "legacy_key": "Victoria, Australia - Parks Victoria - Addax Data Science",
       "legacy_type": "addax-sppnet",
       "legacy_env": "pytorch",
@@ -84,6 +86,7 @@
       ]
     },
     "SBUSA-ADS-v1": {
+      "source": "legacy",
       "legacy_key": "Southwestern Borderlands USA",
       "legacy_type": "addax-sppnet",
       "legacy_env": "pytorch",
@@ -119,6 +122,7 @@
       ]
     },
     "SWUSA-SDZWA-v3": {
+      "source": "legacy",
       "legacy_key": "Southwest USA v3 - San Diego Zoo Wildlife Alliance",
       "legacy_type": "sdzwa-pt",
       "legacy_env": "pytorch",
@@ -154,6 +158,7 @@
       ]
     },
     "TAS-BB-v1": {
+      "source": "legacy",
       "legacy_key": "Tasmanian vertebrates",
       "legacy_type": "mewc-keras",
       "legacy_env": "tensorflow-v2",
@@ -189,6 +194,7 @@
       ]
     },
     "EUR-DF-v1-3": {
+      "source": "legacy",
       "legacy_key": "Europe - DeepFaune v1.3",
       "legacy_type": "deepfaune-v1.3",
       "legacy_env": "pytorch",
@@ -224,6 +230,7 @@
       ]
     },
     "NAM-ADS-v1": {
+      "source": "legacy",
       "legacy_key": "Namibian Desert - Addax Data Science",
       "legacy_type": "addax-yolov8",
       "legacy_env": "pytorch",
@@ -259,6 +266,7 @@
       ]
     },
     "SAH-DRY-ADS-v1": {
+      "source": "legacy",
       "legacy_key": "Sub-Saharan Drylands - Addax Data Science",
       "legacy_type": "addax-sdzwa-pt",
       "legacy_env": "pytorch",
@@ -294,6 +302,7 @@
       ]
     },
     "IND-ADS-v1": {
+      "source": "legacy",
       "legacy_key": "Central Indian Landscapes – Wildlife Conservation Trust",
       "legacy_type": "addax-sppnet",
       "legacy_env": "pytorch",
@@ -329,6 +338,7 @@
       ]
     },
     "ANT-ADS-v1": {
+      "source": "legacy",
       "legacy_key": "Top End Savanna Vertebrates, Northern Territory Australia",
       "legacy_type": "addax-sppnet",
       "legacy_env": "pytorch",
@@ -364,6 +374,7 @@
       ]
     },
     "EUR-DF-v1-4": {
+      "source": "legacy",
       "legacy_key": "Europe - DeepFaune v1.4",
       "legacy_type": "deepfaune-v1.4",
       "legacy_env": "pytorch",
@@ -399,6 +410,7 @@
       ]
     },
     "EUR-DF-v1-2": {
+      "source": "legacy",
       "legacy_key": "Europe - DeepFaune v1.2",
       "legacy_type": "deepfaune-v1.2",
       "legacy_env": "pytorch",
@@ -434,6 +446,7 @@
       ]
     },
     "EUR-DF-v1-1": {
+      "source": "legacy",
       "legacy_key": "Europe - DeepFaune v1.1",
       "legacy_type": "deepfaune",
       "legacy_env": "pytorch",
@@ -469,6 +482,7 @@
       ]
     },
     "PAN-SDZWA-v1": {
+      "source": "legacy",
       "legacy_key": "Perivuan Andes - San Diego Zoo Wildlife Alliance",
       "legacy_type": "sdzwa-pt",
       "legacy_env": "pytorch",
@@ -504,6 +518,7 @@
       ]
     },
     "QLD-WOB-v1": {
+      "source": "legacy",
       "legacy_key": "Queensland Wet Tropics - WildObs",
       "legacy_type": "wildobs-qld-wettropics",
       "legacy_env": "pytorch",
@@ -539,6 +554,7 @@
       ]
     },
     "AWC135-AWC-v1": {
+      "source": "legacy",
       "legacy_key": "Australian Wildlife Classifier - AWC135",
       "legacy_type": "awc135",
       "legacy_env": "pytorch",
@@ -574,6 +590,7 @@
       ]
     },
     "NEO-MNCN-v1-0": {
+      "source": "legacy",
       "legacy_key": "Neotropical region - TropiCam-AI v1.0",
       "legacy_type": "andrea-anpc",
       "legacy_env": "tensorflow-v1",
@@ -609,6 +626,7 @@
       ]
     },
     "PAM-SDZWA-v1": {
+      "source": "legacy",
       "legacy_key": "Peruvian Amazon - San Diego Zoo Wildlife Alliance",
       "legacy_type": "sdzwa-peru-amazon",
       "legacy_env": "tensorflow-v1",
@@ -644,6 +662,7 @@
       ]
     },
     "NZS-WEK-v3-03": {
+      "source": "legacy",
       "legacy_key": "New Zealand Species v3.03 - DOC NZ - wekaResearch",
       "legacy_type": "alita-v3.03",
       "legacy_env": "pytorch",
@@ -679,6 +698,7 @@
       ]
     },
     "AFR-DFV-v1": {
+      "source": "legacy",
       "legacy_key": "African tropical forests - DeepForestVision",
       "legacy_type": "dfv-v1",
       "legacy_env": "pytorch",
@@ -709,6 +729,23 @@
           {
             "label": "red duiker",
             "confidence": 0.00326
+          }
+        ]
+      ]
+    },
+    "CAM-AI4G-v1": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "Bos",
+          "confidence": 0.9165179133415222
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "Bos",
+            "confidence": 0.9165179133415222
           }
         ]
       ]

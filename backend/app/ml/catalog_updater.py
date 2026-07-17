@@ -24,6 +24,7 @@ logger = get_logger(__name__)
 _DRIFT_CHECKED_ENVS: tuple[str, ...] = (
     "addaxai-base",
     "pytorch",
+    "pywildlife",
     "tensorflow-v1",
     "tensorflow-v2",
 )

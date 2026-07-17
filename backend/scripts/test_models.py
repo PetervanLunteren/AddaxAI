@@ -25,6 +25,14 @@ What it checks, per model:
             Models in CONFIDENCE_DIVERGES are checked on the label only,
             because we deliberately report a different number to legacy.
 
+An expectation records where it came from, and the table says so. Most
+are `legacy`, meaning the legacy AddaxAI really produced that answer.
+A few are `reference`: a model legacy cannot run, or runs so wrongly that
+its output is not a baseline. Those expectations are this port's own
+first run, frozen with --record-reference. They catch a regression and
+they catch a difference between machines, but they cannot tell you the
+port was right in the first place, because nothing independent agreed.
+
 Confidence is compared loosely on purpose. Ground truth is generated on
 one machine (MPS), and the same weights on CUDA or CPU differ in the last
 few decimals. A tight bound would fail on Windows for no reason, so the
@@ -40,6 +48,7 @@ Usage
     python scripts/test_models.py --model AHDRIFT-v1  # just one
     python scripts/test_models.py --skip-missing      # only what is downloaded
     python scripts/test_models.py --model-dir ./staged/AHDRIFT-v1
+    python scripts/test_models.py --model-dir ./staged/X --record-reference
 
 Options:
     --model         Model id. Repeatable. Default: every cls model in the catalog.
@@ -49,6 +58,11 @@ Options:
                     validate a staged inference.py before uploading it to
                     HuggingFace.
     --json          Emit machine-readable results instead of the table.
+    --record-reference
+                    Write this run's own output into the expectations file as
+                    a `reference` baseline. Only for a model legacy cannot run
+                    or runs wrongly; everything else must come from
+                    generate_legacy_ground_truth.py.
 
 Exit code is 0 when every model tested passed, 1 otherwise.
 """
@@ -156,7 +170,9 @@ class Result:
     top1: str = ""
     expected: str = ""
     delta: float | None = None
+    source: str = ""
     status: str = "SKIP"
+    predictions: list = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     @property
@@ -284,12 +300,14 @@ def run_model(
         predictions.append((item_result.label, item_result.confidence))
 
     result.top1 = predictions[0][0]
+    result.predictions = predictions
 
     if not expectation:
         result.status = "RAN"
         result.notes.append("no ground truth recorded")
         return result
 
+    result.source = expectation.get("source", "legacy") if expectation else ""
     diverges = CONFIDENCE_DIVERGES.get(model_id)
     if diverges:
         result.notes.append(f"confidence differs from legacy by design: {diverges}")
@@ -315,10 +333,31 @@ def run_model(
     return result
 
 
+def _record_reference(model_id: str, predictions: list[tuple[str, float]]) -> None:
+    """
+    Freeze a run's own output as the expectation for a model legacy
+    cannot provide one for.
+
+    Marked `reference` rather than `legacy` so the expectations file
+    never claims the legacy app said something it did not.
+    """
+    with open(EXPECTATIONS_PATH) as f:
+        data = json.load(f)
+    data.setdefault("models", {})[model_id] = {
+        "source": "reference",
+        "predictions": [{"label": p[0], "confidence": p[1]} for p in predictions],
+        "top_k": [[{"label": p[0], "confidence": p[1]}] for p in predictions],
+    }
+    with open(EXPECTATIONS_PATH, "w") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+    print(f"recorded {model_id} as a `reference` expectation (not legacy)")
+
+
 def _print_table(results: list[Result]) -> None:
     header = (
         f"{'model':<22} {'env':<14} {'device':<21} {'top-1':<24} "
-        f"{'expected':<24} {'Δconf':>7}  status"
+        f"{'expected':<24} {'Δconf':>7} {'vs':<10} status"
     )
     print("\n" + header)
     print("-" * len(header))
@@ -326,7 +365,7 @@ def _print_table(results: list[Result]) -> None:
         delta = f"{r.delta:.4f}" if r.delta is not None else "-"
         print(
             f"{r.model_id:<22} {r.env:<14} {r.device:<21} {r.top1[:24]:<24} "
-            f"{r.expected[:24]:<24} {delta:>7}  {r.status}"
+            f"{r.expected[:24]:<24} {delta:>7} {r.source:<10} {r.status}"
         )
         for note in r.notes:
             print(f"{'':<22} {'':<14} -> {note}")
@@ -355,6 +394,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Test a model directory directly, bypassing the catalog.",
     )
     parser.add_argument("--json", action="store_true", help="Emit JSON.")
+    parser.add_argument(
+        "--record-reference",
+        action="store_true",
+        help="Freeze this run's own output as a `reference` expectation.",
+    )
     args = parser.parse_args(argv)
 
     expectations = _load_expectations()
@@ -380,6 +424,8 @@ def main(argv: list[str] | None = None) -> int:
                 ),
             )
         )
+        if args.record_reference and results[0].predictions:
+            _record_reference(results[0].model_id, results[0].predictions)
         _print_table(results)
         return 0 if all(r.ok for r in results) else 1
 

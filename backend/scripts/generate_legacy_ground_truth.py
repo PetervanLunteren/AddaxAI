@@ -387,6 +387,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         expectations["models"][model_id] = {
+            "source": "legacy",
             "legacy_key": legacy_key,
             "legacy_type": model_vars["type"],
             "legacy_env": resolve_env(model_vars),
