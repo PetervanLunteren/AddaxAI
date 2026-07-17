@@ -119,18 +119,28 @@ def test_class_rank_record_fills_only_class():
 
 
 @pytest.mark.parametrize(
-    "gbif_class", ["Squamata", "Testudines", "Crocodylia", "Rhynchocephalia"]
+    ("gbif_class", "real_class"),
+    [
+        ("Squamata", "reptilia"),
+        ("Testudines", "reptilia"),
+        ("Crocodylia", "reptilia"),
+        ("Rhynchocephalia", "reptilia"),
+        ("Anura", "amphibia"),
+        ("Caudata", "amphibia"),
+        ("Urodela", "amphibia"),
+        ("Gymnophiona", "amphibia"),
+    ],
 )
-def test_gbif_reptile_classes_fold_under_reptilia(gbif_class: str):
+def test_order_as_class_folds_under_the_real_class(gbif_class: str, real_class: str):
     """
-    GBIF's backbone has no Reptilia: it puts these at class rank with an
-    empty order. AddaxAI shows a Linnaean tree, so they move to order.
-    Reproduces the shipped SAH-DRY-ADS-v1 rows.
+    GBIF's backbone has no Reptilia and returns some amphibian orders at
+    class rank too. AddaxAI shows a Linnaean tree, so they move to order.
+    Mirrors ORDER_AS_CLASS in cls-training-pipeline/taxon-mapping.
     """
     ranks = record_to_ranks(
-        _record(rank="FAMILY", **{"class": gbif_class}, order=None, canonicalName="X")
+        _record(rank="FAMILY", **{"class": gbif_class}, order=None, canonicalName="Xidae")
     )
-    assert ranks["class"] == "reptilia"
+    assert ranks["class"] == real_class
     assert ranks["order"] == gbif_class.lower()
 
 
@@ -154,8 +164,8 @@ def test_reptile_rule_matches_shipped_leopard_tortoise():
     }
 
 
-def test_amphibians_are_untouched():
-    """GBIF has Amphibia as a class already, so no rule should fire."""
+def test_amphibians_already_correct_are_untouched():
+    """Most amphibian keys come back right; no rule should fire on those."""
     ranks = record_to_ranks(
         _record(
             **{"class": "Amphibia"},
@@ -167,6 +177,36 @@ def test_amphibians_are_untouched():
     )
     assert ranks["class"] == "amphibia"
     assert ranks["order"] == "anura"
+
+
+def test_record_rank_beats_gbif_rank_fields():
+    """
+    GBIF key 12170551 is the project's "unknown reptile": rank=CLASS,
+    canonicalName=Reptilia, but class=Squamata. Trusting the field would
+    claim every unidentified reptile is a squamate rather than a turtle,
+    and would then wrongly trip ORDER_AS_CLASS on the way out.
+    """
+    ranks = record_to_ranks(
+        {
+            "rank": "CLASS",
+            "canonicalName": "Reptilia",
+            "class": "Squamata",
+            "order": None,
+        }
+    )
+    assert ranks["class"] == "reptilia"
+    assert ranks["order"] == ""
+
+
+@pytest.mark.parametrize(
+    ("rank", "column"),
+    [("CLASS", "class"), ("ORDER", "order"), ("FAMILY", "family"), ("GENUS", "genus")],
+)
+def test_canonical_name_owns_the_records_own_rank(rank: str, column: str):
+    ranks = record_to_ranks(
+        {"rank": rank, "canonicalName": "Correctus", column: "Wrongus"}
+    )
+    assert ranks[column] == "correctus"
 
 
 def test_reptile_rule_does_not_clobber_an_existing_order():
@@ -299,6 +339,76 @@ def test_fuzzy_name_match_is_reported(monkeypatch):
     )
     _, warning = resolve_entry(Entry("leopard", None, "Panthera pardis"))
     assert "FUZZY" in warning
+
+
+# --------------------------------------------------------------------
+# Literature overrides: GBIF helps, the literature decides
+# --------------------------------------------------------------------
+
+
+def test_full_override_skips_gbif_entirely(monkeypatch):
+    """
+    The Neogale case. The 2021 split moved the American mink to Neogale,
+    which GBIF still resolves as a genus-rank synonym of Mustela with no
+    species at all, so the row is written by hand.
+    """
+    def boom(*a, **k):
+        raise AssertionError("a fully hand-written row must not call GBIF")
+
+    monkeypatch.setattr("resolve_taxonomy_gbif.resolve_by_key", boom)
+    monkeypatch.setattr("resolve_taxonomy_gbif.resolve_by_name", boom)
+
+    row, warning = resolve_entry(
+        Entry(
+            "american mink",
+            None,
+            "Neogale vison",
+            {
+                "class": "mammalia",
+                "order": "carnivora",
+                "family": "mustelidae",
+                "genus": "neogale",
+                "species": "vison",
+            },
+        )
+    )
+    assert row == {
+        "model_class": "american mink",
+        "class": "mammalia",
+        "order": "carnivora",
+        "family": "mustelidae",
+        "genus": "neogale",
+        "species": "vison",
+    }
+    assert "literature override" in warning
+
+
+def test_partial_override_lets_gbif_fill_the_rest(monkeypatch):
+    monkeypatch.setattr(
+        "resolve_taxonomy_gbif.resolve_by_name", lambda n: _record()
+    )
+    row, warning = resolve_entry(
+        Entry("leopard", None, "Panthera pardus", {"genus": "neofelis"})
+    )
+    assert row["genus"] == "neofelis"  # hand-written wins
+    assert row["family"] == "felidae"  # GBIF fills the gap
+    assert row["species"] == "pardus"
+    assert "literature override on genus" in warning
+
+
+def test_override_is_always_reported_for_review():
+    """An override is a deliberate divergence; never let it pass silently."""
+    _, warning = resolve_entry(
+        Entry("x", None, None, dict.fromkeys(("class", "order", "family", "genus", "species"), "z"))
+    )
+    assert warning is not None
+
+
+def test_non_label_class_beats_an_override():
+    """"blank" carries no taxonomy even if someone hand-writes one."""
+    row, warning = resolve_entry(Entry("blank", None, None, {"class": "mammalia"}))
+    assert row["class"] == ""
+    assert warning is None
 
 
 def test_match_without_a_class_is_reported(monkeypatch):

@@ -48,19 +48,39 @@ are a stale snapshot in three mutually incompatible shapes. Resolving the
 326 keys of the Sub-Saharan model reproduces its hand-made, shipped
 taxonomy.csv exactly, row for row, so the key path is known-good.
 
-The Reptilia rule
------------------
-GBIF's backbone has no Reptilia class. It places Squamata, Testudines and
-Crocodylia at *class* rank with an empty order, so a tortoise comes back
-as `class=Testudines`. The legacy CSVs copied that faithfully; it was
-never an AddaxAI bug. AddaxAI shows a Linnaean tree, so this script folds
-those back under Reptilia and moves the original value to order. That
-reproduces what is already shipped in SAH-DRY-ADS-v1:
+GBIF helps, the literature decides
+----------------------------------
+GBIF is a lookup, not the standard. Where its backbone disagrees with the
+current literature, the literature wins and this script corrects it. Two
+mechanisms, both explicit:
+
+**ORDER_AS_CLASS.** GBIF's backbone has no Reptilia class: it places
+Squamata, Testudines and Crocodylia at *class* rank with an empty order,
+so a tortoise comes back as `class=Testudines`. The same happens for
+amphibian orders on some keys. The legacy CSVs copied that faithfully; it
+was never an AddaxAI bug. AddaxAI shows a Linnaean tree, so these fold
+back under their real class, reproducing what SAH-DRY-ADS-v1 ships:
 
     leopard tortoise,reptilia,testudines,testudinidae,stigmochelys,pardalis
 
-Amphibians need no such rule: GBIF has Amphibia as a class with Anura as
-an order.
+The table mirrors the one in cls-training-pipeline/taxon-mapping, which
+is the producer side of this same problem. Keep the two in step.
+
+**Per-row overrides.** Any of the five rank columns may be supplied in the
+input CSV, and a supplied value wins over GBIF for that row. Use this
+wherever GBIF lags a published reclassification. Worked example: the 2021
+split moved the American mink and long-tailed weasel to *Neogale*, which
+GBIF still resolves as a genus-rank synonym of *Mustela* with no species
+at all, so both are written out by hand.
+
+A record's own rank is trusted over its rank fields
+---------------------------------------------------
+At rank R, the value for column R is taken from canonicalName rather than
+from GBIF's `class`/`order`/... fields, because the two disagree. Key
+12170551 ("Reptilia", the key this project uses for unknown reptiles)
+comes back as rank=CLASS, canonicalName=Reptilia, and class=Squamata.
+Trusting the field would claim every unidentified reptile is a squamate
+rather than possibly a turtle.
 
 Review the output
 -----------------
@@ -102,7 +122,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # Reuse the app's definition rather than restating it: these are the
@@ -123,14 +143,27 @@ _KEY_COLUMNS = ("GBIF_usageKey", "gbif_usage_key")
 # GBIF ranks at or below species; only these fill the species column.
 _SPECIES_RANKS = frozenset({"SPECIES", "SUBSPECIES", "VARIETY", "FORM"})
 
-# GBIF backbone classes that are really orders within Reptilia. See the
-# module docstring. Deliberately an explicit, closed list rather than a
-# rule inferred from the data.
-_REPTILE_CLASSES_IN_GBIF = {
-    "squamata",
-    "testudines",
-    "crocodylia",
-    "rhynchocephalia",
+# Taxa GBIF's backbone returns at class rank that are really orders. Maps
+# the bad class -> (real class, real order). Mirrors ORDER_AS_CLASS in
+# cls-training-pipeline/taxon-mapping; keep the two in step. Deliberately
+# an explicit, closed list rather than a rule inferred from the data.
+ORDER_AS_CLASS: dict[str, tuple[str, str]] = {
+    "squamata": ("reptilia", "squamata"),
+    "testudines": ("reptilia", "testudines"),
+    "crocodylia": ("reptilia", "crocodylia"),
+    "rhynchocephalia": ("reptilia", "rhynchocephalia"),
+    "anura": ("amphibia", "anura"),
+    "caudata": ("amphibia", "caudata"),
+    "urodela": ("amphibia", "urodela"),
+    "gymnophiona": ("amphibia", "gymnophiona"),
+}
+
+# GBIF ranks, coarse to fine, and the column each one owns.
+_RANK_COLUMN = {
+    "CLASS": "class",
+    "ORDER": "order",
+    "FAMILY": "family",
+    "GENUS": "genus",
 }
 
 # Below this GBIF match confidence the row is reported for review.
@@ -144,6 +177,10 @@ class Entry:
     model_class: str
     gbif_key: str | None
     scientific_name: str | None
+    # Rank columns supplied by hand in the input CSV. These win over
+    # whatever GBIF says, for the columns they cover. Use where GBIF's
+    # backbone lags the literature.
+    overrides: dict[str, str] = field(default_factory=dict)
 
 
 def _gbif_get(path: str, **params: str) -> dict | None:
@@ -233,18 +270,34 @@ def record_to_ranks(record: dict) -> dict[str, str]:
         "species": "",
     }
 
+    rank = (record.get("rank") or "").upper()
+    canonical = (record.get("canonicalName") or "").strip().lower()
+
+    # A record is the authority on its own rank; GBIF's rank fields can
+    # disagree with it. Key 12170551 is rank=CLASS canonicalName=Reptilia
+    # with class=Squamata, and only canonicalName is right.
+    if rank in _RANK_COLUMN and canonical:
+        ranks[_RANK_COLUMN[rank]] = canonical
+
     binomial = _split_binomial(record)
     if binomial:
         ranks["genus"], ranks["species"] = binomial
 
-    # The Reptilia rule. GBIF leaves order empty for these, so nothing is
-    # overwritten; assert it rather than assume, since a future GBIF
-    # backbone change here would silently lose the order.
-    if ranks["class"] in _REPTILE_CLASSES_IN_GBIF and not ranks["order"]:
-        ranks["order"] = ranks["class"]
-        ranks["class"] = "reptilia"
+    # Fold GBIF's order-at-class-rank taxa back under their real class.
+    # Guarded on an empty order so a future backbone that starts filling
+    # it in cannot silently lose the value.
+    if ranks["class"] in ORDER_AS_CLASS and not ranks["order"]:
+        ranks["class"], ranks["order"] = ORDER_AS_CLASS[ranks["class"]]
 
     return ranks
+
+
+def _summary(row: dict[str, str]) -> str:
+    """Compact lineage for the review log, e.g. "mammalia > carnivora > neogale vison"."""
+    parts = [row[r] for r in RANKS if row.get(r)]
+    if row.get("genus") and row.get("species"):
+        parts = parts[:-2] + [f"{row['genus']} {row['species']}"]
+    return " > ".join(parts) or "no taxonomy"
 
 
 def resolve_entry(entry: Entry) -> tuple[dict[str, str], str | None]:
@@ -261,6 +314,13 @@ def resolve_entry(entry: Entry) -> tuple[dict[str, str], str | None]:
     if entry.model_class in NON_LABEL_CLASSES:
         return row, None
 
+    # A fully hand-written row needs no lookup. GBIF is a convenience,
+    # not the authority: where it disagrees with the literature, this is
+    # how the literature wins.
+    if set(entry.overrides) >= set(RANKS):
+        row.update(entry.overrides)
+        return row, f"literature override, GBIF not consulted ({_summary(row)})"
+
     if entry.gbif_key:
         record, matched_by = resolve_by_key(entry.gbif_key), "key"
         if record is None:
@@ -275,10 +335,16 @@ def resolve_entry(entry: Entry) -> tuple[dict[str, str], str | None]:
         return row, "no GBIF key and no scientific name to resolve"
 
     row.update(record_to_ranks(record))
+    # Hand-written columns win over whatever GBIF returned for them.
+    row.update(entry.overrides)
 
     canonical = record.get("canonicalName") or "?"
     if not row["class"]:
         return row, f"matched {canonical!r} but GBIF gave no class"
+
+    if entry.overrides:
+        overridden = ", ".join(sorted(entry.overrides))
+        return row, f"literature override on {overridden} ({_summary(row)})"
 
     warning = None
     if matched_by == "name":
@@ -372,7 +438,15 @@ def _read_entries(path: Path, use_keys: bool) -> list[Entry]:
             if name is None:
                 name = _finest_legacy_name(row)
 
-            entries.append(Entry(model_class, key, name))
+            # Any rank column present in the input is a hand-written
+            # correction and outranks GBIF for that column.
+            overrides = {
+                rank: (row.get(rank) or "").strip().lower()
+                for rank in RANKS
+                if (row.get(rank) or "").strip()
+            }
+
+            entries.append(Entry(model_class, key, name, overrides))
     return entries
 
 
