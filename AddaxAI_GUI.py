@@ -844,12 +844,14 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
                     os.remove(csv_path)
 
 def upload_to_gundi(src_dir, thresh, api_key, progress_window):
-    # log
-    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+    # log (redact the api key)
+    log_args = {k: ("***" if k == "api_key" else v) for k, v in locals().items()}
+    print(f"EXECUTED: {sys._getframe().f_code.co_name}({log_args})\n")
 
     global cancel_var
     errors = []
     gundi_base_url = GUNDI_BASE_URL
+    print(f"Gundi endpoint: {gundi_base_url} (env: {GUNDI_ENV})\n")
 
     # open recognition file
     recognition_file = os.path.join(src_dir, "image_recognition_file.json")
@@ -944,10 +946,12 @@ def upload_to_gundi(src_dir, thresh, api_key, progress_window):
     start_time = time.time()
     headers_json = {"apikey": api_key, "Content-Type": "application/json"}
     headers_file = {"apikey": api_key}
+    uploaded = 0
 
     for i, item in enumerate(uploadable):
         if cancel_var:
             break
+        errors_before = len(errors)
 
         # progress update
         elapsed_time = str(datetime.timedelta(seconds=round(time.time() - start_time)))
@@ -1048,12 +1052,24 @@ def upload_to_gundi(src_dir, thresh, api_key, progress_window):
             except Exception as e:
                 errors.append((item['file'], f"Attachment upload failed: {str(e)[:200]}"))
 
+        # count fully successful uploads (event + attachment)
+        if object_id and len(errors) == errors_before:
+            uploaded += 1
+
         # rate limiting
         time.sleep(0.1)
 
     # done
     progress_window.update_values(process="gundi", status="done")
     root.update()
+
+    # confirm success to the user (failures are reported by the caller)
+    if uploaded > 0 and not errors and not cancel_var:
+        mb.showinfo(information_txt[lang_idx],
+            [f"{uploaded} event(s) successfully uploaded to Gundi.",
+             f"{uploaded} evento(s) subido(s) correctamente a Gundi.",
+             f"{uploaded} evenement(s) envoye(s) avec succes vers Gundi."][lang_idx])
+
     return errors
 
 def clean_line(line):
