@@ -142,9 +142,14 @@ def load_gundi_api_key():
         return ""
 
 def save_gundi_api_key(key):
+    key = key.strip()
+    # don't create the file for users who never use Gundi (an existing file is
+    # still overwritten with "" so that a reset genuinely clears the key)
+    if not key and not os.path.isfile(GUNDI_KEY_FILE):
+        return
     try:
         with open(GUNDI_KEY_FILE, 'w') as f:
-            f.write(key.strip())
+            f.write(key)
         os.chmod(GUNDI_KEY_FILE, 0o600)
     except Exception as e:
         print(f"Could not save Gundi API key: {e}")
@@ -231,8 +236,14 @@ _added_setting_defaults = {"var_gundi_upload": False}
 if any(k not in global_vars for k in _added_setting_defaults):
     for _k, _v in _added_setting_defaults.items():
         global_vars.setdefault(_k, _v)
-    with open(os.path.join(AddaxAI_files, "AddaxAI", "global_vars.json"), 'w') as _f:
-        json.dump(global_vars, _f, indent=4)
+    try:
+        with open(os.path.join(AddaxAI_files, "AddaxAI", "global_vars.json"), 'w') as _f:
+            json.dump(global_vars, _f, indent=4)
+    except Exception as _e:
+        # persistence is best-effort — a read-only settings file (e.g. an
+        # all-users install) must never prevent the app from launching; the
+        # in-memory defaults above are enough for this session
+        print(f"Could not backfill global_vars.json: {_e}")
 
 # language settings
 languages_available = ['English', 'Español', 'Français']
@@ -1060,7 +1071,10 @@ def upload_to_gundi(src_dir, thresh, api_key, progress_window):
 
                 # POST event; retry once on server error or connection problem.
                 # every non-success exit of this loop records an error so no
-                # failed event can vanish silently
+                # failed event can vanish silently. note: a retry after a
+                # timeout whose request actually reached the server can create
+                # a duplicate event; EarthRanger discards events with identical
+                # data, which bounds the damage
                 object_id = None
                 event_error = None
                 for attempt in range(2):
@@ -1092,18 +1106,36 @@ def upload_to_gundi(src_dir, thresh, api_key, progress_window):
                 if event_error:
                     errors.append((item['file'], event_error))
                 elif object_id:
-                    # POST attachment
-                    try:
-                        with open(item['filepath'], 'rb') as photo:
-                            resp_att = session.post(f"{GUNDI_BASE_URL}/events/{object_id}/attachments/",
-                                                    files={"file1": photo},
-                                                    timeout=60)
-                        if resp_att.status_code in (200, 201):
-                            progress["uploaded"] += 1
-                        else:
-                            errors.append((item['file'], f"Attachment upload failed: HTTP {resp_att.status_code} - {resp_att.text[:200]}"))
-                    except Exception as e:
-                        errors.append((item['file'], f"Attachment upload failed: {str(e)[:200]}"))
+                    # POST attachment; retry once on server error or connection
+                    # problem, mirroring the event POST above
+                    att_error = None
+                    for attempt in range(2):
+                        try:
+                            with open(item['filepath'], 'rb') as photo:
+                                resp_att = session.post(f"{GUNDI_BASE_URL}/events/{object_id}/attachments/",
+                                                        files={"file1": photo},
+                                                        timeout=60)
+                            if resp_att.status_code in (200, 201):
+                                progress["uploaded"] += 1
+                                att_error = None
+                                break
+                            elif resp_att.status_code >= 500 and attempt == 0:
+                                time.sleep(1)
+                                continue
+                            else:
+                                att_error = f"Attachment upload failed: HTTP {resp_att.status_code} - {resp_att.text[:200]}"
+                                break
+                        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                            if attempt == 0:
+                                time.sleep(1)
+                                continue
+                            att_error = f"Attachment upload failed: {str(e)[:200]}"
+                            break
+                        except Exception as e:
+                            att_error = f"Attachment upload failed: {str(e)[:200]}"
+                            break
+                    if att_error:
+                        errors.append((item['file'], att_error))
 
                 progress["i"] += 1
 

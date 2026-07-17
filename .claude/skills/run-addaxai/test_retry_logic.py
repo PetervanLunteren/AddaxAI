@@ -63,6 +63,43 @@ cases = [
     ("unexpected exception",  [ValueError("boom")],                                  None, True),
 ]
 
+def run_attachment_loop(session):
+    """The exact attachment retry structure from upload_to_gundi."""
+    uploaded = 0
+    att_error = None
+    for attempt in range(2):
+        try:
+            resp_att = session.post("attachments/", timeout=60)
+            if resp_att.status_code in (200, 201):
+                uploaded += 1
+                att_error = None
+                break
+            elif resp_att.status_code >= 500 and attempt == 0:
+                time.sleep(0)
+                continue
+            else:
+                att_error = f"Attachment upload failed: HTTP {resp_att.status_code}"
+                break
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            if attempt == 0:
+                continue
+            att_error = f"Attachment upload failed: {str(e)[:200]}"
+            break
+        except Exception as e:
+            att_error = f"Attachment upload failed: {str(e)[:200]}"
+            break
+    return uploaded, att_error
+
+att_cases = [
+    ("att double 5xx",       [FakeResp(502), FakeResp(503)],                         0, True),
+    ("att 5xx then 200",     [FakeResp(500), FakeResp(200)],                         1, False),
+    ("att 200",              [FakeResp(200)],                                        1, False),
+    ("att 400",              [FakeResp(400)],                                        0, True),
+    ("att timeout twice",    [requests.exceptions.Timeout("t"), requests.exceptions.Timeout("t")], 0, True),
+    ("att timeout then 201", [requests.exceptions.Timeout("t"), FakeResp(201)],      1, False),
+    ("att file error",       [OSError("boom")],                                      0, True),
+]
+
 failed = 0
 for name, responses, want_id, want_err in cases:
     oid, err = run_event_loop(FakeSession(responses))
@@ -75,6 +112,17 @@ for name, responses, want_id, want_err in cases:
         failed += 1
     print(f"{status}  {name:22s} object_id={oid!r:8} error={'yes' if err else 'no'}")
 
+for name, responses, want_uploaded, want_err in att_cases:
+    up, err = run_attachment_loop(FakeSession(responses))
+    ok_up = up == want_uploaded
+    ok_err = (err is not None) == want_err
+    # THE invariant: not uploaded must always imply a recorded error
+    invariant = (up > 0) or (err is not None)
+    status = "PASS" if (ok_up and ok_err and invariant) else "FAIL"
+    if status == "FAIL":
+        failed += 1
+    print(f"{status}  {name:22s} uploaded={up} error={'yes' if err else 'no'}")
+
 print()
-print("INVARIANT: every exit without object_id records an error —", "HOLDS" if failed == 0 else "VIOLATED")
+print("INVARIANT: every non-success exit records an error —", "HOLDS" if failed == 0 else "VIOLATED")
 exit(1 if failed else 0)
