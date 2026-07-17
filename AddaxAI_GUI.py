@@ -576,64 +576,64 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
             rows = pd.DataFrame(rows)
             rows.to_csv(csv_for_detections, encoding='utf-8', mode='a', index=False, header=False)
 
-            # separate files (with optional "keep whole series" feature)
-            if sep:
-                if n_detections == 0:
+        # separate files (with optional "keep whole series" feature)
+        if sep:
+            if n_detections == 0:
+                detection_type = "empty"
+            else:
+                if len(unique_labels) > 1:
+                    detection_type = "_".join(unique_labels)
+                elif len(unique_labels) == 0:
                     detection_type = "empty"
                 else:
-                    if len(unique_labels) > 1:
-                        detection_type = "_".join(unique_labels)
-                    elif len(unique_labels) == 0:
-                        detection_type = "empty"
-                    else:
-                        detection_type = label
+                    detection_type = label
 
-                # keep-series configuration
-                should_keep_series = False
-                if keep_series:
-                    # allow caller to pass the list; otherwise fall back to persisted GUI setting
-                    if keep_series_species is None:
-                        keep_series_species = global_vars.get('var_keep_series_species', [])
+            # keep-series configuration
+            should_keep_series = False
+            if keep_series:
+                # allow caller to pass the list; otherwise fall back to persisted GUI setting
+                if keep_series_species is None:
+                    keep_series_species = global_vars.get('var_keep_series_species', [])
 
-                    labels_in_detection = set(unique_labels) if n_detections > 0 else set()
+                labels_in_detection = set(unique_labels) if n_detections > 0 else set()
 
-                    # Interpret selection relative to CURRENT cls model
-                    try:
-                        cur_model_vars = load_model_vars(model_type="cls")
-                        cur_model_classes = set(cur_model_vars.get("all_classes", []) or [])
-                    except Exception:
-                        cur_model_classes = set()
+                # Interpret selection relative to CURRENT cls model
+                try:
+                    cur_model_vars = load_model_vars(model_type="cls")
+                    cur_model_classes = set(cur_model_vars.get("all_classes", []) or [])
+                except Exception:
+                    cur_model_classes = set()
 
-                    keep_series_species_effective = [c for c in keep_series_species if c in cur_model_classes]
-                    keep_series_species_effective_set = set(keep_series_species_effective)
+                keep_series_species_effective = [c for c in keep_series_species if c in cur_model_classes]
+                keep_series_species_effective_set = set(keep_series_species_effective)
 
-                    # If user selected trigger species *that exist in the current model*: filter by those.
-                    # Otherwise (no overlap): treat as "Any animal detection".
-                    if keep_series_species_effective:
-                        should_keep_series = bool(labels_in_detection.intersection(keep_series_species_effective_set))
-                    else:
-                        should_keep_series = bool(labels_in_detection.difference({'person', 'vehicle'}))
-
-                if should_keep_series:
-                    # move/copy the whole series (files within +/- window_seconds)
-                    series_files = find_series_images(file, timestamp_index, window_seconds=keep_series_seconds)
-                    for sf in series_files:
-                        if sf in already_moved_files:
-                            continue
-                        moved_rel = move_files(sf, detection_type, file_placement, max_detection_conf, sep_conf,
-                                               dst_dir, src_dir, manually_checked)
-                        # record original relative path as moved so we don't try to move it again
-                        already_moved_files.add(sf)
-                        # if this is the current loop item, update the 'file' variable used later for visualization
-                        if sf == file:
-                            file = moved_rel
+                # If user selected trigger species *that exist in the current model*: filter by those.
+                # Otherwise (no overlap): treat as "Any animal detection".
+                if keep_series_species_effective:
+                    should_keep_series = bool(labels_in_detection.intersection(keep_series_species_effective_set))
                 else:
-                    # default behaviour: move/copy single file
-                    if file not in already_moved_files:
-                        orig_file_for_move = file
-                        file = move_files(orig_file_for_move, detection_type, file_placement, max_detection_conf,
-                                          sep_conf, dst_dir, src_dir, manually_checked)
-                        already_moved_files.add(orig_file_for_move)
+                    should_keep_series = bool(labels_in_detection.difference({'person', 'vehicle'}))
+
+            if should_keep_series:
+                # move/copy the whole series (files within +/- window_seconds)
+                series_files = find_series_images(file, timestamp_index, window_seconds=keep_series_seconds)
+                for sf in series_files:
+                    if sf in already_moved_files:
+                        continue
+                    moved_rel = move_files(sf, detection_type, file_placement, max_detection_conf, sep_conf,
+                                           dst_dir, src_dir, manually_checked)
+                    # record original relative path as moved so we don't try to move it again
+                    already_moved_files.add(sf)
+                    # if this is the current loop item, update the 'file' variable used later for visualization
+                    if sf == file:
+                        file = moved_rel
+            else:
+                # default behaviour: move/copy single file
+                if file not in already_moved_files:
+                    orig_file_for_move = file
+                    file = move_files(orig_file_for_move, detection_type, file_placement, max_detection_conf,
+                                      sep_conf, dst_dir, src_dir, manually_checked)
+                    already_moved_files.add(orig_file_for_move)
     
         # visualize images
         if vis and len(bbox_info) > 0:
@@ -2361,6 +2361,8 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
         with open(file_list_txt) as f:
             for line in f:
                 img = line.rstrip()
+                if not img:
+                    continue
                 annotation = return_xml_path(img)
 
                 # check which need converting to json
@@ -2557,6 +2559,8 @@ def open_annotation_windows(recognition_file, class_list_txt, file_list_txt, lab
     with open(file_list_txt) as f:
         for line in f:
             img = line.rstrip()
+            if not img:
+                continue
             annotation = return_xml_path(img)
             if check_if_img_needs_converting(img):
                 imgs_needing_converting.append(img)
@@ -3458,7 +3462,8 @@ def deploy_model(path_to_image_folder, selected_options, data_type, simple_mode 
                     progress_window.update_values(process = f"{data_type}_det",
                                                 status = "extracting frames",
                                                 extracting_frames_txt = [f"Extracting frames... {line[:3]}%",
-                                                                        f"Extrayendo fotogramas... {line[:3]}%"])
+                                                                        f"Extrayendo fotogramas... {line[:3]}%",
+                                                                        f"Extraction des trames... {line[:3]}%"])
             if "Extracted frames for" in line and \
                 data_type == "vid":
                     extracting_frames_mode = False
@@ -4460,8 +4465,10 @@ def produce_graph(file_list_txt = None, dir = None):
         with open(file_list_txt) as f:
             for line in f:
 
-                # open xml 
+                # open xml
                 img = line.rstrip()
+                if not img:
+                    continue
                 annotation = return_xml_path(img)
                 tree = ET.parse(annotation)
                 root = tree.getroot()
@@ -4776,9 +4783,10 @@ def select_detections(selection_dict, prepare_files):
             sorted_lines = sorted(previous_lines, key=natural_sort_key)
         
             # and write them back in aphabetical order
+            # strip first: readlines() keeps the trailing newline, so line + '\n' would double it
             with open(file_list_txt, 'w') as f:
                 for line in sorted_lines:
-                    f.write(line + '\n')
+                    f.write(line.rstrip('\r\n') + '\n')
         
     # update total number of images
     lbl_n_total_imgs.configure(text = [f"TOTAL: {total_imgs}", f"TOTAL: {total_imgs}", f"TOTAL: {total_imgs}"][lang_idx])
@@ -6542,7 +6550,7 @@ def set_up_unknown_model(title, model_dict, model_type):
         taxon_mapping_csv_path = os.path.join(model_dir, "taxon-mapping.csv")
         if not os.path.exists(taxon_mapping_csv_path):
             try:
-                response = requests.get(taxon_mapping_csv_url, timeout=1)
+                response = requests.get(taxon_mapping_csv_url, timeout=(5, 15))
                 if response.status_code == 200:
                     with open(taxon_mapping_csv_path, 'wb') as file:
                         file.write(response.content)
@@ -6597,16 +6605,17 @@ def fetch_latest_model_info():
         start_time = time.time()
         release_info_url = "https://api.github.com/repos/PetervanLunteren/AddaxAI/releases"
         model_info_url = f"https://raw.githubusercontent.com/PetervanLunteren/AddaxAI/main/model_info/model_info_v{corresponding_model_info_version}.json"
-        try:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:66.0) Gecko/20100101 Firefox/66.0",
-                "Accept-Encoding": "*",
-                "Connection": "keep-alive"
-            }
-            model_info_response = requests.get(model_info_url, timeout=1, headers=headers)
-            release_info_response = requests.get(release_info_url, timeout=1, headers=headers)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:66.0) Gecko/20100101 Firefox/66.0",
+            "Accept-Encoding": "*",
+            "Connection": "keep-alive"
+        }
 
-            # model info
+        # model info
+        # separate try block from the release info, so that a failing release check
+        # does not throw away a model list that downloaded fine
+        try:
+            model_info_response = requests.get(model_info_url, timeout=(5, 15), headers=headers)
             if model_info_response.status_code == 200:
                 with open(model_info_fpath, 'wb') as file:
                     file.write(model_info_response.content)
@@ -6630,7 +6639,15 @@ def fetch_latest_model_info():
                             show_model_info(title = model_id, model_dict = model_dict, new_model = True)
                             set_up_unknown_model(title = model_id, model_dict = model_dict, model_type = typ)
 
-            # release info
+        except requests.exceptions.Timeout:
+            print("Model info request timed out. Model list not updated.")
+
+        except Exception as e:
+            print(f"Could not update model info: {e}")
+
+        # release info
+        try:
+            release_info_response = requests.get(release_info_url, timeout=(5, 15), headers=headers)
             if release_info_response.status_code == 200:
                 print("Checking release info")
 
@@ -6682,10 +6699,10 @@ def fetch_latest_model_info():
                     json.dump(already_shown_releases, f)
 
         except requests.exceptions.Timeout:
-            print("Request timed out. File download stopped.")
+            print("Release info request timed out. Release check skipped.")
 
         except Exception as e:
-            print(f"Could not update model and version info: {e}")
+            print(f"Could not update version info: {e}")
 
         # update root so that the new models show up in the dropdown menu, 
         # but also the correct species for the existing models
@@ -8733,7 +8750,7 @@ class ProgressWindow:
         seconds_per_image_txt = ["Seconds per image:", "Segundos por imagen:", "Secondes par image:"]
         animals_per_second_txt = ["Animals per second:", "Animales por segundo:", "Animaux par seconde:"]
         seconds_per_animal_txt = ["Seconds per animal:", "Segundos por animal:", "Secondes par animal:"]
-        frames_per_second_txt = ["Frames per second:", "Fotogramas por segundo:"], "Trames par seconde:"
+        frames_per_second_txt = ["Frames per second:", "Fotogramas por segundo:", "Trames par seconde:"]
         seconds_per_frame_txt = ["Seconds per frame:", "Segundos por fotograma:", "Secondes par trame:"]
         videos_per_second_txt = ["Videos per second:", "Vídeos por segundo:", "Vidéos par seconde:"]
         seconds_per_video_txt = ["Seconds per video:", "Segundos por vídeo:", "Secondes par vidéo:"]

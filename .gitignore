@@ -3,3 +3,4 @@
 global_vars.json
 **/__pycache__/
 .idea
+model_info/model_info_v5 copy.json
