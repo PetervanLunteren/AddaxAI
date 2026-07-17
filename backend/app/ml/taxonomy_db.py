@@ -270,6 +270,14 @@ def batch_resolve_taxonomy_ids(
     Priority: model-level > custom > builtin.
     Single query per priority level instead of N+1.
 
+    Matching is case-insensitive. `LabelTaxonomy.name` is always written
+    lowercase (see populate_taxonomy_from_csv), but `Detection.label`
+    keeps whatever case the model emitted, and callers look the result up
+    by `label.lower()`. Comparing raw names against the column therefore
+    matched nothing for any model whose classes are not already lowercase
+    — QLD-WOB-v1 emits `Alectura_lathami` — and the model silently lost
+    its whole label tree and its rollup.
+
     Returns:
         {lowercase_name: (taxonomy_id, scientific_name, common_name)}
         for all matched names.
@@ -277,6 +285,7 @@ def batch_resolve_taxonomy_ids(
     if not label_names:
         return {}
 
+    lookup_names = [name.lower() for name in label_names]
     result: dict[str, tuple[str, str | None, str | None]] = {}
 
     # 1. Model-level taxonomy
@@ -291,7 +300,7 @@ def batch_resolve_taxonomy_ids(
             .filter(
                 LabelTaxonomy.classification_model_id == model_id,
                 LabelTaxonomy.project_id.is_(None),
-                LabelTaxonomy.name.in_(label_names),
+                LabelTaxonomy.name.in_(lookup_names),
             )
             .all()
         )
@@ -309,7 +318,7 @@ def batch_resolve_taxonomy_ids(
         .filter(
             LabelTaxonomy.project_id == project_id,
             LabelTaxonomy.is_custom == True,  # noqa: E712
-            LabelTaxonomy.name.in_(label_names),
+            LabelTaxonomy.name.in_(lookup_names),
         )
         .all()
     )
@@ -328,7 +337,7 @@ def batch_resolve_taxonomy_ids(
         )
         .filter(
             LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID,
-            LabelTaxonomy.name.in_(label_names),
+            LabelTaxonomy.name.in_(lookup_names),
         )
         .all()
     )
@@ -384,6 +393,15 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
     )
     label_names = [row[0] for row in unlinked_labels]
 
+    # LabelTaxonomy.name is always stored lowercase, but Detection.label
+    # keeps whatever case the model emitted (QLD-WOB-v1 emits
+    # "Alectura_lathami"). Match on lowercase, and keep the original
+    # spellings so the UPDATE below can still find the rows.
+    labels_by_lower: dict[str, list[str]] = {}
+    for original in label_names:
+        labels_by_lower.setdefault(original.lower(), []).append(original)
+    lookup_names = list(labels_by_lower)
+
     if label_names:
         # Build lookup: label name -> (taxonomy_id, scientific_name, common_name)
         # Priority: model-level > custom > builtin
@@ -401,7 +419,7 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
                 .filter(
                     LabelTaxonomy.classification_model_id == model_id,
                     LabelTaxonomy.project_id.is_(None),
-                    LabelTaxonomy.name.in_(label_names),
+                    LabelTaxonomy.name.in_(lookup_names),
                 )
                 .all()
             )
@@ -419,7 +437,7 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
             .filter(
                 LabelTaxonomy.project_id == project_id,
                 LabelTaxonomy.is_custom == True,  # noqa: E712
-                LabelTaxonomy.name.in_(label_names),
+                LabelTaxonomy.name.in_(lookup_names),
             )
             .all()
         )
@@ -438,7 +456,7 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
             .filter(
                 LabelTaxonomy.classification_model_id
                 == BUILTIN_MODEL_ID,
-                LabelTaxonomy.name.in_(label_names),
+                LabelTaxonomy.name.in_(lookup_names),
             )
             .all()
         )
@@ -446,15 +464,20 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
             if name not in name_to_taxonomy:
                 name_to_taxonomy[name] = (tid, sci, common)
 
-        # Bulk-update: one UPDATE per label (set FK + both names)
+        # Bulk-update: one UPDATE per label (set FK + both names).
+        # name_to_taxonomy is keyed by the taxonomy's lowercase name, so
+        # match against the original Detection.label spellings it came from.
         for label_name, (taxonomy_id, sci, common) in name_to_taxonomy.items():
+            originals = labels_by_lower.get(label_name.lower())
+            if not originals:
+                continue
             count = (
                 db.query(Detection)
                 .filter(
                     Detection.file_id.in_(
                         db.query(project_file_ids.c.id)
                     ),
-                    Detection.label == label_name,
+                    Detection.label.in_(originals),
                     Detection.label_taxonomy_id.is_(None),
                 )
                 .update(

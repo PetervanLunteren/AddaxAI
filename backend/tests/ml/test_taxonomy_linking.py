@@ -269,3 +269,50 @@ def test_link_detections_no_model(db):
 
     db.expire_all()
     assert det.label_taxonomy_id is not None
+
+
+def test_link_detections_matches_case_insensitively(db):
+    """
+    LabelTaxonomy.name is always stored lowercase (populate_taxonomy_from_csv
+    lowercases it), but Detection.label keeps whatever case the model emitted.
+    QLD-WOB-v1 is the first model in the catalog whose classes are not
+    lowercase: it emits "Alectura_lathami". Matching the raw label against the
+    column found nothing, so every one of its detections silently ended up
+    with label_taxonomy_id NULL, which drops the model out of the label tree
+    and out of rollup with no error anywhere.
+    """
+    p, dets = _make_project_with_detections(db, ["Alectura_lathami", "Bos_taurus"])
+
+    alectura = _add_taxonomy(db, "alectura_lathami", "species",
+                             taxon_class="aves", taxon_genus="alectura")
+    _add_taxonomy(db, "bos_taurus", "species",
+                  taxon_class="mammalia", taxon_genus="bos")
+
+    count = link_detections_to_taxonomy(p.id, db)
+    assert count == 2
+
+    db.expire_all()
+    for det in dets:
+        assert det.label_taxonomy_id is not None
+
+    linked = [d for d in dets if d.label == "Alectura_lathami"][0]
+    assert linked.label_taxonomy_id == alectura.id
+    # The label itself is left exactly as the model emitted it.
+    assert linked.label == "Alectura_lathami"
+
+
+def test_link_detections_keeps_distinct_labels_apart(db):
+    """
+    Case-insensitive matching must not merge labels that differ by more
+    than case.
+    """
+    p, dets = _make_project_with_detections(db, ["Felis_catus", "Sus_scrofa"])
+    felis = _add_taxonomy(db, "felis_catus", "species", taxon_genus="felis")
+    sus = _add_taxonomy(db, "sus_scrofa", "species", taxon_genus="sus")
+
+    assert link_detections_to_taxonomy(p.id, db) == 2
+
+    db.expire_all()
+    by_label = {d.label: d.label_taxonomy_id for d in dets}
+    assert by_label["Felis_catus"] == felis.id
+    assert by_label["Sus_scrofa"] == sus.id

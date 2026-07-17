@@ -362,6 +362,181 @@
           }
         ]
       ]
+    },
+    "EUR-DF-v1-4": {
+      "legacy_key": "Europe - DeepFaune v1.4",
+      "legacy_type": "deepfaune-v1.4",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "bird",
+          "confidence": 0.60328
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird",
+            "confidence": 0.60328
+          },
+          {
+            "label": "nutria",
+            "confidence": 0.08244
+          },
+          {
+            "label": "marmot",
+            "confidence": 0.05999
+          },
+          {
+            "label": "roe deer",
+            "confidence": 0.03927
+          },
+          {
+            "label": "badger",
+            "confidence": 0.03137
+          }
+        ]
+      ]
+    },
+    "EUR-DF-v1-2": {
+      "legacy_key": "Europe - DeepFaune v1.2",
+      "legacy_type": "deepfaune-v1.2",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "beaver",
+          "confidence": 0.258
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "beaver",
+            "confidence": 0.258
+          },
+          {
+            "label": "bird",
+            "confidence": 0.20257
+          },
+          {
+            "label": "nutria",
+            "confidence": 0.19582
+          },
+          {
+            "label": "marmot",
+            "confidence": 0.10759
+          },
+          {
+            "label": "lagomorph",
+            "confidence": 0.07356
+          }
+        ]
+      ]
+    },
+    "EUR-DF-v1-1": {
+      "legacy_key": "Europe - DeepFaune v1.1",
+      "legacy_type": "deepfaune",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "bird",
+          "confidence": 0.4306
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird",
+            "confidence": 0.4306
+          },
+          {
+            "label": "squirrel",
+            "confidence": 0.21735
+          },
+          {
+            "label": "mustelid",
+            "confidence": 0.06671
+          },
+          {
+            "label": "marmot",
+            "confidence": 0.05386
+          },
+          {
+            "label": "micromammal",
+            "confidence": 0.0425
+          }
+        ]
+      ]
+    },
+    "PAN-SDZWA-v1": {
+      "legacy_key": "Perivuan Andes - San Diego Zoo Wildlife Alliance",
+      "legacy_type": "sdzwa-pt",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "empty",
+          "confidence": 0.99666
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "empty",
+            "confidence": 0.99666
+          },
+          {
+            "label": "small mammal",
+            "confidence": 0.00213
+          },
+          {
+            "label": "other opossum",
+            "confidence": 0.00029
+          },
+          {
+            "label": "tayra",
+            "confidence": 0.00024
+          },
+          {
+            "label": "unknown bird",
+            "confidence": 0.00011
+          }
+        ]
+      ]
+    },
+    "QLD-WOB-v1": {
+      "legacy_key": "Queensland Wet Tropics - WildObs",
+      "legacy_type": "wildobs-qld-wettropics",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "Homo_sapiens",
+          "confidence": 0.93892
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "Homo_sapiens",
+            "confidence": 0.93892
+          },
+          {
+            "label": "Bos_taurus",
+            "confidence": 0.03445
+          },
+          {
+            "label": "Thylogale_stigmatica",
+            "confidence": 0.01621
+          },
+          {
+            "label": "Canis_familiaris",
+            "confidence": 0.01037
+          },
+          {
+            "label": "Wallabia_bicolor",
+            "confidence": 4e-05
+          }
+        ]
+      ]
     }
   }
 }

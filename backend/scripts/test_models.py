@@ -199,15 +199,20 @@ def _check_taxonomy_joins(model_dir: Path, class_names: dict[str, str]) -> list[
     classifies, it just falls back to a flat label list. But a taxonomy
     that is present and *nearly* right is worse than none, because the
     missing species vanish silently.
+
+    Compared case-insensitively, which is what the app does: taxonomy.csv's
+    model_class is lowercased into LabelTaxonomy.name, while Detection.label
+    keeps the case the model emitted, and the linking matches the two on
+    lowercase.
     """
     taxonomy_path = model_dir / "taxonomy.csv"
     if not taxonomy_path.exists():
         return ["no taxonomy.csv (flat label list, no rollup)"]
 
     with open(taxonomy_path, newline="", encoding="utf-8-sig") as f:
-        rows = {(r.get("model_class") or "").strip() for r in csv.DictReader(f)}
+        rows = {(r.get("model_class") or "").strip().lower() for r in csv.DictReader(f)}
 
-    emitted = {name.strip() for name in class_names.values()}
+    emitted = {name.strip().lower() for name in class_names.values()}
     unjoined = sorted(emitted - rows)
     if not unjoined:
         return []
