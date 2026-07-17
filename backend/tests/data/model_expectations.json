@@ -793,31 +793,31 @@
       "legacy_env": "tensorflow-v2",
       "predictions": [
         {
-          "label": "rhino",
-          "confidence": 0.52689
+          "label": "elephant",
+          "confidence": 0.35979
         }
       ],
       "top_k": [
         [
           {
-            "label": "rhino",
-            "confidence": 0.52689
-          },
-          {
-            "label": "other_carnivores",
-            "confidence": 0.17226
-          },
-          {
-            "label": "wild_boar",
-            "confidence": 0.11469
-          },
-          {
             "label": "elephant",
-            "confidence": 0.0656
+            "confidence": 0.35979
           },
           {
             "label": "bird",
-            "confidence": 0.03291
+            "confidence": 0.1345
+          },
+          {
+            "label": "buffalo",
+            "confidence": 0.13442
+          },
+          {
+            "label": "deer",
+            "confidence": 0.10396
+          },
+          {
+            "label": "leopard",
+            "confidence": 0.10263
           }
         ]
       ]

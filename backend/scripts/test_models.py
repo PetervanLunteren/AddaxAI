@@ -84,12 +84,18 @@ from app.ml.environment_manager import EnvironmentManager  # noqa: E402
 from app.ml.inference.custom_classification_model import (  # noqa: E402
     CustomClassificationModel,
 )
-from app.ml.manifest_manager import ManifestManager  # noqa: E402
+from app.ml.label_exclusion import NON_LABEL_CLASSES  # noqa: E402
 from app.ml.model_storage import ModelStorage  # noqa: E402
+from app.ml.schemas.model_manifest import ModelManifest  # noqa: E402
 
 EXPECTATIONS_PATH = (
     Path(__file__).resolve().parent.parent / "tests" / "data" / "model_expectations.json"
 )
+# The catalog in this checkout, which is the thing under test. Reading
+# the local manifest dirs instead would only ever see models a catalog
+# sync has already pulled, so a newly added entry would be silently
+# skipped and the run would still say PASS.
+CATALOG_PATH = Path(__file__).resolve().parent.parent.parent / "models.json"
 
 # Top-1 confidence may drift this far from the recorded ground truth
 # before it is called a failure. Wide enough to absorb MPS/CUDA/CPU
@@ -104,6 +110,10 @@ EXPECTED_CPU: dict[str, str] = {
     # Darwin, so TropiCam-AI is CPU-only on macOS by the model's own
     # choice, not ours.
     "NEO-MNCN-v1-0": "darwin",
+    # KIR-HEX-v1's check_gpu only looks at CUDA: "this model architecture
+    # is not compatible with MPS (Apple Silicon)". CPU on a Mac is the
+    # model's own decision, and it does use the GPU on Windows.
+    "KIR-HEX-v1": "darwin",
 }
 
 # Models where we deliberately report a different confidence to legacy,
@@ -243,7 +253,15 @@ def _check_taxonomy_joins(model_dir: Path, class_names: dict[str, str]) -> list[
     with open(taxonomy_path, newline="", encoding="utf-8-sig") as f:
         rows = {(r.get("model_class") or "").strip().lower() for r in csv.DictReader(f)}
 
-    emitted = {name.strip().lower() for name in class_names.values()}
+    # Non-label classes (false detection, blank, empty, ...) never reach
+    # the database: json_pipeline drops a detection whose top-1 is one of
+    # them, so they never need a taxonomy row. VIC-ADS-v1 omits
+    # `false detection` and is right to.
+    emitted = {
+        name.strip().lower()
+        for name in class_names.values()
+        if name.strip().lower() not in NON_LABEL_CLASSES
+    }
     unjoined = sorted(emitted - rows)
     if not unjoined:
         return []
@@ -403,7 +421,6 @@ def main(argv: list[str] | None = None) -> int:
 
     expectations = _load_expectations()
 
-    manifest_manager = ManifestManager()
     storage = ModelStorage()
     results: list[Result] = []
 
@@ -429,16 +446,20 @@ def main(argv: list[str] | None = None) -> int:
         _print_table(results)
         return 0 if all(r.ok for r in results) else 1
 
-    manifests = [
-        m
-        for m in manifest_manager.load_manifests().values()
-        if m.model_category == "classification"
-        and (not args.models or m.model_id in args.models)
-    ]
+    with open(CATALOG_PATH) as f:
+        entries = json.load(f)["models"]["cls"]
+    manifests = []
+    for entry in entries:
+        if args.models and entry["model_id"] not in args.models:
+            continue
+        m = ModelManifest(**entry)
+        m.model_category = "classification"
+        manifests.append(m)
     if args.models:
         missing = set(args.models) - {m.model_id for m in manifests}
         if missing:
-            raise SystemExit(f"Not in the catalog: {', '.join(sorted(missing))}")
+            raise SystemExit(f"Not in {CATALOG_PATH.name}: {', '.join(sorted(missing))}")
+    print(f"Testing {len(manifests)} classification model(s) from {CATALOG_PATH}")
 
     for manifest in sorted(manifests, key=lambda m: m.model_id):
         result = Result(model_id=manifest.model_id, env=manifest.env)

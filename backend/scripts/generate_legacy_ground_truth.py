@@ -27,9 +27,16 @@ inference_lib writes the full distribution, sorted, rounded to 5dp, into
 `<json>_original.json`. That is the ground truth; we keep the top 5 to
 match what the new worker retains (MAX_CLASSIFICATIONS_KEPT).
 
-The legacy install is never modified. Weights are downloaded into a work
-directory and the adapter is pointed at that, so /Applications stays
-read-only. Only the adapter code and the conda envs are read from it.
+Weights come from the model the app itself serves whenever it is already
+downloaded, so the comparison isolates the adapter. If the two sides ran
+different weights a mismatch would say nothing about the port, and that
+is a live risk: legacy's download_info points at upstream repos it does
+not control, which do get new weights published under it.
+
+The legacy install is never modified. Anything that must be fetched goes
+into a work directory and the adapter is pointed at that, so
+/Applications stays read-only. Only the adapter code and the conda envs
+are read from it.
 
 Usage
 -----
@@ -133,20 +140,33 @@ def resolve_env(model_vars: dict) -> str:
 
 
 def prepare_model_dir(
-    model_vars: dict, work_dir: Path, legacy_key: str, legacy_root: Path
+    model_vars: dict, work_dir: Path, legacy_key: str, legacy_root: Path,
+    model_id: str,
 ) -> Path:
     """
     Build a self-contained copy of the legacy model directory.
 
-    Weights come from the legacy install when they are already there, and
-    from the same URLs the legacy app uses otherwise. The legacy install
-    is only ever read: the adapter derives its sibling paths (backbone,
-    class list) from the weights path it is given, so pointing it at this
-    directory is enough to keep /Applications untouched.
+    Weights are taken from the model the app itself serves whenever that
+    is already downloaded, because the whole point is to isolate the
+    adapter: if the two sides run different weights, a mismatch says
+    nothing about the port.
+
+    That is not hypothetical. Legacy's download_info points at live
+    upstream repos for the third-party models, and alexvmt/TeraiNet
+    published new weights on 2026-07-16 while our TERRAI-NEP-v1 still
+    serves its 2026-05-28 copy. Generating from the URL captured Alex's
+    new model and the test then failed against our old one, blaming a
+    port that was in fact exact.
+
+    Falls back to the legacy install, then to legacy's own URL. The
+    legacy install is only ever read; the adapter derives its sibling
+    paths (backbone, class list) from the weights path it is given, so
+    pointing it at this directory keeps /Applications untouched.
     """
     model_dir = work_dir / legacy_key
     model_dir.mkdir(parents=True, exist_ok=True)
     installed = legacy_root / "models" / "cls" / legacy_key
+    served = Path.home() / "AddaxAI" / "models" / "cls" / model_id
 
     for url, fname in model_vars["download_info"]:
         dest = model_dir / fname
@@ -154,15 +174,18 @@ def prepare_model_dir(
             continue
         # Symlink rather than copy: these run to hundreds of MB each and
         # the adapter only reads them.
-        already_installed = installed / fname
-        if already_installed.exists() and already_installed.stat().st_size > 0:
-            print(f"    using installed {fname}")
-            dest.symlink_to(already_installed)
-            continue
-        print(f"    downloading {fname}")
-        tmp = dest.with_suffix(dest.suffix + ".tmp")
-        urllib.request.urlretrieve(url, tmp)
-        tmp.rename(dest)
+        for source, why in ((served, "as served by the app"),
+                            (installed, "from the legacy install")):
+            candidate = source / fname
+            if candidate.exists() and candidate.stat().st_size > 0:
+                print(f"    using {fname} {why}")
+                dest.symlink_to(candidate)
+                break
+        else:
+            print(f"    downloading {fname}")
+            tmp = dest.with_suffix(dest.suffix + ".tmp")
+            urllib.request.urlretrieve(url, tmp)
+            tmp.rename(dest)
 
     # variables.json is what fetch_forbidden_classes reads. Force
     # selected == all so nothing is zeroed and the renormalisation is a
@@ -371,7 +394,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n{model_id}  ({legacy_key})")
         try:
             model_vars = registry[legacy_key]
-            model_dir = prepare_model_dir(model_vars, work_dir, legacy_key, legacy_root)
+            model_dir = prepare_model_dir(
+                model_vars, work_dir, legacy_key, legacy_root, model_id
+            )
             # Fresh run directory per model: the legacy pipeline rewrites
             # its input JSON in place, so the file is single-use.
             run_dir = work_dir / "runs" / model_id
