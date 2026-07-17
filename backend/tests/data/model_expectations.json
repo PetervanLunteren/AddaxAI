@@ -749,6 +749,222 @@
           }
         ]
       ]
+    },
+    "AHDRIFT-v1": {
+      "source": "legacy",
+      "legacy_key": "AHDriFT-ID (Midwest US) v1.0",
+      "legacy_type": "addax-sppnet",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "eastern chipmunk",
+          "confidence": 0.84658
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "eastern chipmunk",
+            "confidence": 0.84658
+          },
+          {
+            "label": "common yellowthroat",
+            "confidence": 0.0209
+          },
+          {
+            "label": "eastern gartersnake",
+            "confidence": 0.01651
+          },
+          {
+            "label": "eastern hog-nosed snake",
+            "confidence": 0.01229
+          },
+          {
+            "label": "northern house wren",
+            "confidence": 0.01173
+          }
+        ]
+      ]
+    },
+    "TERRAI-NEP-v1": {
+      "source": "legacy",
+      "legacy_key": "Terai region Nepal - Alexander Merdian-Tarko",
+      "legacy_type": "mewc-keras-alex",
+      "legacy_env": "tensorflow-v2",
+      "predictions": [
+        {
+          "label": "rhino",
+          "confidence": 0.52689
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "rhino",
+            "confidence": 0.52689
+          },
+          {
+            "label": "other_carnivores",
+            "confidence": 0.17226
+          },
+          {
+            "label": "wild_boar",
+            "confidence": 0.11469
+          },
+          {
+            "label": "elephant",
+            "confidence": 0.0656
+          },
+          {
+            "label": "bird",
+            "confidence": 0.03291
+          }
+        ]
+      ]
+    },
+    "NZI-ADS-v1": {
+      "source": "legacy",
+      "legacy_key": "New Zealand Invasives - DOC NZ - Addax Data science",
+      "legacy_type": "addax-yolov8",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "dog",
+          "confidence": 0.65282
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "dog",
+            "confidence": 0.65282
+          },
+          {
+            "label": "cat",
+            "confidence": 0.34156
+          },
+          {
+            "label": "other bird",
+            "confidence": 0.00364
+          },
+          {
+            "label": "mustelid",
+            "confidence": 0.00072
+          },
+          {
+            "label": "kea",
+            "confidence": 0.00056
+          }
+        ]
+      ]
+    },
+    "TKM-ADS-v1": {
+      "source": "legacy",
+      "legacy_key": "Iran - Addax Data Science",
+      "legacy_type": "addax-yolov8",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "fox",
+          "confidence": 0.98286
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "fox",
+            "confidence": 0.98286
+          },
+          {
+            "label": "cat",
+            "confidence": 0.01216
+          },
+          {
+            "label": "wolf+jackal",
+            "confidence": 0.00402
+          },
+          {
+            "label": "equid",
+            "confidence": 0.00084
+          },
+          {
+            "label": "camel",
+            "confidence": 9e-05
+          }
+        ]
+      ]
+    },
+    "KIR-HEX-v1": {
+      "source": "legacy",
+      "legacy_key": "Kirghizistan - Manas v1 - OSI-Panthera - Hex Data",
+      "legacy_type": "hex-data-pt",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "caprinae",
+          "confidence": 0.81996
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "caprinae",
+            "confidence": 0.81996
+          },
+          {
+            "label": "vide",
+            "confidence": 0.09655
+          },
+          {
+            "label": "panthera_uncia",
+            "confidence": 0.01744
+          },
+          {
+            "label": "aves",
+            "confidence": 0.01196
+          },
+          {
+            "label": "leporidae",
+            "confidence": 0.01038
+          }
+        ]
+      ]
+    },
+    "GIF-JAP-v0-2": {
+      "source": "legacy",
+      "legacy_key": "Gifu region Japan - Gifu University",
+      "legacy_type": "gifu-wildlife",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "deer",
+          "confidence": 0.99868
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "deer",
+            "confidence": 0.99868
+          },
+          {
+            "label": "boar",
+            "confidence": 0.00126
+          },
+          {
+            "label": "fox",
+            "confidence": 6e-05
+          },
+          {
+            "label": "bear",
+            "confidence": 0.0
+          },
+          {
+            "label": "bird",
+            "confidence": 0.0
+          }
+        ]
+      ]
     }
   }
 }
