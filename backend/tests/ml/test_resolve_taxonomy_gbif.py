@@ -520,3 +520,64 @@ def test_finest_legacy_name_unprefixed_file_still_reads_deepest():
         "level_species": "orycteropus afer",
     }
     assert _finest_legacy_name(row) == "orycteropus afer"
+
+
+# --------------------------------------------------------------------
+# A GBIF key is a hint, not a verdict
+# --------------------------------------------------------------------
+
+
+def test_key_with_no_lineage_falls_through_to_the_name(monkeypatch):
+    """
+    Some legacy keys point into a GBIF checklist rather than the
+    backbone: they resolve to a canonicalName with kingdom/class/order
+    all null. AWC135's `banded hare-wallaby` is key 144099367. The row's
+    own level_* columns carry the full lineage, so the key must not win.
+    """
+    monkeypatch.setattr(
+        "resolve_taxonomy_gbif.resolve_by_key",
+        lambda k: {"rank": "SPECIES", "canonicalName": "Lagostrophus fasciatus"},
+    )
+    monkeypatch.setattr(
+        "resolve_taxonomy_gbif.resolve_by_name",
+        lambda n: _record(
+            **{"class": "Mammalia"},
+            order="Diprotodontia",
+            family="Macropodidae",
+            genus="Lagostrophus",
+            canonicalName="Lagostrophus fasciatus",
+        ),
+    )
+    row, warning = resolve_entry(
+        Entry("banded hare-wallaby", "144099367", "Lagostrophus fasciatus")
+    )
+    assert row["class"] == "mammalia"
+    assert row["genus"] == "lagostrophus"
+    assert row["species"] == "fasciatus"
+    assert "no lineage" in warning
+
+
+def test_key_that_404s_falls_through_to_the_name(monkeypatch):
+    monkeypatch.setattr("resolve_taxonomy_gbif.resolve_by_key", lambda k: None)
+    monkeypatch.setattr("resolve_taxonomy_gbif.resolve_by_name", lambda n: _record())
+    row, warning = resolve_entry(Entry("leopard", "311602666", "Panthera pardus"))
+    assert row["class"] == "mammalia"
+    assert "did not resolve" in warning
+
+
+def test_a_working_key_still_wins_over_the_name(monkeypatch):
+    monkeypatch.setattr("resolve_taxonomy_gbif.resolve_by_key", lambda k: _record())
+    monkeypatch.setattr(
+        "resolve_taxonomy_gbif.resolve_by_name",
+        lambda n: pytest.fail("name path must not run when the key has a lineage"),
+    )
+    row, warning = resolve_entry(Entry("leopard", "5219426", "Something Else"))
+    assert row["genus"] == "panthera"
+    assert warning is None
+
+
+def test_dead_key_and_no_name_is_reported(monkeypatch):
+    monkeypatch.setattr("resolve_taxonomy_gbif.resolve_by_key", lambda k: None)
+    row, warning = resolve_entry(Entry("ghost", "999999999", None))
+    assert row["class"] == ""
+    assert "nothing resolved" in warning

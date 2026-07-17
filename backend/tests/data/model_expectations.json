@@ -537,6 +537,41 @@
           }
         ]
       ]
+    },
+    "AWC135-AWC-v1": {
+      "legacy_key": "Australian Wildlife Classifier - AWC135",
+      "legacy_type": "awc135",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "australian bustard",
+          "confidence": 0.78292
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "australian bustard",
+            "confidence": 0.78292
+          },
+          {
+            "label": "wren sp",
+            "confidence": 0.04294
+          },
+          {
+            "label": "freshwater crocodile",
+            "confidence": 0.0256
+          },
+          {
+            "label": "cattle",
+            "confidence": 0.02332
+          },
+          {
+            "label": "numbat",
+            "confidence": 0.02239
+          }
+        ]
+      ]
     }
   }
 }

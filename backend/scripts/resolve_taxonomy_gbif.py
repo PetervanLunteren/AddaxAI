@@ -26,15 +26,21 @@ Each row is resolved from the best evidence it carries. One rule, three
 sources, first hit wins:
 
   1. `GBIF_usageKey` / `gbif_usage_key`  -> resolve the key directly.
-     Authoritative, and what the legacy CSVs were built from. A negative
-     key is a sentinel, not a key: cls-training-pipeline uses -1 for
-     "not applicable or a mixed taxon" and -10/-20/-30 for wolf/dog/
-     dingo, whose lineage is hardcoded into the level_* columns instead.
-     Those fall through to 2, where the hardcoded answer already is.
-  2. `scientific_name`, or the finest non-empty legacy `level_*` cell
-     (any "<rank> " prefix stripped)   -> match that name against GBIF.
-     Handles all three legacy header shapes uniformly, including the
-     DeepForestVision file whose cells carry no rank prefixes.
+     Authoritative when it works, and what the legacy CSVs were built
+     from. A key is a hint, not a verdict: it falls through to 2 when it
+     404s, when it is a negative sentinel, or when it resolves to a
+     record carrying no lineage at all (some legacy keys point into a
+     GBIF checklist rather than the backbone and come back with
+     kingdom/class/order all null).
+
+     The sentinels come from cls-training-pipeline: -1 for "not
+     applicable or a mixed taxon", -10/-20/-30 for wolf/dog/dingo, whose
+     lineage it hardcodes into the level_* columns instead. Falling
+     through finds exactly that hardcoded answer.
+  2. `scientific_name`, or the finest legacy `level_*` cell that carries
+     a rank prefix   -> match that name against GBIF. Handles all three
+     legacy header shapes, including the DeepForestVision file whose
+     cells carry no prefixes at all.
   3. Nothing usable -> empty row, reported for review.
 
 `model_class` itself is NEVER matched against GBIF. Model classes are
@@ -331,15 +337,34 @@ def resolve_entry(entry: Entry) -> tuple[dict[str, str], str | None]:
         row.update(entry.overrides)
         return row, f"hand-written, GBIF not consulted ({_summary(row)})"
 
+    record: dict | None = None
+    matched_by = ""
+    note = ""
+
+    # A key is a hint, not a verdict. Some legacy keys point into a GBIF
+    # checklist rather than the backbone: they resolve to a canonicalName
+    # with kingdom/class/order all null (AWC135's `banded hare-wallaby`
+    # is key 144099367), and some 404 outright. In both cases the row's
+    # own level_* columns carry the full lineage, so fall through to the
+    # name rather than throwing the answer away.
     if entry.gbif_key:
-        record, matched_by = resolve_by_key(entry.gbif_key), "key"
+        record = resolve_by_key(entry.gbif_key)
         if record is None:
-            return row, f"GBIF key {entry.gbif_key} did not resolve"
-    elif entry.scientific_name:
-        record, matched_by = resolve_by_name(entry.scientific_name), "name"
-        if record is None:
-            return row, f"no GBIF match for {entry.scientific_name!r}"
-    else:
+            note = f"key {entry.gbif_key} did not resolve, used the name; "
+            record = None
+        elif not record_to_ranks(record)["class"]:
+            note = f"key {entry.gbif_key} carries no lineage, used the name; "
+            record = None
+        else:
+            matched_by = "key"
+
+    if record is None and entry.scientific_name:
+        record = resolve_by_name(entry.scientific_name)
+        matched_by = "name"
+
+    if record is None:
+        if entry.gbif_key or entry.scientific_name:
+            return row, f"{note}nothing resolved"
         # Deliberately not falling back to model_class: see the module
         # docstring on why "serval" resolves to a beetle.
         return row, "no GBIF key and no scientific name to resolve"
@@ -348,18 +373,21 @@ def resolve_entry(entry: Entry) -> tuple[dict[str, str], str | None]:
 
     canonical = record.get("canonicalName") or "?"
     if not row["class"]:
-        return row, f"matched {canonical!r} but GBIF gave no class"
+        return row, f"{note}matched {canonical!r} but GBIF gave no class"
 
-    warning = None
+    # A key that had to be fallen back from is always worth reporting:
+    # it means the source CSV holds a dud key, even though the row came
+    # out fine.
+    warning = note.rstrip("; ") or None
     if matched_by == "name":
         match_type = record.get("matchType")
         confidence = record.get("confidence")
         if match_type != "EXACT":
             warning = (
-                f"{match_type} match: {entry.scientific_name!r} -> {canonical!r}"
+                f"{note}{match_type} match: {entry.scientific_name!r} -> {canonical!r}"
             )
         elif confidence is not None and confidence < _MIN_MATCH_CONFIDENCE:
-            warning = f"low confidence ({confidence}) -> {canonical!r}"
+            warning = f"{note}low confidence ({confidence}) -> {canonical!r}"
 
     # Synonyms are kept as written rather than silently swapped for the
     # accepted name: the African wild cat's key is Felis lybica, which
@@ -376,7 +404,7 @@ def resolve_entry(entry: Entry) -> tuple[dict[str, str], str | None]:
             or record.get("family")
             or "an unnamed taxon"
         )
-        warning = f"wrote {canonical!r}; GBIF calls it a synonym of {accepted!r}"
+        warning = f"{note}wrote {canonical!r}; GBIF calls it a synonym of {accepted!r}"
 
     return row, warning
 

@@ -439,6 +439,20 @@
         "owner": "WildObs Australia",
         "license": "https://huggingface.co/datasets/choosealicense/licenses/blob/main/markdown/cc-by-4.0.md",
         "info_url": "https://wildobs.org.au/"
+      },
+      {
+        "model_id": "AWC135-AWC-v1",
+        "friendly_name": "Australia (AWC135)",
+        "emoji": "🇦🇺",
+        "env": "pytorch",
+        "model_fname": "awc-135-v1.pth",
+        "description": "Model AWC135 was designed to increase the efficiency of processing images from motion cameras, by creating an Australian specific model that contains a diverse range of common, threatened, and invasive species. This model classifies 135 labels of Australian species from 33 different source locations across the country. Several grouped labels were created with images from two or more species for either visually similar animals (e.g. 'Grey Kangaroo sp' contains images of both Eastern and Western Grey Kangaroos), or low importance/low abundance species (e.g. 'Wetland Bird sp' contains images of 15 different waterbird species such as Herons, Ibis, and Bush-hens). As a result of these grouped labels, images from over 200 species are included across the 135 labels. Majority of images used were sourced from AWC's internal repository. Additional images were shared by several partnership collaborators. A candidate set of 1.5 million images were verified for correct ID and appropriate quality by an ecologist, resulting in a training set of ~1.1 million images. Model AWC135 achieves a macro average F1 score of 95% on the top 108 species, and 91% across all 135 species, on the held-out test set. This project is funded by the Australian Government Department of Climate Change, Energy, the Environment and Water. The project is led by the Australian Wildlife Conservancy and undertaken in partnership with: Dambimangari Aboriginal Corporation; Kakadu National Park / Parks Australia; NSW National Parks and Wildlife Service; Ngalurrtju Aboriginal Land Trust and the Central Land Council; South Australian Government Department of Primary Industries and Regions; the University of Melbourne; Wilinggin Aboriginal Corporation.",
+        "description_short": "Continent-wide • 135 classes • EfficientNet-B5",
+        "developer": "Australian Wildlife Conservancy",
+        "min_app_version": "0.1.0",
+        "region": "oceania",
+        "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        "info_url": "https://github.com/Australian-Wildlife-Conservancy-AWC/awc-wildlife-classifier"
       }
     ],
     "emb": [
