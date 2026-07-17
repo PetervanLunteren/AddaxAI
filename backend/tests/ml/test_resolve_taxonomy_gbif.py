@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from resolve_taxonomy_gbif import (  # noqa: E402
     Entry,
     _finest_legacy_name,
+    _usable_gbif_key,
     record_to_ranks,
     resolve_entry,
 )
@@ -219,8 +220,50 @@ def test_reptile_rule_does_not_clobber_an_existing_order():
 
 
 # --------------------------------------------------------------------
+# _usable_gbif_key: the sentinel convention from cls-training-pipeline
+# --------------------------------------------------------------------
+
+
+def test_real_gbif_keys_are_used():
+    assert _usable_gbif_key("5219426") == "5219426"
+    assert _usable_gbif_key("  212  ") == "212"
+
+
+@pytest.mark.parametrize("sentinel", ["-1", "-10", "-20", "-30"])
+def test_negative_keys_are_sentinels_not_keys(sentinel: str):
+    """
+    cls-training-pipeline writes -1 for "not applicable or a mixed
+    taxon", and -10/-20/-30 for wolf/dog/dingo, whose lineage it
+    hardcodes into the level_* columns instead. Treating these as keys
+    sends a 404 to GBIF and loses the answer that is already in the row.
+    """
+    assert _usable_gbif_key(sentinel) is None
+
+
+@pytest.mark.parametrize("value", ["", None, "   ", "not-a-number", "0"])
+def test_unusable_keys_are_ignored(value):
+    assert _usable_gbif_key(value) is None
+
+
+# --------------------------------------------------------------------
 # _finest_legacy_name: reads all three legacy header shapes
 # --------------------------------------------------------------------
+
+
+def test_hardcoded_canis_lineage_is_read_from_the_level_columns():
+    """
+    The other half of the sentinel convention: dog carries key -20 and
+    `level_species = "species Canis lupus familiaris"`. Falling through
+    to the name path finds exactly what the pipeline hardcoded.
+    """
+    row = {
+        "level_class": "class Mammalia",
+        "level_order": "order Carnivora",
+        "level_family": "family Canidae",
+        "level_genus": "genus Canis",
+        "level_species": "species Canis lupus familiaris",
+    }
+    assert _finest_legacy_name(row) == "Canis lupus familiaris"
 
 
 def test_finest_legacy_name_strips_rank_prefix():
@@ -346,14 +389,14 @@ def test_fuzzy_name_match_is_reported(monkeypatch):
 # --------------------------------------------------------------------
 
 
-def test_full_override_skips_gbif_entirely(monkeypatch):
+def test_hand_written_row_skips_gbif_entirely(monkeypatch):
     """
     The Neogale case. The 2021 split moved the American mink to Neogale,
     which GBIF still resolves as a genus-rank synonym of Mustela with no
     species at all, so the row is written by hand.
     """
     def boom(*a, **k):
-        raise AssertionError("a fully hand-written row must not call GBIF")
+        raise AssertionError("a hand-written row must not call GBIF")
 
     monkeypatch.setattr("resolve_taxonomy_gbif.resolve_by_key", boom)
     monkeypatch.setattr("resolve_taxonomy_gbif.resolve_by_name", boom)
@@ -380,27 +423,34 @@ def test_full_override_skips_gbif_entirely(monkeypatch):
         "genus": "neogale",
         "species": "vison",
     }
-    assert "literature override" in warning
+    assert "hand-written" in warning
 
 
-def test_partial_override_lets_gbif_fill_the_rest(monkeypatch):
+def test_hand_written_row_leaves_blank_columns_blank(monkeypatch):
+    """
+    The `snake sp` case, and why any override takes the whole row: GBIF
+    files the suborder Serpentes under *family*, so letting it fill the
+    gaps would write `family=serpentes`, which is not a family. A mixed
+    group stops where its real ranks stop.
+    """
     monkeypatch.setattr(
-        "resolve_taxonomy_gbif.resolve_by_name", lambda n: _record()
+        "resolve_taxonomy_gbif.resolve_by_name",
+        lambda n: pytest.fail("must not consult GBIF for a hand-written row"),
     )
     row, warning = resolve_entry(
-        Entry("leopard", None, "Panthera pardus", {"genus": "neofelis"})
+        Entry("snake sp", None, "Serpentes", {"class": "reptilia", "order": "squamata"})
     )
-    assert row["genus"] == "neofelis"  # hand-written wins
-    assert row["family"] == "felidae"  # GBIF fills the gap
-    assert row["species"] == "pardus"
-    assert "literature override on genus" in warning
+    assert row["class"] == "reptilia"
+    assert row["order"] == "squamata"
+    assert row["family"] == ""
+    assert row["genus"] == ""
+    assert row["species"] == ""
+    assert "hand-written" in warning
 
 
-def test_override_is_always_reported_for_review():
-    """An override is a deliberate divergence; never let it pass silently."""
-    _, warning = resolve_entry(
-        Entry("x", None, None, dict.fromkeys(("class", "order", "family", "genus", "species"), "z"))
-    )
+def test_hand_written_row_is_always_reported_for_review():
+    """A hand-written row is a deliberate divergence; never let it pass silently."""
+    _, warning = resolve_entry(Entry("x", None, None, {"class": "mammalia"}))
     assert warning is not None
 
 

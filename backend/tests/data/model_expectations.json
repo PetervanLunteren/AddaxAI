@@ -292,6 +292,76 @@
           }
         ]
       ]
+    },
+    "IND-ADS-v1": {
+      "legacy_key": "Central Indian Landscapes – Wildlife Conservation Trust",
+      "legacy_type": "addax-sppnet",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "wild pig",
+          "confidence": 0.15773
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "wild pig",
+            "confidence": 0.15773
+          },
+          {
+            "label": "dog",
+            "confidence": 0.10434
+          },
+          {
+            "label": "birds",
+            "confidence": 0.07411
+          },
+          {
+            "label": "feral cat",
+            "confidence": 0.06644
+          },
+          {
+            "label": "muntjac",
+            "confidence": 0.06112
+          }
+        ]
+      ]
+    },
+    "ANT-ADS-v1": {
+      "legacy_key": "Top End Savanna Vertebrates, Northern Territory Australia",
+      "legacy_type": "addax-sppnet",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "cow",
+          "confidence": 0.87193
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "cow",
+            "confidence": 0.87193
+          },
+          {
+            "label": "horse",
+            "confidence": 0.015
+          },
+          {
+            "label": "false detection",
+            "confidence": 0.01193
+          },
+          {
+            "label": "buffalo",
+            "confidence": 0.00854
+          },
+          {
+            "label": "pig",
+            "confidence": 0.00326
+          }
+        ]
+      ]
     }
   }
 }

@@ -26,7 +26,11 @@ Each row is resolved from the best evidence it carries. One rule, three
 sources, first hit wins:
 
   1. `GBIF_usageKey` / `gbif_usage_key`  -> resolve the key directly.
-     Authoritative, and what the legacy CSVs were built from.
+     Authoritative, and what the legacy CSVs were built from. A negative
+     key is a sentinel, not a key: cls-training-pipeline uses -1 for
+     "not applicable or a mixed taxon" and -10/-20/-30 for wolf/dog/
+     dingo, whose lineage is hardcoded into the level_* columns instead.
+     Those fall through to 2, where the hardcoded answer already is.
   2. `scientific_name`, or the finest non-empty legacy `level_*` cell
      (any "<rank> " prefix stripped)   -> match that name against GBIF.
      Handles all three legacy header shapes uniformly, including the
@@ -66,12 +70,16 @@ back under their real class, reproducing what SAH-DRY-ADS-v1 ships:
 The table mirrors the one in cls-training-pipeline/taxon-mapping, which
 is the producer side of this same problem. Keep the two in step.
 
-**Per-row overrides.** Any of the five rank columns may be supplied in the
-input CSV, and a supplied value wins over GBIF for that row. Use this
-wherever GBIF lags a published reclassification. Worked example: the 2021
-split moved the American mink and long-tailed weasel to *Neogale*, which
-GBIF still resolves as a genus-rank synonym of *Mustela* with no species
-at all, so both are written out by hand.
+**Per-row overrides.** Supply any of the five rank columns in the input
+CSV and that row is written from those columns alone: GBIF is not
+consulted, and the columns left blank stay blank. One rule, so the input
+CSV always shows exactly what the row will become.
+
+Use it wherever GBIF lags a published reclassification (the 2021 split
+moved the American mink to *Neogale*, which GBIF still resolves as a
+genus-rank synonym of *Mustela* with no species at all) and for mixed
+groups that have no single taxon (`snake sp` is `reptilia,squamata` and
+nothing below, since GBIF files the suborder Serpentes under *family*).
 
 A record's own rank is trusted over its rank fields
 ---------------------------------------------------
@@ -314,12 +322,14 @@ def resolve_entry(entry: Entry) -> tuple[dict[str, str], str | None]:
     if entry.model_class in NON_LABEL_CLASSES:
         return row, None
 
-    # A fully hand-written row needs no lookup. GBIF is a convenience,
-    # not the authority: where it disagrees with the literature, this is
-    # how the literature wins.
-    if set(entry.overrides) >= set(RANKS):
+    # Any hand-written column means the whole row is hand-written. GBIF
+    # is a convenience, not the authority: where it disagrees with the
+    # literature, or has no answer at all, this is how a human wins.
+    # Blank columns stay blank rather than being filled in behind the
+    # author's back, so what the input CSV says is what gets written.
+    if entry.overrides:
         row.update(entry.overrides)
-        return row, f"literature override, GBIF not consulted ({_summary(row)})"
+        return row, f"hand-written, GBIF not consulted ({_summary(row)})"
 
     if entry.gbif_key:
         record, matched_by = resolve_by_key(entry.gbif_key), "key"
@@ -335,16 +345,10 @@ def resolve_entry(entry: Entry) -> tuple[dict[str, str], str | None]:
         return row, "no GBIF key and no scientific name to resolve"
 
     row.update(record_to_ranks(record))
-    # Hand-written columns win over whatever GBIF returned for them.
-    row.update(entry.overrides)
 
     canonical = record.get("canonicalName") or "?"
     if not row["class"]:
         return row, f"matched {canonical!r} but GBIF gave no class"
-
-    if entry.overrides:
-        overridden = ", ".join(sorted(entry.overrides))
-        return row, f"literature override on {overridden} ({_summary(row)})"
 
     warning = None
     if matched_by == "name":
@@ -375,6 +379,29 @@ def resolve_entry(entry: Entry) -> tuple[dict[str, str], str | None]:
         warning = f"wrote {canonical!r}; GBIF calls it a synonym of {accepted!r}"
 
     return row, warning
+
+
+def _usable_gbif_key(raw: str | None) -> str | None:
+    """
+    Return the key only when it is a real GBIF usage key.
+
+    cls-training-pipeline uses negative numbers as sentinels rather than
+    keys: -1 means "not applicable, or a mixed taxon like caprid/raptor",
+    and -10/-20/-30 stand for wolf/dog/dingo, whose lineage that pipeline
+    hardcodes straight into the level_* columns. Treating a sentinel as
+    absent lets those rows fall through to the name path, where the
+    hardcoded answer already sits, e.g. dog carries
+    `level_species = "species Canis lupus familiaris"`.
+    """
+    value = (raw or "").strip()
+    if not value:
+        return None
+    try:
+        if int(value) <= 0:
+            return None
+    except ValueError:
+        return None
+    return value
 
 
 def _finest_legacy_name(row: dict[str, str]) -> str | None:
@@ -432,7 +459,7 @@ def _read_entries(path: Path, use_keys: bool) -> list[Entry]:
 
             key = None
             if key_column and use_keys:
-                key = (row.get(key_column) or "").strip() or None
+                key = _usable_gbif_key(row.get(key_column))
 
             name = (row.get("scientific_name") or "").strip() or None
             if name is None:

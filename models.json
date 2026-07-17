@@ -335,6 +335,36 @@
         "min_app_version": "0.1.0",
         "region": "americas",
         "full_image_cls": true
+      },
+      {
+        "model_id": "IND-ADS-v1",
+        "friendly_name": "Central India",
+        "emoji": "🇮🇳",
+        "env": "pytorch",
+        "model_fname": "final-20260521.pt",
+        "description": "This species recognition model was developed to automate and enhance camera trap monitoring effort across the forested landscapes of Central India. Built on a fine-tuned SpeciesNet architecture, the model is designed to classify 40 distinct classes using a robust dataset of 1.1 million samples collected from 10,300 unique locations. The training data spans a diverse range of habitats, primarily focusing on the dry and moist deciduous forests characteristic of the region. Approximately 70% of this dataset consists of proprietary data curated by the Wildlife Conservation Trust (WCT), featuring images captured using systematically deployed, ground-based, horizontally oriented camera traps positioned at optimized heights to maximize the detection zone for a wide array of species. The remaining 30% consists of supplemental data sourced from LILA BC, a public archive of camera trap imagery which was utilized to bolster underrepresented classes where local data was limited, thereby ensuring high classification accuracy across all categories.",
+        "description_short": "Fine-tuned SpeciesNet • 40 classes • Trained on 1.1M images",
+        "developer": "Addax Data Science",
+        "min_app_version": "0.1.0",
+        "region": "asia",
+        "owner": "Wildlife Conservation Trust (WCT) - India",
+        "license": "https://creativecommons.org/licenses/by-nc/4.0/deed.en",
+        "info_url": "https://www.wildlifeconservationtrust.org"
+      },
+      {
+        "model_id": "ANT-ADS-v1",
+        "friendly_name": "Top End savanna (Australia)",
+        "emoji": "🇦🇺",
+        "env": "pytorch",
+        "model_fname": "final-20260417.pt",
+        "description": "This species recognition model was developed for camera trap monitoring in the tropical savannas of the Northern Territory, Australia. It includes both native and introduced vertebrate species and was trained on approximately 890,000 images, about 70% of which were curated by Charles Darwin University, Territory Natural Resource Management, and Warddeken Land Management. Training data span a range of habitats, including lowland savanna forest and woodland, sandstone escarpment, roads, and coastal areas. Images were collected from ground-based, horizontally oriented Reconyx camera traps. The remaining 30% were sourced from LILA BC, a public archive of camera trap imagery, to supplement classes where local data were limited.\n\nThe model is fine-tuned from the SpeciesNet backbone and outputs 140-class predictions. It is optimized with a taxonomic aggregation strategy to return classifications at multiple levels of the taxonomic hierarchy (species, genus, family, order and class) to enhance accuracy, flexibility and generalizability.\n\nThe underlying raw image data are not publicly available due to access restrictions. The curating organisations recognise the Indigenous Data Sovereignty rights of Traditional Owners across the Top End, on whose Country these species persist, and pay their respects to Elders past and present, and acknowledge their ongoing role in supporting conservation and land management in the region.",
+        "description_short": "Fine-tuned SpeciesNet • 140 classes • Trained on 890k images",
+        "developer": "Addax Data Science",
+        "min_app_version": "0.1.0",
+        "region": "oceania",
+        "owner": "Charles Darwin University, Territory Natural Resource Management, Warddeken Land Management",
+        "license": "https://creativecommons.org/licenses/by-nc/4.0/deed.en",
+        "info_url": "https://www.cdu.edu.au/riel"
       }
     ],
     "emb": [
