@@ -474,3 +474,49 @@ def test_match_without_a_class_is_reported(monkeypatch):
     row, warning = resolve_entry(Entry("arthropods", None, "Arthropoda"))
     assert row["class"] == ""
     assert "no class" in warning
+
+
+def test_finest_legacy_name_ignores_unprefixed_filler():
+    """
+    The taxon-mapping README's rule 2 for mixed groups: go as deep as real
+    ranks allow, then repeat a plain label. The prefix is what marks a
+    cell as a real taxon, so "Small mammal" in level_species is filler and
+    "class Mammalia" is the answer. Reading the finest non-empty cell
+    instead sent "Small mammal" to GBIF, which matched kingdom Animalia
+    and produced an empty row.
+    """
+    row = {
+        "level_class": "class Mammalia",
+        "level_order": "Small mammal",
+        "level_family": "Small mammal",
+        "level_genus": "Small mammal",
+        "level_species": "Small mammal",
+    }
+    assert _finest_legacy_name(row) == "Mammalia"
+
+
+def test_finest_legacy_name_takes_deepest_real_rank_of_a_mixed_group():
+    """`lizard` in the README: real down to order, filler below."""
+    row = {
+        "level_class": "class Reptilia",
+        "level_order": "order Squamata",
+        "level_family": "order Squamata",
+        "level_genus": "order Squamata",
+        "level_species": "order Squamata",
+    }
+    assert _finest_legacy_name(row) == "Squamata"
+
+
+def test_finest_legacy_name_unprefixed_file_still_reads_deepest():
+    """
+    A file with no prefixes anywhere is the DeepForestVision shape, where
+    every cell is a real taxon and the deepest one wins.
+    """
+    row = {
+        "level_class": "mammalia",
+        "level_order": "tubulidentata",
+        "level_family": "orycteropodidae",
+        "level_genus": "orycteropus",
+        "level_species": "orycteropus afer",
+    }
+    assert _finest_legacy_name(row) == "orycteropus afer"

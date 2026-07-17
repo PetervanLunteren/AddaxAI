@@ -404,29 +404,46 @@ def _usable_gbif_key(raw: str | None) -> str | None:
     return value
 
 
+def _strip_rank_prefix(value: str) -> str | None:
+    """Return the name in a `"<rank> Name"` cell, or None if unprefixed."""
+    for rank in RANKS:
+        if value.lower().startswith(f"{rank} "):
+            return value[len(rank) + 1:].strip() or None
+    return None
+
+
 def _finest_legacy_name(row: dict[str, str]) -> str | None:
     """
-    Return the most specific name the legacy `level_*` columns carry.
+    Return the most specific real taxon the legacy `level_*` columns carry.
 
-    Walks species -> class and returns the first non-empty cell, stripping
-    any "<rank> " prefix. This reads all three legacy header shapes with
-    one rule:
+    The rank prefix is the signal. In the prefixed variants a cell either
+    reads `"<rank> Name"` and is a real taxon, or it carries a plain
+    descriptive string and is deliberate filler:
 
-        "species Felis catus"  -> "Felis catus"   (prefixed variants)
-        "orycteropus afer"     -> "orycteropus afer"  (DeepForestVision)
+        small mammal | class Mammalia | Small mammal | Small mammal | ...
+        raptor       | class Aves     | Raptor       | Raptor       | ...
 
-    A row with no species info repeats a coarser rank in the finer cells
-    (or leaves them empty), so the first hit walking upwards is exactly
-    the resolution that row actually has.
+    That is the taxon-mapping README's rule for mixed groups: go as deep
+    as real ranks allow, then repeat a label. So walk species -> class and
+    take the finest *prefixed* cell, which is Mammalia and Aves here, not
+    "Small mammal" and "Raptor".
+
+    Only when no cell in the row is prefixed at all is the file using the
+    unprefixed shape (the DeepForestVision one, `aardvark | mammalia |
+    tubulidentata | ...`), and then the finest non-empty cell is the
+    answer.
     """
-    for rank in reversed(RANKS):
-        value = (row.get(f"level_{rank}") or "").strip()
-        if not value:
-            continue
-        for prefix in RANKS:
-            if value.lower().startswith(f"{prefix} "):
-                value = value[len(prefix) + 1:].strip()
-                break
+    cells = [
+        ((row.get(f"level_{rank}") or "").strip(), rank)
+        for rank in reversed(RANKS)
+    ]
+
+    for value, _rank in cells:
+        if value and (name := _strip_rank_prefix(value)):
+            return name
+
+    # No prefixes anywhere: unprefixed file, take the finest cell as-is.
+    for value, _rank in cells:
         if value:
             return value
     return None
