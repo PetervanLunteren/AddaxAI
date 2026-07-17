@@ -1,0 +1,297 @@
+{
+  "images": [
+    {
+      "name": "osu_eastern_chipmunk.jpg",
+      "url": "https://storage.googleapis.com/public-datasets-lila/osu-small-animals/Images/Sorted_by_species/Mammalia/Eastern%20Chipmunk/FCM1__2019-09-22__11-31-52%283%29.JPG",
+      "sha256": "c650fc3423b254547bb8dff027f106321f2359954c17783f71a4badd34f4cfe9",
+      "bbox": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "models": {
+    "HWI-ADS-v1": {
+      "legacy_key": "Hawaiʻi, USA - AI Puaʻa v1.0",
+      "legacy_type": "addax-sppnet",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "cow",
+          "confidence": 0.67345
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "cow",
+            "confidence": 0.67345
+          },
+          {
+            "label": "false detection",
+            "confidence": 0.12464
+          },
+          {
+            "label": "sheep",
+            "confidence": 0.03907
+          },
+          {
+            "label": "mongoose",
+            "confidence": 0.02763
+          },
+          {
+            "label": "horse",
+            "confidence": 0.02585
+          }
+        ]
+      ]
+    },
+    "VIC-ADS-v1": {
+      "legacy_key": "Victoria, Australia - Parks Victoria - Addax Data Science",
+      "legacy_type": "addax-sppnet",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "false detection",
+          "confidence": 0.31532
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "false detection",
+            "confidence": 0.31532
+          },
+          {
+            "label": "cattle feral",
+            "confidence": 0.13821
+          },
+          {
+            "label": "mainland dusky antechinus",
+            "confidence": 0.08105
+          },
+          {
+            "label": "red deer",
+            "confidence": 0.03036
+          },
+          {
+            "label": "black-tailed wallaby",
+            "confidence": 0.02818
+          }
+        ]
+      ]
+    },
+    "SBUSA-ADS-v1": {
+      "legacy_key": "Southwestern Borderlands USA",
+      "legacy_type": "addax-sppnet",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "cervus canadensis",
+          "confidence": 0.61508
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "cervus canadensis",
+            "confidence": 0.61508
+          },
+          {
+            "label": "lynx rufus",
+            "confidence": 0.05751
+          },
+          {
+            "label": "false detection",
+            "confidence": 0.05528
+          },
+          {
+            "label": "urocyon cinereoargenteus",
+            "confidence": 0.03684
+          },
+          {
+            "label": "nasua narica",
+            "confidence": 0.01947
+          }
+        ]
+      ]
+    },
+    "SWUSA-SDZWA-v3": {
+      "legacy_key": "Southwest USA v3 - San Diego Zoo Wildlife Alliance",
+      "legacy_type": "sdzwa-pt",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "squirrel",
+          "confidence": 0.96015
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "squirrel",
+            "confidence": 0.96015
+          },
+          {
+            "label": "bird",
+            "confidence": 0.00874
+          },
+          {
+            "label": "cat",
+            "confidence": 0.00632
+          },
+          {
+            "label": "other",
+            "confidence": 0.00493
+          },
+          {
+            "label": "cow",
+            "confidence": 0.00427
+          }
+        ]
+      ]
+    },
+    "TAS-BB-v1": {
+      "legacy_key": "Tasmanian vertebrates",
+      "legacy_type": "mewc-keras",
+      "legacy_env": "tensorflow-v2",
+      "predictions": [
+        {
+          "label": "fallow_deer",
+          "confidence": 0.47597
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "fallow_deer",
+            "confidence": 0.47597
+          },
+          {
+            "label": "spotted_tail_quoll",
+            "confidence": 0.09084
+          },
+          {
+            "label": "red_fox",
+            "confidence": 0.08553
+          },
+          {
+            "label": "peafowl",
+            "confidence": 0.07082
+          },
+          {
+            "label": "bennetts_wallaby",
+            "confidence": 0.05941
+          }
+        ]
+      ]
+    },
+    "EUR-DF-v1-3": {
+      "legacy_key": "Europe - DeepFaune v1.3",
+      "legacy_type": "deepfaune-v1.3",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "bird",
+          "confidence": 0.40821
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird",
+            "confidence": 0.40821
+          },
+          {
+            "label": "squirrel",
+            "confidence": 0.12266
+          },
+          {
+            "label": "marmot",
+            "confidence": 0.08884
+          },
+          {
+            "label": "badger",
+            "confidence": 0.06904
+          },
+          {
+            "label": "roe deer",
+            "confidence": 0.05184
+          }
+        ]
+      ]
+    },
+    "NAM-ADS-v1": {
+      "legacy_key": "Namibian Desert - Addax Data Science",
+      "legacy_type": "addax-yolov8",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "cattle",
+          "confidence": 0.74641
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "cattle",
+            "confidence": 0.74641
+          },
+          {
+            "label": "donkey",
+            "confidence": 0.18762
+          },
+          {
+            "label": "african wild cat",
+            "confidence": 0.02167
+          },
+          {
+            "label": "lion",
+            "confidence": 0.00595
+          },
+          {
+            "label": "elephant",
+            "confidence": 0.00547
+          }
+        ]
+      ]
+    },
+    "SAH-DRY-ADS-v1": {
+      "legacy_key": "Sub-Saharan Drylands - Addax Data Science",
+      "legacy_type": "addax-sdzwa-pt",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "tortoises",
+          "confidence": 0.23968
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "tortoises",
+            "confidence": 0.23968
+          },
+          {
+            "label": "bird",
+            "confidence": 0.16955
+          },
+          {
+            "label": "boehms bush squirrel",
+            "confidence": 0.10885
+          },
+          {
+            "label": "carruthers mountain squirrel",
+            "confidence": 0.06082
+          },
+          {
+            "label": "plains zebra",
+            "confidence": 0.03598
+          }
+        ]
+      ]
+    }
+  }
+}
