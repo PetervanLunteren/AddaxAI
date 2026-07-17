@@ -1016,7 +1016,7 @@ def upload_to_gundi(src_dir, thresh, api_key, progress_window):
                                      json=event_payload,
                                      headers=headers_json,
                                      timeout=30)
-                if resp.status_code == 201:
+                if resp.status_code in (200, 201):
                     object_id = resp.json().get('object_id')
                     break
                 elif resp.status_code >= 500:
@@ -1043,7 +1043,7 @@ def upload_to_gundi(src_dir, thresh, api_key, progress_window):
                                              files={"file1": photo},
                                              headers=headers_file,
                                              timeout=60)
-                if resp_att.status_code != 201:
+                if resp_att.status_code not in (200, 201):
                     errors.append((item['file'], f"Attachment upload failed: HTTP {resp_att.status_code} - {resp_att.text[:200]}"))
             except Exception as e:
                 errors.append((item['file'], f"Attachment upload failed: {str(e)[:200]}"))
