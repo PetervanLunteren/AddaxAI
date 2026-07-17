@@ -677,6 +677,41 @@
           }
         ]
       ]
+    },
+    "AFR-DFV-v1": {
+      "legacy_key": "African tropical forests - DeepForestVision",
+      "legacy_type": "dfv-v1",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "elephant",
+          "confidence": 0.82405
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "elephant",
+            "confidence": 0.82405
+          },
+          {
+            "label": "african buffalo",
+            "confidence": 0.14038
+          },
+          {
+            "label": "bushpig",
+            "confidence": 0.01977
+          },
+          {
+            "label": "blue duiker",
+            "confidence": 0.00567
+          },
+          {
+            "label": "red duiker",
+            "confidence": 0.00326
+          }
+        ]
+      ]
     }
   }
 }

@@ -482,6 +482,20 @@
         "region": "americas",
         "license": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
         "info_url": "https://github.com/andrewzamp/TropiCam-AI"
+      },
+      {
+        "model_id": "AFR-DFV-v1",
+        "friendly_name": "African tropical forests",
+        "emoji": "🌳",
+        "env": "pytorch",
+        "model_fname": "DFV.pt",
+        "description": "One objective of the OneForestVision initiative is to develop open-source artificial intelligence models for biodiversity monitoring. DeepForestVision automatically classifies species in images and videos collected using camera-traps in African tropical forests. It is developed by an academic team from the French Muséum National d'Histore Naturelle (MNHN), in collaboration with 6 partners involved in wildlife research, conservation and management. DeepForestVision can be run through AddaxAI without programming knowledge, or downloaded on the project Github page https://github.com/MNHN-OFVI/DeepForestVision.",
+        "description_short": "Congo Basin rainforest • 34 classes • DINOv2",
+        "developer": "Hugo Magaldi - One Forest Vision initiative",
+        "min_app_version": "0.1.0",
+        "region": "africa",
+        "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        "info_url": "https://www.oneforestvision.org"
       }
     ],
     "emb": [

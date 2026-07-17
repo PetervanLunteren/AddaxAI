@@ -31,6 +31,14 @@ dependencies:
       # onnx2torch operator classes; loading the .pt fails with
       # ModuleNotFoundError without this package.
       - onnx2torch
+      # Required by the DeepForestVision classifier (dfv-v1,
+      # AFR-DFV-v1), whose architecture is a HuggingFace
+      # Dinov2ForImageClassification. 4.46.3 is the last release that
+      # supports Python 3.8; lift this pin when the env moves to 3.11.
+      # The model ships facebook/dinov2-large's config.json in its own
+      # HF repo and builds from that, so nothing is fetched at
+      # inference time.
+      - transformers==4.46.3
       - pytorch-lightning==2.0.6
       - albumentations==1.3.1
       # OpenCV (headless variant: no GUI deps, only the cv2 module).
