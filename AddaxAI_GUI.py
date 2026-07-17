@@ -116,6 +116,15 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 CLS_DIR = os.path.join(AddaxAI_files, "models", "cls")
 DET_DIR = os.path.join(AddaxAI_files, "models", "det")
 
+# Gundi/EarthRanger API endpoint. Defaults to production; set the
+# ADDAXAI_GUNDI_ENV=stage environment variable to test against staging.
+GUNDI_BASE_URLS = {
+    "prod": "https://sensors.api.gundiservice.org/v2",
+    "stage": "https://sensors.api.stage.gundiservice.org/v2",
+}
+GUNDI_ENV = os.environ.get("ADDAXAI_GUNDI_ENV", "prod").lower()
+GUNDI_BASE_URL = GUNDI_BASE_URLS.get(GUNDI_ENV, GUNDI_BASE_URLS["prod"])
+
 # set environment variables
 if os.name == 'nt': # windows
     env_dir_fpath = os.path.join(AddaxAI_files, "envs")
@@ -840,7 +849,7 @@ def upload_to_gundi(src_dir, thresh, api_key, progress_window):
 
     global cancel_var
     errors = []
-    gundi_base_url = "https://sensors.api.stage.gundiservice.org/v2"
+    gundi_base_url = GUNDI_BASE_URL
 
     # open recognition file
     recognition_file = os.path.join(src_dir, "image_recognition_file.json")
