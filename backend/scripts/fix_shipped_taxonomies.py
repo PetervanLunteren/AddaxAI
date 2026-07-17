@@ -12,13 +12,25 @@ Two defect classes, both found by auditing all 15 shipped taxonomies:
   genus/species  The species column holds a full binomial whose genus
                  contradicts the genus column, so
                  format_scientific_name_from_taxonomy_row renders
-                 "H. parahyaena brunnea". 22 rows.
+                 "H. parahyaena brunnea". 21 rows.
   rank swap      class holds a GBIF order (squamata) with `reptilia`
                  below it in order. Wrong in both GBIF's backbone and
                  Linnaean terms. 5 rows.
 
-A subspecies like `equus` + `zebra hartmannae` is NOT a defect and is not
-touched: it renders "E. zebra hartmannae", which is correct.
+Not every odd-looking row is a defect:
+
+  - `equus` + `zebra hartmannae` is a valid subspecies and renders
+    "E. zebra hartmannae". Left alone.
+  - `capra` + `aegagrus hircus` is the valid trinomial for the domestic
+    goat, which GBIF happens not to carry. Left alone.
+  - SPECIESNET-v4-0-2-A is not touched at all. Its `grizzly bear` row
+    reads `ursus` + `u. arctos` and renders "U. u. arctos", which looks
+    exactly like a mangled abbreviation, but it is what SpeciesNet itself
+    publishes in taxonomy_release and in the labels file the model ships.
+    Our taxonomy.csv is generated from that labels file by
+    generate_taxonomy_csv.py, so "correcting" it here would diverge from
+    upstream and be silently reverted the next time anyone regenerates.
+    It is an upstream question, not ours.
 """
 
 import csv
@@ -48,11 +60,6 @@ FIXES: dict[str, dict[str, dict[str, str]]] = {
         "scaly ground-roller": {"genus": "brachypteracias", "species": "squamiger"},
         "laughing dove": {"genus": "streptopelia", "species": "senegalensis"},
         "madagascar turtle-dove": {"genus": "streptopelia", "species": "picturata"},
-    },
-    "SPECIESNET-v4-0-2-A": {
-        # `brown bear` is already ursus/arctos, so `grizzly bear` must be
-        # the subspecies. "u. arctos" is a mangled abbreviation.
-        "grizzly bear": {"genus": "ursus", "species": "arctos horribilis"},
     },
     "KIR-HEX-v1": {
         # Uncia was folded back into Panthera; the row has the two swapped.
