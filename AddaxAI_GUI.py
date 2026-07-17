@@ -834,6 +834,219 @@ def postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds,
                 if os.path.isfile(csv_path):
                     os.remove(csv_path)
 
+def upload_to_gundi(src_dir, thresh, api_key, progress_window):
+    # log
+    print(f"EXECUTED: {sys._getframe().f_code.co_name}({locals()})\n")
+
+    global cancel_var
+    errors = []
+    gundi_base_url = "https://sensors.api.stage.gundiservice.org/v2"
+
+    # open recognition file
+    recognition_file = os.path.join(src_dir, "image_recognition_file.json")
+    if not os.path.isfile(recognition_file):
+        return errors
+
+    with open(recognition_file) as f:
+        data = json.load(f)
+
+    # build label map from detection and classification categories
+    label_map = data.get('detection_categories', {})
+    cls_label_map = data.get('classification_categories', {})
+
+    # first pass: count uploadable detections (have GPS and above threshold)
+    uploadable = []
+    skipped_no_gps = 0
+    for image in data['images']:
+        file = image['file']
+        filepath = os.path.join(src_dir, file)
+        if not os.path.isfile(filepath):
+            continue
+
+        # extract GPS
+        try:
+            gps = gpsphoto.getGPSData(filepath)
+        except:
+            gps = {}
+        if 'Latitude' not in gps or 'Longitude' not in gps:
+            skipped_no_gps += 1
+            continue
+
+        # extract EXIF metadata
+        try:
+            img_for_exif = PIL.Image.open(filepath)
+            metadata = {
+                PIL.ExifTags.TAGS[k]: v
+                for k, v in img_for_exif._getexif().items()
+                if k in PIL.ExifTags.TAGS
+            }
+            img_for_exif.close()
+        except:
+            metadata = {}
+
+        # check manually verified status
+        manually_checked = image.get('manually_checked', False)
+
+        for detection in image.get('detections', []):
+            conf = detection['conf']
+            if conf < thresh:
+                continue
+
+            # get species label
+            cat_id = detection['category']
+            if 'classifications' in detection and len(detection['classifications']) > 0:
+                cls_id = detection['classifications'][0][0]
+                label = cls_label_map.get(cls_id, label_map.get(cat_id, "unknown"))
+            else:
+                label = label_map.get(cat_id, "unknown")
+
+            uploadable.append({
+                'filepath': filepath,
+                'file': file,
+                'label': label,
+                'conf': conf,
+                'detection': detection,
+                'gps': gps,
+                'metadata': metadata,
+                'manually_checked': manually_checked,
+            })
+
+    total = len(uploadable)
+
+    # warn if no uploadable detections
+    if total == 0:
+        if skipped_no_gps > 0:
+            mb.showwarning(warning_txt[lang_idx],
+                [f"No images with GPS coordinates found. {skipped_no_gps} image(s) were skipped because they lack GPS data. Gundi upload requires GPS coordinates.",
+                 f"No se encontraron imágenes con coordenadas GPS. Se omitieron {skipped_no_gps} imagen(es) por falta de datos GPS. La carga a Gundi requiere coordenadas GPS.",
+                 f"Aucune image avec coordonnées GPS trouvée. {skipped_no_gps} image(s) ignorée(s) car elles n'ont pas de données GPS. L'envoi vers Gundi nécessite des coordonnées GPS."][lang_idx])
+        progress_window.update_values(process="gundi", status="done")
+        root.update()
+        return errors
+
+    # warn about skipped images
+    if skipped_no_gps > 0:
+        mb.showinfo(information_txt[lang_idx],
+            [f"{skipped_no_gps} image(s) without GPS coordinates will be skipped. {total} detection(s) will be uploaded to Gundi.",
+             f"{skipped_no_gps} imagen(es) sin coordenadas GPS se omitirán. Se subirán {total} detección(es) a Gundi.",
+             f"{skipped_no_gps} image(s) sans coordonnées GPS seront ignorée(s). {total} détection(s) seront envoyée(s) vers Gundi."][lang_idx])
+
+    # upload loop
+    start_time = time.time()
+    headers_json = {"apikey": api_key, "Content-Type": "application/json"}
+    headers_file = {"apikey": api_key}
+
+    for i, item in enumerate(uploadable):
+        if cancel_var:
+            break
+
+        # progress update
+        elapsed_time = str(datetime.timedelta(seconds=round(time.time() - start_time)))
+        if i > 0:
+            time_left = str(datetime.timedelta(seconds=round(((time.time() - start_time) * total / i) - (time.time() - start_time))))
+        else:
+            time_left = "..."
+        progress_window.update_values(process="gundi",
+                                      status="running",
+                                      cur_it=i + 1,
+                                      tot_it=total,
+                                      time_ela=elapsed_time,
+                                      time_rem=time_left,
+                                      cancel_func=cancel)
+        root.update()
+
+        # build timestamp from EXIF
+        iso_timestamp = ""
+        for dt_key in ['DateTimeOriginal', 'DateTime', 'DateTimeDigitized']:
+            try:
+                raw = str(item['metadata'][dt_key])
+                dt = datetime.datetime.strptime(raw, '%Y:%m:%d %H:%M:%S')
+                iso_timestamp = dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+                break
+            except:
+                continue
+        if not iso_timestamp:
+            iso_timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+
+        # build bbox in absolute pixels
+        det = item['detection']
+        bbox_raw = det.get('bbox', [0, 0, 0, 0])
+
+        # build event payload
+        verified_str = " (verified)" if item['manually_checked'] else ""
+        event_payload = {
+            "title": f"{item['label']} detected ({int(item['conf'] * 100)}% confidence){verified_str}",
+            "event_type": "wildlife_observation",
+            "recorded_at": iso_timestamp,
+            "location": {
+                "lat": item['gps']['Latitude'],
+                "lon": item['gps']['Longitude']
+            },
+            "status": "new",
+            "source": "AddaxAI",
+            "event_details": {
+                "species": item['label'],
+                "confidence": round(item['conf'], 4),
+                "camera_make": str(item['metadata'].get('Make', '')),
+                "camera_model": str(item['metadata'].get('Model', '')),
+                "detection_model": var_det_model.get(),
+                "classification_model": var_cls_model.get(),
+                "human_verified": item['manually_checked'],
+                "altitude": item['gps'].get('Altitude', ''),
+                "bbox": bbox_raw,
+                "addaxai_version": current_AA_version,
+                "image_filename": os.path.basename(item['file'])
+            }
+        }
+
+        # POST event with retry
+        object_id = None
+        for attempt in range(2):
+            try:
+                resp = requests.post(f"{gundi_base_url}/events/",
+                                     json=event_payload,
+                                     headers=headers_json,
+                                     timeout=30)
+                if resp.status_code == 201:
+                    object_id = resp.json().get('object_id')
+                    break
+                elif resp.status_code >= 500:
+                    time.sleep(1)
+                    continue
+                else:
+                    errors.append((item['file'], f"Event creation failed: HTTP {resp.status_code} - {resp.text[:200]}"))
+                    break
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                if attempt == 0:
+                    time.sleep(1)
+                    continue
+                errors.append((item['file'], f"Event creation failed: {str(e)[:200]}"))
+                break
+            except Exception as e:
+                errors.append((item['file'], f"Event creation failed: {str(e)[:200]}"))
+                break
+
+        # POST attachment if event was created
+        if object_id:
+            try:
+                with open(item['filepath'], 'rb') as photo:
+                    resp_att = requests.post(f"{gundi_base_url}/events/{object_id}/attachments/",
+                                             files={"file1": photo},
+                                             headers=headers_file,
+                                             timeout=60)
+                if resp_att.status_code != 201:
+                    errors.append((item['file'], f"Attachment upload failed: HTTP {resp_att.status_code} - {resp_att.text[:200]}"))
+            except Exception as e:
+                errors.append((item['file'], f"Attachment upload failed: {str(e)[:200]}"))
+
+        # rate limiting
+        time.sleep(0.1)
+
+    # done
+    progress_window.update_values(process="gundi", status="done")
+    root.update()
+    return errors
+
 def clean_line(line):
     return line.replace('\0', '')
 
@@ -1314,9 +1527,11 @@ def start_postprocess():
         "var_vis_bbox": var_vis_bbox.get(),
         "var_vis_blur": var_vis_blur.get(),
         "var_plt": var_plt.get(),
-        "var_thresh": var_thresh.get()
+        "var_thresh": var_thresh.get(),
+        "var_gundi_upload": var_gundi_upload.get(),
+        "var_gundi_api_key": var_gundi_api_key.get()
     })
-    
+
     # fix user input
     src_dir = var_choose_folder.get()
     dst_dir = var_output_dir.get()
@@ -1332,6 +1547,8 @@ def start_postprocess():
     exp = var_exp.get()
     plt = var_plt.get()
     exp_format = var_exp_format.get()
+    gundi = var_gundi_upload.get()
+    gundi_api_key = var_gundi_api_key.get()
 
     # init cancel variable
     global cancel_var
@@ -1361,6 +1578,14 @@ def start_postprocess():
                         "carpeta establecida no existe. Esto opción es obligatoria.",
                         "Le répertoire de sortie n'est pas spécifié. Vous n'avez pas spécifié l'emplacement où enregistrer les résultats du post-traitement "
                         "ou le répertoire n'existe pas. Ceci est obligatoire."][lang_idx])
+        return
+
+    # check if gundi api key is provided
+    if gundi and not gundi_api_key.strip():
+        mb.showerror(error_txt[lang_idx],
+            ["Gundi API key is required. Please enter your API key in the Gundi options.",
+             "Se requiere la clave API de Gundi. Introduzca su clave API en las opciones de Gundi.",
+             "La cle API Gundi est requise. Veuillez saisir votre cle API dans les options Gundi."][lang_idx])
         return
 
     # warn user if the original files will be overwritten with visualized files
@@ -1393,6 +1618,8 @@ def start_postprocess():
         processes.append("plt")
     if vid_json:
         processes.append("vid_pst")
+    if gundi and img_json:
+        processes.append("gundi")
     global progress_window
     progress_window = ProgressWindow(processes = processes)
     progress_window.open()
@@ -1405,7 +1632,20 @@ def start_postprocess():
         # postprocess videos
         if vid_json and not cancel_var:
             postprocess(src_dir, dst_dir, thresh, sep, keep_series, keep_series_seconds, file_placement, sep_conf, vis, crp, exp, plt, exp_format, data_type = "vid", keep_series_species=keep_series_species)
-            
+
+        # upload to gundi (images only)
+        if gundi and img_json and not cancel_var:
+            gundi_errors = upload_to_gundi(src_dir, thresh, gundi_api_key, progress_window)
+            if gundi_errors:
+                error_log = os.path.join(dst_dir, "gundi_upload_errors.txt")
+                with open(error_log, 'w') as f:
+                    for fpath, err in gundi_errors:
+                        f.write(f"{fpath}: {err}\n")
+                mb.showwarning(warning_txt[lang_idx],
+                    [f"{len(gundi_errors)} event(s) failed to upload to Gundi. See\n\n'{error_log}'\n\nfor details.",
+                     f"{len(gundi_errors)} evento(s) no se pudieron subir a Gundi. Consulte\n\n'{error_log}'\n\npara mas detalles.",
+                     f"{len(gundi_errors)} evenement(s) n'ont pas pu etre envoyes vers Gundi. Voir\n\n'{error_log}'\n\npour plus de details."][lang_idx])
+
         # complete
         complete_frame(fth_step)
 
@@ -8436,6 +8676,39 @@ class ProgressWindow:
             self.plt_can_btn.grid(row=7, padx=self.padx_progress_window, pady=(self.pady_progress_window, 0), sticky="ns")
             self.plt_can_btn.grid_remove()
 
+        # gundi upload
+        if "gundi" in processes:
+            self.gundi_frm = customtkinter.CTkFrame(master=self.progress_top_level_window)
+            self.gundi_frm.grid(row=7, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nswe")
+            gundi_ttl_txt = ['Uploading to Gundi...', 'Subiendo a Gundi...', 'Envoi vers Gundi...']
+            self.gundi_ttl = customtkinter.CTkLabel(self.gundi_frm, text=gundi_ttl_txt[lang_idx], font=ttl_font)
+            self.gundi_ttl.grid(row=0, padx=self.padx_progress_window * 2, pady=(self.pady_progress_window, 0), columnspan=2, sticky="nsw")
+            self.gundi_sub_frm = customtkinter.CTkFrame(master=self.gundi_frm)
+            self.gundi_sub_frm.grid(row=1, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nswe", ipady=self.pady_progress_window/2)
+            self.gundi_sub_frm.columnconfigure(0, weight=1, minsize=300 * scale_factor)
+            self.gundi_pbr = customtkinter.CTkProgressBar(self.gundi_sub_frm, orientation="horizontal", height=pbr_height, corner_radius=5, width=1)
+            self.gundi_pbr.set(0)
+            self.gundi_pbr.grid(row=0, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="nsew")
+            self.gundi_per = customtkinter.CTkLabel(self.gundi_sub_frm, text=f" 0% ", height=5, fg_color=("#949BA2", "#4B4D50"), text_color="white")
+            self.gundi_per.grid(row=0, padx=self.padx_progress_window, pady=self.pady_progress_window, sticky="")
+            self.gundi_wai_lbl = customtkinter.CTkLabel(self.gundi_sub_frm, height=lbl_height, text=in_queue_txt[lang_idx])
+            self.gundi_wai_lbl.grid(row=1, padx=self.padx_progress_window, pady=0, sticky="nsew")
+            self.gundi_ela_lbl = customtkinter.CTkLabel(self.gundi_sub_frm, height=lbl_height, text=f"{elapsed_time_txt[lang_idx]}:")
+            self.gundi_ela_lbl.grid(row=2, padx=self.padx_progress_window, pady=0, sticky="nsw")
+            self.gundi_ela_lbl.grid_remove()
+            self.gundi_ela_val = customtkinter.CTkLabel(self.gundi_sub_frm, height=lbl_height, text=f"")
+            self.gundi_ela_val.grid(row=2, padx=self.padx_progress_window, pady=0, sticky="nse")
+            self.gundi_ela_val.grid_remove()
+            self.gundi_rem_lbl = customtkinter.CTkLabel(self.gundi_sub_frm, height=lbl_height, text=f"{remaining_time_txt[lang_idx]}:")
+            self.gundi_rem_lbl.grid(row=3, padx=self.padx_progress_window, pady=0, sticky="nsw")
+            self.gundi_rem_lbl.grid_remove()
+            self.gundi_rem_val = customtkinter.CTkLabel(self.gundi_sub_frm, height=lbl_height, text=f"")
+            self.gundi_rem_val.grid(row=3, padx=self.padx_progress_window, pady=0, sticky="nse")
+            self.gundi_rem_val.grid_remove()
+            self.gundi_can_btn = CancelButton(master=self.gundi_sub_frm, text="Cancel", command=lambda: print(""))
+            self.gundi_can_btn.grid(row=7, padx=self.padx_progress_window, pady=(self.pady_progress_window, 0), sticky="ns")
+            self.gundi_can_btn.grid_remove()
+
         self.progress_top_level_window.update()
 
     def update_values(self,
@@ -8805,6 +9078,39 @@ class ProgressWindow:
                 self.plt_pbr.grid_configure(pady=(self.pady_progress_window, 0))
                 self.plt_per.grid_configure(pady=(self.pady_progress_window, 0))
 
+        # gundi upload
+        elif process == "gundi":
+            if status == "load":
+                self.gundi_wai_lbl.configure(text=starting_up_txt[lang_idx])
+                self.just_shown_load_screen = True
+            elif status == "running":
+                if self.just_shown_load_screen:
+                    self.gundi_wai_lbl.grid_remove()
+                    self.gundi_ela_lbl.grid()
+                    self.gundi_ela_val.grid()
+                    self.gundi_rem_lbl.grid()
+                    self.gundi_rem_val.grid()
+                    self.gundi_can_btn.grid()
+                    self.gundi_can_btn.configure(command=cancel_func)
+                    self.just_shown_load_screen = False
+                percentage = (cur_it / tot_it)
+                self.gundi_pbr.set(percentage)
+                self.gundi_per.configure(text=f" {round(percentage * 100)}% ")
+                if percentage > 0.5:
+                    self.gundi_per.configure(fg_color=(green_primary, "#1F6BA5"))
+                else:
+                    self.gundi_per.configure(fg_color=("#949BA2", "#4B4D50"))
+                self.gundi_ela_val.configure(text=time_ela)
+                self.gundi_rem_val.configure(text=time_rem)
+            elif status == "done":
+                self.gundi_rem_lbl.grid_remove()
+                self.gundi_rem_val.grid_remove()
+                self.gundi_ela_val.grid_remove()
+                self.gundi_ela_lbl.grid_remove()
+                self.gundi_can_btn.grid_remove()
+                self.gundi_pbr.grid_configure(pady=(self.pady_progress_window, 0))
+                self.gundi_per.grid_configure(pady=(self.pady_progress_window, 0))
+
         # update screen
         self.progress_top_level_window.update()
 
@@ -8949,6 +9255,9 @@ def set_language():
     vis_frame.configure(text=" ↳ " + vis_frame_txt[lang_idx] + " ")
     lbl_exp_format.configure(text="     " + lbl_exp_format_txt[lang_idx])
     lbl_plt.configure(text=lbl_plt_txt[lang_idx])
+    lbl_gundi_upload.configure(text=lbl_gundi_upload_txt[lang_idx])
+    lbl_gundi_api_key.configure(text="     " + lbl_gundi_api_key_txt[lang_idx])
+    gundi_frame.configure(text=" \u2193 " + gundi_frame_txt[lang_idx] + " ")
     lbl_thresh.configure(text=lbl_thresh_txt[lang_idx])
     btn_start_postprocess.configure(text=btn_start_postprocess_txt[lang_idx])
     lbl_vis_size.configure(text="        ↳ " + lbl_vis_size_txt[lang_idx])
@@ -9215,6 +9524,18 @@ def toggle_vis_frame():
         disable_widgets(vis_frame)
         vis_frame.configure(fg='grey80')
         vis_frame.grid_forget()
+    resize_canvas_to_content()
+
+# toggle gundi subframe
+def toggle_gundi_frame():
+    if var_gundi_upload.get() and lbl_gundi_upload.cget("state") == "normal":
+        gundi_frame.grid(row=gundi_frame_row, column=0, columnspan=2, sticky='ew')
+        enable_widgets(gundi_frame)
+        gundi_frame.configure(fg='black')
+    else:
+        disable_widgets(gundi_frame)
+        gundi_frame.configure(fg='grey80')
+        gundi_frame.grid_forget()
     resize_canvas_to_content()
 
 # on checkbox change
@@ -9548,7 +9869,8 @@ def reset_values():
     var_crp_files.set(False)
     var_exp.set(True)
     var_exp_format.set(dpd_options_exp_format[lang_idx][global_vars['var_exp_format_idx']])
-    
+    var_gundi_upload.set(False)
+
     write_global_vars({
         "var_det_model_idx": dpd_options_model[lang_idx].index(var_det_model.get()),
         "var_det_model_path": var_det_model_path.get(),
@@ -9577,7 +9899,8 @@ def reset_values():
         "var_vis_blur": var_vis_blur.get(),
         "var_crp_files": var_crp_files.get(),
         "var_exp": var_exp.get(),
-        "var_exp_format_idx": dpd_options_exp_format[lang_idx].index(var_exp_format.get())
+        "var_exp_format_idx": dpd_options_exp_format[lang_idx].index(var_exp_format.get()),
+        "var_gundi_upload": var_gundi_upload.get()
     })
 
     # update keep-series trigger display
@@ -10347,9 +10670,38 @@ var_plt.set(global_vars['var_plt'])
 chb_plt = Checkbutton(fth_step, variable=var_plt, anchor="w")
 chb_plt.grid(row=row_plt, column=1, sticky='nesw', padx=5)
 
+# gundi upload
+lbl_gundi_upload_txt = ["Upload events to Gundi", "Subir eventos a Gundi", "Envoyer les events vers Gundi"]
+row_gundi_upload = 7
+lbl_gundi_upload = Label(fth_step, text=lbl_gundi_upload_txt[lang_idx], width=1, anchor="w")
+lbl_gundi_upload.grid(row=row_gundi_upload, sticky='nesw', pady=2)
+var_gundi_upload = BooleanVar()
+var_gundi_upload.set(global_vars['var_gundi_upload'])
+chb_gundi_upload = Checkbutton(fth_step, variable=var_gundi_upload, anchor="w", command=toggle_gundi_frame)
+chb_gundi_upload.grid(row=row_gundi_upload, column=1, sticky='nesw', padx=5)
+
+## gundi options
+gundi_frame_txt = ["Gundi options", "Opciones de Gundi", "Options Gundi"]
+gundi_frame_row = 8
+gundi_frame = LabelFrame(fth_step, text=" \u2193 " + gundi_frame_txt[lang_idx] + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
+gundi_frame.configure(font=(text_font, second_level_frame_font_size, "bold"))
+gundi_frame.grid(row=gundi_frame_row, column=0, columnspan=2, sticky='ew')
+gundi_frame.columnconfigure(0, weight=1, minsize=label_width - subframe_correction_factor)
+gundi_frame.columnconfigure(1, weight=1, minsize=widget_width - subframe_correction_factor)
+gundi_frame.grid_forget()
+
+# api key entry
+lbl_gundi_api_key_txt = ["API key", "Clave API", "Cle API"]
+lbl_gundi_api_key = Label(gundi_frame, text="     " + lbl_gundi_api_key_txt[lang_idx], pady=2, width=1, anchor="w")
+lbl_gundi_api_key.grid(row=0, sticky='nesw')
+var_gundi_api_key = StringVar()
+var_gundi_api_key.set(global_vars['var_gundi_api_key'])
+ent_gundi_api_key = Entry(gundi_frame, textvariable=var_gundi_api_key, show="*")
+ent_gundi_api_key.grid(row=0, column=1, sticky='nesw', padx=5)
+
 # export results
 lbl_exp_txt = ["Export results and retrieve metadata", "Exportar resultados y recuperar metadatos", "Exporter les résultats and récupérer les métadonnées"]
-row_exp = 7
+row_exp = 9
 lbl_exp = Label(fth_step, text=lbl_exp_txt[lang_idx], width=1, anchor="w")
 lbl_exp.grid(row=row_exp, sticky='nesw', pady=2)
 var_exp = BooleanVar()
@@ -10359,7 +10711,7 @@ chb_exp.grid(row=row_exp, column=1, sticky='nesw', padx=5)
 
 ## exportation options
 exp_frame_txt = ["Export options", "Opciones de exportación", "Options d'exportation"]
-exp_frame_row = 8
+exp_frame_row = 10
 exp_frame = LabelFrame(fth_step, text=" ↳ " + exp_frame_txt[lang_idx] + " ", pady=2, padx=5, relief='solid', highlightthickness=5, font=100, borderwidth=1, fg="grey80")
 exp_frame.configure(font=(text_font, second_level_frame_font_size, "bold"))
 exp_frame.grid(row=exp_frame_row, column=0, columnspan=2, sticky = 'ew')
@@ -10381,7 +10733,7 @@ dpd_exp_format.grid(row=row_exp_format, column=1, sticky='nesw', padx=5)
 
 # threshold
 lbl_thresh_txt = ["Confidence threshold", "Umbral de confianza", "Seuil de confiance"]
-row_lbl_thresh = 9
+row_lbl_thresh = 11
 lbl_thresh = Label(fth_step, text=lbl_thresh_txt[lang_idx], width=1, anchor="w")
 lbl_thresh.grid(row=row_lbl_thresh, sticky='nesw', pady=2)
 var_thresh = DoubleVar()
@@ -10394,12 +10746,12 @@ dsp_thresh.grid(row=row_lbl_thresh, column=0, sticky='e', padx=0)
 
 # postprocessing button
 btn_start_postprocess_txt = ["Start post-processing", "Iniciar el postprocesamiento", "Démarrer le post-traitement"]
-row_start_postprocess = 10
+row_start_postprocess = 12
 btn_start_postprocess = Button(fth_step, text=btn_start_postprocess_txt[lang_idx], command=start_postprocess)
 btn_start_postprocess.grid(row=row_start_postprocess, column=0, columnspan = 2, sticky='ew')
 
 # set minsize for all rows inside labelframes...
-for frame in [fst_step, snd_step, cls_frame, img_frame, vid_frame, fth_step, sep_frame, keep_series_frame, exp_frame, vis_frame]:
+for frame in [fst_step, snd_step, cls_frame, img_frame, vid_frame, fth_step, sep_frame, keep_series_frame, exp_frame, vis_frame, gundi_frame]:
     set_minsize_rows(frame)
 
 # ... but not for the hidden rows
@@ -10412,6 +10764,7 @@ cls_frame.grid_rowconfigure(row_cls_detec_thresh, minsize=0) # cls animal thresh
 # cls_frame.grid_rowconfigure(row_smooth_cls_animal, minsize=0) # cls animal smooth
 fth_step.grid_rowconfigure(sep_frame_row, minsize=0) # sep options
 sep_frame.grid_rowconfigure(keep_series_frame_row, minsize=0) # keep series options (inside sep_frame)
+fth_step.grid_rowconfigure(gundi_frame_row, minsize=0) # gundi options
 fth_step.grid_rowconfigure(exp_frame_row, minsize=0) # exp options
 fth_step.grid_rowconfigure(vis_frame_row, minsize=0) # vis options
 
@@ -10889,6 +11242,20 @@ def write_help_tab():
                            "approfondie des données. Des cartes interactives supplémentaires seront générées lorsque les géotags pourront être "
                            "récupérés à partir des métadonnées de l'image."][lang_idx])
     help_text.insert(END, "\n\n")
+    help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
+    help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
+
+    # gundi upload
+    help_text.insert(END, f"{lbl_gundi_upload_txt[lang_idx]}\n")
+    help_text.insert(END, ["Upload detection events to Gundi (gundi.earth), a conservation data integration platform. Each detection with GPS coordinates "
+                           "will be sent as an event including species, confidence, camera metadata, and the original photo. Requires a Gundi API key "
+                           "from the Gundi Portal. Images without GPS coordinates will be skipped.\n\n",
+                           "Suba eventos de deteccion a Gundi (gundi.earth), una plataforma de integracion de datos de conservacion. Cada deteccion con "
+                           "coordenadas GPS se enviara como un evento incluyendo especie, confianza, metadatos de la camara y la foto original. Requiere "
+                           "una clave API de Gundi del Portal Gundi. Las imagenes sin coordenadas GPS se omitiran.\n\n",
+                           "Envoyez les evenements de detection vers Gundi (gundi.earth), une plateforme d'integration de donnees de conservation. Chaque "
+                           "detection avec coordonnees GPS sera envoyee comme evenement incluant l'espece, la confiance, les metadonnees de la camera et "
+                           "la photo originale. Necessite une cle API Gundi du portail Gundi. Les images sans coordonnees GPS seront ignorees.\n\n"][lang_idx])
     help_text.tag_add('feature', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=1
     help_text.tag_add('explanation', f"{str(line_number)}.0", f"{str(line_number)}.end");line_number+=2
 
