@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Patch the 27 broken rows in the taxonomies that shipped before the port.
+Patch the 23 broken rows in the taxonomies that shipped before the port.
 
 Targeted on purpose. Regenerating these files wholesale would rewrite
 thousands of rows that are already correct just to fix a couple, and most
@@ -12,10 +12,13 @@ Two defect classes, both found by auditing all 15 shipped taxonomies:
   genus/species  The species column holds a full binomial whose genus
                  contradicts the genus column, so
                  format_scientific_name_from_taxonomy_row renders
-                 "H. parahyaena brunnea". 21 rows.
+                 "H. parahyaena brunnea". 19 rows.
   rank swap      class holds a GBIF order (squamata) with `reptilia`
                  below it in order. Wrong in both GBIF's backbone and
-                 Linnaean terms. 5 rows.
+                 Linnaean terms. 4 rows.
+
+This table is the wrong tool when a file is not merely wrong in places
+but is the wrong file. See the PAM-SDZWA-v1 note below.
 
 Not every odd-looking row is a defect:
 
@@ -75,13 +78,22 @@ FIXES: dict[str, dict[str, dict[str, str]]] = {
         "skink": {"class": "reptilia", "order": "squamata"},
         "snake": {"class": "reptilia", "order": "squamata"},
     },
-    "PAM-SDZWA-v1": {
-        "highland coati": {"genus": "nasuella", "species": "olivacea"},
-        "jaguarundi": {"genus": "herpailurus", "species": "yagouaroundi"},
-        # A generic "reptile" could be a turtle, so it stops at the class.
-        # Matches what PAN-SDZWA-v1 ships from GBIF key 12170551.
-        "reptile": {"class": "reptilia", "order": ""},
-    },
+    # PAM-SDZWA-v1 used to be patched here, for `highland coati`,
+    # `jaguarundi` and `reptile`. Running that against it now would fail
+    # on all three: those are Andes classes, and the Amazon model does
+    # not have them.
+    #
+    # The patch was treating a symptom. PAM was shipping a byte-identical
+    # copy of PAN-SDZWA-v1's Andes taxonomy, so the Amazon model was
+    # described by the Andes model's species list, and correcting rows in
+    # it only made the wrong file tidier. Its taxonomy.csv has since been
+    # rebuilt from its own class list (Peru-Amazon_0.86.txt) through
+    # resolve_taxonomy_gbif.py, which is a thing this table cannot
+    # express: every row changed, not three.
+    #
+    # PAN-SDZWA-v1 is deliberately absent. It is the model those three
+    # classes actually belong to, but it ships them already correct, so
+    # there is nothing here to fix.
     "SWUSA-SDZWA-v3": {
         "reptile": {"class": "reptilia", "order": ""},
     },
