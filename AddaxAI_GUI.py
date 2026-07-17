@@ -9896,6 +9896,7 @@ def reset_values():
     var_exp.set(True)
     var_exp_format.set(dpd_options_exp_format[lang_idx][global_vars['var_exp_format_idx']])
     var_gundi_upload.set(False)
+    var_gundi_api_key.set("")
 
     write_global_vars({
         "var_det_model_idx": dpd_options_model[lang_idx].index(var_det_model.get()),
@@ -9926,7 +9927,8 @@ def reset_values():
         "var_crp_files": var_crp_files.get(),
         "var_exp": var_exp.get(),
         "var_exp_format_idx": dpd_options_exp_format[lang_idx].index(var_exp_format.get()),
-        "var_gundi_upload": var_gundi_upload.get()
+        "var_gundi_upload": var_gundi_upload.get(),
+        "var_gundi_api_key": var_gundi_api_key.get()
     })
 
     # update keep-series trigger display
