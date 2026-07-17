@@ -453,6 +453,35 @@
         "region": "oceania",
         "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
         "info_url": "https://github.com/Australian-Wildlife-Conservancy-AWC/awc-wildlife-classifier"
+      },
+      {
+        "model_id": "NZS-WEK-v3-03",
+        "friendly_name": "New Zealand (species)",
+        "emoji": "🇳🇿",
+        "env": "pytorch",
+        "model_fname": "Exp_60_run_01_best_weights.pt",
+        "description": "Model to identify 81 species or higher-level taxons present in New Zealand. The model was trained on a set of camera trap images from various projects across the country. These projects were run by multiple organizations and took place in a diverse range of habitats, using a variety of trail camera brands and models. When tested on a balanced out-of-sample test set of 6,372 images, the model scored 0.90 and 0.95 for balanced accuracy and macro average precision, respectively. The model was designed to expedite the monitoring of New Zealand species, including native species.",
+        "description_short": "Native + introduced • 81 classes • multi-label",
+        "developer": "wekaResearch",
+        "min_app_version": "0.1.0",
+        "region": "oceania",
+        "owner": "New Zealand Department of Conservation",
+        "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        "info_url": "https://wekaresearch.com/"
+      },
+      {
+        "model_id": "NEO-MNCN-v1-0",
+        "friendly_name": "Neotropics (TropiCam-AI)",
+        "emoji": "🌴",
+        "env": "tensorflow-v1",
+        "model_fname": "TropiCam_AI_TensorFlow_model.h5",
+        "description": "TropiCam-AI is a Convolutional Neural Network (CNN) trained to classify arboreal mammal and bird species in the Neotropical region from camera-traps deployed in the tree canopy. It was trained using a ConvNeXt-Base architecture on ~189.000 camera-trap images from several deployments in Neotropical countries (Brazil, Peru, French Guiana, Costa Rica) and augmented with ~54.000 citizen-science images gathered from the iNaturalist platform. It is designed to work in conjunction with the MegaDetector algorithm, in the well-established two-stage detection and classification pipeline. TropiCam-AI can recognize a total of 84 taxa, and it was optimized with a taxonomic aggregation strategy to return classification at multiple levels of the taxonomy hierarchy (e.g. species, genus, family, class and order) to enhance accuracy, flexibility and generalizability to unseen locations and species. TropiCam-AI was released with the publication “Introducing TropiCam-AI: A taxonomically flexible automated classifier of Neotropical arboreal mammals and birds from camera-trap data” (https://doi.org/10.1111/2041-210x.70213). Further information can be found on the dedicated GitHub repository (https://github.com/andrewzamp/TropiCam-AI).",
+        "description_short": "Central + South America • 84 classes • ConvNeXt",
+        "developer": "Andrea Zampetti, National Museum of Natural Sciences (MNCN-CSIC), Madrid, Spain",
+        "min_app_version": "0.1.0",
+        "region": "americas",
+        "license": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
+        "info_url": "https://github.com/andrewzamp/TropiCam-AI"
       }
     ],
     "emb": [

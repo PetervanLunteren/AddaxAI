@@ -572,6 +572,111 @@
           }
         ]
       ]
+    },
+    "NEO-MNCN-v1-0": {
+      "legacy_key": "Neotropical region - TropiCam-AI v1.0",
+      "legacy_type": "andrea-anpc",
+      "legacy_env": "tensorflow-v1",
+      "predictions": [
+        {
+          "label": "tamandua_tetradactyla",
+          "confidence": 0.48977
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "tamandua_tetradactyla",
+            "confidence": 0.48977
+          },
+          {
+            "label": "marmosa_spp",
+            "confidence": 0.16426
+          },
+          {
+            "label": "leopardus_spp",
+            "confidence": 0.098
+          },
+          {
+            "label": "callithrix_spp",
+            "confidence": 0.05377
+          },
+          {
+            "label": "caluromys_philander",
+            "confidence": 0.04909
+          }
+        ]
+      ]
+    },
+    "PAM-SDZWA-v1": {
+      "legacy_key": "Peruvian Amazon - San Diego Zoo Wildlife Alliance",
+      "legacy_type": "sdzwa-peru-amazon",
+      "legacy_env": "tensorflow-v1",
+      "predictions": [
+        {
+          "label": "Spix's guan",
+          "confidence": 0.91354
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "Spix's guan",
+            "confidence": 0.91354
+          },
+          {
+            "label": "Unknown bird",
+            "confidence": 0.06466
+          },
+          {
+            "label": "Grey-fronted dove",
+            "confidence": 0.01242
+          },
+          {
+            "label": "Southern amazonian red squirrel",
+            "confidence": 0.00566
+          },
+          {
+            "label": "Great tinamou",
+            "confidence": 0.00347
+          }
+        ]
+      ]
+    },
+    "NZS-WEK-v3-03": {
+      "legacy_key": "New Zealand Species v3.03 - DOC NZ - wekaResearch",
+      "legacy_type": "alita-v3.03",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "cow",
+          "confidence": 0.27737
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "cow",
+            "confidence": 0.27737
+          },
+          {
+            "label": "dog",
+            "confidence": 0.16703
+          },
+          {
+            "label": "deer",
+            "confidence": 0.10882
+          },
+          {
+            "label": "goat",
+            "confidence": 0.05998
+          },
+          {
+            "label": "cat",
+            "confidence": 0.05428
+          }
+        ]
+      ]
     }
   }
 }

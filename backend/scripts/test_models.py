@@ -22,6 +22,8 @@ What it checks, per model:
             same image and box, with confidence within CONF_TOLERANCE.
             Expectations come from tests/data/model_expectations.json,
             generated once by scripts/generate_legacy_ground_truth.py.
+            Models in CONFIDENCE_DIVERGES are checked on the label only,
+            because we deliberately report a different number to legacy.
 
 Confidence is compared loosely on purpose. Ground truth is generated on
 one machine (MPS), and the same weights on CUDA or CPU differ in the last
@@ -88,6 +90,19 @@ EXPECTED_CPU: dict[str, str] = {
     # Darwin, so TropiCam-AI is CPU-only on macOS by the model's own
     # choice, not ours.
     "NEO-MNCN-v1-0": "darwin",
+}
+
+# Models where we deliberately report a different confidence to legacy,
+# with the reason. The top-1 label is still checked exactly: a wrong
+# label means a broken port either way. Only the number is exempt.
+CONFIDENCE_DIVERGES: dict[str, str] = {
+    # Multi-label: the head is read with a sigmoid, so the 81 scores are
+    # independent and do not sum to 1. Legacy's remove_forbidden_classes
+    # divides every score by their sum regardless, which is a no-op for
+    # the softmax models but rescales this one by ~1/1.54. We report the
+    # model's real probability instead. Scaling is monotonic, so the
+    # ranking (and therefore the label) is identical either way.
+    "NZS-WEK-v3-03": "multi-label sigmoid; legacy rescales by 1/sum",
 }
 
 
@@ -275,6 +290,10 @@ def run_model(
         result.notes.append("no ground truth recorded")
         return result
 
+    diverges = CONFIDENCE_DIVERGES.get(model_id)
+    if diverges:
+        result.notes.append(f"confidence differs from legacy by design: {diverges}")
+
     result.status = "PASS"
     for i, (label, conf) in enumerate(predictions):
         want = expectation["predictions"][i]
@@ -287,7 +306,7 @@ def run_model(
             result.notes.append(
                 f"image {i}: got {label!r}, legacy said {want['label']!r}"
             )
-        elif delta > CONF_TOLERANCE:
+        elif delta > CONF_TOLERANCE and not diverges:
             result.status = "FAIL"
             result.notes.append(
                 f"image {i}: {label!r} confidence off by {delta:.4f} "
