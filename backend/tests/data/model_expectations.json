@@ -965,6 +965,39 @@
           }
         ]
       ]
+    },
+    "SPECIESNET-v4-0-2-A": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "sciuridae family",
+          "confidence": 0.33463993668556213
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "sciuridae family",
+            "confidence": 0.33463993668556213
+          },
+          {
+            "label": "vehicle",
+            "confidence": 0.28047409653663635
+          },
+          {
+            "label": "rodent",
+            "confidence": 0.0649227648973465
+          },
+          {
+            "label": "carruther's mountain squirrel",
+            "confidence": 0.028872685506939888
+          },
+          {
+            "label": "blank",
+            "confidence": 0.028282761573791504
+          }
+        ]
+      ]
     }
   }
 }
