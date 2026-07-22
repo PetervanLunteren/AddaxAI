@@ -265,42 +265,6 @@
         ]
       ]
     },
-    "SAH-DRY-ADS-v1": {
-      "source": "legacy",
-      "legacy_key": "Sub-Saharan Drylands - Addax Data Science",
-      "legacy_type": "addax-sdzwa-pt",
-      "legacy_env": "pytorch",
-      "predictions": [
-        {
-          "label": "tortoises",
-          "confidence": 0.23968
-        }
-      ],
-      "top_k": [
-        [
-          {
-            "label": "tortoises",
-            "confidence": 0.23968
-          },
-          {
-            "label": "bird",
-            "confidence": 0.16955
-          },
-          {
-            "label": "boehms bush squirrel",
-            "confidence": 0.10885
-          },
-          {
-            "label": "carruthers mountain squirrel",
-            "confidence": 0.06082
-          },
-          {
-            "label": "plains zebra",
-            "confidence": 0.03598
-          }
-        ]
-      ]
-    },
     "IND-ADS-v1": {
       "source": "legacy",
       "legacy_key": "Central Indian Landscapes – Wildlife Conservation Trust",
@@ -697,42 +661,6 @@
         ]
       ]
     },
-    "AFR-DFV-v1": {
-      "source": "legacy",
-      "legacy_key": "African tropical forests - DeepForestVision",
-      "legacy_type": "dfv-v1",
-      "legacy_env": "pytorch",
-      "predictions": [
-        {
-          "label": "elephant",
-          "confidence": 0.82405
-        }
-      ],
-      "top_k": [
-        [
-          {
-            "label": "elephant",
-            "confidence": 0.82405
-          },
-          {
-            "label": "african buffalo",
-            "confidence": 0.14038
-          },
-          {
-            "label": "bushpig",
-            "confidence": 0.01977
-          },
-          {
-            "label": "blue duiker",
-            "confidence": 0.00567
-          },
-          {
-            "label": "red duiker",
-            "confidence": 0.00326
-          }
-        ]
-      ]
-    },
     "CAM-AI4G-v1": {
       "source": "reference",
       "predictions": [
@@ -930,42 +858,6 @@
         ]
       ]
     },
-    "GIF-JAP-v0-2": {
-      "source": "legacy",
-      "legacy_key": "Gifu region Japan - Gifu University",
-      "legacy_type": "gifu-wildlife",
-      "legacy_env": "pytorch",
-      "predictions": [
-        {
-          "label": "deer",
-          "confidence": 0.99868
-        }
-      ],
-      "top_k": [
-        [
-          {
-            "label": "deer",
-            "confidence": 0.99868
-          },
-          {
-            "label": "boar",
-            "confidence": 0.00126
-          },
-          {
-            "label": "fox",
-            "confidence": 6e-05
-          },
-          {
-            "label": "bear",
-            "confidence": 0.0
-          },
-          {
-            "label": "bird",
-            "confidence": 0.0
-          }
-        ]
-      ]
-    },
     "SPECIESNET-v4-0-2-A": {
       "source": "reference",
       "predictions": [
@@ -998,6 +890,108 @@
           }
         ]
       ]
+    },
+    "AFR-DFV-v1": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "elephant",
+          "confidence": 0.7817834615707397
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "elephant",
+            "confidence": 0.7817834615707397
+          },
+          {
+            "label": "african buffalo",
+            "confidence": 0.20572248101234436
+          },
+          {
+            "label": "guineafowl",
+            "confidence": 0.009393288753926754
+          },
+          {
+            "label": "bushpig",
+            "confidence": 0.0017478229710832238
+          },
+          {
+            "label": "bird",
+            "confidence": 0.00043127816752530634
+          }
+        ]
+      ],
+      "note": "reference not legacy: legacy stretched to 224 + square-expand crop; DeepForestVision DFV.py uses AutoImageProcessor(dinov2-large) 256->centercrop-224 + plain crop; inference.py corrected 2026-07, baseline re-recorded"
+    },
+    "GIF-JAP-v0-2": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "deer",
+          "confidence": 0.9998793601989746
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "deer",
+            "confidence": 0.9998793601989746
+          },
+          {
+            "label": "boar",
+            "confidence": 0.00010429870599182323
+          },
+          {
+            "label": "fox",
+            "confidence": 6.83805092194234e-06
+          },
+          {
+            "label": "monkey",
+            "confidence": 3.4121537737519247e-06
+          },
+          {
+            "label": "serow",
+            "confidence": 1.8226464817416854e-06
+          }
+        ]
+      ],
+      "note": "reference not legacy: legacy omitted CIFAR-10 normalization and letterbox resize (gifu MDetToolsForJCameraTraps); inference.py corrected 2026-07, baseline re-recorded from the corrected pipeline"
+    },
+    "SAH-DRY-ADS-v1": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "bird",
+          "confidence": 0.2285812497138977
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird",
+            "confidence": 0.2285812497138977
+          },
+          {
+            "label": "boehms bush squirrel",
+            "confidence": 0.12025235593318939
+          },
+          {
+            "label": "carruthers mountain squirrel",
+            "confidence": 0.06961122155189514
+          },
+          {
+            "label": "derbys anomalure",
+            "confidence": 0.03668173402547836
+          },
+          {
+            "label": "plains zebra",
+            "confidence": 0.03246597945690155
+          }
+        ]
+      ],
+      "note": "reference not legacy: legacy square-padded the crop; animl-py (PetervanLunteren fork) trains on a plain crop; inference.py corrected 2026-07, baseline re-recorded"
     }
   }
 }

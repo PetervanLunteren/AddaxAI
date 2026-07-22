@@ -306,7 +306,11 @@ def _process_image_group(
             per_crop_progress(len(image_items))
         return
 
-    image = Image.open(path)
+    # Convert to RGB at open time so every model's get_crop receives a
+    # 3-channel image. Camera-trap frames are almost always RGB JPEGs, but
+    # a grayscale, palette, or RGBA source would otherwise reach a model
+    # with the wrong channel count if that model crops before converting.
+    image = Image.open(path).convert("RGB")
     for orig_idx, item in image_items:
         _classify_one(
             model_inference, image, item["bbox"], batched_state, orig_idx, results
