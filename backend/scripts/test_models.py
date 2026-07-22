@@ -96,15 +96,20 @@ import argparse
 import csv
 import hashlib
 import json
+import shutil
 import sys
+import threading
+import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.ml.environment_manager import EnvironmentManager  # noqa: E402
+from app.ml.hf_downloader import HuggingFaceRepoDownloader  # noqa: E402
 from app.ml.inference.custom_classification_model import (  # noqa: E402
     CustomClassificationModel,
 )
@@ -415,48 +420,103 @@ def run_model(
     return result
 
 
-def _download_with_speed(storage: ModelStorage, manifest: ModelManifest) -> None:
+def _dir_size(path: Path) -> int:
+    """Total bytes of every file under `path` (0 if it does not exist)."""
+    if not path.exists():
+        return 0
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+
+def _speed_watcher(path: Path, label: str) -> Callable[[], None]:
     """
-    Download a model's weights, printing a live "MB downloaded @ MB/s" line
-    by watching the model directory grow. The app's own downloader reports
-    progress over a websocket; here on the command line a folder watch is
-    the simplest way to see whether a slow download is the network or the
-    machine.
+    Start a thread that prints a live "<label> @ N MB/s" line by watching
+    `path` grow, and return a function that stops it. Used for both weight
+    downloads and env rebuilds: micromamba and the range downloader both
+    stream to disk with no byte callback of their own, so watching the
+    folder grow is the simplest way to show whether a stall is the network
+    or the machine.
     """
-    import threading
-    import time as _time
-
-    target = storage.get_model_path(manifest)
-
-    def dir_bytes() -> int:
-        if not target.exists():
-            return 0
-        return sum(f.stat().st_size for f in target.rglob("*") if f.is_file())
-
     stop = threading.Event()
 
     def watch() -> None:
-        last_b, last_t = dir_bytes(), _time.time()
+        last_b, last_t = _dir_size(path), time.time()
         while not stop.wait(0.5):
-            b = dir_bytes()
-            now = _time.time()
+            b, now = _dir_size(path), time.time()
             spd = (b - last_b) / (now - last_t) / 1e6 if now > last_t else 0.0
-            print(
-                f"\r  downloading {manifest.model_id}: {b / 1e6:7.0f} MB  "
-                f"{spd:6.1f} MB/s   ",
-                end="",
-                flush=True,
-            )
+            print(f"\r  {label} @ {spd:6.1f} MB/s   ", end="", flush=True)
             last_b, last_t = b, now
 
     watcher = threading.Thread(target=watch, daemon=True)
     watcher.start()
-    try:
-        storage.download_weights(manifest)
-    finally:
+
+    def done() -> None:
         stop.set()
         watcher.join(timeout=1)
-        print(f"\r  downloaded {manifest.model_id}: {dir_bytes() / 1e6:.0f} MB{' ' * 24}")
+
+    return done
+
+
+def _download_model_files(model_dir: Path, repo: str) -> None:
+    """
+    Download a model's weight files one at a time, printing a line per file
+    with its size and average speed. Only files that are missing or the
+    wrong size are fetched, so a cached model prints nothing. Each big file
+    still uses the range downloader internally, so per-file (rather than
+    all-at-once) costs almost nothing here: models are one large weight
+    file plus a few tiny configs.
+    """
+    downloader = HuggingFaceRepoDownloader()
+    _total, files = downloader.get_repo_info(repo)
+    todo = [
+        f
+        for f in files
+        if not (model_dir / f["path"]).exists()
+        or (model_dir / f["path"]).stat().st_size != f["size"]
+    ]
+    if not todo:
+        return
+    gb = sum(f["size"] for f in todo) / 1e9
+    print(f"  {model_dir.name}: downloading {len(todo)} file(s), {gb:.2f} GB")
+    for f in todo:
+        name, size = f["path"], f["size"]
+        start = time.monotonic()
+        stop = _speed_watcher(model_dir, f"  downloading {name}")
+        try:
+            downloader.download_file(f, model_dir)
+        finally:
+            stop()
+        secs = time.monotonic() - start
+        spd = size / 1e6 / secs if secs > 0 else 0.0
+        print(f"\r    {name}: {size / 1e6:.2f} MB @ {spd:.1f} MB/s{' ' * 12}")
+
+
+def _rebuild_env_if_stale(env_manager: EnvironmentManager, manifest: ModelManifest) -> None:
+    """
+    Bring a model's env in line with its YAML before testing. If the env's
+    hash sentinel disagrees with the current bundled YAML (drift, e.g. after
+    a version bump) the old env is removed and rebuilt; a missing env is
+    built. An in-sync env is left untouched. Rebuild progress is shown live.
+
+    get_or_create_env returns a drifted-but-valid env as-is, so the drift
+    case has to remove the directory first to force a fresh build.
+    """
+    env = manifest.env
+    env_dir = env_manager.envs_dir / f"env-{env}"
+    drift = env_manager.check_yaml_drift(env)  # True / False / None
+    if drift is True:
+        print(f"  env-{env}: drifted from its YAML, rebuilding")
+        shutil.rmtree(env_dir, ignore_errors=True)
+    elif not env_dir.exists():
+        print(f"  env-{env}: missing, building")
+    else:
+        return  # in sync, or too old to have a sentinel but present
+
+    stop = _speed_watcher(env_dir, f"  building env-{env}")
+    try:
+        env_manager.get_or_create_env(manifest)
+    finally:
+        stop()
+    print(f"\r  env-{env}: ready ({_dir_size(env_dir) / 1e6:.0f} MB){' ' * 20}")
 
 
 # The two files that are the model's *code*, as opposed to its weights.
@@ -485,7 +545,8 @@ def _refresh_model_code(model_dir: Path, hf_repo: str) -> None:
     failure is.
 
     Each file is written to a .tmp and renamed over the target, so a failed
-    fetch never clobbers a good local copy.
+    fetch never clobbers a good local copy. A line is printed only when a
+    file's contents actually changed, so an unchanged model stays quiet.
     """
     for fname in _MODEL_CODE_FILES:
         url = f"https://huggingface.co/{hf_repo}/resolve/main/{fname}"
@@ -505,7 +566,10 @@ def _refresh_model_code(model_dir: Path, hf_repo: str) -> None:
             raise RuntimeError(
                 f"could not fetch latest {fname} from {hf_repo}: {e}"
             ) from e
+        changed = not dest.exists() or dest.read_bytes() != tmp.read_bytes()
         tmp.replace(dest)
+        if changed:
+            print(f"  {model_dir.name}: refreshed {fname} (changed on HF)")
 
 
 def _record_reference(model_id: str, top5_per_image: list) -> None:
@@ -549,23 +613,23 @@ def _device_cell(r: Result) -> str:
 
 
 _NAME_W = 24
+_TABLE_HEADER = f"{'model':<22} {'name':<{_NAME_W}} {'env':<14} {'device':<8} status"
 
 
-def _print_table(results: list[Result]) -> None:
-    header = (
-        f"{'model':<22} {'name':<{_NAME_W}} {'env':<14} {'device':<8} status"
+def _print_row(r: Result) -> None:
+    """One model's result line, plus any notes worth showing."""
+    print(
+        f"{r.model_id:<22} {r.friendly_name[:_NAME_W]:<{_NAME_W}} "
+        f"{r.env:<14} {_device_cell(r):<8} {r.status}"
     )
-    print("\n" + header)
-    print("-" * len(header))
-    for r in results:
-        print(
-            f"{r.model_id:<22} {r.friendly_name[:_NAME_W]:<{_NAME_W}} "
-            f"{r.env:<14} {_device_cell(r):<8} {r.status}"
-        )
-        for note in r.notes:
-            if note not in _REDUNDANT_NOTES:
-                print(f"{'':<22} -> {note}")
-    print("-" * len(header))
+    for note in r.notes:
+        if note not in _REDUNDANT_NOTES:
+            print(f"{'':<22} -> {note}")
+
+
+def _print_summary(results: list[Result]) -> None:
+    """Closing separator, per-status counts, and the legend."""
+    print("-" * len(_TABLE_HEADER))
     counts: dict[str, int] = {}
     for r in results:
         counts[r.status] = counts.get(r.status, 0) + 1
@@ -578,6 +642,14 @@ def _print_table(results: list[Result]) -> None:
         f"status: PASS = top-{TOP_K} labels and confidences agree with the "
         f"recorded baseline"
     )
+
+
+def _print_table(results: list[Result]) -> None:
+    print("\n" + _TABLE_HEADER)
+    print("-" * len(_TABLE_HEADER))
+    for r in results:
+        _print_row(r)
+    _print_summary(results)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -608,6 +680,7 @@ def main(argv: list[str] | None = None) -> int:
     expectations = _load_expectations()
 
     storage = ModelStorage()
+    env_manager = EnvironmentManager()
     results: list[Result] = []
 
     if args.model_dir:
@@ -648,7 +721,27 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"Not in {CATALOG_PATH.name}: {', '.join(sorted(missing))}")
     print(f"Testing {len(manifests)} classification model(s) from {CATALOG_PATH}")
 
-    for manifest in sorted(manifests, key=lambda m: m.model_id):
+    ordered = sorted(manifests, key=lambda m: m.model_id)
+
+    # Bring every env these models need in line with its YAML before we
+    # test anything, so a version bump is actually exercised instead of
+    # silently testing the old env. One manifest per distinct env is enough.
+    envs_seen: dict[str, ModelManifest] = {}
+    for m in ordered:
+        envs_seen.setdefault(m.env, m)
+    for env, m in envs_seen.items():
+        if args.skip_missing:
+            if env_manager.check_yaml_drift(env) is True:
+                print(
+                    f"  ! env-{env} is drifted from its YAML; testing the old "
+                    f"env (drop --skip-missing to rebuild it)"
+                )
+        else:
+            _rebuild_env_if_stale(env_manager, m)
+
+    print("\n" + _TABLE_HEADER)
+    print("-" * len(_TABLE_HEADER))
+    for i, manifest in enumerate(ordered, 1):
         result = Result(
             model_id=manifest.model_id,
             friendly_name=manifest.friendly_name or "",
@@ -658,17 +751,28 @@ def main(argv: list[str] | None = None) -> int:
             if not storage.check_weights_ready(manifest):
                 if args.skip_missing:
                     result.notes.append("weights not downloaded")
+                    _print_row(result)
                     results.append(result)
                     continue
-                _download_with_speed(storage, manifest)
+                _download_model_files(
+                    storage.get_model_path(manifest),
+                    resolve_hf_repo(manifest.model_id, manifest.hf_repo),
+                )
 
             # Weights are cached now (either already present or just
             # pulled), but the code files may be stale. Always refresh them
             # so the run tests the latest inference.py/taxonomy.csv on HF.
+            # (This prints a line only when a file actually changed.)
             _refresh_model_code(
                 storage.get_model_path(manifest),
                 resolve_hf_repo(manifest.model_id, manifest.hf_repo),
             )
+
+            # Loading a model's weights is silent and can take many
+            # seconds; show which one is in flight so a slow load does not
+            # look like a hang. This transient line is overwritten by the
+            # result row (a full-width line) the moment the model finishes.
+            print(f"  [{i}/{len(ordered)}] {manifest.model_id} …", end="", flush=True)
 
             result = run_model(
                 model_id=manifest.model_id,
@@ -681,6 +785,8 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as e:
             result.status = "ERROR"
             result.notes.append(f"{type(e).__name__}: {e}")
+        print("\r", end="")  # return to column 0 to overwrite the transient line
+        _print_row(result)
         results.append(result)
 
     if args.record_reference:
@@ -700,7 +806,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(json.dumps([r.__dict__ for r in results], indent=2, default=str))
     else:
-        _print_table(results)
+        # Rows were streamed as each model finished; just close the table.
+        _print_summary(results)
     return 0 if all(r.ok for r in results) else 1
 
 
