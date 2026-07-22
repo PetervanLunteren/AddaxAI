@@ -212,6 +212,7 @@ TEST_IMAGES: list[TestImage] = [
 @dataclass
 class Result:
     model_id: str
+    friendly_name: str = ""
     env: str = ""
     device: str = ""
     top1: str = ""
@@ -315,9 +316,10 @@ def run_model(
     model_path: Path,
     env_name: str,
     expectation: dict | None,
+    friendly_name: str = "",
 ) -> Result:
     """Classify the shared image set with one model."""
-    result = Result(model_id=model_id, env=env_name)
+    result = Result(model_id=model_id, friendly_name=friendly_name, env=env_name)
 
     items = []
     for image in TEST_IMAGES:
@@ -458,32 +460,24 @@ def _device_cell(r: Result) -> str:
     return "CPU ok" if "CPU expected on this OS" in r.notes else "CPU!"
 
 
-def _match_cell(r: Result) -> str:
-    """
-    yes    top-5 label and confidence agree with the expectation
-    label  labels agree, confidence differs on purpose (see CONFIDENCE_DIVERGES)
-    no     a label or confidence disagreed
-    -      nothing to compare against (no ground truth, or skipped)
-    """
-    if r.status == "FAIL":
-        return "no"
-    if r.status == "PASS":
-        return "label" if CONFIDENCE_DIVERGES.get(r.model_id) else "yes"
-    return "-"
+_NAME_W = 24
 
 
 def _print_table(results: list[Result]) -> None:
-    header = f"{'model':<22} {'device':<8} {'match':<7} status"
+    header = (
+        f"{'model':<22} {'name':<{_NAME_W}} {'env':<14} {'device':<8} status"
+    )
     print("\n" + header)
-    print("-" * max(len(header), 46))
+    print("-" * len(header))
     for r in results:
         print(
-            f"{r.model_id:<22} {_device_cell(r):<8} {_match_cell(r):<7} {r.status}"
+            f"{r.model_id:<22} {r.friendly_name[:_NAME_W]:<{_NAME_W}} "
+            f"{r.env:<14} {_device_cell(r):<8} {r.status}"
         )
         for note in r.notes:
             if note not in _REDUNDANT_NOTES:
                 print(f"{'':<22} -> {note}")
-    print("-" * max(len(header), 46))
+    print("-" * len(header))
     counts: dict[str, int] = {}
     for r in results:
         counts[r.status] = counts.get(r.status, 0) + 1
@@ -492,7 +486,10 @@ def _print_table(results: list[Result]) -> None:
         "\ndevice: GPU good | CPU ok = this model is CPU-only here by design | "
         "CPU! = unexpected fallback"
     )
-    print(f"match:  compared to depth {TOP_K} (label + confidence)")
+    print(
+        f"status: PASS = top-{TOP_K} labels and confidences agree with the "
+        f"recorded baseline (label only where noted)"
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -540,6 +537,7 @@ def main(argv: list[str] | None = None) -> int:
                 expectation=expectations.get("models", {}).get(
                     manifest_data["model_id"]
                 ),
+                friendly_name=manifest_data.get("friendly_name", ""),
             )
         )
         if args.record_reference and results[0].top5:
@@ -563,7 +561,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Testing {len(manifests)} classification model(s) from {CATALOG_PATH}")
 
     for manifest in sorted(manifests, key=lambda m: m.model_id):
-        result = Result(model_id=manifest.model_id, env=manifest.env)
+        result = Result(
+            model_id=manifest.model_id,
+            friendly_name=manifest.friendly_name or "",
+            env=manifest.env,
+        )
         try:
             if not storage.check_weights_ready(manifest):
                 if args.skip_missing:
@@ -579,6 +581,7 @@ def main(argv: list[str] | None = None) -> int:
                 model_path=storage.get_model_file(manifest),
                 env_name=manifest.env,
                 expectation=expectations.get("models", {}).get(manifest.model_id),
+                friendly_name=manifest.friendly_name or "",
             )
         except Exception as e:
             result.status = "ERROR"
