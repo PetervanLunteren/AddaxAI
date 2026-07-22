@@ -1,25 +1,26 @@
 # Windows env-pytorch.
 #
 # Same package set as darwin/pytorch/environment.yml (the curated
-# WebUI baseline). Windows gets cu118 wheels for torch + torchvision
-# so pytorch-based classifiers run on GPU. pip-system-certs is added
-# at the end to match the legacy AddaxAI Windows build workflow's
-# corporate-SSL handling on every env.
+# WebUI baseline). Windows gets cu128 wheels for torch + torchvision
+# so pytorch-based classifiers run on GPU, including RTX 50-series
+# (Blackwell, sm_120) with native kernels. Needs NVIDIA driver >= 555.
+# pip-system-certs is added at the end to match the legacy AddaxAI
+# Windows build workflow's corporate-SSL handling on every env.
 name: env-pytorch
 channels:
   - conda-forge
 dependencies:
-  - python=3.8
+  - python=3.11
   - pip
   - pip:
-      # The +cu118 local-version suffix forces pip to fetch the GPU
-      # wheel from the cu118 index instead of falling back to the CPU
-      # wheel on PyPI when both versions match the bare `==2.0.1`.
-      - --extra-index-url https://download.pytorch.org/whl/cu118
-      - torch==2.0.1+cu118
-      - torchvision==0.15.2+cu118
-      - ultralytics==8.0.191
-      - numpy==1.24.1
+      # The +cu128 local-version suffix forces pip to fetch the GPU
+      # wheel from the cu128 index instead of falling back to the CPU
+      # wheel on PyPI when both versions match the bare `==2.8.0`.
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - torch==2.8.0+cu128
+      - torchvision==0.23.0+cu128
+      - ultralytics==8.3.177
+      - numpy==1.26.4
       - humanfriendly==10.0
       - jsonpickle==3.0.2
       - timm
@@ -33,17 +34,14 @@ dependencies:
       - onnx2torch
       # Required by the DeepForestVision classifier (dfv-v1,
       # AFR-DFV-v1), whose architecture is a HuggingFace
-      # Dinov2ForImageClassification. 4.46.3 is the last release that
-      # supports Python 3.8; lift this pin when the env moves to 3.11.
-      # The model ships facebook/dinov2-large's config.json in its own
-      # HF repo and builds from that, so nothing is fetched at
-      # inference time.
-      - transformers==4.46.3
-      - pytorch-lightning==2.0.6
-      - albumentations==1.3.1
+      # Dinov2ForImageClassification. The model ships
+      # facebook/dinov2-large's config.json in its own HF repo and
+      # builds from that, so nothing is fetched at inference time.
+      - transformers==4.49.0
+      - pytorch-lightning==2.4.0
+      - albumentations==1.4.24
       # OpenCV (headless variant: no GUI deps, only the cv2 module).
       # Used by the classification worker to stream frames straight
       # from source videos so we never write frame JPEGs to disk.
-      # 4.10.0.84 is the last release that ships py3.8 wheels.
-      - opencv-python-headless==4.10.0.84
+      - opencv-python-headless==4.11.0.86
       - pip-system-certs

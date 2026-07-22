@@ -36,6 +36,10 @@ Your projects, verifications, and settings live in the AddaxAI user data folder 
 - **Windows**: run the new setup `.exe`, it replaces the old version.
 - **Linux**: the App Center shows a greyed-out "Installed" button for the new file and offers no update, that is an Ubuntu limitation for third-party packages. Update via terminal instead: `sudo apt install ./AddaxAI-amd64.deb` from the download folder.
 
+## GPU acceleration
+
+On Apple Silicon the GPU is always used and there is nothing to install. On Windows and Linux with an NVIDIA GPU, AddaxAI uses it automatically. The models now ship with CUDA 12.8 builds, so the newest cards (RTX 50-series) run at full speed instead of a slow fallback. This needs a reasonably recent NVIDIA driver, version 555 or newer; if yours is older, update it from NVIDIA's site. Without a supported GPU the app still runs, just on the CPU.
+
 ## Timelapse integration
 
 Windows only, because Timelapse itself is also Windows only. Install AddaxAI first using the steps above. In Timelapse, choose AddaxAI from the menu `Recognitions` > `AddaxAI Image Recognizer` > `Run AddaxAI recognizer on a folder...`. AddaxAI opens "Analyse a folder" with that folder filled in; run it and keep the recognition file enabled in the save step.
