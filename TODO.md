@@ -47,6 +47,8 @@
 
 - [ ] ADD Caras model
 
+- [ ] On installing an env or modal (preparing model) the modal can close when clicked outside. That is not what you want. It should close only when clicked "Close". The cross on the top right should also not be there. 
+
 
 ## Future stuff
 - [ ] MULTI LANGUAGE SUPPORT

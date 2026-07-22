@@ -239,7 +239,7 @@ def _load_expectations() -> dict:
             file=sys.stderr,
         )
         return {}
-    with open(EXPECTATIONS_PATH) as f:
+    with open(EXPECTATIONS_PATH, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -517,7 +517,7 @@ def _record_reference(model_id: str, top5_per_image: list) -> None:
     Marked `reference` rather than `legacy` so the expectations file
     never claims the legacy app said something it did not.
     """
-    with open(EXPECTATIONS_PATH) as f:
+    with open(EXPECTATIONS_PATH, encoding="utf-8") as f:
         data = json.load(f)
     data.setdefault("models", {})[model_id] = {
         "source": "reference",
@@ -529,7 +529,7 @@ def _record_reference(model_id: str, top5_per_image: list) -> None:
             for img5 in top5_per_image
         ],
     }
-    with open(EXPECTATIONS_PATH, "w") as f:
+    with open(EXPECTATIONS_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
         f.write("\n")
     print(f"recorded {model_id} as a `reference` expectation (not legacy)")
@@ -615,7 +615,7 @@ def main(argv: list[str] | None = None) -> int:
         manifest_path = model_dir / "manifest.json"
         if not manifest_path.exists():
             raise SystemExit(f"No manifest.json in {model_dir}")
-        manifest_data = json.loads(manifest_path.read_text())
+        manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
         results.append(
             run_model(
                 model_id=manifest_data["model_id"],
@@ -633,7 +633,7 @@ def main(argv: list[str] | None = None) -> int:
         _print_table(results)
         return 0 if all(r.ok for r in results) else 1
 
-    with open(CATALOG_PATH) as f:
+    with open(CATALOG_PATH, encoding="utf-8") as f:
         entries = json.load(f)["models"]["cls"]
     manifests = []
     for entry in entries:

@@ -266,8 +266,12 @@ class HuggingFaceRepoDownloader:
                     f"expected {file_size}, got {actual}"
                 )
 
-            # Atomic rename - only move to final location if download was successful
-            temp_file_path.rename(local_file_path)
+            # Atomic move to the final location, only after a successful
+            # download. Path.replace (not rename) because when the file is
+            # being re-downloaded the destination already exists, and on
+            # Windows rename() over an existing file raises WinError 183;
+            # replace() overwrites atomically on both POSIX and Windows.
+            temp_file_path.replace(local_file_path)
 
             self.measure_download_speed(start_time, downloaded)
             return True
