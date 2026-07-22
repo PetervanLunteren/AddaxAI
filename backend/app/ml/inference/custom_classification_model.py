@@ -208,10 +208,10 @@ class CustomClassificationModel:
                             if progress_callback:
                                 progress_callback(msg["current"], msg["total"])
                     except json.JSONDecodeError:
-                        # Regular log line from worker
+                        # Regular log line from worker: goes to the log file,
+                        # not stdout (it used to be printed too, which flooded
+                        # the console during analysis and the model test).
                         logger.info(f"[Worker] {line}")
-                        # TODO: remove this print after verifying batching works in production
-                        print(f"[Worker] {line}")
 
                 # Wait for process to finish
                 process.wait()
