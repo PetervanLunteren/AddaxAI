@@ -14,6 +14,7 @@ Following DEVELOPERS.md principles:
 - Type hints everywhere
 """
 
+import shutil
 import threading
 import time
 from collections.abc import Callable
@@ -29,24 +30,34 @@ from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# HuggingFace throttles each connection to a few MB/s, so a single big
+# weights file downloads far below a fast link's capacity. Files at least
+# this large are split across _PARALLEL_CONNECTIONS connections, which on
+# a fast link is several times faster. Smaller files (configs, taxonomy)
+# are not worth the extra requests and take the plain single path.
+_PARALLEL_MIN_BYTES = 16 * 1024 * 1024
+_PARALLEL_CONNECTIONS = 4
+
 
 class HuggingFaceRepoDownloader:
     """Multi-threaded HuggingFace repository downloader with adaptive scaling."""
 
-    def __init__(self, max_workers: int = 4, chunk_size: int = 8192, timeout: int = 30):
+    def __init__(self, max_workers: int = 4, chunk_size: int = 1024 * 1024, timeout: int = 30):
         """
         Initialize the Hugging Face repository downloader.
 
         Args:
-            max_workers: Maximum number of concurrent file downloads. Note
-                this parallelises across FILES, so a model that is one big
-                weights file gets a single connection. HuggingFace throttles
-                each connection to ~2.5 MB/s, so a single-file repo downloads
-                at that rate no matter how fast the link is; four parallel
-                connections to the same file reach ~14 MB/s. Splitting a
-                large file across connections is the real speed-up (see
-                download_file), not the chunk size.
-            chunk_size: Size of chunks for file downloads (bytes)
+            max_workers: Maximum number of concurrent file downloads. This
+                parallelises across FILES; a single big weights file is
+                instead split across connections inside download_file.
+            chunk_size: Read size per iteration (bytes). 1 MiB, not the old
+                8 KiB, and this matters specifically for the parallel path:
+                every chunk takes the shared progress lock, so with 8 KiB
+                the four range threads spent their time contending on that
+                lock and collapsed back to single-connection speed (~2.5 vs
+                ~14 MB/s measured). 1 MiB keeps the lock-acquisition count
+                low enough that the connections actually run in parallel.
+                For a single connection the rate is network-bound either way.
             timeout: Request timeout in seconds
         """
         self.max_workers = max_workers
@@ -226,36 +237,26 @@ class HuggingFaceRepoDownloader:
         local_file_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Skip if file already exists and has correct size
-        if local_file_path.exists():
-            existing_size = local_file_path.stat().st_size
-            if existing_size == file_size:
-                self.update_progress(file_size)
-                return True
+        if local_file_path.exists() and local_file_path.stat().st_size == file_size:
+            self.update_progress(file_size)
+            return True
 
         # Download to temporary file first
         temp_file_path = local_file_path.with_suffix(local_file_path.suffix + ".tmp")
-
         start_time = time.time()
-        downloaded = 0
 
         try:
-            with self.session.get(file_url, stream=True, timeout=self.timeout) as response:
-                response.raise_for_status()
+            if file_size >= _PARALLEL_MIN_BYTES and self._supports_range(file_url):
+                downloaded = self._download_ranges(
+                    file_url, temp_file_path, file_size, should_cancel
+                )
+            else:
+                downloaded = self._download_stream(
+                    file_url, temp_file_path, should_cancel
+                )
 
-                with open(temp_file_path, "wb") as f:
-                    for chunk in response.iter_content(chunk_size=self.chunk_size):
-                        # Bail promptly on cancel so the worker's executor
-                        # shutdown doesn't block on a multi-GB transfer.
-                        if should_cancel is not None and should_cancel():
-                            f.close()
-                            if temp_file_path.exists():
-                                temp_file_path.unlink()
-                            return False
-                        if chunk:
-                            f.write(chunk)
-                            chunk_size = len(chunk)
-                            downloaded += chunk_size
-                            self.update_progress(chunk_size)
+            if downloaded is None:  # cancelled mid-download
+                return False
 
             # Verify size matches expected
             if file_size > 0 and temp_file_path.stat().st_size != file_size:
@@ -277,6 +278,159 @@ class HuggingFaceRepoDownloader:
             if temp_file_path.exists():
                 temp_file_path.unlink()
             return False
+
+    def _download_stream(
+        self,
+        file_url: str,
+        temp_file_path: Path,
+        should_cancel: Callable[[], bool] | None,
+    ) -> int | None:
+        """
+        Download a whole file over one connection into temp_file_path.
+
+        Returns the number of bytes written, or None if cancelled (the
+        partial file is removed in that case).
+        """
+        downloaded = 0
+        with self.session.get(file_url, stream=True, timeout=self.timeout) as response:
+            response.raise_for_status()
+            with open(temp_file_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=self.chunk_size):
+                    # Bail promptly on cancel so the worker's executor
+                    # shutdown doesn't block on a multi-GB transfer.
+                    if should_cancel is not None and should_cancel():
+                        f.close()
+                        temp_file_path.unlink(missing_ok=True)
+                        return None
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        self.update_progress(len(chunk))
+        return downloaded
+
+    def _supports_range(self, file_url: str) -> bool:
+        """
+        True if the server answers a range request with 206 Partial Content.
+
+        A one-byte probe. On any error, assume no and fall back to a single
+        connection rather than risk four workers each pulling the whole file.
+        """
+        try:
+            with self.session.get(
+                file_url,
+                headers={"Range": "bytes=0-0"},
+                stream=True,
+                timeout=self.timeout,
+            ) as r:
+                return r.status_code == 206
+        except Exception:
+            return False
+
+    def _download_ranges(
+        self,
+        file_url: str,
+        temp_file_path: Path,
+        file_size: int,
+        should_cancel: Callable[[], bool] | None,
+    ) -> int | None:
+        """
+        Download one file over _PARALLEL_CONNECTIONS connections at once.
+
+        The file is split into that many contiguous byte ranges, each pulled
+        by its own thread into a `.partN` file, then the parts are joined in
+        order. Separate part files (rather than seeking into one shared
+        handle) keep this safe on Windows, where multiple write handles to
+        the same file are not reliably allowed.
+
+        Returns file_size on success, None if cancelled. If any range fails
+        the whole file is retried on a single connection, so a flaky range
+        still completes.
+        """
+        n = _PARALLEL_CONNECTIONS
+        step = file_size // n
+        parts = [
+            temp_file_path.with_name(f"{temp_file_path.name}.part{i}")
+            for i in range(n)
+        ]
+        # Contiguous, non-overlapping ranges; the last one runs to the end so
+        # integer division leaves no gap.
+        bounds = [
+            (i, i * step, file_size - 1 if i == n - 1 else (i + 1) * step - 1)
+            for i in range(n)
+        ]
+
+        cancelled = threading.Event()
+        errors: list[Exception] = []
+
+        def fetch(idx: int, start: int, end: int) -> None:
+            if cancelled.is_set():
+                return
+            try:
+                headers = {"Range": f"bytes={start}-{end}"}
+                with self.session.get(
+                    file_url, headers=headers, stream=True, timeout=self.timeout
+                ) as r:
+                    if r.status_code != 206:
+                        raise ValueError(
+                            f"range request returned {r.status_code}, expected 206"
+                        )
+                    with open(parts[idx], "wb") as f:
+                        for chunk in r.iter_content(chunk_size=self.chunk_size):
+                            if cancelled.is_set():
+                                return
+                            if should_cancel is not None and should_cancel():
+                                cancelled.set()
+                                return
+                            if chunk:
+                                f.write(chunk)
+                                self.update_progress(len(chunk))
+            except Exception as e:
+                errors.append(e)
+                cancelled.set()
+
+        threads = [
+            threading.Thread(target=fetch, args=(i, start, end))
+            for i, start, end in bounds
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        def cleanup_parts() -> None:
+            for p in parts:
+                p.unlink(missing_ok=True)
+
+        # Cancelled by the caller: drop everything and report cancellation.
+        if should_cancel is not None and should_cancel():
+            cleanup_parts()
+            temp_file_path.unlink(missing_ok=True)
+            return None
+
+        # A range failed: undo the partial bytes we counted so the fallback's
+        # own counting is not doubled, then retry the whole file on one
+        # connection.
+        if errors:
+            partial = sum(p.stat().st_size for p in parts if p.exists())
+            with self.lock:
+                self.downloaded_bytes = max(0, self.downloaded_bytes - partial)
+            cleanup_parts()
+            temp_file_path.unlink(missing_ok=True)
+            logger.warning(
+                f"Parallel download failed ({errors[0]}); "
+                f"falling back to a single connection"
+            )
+            return self._download_stream(file_url, temp_file_path, should_cancel)
+
+        # Join the parts in order.
+        try:
+            with open(temp_file_path, "wb") as out:
+                for p in parts:
+                    with open(p, "rb") as pf:
+                        shutil.copyfileobj(pf, out, length=1024 * 1024)
+        finally:
+            cleanup_parts()
+        return file_size
 
     def download_repo(
         self,
