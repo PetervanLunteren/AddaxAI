@@ -7,6 +7,13 @@ Run this by hand on each OS after porting models or bumping an
 environment. It is deliberately not part of CI: it needs real weights and
 real micromamba envs (many GB), which no other test in this repo touches.
 
+Weights are cached but *code* is not: before each catalog model runs, its
+inference.py and taxonomy.csv are always re-fetched fresh from HuggingFace
+(the multi-GB weights stay cached). Otherwise a model downloaded once would
+be tested forever against whatever code landed on disk that first time,
+never the latest fix on HF. This does not apply to --model-dir, which
+tests a local staged directory on purpose.
+
 What it checks, per model:
 
   runs      the classification subprocess exits 0 and returns a label
@@ -90,6 +97,7 @@ import csv
 import hashlib
 import json
 import sys
+import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -102,7 +110,10 @@ from app.ml.inference.custom_classification_model import (  # noqa: E402
 )
 from app.ml.label_exclusion import NON_LABEL_CLASSES  # noqa: E402
 from app.ml.model_storage import ModelStorage  # noqa: E402
-from app.ml.schemas.model_manifest import ModelManifest  # noqa: E402
+from app.ml.schemas.model_manifest import (  # noqa: E402
+    ModelManifest,
+    resolve_hf_repo,
+)
 
 EXPECTATIONS_PATH = (
     Path(__file__).resolve().parent.parent / "tests" / "data" / "model_expectations.json"
@@ -448,6 +459,55 @@ def _download_with_speed(storage: ModelStorage, manifest: ModelManifest) -> None
         print(f"\r  downloaded {manifest.model_id}: {dir_bytes() / 1e6:.0f} MB{' ' * 24}")
 
 
+# The two files that are the model's *code*, as opposed to its weights.
+# inference.py is the preprocessing/postprocessing, taxonomy.csv is the
+# rollup mapping. Both are small text files, and both are exactly what a
+# model author edits when fixing a model without retraining it.
+_MODEL_CODE_FILES = ("inference.py", "taxonomy.csv")
+
+
+def _refresh_model_code(model_dir: Path, hf_repo: str) -> None:
+    """
+    Pull inference.py and taxonomy.csv fresh from HuggingFace before
+    testing, overwriting the local copies.
+
+    check_weights_ready() is satisfied by the weights file alone, so once a
+    model is downloaded the whole download step is skipped and these two
+    text files are never refreshed -- the run would then test whatever code
+    landed on disk the first time, not the latest on HF. Weights are many
+    GB and rarely change; the code is small and changes often, so we always
+    re-fetch the code and leave the weights cached.
+
+    inference.py is required: a fetch failure is fatal, because a test that
+    silently fell back to stale code could pass while the real model is
+    broken. taxonomy.csv is optional -- a 404 means the repo ships none,
+    which is a valid model, so that alone is not an error; any other
+    failure is.
+
+    Each file is written to a .tmp and renamed over the target, so a failed
+    fetch never clobbers a good local copy.
+    """
+    for fname in _MODEL_CODE_FILES:
+        url = f"https://huggingface.co/{hf_repo}/resolve/main/{fname}"
+        dest = model_dir / fname
+        tmp = dest.with_suffix(dest.suffix + ".tmp")
+        try:
+            urllib.request.urlretrieve(url, tmp)
+        except urllib.error.HTTPError as e:
+            tmp.unlink(missing_ok=True)
+            if fname == "taxonomy.csv" and e.code == 404:
+                continue  # repo legitimately ships no taxonomy.csv
+            raise RuntimeError(
+                f"could not fetch latest {fname} from {hf_repo}: HTTP {e.code}"
+            ) from e
+        except Exception as e:
+            tmp.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"could not fetch latest {fname} from {hf_repo}: {e}"
+            ) from e
+        tmp.replace(dest)
+
+
 def _record_reference(model_id: str, top5_per_image: list) -> None:
     """
     Freeze a run's own output as the expectation for a model legacy
@@ -601,6 +661,14 @@ def main(argv: list[str] | None = None) -> int:
                     results.append(result)
                     continue
                 _download_with_speed(storage, manifest)
+
+            # Weights are cached now (either already present or just
+            # pulled), but the code files may be stale. Always refresh them
+            # so the run tests the latest inference.py/taxonomy.csv on HF.
+            _refresh_model_code(
+                storage.get_model_path(manifest),
+                resolve_hf_repo(manifest.model_id, manifest.hf_repo),
+            )
 
             result = run_model(
                 model_id=manifest.model_id,
