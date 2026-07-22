@@ -38,7 +38,14 @@ class HuggingFaceRepoDownloader:
         Initialize the Hugging Face repository downloader.
 
         Args:
-            max_workers: Maximum number of concurrent downloads
+            max_workers: Maximum number of concurrent file downloads. Note
+                this parallelises across FILES, so a model that is one big
+                weights file gets a single connection. HuggingFace throttles
+                each connection to ~2.5 MB/s, so a single-file repo downloads
+                at that rate no matter how fast the link is; four parallel
+                connections to the same file reach ~14 MB/s. Splitting a
+                large file across connections is the real speed-up (see
+                download_file), not the chunk size.
             chunk_size: Size of chunks for file downloads (bytes)
             timeout: Request timeout in seconds
         """

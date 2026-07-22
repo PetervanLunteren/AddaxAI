@@ -625,42 +625,6 @@
         ]
       ]
     },
-    "NZS-WEK-v3-03": {
-      "source": "legacy",
-      "legacy_key": "New Zealand Species v3.03 - DOC NZ - wekaResearch",
-      "legacy_type": "alita-v3.03",
-      "legacy_env": "pytorch",
-      "predictions": [
-        {
-          "label": "magpie",
-          "confidence": 0.91536
-        }
-      ],
-      "top_k": [
-        [
-          {
-            "label": "magpie",
-            "confidence": 0.91536
-          },
-          {
-            "label": "starling",
-            "confidence": 0.0832
-          },
-          {
-            "label": "tui",
-            "confidence": 0.00073
-          },
-          {
-            "label": "blackbird",
-            "confidence": 0.00026
-          },
-          {
-            "label": "myna",
-            "confidence": 0.00014
-          }
-        ]
-      ]
-    },
     "CAM-AI4G-v1": {
       "source": "reference",
       "predictions": [
@@ -1010,6 +974,40 @@
         ]
       ],
       "note": "reference not legacy: legacy square-padded the crop, animl-py trains on a plain crop; inference.py corrected 2026-07, baseline from the corrected pipeline"
+    },
+    "NZS-WEK-v3-03": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "magpie",
+          "confidence": 0.8089949488639832
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "magpie",
+            "confidence": 0.8089949488639832
+          },
+          {
+            "label": "starling",
+            "confidence": 0.07353366166353226
+          },
+          {
+            "label": "tui",
+            "confidence": 0.0006414650124497712
+          },
+          {
+            "label": "blackbird",
+            "confidence": 0.00022699857072439045
+          },
+          {
+            "label": "myna",
+            "confidence": 0.00012556288857012987
+          }
+        ]
+      ],
+      "note": "reference not legacy: multi-label sigmoid; legacy rescales scores by 1/sum, so a legacy baseline is only label-comparable. Recording our own raw-sigmoid output makes the confidence comparable machine-to-machine."
     }
   }
 }
