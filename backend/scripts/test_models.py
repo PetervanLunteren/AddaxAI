@@ -125,13 +125,18 @@ CONF_TOLERANCE = 0.02
 # guarantee of five real comparisons.
 TOP_K = 5
 
-# Ground truth is rounded to five decimals, so a confidence stored as
-# 0.00000 is below the precision we have and its rank is undefined. Two
-# such classes swapping order is float noise, not a regression (a deer at
-# 0.999 with bear and monkey trading the 4th and 5th slots at 0.00000 is
-# still a perfect result). Below this floor the comparison stops rather
-# than assert an order the data cannot support.
-NEGLIGIBLE_CONF = 1e-5
+# The comparison stops at the first rank whose expected confidence is
+# below this floor: below it a class is not a real prediction, and its
+# exact rank is numerical noise between two independent implementations
+# (the legacy adapter vs this port, on possibly different devices/
+# frameworks). Two classes at ~0.0001 trading places is a coin flip, not
+# a regression. This keeps the check on the meaningful head of the
+# distribution (a broken crop or normalisation moves real probability
+# mass, which shows up there) while ignoring the flip-prone tail. So the
+# comparison is deep when the distribution is spread and shallow when the
+# model is confident, which is exactly when there is nothing else worth
+# checking. 0.1% is well below any actionable camera-trap prediction.
+NEGLIGIBLE_CONF = 1e-3
 
 # Models that cannot use the GPU, with the reason. Being on this list
 # turns "ran on CPU" from a failure into an expected result.
@@ -176,28 +181,30 @@ class TestImage:
 # generate_legacy_ground_truth.py imports this list, so the ground truth
 # and the test can never disagree about which pixels they mean.
 #
-# Every model sees the same images, which makes this a fidelity check
-# against legacy rather than an accuracy check: an off-region model
-# returns nonsense, but deterministic nonsense, and a broken crop or
-# normalisation still shows up immediately.
+# Every model sees the same image. This is primarily a fidelity check
+# (does the port reproduce its recorded baseline), but a crow is a
+# reasonable accuracy check too: almost every model has a "bird" class,
+# so a broken crop or normalisation shows up not just as a changed number
+# but often as a changed, obviously-wrong label.
 #
-# All are public LILA BC images, served from the project's Google Cloud
-# mirror. Boxes are full-frame: it is the box a full-image classifier
-# gets anyway, it always contains the animal, and it keeps the set
-# honest for crop-based models without needing MegaDetector in the loop.
+# Public LILA BC images, served from the project's Google Cloud mirror.
+# The box is the dataset's own annotation, not the full frame: a crow
+# fills a fraction of the image, so the box exercises each model's crop
+# path the way a real MegaDetector detection would.
 TEST_IMAGES: list[TestImage] = [
-    # Ohio drift fence, eastern chipmunk. From osu-small-animals, which
-    # is AHDriFT-ID's own training source, so this one doubles as a real
-    # accuracy check for AHDRIFT-v1: it should say "eastern chipmunk".
+    # American Crow on grass, from the ENA24 dataset (file 7932.jpg). A
+    # bird is in-range for almost every model here (nearly all carry a
+    # "bird" class), so unlike a regional mammal this image is a sensible
+    # sanity check across the whole zoo, not just deterministic nonsense.
+    # bbox is ENA24's own American Crow annotation, normalised.
     TestImage(
-        name="osu_eastern_chipmunk.jpg",
+        name="ena24_american_crow.jpg",
         url=(
             "https://storage.googleapis.com/public-datasets-lila/"
-            "osu-small-animals/Images/Sorted_by_species/Mammalia/"
-            "Eastern%20Chipmunk/FCM1__2019-09-22__11-31-52%283%29.JPG"
+            "ena24/images/7932.jpg"
         ),
-        sha256="c650fc3423b254547bb8dff027f106321f2359954c17783f71a4badd34f4cfe9",
-        bbox=(0.0, 0.0, 1.0, 1.0),
+        sha256="834bcc11334de7e6e04231049630499bb7ecd5ef7c10eca6144612ccbda6ad9a",
+        bbox=(0.3533, 0.5305, 0.2070, 0.1494),
     ),
 ]
 

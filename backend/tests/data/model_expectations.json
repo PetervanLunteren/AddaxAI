@@ -1,14 +1,14 @@
 {
   "images": [
     {
-      "name": "osu_eastern_chipmunk.jpg",
-      "url": "https://storage.googleapis.com/public-datasets-lila/osu-small-animals/Images/Sorted_by_species/Mammalia/Eastern%20Chipmunk/FCM1__2019-09-22__11-31-52%283%29.JPG",
-      "sha256": "c650fc3423b254547bb8dff027f106321f2359954c17783f71a4badd34f4cfe9",
+      "name": "ena24_american_crow.jpg",
+      "url": "https://storage.googleapis.com/public-datasets-lila/ena24/images/7932.jpg",
+      "sha256": "834bcc11334de7e6e04231049630499bb7ecd5ef7c10eca6144612ccbda6ad9a",
       "bbox": [
-        0.0,
-        0.0,
-        1.0,
-        1.0
+        0.3533,
+        0.5305,
+        0.207,
+        0.1494
       ]
     }
   ],
@@ -20,31 +20,31 @@
       "legacy_env": "pytorch",
       "predictions": [
         {
-          "label": "cow",
-          "confidence": 0.67345
+          "label": "bird",
+          "confidence": 0.96278
         }
       ],
       "top_k": [
         [
           {
-            "label": "cow",
-            "confidence": 0.67345
-          },
-          {
-            "label": "false detection",
-            "confidence": 0.12464
-          },
-          {
-            "label": "sheep",
-            "confidence": 0.03907
+            "label": "bird",
+            "confidence": 0.96278
           },
           {
             "label": "mongoose",
-            "confidence": 0.02763
+            "confidence": 0.00448
           },
           {
-            "label": "horse",
-            "confidence": 0.02585
+            "label": "rodent",
+            "confidence": 0.00352
+          },
+          {
+            "label": "wild pig",
+            "confidence": 0.00346
+          },
+          {
+            "label": "goat",
+            "confidence": 0.00314
           }
         ]
       ]
@@ -56,31 +56,31 @@
       "legacy_env": "pytorch",
       "predictions": [
         {
-          "label": "false detection",
-          "confidence": 0.31532
+          "label": "ravens and crows",
+          "confidence": 0.80318
         }
       ],
       "top_k": [
         [
           {
-            "label": "false detection",
-            "confidence": 0.31532
+            "label": "ravens and crows",
+            "confidence": 0.80318
           },
           {
-            "label": "cattle feral",
-            "confidence": 0.13821
+            "label": "australian raven",
+            "confidence": 0.02246
           },
           {
-            "label": "mainland dusky antechinus",
-            "confidence": 0.08105
+            "label": "australian magpie",
+            "confidence": 0.00972
           },
           {
-            "label": "red deer",
-            "confidence": 0.03036
+            "label": "purple swamphen",
+            "confidence": 0.00583
           },
           {
-            "label": "black-tailed wallaby",
-            "confidence": 0.02818
+            "label": "whistling kite",
+            "confidence": 0.0058
           }
         ]
       ]
@@ -92,31 +92,31 @@
       "legacy_env": "pytorch",
       "predictions": [
         {
-          "label": "cervus canadensis",
-          "confidence": 0.61508
+          "label": "unknown bird",
+          "confidence": 0.95197
         }
       ],
       "top_k": [
         [
           {
-            "label": "cervus canadensis",
-            "confidence": 0.61508
+            "label": "unknown bird",
+            "confidence": 0.95197
           },
           {
-            "label": "lynx rufus",
-            "confidence": 0.05751
+            "label": "unknown mouse",
+            "confidence": 0.0011
           },
           {
-            "label": "false detection",
-            "confidence": 0.05528
+            "label": "equus asinus",
+            "confidence": 0.00103
           },
           {
-            "label": "urocyon cinereoargenteus",
-            "confidence": 0.03684
+            "label": "canis familiaris",
+            "confidence": 0.00094
           },
           {
-            "label": "nasua narica",
-            "confidence": 0.01947
+            "label": "didelphis virginiana",
+            "confidence": 0.00094
           }
         ]
       ]
@@ -128,31 +128,31 @@
       "legacy_env": "pytorch",
       "predictions": [
         {
-          "label": "squirrel",
-          "confidence": 0.96015
+          "label": "corvid",
+          "confidence": 0.97625
         }
       ],
       "top_k": [
         [
           {
-            "label": "squirrel",
-            "confidence": 0.96015
+            "label": "corvid",
+            "confidence": 0.97625
           },
           {
             "label": "bird",
-            "confidence": 0.00874
+            "confidence": 0.01414
           },
           {
-            "label": "cat",
-            "confidence": 0.00632
-          },
-          {
-            "label": "other",
-            "confidence": 0.00493
+            "label": "bobcat",
+            "confidence": 0.00761
           },
           {
             "label": "cow",
-            "confidence": 0.00427
+            "confidence": 0.00061
+          },
+          {
+            "label": "raptor",
+            "confidence": 0.00051
           }
         ]
       ]
@@ -164,31 +164,31 @@
       "legacy_env": "tensorflow-v2",
       "predictions": [
         {
-          "label": "fallow_deer",
-          "confidence": 0.47597
+          "label": "forest_raven",
+          "confidence": 0.99125
         }
       ],
       "top_k": [
         [
           {
-            "label": "fallow_deer",
-            "confidence": 0.47597
+            "label": "forest_raven",
+            "confidence": 0.99125
           },
           {
-            "label": "spotted_tail_quoll",
-            "confidence": 0.09084
+            "label": "black_currawong",
+            "confidence": 0.00412
           },
           {
-            "label": "red_fox",
-            "confidence": 0.08553
+            "label": "grey_currawong",
+            "confidence": 0.00399
           },
           {
-            "label": "peafowl",
-            "confidence": 0.07082
+            "label": "australian_magpie",
+            "confidence": 0.0004
           },
           {
-            "label": "bennetts_wallaby",
-            "confidence": 0.05941
+            "label": "common_blackbird",
+            "confidence": 8e-05
           }
         ]
       ]
@@ -201,30 +201,30 @@
       "predictions": [
         {
           "label": "bird",
-          "confidence": 0.40821
+          "confidence": 0.99783
         }
       ],
       "top_k": [
         [
           {
             "label": "bird",
-            "confidence": 0.40821
+            "confidence": 0.99783
           },
           {
             "label": "squirrel",
-            "confidence": 0.12266
+            "confidence": 0.00075
           },
           {
-            "label": "marmot",
-            "confidence": 0.08884
+            "label": "cat",
+            "confidence": 0.00072
           },
           {
-            "label": "badger",
-            "confidence": 0.06904
+            "label": "mustelid",
+            "confidence": 0.00019
           },
           {
-            "label": "roe deer",
-            "confidence": 0.05184
+            "label": "dog",
+            "confidence": 8e-05
           }
         ]
       ]
@@ -236,31 +236,31 @@
       "legacy_env": "pytorch",
       "predictions": [
         {
-          "label": "cattle",
-          "confidence": 0.74641
+          "label": "bird",
+          "confidence": 0.99612
         }
       ],
       "top_k": [
         [
           {
-            "label": "cattle",
-            "confidence": 0.74641
+            "label": "bird",
+            "confidence": 0.99612
           },
           {
-            "label": "donkey",
-            "confidence": 0.18762
+            "label": "gemsbok",
+            "confidence": 0.00111
+          },
+          {
+            "label": "baboon",
+            "confidence": 0.0004
+          },
+          {
+            "label": "cattle",
+            "confidence": 0.00034
           },
           {
             "label": "african wild cat",
-            "confidence": 0.02167
-          },
-          {
-            "label": "lion",
-            "confidence": 0.00595
-          },
-          {
-            "label": "elephant",
-            "confidence": 0.00547
+            "confidence": 0.00032
           }
         ]
       ]
@@ -272,31 +272,31 @@
       "legacy_env": "pytorch",
       "predictions": [
         {
-          "label": "wild pig",
-          "confidence": 0.15773
+          "label": "birds",
+          "confidence": 0.95757
         }
       ],
       "top_k": [
         [
           {
-            "label": "wild pig",
-            "confidence": 0.15773
-          },
-          {
-            "label": "dog",
-            "confidence": 0.10434
-          },
-          {
             "label": "birds",
-            "confidence": 0.07411
+            "confidence": 0.95757
           },
           {
-            "label": "feral cat",
-            "confidence": 0.06644
+            "label": "livestock",
+            "confidence": 0.00141
           },
           {
-            "label": "muntjac",
-            "confidence": 0.06112
+            "label": "palm civet",
+            "confidence": 0.00134
+          },
+          {
+            "label": "nilgai",
+            "confidence": 0.00132
+          },
+          {
+            "label": "chital",
+            "confidence": 0.00124
           }
         ]
       ]
@@ -308,31 +308,31 @@
       "legacy_env": "pytorch",
       "predictions": [
         {
-          "label": "cow",
-          "confidence": 0.87193
+          "label": "torresian crow",
+          "confidence": 0.95008
         }
       ],
       "top_k": [
         [
           {
-            "label": "cow",
-            "confidence": 0.87193
+            "label": "torresian crow",
+            "confidence": 0.95008
           },
           {
-            "label": "horse",
-            "confidence": 0.015
+            "label": "rodent sp",
+            "confidence": 0.00076
           },
           {
-            "label": "false detection",
-            "confidence": 0.01193
+            "label": "antilopine wallaroo",
+            "confidence": 0.0006
           },
           {
-            "label": "buffalo",
-            "confidence": 0.00854
+            "label": "emerald dove",
+            "confidence": 0.00057
           },
           {
-            "label": "pig",
-            "confidence": 0.00326
+            "label": "cane toad",
+            "confidence": 0.00056
           }
         ]
       ]
@@ -345,30 +345,30 @@
       "predictions": [
         {
           "label": "bird",
-          "confidence": 0.60328
+          "confidence": 0.99997
         }
       ],
       "top_k": [
         [
           {
             "label": "bird",
-            "confidence": 0.60328
+            "confidence": 0.99997
           },
           {
-            "label": "nutria",
-            "confidence": 0.08244
+            "label": "cat",
+            "confidence": 1e-05
           },
           {
-            "label": "marmot",
-            "confidence": 0.05999
-          },
-          {
-            "label": "roe deer",
-            "confidence": 0.03927
+            "label": "bison",
+            "confidence": 0.0
           },
           {
             "label": "badger",
-            "confidence": 0.03137
+            "confidence": 0.0
+          },
+          {
+            "label": "ibex",
+            "confidence": 0.0
           }
         ]
       ]
@@ -380,31 +380,31 @@
       "legacy_env": "pytorch",
       "predictions": [
         {
-          "label": "beaver",
-          "confidence": 0.258
+          "label": "bird",
+          "confidence": 0.99992
         }
       ],
       "top_k": [
         [
           {
-            "label": "beaver",
-            "confidence": 0.258
-          },
-          {
             "label": "bird",
-            "confidence": 0.20257
+            "confidence": 0.99992
           },
           {
-            "label": "nutria",
-            "confidence": 0.19582
+            "label": "cat",
+            "confidence": 1e-05
+          },
+          {
+            "label": "equid",
+            "confidence": 1e-05
           },
           {
             "label": "marmot",
-            "confidence": 0.10759
+            "confidence": 1e-05
           },
           {
-            "label": "lagomorph",
-            "confidence": 0.07356
+            "label": "sheep",
+            "confidence": 1e-05
           }
         ]
       ]
@@ -417,30 +417,30 @@
       "predictions": [
         {
           "label": "bird",
-          "confidence": 0.4306
+          "confidence": 0.99835
         }
       ],
       "top_k": [
         [
           {
             "label": "bird",
-            "confidence": 0.4306
+            "confidence": 0.99835
           },
           {
-            "label": "squirrel",
-            "confidence": 0.21735
-          },
-          {
-            "label": "mustelid",
-            "confidence": 0.06671
+            "label": "fox",
+            "confidence": 0.0004
           },
           {
             "label": "marmot",
-            "confidence": 0.05386
+            "confidence": 0.00019
           },
           {
-            "label": "micromammal",
-            "confidence": 0.0425
+            "label": "equid",
+            "confidence": 0.00014
+          },
+          {
+            "label": "dog",
+            "confidence": 0.0001
           }
         ]
       ]
@@ -452,31 +452,31 @@
       "legacy_env": "pytorch",
       "predictions": [
         {
-          "label": "empty",
-          "confidence": 0.99666
+          "label": "unknown bird",
+          "confidence": 0.99767
         }
       ],
       "top_k": [
         [
           {
-            "label": "empty",
-            "confidence": 0.99666
-          },
-          {
-            "label": "small mammal",
-            "confidence": 0.00213
-          },
-          {
-            "label": "other opossum",
-            "confidence": 0.00029
-          },
-          {
-            "label": "tayra",
-            "confidence": 0.00024
-          },
-          {
             "label": "unknown bird",
-            "confidence": 0.00011
+            "confidence": 0.99767
+          },
+          {
+            "label": "razor-billed curassow",
+            "confidence": 0.00209
+          },
+          {
+            "label": "andean guan",
+            "confidence": 7e-05
+          },
+          {
+            "label": "grison",
+            "confidence": 2e-05
+          },
+          {
+            "label": "andean bear",
+            "confidence": 1e-05
           }
         ]
       ]
@@ -488,31 +488,31 @@
       "legacy_env": "pytorch",
       "predictions": [
         {
-          "label": "Homo_sapiens",
-          "confidence": 0.93892
+          "label": "Megapodius_reinwardt",
+          "confidence": 0.75128
         }
       ],
       "top_k": [
         [
           {
-            "label": "Homo_sapiens",
-            "confidence": 0.93892
+            "label": "Megapodius_reinwardt",
+            "confidence": 0.75128
           },
           {
-            "label": "Bos_taurus",
-            "confidence": 0.03445
+            "label": "Heteromyias_cinereifrons",
+            "confidence": 0.18296
           },
           {
-            "label": "Thylogale_stigmatica",
-            "confidence": 0.01621
+            "label": "Orthonyx_spaldingii",
+            "confidence": 0.02666
           },
           {
-            "label": "Canis_familiaris",
-            "confidence": 0.01037
+            "label": "Alectura_lathami",
+            "confidence": 0.02264
           },
           {
-            "label": "Wallabia_bicolor",
-            "confidence": 4e-05
+            "label": "Perameles_nasuta",
+            "confidence": 0.00962
           }
         ]
       ]
@@ -524,31 +524,31 @@
       "legacy_env": "pytorch",
       "predictions": [
         {
-          "label": "australian bustard",
-          "confidence": 0.78292
+          "label": "corvid sp",
+          "confidence": 0.99623
         }
       ],
       "top_k": [
         [
           {
-            "label": "australian bustard",
-            "confidence": 0.78292
+            "label": "corvid sp",
+            "confidence": 0.99623
           },
           {
-            "label": "wren sp",
-            "confidence": 0.04294
+            "label": "currawong sp",
+            "confidence": 0.00167
           },
           {
-            "label": "freshwater crocodile",
-            "confidence": 0.0256
+            "label": "small bird sp",
+            "confidence": 0.00021
           },
           {
-            "label": "cattle",
-            "confidence": 0.02332
+            "label": "short-nosed bandicoot sp",
+            "confidence": 0.0002
           },
           {
-            "label": "numbat",
-            "confidence": 0.02239
+            "label": "pig",
+            "confidence": 0.0002
           }
         ]
       ]
@@ -560,31 +560,31 @@
       "legacy_env": "tensorflow-v1",
       "predictions": [
         {
-          "label": "tamandua_tetradactyla",
-          "confidence": 0.48977
+          "label": "potos_flavus",
+          "confidence": 0.8447
         }
       ],
       "top_k": [
         [
           {
-            "label": "tamandua_tetradactyla",
-            "confidence": 0.48977
+            "label": "potos_flavus",
+            "confidence": 0.8447
           },
           {
-            "label": "marmosa_spp",
-            "confidence": 0.16426
+            "label": "ramphastos_spp",
+            "confidence": 0.08838
           },
           {
             "label": "leopardus_spp",
-            "confidence": 0.098
+            "confidence": 0.01925
           },
           {
-            "label": "callithrix_spp",
-            "confidence": 0.05377
+            "label": "bradypus_variegatus",
+            "confidence": 0.01672
           },
           {
-            "label": "caluromys_philander",
-            "confidence": 0.04909
+            "label": "didelphis_marsupialis",
+            "confidence": 0.00834
           }
         ]
       ]
@@ -596,31 +596,31 @@
       "legacy_env": "tensorflow-v1",
       "predictions": [
         {
-          "label": "Spix's guan",
-          "confidence": 0.91354
+          "label": "Unknown bird",
+          "confidence": 0.99999
         }
       ],
       "top_k": [
         [
           {
-            "label": "Spix's guan",
-            "confidence": 0.91354
-          },
-          {
             "label": "Unknown bird",
-            "confidence": 0.06466
+            "confidence": 0.99999
           },
           {
-            "label": "Grey-fronted dove",
-            "confidence": 0.01242
+            "label": "Black-headed squirrel monkey",
+            "confidence": 0.0
           },
           {
-            "label": "Southern amazonian red squirrel",
-            "confidence": 0.00566
+            "label": "Brazilian rabbit",
+            "confidence": 0.0
           },
           {
-            "label": "Great tinamou",
-            "confidence": 0.00347
+            "label": "Brown agouti",
+            "confidence": 0.0
+          },
+          {
+            "label": "Bush dog",
+            "confidence": 0.0
           }
         ]
       ]
@@ -632,31 +632,31 @@
       "legacy_env": "pytorch",
       "predictions": [
         {
-          "label": "cow",
-          "confidence": 0.27737
+          "label": "magpie",
+          "confidence": 0.91536
         }
       ],
       "top_k": [
         [
           {
-            "label": "cow",
-            "confidence": 0.27737
+            "label": "magpie",
+            "confidence": 0.91536
           },
           {
-            "label": "dog",
-            "confidence": 0.16703
+            "label": "starling",
+            "confidence": 0.0832
           },
           {
-            "label": "deer",
-            "confidence": 0.10882
+            "label": "tui",
+            "confidence": 0.00073
           },
           {
-            "label": "goat",
-            "confidence": 0.05998
+            "label": "blackbird",
+            "confidence": 0.00026
           },
           {
-            "label": "cat",
-            "confidence": 0.05428
+            "label": "myna",
+            "confidence": 0.00014
           }
         ]
       ]
@@ -665,18 +665,35 @@
       "source": "reference",
       "predictions": [
         {
-          "label": "Bos",
-          "confidence": 0.9165179133415222
+          "label": "Crax",
+          "confidence": 0.9998784065246582
         }
       ],
       "top_k": [
         [
           {
+            "label": "Crax",
+            "confidence": 0.9998784065246582
+          },
+          {
+            "label": "Unknown",
+            "confidence": 0.00010924710659310222
+          },
+          {
+            "label": "Canis",
+            "confidence": 4.5349038373387884e-06
+          },
+          {
+            "label": "Leopardus",
+            "confidence": 3.329728087919648e-06
+          },
+          {
             "label": "Bos",
-            "confidence": 0.9165179133415222
+            "confidence": 1.6926961734498036e-06
           }
         ]
-      ]
+      ],
+      "note": "reference not legacy: legacy fed a uint8 double-transformed near-black image (never classified correctly); baseline from the corrected pipeline"
     },
     "AHDRIFT-v1": {
       "source": "legacy",
@@ -685,31 +702,31 @@
       "legacy_env": "pytorch",
       "predictions": [
         {
-          "label": "eastern chipmunk",
-          "confidence": 0.84658
+          "label": "american mink",
+          "confidence": 0.24212
         }
       ],
       "top_k": [
         [
           {
-            "label": "eastern chipmunk",
-            "confidence": 0.84658
+            "label": "american mink",
+            "confidence": 0.24212
           },
           {
-            "label": "common yellowthroat",
-            "confidence": 0.0209
+            "label": "indigo bunting",
+            "confidence": 0.09744
           },
           {
-            "label": "eastern gartersnake",
-            "confidence": 0.01651
+            "label": "northern short-tailed shrew",
+            "confidence": 0.09679
           },
           {
-            "label": "eastern hog-nosed snake",
-            "confidence": 0.01229
+            "label": "striped skunk",
+            "confidence": 0.07665
           },
           {
-            "label": "northern house wren",
-            "confidence": 0.01173
+            "label": "dekay's brownsnake",
+            "confidence": 0.0479
           }
         ]
       ]
@@ -721,31 +738,31 @@
       "legacy_env": "tensorflow-v2",
       "predictions": [
         {
-          "label": "elephant",
-          "confidence": 0.35979
+          "label": "bird",
+          "confidence": 0.65236
         }
       ],
       "top_k": [
         [
           {
-            "label": "elephant",
-            "confidence": 0.35979
-          },
-          {
             "label": "bird",
-            "confidence": 0.1345
+            "confidence": 0.65236
           },
           {
             "label": "buffalo",
-            "confidence": 0.13442
-          },
-          {
-            "label": "deer",
-            "confidence": 0.10396
+            "confidence": 0.07092
           },
           {
             "label": "leopard",
-            "confidence": 0.10263
+            "confidence": 0.0597
+          },
+          {
+            "label": "elephant",
+            "confidence": 0.05081
+          },
+          {
+            "label": "wild_boar",
+            "confidence": 0.04609
           }
         ]
       ]
@@ -757,31 +774,31 @@
       "legacy_env": "pytorch",
       "predictions": [
         {
-          "label": "dog",
-          "confidence": 0.65282
+          "label": "other bird",
+          "confidence": 1.0
         }
       ],
       "top_k": [
         [
           {
-            "label": "dog",
-            "confidence": 0.65282
+            "label": "other bird",
+            "confidence": 1.0
+          },
+          {
+            "label": "caprid",
+            "confidence": 0.0
           },
           {
             "label": "cat",
-            "confidence": 0.34156
+            "confidence": 0.0
           },
           {
-            "label": "other bird",
-            "confidence": 0.00364
+            "label": "cow",
+            "confidence": 0.0
           },
           {
-            "label": "mustelid",
-            "confidence": 0.00072
-          },
-          {
-            "label": "kea",
-            "confidence": 0.00056
+            "label": "deer",
+            "confidence": 0.0
           }
         ]
       ]
@@ -793,31 +810,31 @@
       "legacy_env": "pytorch",
       "predictions": [
         {
-          "label": "fox",
-          "confidence": 0.98286
+          "label": "bird",
+          "confidence": 0.99999
         }
       ],
       "top_k": [
         [
           {
-            "label": "fox",
-            "confidence": 0.98286
+            "label": "bird",
+            "confidence": 0.99999
           },
           {
-            "label": "cat",
-            "confidence": 0.01216
-          },
-          {
-            "label": "wolf+jackal",
-            "confidence": 0.00402
-          },
-          {
-            "label": "equid",
-            "confidence": 0.00084
+            "label": "antilope",
+            "confidence": 0.0
           },
           {
             "label": "camel",
-            "confidence": 9e-05
+            "confidence": 0.0
+          },
+          {
+            "label": "caracal",
+            "confidence": 0.0
+          },
+          {
+            "label": "cat",
+            "confidence": 0.0
           }
         ]
       ]
@@ -829,31 +846,31 @@
       "legacy_env": "pytorch",
       "predictions": [
         {
-          "label": "caprinae",
-          "confidence": 0.81996
+          "label": "aves",
+          "confidence": 0.91629
         }
       ],
       "top_k": [
         [
           {
-            "label": "caprinae",
-            "confidence": 0.81996
+            "label": "aves",
+            "confidence": 0.91629
           },
           {
-            "label": "vide",
-            "confidence": 0.09655
+            "label": "ursidae",
+            "confidence": 0.01035
+          },
+          {
+            "label": "canidae",
+            "confidence": 0.0091
           },
           {
             "label": "panthera_uncia",
-            "confidence": 0.01744
+            "confidence": 0.00891
           },
           {
-            "label": "aves",
-            "confidence": 0.01196
-          },
-          {
-            "label": "leporidae",
-            "confidence": 0.01038
+            "label": "marmota",
+            "confidence": 0.00832
           }
         ]
       ]
@@ -862,136 +879,137 @@
       "source": "reference",
       "predictions": [
         {
-          "label": "sciuridae family",
-          "confidence": 0.33463993668556213
+          "label": "bird",
+          "confidence": 0.6587696671485901
         }
       ],
       "top_k": [
         [
           {
-            "label": "sciuridae family",
-            "confidence": 0.33463993668556213
+            "label": "bird",
+            "confidence": 0.6587696671485901
           },
           {
-            "label": "vehicle",
-            "confidence": 0.28047409653663635
+            "label": "american crow",
+            "confidence": 0.3000946640968323
           },
           {
-            "label": "rodent",
-            "confidence": 0.0649227648973465
+            "label": "corvus species",
+            "confidence": 0.019937504082918167
           },
           {
-            "label": "carruther's mountain squirrel",
-            "confidence": 0.028872685506939888
+            "label": "common raven",
+            "confidence": 0.01320961955934763
           },
           {
-            "label": "blank",
-            "confidence": 0.028282761573791504
+            "label": "domestic cattle",
+            "confidence": 0.0026019890792667866
           }
         ]
-      ]
+      ],
+      "note": "reference not legacy: legacy runs SpeciesNet outside the adapter contract this harness drives, so there is no legacy number; baseline from our pipeline"
     },
     "AFR-DFV-v1": {
       "source": "reference",
       "predictions": [
         {
-          "label": "elephant",
-          "confidence": 0.7817834615707397
+          "label": "african buffalo",
+          "confidence": 0.9615519642829895
         }
       ],
       "top_k": [
         [
           {
-            "label": "elephant",
-            "confidence": 0.7817834615707397
+            "label": "african buffalo",
+            "confidence": 0.9615519642829895
           },
           {
-            "label": "african buffalo",
-            "confidence": 0.20572248101234436
+            "label": "spotted hyena",
+            "confidence": 0.026485318318009377
           },
           {
             "label": "guineafowl",
-            "confidence": 0.009393288753926754
+            "confidence": 0.00542849488556385
           },
           {
-            "label": "bushpig",
-            "confidence": 0.0017478229710832238
+            "label": "elephant",
+            "confidence": 0.0038654424715787172
           },
           {
             "label": "bird",
-            "confidence": 0.00043127816752530634
+            "confidence": 0.0022694591898471117
           }
         ]
       ],
-      "note": "reference not legacy: legacy stretched to 224 + square-expand crop; DeepForestVision DFV.py uses AutoImageProcessor(dinov2-large) 256->centercrop-224 + plain crop; inference.py corrected 2026-07, baseline re-recorded"
+      "note": "reference not legacy: legacy stretched to 224 + square-expand crop, DeepForestVision uses AutoImageProcessor(dinov2-large) 256->centercrop-224 + plain crop; inference.py corrected 2026-07"
     },
     "GIF-JAP-v0-2": {
       "source": "reference",
       "predictions": [
         {
           "label": "deer",
-          "confidence": 0.9998793601989746
+          "confidence": 0.9245423078536987
         }
       ],
       "top_k": [
         [
           {
             "label": "deer",
-            "confidence": 0.9998793601989746
-          },
-          {
-            "label": "boar",
-            "confidence": 0.00010429870599182323
-          },
-          {
-            "label": "fox",
-            "confidence": 6.83805092194234e-06
-          },
-          {
-            "label": "monkey",
-            "confidence": 3.4121537737519247e-06
+            "confidence": 0.9245423078536987
           },
           {
             "label": "serow",
-            "confidence": 1.8226464817416854e-06
+            "confidence": 0.046579331159591675
+          },
+          {
+            "label": "squirrel",
+            "confidence": 0.01483060885220766
+          },
+          {
+            "label": "bird",
+            "confidence": 0.00985870324075222
+          },
+          {
+            "label": "bear",
+            "confidence": 0.0019974405877292156
           }
         ]
       ],
-      "note": "reference not legacy: legacy omitted CIFAR-10 normalization and letterbox resize (gifu MDetToolsForJCameraTraps); inference.py corrected 2026-07, baseline re-recorded from the corrected pipeline"
+      "note": "reference not legacy: legacy omitted CIFAR-10 normalization and letterbox resize; inference.py corrected 2026-07, baseline from the corrected pipeline"
     },
     "SAH-DRY-ADS-v1": {
       "source": "reference",
       "predictions": [
         {
           "label": "bird",
-          "confidence": 0.2285812497138977
+          "confidence": 0.9983649849891663
         }
       ],
       "top_k": [
         [
           {
             "label": "bird",
-            "confidence": 0.2285812497138977
+            "confidence": 0.9983649849891663
           },
           {
-            "label": "boehms bush squirrel",
-            "confidence": 0.12025235593318939
+            "label": "honey badger",
+            "confidence": 0.000237211468629539
           },
           {
-            "label": "carruthers mountain squirrel",
-            "confidence": 0.06961122155189514
+            "label": "rwenzori turaco",
+            "confidence": 0.0001986439892789349
           },
           {
-            "label": "derbys anomalure",
-            "confidence": 0.03668173402547836
+            "label": "white-quilled bustard",
+            "confidence": 0.00018326699500903487
           },
           {
-            "label": "plains zebra",
-            "confidence": 0.03246597945690155
+            "label": "red-crested bustard",
+            "confidence": 0.00015806891315151006
           }
         ]
       ],
-      "note": "reference not legacy: legacy square-padded the crop; animl-py (PetervanLunteren fork) trains on a plain crop; inference.py corrected 2026-07, baseline re-recorded"
+      "note": "reference not legacy: legacy square-padded the crop, animl-py trains on a plain crop; inference.py corrected 2026-07, baseline from the corrected pipeline"
     }
   }
 }
