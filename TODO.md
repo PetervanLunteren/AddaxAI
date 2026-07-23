@@ -13,7 +13,7 @@
 
 - [ ] DOCUMENTATION (see items below)
 
-
+ 
 
 - [ ] I just installed it from scratch again, and it told me I needed to setup the DINOv2 ViT-B model. This is some old stuff, and hasent been udpated yet. It used to be defaulted to DINOv2 ViT-B, but now we default to DINOv2 ViT-S. It goes well in the install, but aparently, it is still the default for new projects and new fodler runs. Is that correct? That is the wrong UX. If the user installs the app, it shjould not be greeted with a setup error for DINOv2 ViT-B while DINOv2 ViT-S is silently installed. SO make sure the defaults all point to DINOv2 ViT-S, so that the user has a smooth experience. For both folder runs, and project modes. 
 
