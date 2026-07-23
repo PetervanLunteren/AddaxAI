@@ -117,12 +117,7 @@ export function EnvRebuildButton({ envNames, onDone }: EnvRebuildButtonProps) {
       </Button>
 
       <Dialog open={modalOpen}>
-        <DialogContent
-          className="max-w-lg [&>button]:hidden"
-          onPointerDownOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-          onInteractOutside={(e) => e.preventDefault()}
-        >
+        <DialogContent className="max-w-lg" nonDismissable>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {phase === "rebuilding" && (

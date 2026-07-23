@@ -1434,7 +1434,7 @@ export function FolderRunModelStep() {
           }
         }}
       >
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-w-xl" nonDismissable>
           {prepStage === "preparing" && preparingModelId && (
             <ModelPreparationView
               modelName={prepModel?.friendly_name ?? preparingModelId}

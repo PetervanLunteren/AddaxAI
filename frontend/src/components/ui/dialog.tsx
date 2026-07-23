@@ -36,8 +36,27 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, onPointerDownOutside, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    /** When true the dialog cannot be dismissed implicitly: no close
+     * (X) button, and clicking the overlay or pressing Escape does
+     * nothing. Only the dialog's own buttons close it. Use for modals
+     * wrapping an in-progress job the user shouldn't lose by a stray
+     * click, e.g. installing an environment or preparing a model. */
+    nonDismissable?: boolean;
+  }
+>(
+  (
+    {
+      className,
+      children,
+      nonDismissable,
+      onPointerDownOutside,
+      onInteractOutside,
+      onEscapeKeyDown,
+      ...props
+    },
+    ref,
+  ) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
@@ -57,15 +76,35 @@ const DialogContent = React.forwardRef<
           event.preventDefault();
           return;
         }
+        if (nonDismissable) {
+          event.preventDefault();
+          return;
+        }
         onPointerDownOutside?.(event);
+      }}
+      onInteractOutside={(event) => {
+        if (nonDismissable) {
+          event.preventDefault();
+          return;
+        }
+        onInteractOutside?.(event);
+      }}
+      onEscapeKeyDown={(event) => {
+        if (nonDismissable) {
+          event.preventDefault();
+          return;
+        }
+        onEscapeKeyDown?.(event);
       }}
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </DialogPrimitive.Close>
+      {!nonDismissable && (
+        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </DialogPrimitive.Close>
+      )}
     </DialogPrimitive.Content>
   </DialogPortal>
 ));

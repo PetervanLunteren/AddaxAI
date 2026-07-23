@@ -318,7 +318,13 @@ export function CreateProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent
+        className="max-w-xl max-h-[90vh] overflow-y-auto"
+        // Lock the modal down while a model is preparing (or the prep
+        // errored) so a stray outside-click can't discard an in-progress
+        // install. The form stage stays freely dismissable.
+        nonDismissable={stage !== "form"}
+      >
         {/* Form View */}
         {stage === "form" && (
           <>

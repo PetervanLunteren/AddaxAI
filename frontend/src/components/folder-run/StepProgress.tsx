@@ -69,8 +69,13 @@ export function StepProgress({
     ? STEPS.length - 1
     : Math.max(currentIndex, furthestIndex);
 
+  // Capped and centered rather than full-width. With only three short
+  // steps a full-width row (the max-w-7xl band) stretches the connectors
+  // to ~500px each and pins the chips to the far edges, which reads as
+  // empty space, not progress. 36rem keeps the chips grouped so the row
+  // scans as one unit. Mature wizards constrain the stepper this way.
   return (
-    <ol className="flex w-full items-start">
+    <ol className="mx-auto flex w-full max-w-[36rem] items-start">
       {STEPS.map((step, index) => {
         const isCurrent = index === currentIndex;
         const isDone = index < currentIndex;
