@@ -485,7 +485,7 @@
       },
       {
         "model_id": "AFR-DFV-v1",
-        "friendly_name": "African tropical forests",
+        "friendly_name": "African tropical forests v1",
         "emoji": "🌳",
         "env": "pytorch",
         "model_fname": "DFV.pt",
@@ -496,6 +496,21 @@
         "region": "africa",
         "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
         "info_url": "https://www.oneforestvision.org"
+      },
+      {
+        "model_id": "AFR-DFV-v2",
+        "friendly_name": "African tropical forests v2",
+        "emoji": "🌳",
+        "env": "pytorch",
+        "model_fname": "DeepForestVisionV2.pth",
+        "description": "DeepForestVision v2, the successor to v1, from the One Forest Vision initiative. It automatically classifies species in camera-trap images and videos from African tropical forests, using a DINOv3 (ViT-B/16) backbone. Developed by the French Muséum National d'Histoire Naturelle (MNHN) with partners in wildlife research, conservation and management. It can be run through AddaxAI without programming knowledge, or downloaded from the project GitHub page https://github.com/MNHN-OFVI/DeepForestVisionV2.",
+        "description_short": "Congo Basin rainforest • 61 classes • DINOv3",
+        "developer": "Hugo Magaldi - One Forest Vision initiative",
+        "min_app_version": "7.0.1",
+        "region": "africa",
+        "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        "info_url": "https://www.oneforestvision.org",
+        "torch_hub_model": "dinov3_vitb16"
       },
       {
         "model_id": "CAM-AI4G-v1",

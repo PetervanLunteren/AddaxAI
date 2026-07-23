@@ -1008,6 +1008,39 @@
         ]
       ],
       "note": "reference not legacy: multi-label sigmoid; legacy rescales scores by 1/sum, so a legacy baseline is only label-comparable. Recording our own raw-sigmoid output makes the confidence comparable machine-to-machine."
+    },
+    "AFR-DFV-v2": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "bird of prey",
+          "confidence": 0.6752012372016907
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird of prey",
+            "confidence": 0.6752012372016907
+          },
+          {
+            "label": "pelecaniform",
+            "confidence": 0.05530770123004913
+          },
+          {
+            "label": "african buffalo",
+            "confidence": 0.021257318556308746
+          },
+          {
+            "label": "red-tailed monkey",
+            "confidence": 0.020075399428606033
+          },
+          {
+            "label": "turaco",
+            "confidence": 0.01957095041871071
+          }
+        ]
+      ]
     }
   }
 }
