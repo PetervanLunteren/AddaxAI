@@ -5,7 +5,7 @@ title: Overview
 
 # Insights
 
-Insights are the in-depth analytical views inside a project. They go deeper than the glanceable Dashboard, and each one is a scientifically grounded visualisation with its own filter bar.
+Insights are the in-depth analytical views inside a project. They go deeper than the glanceable Dashboard, and each one is a scientifically grounded visualisation with its own filter bar. 
 
 ## Available views
 
