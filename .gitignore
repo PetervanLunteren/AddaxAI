@@ -99,6 +99,7 @@ alembic/versions/*.pyc
 
 # stuff for myself
 future-plans/*
+skills/send-draft-model/
 
 # VERSION
 VERSION

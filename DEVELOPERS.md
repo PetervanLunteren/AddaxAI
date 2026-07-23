@@ -9,7 +9,6 @@ rather than re-deriving the process:
 - `skills/add-classification-model/SKILL.md` : add a new classifier to the zoo end to end.
 - `skills/build-taxonomy-csv/SKILL.md` : produce a model's taxonomy.csv via GBIF.
 - `skills/run-model-test-harness/SKILL.md` : run and read `test_models.py`.
-- `skills/send-draft-model/SKILL.md` : send an unpublished draft model to a tester by sideloading a ZIP.
 
 The sections below are the reference material those runbooks point at.
 
