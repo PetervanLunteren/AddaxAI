@@ -135,6 +135,13 @@ app.on('second-instance', (_event, argv) => {
 const SHUTDOWN_SENTINEL = path.join(os.homedir(), 'AddaxAI', '.last-shutdown-clean');
 const LAUNCH_STATUS = path.join(os.homedir(), 'AddaxAI', '.last-launch-status.json');
 
+// Is this the first launch on this machine (fresh install or post-reset)?
+// Set by snapshotPreviousShutdown from the same LAUNCH_STATUS probe that
+// drives the crash sentinel, before that function writes the file. Only
+// the splash text reads it. Defaults to false so an unreadable user data
+// dir shows the neutral message rather than a wrong "first launch" claim.
+let isFirstLaunch = false;
+
 function snapshotPreviousShutdown(): void {
   try {
     fs.mkdirSync(path.dirname(LAUNCH_STATUS), { recursive: true });
@@ -146,6 +153,7 @@ function snapshotPreviousShutdown(): void {
     // SHUTDOWN_SENTINEL has never been written yet) and the user sees
     // a false-positive crash banner the moment setup completes.
     const haveLaunchedBefore = fs.existsSync(LAUNCH_STATUS);
+    isFirstLaunch = !haveLaunchedBefore;
     const wasClean = fs.existsSync(SHUTDOWN_SENTINEL);
     const previousShutdownClean = !haveLaunchedBefore || wasClean;
     fs.writeFileSync(
@@ -557,9 +565,17 @@ function shellPage(bodyHtml: string): string {
 }
 
 function splashHtml(): string {
+  // The splash shows on every launch, so the message has to match the
+  // launch it is actually on. Only a genuine first launch does the slow
+  // one-time work (unpack, env setup, model download); every later launch
+  // is seconds, and telling those users to expect a minute reads as the
+  // app being stuck.
+  const msg = isFirstLaunch
+    ? 'First launch can take a minute while it sets things up.'
+    : 'This usually takes a few seconds.';
   return shellPage(
     `<div class="spinner"></div><h1>Starting AddaxAI…</h1>` +
-      `<p class="msg">First launch can take a minute while it sets things up.</p>`,
+      `<p class="msg">${msg}</p>`,
   );
 }
 

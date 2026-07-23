@@ -504,6 +504,46 @@ def _download_model_files(model_dir: Path, repo: str) -> None:
         print(f"\r    {name}: {size / 1e6:.2f} MB @ {spd:.1f} MB/s{' ' * 12}")
 
 
+def _build_watcher(label: str) -> tuple[Callable[[], None], Callable[[str, float], None]]:
+    """
+    Live "still working" line for an env build. Unlike a file download, a
+    micromamba build first resolves dependencies (no disk writes at all) and
+    unpacks into a temp dir, so a MB/s reading off the final env dir just
+    sits at 0 and looks hung. Instead show elapsed time -- which always
+    advances, so it is a real liveness signal -- plus the latest micromamba
+    phase message.
+
+    Returns (stop, on_progress): pass on_progress as get_or_create_env's
+    progress_callback, and call stop() when the build finishes.
+    """
+    stop = threading.Event()
+    state = {"msg": "resolving…"}
+
+    def on_progress(message: str, _progress: float) -> None:
+        if message:
+            state["msg"] = message
+
+    def beat() -> None:
+        start = time.monotonic()
+        while not stop.wait(1.0):
+            secs = int(time.monotonic() - start)
+            mins, secs = divmod(secs, 60)
+            print(
+                f"\r  {label} … {mins}m{secs:02d}s — {state['msg']:<44.44}",
+                end="",
+                flush=True,
+            )
+
+    watcher = threading.Thread(target=beat, daemon=True)
+    watcher.start()
+
+    def done() -> None:
+        stop.set()
+        watcher.join(timeout=1.5)
+
+    return done, on_progress
+
+
 def _rebuild_env_if_stale(env_manager: EnvironmentManager, manifest: ModelManifest) -> None:
     """
     Bring a model's env in line with its YAML before testing. If the env's
@@ -525,12 +565,12 @@ def _rebuild_env_if_stale(env_manager: EnvironmentManager, manifest: ModelManife
     else:
         return  # in sync, or too old to have a sentinel but present
 
-    stop = _speed_watcher(env_dir, f"  building env-{env}")
+    stop, on_progress = _build_watcher(f"building env-{env}")
     try:
-        env_manager.get_or_create_env(manifest)
+        env_manager.get_or_create_env(manifest, progress_callback=on_progress)
     finally:
         stop()
-    print(f"\r  env-{env}: ready ({_dir_size(env_dir) / 1e6:.0f} MB){' ' * 20}")
+    print(f"\r  env-{env}: ready ({_dir_size(env_dir) / 1e6:.0f} MB){' ' * 44}")
 
 
 # The two files that are the model's *code*, as opposed to its weights.

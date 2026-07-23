@@ -1,5 +1,18 @@
 # Developer Documentation
 
+## Runbooks (skills)
+
+Recurring, gotcha-heavy jobs have step-by-step runbooks under `skills/`. Read the
+relevant one before starting, and follow its gotcha list and validation checklist
+rather than re-deriving the process:
+
+- `skills/add-classification-model/SKILL.md` : add a new classifier to the zoo end to end.
+- `skills/build-taxonomy-csv/SKILL.md` : produce a model's taxonomy.csv via GBIF.
+- `skills/run-model-test-harness/SKILL.md` : run and read `test_models.py`.
+- `skills/send-draft-model/SKILL.md` : send an unpublished draft model to a tester by sideloading a ZIP.
+
+The sections below are the reference material those runbooks point at.
+
 ## After cloning
 
 Activate the commit-msg hook that strips auto-generated co-author lines:
