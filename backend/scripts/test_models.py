@@ -169,6 +169,21 @@ EXPECTED_CPU: dict[str, str] = {
 }
 
 
+def _cpu_is_expected(model_id: str, env: str) -> bool:
+    """
+    True when running on the CPU is correct here, so it should not be
+    flagged as an unexpected fallback.
+    """
+    if EXPECTED_CPU.get(model_id) == sys.platform:
+        return True
+    # TensorFlow dropped native Windows GPU support after 2.10, so the
+    # tensorflow-v2 env (TF 2.16) is CPU-only on Windows: there is no GPU
+    # path to take. tensorflow-v1 (TF 2.10) still uses the GPU on Windows.
+    if env == "tensorflow-v2" and sys.platform == "win32":
+        return True
+    return False
+
+
 @dataclass
 class TestImage:
     """One shared test image, with the box every model classifies."""
@@ -348,8 +363,7 @@ def run_model(
     result.device = device
     result.notes.extend(_check_taxonomy_joins(model_dir, class_names))
     if device == "CPU":
-        reason = EXPECTED_CPU.get(model_id)
-        if reason and reason == sys.platform:
+        if _cpu_is_expected(model_id, env_name):
             result.notes.append("CPU expected on this OS")
         else:
             result.notes.append("no GPU used")
@@ -525,6 +539,34 @@ def _rebuild_env_if_stale(env_manager: EnvironmentManager, manifest: ModelManife
 # model author edits when fixing a model without retraining it.
 _MODEL_CODE_FILES = ("inference.py", "taxonomy.csv")
 
+# HTTP statuses that mean "busy, try again" rather than "this is wrong".
+_TRANSIENT_HTTP = frozenset({429, 500, 502, 503, 504})
+
+
+def _fetch_url(url: str, dest: Path, label: str, attempts: int = 4) -> None:
+    """
+    Download `url` to `dest`, retrying transient failures with a backoff.
+    HuggingFace occasionally answers a burst of requests with 503 or 429; a
+    one-off blip should not fail a model. A 404 or other client error is
+    raised straight away for the caller to interpret.
+    """
+    for attempt in range(1, attempts + 1):
+        try:
+            urllib.request.urlretrieve(url, dest)
+            return
+        except urllib.error.HTTPError as e:
+            # HTTPError is a URLError subclass, so it must be caught first.
+            if e.code not in _TRANSIENT_HTTP or attempt == attempts:
+                raise
+            reason = f"HTTP {e.code}"
+        except (urllib.error.URLError, TimeoutError) as e:
+            if attempt == attempts:
+                raise
+            reason = type(e).__name__
+        wait = 2**attempt
+        print(f"  {label}: {reason} from HF, retrying in {wait}s ({attempt}/{attempts - 1})")
+        time.sleep(wait)
+
 
 def _refresh_model_code(model_dir: Path, hf_repo: str) -> None:
     """
@@ -553,7 +595,7 @@ def _refresh_model_code(model_dir: Path, hf_repo: str) -> None:
         dest = model_dir / fname
         tmp = dest.with_suffix(dest.suffix + ".tmp")
         try:
-            urllib.request.urlretrieve(url, tmp)
+            _fetch_url(url, tmp, model_dir.name)
         except urllib.error.HTTPError as e:
             tmp.unlink(missing_ok=True)
             if fname == "taxonomy.csv" and e.code == 404:
