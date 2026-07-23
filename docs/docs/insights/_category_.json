@@ -1,0 +1,8 @@
+{
+  "label": "Insights",
+  "position": 6,
+  "link": {
+    "type": "generated-index",
+    "description": "In-depth analytical views: maps, activity patterns, and more."
+  }
+}

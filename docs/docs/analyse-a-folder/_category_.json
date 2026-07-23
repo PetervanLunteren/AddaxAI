@@ -1,0 +1,8 @@
+{
+  "label": "Analyse a folder",
+  "position": 3,
+  "link": {
+    "type": "generated-index",
+    "description": "One-off analysis of a folder of images or videos."
+  }
+}

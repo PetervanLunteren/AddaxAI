@@ -1,0 +1,150 @@
+.root {
+  margin: 1.5rem 0;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.search {
+  flex: 1 1 220px;
+  min-width: 200px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: var(--ifm-global-radius);
+  background: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+  font-size: 0.95rem;
+}
+
+.typeGroup {
+  display: inline-flex;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: var(--ifm-global-radius);
+  overflow: hidden;
+}
+
+.typeButton {
+  padding: 0.5rem 0.85rem;
+  border: none;
+  background: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+  cursor: pointer;
+  font-size: 0.9rem;
+  border-right: 1px solid var(--ifm-color-emphasis-300);
+}
+
+.typeButton:last-child {
+  border-right: none;
+}
+
+.typeButton:hover {
+  background: var(--ifm-color-emphasis-100);
+}
+
+.typeButtonActive,
+.typeButtonActive:hover {
+  background: var(--ifm-color-primary);
+  color: #fff;
+}
+
+.region {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: var(--ifm-global-radius);
+  background: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+  font-size: 0.9rem;
+}
+
+.count {
+  font-size: 0.85rem;
+  color: var(--ifm-color-emphasis-600);
+  margin-bottom: 0.5rem;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: var(--ifm-global-radius);
+}
+
+.table {
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.table thead th {
+  text-align: left;
+  white-space: nowrap;
+  background: var(--ifm-color-emphasis-100);
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.table tbody td {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+  vertical-align: top;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.name {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+  font-weight: 600;
+}
+
+.modelId {
+  font-size: 0.72rem;
+  color: var(--ifm-color-emphasis-600);
+}
+
+.summary {
+  min-width: 220px;
+  color: var(--ifm-color-emphasis-800);
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #fff;
+}
+
+.badge_det {
+  background: #71b7ba;
+}
+
+.badge_cls {
+  background: #0f6064;
+}
+
+.badge_emb {
+  background: #882000;
+}
+
+.links {
+  display: inline-flex;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+.empty {
+  text-align: center;
+  color: var(--ifm-color-emphasis-600);
+  padding: 1.5rem;
+}
