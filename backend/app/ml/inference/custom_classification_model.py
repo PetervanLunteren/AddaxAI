@@ -34,6 +34,28 @@ from app.utils.subprocess_env import clean_python_env
 logger = get_logger(__name__)
 
 
+def _worker_path_prefix(env_name: str, env_dir: Path, system: str) -> Path | None:
+    """Directory to prepend to a classification worker's PATH, or None.
+
+    Windows + tensorflow-v1 only. That env's TensorFlow 2.10 loads its CUDA
+    DLLs (cudart64_110.dll, cudnn64_8.dll, cublas64_11.dll, ...) through the
+    Windows DLL search path, but we spawn the env's python.exe directly and
+    never activate the conda env, so its ``Library\\bin`` -- where conda puts
+    those DLLs -- is off the search path and TF silently falls back to the
+    CPU (confirmed: "Could not load dynamic library 'cudart64_110.dll'").
+    Prepending ``Library\\bin`` makes TF find them and use the GPU.
+
+    Nothing else needs this: the pytorch/pywildlife envs bundle and
+    self-register their own CUDA (torch calls os.add_dll_directory at
+    import), and tensorflow-v2 has no native Windows GPU. Mirrors
+    app/utils/exiftool_bin.py, which does the same for the conda perl that
+    exiftool depends on.
+    """
+    if system == "Windows" and env_name == "tensorflow-v1":
+        return env_dir / "Library" / "bin"
+    return None
+
+
 class CustomClassificationModel:
     """
     Classification model that runs a one-shot batch subprocess.
@@ -158,6 +180,17 @@ class CustomClassificationModel:
             env = clean_python_env()
             if platform.system() == "Darwin":
                 env["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+            # On Windows, tensorflow-v1 needs its conda CUDA DLLs (which live
+            # in the env's Library\bin) on PATH, or TF 2.10 can't find them
+            # and silently runs on the CPU. We spawn the env's python.exe
+            # directly and never activate the conda env, so add it here. On
+            # Windows python.exe sits at the env root, so python_path.parent
+            # is that env dir. See _worker_path_prefix for the full rationale.
+            path_prefix = _worker_path_prefix(
+                self.env_name, self.python_path.parent, platform.system()
+            )
+            if path_prefix is not None:
+                env["PATH"] = os.pathsep.join([str(path_prefix), env.get("PATH", "")])
 
             logger.info(f"Starting one-shot classification worker for {self.model_dir.name}")
             logger.info(f"[DEBUG] Command: {' '.join(cmd)}")
