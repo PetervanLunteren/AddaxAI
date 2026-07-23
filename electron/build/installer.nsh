@@ -1,30 +1,43 @@
-; Custom NSIS hooks for AddaxAI: Timelapse Analyser shim + uninstaller.
+; Custom NSIS hooks for AddaxAI: Timelapse Analyser integration +
+; uninstaller.
 ;
-; Two responsibilities:
+; Three responsibilities:
 ;
-; 1. Drop a Timelapse Analyser launcher shim. Saul Greenberg's command
-;    in Timelapse runs:
+; 1. Publish where AddaxAI.exe is, for Timelapse to read. See the
+;    "Timelapse locator key" section below.
 ;
-;      (cd /d %homedrive%%homepath% &&
-;        "%homedrive%%homepath%\AddaxAI_files\AddaxAI\open.bat" timelapse <dir>
-;      ) || (cd /d %ProgramFiles% &&
+; 2. Drop a Timelapse Analyser launcher shim. Saul Greenberg's command
+;    in Timelapse (TimelapseMenuRecognitions.cs, MenuItemAddaxAIRun_Click)
+;    runs four candidates in order, first success wins:
+;
+;      (cd /d %ProgramFiles% &&
 ;        "%ProgramFiles%\AddaxAI_files\AddaxAI\open.bat" timelapse <dir>
-;      )
+;      ) || (cd /d %USERPROFILE% &&
+;        "%USERPROFILE%\AddaxAI_files\AddaxAI\open.bat" timelapse <dir>
+;      ) || ( ...the same two paths again for legacy EcoAssist_files... )
 ;
-;    The `||` operator short-circuits: as soon as the first command
-;    succeeds, the second is skipped.
+;    The `||` operator short-circuits: as soon as one command succeeds,
+;    the rest are skipped.
 ;
+;    NOTE the order: $PROGRAMFILES is tried FIRST, $PROFILE second.
 ;    AddaxAI's electron-builder NSIS install is per-user by default
 ;    (no UAC), so writes to $PROFILE always succeed and writes to
 ;    $PROGRAMFILES silently fail. We attempt BOTH anyway:
 ;
+;    - $PROGRAMFILES\AddaxAI_files\AddaxAI\open.bat — Saul's first-try
+;      path, but only writable when the install is elevated
+;      (per-machine config, future change). Harmless no-op on per-user
+;      installs. Useful in case someone runs the installer with
+;      elevation, or if this codebase ever switches to perMachine: true.
 ;    - $PROFILE\AddaxAI_files\AddaxAI\open.bat — the typical landing
-;      spot. Saul's command tries this first and finds it.
-;    - $PROGRAMFILES\AddaxAI_files\AddaxAI\open.bat — only writable
-;      when the install is elevated (per-machine config, future
-;      change). Harmless no-op on per-user installs. Useful in case
-;      someone runs the installer with elevation, or if this codebase
-;      ever switches to perMachine: true.
+;      spot for a per-user install, and Saul's second try.
+;
+;    Consequence of that ordering: on a machine where a LEGACY AddaxAI
+;    or EcoAssist was installed elevated into $PROGRAMFILES, its
+;    open.bat wins over our per-user shim and Timelapse launches the
+;    legacy app. We cannot overwrite it without elevation. The locator
+;    key in (1) is the way out of this: once Timelapse prefers the
+;    registry, the shim search order stops mattering.
 ;
 ;    Multi-user note: Timelapse's own install scope (per-user vs
 ;    per-machine) does NOT affect this. Saul's command resolves
@@ -38,7 +51,9 @@
 ;
 ;    The shim translates the legacy invocation
 ;    (`open.bat timelapse <folder>`) into the new exe's CLI flag
-;    (`AddaxAI.exe --timelapse "<folder>"`).
+;    (`AddaxAI.exe --timelapse "<folder>"`). It finds the exe through
+;    the same locator key from (1), so a custom install directory works
+;    on current Timelapse versions without Saul changing anything.
 ;
 ;    No legacy-detect prompt: if a legacy AddaxAI install is sitting
 ;    at one of these paths, we just overwrite its `open.bat`. The
@@ -46,8 +61,37 @@
 ;    most users, and the worst case (user reinstalls legacy later) is
 ;    self-healing — they reinstall AddaxAI and the shim wins again.
 ;
-; 2. Offer to clear the per-user data folder on uninstall (existing
+; 3. Offer to clear the per-user data folder on uninstall (existing
 ;    behavior, see customUnInstall below).
+;
+; ---------------------------------------------------------------------
+; Timelapse locator key
+; ---------------------------------------------------------------------
+;
+; The shim in (2) exists because Timelapse hardcodes a path to a
+; launcher script. That is fragile: this installer lets the user change
+; the install directory, so no hardcoded exe path is reliable, and the
+; legacy-shim ordering problem above has no fix on our side alone.
+;
+; So we publish where we actually landed. Timelapse (or anything else)
+; reads ExePath and runs `AddaxAI.exe --timelapse "<folder>"` directly,
+; no shim, no cmd.exe, no guessing:
+;
+;   Software\AddaxAI
+;     ExePath     full path to AddaxAI.exe
+;     InstallDir  the install directory
+;     Version     the version that wrote these values
+;
+; SHELL_CONTEXT is an NSIS built-in that follows SetShellVarContext, so
+; this lands in HKCU for a per-user install and HKLM for a per-machine
+; one, matching where the app itself went. Consumers should read HKCU
+; first, then HKLM, and still File.Exists the result: an app folder
+; deleted by hand rather than uninstalled leaves the key behind.
+;
+; This is a published contract. Renaming the key or its values breaks
+; every consumer silently, so treat it as append-only.
+
+!define TL_LOCATOR_KEY "Software\AddaxAI"
 
 ; Per-user path (typical for the current per-user installer)
 !define TL_SHIM_DIR_PU "$PROFILE\AddaxAI_files\AddaxAI"
@@ -57,8 +101,19 @@
 !define TL_SHIM_DIR_PM "$PROGRAMFILES\AddaxAI_files\AddaxAI"
 !define TL_SHIM_PATH_PM "$PROGRAMFILES\AddaxAI_files\AddaxAI\open.bat"
 
-; Body of the shim. Probes both possible new-AddaxAI install locations
-; at run time so it works regardless of which install scope was used.
+; Body of the shim. Resolves AddaxAI.exe at run time, in this order:
+;
+;   1. ${TL_LOCATOR_KEY} ExePath in HKCU, then HKLM. This is the only
+;      branch that survives a custom install directory, which the
+;      installer allows (allowToChangeInstallationDirectory: true).
+;   2. The two default install locations, per-user then per-machine.
+;      Covers an install whose locator key was removed by hand, and
+;      keeps the shim working if the key is ever dropped.
+;
+; No `start` around the exe call: the batch file must return the exe's
+; own exit code so a failure falls through Timelapse's `||` chain to the
+; next candidate. `start` always returns 0 and would end the chain on a
+; shim that resolved nothing.
 !macro WriteTimelapseShim DIR PATH
   CreateDirectory "${DIR}"
   FileOpen $0 "${PATH}" w
@@ -68,7 +123,14 @@
   ; $PROGRAMFILES, and we accept that as a no-op without aborting.
   FileWrite $0 "@echo off$\r$\n"
   FileWrite $0 "setlocal$\r$\n"
-  FileWrite $0 "set $\"ADDAXAI_EXE=%LOCALAPPDATA%\Programs\AddaxAI\AddaxAI.exe$\"$\r$\n"
+  FileWrite $0 "set $\"ADDAXAI_EXE=$\"$\r$\n"
+  ; `tokens=2,*` splits the reg query line "ExePath REG_SZ <path>" into
+  ; %%A=REG_SZ and %%B=<path>, so a path containing spaces stays intact.
+  FileWrite $0 "for /f $\"tokens=2,*$\" %%A in ('reg query $\"HKCU\${TL_LOCATOR_KEY}$\" /v ExePath 2^>nul ^| find $\"ExePath$\"') do set $\"ADDAXAI_EXE=%%B$\"$\r$\n"
+  FileWrite $0 "if not exist $\"%ADDAXAI_EXE%$\" for /f $\"tokens=2,*$\" %%A in ('reg query $\"HKLM\${TL_LOCATOR_KEY}$\" /v ExePath 2^>nul ^| find $\"ExePath$\"') do set $\"ADDAXAI_EXE=%%B$\"$\r$\n"
+  ; An unset ADDAXAI_EXE makes `if not exist ""` true, so both fallbacks
+  ; are reached when neither registry read produced anything.
+  FileWrite $0 "if not exist $\"%ADDAXAI_EXE%$\" set $\"ADDAXAI_EXE=%LOCALAPPDATA%\Programs\AddaxAI\AddaxAI.exe$\"$\r$\n"
   FileWrite $0 "if not exist $\"%ADDAXAI_EXE%$\" set $\"ADDAXAI_EXE=%ProgramFiles%\AddaxAI\AddaxAI.exe$\"$\r$\n"
   FileWrite $0 "if $\"%~1$\"==$\"timelapse$\" ($\r$\n"
   FileWrite $0 "  $\"%ADDAXAI_EXE%$\" --timelapse $\"%~2$\"$\r$\n"
@@ -79,14 +141,25 @@
 !macroend
 
 !macro customInstall
-  ; $PROFILE first (Saul's first-try path; this one always succeeds).
+  ; The locator key: the path we want consumers to use going forward.
+  WriteRegStr SHELL_CONTEXT "${TL_LOCATOR_KEY}" "ExePath" "$INSTDIR\AddaxAI.exe"
+  WriteRegStr SHELL_CONTEXT "${TL_LOCATOR_KEY}" "InstallDir" "$INSTDIR"
+  WriteRegStr SHELL_CONTEXT "${TL_LOCATOR_KEY}" "Version" "${VERSION}"
+
+  ; The shims: kept for every Timelapse version that still looks for
+  ; open.bat, which is all of them today.
+  ; $PROFILE (Saul's second-try path; this one always succeeds).
   !insertmacro WriteTimelapseShim "${TL_SHIM_DIR_PU}" "${TL_SHIM_PATH_PU}"
-  ; $PROGRAMFILES second (Saul's fallback; silently no-ops on per-user
+  ; $PROGRAMFILES (Saul's first-try path; silently no-ops on per-user
   ; installs but populates correctly when the installer is elevated).
   !insertmacro WriteTimelapseShim "${TL_SHIM_DIR_PM}" "${TL_SHIM_PATH_PM}"
 !macroend
 
 !macro customUnInstall
+  ; Drop the locator key so a consumer never launches an exe we just
+  ; deleted. Same SHELL_CONTEXT the install wrote it under.
+  DeleteRegKey SHELL_CONTEXT "${TL_LOCATOR_KEY}"
+
   ; Remove our Timelapse shims if we own them. Non-recursive RMDir so
   ; a legacy AddaxAI sitting next to ours stays intact: it only succeeds
   ; when the directory is empty.

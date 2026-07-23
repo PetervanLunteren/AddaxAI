@@ -680,6 +680,14 @@ async def run_classification_on_json(
             }
             sync_cls_progress(raw_line, current / total, metrics)
 
+        def report_device(device: str) -> None:
+            """Surface the classifier's device the moment the worker
+            reports it. Otherwise the modal keeps showing whichever
+            device the previous phase reported (or "detecting..." when no
+            detector ran, e.g. full-image classifiers), because the
+            device was previously only emitted once at the end."""
+            sync_cls_progress("Classifying...", 0.0, {"compute_device": device})
+
         logger.info("[DEBUG] Calling classify_detections()...")
         # Surface a clean status caption while the classification
         # subprocess loads its model. Without this, the frontend sits
@@ -693,6 +701,7 @@ async def run_classification_on_json(
                 best_frame_outputs=best_frame_outputs,
                 batch_size=batch_size,
                 progress_callback=on_progress,
+                device_callback=report_device,
                 job_id=job_id,
             )
         )

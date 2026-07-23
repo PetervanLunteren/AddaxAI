@@ -161,6 +161,26 @@ so no changes are needed on the Timelapse side. After Saul updates
 Timelapse to call `AddaxAI.exe --timelapse "<folder>"` directly the shim
 becomes redundant; it stays in place as a long-term fallback.
 
+To let Timelapse find the exe without guessing a path (the installer lets
+users pick their own install directory), the Windows installer publishes a
+locator key. Read `HKCU` first, then `HKLM`, and still check the path
+exists before using it:
+
+```
+Software\AddaxAI
+  ExePath     full path to AddaxAI.exe
+  InstallDir  the install directory
+  Version     the version that wrote these values
+```
+
+This is a published contract for external tools. Treat it as append-only:
+renaming the key or its values breaks every consumer silently. Written and
+removed by `electron/build/installer.nsh`.
+
+The shim reads the same key, so custom install directories already work on
+current Timelapse versions. It falls back to the two default install
+locations when the key is missing.
+
 In Timelapse, after a run completes, open `Recognition > Import recognition
 data for this image set` and select the generated `recognitions.json`.
 

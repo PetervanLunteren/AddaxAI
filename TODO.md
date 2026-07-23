@@ -19,16 +19,24 @@
 - [x] Bump the pytorch env from Python 3.8 to 3.11 (or higher, what do you recommend, whats the latest stable python, what is best to bump it too?) (3.8 is EOL since Oct 2024 and recent torch wheels are starting to drop py38 builds). Also bump torch alongside the python jump. SpeciesNet-fine-tuned classifiers (.pt files with pickled onnx2torch operator classes) need a smoke test after the bump: load NAM-ADS-v1 or similar and confirm torch.load() succeeds across the major version jump. 
 - [x] If we have bumped pytorch env to 3.11, we can implement https://github.com/MNHN-OFVI/DeepForestVisionV2. See email from Hugo at Tue, Jun 16, 4:01 PM for more info. 
 - [x] Test all models on all OS'ses. (Run python scripts/test_models.py on Windows and Ubuntu.)
-
-
-
-
-- [?] [ALREADY IMPLEMENTED - NEEDS TESTING] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
+- [x] [ALREADY IMPLEMENTED - NEEDS TESTING] ALLOW FULL IMAGE CLS MODELs TOO (AHDRIFT-v1)
 - [ ] Investigate WHY full-image classifiers cannot process videos at all. `detection_worker.py` refuses the whole folder when a full-image classifier (e.g. AHDRIFT-v1) is selected and the folder contains any video ("cannot process videos. Folder contains N video file(s); use a folder with only images"). A full-image classifier labels the whole frame, and a video's best frame IS a frame, so it is not obvious why it cannot be classified like an image. If the limitation is real, the error should say why; if it is historical, the refusal can go. Note: setting "Media to analyse" to "Only images" now sidesteps the refusal (no videos reach the check), so this is no longer a dead end, just unexplained.
-- [?] [ALREADY IMPLEMENTED - NEEDS TESTING] ALLOW CANADA sex-age-classes GRANT MODEL 
-- [ ] ask to Saul to add AddaxAI.exe --timelapse "<folder>" to Timelapse's command list as the long-term path.
 - [ ] If everything works and all models are verified, please double check if there are any stale environment.ymls that are never used by any of the models. If so, remove them. 
 - [ ] Any other non used imports or requirements in the environments YMLS? 
+
+
+- [ ] Why is there the TZ input when promoting a folder run into a project? Why not just take TZ as the default, like any new project does? There is no TZ widget in the createProject modal. All the settings that we set in that folder run can be copied to the project. TZ is not set at folder run, so it takes the default (like normal projects are made). And ask for the project name (like is done laready - good), and add the option for a description. Take same widget as in the CreateProject modal for the description. Makes sense? 
+Turn this run into a project
+Keep this folder run as a full project with species counts, verification history, dashboards, maps, and exports. The analysis you already ran carries over, nothing is re-run.
+
+Project name
+ohio-imgs
+Camera timezone
+🇳🇱 Netherlands, Amsterdam (UTC+02:00)
+The wall-clock timezone the cameras were configured to. Used by activity plots and Camtrap DP export. Pick a regional zone (DST aware) or a fixed offset depending on how the cameras were set up.
+
+
+
 
 
 
@@ -48,6 +56,7 @@
 - [ ] DOCUMENTATION (see items below)
 - [ ] REPEAT DETECTION ELIMINATION
 - [ ] WLIDBOOKS INTEGRATION
+- [ ] [ALREADY IMPLEMENTED - NEEDS TESTING] ALLOW CANADA sex-age-classes GRANT MODEL 
 - [ ] EARTHRANGER/GUNDI integration
 - [ ] CONSUME restrict_to_taxa_list - Get the most out of “vanilla SpeciesNet”. In particular, many issues that might make fine-tuning seem like a good option can be resolved by just remapping SpeciesNet’s outputs differently, instead of using the standard SpeciesNet geofence (a list of taxa that are allowed in each country (or US state)). You can do this with the restrict_to_taxa_list function, which takes a list of SpeciesNet taxa in a .csv file, and maps them to whatever labels you want. In addition to mapping one species to another, you could, for example, map all birds that aren’t otherwise mapped to an “other bird” label. This skill or this app can help you make those .csv files. More generally, I have some “pro tips” for getting the most out of MegaDetector and SpeciesNet here.
             https://megadetector.readthedocs.io/en/latest/postprocessing.html#megadetector.postprocessing.classification_postprocessing.restrict_to_taxa_list

@@ -264,23 +264,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 queue_crud.update_queue_status(db, entry_id, status="completed")
                 continue
 
-            # Full-image classifiers (e.g. AHDRIFT-v1) label the whole
-            # frame and have no meaningful per-frame interpretation, so
-            # we refuse folders that contain videos. Other entries in
-            # the batch are unaffected.
-            if full_image_cls and video_files:
-                error_msg = (
-                    f"Full-image classifier '{classification_model_id}' "
-                    f"cannot process videos. Folder contains "
-                    f"{len(video_files)} video file(s); use a folder "
-                    f"with only images."
-                )
-                logger.error(error_msg)
-                queue_crud.update_queue_status(
-                    db, entry_id, status="failed", error=error_msg
-                )
-                continue
-
             total_files += len(video_files) + len(image_files)
 
             # Create deployment (carry notes and tags from the queue entry).
@@ -356,7 +339,29 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             # ============================================================
             # PHASE 1: Video Detection (if videos exist)
             # ============================================================
-            if video_files:
+            if video_files and full_image_cls:
+                # Full-image classifiers skip MegaDetector. Synthesise a
+                # video detection JSON with one full-frame bbox per
+                # sampled frame so the classification phase has something
+                # to consume, mirroring the image path below.
+                logger.info(
+                    f"Phase 1 (skipped): full-image classifier, "
+                    f"synthesising video detection JSON for "
+                    f"{len(video_files)} video(s)"
+                )
+                await deployment_progress_callback(
+                    "Preparing videos...", 0.0, "video_detection", 0.5
+                )
+                from app.ml.full_image_detection import (
+                    synthesize_full_image_video_json,
+                )
+
+                synthesize_full_image_video_json(
+                    video_files, folder_path, video_json_path, project.video_fps
+                )
+                json_files_to_merge.append(video_json_path)
+
+            elif video_files:
                 logger.info(f"Phase 1: Running video detection on {len(video_files)} videos")
 
                 # Create video detection model

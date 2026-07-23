@@ -110,6 +110,7 @@ class CustomClassificationModel:
         best_frame_outputs: dict[str, str] | None = None,
         batch_size: int | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
+        device_callback: Callable[[str], None] | None = None,
         job_id: str | None = None,
     ) -> tuple[list[ClassificationResult | None], dict[str, str], str, dict[str, int]]:
         """
@@ -129,6 +130,10 @@ class CustomClassificationModel:
                 classification worker use its own default (auto-detects GPU).
                 A non-None integer is the user's Custom override.
             progress_callback: Optional callback(current, total) for progress updates
+            device_callback: Optional callback(device) fired once, as soon as
+                the worker reports which device it loaded on, so the UI can
+                show the classifier's real device during the phase instead of
+                whatever device the previous phase reported.
 
         Returns:
             Tuple of (results, class_names, compute_device, best_frames) where:
@@ -237,6 +242,8 @@ class CustomClassificationModel:
                                 f"Worker ready (Device: {compute_device}) "
                                 f"for {self.model_dir.name}"
                             )
+                            if device_callback:
+                                device_callback(compute_device)
                         elif "current" in msg and "total" in msg:
                             if progress_callback:
                                 progress_callback(msg["current"], msg["total"])
