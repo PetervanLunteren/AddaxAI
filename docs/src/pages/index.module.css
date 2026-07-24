@@ -49,20 +49,9 @@
   background: var(--ifm-color-emphasis-100);
 }
 
-.narrow {
-  max-width: 760px;
-  margin: 0 auto;
-}
-
 .wide {
   max-width: 1080px;
   margin: 0 auto;
-}
-
-.h2 {
-  font-size: 1.4rem;
-  font-weight: 700;
-  margin: 0 0 1rem;
 }
 
 .cards {
@@ -71,11 +60,25 @@
   gap: 1.5rem;
 }
 
+/* Cards sit on the tinted band, so a white surface plus a soft shadow makes
+   them read as raised objects. In dark mode the shadow is invisible and the
+   tint sits lighter than the card, so the border does the work instead. */
 .card {
   background: var(--ifm-background-color);
   border: 1px solid var(--ifm-color-emphasis-200);
   border-radius: 14px;
   padding: 1.5rem;
+  box-shadow: 0 1px 2px rgba(10, 40, 42, 0.05), 0 6px 18px rgba(10, 40, 42, 0.05);
+}
+
+:global(html[data-theme="dark"]) .card {
+  box-shadow: none;
+  border-color: var(--ifm-color-emphasis-300);
+}
+
+/* Last card spans the full row, so an odd number of cards stays balanced. */
+.cardWide {
+  grid-column: 1 / -1;
 }
 
 .cardTitle {
@@ -118,23 +121,6 @@
   display: block;
   padding: 0.55rem 0;
   font-size: 0.95rem;
-}
-
-.popular {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  border-top: 1px solid var(--ifm-color-emphasis-300);
-}
-
-.popular li {
-  border-bottom: 1px solid var(--ifm-color-emphasis-300);
-}
-
-.popular a {
-  display: block;
-  padding: 0.8rem 0.25rem;
-  font-size: 1rem;
 }
 
 @media (max-width: 760px) {

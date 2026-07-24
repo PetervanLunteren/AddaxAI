@@ -13,12 +13,14 @@ interface Card {
   body: string;
   to: string;
   links: Array<{ label: string; to: string }>;
+  /** Spans both columns, so an odd last card does not leave a gap. */
+  wide?: boolean;
 }
 
 const SECTIONS: Card[] = [
   {
     title: "Start here",
-    body: "New to AddaxAI. Install it, run it once, and pick the way of working that fits your project.",
+    body: "New to AddaxAI. Install it, run it once, and pick the path that fits your workflow.",
     to: "/docs/start-here/what-is-addaxai",
     links: [
       { label: "What AddaxAI does", to: "/docs/start-here/what-is-addaxai" },
@@ -28,7 +30,7 @@ const SECTIONS: Card[] = [
   },
   {
     title: "Guides",
-    body: "Step by step for the main tasks: run an analysis, check labels, confirm counts, get your data out.",
+    body: "Step by step: run an analysis, check labels and counts, and export. In a project, results add up into charts and maps.",
     to: "/docs/guides/analyse-a-folder",
     links: [
       { label: "Analyse a folder", to: "/docs/guides/analyse-a-folder" },
@@ -60,6 +62,16 @@ const SECTIONS: Card[] = [
       { label: "Where your files live", to: "/docs/reference/file-locations" },
     ],
   },
+  {
+    title: "Help",
+    body: "Answers to the questions people ask most, and what to do when something goes wrong.",
+    to: "/docs/troubleshooting/faq",
+    wide: true,
+    links: [
+      { label: "FAQ", to: "/docs/troubleshooting/faq" },
+      { label: "Troubleshooting", to: "/docs/troubleshooting/" },
+    ],
+  },
 ];
 
 function Hero(): ReactNode {
@@ -87,11 +99,14 @@ function Hero(): ReactNode {
 
 function Sections(): ReactNode {
   return (
-    <section className={styles.section}>
+    <section className={`${styles.section} ${styles.sectionAlt}`}>
       <div className={styles.wide}>
         <div className={styles.cards}>
           {SECTIONS.map((c) => (
-            <div key={c.title} className={styles.card}>
+            <div
+              key={c.title}
+              className={c.wide ? `${styles.card} ${styles.cardWide}` : styles.card}
+            >
               <h2 className={styles.cardTitle}>
                 <Link to={c.to}>{c.title}</Link>
               </h2>
@@ -111,32 +126,6 @@ function Sections(): ReactNode {
   );
 }
 
-function Popular(): ReactNode {
-  const items = [
-    { label: "Why is my trap night count different from what I expected?", to: "/docs/understanding/trap-nights" },
-    { label: "What is the difference between a detection and an observation?", to: "/docs/understanding/detections-events-observations" },
-    { label: "What does each column in the CSV mean?", to: "/docs/reference/export-columns" },
-    { label: "Which workflow should I use?", to: "/docs/start-here/choose-a-workflow" },
-    { label: "Some photos have no date. What happens to them?", to: "/docs/understanding/capture-times" },
-    { label: "Why are labels and counts not the same thing?", to: "/docs/guides/confirm-counts" },
-    { label: "Something went wrong", to: "/docs/troubleshooting/" },
-  ];
-  return (
-    <section className={`${styles.section} ${styles.sectionAlt}`}>
-      <div className={styles.narrow}>
-        <h2 className={styles.h2}>Common questions</h2>
-        <ul className={styles.popular}>
-          {items.map((i) => (
-            <li key={i.to}>
-              <Link to={i.to}>{i.label}</Link>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </section>
-  );
-}
-
 export default function Home(): ReactNode {
   return (
     <Layout
@@ -146,7 +135,6 @@ export default function Home(): ReactNode {
       <Hero />
       <main>
         <Sections />
-        <Popular />
       </main>
     </Layout>
   );
