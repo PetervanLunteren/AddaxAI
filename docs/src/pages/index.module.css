@@ -1,0 +1,135 @@
+/* Documentation home. Calm and functional: this page routes, it does not sell. */
+
+.hero {
+  background: var(--ifm-color-emphasis-100);
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+  padding: 3.5rem 1rem 3rem;
+  text-align: center;
+}
+
+.heroInner {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.heroLogo {
+  height: 52px;
+  width: auto;
+  margin-bottom: 1.25rem;
+}
+
+.heroTitle {
+  font-size: clamp(1.8rem, 4vw, 2.5rem);
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.75rem;
+}
+
+.heroSub {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: var(--ifm-color-emphasis-700);
+  margin: 0;
+}
+
+.section {
+  padding: 3rem 1rem;
+}
+
+.sectionAlt {
+  background: var(--ifm-color-emphasis-100);
+}
+
+.narrow {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.wide {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0 0 1rem;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+}
+
+.card {
+  background: var(--ifm-background-color);
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 14px;
+  padding: 1.5rem;
+}
+
+.cardTitle {
+  font-size: 1.25rem;
+  margin: 0 0 0.5rem;
+}
+
+.cardTitle a {
+  color: var(--ifm-heading-color);
+  text-decoration: none;
+}
+
+.cardTitle a:hover {
+  color: var(--ifm-color-primary);
+}
+
+.cardBody {
+  color: var(--ifm-color-emphasis-700);
+  line-height: 1.55;
+  margin: 0 0 1rem;
+  font-size: 0.97rem;
+}
+
+.cardLinks {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.cardLinks li {
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.cardLinks li:last-child {
+  border-bottom: none;
+}
+
+.cardLinks a {
+  display: block;
+  padding: 0.55rem 0;
+  font-size: 0.95rem;
+}
+
+.popular {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-top: 1px solid var(--ifm-color-emphasis-300);
+}
+
+.popular li {
+  border-bottom: 1px solid var(--ifm-color-emphasis-300);
+}
+
+.popular a {
+  display: block;
+  padding: 0.8rem 0.25rem;
+  font-size: 1rem;
+}
+
+@media (max-width: 760px) {
+  .cards {
+    grid-template-columns: 1fr;
+  }
+}

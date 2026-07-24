@@ -1,0 +1,70 @@
+---
+sidebar_position: 1
+title: Detections, events and observations
+---
+
+import AppShot from "@site/src/components/AppShot";
+
+# Detections, events and observations
+
+These three words appear all over the app and they mean different things. Mixing them up is the most common reason two numbers do not match.
+
+## Detection
+
+One box around one animal, in one file. A photo with three deer has three detections.
+
+Each detection has a species label and a confidence score. A detection is the smallest unit. It is what you correct on the Labels page.
+
+## Event
+
+Files from the same camera, taken close together in time. AddaxAI groups them for you.
+
+The gap that starts a new event is the **independence interval**. It is 30 minutes by default. So if a deer walks past and the camera fires 12 times in one minute, that is one event, not 12.
+
+Events only exist in projects. A folder run does not group anything.
+
+## Observation
+
+One species inside one event, with a count.
+
+If an event holds 8 photos of deer and 2 of a fox, that is one event with two observations: deer and fox.
+
+## How the count is worked out
+
+The count for an observation is the **highest number of that species visible in any single photo** of the event. This is often called MaxN.
+
+An example. A deer walks past and the camera takes 5 photos:
+
+| Photo | Deer visible |
+|---|---|
+| 1 | 1 |
+| 2 | 2 |
+| 3 | 2 |
+| 4 | 1 |
+| 5 | 0 |
+
+The count is **2**, not 6. Two deer were there. Counting every photo would count the same animal again and again.
+
+If you confirm a different number yourself, your number is used instead. See [confidence and verification](./confidence-and-verification.md).
+
+## Why this matters
+
+Say one deer triggers your camera 40 times in an afternoon:
+
+- **40 detections**
+- **1 event**
+- **1 observation, count 1**
+
+If you report detections you will say you saw 40 deer. You saw one. For almost all ecological work, use observations.
+
+<AppShot name="counts" />
+
+## Where each number appears
+
+| Number | Where you see it |
+|---|---|
+| Detections | Labels page, detections export |
+| Events | Counts page, dashboard tile |
+| Observations | Dashboard, map, charts, observations export |
+
+The dashboard and the map use observations. The Labels page works on detections, because that is what you correct.

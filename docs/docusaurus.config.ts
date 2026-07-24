@@ -27,9 +27,9 @@ const config: Config = {
   organizationName: "PetervanLunteren",
   projectName: "AddaxAI-WebUI",
 
-  // 'warn' keeps the scaffold building while pages are still being written.
-  // Tighten to 'throw' once the content settles so dead links fail the build.
-  onBrokenLinks: "warn",
+  // Content has settled, so a dead link is a bug and should fail the build
+  // rather than ship. Loosen to 'warn' only while restructuring.
+  onBrokenLinks: "throw",
   onBrokenMarkdownLinks: "warn",
 
   i18n: {
@@ -91,7 +91,7 @@ const config: Config = {
           position: "left",
           label: "Documentation",
         },
-        { to: "/docs/faq", label: "FAQ", position: "left" },
+        { to: "/docs/troubleshooting/faq", label: "FAQ", position: "left" },
         {
           href: "https://github.com/PetervanLunteren/AddaxAI-WebUI/releases/latest",
           label: "Download",
@@ -110,9 +110,10 @@ const config: Config = {
         {
           title: "Docs",
           items: [
-            { label: "Getting started", to: "/docs/getting-started/installation" },
-            { label: "Model zoo", to: "/docs/models/model-zoo" },
-            { label: "FAQ", to: "/docs/faq" },
+            { label: "Start here", to: "/docs/start-here/what-is-addaxai" },
+            { label: "Understanding your results", to: "/docs/understanding/detections-events-observations" },
+            { label: "Export columns", to: "/docs/reference/export-columns" },
+            { label: "FAQ", to: "/docs/troubleshooting/faq" },
           ],
         },
         {

@@ -1,7 +1,6 @@
 ---
-sidebar_position: 8
+sidebar_position: 2
 title: FAQ
-slug: /faq
 ---
 
 # Frequently asked questions
@@ -42,7 +41,7 @@ Yes. You can check and relabel any detection. Your edits always take priority ov
 
 ### Which species can it recognise?
 
-Many, through a growing set of models for different regions and animal groups. See the [model zoo](./models/model-zoo.mdx).
+Many, through a growing set of models for different regions and animal groups. See the [model zoo](../reference/model-zoo.mdx).
 
 ### Why do some images have no boxes during review?
 
@@ -50,7 +49,7 @@ The detector runs at a low threshold and keeps everything. The review grid then 
 
 ### What is the difference between the detection models?
 
-The detector finds animals, people, and vehicles. MegaDetector is the default and works almost everywhere. See the [model zoo](./models/model-zoo.mdx) for the full list.
+The detector finds animals, people, and vehicles. MegaDetector is the default and works almost everywhere. See the [model zoo](../reference/model-zoo.mdx) for the full list.
 
 ## Getting help
 
@@ -60,4 +59,4 @@ Citation details are on the [Addax Data Science site](https://addaxdatascience.c
 
 ### I found a bug. What should I do?
 
-Open the Help menu and click **Export diagnostic report**, then email it to [peter@addaxdatascience.com](mailto:peter@addaxdatascience.com) with a short description of what went wrong. See [Troubleshooting](./troubleshooting/index.md).
+Open the Help menu and click **Export diagnostic report**, then email it to [peter@addaxdatascience.com](mailto:peter@addaxdatascience.com) with a short description of what went wrong. See [Troubleshooting](./index.md).
