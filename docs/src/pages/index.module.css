@@ -1,9 +1,13 @@
 /* Documentation home. Calm and functional: this page routes, it does not sell. */
 
+/* Forest photo behind a teal wash. The overlay is set inline in index.tsx so
+   the image path can go through useBaseUrl. Dark enough that white text stays
+   readable, in both light and dark theme. */
 .hero {
-  background: var(--ifm-color-emphasis-100);
-  border-bottom: 1px solid var(--ifm-color-emphasis-200);
-  padding: 3.5rem 1rem 3rem;
+  background-size: cover;
+  background-position: center;
+  color: #fff;
+  padding: 4rem 1rem 3.5rem;
   text-align: center;
 }
 
@@ -13,9 +17,13 @@
 }
 
 .heroLogo {
-  height: 52px;
+  height: 56px;
   width: auto;
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.5rem;
+  /* the wordmark is dark teal on transparent, so it needs a light panel */
+  background: rgba(255, 255, 255, 0.92);
+  padding: 9px 15px;
+  border-radius: 13px;
 }
 
 .heroTitle {
@@ -23,12 +31,13 @@
   font-weight: 750;
   letter-spacing: -0.02em;
   margin: 0 0 0.75rem;
+  color: #fff;
 }
 
 .heroSub {
   font-size: 1.05rem;
   line-height: 1.6;
-  color: var(--ifm-color-emphasis-700);
+  color: rgba(255, 255, 255, 0.9);
   margin: 0;
 }
 

@@ -1,0 +1,73 @@
+---
+sidebar_position: 4
+title: Confirm the counts
+---
+
+import AppShot from "@site/src/components/AppShot";
+
+# Confirm the counts
+
+The AI already counted how many animals it saw in each event. On the Counts page you check those numbers and sign them off.
+
+This step is optional. But the AI miscounts, especially in herds and at night, so confirm the events you will report on.
+
+## Labels and counts are two different jobs
+
+This trips people up, so it is worth being clear.
+
+| | Labels | Counts |
+|---|---|---|
+| Question it answers | Which species is this? | How many animals were there? |
+| Works on | One detection, one box | One event |
+| Where you do it | Labels page | Counts page |
+| Shown on the dashboard as | Labels verified | Counts confirmed |
+
+They are tracked separately. Checking a label does **not** confirm a count, and confirming a count does **not** verify the labels.
+
+That is why the two progress bars on the dashboard usually show different numbers. It is not a bug.
+
+Do labels first. It makes little sense to count animals before you agree on what they are.
+
+## How counting works
+
+The count for a species in an event is the **highest number visible in any single photo**, not the total across photos. One deer photographed 40 times is one deer.
+
+The full explanation is in [detections, events and observations](../understanding/detections-events-observations.mdx).
+
+## Going through them
+
+<AppShot name="counts" />
+
+Each card is one event. It opens on the frame where the most animals are visible, so you can judge the species and the number in one look. The strip below is the rest of the event. For a video it shows frames across the clip. Click any of them to look closer.
+
+Press **Enter** to confirm and jump to the next unconfirmed event. That is the fastest way through a long list.
+
+Use the filters to work in blocks: one species at a time, or one site, or hide what you already confirmed.
+
+## When you change a number
+
+Your number replaces the AI's. It is used in every chart, rate and export from then on, and it appears in the `count` column with `is_confirmed` set to TRUE.
+
+Set a count the AI could not reach when you can see it. If four deer walk past but never appear in one frame together, the AI's best is 2 and you know it was 4. Enter 4.
+
+## Where confirmed counts are used
+
+- the observations export, in the `count` column
+- observations per 100 trap nights, on the dashboard and the map
+- species totals and charts
+
+Unconfirmed events still count. They just use the AI's number rather than yours.
+
+## Why folder runs have no counts
+
+A folder run stops after the AI. It finds animals, names them, lets you fix labels, then writes the raw results out. It does not group photos into events and does not interpret them.
+
+So a folder run gives you per-file and per-detection tables plus a recognition file, and you do the interpreting in whatever tool you already use, such as Timelapse, R or Zooniverse.
+
+Counts need events, and events only exist in projects. If you want counts, rates and charts inside AddaxAI, use a project. See [choose a workflow](../start-here/choose-a-workflow.md).
+
+## Can you skip it
+
+Yes. Unconfirmed counts fall back to the AI's number, so your data is still usable.
+
+Confirm the counts when the number of individuals matters to your result, for example abundance or group size. Skip it when you only care about whether a species was present.

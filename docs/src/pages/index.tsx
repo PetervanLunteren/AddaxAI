@@ -34,6 +34,7 @@ const SECTIONS: Card[] = [
       { label: "Analyse a folder", to: "/docs/guides/analyse-a-folder" },
       { label: "Build a project", to: "/docs/guides/build-a-project" },
       { label: "Check the labels", to: "/docs/guides/check-labels" },
+      { label: "Confirm the counts", to: "/docs/guides/confirm-counts" },
       { label: "Export your results", to: "/docs/guides/export-results" },
     ],
   },
@@ -63,8 +64,14 @@ const SECTIONS: Card[] = [
 
 function Hero(): ReactNode {
   const logo = useBaseUrl("/img/logo-wordmark.png");
+  const bg = useBaseUrl("/img/home-background.webp");
   return (
-    <header className={styles.hero}>
+    <header
+      className={styles.hero}
+      style={{
+        backgroundImage: `linear-gradient(180deg, rgba(10,40,42,0.74), rgba(10,40,42,0.84)), url(${bg})`,
+      }}
+    >
       <div className={styles.heroInner}>
         <img className={styles.heroLogo} src={logo} alt="AddaxAI" />
         <h1 className={styles.heroTitle}>AddaxAI documentation</h1>
@@ -111,6 +118,7 @@ function Popular(): ReactNode {
     { label: "What does each column in the CSV mean?", to: "/docs/reference/export-columns" },
     { label: "Which workflow should I use?", to: "/docs/start-here/choose-a-workflow" },
     { label: "Some photos have no date. What happens to them?", to: "/docs/understanding/capture-times" },
+    { label: "Why are labels and counts not the same thing?", to: "/docs/guides/confirm-counts" },
     { label: "Something went wrong", to: "/docs/troubleshooting/" },
   ];
   return (

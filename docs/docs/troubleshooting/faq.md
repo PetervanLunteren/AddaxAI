@@ -35,6 +35,16 @@ Yes. AddaxAI handles both photos and videos.
 
 ## Using AddaxAI
 
+### Why do "labels verified" and "counts confirmed" show different numbers?
+
+Because they are two different jobs. Labels say which species a detection is. Counts say how many animals were in an event. Checking a label does not confirm a count.
+
+Do labels first, then counts. See [confirm the counts](../guides/confirm-counts.mdx).
+
+### Why does my folder run have no counts?
+
+A folder run stops after the AI and does not interpret the results. It gives you tables of files and detections to analyse elsewhere. Counts need events, and events only exist in projects. See [choose a workflow](../start-here/choose-a-workflow.md).
+
 ### Can I correct the AI?
 
 Yes. You can check and relabel any detection. Your edits always take priority over the AI and are never overwritten.

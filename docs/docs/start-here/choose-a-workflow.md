@@ -45,6 +45,18 @@ This is the part that matters for analysis.
 
 A folder run counts detections. A project counts **observations**, which is a species within an event. Ten photos of one deer in two minutes are ten detections, but one observation. For most ecological work the observation is what you want. See [detections, events and observations](../understanding/detections-events-observations.mdx).
 
+## Why a folder run has no counts
+
+This is a deliberate split, not a missing feature.
+
+A folder run stops after the AI. It finds the animals, names them, lets you correct labels, then writes the raw results out: a table of files, a table of detections, and a recognition file. It never groups photos into events and never decides how many individuals were there.
+
+That is the point. You take those tables into the tool you already use, such as Timelapse, R or Zooniverse, and do the interpreting there.
+
+A project goes further. It groups photos into events, counts individuals per event, and works out rates per 100 trap nights. Counts need events, and events only exist in projects.
+
+So: use a folder run when another program will do the analysis. Use a project when you want AddaxAI to do it.
+
 ## Still not sure
 
 Use a project. It does everything a folder run does, and you can ignore the parts you do not need. The only cost is entering a location and dates for each camera.
