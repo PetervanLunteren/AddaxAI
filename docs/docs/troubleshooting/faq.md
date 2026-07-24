@@ -21,6 +21,10 @@ Yes. AddaxAI is free and open source.
 
 Windows, macOS (Apple Silicon) and Linux. Intel Macs are not supported.
 
+### My computer warns that the app is unsafe, or blocks it
+
+That warning is normal for a newly released app and does not mean anything is wrong. On Windows click **More info**, then **Run anyway**. On macOS click **Open**, or allow it under Privacy & Security. Work computers are often locked down harder, so if yours blocks the app completely, ask whoever manages it to allow it. See [installation](../start-here/install.mdx).
+
 ## Privacy and data
 
 ### Does my data get uploaded anywhere?

@@ -16,6 +16,53 @@
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
 }
 
+/* ---------------------------------------------------------------------------
+   Tabs (used for the per-system install steps).
+
+   The Docusaurus default is plain text with a thin underline, which reads as
+   loose words rather than tabs. This draws a real tab strip with the panel in
+   a connected box, so each group is one clear block on the page.
+   --------------------------------------------------------------------------- */
+.tabs-container {
+  margin: 1.5rem 0 2rem;
+}
+
+.tabs-container > ul.tabs {
+  border-bottom: 1px solid var(--ifm-color-emphasis-300);
+  margin-bottom: 0;
+  padding-left: 0;
+}
+
+.tabs__item {
+  border: 1px solid transparent;
+  border-bottom-width: 1px;
+  border-radius: 8px 8px 0 0;
+  margin-bottom: -1px;
+  padding: 0.55rem 1.15rem;
+  font-weight: 600;
+}
+
+.tabs__item:hover {
+  background: var(--ifm-color-emphasis-100);
+}
+
+/* Active tab joins the panel below by hiding the strip's border under it. */
+.tabs__item--active {
+  background: var(--ifm-background-color);
+  border-color: var(--ifm-color-emphasis-300);
+  border-bottom-color: var(--ifm-background-color);
+  color: var(--ifm-color-primary);
+}
+
+/* The panel: a box hanging off the tab strip. */
+.tabs-container > div {
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  padding: 1.25rem 1.25rem 0.35rem;
+  margin-top: 0 !important;
+}
+
 /* Dark mode: lift the primary so it stays legible on dark surfaces. */
 [data-theme="dark"] {
   --ifm-color-primary: #4fb6ba;
