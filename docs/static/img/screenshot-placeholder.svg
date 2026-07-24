@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" width="1200" height="750" role="img" aria-label="Screenshot placeholder">
+  <rect width="1200" height="750" rx="16" fill="#e8eef0"/>
+  <rect x="1" y="1" width="1198" height="748" rx="15" fill="none" stroke="#c7d3d6" stroke-width="2"/>
+  <g fill="#0f6064" opacity="0.55">
+    <rect x="470" y="300" width="260" height="150" rx="12" fill="none" stroke="#0f6064" stroke-width="4"/>
+    <circle cx="540" cy="355" r="20"/>
+    <path d="M498 438 l70 -70 45 45 55 -55 78 80 z"/>
+  </g>
+  <text x="600" y="510" text-anchor="middle" font-family="system-ui, sans-serif" font-size="30" fill="#5a6b6e">screenshot</text>
+</svg>

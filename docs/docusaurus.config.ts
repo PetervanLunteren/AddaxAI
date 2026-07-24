@@ -2,18 +2,20 @@ import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
 import { themes as prismThemes } from "prism-react-renderer";
 
-// AddaxAI documentation site.
+// AddaxAI documentation + landing site.
 //
-// Deployed to GitHub Pages at https://petervanlunteren.github.io/AddaxAI-WebUI/
-// by .github/workflows/docs.yml on every push to main.
+// Layout: a custom marketing homepage at "/" (src/pages/index.tsx) and the
+// documentation under "/docs". Deployed to GitHub Pages at
+// https://petervanlunteren.github.io/AddaxAI-WebUI/ by
+// .github/workflows/docs.yml on every push to main.
 //
 // If you later point a custom domain (e.g. docs.addaxdatascience.com) at the
 // site, change `url` to that domain and `baseUrl` to "/", and drop a CNAME
 // file into static/.
 const config: Config = {
   title: "AddaxAI",
-  tagline: "Camera trap wildlife analysis, from raw images to ecology",
-  favicon: "img/favicon.svg",
+  tagline: "Simplifying camera trap image analysis with AI",
+  favicon: "img/favicon.ico",
 
   future: {
     v4: true,
@@ -46,7 +48,7 @@ const config: Config = {
       {
         hashed: true,
         indexBlog: false,
-        docsRouteBasePath: "/",
+        docsRouteBasePath: "/docs",
         highlightSearchTermsOnTargetPage: true,
       },
     ],
@@ -57,8 +59,7 @@ const config: Config = {
       "classic",
       {
         docs: {
-          // Docs are the whole site: the homepage is docs/intro.md.
-          routeBasePath: "/",
+          routeBasePath: "/docs",
           sidebarPath: "./sidebars.ts",
           editUrl:
             "https://github.com/PetervanLunteren/AddaxAI-WebUI/tree/main/docs/",
@@ -72,12 +73,17 @@ const config: Config = {
   ],
 
   themeConfig: {
+    image: "img/logo-wordmark.png",
     colorMode: {
       defaultMode: "light",
       respectPrefersColorScheme: true,
     },
     navbar: {
       title: "AddaxAI",
+      logo: {
+        alt: "AddaxAI",
+        src: "img/logo-mark.png",
+      },
       items: [
         {
           type: "docSidebar",
@@ -85,6 +91,7 @@ const config: Config = {
           position: "left",
           label: "Documentation",
         },
+        { to: "/docs/faq", label: "FAQ", position: "left" },
         {
           href: "https://github.com/PetervanLunteren/AddaxAI-WebUI/releases/latest",
           label: "Download",
@@ -103,8 +110,9 @@ const config: Config = {
         {
           title: "Docs",
           items: [
-            { label: "Getting started", to: "/getting-started/installation" },
-            { label: "Model zoo", to: "/models/model-zoo" },
+            { label: "Getting started", to: "/docs/getting-started/installation" },
+            { label: "Model zoo", to: "/docs/models/model-zoo" },
+            { label: "FAQ", to: "/docs/faq" },
           ],
         },
         {
@@ -113,6 +121,10 @@ const config: Config = {
             {
               label: "GitHub",
               href: "https://github.com/PetervanLunteren/AddaxAI-WebUI",
+            },
+            {
+              label: "Addax Data Science",
+              href: "https://addaxdatascience.com",
             },
             {
               label: "Contact",

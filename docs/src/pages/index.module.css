@@ -1,0 +1,351 @@
+/* Homepage styles. Brand teal is #0f6064; dark mode lifts surfaces. */
+
+/* ---------- Hero ---------- */
+.hero {
+  background-size: cover;
+  background-position: center;
+  color: #fff;
+  padding: 5rem 1rem 4.5rem;
+  text-align: center;
+}
+
+.heroInner {
+  max-width: 820px;
+  margin: 0 auto;
+}
+
+.heroLogo {
+  height: 64px;
+  width: auto;
+  margin-bottom: 1.75rem;
+  /* wordmark is dark teal + cream; a soft panel keeps it legible on the photo */
+  background: rgba(255, 255, 255, 0.92);
+  padding: 10px 16px;
+  border-radius: 14px;
+}
+
+.heroTitle {
+  font-size: clamp(2rem, 5vw, 3.25rem);
+  line-height: 1.1;
+  font-weight: 800;
+  margin: 0 0 1rem;
+  letter-spacing: -0.02em;
+}
+
+.heroSub {
+  font-size: clamp(1.05rem, 2.2vw, 1.3rem);
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.92);
+  max-width: 640px;
+  margin: 0 auto 2rem;
+}
+
+.dlRow,
+.dlRowCompact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.dlRowCompact {
+  margin-top: 1.5rem;
+}
+
+.dlBtn {
+  display: inline-block;
+  background: #fff;
+  color: #0a2c2e;
+  font-weight: 600;
+  padding: 0.7rem 1.2rem;
+  border-radius: 10px;
+  text-decoration: none;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.dlBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  color: #0a2c2e;
+  text-decoration: none;
+}
+
+.heroTrust {
+  margin: 1.5rem 0 0;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.heroScroll {
+  display: inline-block;
+  margin-top: 1.75rem;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.95rem;
+  text-decoration: none;
+}
+
+.heroScroll:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+
+/* ---------- Generic sections ---------- */
+.section {
+  padding: 4rem 1rem;
+}
+
+.sectionAlt {
+  background: var(--ifm-color-emphasis-100);
+}
+
+.narrow {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.wide {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.h2 {
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+  font-weight: 750;
+  line-height: 1.15;
+  margin: 0 0 1rem;
+  letter-spacing: -0.01em;
+}
+
+.lead {
+  font-size: 1.1rem;
+  line-height: 1.6;
+  color: var(--ifm-color-emphasis-800);
+  margin: 0;
+}
+
+/* ---------- How it works ---------- */
+.steps {
+  list-style: none;
+  padding: 0;
+  margin: 2rem 0 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.25rem;
+}
+
+.step {
+  background: var(--ifm-background-color);
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 14px;
+  padding: 1.5rem 1.25rem;
+}
+
+.stepNum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--ifm-color-primary);
+  color: #fff;
+  font-weight: 700;
+  margin-bottom: 0.85rem;
+}
+
+.stepTitle {
+  font-size: 1.15rem;
+  margin: 0 0 0.4rem;
+}
+
+.stepBody {
+  margin: 0;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.98rem;
+  line-height: 1.5;
+}
+
+/* ---------- Showcase ---------- */
+.showRow {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr;
+  gap: 2.5rem;
+  align-items: center;
+  margin-bottom: 3.5rem;
+}
+
+.showRow:last-child {
+  margin-bottom: 0;
+}
+
+.showRowRev .showText {
+  order: 2;
+}
+
+.showShot {
+  min-width: 0;
+}
+
+.shot {
+  margin: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+  background: var(--ifm-color-emphasis-100);
+}
+
+.shotImg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.shotNote {
+  margin: 0;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.78rem;
+  color: var(--ifm-color-emphasis-600);
+  text-align: center;
+  background: var(--ifm-color-emphasis-100);
+  border-top: 1px dashed var(--ifm-color-emphasis-300);
+}
+
+/* ---------- Two modes ---------- */
+.modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.modeCard {
+  background: var(--ifm-background-color);
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 14px;
+  padding: 1.75rem;
+}
+
+.modeTitle {
+  font-size: 1.3rem;
+  margin: 0 0 0.6rem;
+}
+
+.modeBody {
+  color: var(--ifm-color-emphasis-700);
+  line-height: 1.55;
+  margin: 0 0 1.1rem;
+}
+
+.modeLink {
+  font-weight: 600;
+}
+
+/* ---------- Stats ---------- */
+.statsBand {
+  background: var(--ifm-color-primary);
+  color: #fff;
+  padding: 2.5rem 1rem;
+}
+
+.statsRow {
+  max-width: 900px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  text-align: center;
+}
+
+.statNum {
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.statLabel {
+  margin-top: 0.35rem;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* ---------- FAQ ---------- */
+.faq {
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.faqItem {
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+  padding: 0.25rem 0;
+}
+
+.faqQ {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1.05rem;
+  padding: 0.9rem 0.25rem;
+  list-style: none;
+}
+
+.faqQ::-webkit-details-marker {
+  display: none;
+}
+
+.faqQ::before {
+  content: "+";
+  display: inline-block;
+  width: 1.25rem;
+  color: var(--ifm-color-primary);
+  font-weight: 700;
+}
+
+.faqItem[open] .faqQ::before {
+  content: "–";
+}
+
+.faqA {
+  margin: 0 0 0.9rem 1.25rem;
+  color: var(--ifm-color-emphasis-700);
+  line-height: 1.55;
+}
+
+.faqMore {
+  margin-top: 1.5rem;
+  font-weight: 600;
+}
+
+/* ---------- Final CTA ---------- */
+.finalCta {
+  text-align: center;
+}
+
+.finalDocs {
+  margin-top: 1.25rem;
+  font-weight: 600;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 900px) {
+  .steps {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .showRow {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+  .showRowRev .showText {
+    order: 0;
+  }
+  .modes {
+    grid-template-columns: 1fr;
+  }
+  .statsRow {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+  }
+}

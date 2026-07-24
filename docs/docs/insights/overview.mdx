@@ -1,0 +1,48 @@
+---
+sidebar_position: 1
+title: Overview
+---
+
+import AppShot from "@site/src/components/AppShot";
+
+# Insights
+
+Insights are the in-depth views inside a project. They go deeper than the Dashboard, and each one is a scientifically grounded chart with its own filters. The screenshots below come from a demo survey of 12 camera sites across Pennsylvania.
+
+## Dashboard
+
+The Dashboard is the quick overview: how many sites, deployments, trap nights, and observations, plus the top species, a trend over time, and the day and night activity pattern.
+
+<AppShot name="dashboard" />
+
+## Map
+
+Each camera site on a map, shaded by how often animals were seen. You can switch between the observation rate per 100 trap nights, the raw count, and a density view.
+
+<AppShot name="map" />
+
+## Activity overlap
+
+Compare the daily activity of one or two species. With two species selected, the chart also shows the overlap coefficient and labels each species as diurnal, nocturnal, crepuscular, or cathemeral. In the demo, the opossum comes out nocturnal and the chipmunk diurnal.
+
+<AppShot name="activity" />
+
+## Deployment timeline
+
+When each camera was active, and what it recorded, over time.
+
+<AppShot name="timeline" />
+
+## Confusion matrix and per-class performance
+
+Where you have confirmed labels, these two views compare the AI's labels against your confirmed ones. The confusion matrix shows where the AI mixes up species. The per-class view shows accuracy per species.
+
+<AppShot name="confusionMatrix" />
+
+<AppShot name="perClass" />
+
+:::note
+
+Insights need capture times and, for the map, site coordinates. Files with no readable timestamp are still detected and classified, but they drop out of the time-based views.
+
+:::

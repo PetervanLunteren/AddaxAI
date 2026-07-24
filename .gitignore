@@ -81,6 +81,7 @@ secrets.yaml
 # Testing
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 
 # Linter caches
@@ -101,6 +102,8 @@ alembic/versions/*.pyc
 future-plans/*
 skills/send-draft-model/
 
-# VERSION
-VERSION
+# VERSION is deliberately tracked, do not add it here. backend.spec
+# bundles it into the PyInstaller build and backend/app/__init__.py
+# reads it at runtime. Untagged builds never rewrite it, so a fresh
+# clone must contain it or the build fails.
 

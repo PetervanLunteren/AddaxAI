@@ -1,6 +1,6 @@
 {
   "name": "addaxai-desktop",
-  "version": "0.2.0-beta.2",
+  "version": "0.0.0-dev",
   "description": "AddaxAI - Camera trap wildlife analysis platform",
   "main": "dist/main.js",
   "homepage": "https://github.com/PetervanLunteren/AddaxAI-WebUI",
