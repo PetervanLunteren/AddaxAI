@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import { HomeButton } from "../components/layout/HomeButton";
 import { useQuery } from "@tanstack/react-query";
 import { Tag } from "lucide-react";
+import { formatVersion } from "@/lib/version";
 
 const REPO = "PetervanLunteren/AddaxAI";
 const LICENSE_URL = `https://github.com/${REPO}?tab=MIT-1-ov-file#readme`;
@@ -73,10 +74,7 @@ export default function AboutPage() {
               <h1 className="text-2xl font-bold tracking-tight">About</h1>
               <span className="mt-1 inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-xs font-mono">
                 <Tag className="h-3.5 w-3.5" />
-                {/* Real semver versions get a "v" prefix; dev/unknown
-                    fallbacks (which already include their own
-                    parentheses) render as-is to avoid "v(dev)". */}
-                {version.startsWith("(") ? version : `v${version}`}
+                {formatVersion(version)}
               </span>
             </div>
           </div>

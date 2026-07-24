@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import { modelsApi } from "@/api/models";
 import { api } from "@/lib/api-client";
+import { formatVersion, satisfiesMinVersion } from "@/lib/version";
 import {
   Sheet,
   SheetContent,
@@ -228,10 +229,20 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
               <h3 className="text-sm font-semibold mb-2">Version requirement</h3>
               <p className="text-sm text-gray-700">
                 {(() => {
-                  const meetsRequirement = currentVersion >= model.min_app_version;
+                  // Numeric comparison, not string comparison: "7.0.10"
+                  // sorts below "7.0.9" character by character, which
+                  // would tell users on a new enough build to update.
+                  // An unparseable version counts as not meeting the
+                  // requirement, so we never claim a version is fine
+                  // when we could not actually check it.
+                  const meetsRequirement =
+                    satisfiesMinVersion(
+                      currentVersion,
+                      model.min_app_version
+                    ) === true;
                   return (
                     <>
-                      Minimum AddaxAI version required is v{model.min_app_version}, while your current version is v{currentVersion}.{" "}
+                      Minimum AddaxAI version required is {formatVersion(model.min_app_version)}, while your current version is {formatVersion(currentVersion)}.{" "}
                       {meetsRequirement ? (
                         <span>You're good to go.</span>
                       ) : (

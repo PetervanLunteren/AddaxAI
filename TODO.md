@@ -4,13 +4,6 @@
 - [ ] Make sure the current app install removes all the stuff from the legacy AddaxAI too. Its a new install, on a new location, and we dont want both AddaxAI versions to be alive on the device. If the users want the old one back, he can do so by reinstalling the old one. Makes sense? 
 
 
-Part 5: unrelated issues found (not fixing, just flagging)
-
-1. v7's "Check for updates" compares strings, not versions (CheckForUpdatesDialog.tsx:64). Any releases/latest that differs from the installed version reads as "a newer version is available", including an older one. Harmless in the normal flow but it will misfire if you ever run a dev build against a repo whose latest release is behind.
-2. docs/docusaurus.config.ts has onBrokenLinks: "warn". The comment says to tighten it to "throw" once content settles. Before this becomes the public docs site, tighten it.
-3. AddaxAI's CONTRIBUTING.md links to /blob/master/CODE_OF_CONDUCT.md but the default branch is main. Already broken today.
-
-
 ## Priority 2
 - [ ]  
 

@@ -11,6 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowUpRight } from "lucide-react";
 import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
+import { compareVersions, formatVersion } from "@/lib/version";
 import {
   Dialog,
   DialogContent,
@@ -29,13 +30,17 @@ interface CheckForUpdatesDialogProps {
 interface GitHubRelease {
   tag_name: string;
   html_url: string;
-  name: string;
-  published_at: string;
-  prerelease: boolean;
 }
 
+// Deliberately not /releases/latest: GitHub documents that one as "the
+// most recent non-prerelease, non-draft release", so the moment a
+// release is flagged as a pre-release in the GitHub UI it becomes
+// invisible there and users get told they are up to date on an older
+// build. We ship betas, so take the newest release whatever its flag.
+// Drafts are not returned to unauthenticated callers, so they cannot
+// leak in.
 const RELEASES_API =
-  "https://api.github.com/repos/PetervanLunteren/AddaxAI-WebUI/releases/latest";
+  "https://api.github.com/repos/PetervanLunteren/AddaxAI-WebUI/releases?per_page=1";
 
 function normalize(v: string): string {
   return v.replace(/^v/, "").trim();
@@ -53,7 +58,11 @@ export function CheckForUpdatesDialog({
       if (!res.ok) {
         throw new Error(`GitHub returned ${res.status}`);
       }
-      return res.json();
+      const releases: GitHubRelease[] = await res.json();
+      if (releases.length === 0) {
+        throw new Error("no published releases found");
+      }
+      return releases[0];
     },
     enabled: open,
     staleTime: 60_000, // Don't re-fetch within a minute.
@@ -61,7 +70,14 @@ export function CheckForUpdatesDialog({
 
   const latest = data ? normalize(data.tag_name) : null;
   const current = normalize(currentVersion);
+  // Exact string equality is the only thing that claims "up to date",
+  // which keeps that branch as safe as it was before the comparator
+  // existed. The comparator only splits the remaining cases into
+  // "ahead of the latest release" and "an update exists", so a bug in
+  // it can never hide an available update from a user.
   const upToDate = latest !== null && latest === current;
+  const ahead =
+    latest !== null && !upToDate && compareVersions(current, latest) === 1;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -75,25 +91,30 @@ export function CheckForUpdatesDialog({
         </DialogHeader>
 
         <div className="space-y-3 text-sm">
-          <Row label="Installed" value={`v${current}`} />
+          <Row label="Installed" value={formatVersion(current)} />
 
           {isLoading && (
             <Row label="Latest" value="checking..." muted />
           )}
 
           {error && (
-            <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive/90">
-              Could not reach GitHub: {(error as Error).message}.
+            <Callout variant="error" size="compact">
+              Could not check for updates: {(error as Error).message}.
               Check your internet connection.
-            </div>
+            </Callout>
           )}
 
           {data && latest && (
             <>
-              <Row label="Latest" value={`v${latest}`} />
+              <Row label="Latest" value={formatVersion(latest)} />
               {upToDate ? (
                 <Callout variant="success" size="compact">
                   You're on the latest version.
+                </Callout>
+              ) : ahead ? (
+                <Callout variant="info" size="compact">
+                  You're running a build that is newer than the latest
+                  release.
                 </Callout>
               ) : (
                 <Callout variant="info">
