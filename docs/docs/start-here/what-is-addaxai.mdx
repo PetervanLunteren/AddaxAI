@@ -13,26 +13,22 @@ You give it a folder. It does three things:
 
 1. **Find.** A detection model draws a box around each animal, person and vehicle.
 2. **Name.** A classification model says which species is in each box.
-3. **Check.** You look through the results and fix anything the AI got wrong.
+3. **Check.** You review what the AI suggested and correct anything that is wrong.
 
 After that you get your data out: tables, sorted folders, or a file for another program such as Timelapse. In a project it goes one step further, and results from every camera add up over time into counts, rates and charts.
 
 ## What it does not do
 
-- It does not do your statistics. AddaxAI counts what the cameras saw and shows the standard summaries. Occupancy models, density estimates and the analysis for your paper stay your work.
+- It does not replace your own analysis. The built-in charts and rates cover the usual camera trap questions, and for many projects that is enough. For anything more specific, like occupancy or density models, export the data and run it in R.
 - It does not upload anything. There is no account and no cloud.
-- It is not always right. Treat the labels as a first pass, then check them. See [confidence and verification](../understanding/confidence-and-verification.md).
+- It is not always right. The species and the counts are suggestions. Check the ones that matter to your result, and accept the rest. See [confidence and verification](../understanding/confidence-and-verification.md).
 
 ## Two ways to work
 
-You can point at one folder and get files out, or you can build a project that you keep adding to over time. They give different results, so pick before you start.
+You can point at one folder and get the results out, or you can build a project that you keep adding to over time.
+
+The AI does the same work either way, so the detections and species are the same. What differs is how much interpreting AddaxAI does afterwards. And nothing is locked in: a folder run can become a project later, without losing anything.
 
 <AppShot name="appHome" />
 
 See [choose a workflow](./choose-a-workflow.md) for what each one gives you.
-
-## What to read next
-
-- [Install AddaxAI](./install.md)
-- [Choose a workflow](./choose-a-workflow.md)
-- [Detections, events and observations](../understanding/detections-events-observations.mdx), the three words used everywhere in the app

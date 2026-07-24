@@ -5,9 +5,9 @@ title: Choose a workflow
 
 # Choose a workflow
 
-AddaxAI has two ways of working. They use the same AI models, so the species labels are the same. What differs is how much the app remembers, and which results you can get.
+AddaxAI has two ways of working. Both run the same AI, so the detections and the species labels are identical. What differs is what happens next: a folder run hands you the raw results, a project helps you interpret them.
 
-Pick one before you start. You can turn a folder run into a project later, but not the other way around.
+Nothing is locked in. A folder run can become a project later. You keep every detection and every correction, and nothing is analysed again.
 
 ## Analyse a folder
 
@@ -29,21 +29,21 @@ Good when you run several cameras, or the same cameras over more than one season
 
 **It asks more from you:** a location for each camera, and a start and end date for each deployment.
 
-## How this changes your results
+## What each one gives you
 
-This is the part that matters for analysis.
+The AI output is the same in both. The difference is the layer AddaxAI builds on top of it.
 
 | | Analyse a folder | Build a project |
 |---|---|---|
-| Species labels | Same | Same |
+| Detections and species labels | Same | Same |
 | Grouped into events | No | Yes |
-| Counts per species | Per file | Per event, using the highest number seen in one frame |
+| Counts per species | You work them out yourself | Per event, using the highest number seen in one frame |
 | Trap nights | Not counted | Counted per deployment |
 | Rates per 100 trap nights | Not available | Available |
 | Map | No | Yes |
 | Your corrections are kept | Until you delete the run | Yes, with a history |
 
-A folder run counts detections. A project counts **observations**, which is a species within an event. Ten photos of one deer in two minutes are ten detections, but one observation. For most ecological work the observation is what you want. See [detections, events and observations](../understanding/detections-events-observations.mdx).
+A folder run hands you detections. A project turns them into **observations**, which is a species within an event. Ten photos of one deer in two minutes are ten detections, but one observation. For most ecological work the observation is what you want. See [detections, events and observations](../understanding/detections-events-observations.mdx).
 
 ## Why a folder run has no counts
 
@@ -59,4 +59,6 @@ So: use a folder run when another program will do the analysis. Use a project wh
 
 ## Still not sure
 
-Use a project. It does everything a folder run does, and you can ignore the parts you do not need. The only cost is entering a location and dates for each camera.
+Start with a folder run. It is the quickest way to see what the AI found, and you can promote it to a project whenever you want more, without losing anything or analysing again.
+
+Go straight to a project if you already know you want counts, rates or a map, and you have the camera locations and dates to hand.

@@ -61,8 +61,9 @@ const config: Config = {
         docs: {
           routeBasePath: "/docs",
           sidebarPath: "./sidebars.ts",
-          editUrl:
-            "https://github.com/PetervanLunteren/AddaxAI-WebUI/tree/main/docs/",
+          // No editUrl on purpose. That adds an "Edit this page" link aimed at
+          // people who would open a pull request, and this site is written for
+          // end users. Typos and mistakes come in by email instead.
         },
         blog: false,
         theme: {

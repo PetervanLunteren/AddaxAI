@@ -11,7 +11,7 @@ title: FAQ
 
 Use a project if you want AddaxAI to do the interpreting: counts, rates, charts and maps. Use a folder run if another program will do the analysis, and you only want the AI to find and name the animals.
 
-A folder run can become a project later. Not the other way around. See [choose a workflow](../start-here/choose-a-workflow.md).
+Both run the same AI, so the detections and species are the same either way. If you are unsure, start with a folder run: it can become a project later without losing anything. See [choose a workflow](../start-here/choose-a-workflow.md).
 
 ### Is it free?
 
