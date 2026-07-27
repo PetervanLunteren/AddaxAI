@@ -215,11 +215,14 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
     ),
     _Fingerprint(
         revision="f2a3b4c5d6e7",
-        table="events",
-        column="verified",
+        table="event_observations",
+        column="human_count",
         description=(
             "add event counts (event_observations.human_count) and the "
-            "event sign-off (events.verified); detectable via events.verified"
+            "event sign-off (events.verified); detectable via "
+            "event_observations.human_count. NOT via events.verified: the "
+            "very next revision renames that column to events.confirmed, "
+            "so it can never be satisfied at head"
         ),
     ),
     _Fingerprint(
@@ -296,6 +299,16 @@ SCHEMA_FINGERPRINTS: tuple[_Fingerprint, ...] = (
         description=(
             "add projects.media_filter (which media a new analysis reads "
             "off disk: all / images / videos)"
+        ),
+    ),
+    _Fingerprint(
+        revision="3c4d5e6f7a8b",
+        table=None,
+        column=None,
+        description=(
+            "index-only: idx_event_obs_max_n_file + "
+            "idx_detection_embeddings_job. Adds no column, so it is not "
+            "detectable from PRAGMA table_info"
         ),
     ),
 )

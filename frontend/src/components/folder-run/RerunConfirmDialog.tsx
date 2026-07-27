@@ -42,8 +42,16 @@ export function RerunConfirmDialog({
     (run?.confirmed_event_count ?? 0) > 0;
 
   return (
-    <Dialog open={open} onOpenChange={(v) => (v ? null : onCancel())}>
-      <DialogContent>
+    // The dialog stays up while the wipe runs (see `confirmRerun`), so it
+    // must not be dismissable in that window: cancelling would hide the only
+    // progress signal without stopping anything.
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v && !isBusy) onCancel();
+      }}
+    >
+      <DialogContent nonDismissable={isBusy}>
         <DialogHeader>
           <DialogTitle>Re-run analysis?</DialogTitle>
           <DialogDescription>
@@ -86,7 +94,7 @@ export function RerunConfirmDialog({
             Cancel
           </Button>
           <Button onClick={onConfirm} disabled={isBusy}>
-            Re-run analysis
+            {isBusy ? "Clearing previous results…" : "Re-run analysis"}
           </Button>
         </DialogFooter>
       </DialogContent>

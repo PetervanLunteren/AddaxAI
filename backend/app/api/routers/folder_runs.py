@@ -23,6 +23,7 @@ Following DEVELOPERS.md principles: type hints everywhere, crash on
 unexpected errors, no silent failures.
 """
 
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -859,6 +860,10 @@ def rerun_folder_run(
             detail=f"Folder run with id '{run_id}' not found",
         )
 
+    # Timed so a slow re-run can be attributed from the log alone. The
+    # reset covers both the DB wipe and the on-disk .addaxai cleanup, and
+    # the latter is unbounded on a slow external drive.
+    started = time.perf_counter()
     ok = crud_project.reset_folder_run_data(db, run_id)
     if not ok:
         raise HTTPException(
@@ -866,7 +871,10 @@ def rerun_folder_run(
             detail=f"Folder run with id '{run_id}' not found",
         )
 
-    logger.info(f"Reset folder run for re-analysis: project_id={run_id}")
+    logger.info(
+        f"Reset folder run for re-analysis: project_id={run_id} "
+        f"({time.perf_counter() - started:.1f}s)"
+    )
     return _load_run(db, run_id)
 
 

@@ -74,6 +74,11 @@ def get_engine() -> Engine:
         settings.database_url,
         echo=settings.sql_echo,  # Verbose per-query logging; off by default
         future=True,  # Use SQLAlchemy 2.0 style
+        # SQLite allows one writer at a time. Python's sqlite3 default gives
+        # up after 5s, which turns any slow write (a large delete, a bulk
+        # ingest) into "database is locked" errors on every other request
+        # that happens to write during it. Wait instead of failing.
+        connect_args={"timeout": 30},
     )
 
     return engine

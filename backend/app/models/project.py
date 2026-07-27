@@ -198,15 +198,29 @@ class Project(Base):
         JSON, nullable=True
     )
 
-    # Relationships
+    # Relationships.
+    #
+    # passive_deletes=True on every delete-orphan cascade: the database
+    # owns the cascade via ON DELETE CASCADE, so SQLAlchemy must not load
+    # the children just to delete them one by one. See the "Deleting
+    # analysis data" section in DEVELOPERS.md.
     sites: Mapped[list["Site"]] = relationship(
-        "Site", back_populates="project", cascade="all, delete-orphan"
+        "Site",
+        back_populates="project",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     deployments: Mapped[list["Deployment"]] = relationship(
-        "Deployment", back_populates="project", cascade="all, delete-orphan"
+        "Deployment",
+        back_populates="project",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     deployment_queue: Mapped[list["DeploymentQueue"]] = relationship(
-        "DeploymentQueue", back_populates="project", cascade="all, delete-orphan"
+        "DeploymentQueue",
+        back_populates="project",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
     def __repr__(self) -> str:

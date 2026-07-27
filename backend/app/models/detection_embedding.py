@@ -56,6 +56,10 @@ class DetectionEmbedding(Base):
             "embedding_model_id",
             unique=True,
         ),
+        # Child key of the NO ACTION FK to jobs. Deleting a project deletes
+        # its jobs, and each job delete has to prove no embedding still
+        # references it; unindexed that is a full scan of this table per job.
+        Index("idx_detection_embeddings_job", "job_id"),
     )
 
     def __repr__(self) -> str:

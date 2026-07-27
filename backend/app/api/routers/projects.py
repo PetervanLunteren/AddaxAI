@@ -536,7 +536,9 @@ def delete_project(project_id: str, db: Session = Depends(get_db)) -> None:
         .filter(Deployment.project_id == project_id)
         .all()
     )
-    folder_paths = [Path(d.folder_path) for d in deployments]
+    # folder_path is nullable (a deployment can exist before its folder is
+    # linked), and Path(None) raises. Same guard as crud/deployment.py.
+    folder_paths = [Path(d.folder_path) for d in deployments if d.folder_path]
 
     # Delete project from DB (cascades to sites, deployments, files, detections)
     deleted = crud_project.delete_project(db, project_id)

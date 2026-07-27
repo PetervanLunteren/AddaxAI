@@ -102,6 +102,11 @@ class EventObservation(Base):
         Index("idx_event_obs_event", "event_id"),
         Index("idx_event_obs_label", "label"),
         Index("idx_event_obs_label_taxonomy", "label_taxonomy_id"),
+        # Not for queries: this is the child key of the ON DELETE SET NULL
+        # FK to files. Without it SQLite scans this whole table once per
+        # deleted file row, which made re-running a large folder run take
+        # hours. See DEVELOPERS.md, "Deleting analysis data".
+        Index("idx_event_obs_max_n_file", "max_n_file_id"),
     )
 
     def __repr__(self) -> str:

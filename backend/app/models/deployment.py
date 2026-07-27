@@ -116,11 +116,20 @@ class Deployment(Base):
     site: Mapped["Site | None"] = relationship(
         "Site", back_populates="deployments"
     )
+    # passive_deletes=True: the DB owns the cascade (see DEVELOPERS.md,
+    # "Deleting analysis data"). Without it, deleting a deployment loads
+    # every File and Event into memory first.
     files: Mapped[list["File"]] = relationship(
-        "File", back_populates="deployment", cascade="all, delete-orphan"
+        "File",
+        back_populates="deployment",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     events: Mapped[list["Event"]] = relationship(
-        "Event", back_populates="deployment", cascade="all, delete-orphan"
+        "Event",
+        back_populates="deployment",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
     def __repr__(self) -> str:

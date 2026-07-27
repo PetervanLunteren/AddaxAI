@@ -122,8 +122,15 @@ class Detection(Base):
     label_taxonomy: Mapped["LabelTaxonomy | None"] = relationship(
         "LabelTaxonomy", back_populates="detections"
     )
+    # passive_deletes=True: the DB owns the cascade (see DEVELOPERS.md,
+    # "Deleting analysis data"). Embedding vectors are multi-KB blobs, so
+    # loading them just to delete them is what pushed a large re-run to
+    # gigabytes of RAM.
     embeddings: Mapped[list["DetectionEmbedding"]] = relationship(
-        "DetectionEmbedding", back_populates="detection", cascade="all, delete-orphan"
+        "DetectionEmbedding",
+        back_populates="detection",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
     # Indexes for common queries

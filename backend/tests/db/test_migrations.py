@@ -398,3 +398,97 @@ def test_upgrade_from_base_matches_models(isolated_db_settings) -> None:
             f"Table {table_name!r} is missing columns {sorted(missing)} after "
             f"upgrade to head. A migration is out of sync with the ORM models."
         )
+
+
+def test_every_detectable_fingerprint_is_satisfied_at_head(
+    isolated_db_settings,
+) -> None:
+    """A fingerprint column must still exist once the chain reaches head.
+
+    A fingerprint says "the schema is at this revision or later when this
+    column exists". If a later migration drops or renames that column, the
+    fingerprint can never be satisfied again, and
+    `_alembic_version_is_truthful` then returns False on every launch for
+    every user: the DB gets re-stamped backwards and the tail of the chain
+    re-runs on each start, taking an unpruned pre-upgrade backup each time.
+
+    This is not hypothetical. `f2a3b4c5d6e7` was fingerprinted on
+    `events.verified`, which the very next revision renames to
+    `events.confirmed`.
+    """
+    from app.db.migrations import _fingerprint_satisfied
+
+    upgrade_to_head()
+    engine = _engine_for(isolated_db_settings)
+
+    broken = [
+        f"{fp.revision} -> {fp.table}.{fp.column}"
+        for fp in SCHEMA_FINGERPRINTS
+        if fp.is_detectable and not _fingerprint_satisfied(fp, engine)
+    ]
+    assert not broken, (
+        f"These fingerprints point at schema that no longer exists at head: "
+        f"{broken}. Repoint each at a column its own migration adds and that "
+        f"survives to head, or make the entry non-detectable."
+    )
+
+
+def test_upgrade_from_base_creates_every_model_index(isolated_db_settings) -> None:
+    """Every index declared on a model must exist after upgrading to head.
+
+    `test_upgrade_from_base_matches_models` only compares tables and columns,
+    so adding an `Index(...)` to a model without a matching migration used to
+    pass CI while doing nothing on real databases. That matters most for
+    indexes nobody queries through: the ones covering a foreign key's child
+    column, whose absence only shows up as a delete that takes hours.
+    """
+    import app.models  # noqa: F401  # populates Base.metadata
+    from app.db.base import Base
+
+    upgrade_to_head()
+    insp = inspect(_engine_for(isolated_db_settings))
+
+    for table_name, table in Base.metadata.tables.items():
+        model_indexes = {idx.name for idx in table.indexes}
+        if not model_indexes:
+            continue
+        live_indexes = {i["name"] for i in insp.get_indexes(table_name)}
+        missing = model_indexes - live_indexes
+        assert not missing, (
+            f"Table {table_name!r} is missing indexes {sorted(missing)} after "
+            f"upgrade to head. Add a migration that creates them."
+        )
+
+
+def test_upgrade_from_base_preserves_fk_ondelete_actions(
+    isolated_db_settings,
+) -> None:
+    """Every foreign key's ON DELETE action must survive the migration chain.
+
+    The app relies on the database to cascade deletes (the ORM relationships
+    set `passive_deletes=True`), so a dropped `ON DELETE CASCADE` is the one
+    way this design can lose or orphan data. `batch_alter_table` recreates a
+    whole table to change one column, which is exactly where a clause can go
+    missing; three tables in the delete chain have already been through it.
+    """
+    import app.models  # noqa: F401  # populates Base.metadata
+    from app.db.base import Base
+
+    upgrade_to_head()
+    insp = inspect(_engine_for(isolated_db_settings))
+
+    for table_name, table in Base.metadata.tables.items():
+        expected = {
+            (fk.parent.name, (fk.ondelete or "").upper())
+            for fk in table.foreign_keys
+        }
+        live = {
+            (col, (fk["options"].get("ondelete") or "").upper())
+            for fk in insp.get_foreign_keys(table_name)
+            for col in fk["constrained_columns"]
+        }
+        assert expected <= live, (
+            f"Table {table_name!r} lost foreign key ON DELETE actions: "
+            f"model expects {sorted(expected - live)}, live schema has "
+            f"{sorted(live)}."
+        )

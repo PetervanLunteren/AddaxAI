@@ -62,10 +62,16 @@ def test_project_delete_cascades_to_deployments(db):
     s = make_site(db, project_id=p.id)
     d_sited = make_deployment(db, site_id=s.id)
     d_null = make_deployment(db, project_id=p.id, site_id=None)
+    sited_id, null_id = d_sited.id, d_null.id
 
     db.delete(p)
     db.flush()
-    db.expire_all()
 
-    assert db.get(Deployment, d_sited.id) is None
-    assert db.get(Deployment, d_null.id) is None
+    # Query the database rather than `db.get`: the cascade runs in SQLite
+    # (passive_deletes=True), so the session still caches the child rows.
+    remaining = (
+        db.query(Deployment)
+        .filter(Deployment.id.in_([sited_id, null_id]))
+        .count()
+    )
+    assert remaining == 0

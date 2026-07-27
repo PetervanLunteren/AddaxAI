@@ -9,6 +9,7 @@ Following DEVELOPERS.md principles:
 
 import os
 import shutil
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -266,8 +267,15 @@ def _delete_deployment_artifacts(folder_path: str, project_id: str) -> None:
 
     if project_dir.exists():
         try:
+            # Timed: this walks the whole cache tree and can be slow on an
+            # external or network drive, which is indistinguishable from a
+            # slow DB delete in the log otherwise.
+            started = time.perf_counter()
             shutil.rmtree(project_dir)
-            logger.info(f"Removed deployment artifacts: {project_dir}")
+            logger.info(
+                f"Removed deployment artifacts: {project_dir} "
+                f"({time.perf_counter() - started:.1f}s)"
+            )
         except OSError as e:
             logger.warning(
                 f"Failed to remove deployment artifacts at {project_dir}: {e}"

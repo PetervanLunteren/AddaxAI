@@ -156,6 +156,65 @@ def test_delete_project_not_found(client):
     assert resp.status_code == 404
 
 
+def test_delete_project_with_folder_less_deployment(client, db):
+    """A deployment with no folder_path must not break the delete.
+
+    `folder_path` is nullable (a deployment can exist before its folder is
+    linked) and the handler builds `Path(...)` from it to clean up the
+    on-disk cache. `Path(None)` raises, so this used to 500.
+    """
+    from tests.conftest import make_deployment
+
+    p = make_project(db)
+    make_deployment(db, project_id=p.id, folder_path=None)
+    db.commit()
+
+    resp = client.delete(f"/api/projects/{p.id}")
+    assert resp.status_code == 204
+
+
+def test_delete_project_removes_jobs_referenced_by_detections(client, db):
+    """Jobs must be deleted after the detections that point at them.
+
+    `detections.job_id` and `detection_embeddings.job_id` are NO ACTION
+    foreign keys, so deleting a job while a detection still references it is
+    an IntegrityError. Nothing pinned that ordering before.
+    """
+    import uuid
+
+    import numpy as np
+
+    from app.models import DetectionEmbedding, Job
+    from tests.conftest import make_deployment, make_detection, make_file, make_job
+
+    p = make_project(db)
+    job = make_job(db, payload={"project_id": p.id})
+    dep = make_deployment(db, project_id=p.id, folder_path="/fake/jobs-run")
+    f = make_file(db, deployment_id=dep.id)
+    det = make_detection(db, file_id=f.id, job_id=job.id)
+    db.add(
+        DetectionEmbedding(
+            id=str(uuid.uuid4()),
+            detection_id=det.id,
+            job_id=job.id,
+            embedding_model_id="TEST-EMB",
+            vector=np.zeros(8, dtype=np.float16).tobytes(),
+            dimension=8,
+            l2_norm=0.0,
+        )
+    )
+    db.commit()
+    # Hold the id, not the object: after the delete the instance is gone and
+    # touching an expired attribute would raise instead of reporting.
+    job_id = job.id
+
+    resp = client.delete(f"/api/projects/{p.id}")
+    assert resp.status_code == 204
+
+    db.expire_all()
+    assert db.query(Job).filter(Job.id == job_id).count() == 0
+
+
 # --- Stats ---
 
 

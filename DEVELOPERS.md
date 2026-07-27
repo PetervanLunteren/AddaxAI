@@ -106,6 +106,32 @@ def downgrade() -> None:
 
 One line of DDL, no reflection gymnastics, no batch-mode failure mode, idempotent against drifted DBs. Add-column never needed batch (`op.add_column` works directly). Batch mode is still the right call for type changes and nullability tweaks, which do not have a native single-statement DDL on SQLite.
 
+## Deleting analysis data
+
+Deleting a project, deleting a folder run, re-running a folder run and deleting a deployment all end in the same place: one `db.delete(<parent>)` that has to remove every file, detection, embedding, event and observation underneath it. On a large run that is millions of rows, so how it is done matters.
+
+**The database owns the cascade, not the ORM.** Every parent/child foreign key declares `ON DELETE CASCADE`, `PRAGMA foreign_keys=ON` is set on every connection (`db/base.py`), and every `cascade="all, delete-orphan"` relationship sets `passive_deletes=True`. SQLAlchemy therefore emits one `DELETE` for the parent and lets SQLite do the rest in C.
+
+**The rule, with no exceptions:**
+
+> every relationship with `delete-orphan` whose child foreign key declares `ON DELETE CASCADE` sets `passive_deletes=True`
+
+`tests/models/test_cascade_config.py` enforces it. Use `True`, never `"all"` (that one is rejected in combination with `delete-orphan`).
+
+Without it, SQLAlchemy loads every child row into memory as a Python object before deleting it, one lazy SELECT at a time. Deleting a 50,000-file run emitted 277,014 statements and peaked at 1.5 GB of RAM.
+
+**Index the child column of every foreign key.** When a parent row is deleted, SQLite has to find the rows referencing it. With no index on the child column that is a full table scan **per deleted parent row**. `event_observations.max_n_file_id` (`ON DELETE SET NULL` to `files`) was unindexed, so deleting a 50,000-file run scanned the whole observations table 50,000 times: 8 minutes on a fast Mac, hours on a beta tester's laptop. The same shape applies to `NO ACTION` foreign keys, where SQLite still has to prove no child references the row.
+
+These indexes exist for constraint enforcement, not for queries, so they look unused when you grep for them. Do not remove them. `test_upgrade_from_base_creates_every_model_index` and `test_upgrade_from_base_preserves_fk_ondelete_actions` in `tests/db/test_migrations.py` guard both halves; the older `test_upgrade_from_base_matches_models` only compares tables and columns.
+
+**Consequences to know about:**
+
+- After a passive delete, child objects already in the session are stale until the session is expired. Every call site commits immediately (`expire_on_commit` is on), so app code never sees this, but a test that does `db.delete(parent); db.flush()` and then `db.get(Child, id)` will get the cached object back. Query the database instead.
+- Already-loaded collections still cascade in Python. `passive_deletes` suppresses *loading*, never cascading of what is loaded.
+- A missing `ON DELETE CASCADE` fails loudly with `FOREIGN KEY constraint failed`, not silently with orphan rows, because the child foreign keys are `NOT NULL`.
+
+**Timing.** `POST /api/folder-runs/{id}/rerun` and `_delete_deployment_artifacts` both log elapsed seconds. The on-disk `.addaxai` cleanup stays inside the request and is unbounded on a slow external drive, so when a delete is reported as slow, those two lines are what tell you whether it was the database or the disk.
+
 ## Database backups
 
 The DB at `~/AddaxAI/addaxai.db` holds irreversible work (human verifications). It is the only piece of user state that cannot be rebuilt by re-running analysis, so it gets a backup story. Backups live under `~/AddaxAI/backups/` and use SQLite's online backup API (`sqlite3.Connection.backup`) so they are WAL-safe and produce a single consolidated `.db` file with no `-wal` / `-shm` siblings.

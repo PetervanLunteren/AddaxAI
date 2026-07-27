@@ -79,10 +79,13 @@ class Event(Base):
     files: Mapped[list["File"]] = relationship(
         "File", secondary=event_files, back_populates="events"
     )
+    # passive_deletes=True: the DB owns the cascade (see DEVELOPERS.md,
+    # "Deleting analysis data").
     observations: Mapped[list["EventObservation"]] = relationship(
         "EventObservation",
         back_populates="event",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
     # Indexes

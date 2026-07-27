@@ -665,26 +665,40 @@ export function FolderRunModelStep() {
     });
   };
 
+  /** The dialog deliberately stays open until the mutation settles. Wiping
+   * a large run's rows is not instant, and the dialog is the only thing on
+   * screen that can say so: the notice row behind it merely greys out its
+   * buttons. Closing on settle rather than on success preserves today's
+   * error behaviour, where the message renders on the page underneath. */
   const confirmRerun = () => {
-    setRerunOpen(false);
     setNothingToRun(false);
-    if (!lookupRun) return;
+    const closeDialog = () => setRerunOpen(false);
+    if (!lookupRun) {
+      closeDialog();
+      return;
+    }
     const data = form.getValues();
     persistLastUsed(data);
     if (lookupRun.id === runId) {
-      rerunAnalysis.mutate(data);
+      rerunAnalysis.mutate(data, { onSettled: closeDialog });
       return;
     }
-    if (!folderPath || !scanResult) return;
-    createRun.mutate({
-      data,
-      payload: {
-        source_folder: folderPath,
-        image_count: scanResult.image_count,
-        video_count: scanResult.video_count,
-        force_new: true,
+    if (!folderPath || !scanResult) {
+      closeDialog();
+      return;
+    }
+    createRun.mutate(
+      {
+        data,
+        payload: {
+          source_folder: folderPath,
+          image_count: scanResult.image_count,
+          video_count: scanResult.video_count,
+          force_new: true,
+        },
       },
-    });
+      { onSettled: closeDialog },
+    );
   };
 
   /** Submit dispatcher. The button label / action depend on the run

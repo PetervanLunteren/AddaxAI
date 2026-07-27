@@ -450,9 +450,11 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
     # Snapshot the human layer before deleting, then re-attach by file set.
     carry = _snapshot_event_carry(db, deployment_ids)
 
-    # Delete existing events for all deployments in this project
-    if deployment_ids:
-        db.execute(delete(Event).where(Event.deployment_id.in_(deployment_ids)))
+    # Delete existing events for all deployments in this project. Chunked
+    # like the event-id filters above: a project with enough deployments
+    # would otherwise blow SQLite's bound-parameter limit.
+    for chunk in iter_id_chunks(deployment_ids):
+        db.execute(delete(Event).where(Event.deployment_id.in_(chunk)))
 
     total_events = 0
 

@@ -33,13 +33,16 @@ def test_project_unique_name(db):
 
 
 def test_project_cascade_deletes_sites(db):
+    # Assert against the database, not `db.get`: the cascade happens in
+    # SQLite (the relationships are passive_deletes=True), so the session's
+    # identity map still holds the child object until it is expired.
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     site_id = s.id
     db.delete(p)
     db.flush()
     from app.models.site import Site
-    assert db.get(Site, site_id) is None
+    assert db.query(Site).filter(Site.id == site_id).count() == 0
 
 
 def test_site_unique_name_per_project(db):
@@ -82,7 +85,7 @@ def test_deployment_cascade_deletes_files(db):
     db.delete(d)
     db.flush()
     from app.models.file import File
-    assert db.get(File, file_id) is None
+    assert db.query(File).filter(File.id == file_id).count() == 0
 
 
 def test_file_cascade_deletes_detections(db):
@@ -94,7 +97,7 @@ def test_file_cascade_deletes_detections(db):
     det_id = det.id
     db.delete(f)
     db.flush()
-    assert db.get(Detection, det_id) is None
+    assert db.query(Detection).filter(Detection.id == det_id).count() == 0
 
 
 def test_detection_defaults(db):

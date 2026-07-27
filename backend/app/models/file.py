@@ -131,8 +131,13 @@ class File(Base):
     events: Mapped[list["Event"]] = relationship(
         "Event", secondary="event_files", back_populates="files"
     )
+    # passive_deletes=True: the DB owns the cascade (see DEVELOPERS.md,
+    # "Deleting analysis data").
     detections: Mapped[list["Detection"]] = relationship(
-        "Detection", back_populates="file", cascade="all, delete-orphan"
+        "Detection",
+        back_populates="file",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     source_video: Mapped["File | None"] = relationship(
         "File", remote_side="File.id", foreign_keys=[source_video_id]
