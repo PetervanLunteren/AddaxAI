@@ -28,6 +28,14 @@ Run the setup `.exe` and follow the installer.
 #### Linux
 Double-click the downloaded `.deb`. The App Center opens and shows it as `addaxai` from an unknown publisher with a "potentially unsafe" warning. That is how Ubuntu presents every app installed outside its own store. It is expected, click Install. After installing, find AddaxAI in the app grid to open the app.
 
+## Removing the old AddaxAI
+
+The new AddaxAI installs in a different place than the old one, so after installing you have two separate AddaxAI programs on your computer. The old one takes up a lot of space (often 10 GB or more) and you do not need it any more.
+
+The first time you open the new app it checks for the old version and offers to remove it. Your images, videos and any results the old version wrote next to them are never touched. Skipping is fine, nothing breaks either way, and you can run it later from the Help menu under "Remove old AddaxAI".
+
+If you want the old version back at any point, install it again from the AddaxAI website.
+
 ## Updating to a new beta version
 
 Your projects, verifications, and settings live in the AddaxAI user data folder and survive updates. Just install the new version over the old one:

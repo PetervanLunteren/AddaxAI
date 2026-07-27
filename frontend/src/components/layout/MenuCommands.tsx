@@ -6,15 +6,16 @@
  * folder-open, the diagnostic export, or the species-name toggle).
  *
  * This is the successor to the old AppHamburger dropdown: same actions, same
- * dialogs, no button UI. It renders nothing except the four dialogs it owns.
+ * dialogs, no button UI. It renders nothing except the dialogs it owns.
  * Mounted once at the app root (next to DownloadCompleteToasts in App.tsx),
  * inside the router and query provider so navigation and queries work.
  *
- * It only does anything in Electron, where window.electronAPI is defined. In
- * a plain browser there is no native menu, so these actions are unavailable.
+ * Menu commands only arrive in Electron, where window.electronAPI is defined.
+ * The one exception is the legacy-install prompt, which opens by itself when
+ * an old AddaxAI is found, and so also fires in the browser dev server.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -26,15 +27,24 @@ import { ResetAppDialog } from "../diagnostics/ResetAppDialog";
 import { BackupNowDialog } from "../diagnostics/BackupNowDialog";
 import { RestoreBackupDialog } from "../diagnostics/RestoreBackupDialog";
 import { CheckForUpdatesDialog } from "../diagnostics/CheckForUpdatesDialog";
+import { RemoveLegacyDialog } from "../diagnostics/RemoveLegacyDialog";
 
-type DialogId = "reset" | "updates" | "backup" | "restore" | null;
+type DialogId = "reset" | "updates" | "backup" | "restore" | "legacy" | null;
 
 const FALLBACK_VERSION = "(dev)";
+
+// Set when the user ticks "don't ask me again" in the legacy-install
+// prompt. A UI preference, so it lives with the other one in
+// localStorage rather than becoming another marker file in ~/AddaxAI.
+const LEGACY_PROMPT_DISMISSED = "addaxai.legacy-prompt-dismissed";
 
 export function MenuCommands() {
   const navigate = useNavigate();
   const [dialog, setDialog] = useState<DialogId>(null);
   const [version, setVersion] = useState<string>(FALLBACK_VERSION);
+  const [legacyDismissed, setLegacyDismissed] = useState(
+    () => localStorage.getItem(LEGACY_PROMPT_DISMISSED) === "true",
+  );
 
   // Cached once; "Open user data folder" needs an absolute path that
   // varies per OS.
@@ -55,13 +65,19 @@ export function MenuCommands() {
   // Dev-only: these dialogs are normally opened from the Electron native
   // menu, which doesn't exist in the browser dev server. Open one straight
   // from the URL hash so it can be previewed on localhost, e.g.
-  // http://localhost:5173/#restore (also #backup, #reset, #updates).
+  // http://localhost:5173/#restore (also #backup, #reset, #updates, #legacy).
   // Tree-shaken out of production builds (import.meta.env.DEV is false).
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     const openFromHash = () => {
       const h = window.location.hash.replace("#", "");
-      if (h === "restore" || h === "backup" || h === "reset" || h === "updates") {
+      if (
+        h === "restore" ||
+        h === "backup" ||
+        h === "reset" ||
+        h === "updates" ||
+        h === "legacy"
+      ) {
         setDialog(h as DialogId);
       }
     };
@@ -69,6 +85,27 @@ export function MenuCommands() {
     window.addEventListener("hashchange", openFromHash);
     return () => window.removeEventListener("hashchange", openFromHash);
   }, []);
+
+  // Legacy AddaxAI 6 still on the machine? Ask once per launch, unless
+  // the user ticked "don't ask me again". Gated on setup being ready so
+  // it never lands on top of the first-run wizard. The scan is a couple
+  // of exists() calls, so running it every launch costs nothing.
+  const { data: legacy } = useQuery({
+    queryKey: ["legacy-install"],
+    queryFn: setupApi.getLegacyInstall,
+    enabled: Boolean(setupStatus?.ready) && !legacyDismissed,
+    staleTime: Infinity,
+  });
+
+  // A ref rather than dependency identity, so a background refetch can
+  // never pop the dialog back up after the user closed it.
+  const legacyPromptShown = useRef(false);
+
+  useEffect(() => {
+    if (legacyPromptShown.current || legacyDismissed || !legacy?.found) return;
+    legacyPromptShown.current = true;
+    setDialog("legacy");
+  }, [legacy?.found, legacyDismissed]);
 
   // Reflect the stored species-name mode in the menu radio. Sent on mount;
   // a change reloads the page, so the next mount re-syncs the checkmark.
@@ -147,6 +184,9 @@ export function MenuCommands() {
         case "reset":
           setDialog("reset");
           break;
+        case "remove-legacy":
+          setDialog("legacy");
+          break;
         case "open-user-data":
           void openUserDataFolder();
           break;
@@ -184,6 +224,15 @@ export function MenuCommands() {
         open={dialog === "updates"}
         onOpenChange={(o) => setDialog(o ? "updates" : null)}
         currentVersion={version}
+      />
+      <RemoveLegacyDialog
+        open={dialog === "legacy"}
+        onOpenChange={(o) => setDialog(o ? "legacy" : null)}
+        dontAskAgain={legacyDismissed}
+        onDontAskAgainChange={(value) => {
+          localStorage.setItem(LEGACY_PROMPT_DISMISSED, String(value));
+          setLegacyDismissed(value);
+        }}
       />
     </>
   );

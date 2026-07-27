@@ -18,9 +18,7 @@ downloader are idempotent and resume safely.
 """
 
 import asyncio
-import os
 import shutil
-import stat
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -33,6 +31,8 @@ from app.core.logging_config import get_logger
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.model_storage import ModelStorage
 from app.ml.schemas.model_manifest import ModelManifest
+from app.services import legacy_install
+from app.utils.fs_remove import safe_rmtree
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/setup", tags=["Setup"])
@@ -447,62 +447,6 @@ class ResetResponse(BaseModel):
     db_wipe_scheduled: bool
 
 
-def _safe_rmtree(path: Path) -> bool:
-    """
-    Best-effort recursive removal.
-
-    Tolerates per-file failures so a single locked or read-only file
-    does not abort the whole wipe and leave envs / models in a
-    half-deleted state. Real-world cases this protects against:
-
-    - Windows: the running backend's `logs/backend.log` is held open by
-      its own logging handler. Without the swallow, `shutil.rmtree`
-      raised on it and the surrounding for loop did continue to the
-      next dir, BUT any file *inside* the failed dir that was already
-      partway through deletion left the dir in a broken state. This is
-      what corrupted env-pytorch in a beta tester's diag bundle: Lib/
-      was deleted but python.exe survived, so `_validate_env` later
-      reported the env as healthy and the classification worker
-      crashed with `ModuleNotFoundError: encodings`.
-
-    - Read-only attribute on Windows files (set by some installers,
-      antivirus quarantine restores, copy-from-network-share). chmod +
-      retry handles those instead of letting them block the wipe.
-
-    Returns True only when the path is fully gone after the call.
-    Caller can therefore trust the returned `removed_dirs` list as
-    "actually removed", not "removal attempted".
-    """
-    if not path.exists():
-        return False
-
-    def _onerror(func: Callable, p: str, _exc_info: tuple) -> None:
-        # Try clearing the read-only attribute and retrying. Most
-        # Windows EACCES failures are this. If it still fails, swallow
-        # so rmtree keeps walking the rest of the tree.
-        try:
-            os.chmod(p, stat.S_IWRITE)
-            func(p)
-            return
-        except OSError as e:
-            logger.warning(f"Could not remove {p}: {e}")
-
-    if path.is_file() or path.is_symlink():
-        try:
-            try:
-                path.chmod(stat.S_IWRITE)
-            except OSError:
-                pass
-            path.unlink()
-        except OSError as e:
-            logger.warning(f"Could not remove {path}: {e}")
-            return False
-        return True
-
-    shutil.rmtree(path, onerror=_onerror)
-    return not path.exists()
-
-
 @router.post("/reset", response_model=ResetResponse)
 def reset_application(req: ResetRequest) -> ResetResponse:
     """
@@ -523,12 +467,12 @@ def reset_application(req: ResetRequest) -> ResetResponse:
 
     removed_dirs: list[str] = []
     for name in _WIPE_DIRS:
-        if _safe_rmtree(user_data_dir / name):
+        if safe_rmtree(user_data_dir / name):
             removed_dirs.append(name)
 
     removed_files: list[str] = []
     for name in _WIPE_FILES:
-        if _safe_rmtree(user_data_dir / name):
+        if safe_rmtree(user_data_dir / name):
             removed_files.append(name)
 
     # Drop the cached EnvironmentManager so the next setup attempt rebuilds
@@ -564,3 +508,97 @@ def reset_application(req: ResetRequest) -> ResetResponse:
         removed_files=removed_files,
         db_wipe_scheduled=db_wipe_scheduled,
     )
+
+
+# ---------------------------------------------------------------------------
+# Legacy AddaxAI removal
+#
+# Offers to delete a legacy AddaxAI (v5 / v6) install so a machine that
+# upgraded isn't left carrying two full copies. All the path knowledge lives
+# in app/services/legacy_install.py; these endpoints are just the plumbing.
+# ---------------------------------------------------------------------------
+
+_RETRY_MESSAGE = (
+    "Some files could not be removed. Close the old AddaxAI if it is "
+    "running, then try again."
+)
+
+
+class _PurgeState:
+    """In-memory state for the legacy-removal background task."""
+
+    def __init__(self) -> None:
+        self.in_progress: bool = False
+        self.error: str | None = None
+        self._lock = threading.Lock()
+
+    def start(self) -> bool:
+        """Return True if started, False if already running."""
+        with self._lock:
+            if self.in_progress:
+                return False
+            self.in_progress = True
+            self.error = None
+            return True
+
+    def finish(self, error: str | None = None) -> None:
+        with self._lock:
+            self.in_progress = False
+            self.error = error
+
+
+_purge_state = _PurgeState()
+
+
+class LegacyInstallStatus(BaseModel):
+    """Presence and removal progress in one payload, polled at ~1.5s."""
+
+    found: bool
+    version: str | None
+    removable_paths: list[str]
+    manual_paths: list[str]
+    removal_in_progress: bool
+    removal_error: str | None
+
+
+@router.get("/legacy-install", response_model=LegacyInstallStatus)
+def get_legacy_install() -> LegacyInstallStatus:
+    found = legacy_install.scan()
+    return LegacyInstallStatus(
+        found=found.found,
+        version=found.version,
+        removable_paths=[str(p) for p in found.removable],
+        manual_paths=[str(p) for p in found.manual],
+        removal_in_progress=_purge_state.in_progress,
+        removal_error=_purge_state.error,
+    )
+
+
+@router.post("/legacy-install/remove", status_code=status.HTTP_202_ACCEPTED)
+async def remove_legacy_install() -> dict[str, str]:
+    """
+    Delete the legacy install in the background.
+
+    Deleting a legacy tree means hundreds of thousands of small files and
+    takes minutes on Windows, so this can't block a request. The frontend
+    polls GET /legacy-install until removal_in_progress clears.
+    """
+    if not _purge_state.start():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A removal is already running.",
+        )
+
+    # Same shape as install_env above: blocking work in a thread so the
+    # event loop keeps serving the status poll that drives the dialog.
+    asyncio.create_task(asyncio.to_thread(_remove_legacy_blocking))
+    return {"status": "started"}
+
+
+def _remove_legacy_blocking() -> None:
+    try:
+        survivors = legacy_install.remove()
+        _purge_state.finish(_RETRY_MESSAGE if survivors else None)
+    except Exception as e:
+        logger.error(f"Legacy removal failed: {e}", exc_info=True)
+        _purge_state.finish(f"Removal failed: {e}")

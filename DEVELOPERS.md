@@ -136,6 +136,44 @@ Pre-upgrade backups are intentionally exempt from pruning because they are the s
 
 Pre-init backups in lifespan are best-effort. If `~/AddaxAI/` is read-only or the disk is full, the failed snapshot is logged at error level and startup continues, so the user can at least open the app to see the diagnostic banner and react.
 
+## Removing the legacy AddaxAI install
+
+AddaxAI 7 installs to different locations than AddaxAI 6, so upgrading leaves two full apps on the machine, the old one holding 10 to 30 GB of conda envs and model weights. The app finds the old install and offers to delete it.
+
+**Where legacy lives** (verified against the legacy repo's own install scripts):
+
+| OS | Install root | Also |
+|---|---|---|
+| Windows | `%USERPROFILE%\AddaxAI_files\` | junction `%USERPROFILE%\EcoAssist_files` pointing at the root, plus a manual-install variant at `%ProgramFiles%\AddaxAI_files` |
+| macOS | `/Applications/AddaxAI_files/` | desktop symlink `~/Desktop/AddaxAI.app` |
+| Linux | `~/.AddaxAI_files/` | `~/Desktop/Linux_open_AddaxAI_shortcut.desktop`, `~/.icons/logo_small_bg.png` |
+
+Legacy writes nothing outside that tree. Its analysis outputs land in the user's own image folders and a destination folder they picked, so no user data is at risk.
+
+**Why this is not in the installers.** macOS ships a dmg and drag-to-Applications runs no code. The Linux deb `postinst` runs as root, so `$HOME` is root's home and `$SUDO_USER` is unset under App Center / PackageKit. Only Windows NSIS could do it, which would mean one platform covered and three implementations. One Python implementation running as the logged-in user covers all three, with the right permissions on each.
+
+**Detection is one rule on every platform:** `<root>/AddaxAI/AddaxAI_GUI.py` exists. Folder name alone would be wrong on Windows, where our own installer creates `AddaxAI_files` just to hold the Timelapse shim.
+
+**The Windows shim exception.** `electron/build/installer.nsh` writes a Timelapse launcher to `%USERPROFILE%\AddaxAI_files\AddaxAI\open.bat`, inside the legacy install root. Timelapse still looks for that path, so the purge deletes everything under `AddaxAI_files` **except** that one file. Do not "simplify" this into deleting the whole root.
+
+**Junctions.** NSIS `RMDir /r` follows a junction and deletes through it. Python's `shutil.rmtree` has not followed junctions since 3.8 but raises on a top-level one, so `legacy_install._remove` detects a junction and calls `os.rmdir()`, which drops the reparse point and leaves its target alone. `os.path.isjunction()` is not usable: the frozen build runs Python 3.11 and that helper landed in 3.12.
+
+**Desktop entries are only touched during removal, never during the scan.** On macOS, reading `~/Desktop` triggers a permission prompt for a non-sandboxed app. The scan runs on every launch, so scanning the Desktop would prompt every user including those who never had legacy installed.
+
+**Failure handling.** There is no pre-flight "is legacy running" check. The purge runs, then `remove()` re-checks the marker and returns any surviving paths, and the UI says to close the old app and retry. One rule that covers a running legacy app, antivirus locks and open file managers, on every platform, with no extra dependency.
+
+**Not covered:** installs moved by hand to a custom path (legacy's docs sanction moving to Program Files; EcoAssist 4.x let users type any path). The Program Files copy is reported so the user can delete it, everything else is out of scope. No disk scan.
+
+| File | Purpose |
+|---|---|
+| `backend/app/services/legacy_install.py` | Path table, detection, purge |
+| `backend/app/utils/fs_remove.py` | `safe_rmtree`, shared with the reset flow |
+| `backend/app/api/routers/setup.py` | `/api/setup/legacy-install` and `.../remove` |
+| `frontend/src/components/diagnostics/RemoveLegacyDialog.tsx` | The dialog |
+| `frontend/src/components/layout/MenuCommands.tsx` | Auto-prompt, menu command, dismissal flag |
+
+The junction branch cannot be tested on the Linux and macOS CI runners, so it is verified by hand on Windows.
+
 ## Linting (CI enforcement)
 
 GitHub Actions runs **ruff** on every push and PR (`ruff check app tests`). The build fails if there are any errors, so check locally before pushing:

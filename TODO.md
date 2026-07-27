@@ -1,13 +1,14 @@
 # TODO
 
 ## Priority 1
-- [ ] Make sure the current app install removes all the stuff from the legacy AddaxAI too. Its a new install, on a new location, and we dont want both AddaxAI versions to be alive on the device. If the users want the old one back, he can do so by reinstalling the old one. Makes sense? 
+- [ ] This repo is the new version of AddaxAI. The legacy code is here: https://github.com/PetervanLunteren/AddaxAI. The current repo (https://github.com/PetervanLunteren/AddaxAI-WebUI) installs on a different location on each OS. The install files and user files are at different locations. Investigate how this works for the current and the legacy code. I want to make sure the current app install removes all the stuff from the legacy AddaxAI too. Its a new install, on a new location, and we dont want both AddaxAI versions to be alive on the device. If the users want the old one back, he can do so by reinstalling the old one. Makes sense? First invetigate and report your findings. Tell me if it is difficult, what the estimated effort is.
+- [ ] Beta report about the loading page on deletion of re analysis of folder run. 
 
 
 ## Priority 2
 - [ ]  
 
-## Priority 3 
+## Priority 3
 - [ ] 
 
 ## After the Beta phase
@@ -48,3 +49,9 @@
 - [ ] Naïve occupancy insights page. See AddaxAI-Connect. 
 - [ ] Update the exports page to match the 2 col format. Check AddaxAI Connect. 
 
+
+
+
+### DOCS
+- [ ] Add something about how to install older versions. 
+- [ ]

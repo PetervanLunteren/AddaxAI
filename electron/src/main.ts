@@ -867,6 +867,9 @@ function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
       { type: 'separator' },
       { label: 'Export diagnostic report', click: () => sendMenuCommand('export-diagnostic') },
       { type: 'separator' },
+      // Not setup-gated: an old AddaxAI can be cleared out at any point,
+      // and this is the way back for anyone who skipped the prompt.
+      { label: 'Remove old AddaxAI…', click: () => sendMenuCommand('remove-legacy') },
       { label: 'Reset application…', click: () => sendMenuCommand('reset') },
       // About lives in the app menu on macOS; fold it into Help elsewhere.
       ...(isMac ? [] : ([{ type: 'separator' }, aboutItem] as Electron.MenuItemConstructorOptions[])),
