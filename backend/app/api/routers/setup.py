@@ -409,8 +409,47 @@ def _check_disk_space(user_data_dir: Path) -> None:
                 f"Not enough free disk space at {user_data_dir}. "
                 f"Setup needs about {required_gb:.0f} GB free; "
                 f"only {free_gb:.1f} GB available."
+                f"{_legacy_disk_hint()}"
             ),
         )
+
+
+def _legacy_disk_hint() -> str:
+    """
+    Extra sentence for the out-of-disk error naming a legacy AddaxAI, if
+    one is installed.
+
+    A legacy install is 10 to 30 GB and is very often what filled the
+    disk. The remove-old-AddaxAI prompt only appears once setup has
+    finished, so a user who cannot get past this error has no way to
+    reach it and no reason to connect the two. Naming the folder turns a
+    dead end into something they can act on.
+
+    Best-effort: a hint must never turn a clear 507 into a 500, so a
+    failed scan just means no hint. Same reasoning as the swallowed
+    OSError above.
+    """
+    try:
+        found = legacy_install.scan()
+    except OSError as e:
+        logger.warning(f"Legacy scan failed while building disk hint: {e}")
+        return ""
+
+    # Only the install roots, never the junction: it is a link with no
+    # size, so naming it as "using several GB" would be wrong.
+    roots = [p for p in (found.root, *found.manual) if p is not None]
+    if not roots:
+        return ""
+
+    # "it" refers to the old install, not the folder, so the wording holds
+    # up on the rare Windows machine that has two copies.
+    return (
+        " An older AddaxAI is still installed at "
+        + ", ".join(str(p) for p in roots)
+        + " and is using several GB. The new version does not need it, and "
+        "your photos and results are not stored there. You can safely "
+        "remove it and try again."
+    )
 
 
 # ---------------------------------------------------------------------------

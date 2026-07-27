@@ -85,9 +85,13 @@ export function RemoveLegacyDialog({
 
   const version = seenVersion ? `AddaxAI ${seenVersion}` : "AddaxAI 6";
 
+  // The title carries the outcome, so it must stop asking a question once
+  // the answer is in.
+  const title = view === "gone" ? "Old AddaxAI removed" : "Remove the old AddaxAI?";
+
   const description = {
     found: `${version} is still on this computer. The new version does not need it, and it takes up a lot of space.`,
-    gone: `${version} has been removed.`,
+    gone: `${version} is no longer on this computer.`,
     clean: "No older version of AddaxAI was found.",
   }[view];
 
@@ -97,10 +101,17 @@ export function RemoveLegacyDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Trash2 className="h-5 w-5" />
-            Remove the old AddaxAI?
+            {title}
           </DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+
+        {view === "gone" && (
+          <Callout variant="success">
+            You can install the old version again at any time from the AddaxAI
+            website.
+          </Callout>
+        )}
 
         {view === "found" && (
           <div className="space-y-3">

@@ -162,6 +162,8 @@ Legacy writes nothing outside that tree. Its analysis outputs land in the user's
 
 **Failure handling.** There is no pre-flight "is legacy running" check. The purge runs, then `remove()` re-checks the marker and returns any surviving paths, and the UI says to close the old app and retry. One rule that covers a running legacy app, antivirus locks and open file managers, on every platform, with no extra dependency.
 
+**The disk-space dead end.** Setup refuses with a 507 below 7 GB free, and the removal prompt only appears once setup has finished. A user with a 15 GB legacy install and a nearly-full disk could therefore never reach the thing that would free the space. `_legacy_disk_hint()` in `routers/setup.py` appends the legacy path to that error so they can delete it by hand. Keep the hint best-effort: it must never turn a clear 507 into a 500.
+
 **Not covered:** installs moved by hand to a custom path (legacy's docs sanction moving to Program Files; EcoAssist 4.x let users type any path). The Program Files copy is reported so the user can delete it, everything else is out of scope. No disk scan.
 
 | File | Purpose |
