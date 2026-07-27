@@ -11,13 +11,11 @@ schema the models declare, `schema_problems` notices each way that can
 fail, and every database the app refuses is left untouched.
 """
 
-from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import inspect, text
 
-from app.core.config import Settings
 from app.core.startup_error import (
     GENERIC_STARTUP_FAILURE,
     STARTUP_ERROR_FILENAME,
@@ -34,43 +32,21 @@ from app.db.migrations import (
 )
 
 
-@pytest.fixture()
-def isolated_db_settings(tmp_path: Path, monkeypatch):
-    """Point get_settings() at a fresh empty user-data dir.
-
-    Each test gets its own SQLite file so init_db() can run end-to-end
-    without colliding with the developer's real `~/AddaxAI/addaxai.db`.
-    """
-    db_path = tmp_path / "addaxai.db"
-    settings = Settings(
-        user_data_dir=tmp_path,
-        database_url=f"sqlite:///{db_path}",
-    )
-
-    def _get_settings() -> Settings:
-        return settings
-
-    monkeypatch.setattr("app.core.config.get_settings", _get_settings)
-    monkeypatch.setattr("app.db.base.get_settings", _get_settings)
-    monkeypatch.setattr("app.db.migrations.get_settings", _get_settings)
-
-    yield settings
-
-
-def _engine_for(settings: Settings):
-    """A fresh SQLAlchemy engine pointed at the test DB."""
-    return create_engine(settings.database_url, future=True)
-
-
 def _row_counts(engine) -> dict[str, int]:
-    """Row count per user table, for asserting nothing was touched."""
+    """Row count per user table, for asserting nothing was touched.
+
+    One connection for the whole walk. Calling `engine.connect()` per
+    table leaks a connection each time and exhausts the pool once these
+    tests share an engine, which showed up only in a full-suite run.
+    """
     insp = inspect(engine)
-    return {
-        name: engine.connect().execute(
-            text(f"SELECT COUNT(*) FROM {name}")  # noqa: S608 - table names
-        ).scalar()
-        for name in insp.get_table_names()
-    }
+    with engine.connect() as conn:
+        return {
+            name: conn.execute(
+                text(f"SELECT COUNT(*) FROM {name}")  # noqa: S608 - table names
+            ).scalar()
+            for name in insp.get_table_names()
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +54,7 @@ def _row_counts(engine) -> dict[str, int]:
 # ---------------------------------------------------------------------------
 
 
-def test_upgrade_from_base_matches_models(isolated_db_settings) -> None:
+def test_upgrade_from_base_matches_models(engine) -> None:
     """Running the whole chain from base must satisfy `schema_problems`.
 
     This is the immutability guard, and it is the specification the
@@ -89,22 +65,15 @@ def test_upgrade_from_base_matches_models(isolated_db_settings) -> None:
     is the class of bug that produced issue #11.
     """
     upgrade_to_head()
-    assert schema_problems(_engine_for(isolated_db_settings)) == []
-
-
-def test_running_the_chain_twice_is_idempotent(isolated_db_settings) -> None:
-    """A second `upgrade head` is a no-op and leaves the schema matching.
-
-    Recovery no longer depends on replaying migrations, but a database
-    whose stamp is legitimately behind (a restored older backup) still
-    replays the chain forward, so every migration has to tolerate the
-    schema already being in its target state.
-    """
-    upgrade_to_head()
-    upgrade_to_head()
-    engine = _engine_for(isolated_db_settings)
-    assert get_current_revision(engine) == get_head_revision()
     assert schema_problems(engine) == []
+
+
+# Deliberately absent: a "the chain is idempotent" test. A second
+# `upgrade head` re-runs nothing, because alembic no-ops at head, so such
+# a test asserts nothing while reading as coverage. The property itself
+# is unreachable anyway: stamping an at-head database back to base and
+# replaying fails on the first migration with "table audit_log already
+# exists", and the design does not depend on it. See DEVELOPERS.md.
 
 
 # ---------------------------------------------------------------------------
@@ -112,9 +81,8 @@ def test_running_the_chain_twice_is_idempotent(isolated_db_settings) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_schema_problems_reports_a_missing_table(isolated_db_settings) -> None:
+def test_schema_problems_reports_a_missing_table(engine) -> None:
     upgrade_to_head()
-    engine = _engine_for(isolated_db_settings)
     with engine.begin() as conn:
         conn.execute(text("PRAGMA foreign_keys=OFF"))
         conn.execute(text("DROP TABLE audit_log"))
@@ -122,16 +90,15 @@ def test_schema_problems_reports_a_missing_table(isolated_db_settings) -> None:
     assert "missing table audit_log" in schema_problems(engine)
 
 
-def test_schema_problems_reports_a_missing_column(isolated_db_settings) -> None:
+def test_schema_problems_reports_a_missing_column(engine) -> None:
     upgrade_to_head()
-    engine = _engine_for(isolated_db_settings)
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE deployments DROP COLUMN warnings"))
 
     assert "missing column deployments.warnings" in schema_problems(engine)
 
 
-def test_schema_problems_reports_a_missing_index(isolated_db_settings) -> None:
+def test_schema_problems_reports_a_missing_index(engine) -> None:
     """The foreign-key indexes nobody queries through are the point.
 
     `idx_event_obs_max_n_file` covers a foreign key's child column. Its
@@ -139,7 +106,6 @@ def test_schema_problems_reports_a_missing_index(isolated_db_settings) -> None:
     that takes hours, so a plain table-and-column check would miss it.
     """
     upgrade_to_head()
-    engine = _engine_for(isolated_db_settings)
     with engine.begin() as conn:
         conn.execute(text("DROP INDEX idx_event_obs_max_n_file"))
 
@@ -147,9 +113,7 @@ def test_schema_problems_reports_a_missing_index(isolated_db_settings) -> None:
     assert any("idx_event_obs_max_n_file" in p for p in problems), problems
 
 
-def test_schema_problems_reports_a_lost_fk_ondelete(
-    isolated_db_settings,
-) -> None:
+def test_schema_problems_reports_a_lost_fk_ondelete(engine) -> None:
     """A dropped ON DELETE CASCADE is the one way this design loses rows.
 
     The ORM sets `passive_deletes=True` everywhere and lets the database
@@ -159,7 +123,6 @@ def test_schema_problems_reports_a_lost_fk_ondelete(
     which is why `schema_problems` walks foreign keys itself.
     """
     upgrade_to_head()
-    engine = _engine_for(isolated_db_settings)
     # Rebuild event_observations with the ON DELETE clause stripped off
     # its event_id foreign key, which is what a careless batch migration
     # produces.
@@ -182,9 +145,7 @@ def test_schema_problems_reports_a_lost_fk_ondelete(
     ), problems
 
 
-def test_schema_problems_reports_a_missing_unique_constraint(
-    isolated_db_settings,
-) -> None:
+def test_schema_problems_reports_a_missing_unique_constraint(engine) -> None:
     """A lost unique constraint is the only failure that stays silent.
 
     A missing column or index announces itself (a crash, or a delete
@@ -192,7 +153,6 @@ def test_schema_problems_reports_a_missing_unique_constraint(
     rows accumulate, so it is worth catching at startup.
     """
     upgrade_to_head()
-    engine = _engine_for(isolated_db_settings)
     with engine.begin() as conn:
         conn.execute(text("PRAGMA foreign_keys=OFF"))
         conn.execute(text("ALTER TABLE event_observations RENAME TO _eo_old"))
@@ -212,9 +172,7 @@ def test_schema_problems_reports_a_missing_unique_constraint(
     ), problems
 
 
-def test_schema_problems_reports_an_unreadable_schema(
-    isolated_db_settings,
-) -> None:
+def test_schema_problems_reports_an_unreadable_schema(engine) -> None:
     """A schema too broken to reflect is a problem, not a crash.
 
     `compare_metadata` reflects the whole schema, so a foreign key
@@ -225,7 +183,6 @@ def test_schema_problems_reports_an_unreadable_schema(
     unexplained stack trace.
     """
     upgrade_to_head()
-    engine = _engine_for(isolated_db_settings)
     with engine.begin() as conn:
         conn.execute(text("PRAGMA foreign_keys=OFF"))
         # deployments.site_id follows the rename to _sites_old, then
@@ -237,9 +194,7 @@ def test_schema_problems_reports_an_unreadable_schema(
     assert any("could not be read" in p for p in problems), problems
 
 
-def test_schema_problems_ignores_extra_live_columns(
-    isolated_db_settings,
-) -> None:
+def test_schema_problems_ignores_extra_live_columns(engine) -> None:
     """Only "the models have it, the database doesn't" is a problem.
 
     A column the live schema has and the models don't is what a
@@ -247,7 +202,6 @@ def test_schema_problems_ignores_extra_live_columns(
     as a failure would refuse a healthy user's launch.
     """
     upgrade_to_head()
-    engine = _engine_for(isolated_db_settings)
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE projects ADD COLUMN leftover TEXT"))
 
@@ -259,19 +213,17 @@ def test_schema_problems_ignores_extra_live_columns(
 # ---------------------------------------------------------------------------
 
 
-def test_init_db_builds_a_fresh_install_from_base(isolated_db_settings) -> None:
+def test_init_db_builds_a_fresh_install_from_base(engine) -> None:
     """An empty database reaches head with a schema matching the models."""
     init_db()
 
-    engine = _engine_for(isolated_db_settings)
     assert get_current_revision(engine) == get_head_revision()
     assert schema_problems(engine) == []
 
 
-def test_init_db_noop_on_already_healthy_db(isolated_db_settings) -> None:
+def test_init_db_noop_on_already_healthy_db(engine) -> None:
     """A DB already at head must reach the second init_db unchanged."""
     init_db()
-    engine = _engine_for(isolated_db_settings)
     head = get_head_revision()
     assert get_current_revision(engine) == head
 
@@ -284,9 +236,7 @@ def test_init_db_noop_on_already_healthy_db(isolated_db_settings) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_init_db_refuses_a_db_with_no_alembic_version(
-    isolated_db_settings,
-) -> None:
+def test_init_db_refuses_a_db_with_no_alembic_version(engine) -> None:
     """A database from before the 2026-05-08 alembic wiring is refused.
 
     It used to be adopted by stamping it at a revision guessed from its
@@ -294,7 +244,6 @@ def test_init_db_refuses_a_db_with_no_alembic_version(
     cannot exist unless it predates alembic entirely, so it gets the
     same restore-or-start-fresh message as any other unusable file.
     """
-    engine = _engine_for(isolated_db_settings)
     with engine.begin() as conn:
         conn.execute(
             text("CREATE TABLE files (id TEXT PRIMARY KEY, captured_at TEXT)")
@@ -308,16 +257,13 @@ def test_init_db_refuses_a_db_with_no_alembic_version(
     assert set(inspect(engine).get_table_names()) == {"files"}
 
 
-def test_init_db_refuses_an_unknown_stamped_revision(
-    isolated_db_settings,
-) -> None:
+def test_init_db_refuses_an_unknown_stamped_revision(engine) -> None:
     """A revision that is not on disk means a different build wrote this.
 
     Alembic raises CommandError while resolving the chain, before any
     migration runs, so the database is untouched when we refuse.
     """
     init_db()
-    engine = _engine_for(isolated_db_settings)
     with engine.begin() as conn:
         conn.execute(
             text("UPDATE alembic_version SET version_num = 'zzzz99999999'")
@@ -331,9 +277,7 @@ def test_init_db_refuses_an_unknown_stamped_revision(
     assert _row_counts(engine) == before
 
 
-def test_init_db_refuses_an_ambiguous_alembic_version(
-    isolated_db_settings,
-) -> None:
+def test_init_db_refuses_an_ambiguous_alembic_version(engine) -> None:
     """More than one version row means the version table itself is broken.
 
     `get_current_revision` would silently read whichever row SQLite
@@ -341,7 +285,6 @@ def test_init_db_refuses_an_ambiguous_alembic_version(
     be a coin flip.
     """
     init_db()
-    engine = _engine_for(isolated_db_settings)
     with engine.begin() as conn:
         conn.execute(
             text("INSERT INTO alembic_version (version_num) VALUES ('abc123')")
@@ -351,9 +294,7 @@ def test_init_db_refuses_an_ambiguous_alembic_version(
         init_db()
 
 
-def test_init_db_refuses_a_lying_stamp_without_repairing_it(
-    isolated_db_settings,
-) -> None:
+def test_init_db_refuses_a_lying_stamp_without_repairing_it(engine) -> None:
     """The Cara case: stamped at head, schema missing a column.
 
     Alembic trusts the stamp, so `upgrade head` is a silent no-op and
@@ -363,7 +304,6 @@ def test_init_db_refuses_a_lying_stamp_without_repairing_it(
     and change nothing.
     """
     init_db()
-    engine = _engine_for(isolated_db_settings)
     head = get_head_revision()
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE deployments DROP COLUMN warnings"))
@@ -380,9 +320,9 @@ def test_init_db_refuses_a_lying_stamp_without_repairing_it(
     assert "warnings" not in live
 
 
-def test_ensure_upgradable_passes_a_fresh_install(isolated_db_settings) -> None:
+def test_ensure_upgradable_passes_a_fresh_install(engine) -> None:
     """No tables at all is a fresh install, not a broken database."""
-    ensure_upgradable(_engine_for(isolated_db_settings))  # must not raise
+    ensure_upgradable(engine)  # must not raise
 
 
 # ---------------------------------------------------------------------------

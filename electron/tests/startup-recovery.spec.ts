@@ -116,6 +116,49 @@ function sql(db: string, statement: string): string {
   return execFileSync('sqlite3', [db, statement]).toString().trim();
 }
 
+test('a slow start says so, and never offers to start a second backend', async () => {
+  /**
+   * The notice threshold is set to 1ms so an ordinary startup crosses
+   * it, which exercises the real code path with no test-only hook in
+   * the app. What matters is the pair of assertions: the page appears,
+   * and it has no Retry button.
+   *
+   * Retry is the dangerous one. A backend part-way through a migration
+   * does not answer /health, so Retry used to conclude the port was
+   * free and spawn a second backend running `alembic upgrade head`
+   * against the same SQLite file.
+   */
+  makeHealthyDb(userDataDir);
+  const app = await electron.launch({
+    args: [path.join(REPO, 'electron')],
+    env: {
+      ...process.env,
+      USER_DATA_DIR: userDataDir,
+      DATABASE_URL: `sqlite:///${path.join(userDataDir, 'addaxai.db')}`,
+      ADDAXAI_BACKEND_PORT: PORT,
+      DISABLE_MODEL_UPDATES: 'true',
+      ADDAXAI_SLOW_NOTICE_MS: '1',
+    },
+  });
+  const win = await appWindow(app);
+
+  await expect(win.locator('h1')).toHaveText('Still working…', {
+    timeout: 60_000,
+  });
+  await expect(
+    win.getByRole('button', { name: 'Retry' }),
+  ).toHaveCount(0);
+  await expect(win.getByRole('button', { name: 'Quit' })).toBeVisible();
+
+  // Still a notice and not a dead end: the app loads once the backend
+  // answers.
+  await expect
+    .poll(() => win.url(), { timeout: 150_000 })
+    .toContain(`localhost:${PORT}`);
+
+  await app.close();
+});
+
 test('a broken database shows the reason and the recovery buttons', async () => {
   const db = makeHealthyDb(userDataDir);
   // Exactly the shape the old code used to "repair" by replaying the

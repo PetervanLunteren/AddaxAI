@@ -237,10 +237,15 @@ const delay = (ms: number): Promise<void> =>
 
 type HealthBody = { status?: string; version?: string };
 
-// How long a backend that never dies is allowed to take before we give
-// up. First launch does the slow one-time work (PyInstaller unpack,
-// alembic migrations, backups) behind /health, so this is generous.
-const BACKEND_READY_TIMEOUT_MS = 180000;
+// How long a backend may take before we stop showing the splash and
+// tell the user it is taking a while. This is a notice, not a deadline:
+// a live backend is waited on for as long as it takes (see
+// waitForBackend). Startup normally takes a few seconds, so a minute
+// only elapses when something genuinely slow is happening behind
+// /health, which in practice means a migration on a large database.
+// Overridable so the notice can be exercised end to end.
+const BACKEND_SLOW_NOTICE_MS =
+  Number(process.env.ADDAXAI_SLOW_NOTICE_MS) || 60000;
 
 /**
  * One IPv4 GET to /health. Resolves the parsed JSON body on a 200, or
@@ -503,13 +508,30 @@ async function ensureBackend(): Promise<void> {
 }
 
 /**
- * Wait for our backend to answer /health. Polls while the process is
- * alive; fails fast if it exits during startup (no waiting out the
- * timer); gives up after BACKEND_READY_TIMEOUT_MS for a wedged-but-alive
- * backend.
+ * Wait for our backend to answer /health.
+ *
+ * A live backend is waited on indefinitely. The only failure is the
+ * process dying, which is unambiguous and already carries a reason.
+ *
+ * There used to be a deadline here, and it was actively dangerous. A
+ * backend part-way through a migration has not finished its lifespan,
+ * so it does not answer /health and is indistinguishable from a wedged
+ * one. Declaring failure put the user on the error page with a Retry
+ * button, and Retry re-entered ensureBackend, which probed /health, saw
+ * nothing, concluded the port was free and spawned a *second* backend
+ * running `alembic upgrade head` against the same SQLite file. The
+ * bigger the database, the likelier that was to happen.
+ *
+ * So we wait, and after BACKEND_SLOW_NOTICE_MS we swap the splash for a
+ * page that says so. That page has no Retry, which is what makes the
+ * two-backend race impossible rather than merely unlikely. The trade:
+ * a genuinely wedged backend now waits forever instead of erroring
+ * after three minutes. That is the right side to be wrong on, because
+ * we cannot tell slow from stuck, and Quit is always one click away.
  */
 async function waitForBackend(): Promise<void> {
   const start = Date.now();
+  let noticeShown = false;
   while (true) {
     if (!backendProcess) {
       const detail = backendSpawnError
@@ -524,11 +546,9 @@ async function waitForBackend(): Promise<void> {
     }
     const health = await probeHealth(2000);
     if (isAddaxaiHealth(health)) return;
-    if (Date.now() - start > BACKEND_READY_TIMEOUT_MS) {
-      throw new Error(
-        'The backend is taking longer than expected to start. See the ' +
-          'logs for details.',
-      );
+    if (!noticeShown && Date.now() - start > BACKEND_SLOW_NOTICE_MS) {
+      noticeShown = true;
+      await loadHtml(stillWorkingHtml());
     }
     await delay(1000);
   }
@@ -634,6 +654,33 @@ function splashHtml(): string {
   return shellPage(
     `<div class="spinner"></div><h1>Starting AddaxAI…</h1>` +
       `<p class="msg">${msg}</p>`,
+  );
+}
+
+/**
+ * Shown when the backend is alive but has been quiet for a while.
+ *
+ * Deliberately not an error: nothing has failed, it is just slow, and
+ * the most likely reason is a migration on a large library. Just as
+ * deliberately it offers no Retry, because retrying here starts a
+ * second backend on a database the first one is still migrating. Quit
+ * is the only way out, and that is enough.
+ *
+ * The wording claims no more than we know. Without a progress channel
+ * we cannot say a migration is running, only that startup is slow.
+ */
+function stillWorkingHtml(): string {
+  const logsArg = JSON.stringify(LOGS_DIR).replace(/"/g, '&quot;');
+  return shellPage(
+    `<div class="spinner"></div><h1>Still working…</h1>` +
+      `<p class="msg">AddaxAI is taking longer than usual to start. If you ` +
+      `have a large library, upgrading the database can take several ` +
+      `minutes.</p>` +
+      `<p class="msg">You can leave this running.</p>` +
+      `<div class="actions">` +
+      `<button onclick="window.electronAPI.openPath(${logsArg})">Open logs folder</button>` +
+      `<button onclick="window.electronAPI.quitApp()">Quit</button>` +
+      `</div>`,
   );
 }
 
