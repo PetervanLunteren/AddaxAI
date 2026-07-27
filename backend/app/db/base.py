@@ -114,32 +114,36 @@ def get_db() -> Generator[Session, None, None]:
 
 def init_db() -> None:
     """
-    Initialize the database via Alembic migrations.
+    Bring the database up to date, or refuse to start.
 
-    The reconciliation is fingerprint-based: introspect the live
-    schema, decide which revision it actually matches, stamp that
-    revision if `alembic_version` disagrees, then run upgrade_to_head
-    to apply any pending migrations. Three cases collapse into one
-    code path:
+    `alembic_version` is ground truth. We never guess which revision the
+    schema is at and never re-stamp backwards to replay migrations: that
+    replay re-ran one-time data migrations over already-migrated data
+    and destroyed user verifications on 2026-05-27.
 
-    - Fresh install: `reconcile_alembic_version` sees no user tables,
-      returns None, leaves `alembic_version` empty. `upgrade_to_head`
-      runs every migration from base.
-    - Legacy DB without `alembic_version`: stamps at the detected
-      revision. `upgrade_to_head` applies anything newer.
-    - Existing DB with a stored revision that disagrees with the
-      live schema (e.g. a historical stamp_head bug, a half-applied
-      migration on power loss, a hand-restored backup): re-stamps at
-      the detected revision and logs a WARNING. `upgrade_to_head`
-      then applies the migrations the recorded revision skipped.
+    Four steps:
 
-    Crashes if migrations fail. Schema integrity is non-negotiable;
-    the rest of the app assumes the model and the DB agree.
+    1. `ensure_upgradable` refuses a database alembic cannot be trusted
+       to migrate (an early beta with no version row, an ambiguous
+       version table).
+    2. `alembic upgrade head` applies whatever is pending. On a fresh
+       install that builds the whole schema from base.
+    3. `schema_problems` checks the result against the models. Anything
+       missing means the stamp lied, so we stop rather than guess.
+    4. Seed builtin labels and refresh planner statistics.
+
+    Raises `SchemaError` (message written for the end user) when the
+    database cannot be used, and `RuntimeError` for anything else.
+    Schema integrity is non-negotiable; the rest of the app assumes the
+    models and the database agree.
     """
     import app.models  # noqa: F401  # populates Base.metadata
     from app.db.migrations import (
+        SchemaError,
+        ensure_upgradable,
         get_head_revision,
-        reconcile_alembic_version,
+        schema_mismatch_message,
+        schema_problems,
         upgrade_to_head,
     )
 
@@ -151,16 +155,28 @@ def init_db() -> None:
         # init_db crashes later with a confusing "no such table" error.
         get_head_revision()
 
-        reconcile_alembic_version(engine)
+        ensure_upgradable(engine)
 
         logger.info("Running alembic upgrade head")
         upgrade_to_head()
+
+        problems = schema_problems(engine)
+        if problems:
+            logger.critical(
+                "Schema does not match the models after upgrading: "
+                + "; ".join(problems)
+            )
+            raise SchemaError(schema_mismatch_message(problems))
 
         _seed_builtin_labels()
         with engine.connect() as conn:
             conn.execute(text("ANALYZE"))
             conn.commit()
         logger.info("Database initialized")
+    except SchemaError:
+        # Already carries a message written for the user. Wrapping it
+        # would bury that under a developer-facing prefix.
+        raise
     except Exception as e:
         logger.critical(f"Failed to initialize database: {e}", exc_info=True)
         raise RuntimeError(f"Failed to initialize database: {e}") from e

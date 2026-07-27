@@ -30,9 +30,18 @@ from app.db.backup import (
 
 
 def _make_sqlite(path: Path) -> None:
-    """Create a tiny but valid SQLite database at `path`."""
+    """Create a tiny but valid AddaxAI-shaped SQLite database at `path`.
+
+    `alembic_version` is part of "valid": `validate_backup` requires it,
+    because a database without one predates the 2026-05-08 alembic
+    wiring and `init_db` would refuse it on the next launch. Restoring
+    such a file would drop the user straight back on the startup error
+    page with no idea the file they picked was the problem.
+    """
     conn = sqlite3.connect(str(path))
     try:
+        conn.execute("CREATE TABLE alembic_version (version_num VARCHAR(32))")
+        conn.execute("INSERT INTO alembic_version VALUES ('3c4d5e6f7a8b')")
         conn.execute("CREATE TABLE t (x INTEGER)")
         conn.execute("INSERT INTO t (x) VALUES (1)")
         conn.commit()
@@ -194,8 +203,35 @@ def test_pre_upgrade_backup_writes_classified_file(tmp_settings: Settings) -> No
 
 def test_pre_upgrade_backup_handles_unknown_rev(tmp_settings: Settings) -> None:
     path = pre_upgrade_backup(tmp_settings, rev=None)
+    assert path is not None
     assert _classify(path.name) == "pre-upgrade"
     assert "pre-upgrade-unknown" in path.name
+
+
+def test_pre_upgrade_backup_skips_a_revision_it_already_has(
+    tmp_settings: Settings,
+) -> None:
+    """One snapshot per revision, however many times we launch.
+
+    A second copy of the same unmigrated database is worth nothing and
+    costs a full DB copy. Without this, repeated launches at the same
+    revision (a `uvicorn --reload` storm, or a user clicking Retry on
+    the startup error page) push the real pre-upgrade snapshot out of
+    the ring buffer with identical duplicates, and that is the one
+    snapshot that matters on the day a migration eats data.
+    """
+    first = pre_upgrade_backup(tmp_settings, rev="9c173fff3bcd")
+    assert first is not None
+
+    assert pre_upgrade_backup(tmp_settings, rev="9c173fff3bcd") is None
+
+    backups = list((tmp_settings.user_data_dir / "backups").glob("*.db"))
+    assert [p.name for p in backups] == [first.name]
+
+    # A different revision is a different moment in the database's life,
+    # so it still gets its own snapshot.
+    second = pre_upgrade_backup(tmp_settings, rev="2540e6edbee2")
+    assert second is not None and second.name != first.name
 
 
 # ── list_ring_buffer ─────────────────────────────────────────────────
@@ -238,6 +274,7 @@ def test_list_ring_buffer_ignores_unrelated_files(tmp_settings: Settings) -> Non
 def test_restore_db_swaps_and_creates_safety_snapshot(tmp_settings: Settings) -> None:
     # Build a "different" source DB so we can verify the swap happened.
     other = tmp_settings.user_data_dir / "other.db"
+    _make_sqlite(other)
     conn = sqlite3.connect(str(other))
     try:
         conn.execute("CREATE TABLE marker (note TEXT)")
@@ -298,6 +335,7 @@ def test_consume_restore_marker_no_op_when_absent(tmp_settings: Settings) -> Non
 def test_consume_restore_marker_swaps_db_and_consumes(tmp_settings: Settings) -> None:
     # Build a "different" source DB
     other = tmp_settings.user_data_dir / "other.db"
+    _make_sqlite(other)
     conn = sqlite3.connect(str(other))
     try:
         conn.execute("CREATE TABLE marker (note TEXT)")

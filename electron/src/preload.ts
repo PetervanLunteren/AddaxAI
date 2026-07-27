@@ -32,8 +32,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openFile: async (opts?: {
     title?: string;
     filters?: { name: string; extensions: string[] }[];
+    defaultPath?: string;
   }): Promise<string | null> => {
     return await ipcRenderer.invoke('dialog:openFile', opts);
+  },
+
+  /**
+   * Pick a backup and schedule it as the next-launch restore, then
+   * relaunch. Only used by the startup error page: when the backend
+   * refuses a database the in-app restore dialog never loads, so this
+   * is the way back. The backend validates the file when it consumes
+   * the marker on the next launch.
+   */
+  restoreDatabase: async (): Promise<void> => {
+    return await ipcRenderer.invoke('db:restore');
+  },
+
+  /**
+   * Schedule the database for deletion on the next launch, then
+   * relaunch. The confirm dialog is native because the app's own
+   * type-RESET dialog is part of the frontend, which is not running
+   * when this is needed. The backend snapshots the database before it
+   * deletes it.
+   */
+  resetDatabase: async (): Promise<void> => {
+    return await ipcRenderer.invoke('db:reset');
   },
 
   /**

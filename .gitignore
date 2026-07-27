@@ -64,6 +64,8 @@ frontend/build/
 # Electron
 electron/dist/
 electron/dist-build/
+electron/test-results/
+electron/playwright-report/
 
 # Logs
 *.log

@@ -23,12 +23,19 @@ def live_db(tmp_path: Path):
     The conftest's `client` fixture uses an in-memory engine; backup
     endpoints read the on-disk file, so we build one here. The backups
     directory is wiped between tests so each test starts clean.
+
+    It carries an `alembic_version` row because `validate_backup`
+    requires one: a database without it predates the 2026-05-08 alembic
+    wiring and `init_db` refuses it, so restoring one would only send
+    the user back to the startup error page.
     """
     settings = get_settings()
     live = settings.user_data_dir / "addaxai.db"
 
     conn = sqlite3.connect(str(live))
     try:
+        conn.execute("CREATE TABLE alembic_version (version_num VARCHAR(32))")
+        conn.execute("INSERT INTO alembic_version VALUES ('3c4d5e6f7a8b')")
         conn.execute("CREATE TABLE marker (note TEXT)")
         conn.execute("INSERT INTO marker (note) VALUES ('live-db')")
         conn.commit()

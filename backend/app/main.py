@@ -40,7 +40,9 @@ from app.api.routers import (
 from app.core.config import get_settings
 from app.core.logging_config import get_logger, setup_logging
 from app.core.ssl_trust import enable_os_trust_store
+from app.core.startup_error import GENERIC_STARTUP_FAILURE, write_startup_error
 from app.db.base import init_db
+from app.db.migrations import SchemaError
 from app.ml.catalog_updater import ModelCatalogUpdater
 
 # Initialize logging first, before anything else
@@ -356,7 +358,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # launches.
     db_wipe_marker = settings.user_data_dir / ".wipe-db-on-next-launch"
     if db_wipe_marker.exists():
-        logger.warning("DB wipe marker present — deleting addaxai.db files")
+        logger.warning("DB wipe marker present, deleting addaxai.db files")
+        # Snapshot first so the wipe stays undoable. This marker used to
+        # be reachable only by typing RESET in the Settings dialog, but
+        # the startup error page can now write it behind a native
+        # confirm, which is a lighter gate on an irreversible action.
+        # A manual-tagged snapshot is never auto-pruned and shows up in
+        # the restore picker, so the user can walk it back.
+        from app.db.backup import manual_snapshot
+        try:
+            if (settings.user_data_dir / "addaxai.db").is_file():
+                snapshot = manual_snapshot(settings)
+                logger.warning(f"Backed up before wipe: {snapshot}")
+        except Exception as e:
+            logger.error(f"Pre-wipe backup failed: {e}", exc_info=True)
         for sibling in (
             "addaxai.db",
             "addaxai.db-wal",
@@ -393,12 +408,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as e:
             logger.error(f"Pre-upgrade backup failed: {e}", exc_info=True)
 
-    # Initialize database - will crash if it fails
+    # Initialize database - will crash if it fails.
+    #
+    # The process exits before the API or the frontend exist, so the
+    # only way to tell the user what went wrong is the startup error
+    # file, which the Electron error page reads once the backend dies.
+    # A SchemaError already carries wording written for them; anything
+    # else gets the generic message and leaves the detail in the log.
     try:
         init_db()
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.critical(f"Failed to initialize database: {e}", exc_info=True)
+        write_startup_error(
+            settings,
+            str(e) if isinstance(e, SchemaError) else GENERIC_STARTUP_FAILURE,
+        )
         raise
 
     # Fail jobs left `running` by a previous process. Analysis runs in an

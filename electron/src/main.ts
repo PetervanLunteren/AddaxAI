@@ -20,9 +20,28 @@ let backendProcess: ChildProcess | null = null;
 // startup death instead of waiting out the timer.
 let backendSpawnError: Error | null = null;
 let lastBackendExit: { code: number | null; signal: string | null } | null = null;
-const BACKEND_PORT = 8000;
+// Overridable so the app can be launched against a throwaway user data
+// dir without fighting a dev instance for the port. `spawnBackend`
+// passes the same value to the backend as API_PORT, so the two agree in
+// both dev and packaged builds from this one setting.
+const BACKEND_PORT = Number(process.env.ADDAXAI_BACKEND_PORT) || 8000;
 const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
-const LOGS_DIR = path.join(os.homedir(), 'AddaxAI', 'logs');
+
+/**
+ * The user data directory, resolved the same way the backend resolves
+ * it (`USER_DATA_DIR`, falling back to `~/AddaxAI`). Every path below
+ * derives from this.
+ *
+ * The two processes have to agree: they communicate through files in
+ * here (the crash sentinels, the startup error, the restore and wipe
+ * markers). Hardcoding `~/AddaxAI` on this side meant an override sent
+ * the backend somewhere else and the markers landed where nothing read
+ * them, which is also what made the app impossible to run end to end
+ * against a throwaway database.
+ */
+const USER_DATA_DIR =
+  process.env.USER_DATA_DIR || path.join(os.homedir(), 'AddaxAI');
+const LOGS_DIR = path.join(USER_DATA_DIR, 'logs');
 
 /**
  * Parse `--timelapse <folder>` out of process.argv.
@@ -62,7 +81,7 @@ function folderRunRouteForPath(folder: string): string {
 // minidump to disk at the cross-platform location below; the user can
 // attach it to a support bundle. submitURL is required by the API but
 // uploadToServer:false guarantees we never send it anywhere.
-const CRASH_DUMP_DIR = path.join(os.homedir(), 'AddaxAI', 'crash-dumps');
+const CRASH_DUMP_DIR = path.join(USER_DATA_DIR, 'crash-dumps');
 try {
   fs.mkdirSync(CRASH_DUMP_DIR, { recursive: true });
   app.setPath('crashDumps', CRASH_DUMP_DIR);
@@ -132,8 +151,23 @@ app.on('second-instance', (_event, argv) => {
 //                            detected; without the snapshot, backend
 //                            calls during the same session would always
 //                            see "no sentinel" and report a false crash.
-const SHUTDOWN_SENTINEL = path.join(os.homedir(), 'AddaxAI', '.last-shutdown-clean');
-const LAUNCH_STATUS = path.join(os.homedir(), 'AddaxAI', '.last-launch-status.json');
+const SHUTDOWN_SENTINEL = path.join(USER_DATA_DIR, '.last-shutdown-clean');
+const LAUNCH_STATUS = path.join(USER_DATA_DIR, '.last-launch-status.json');
+
+// Written by the backend when it refuses to start (see
+// app/core/startup_error.py), read here once the process has died. The
+// backend exits before the API or the frontend exist, so this file is
+// the only way a startup refusal can reach the user. Deleted just
+// before every spawn, so whatever is here belongs to this launch.
+const STARTUP_ERROR_FILE = path.join(USER_DATA_DIR, '.startup-error.txt');
+const BACKUPS_DIR = path.join(USER_DATA_DIR, 'backups');
+
+// Markers the backend lifespan consumes on the next launch. Writing them
+// here is what lets the error page offer a way out while the backend is
+// down: both are plain files, and the backend validates and self-cleans
+// when it consumes them.
+const RESTORE_MARKER = path.join(USER_DATA_DIR, '.restore-on-next-launch');
+const DB_WIPE_MARKER = path.join(USER_DATA_DIR, '.wipe-db-on-next-launch');
 
 // Is this the first launch on this machine (fresh install or post-reset)?
 // Set by snapshotPreviousShutdown from the same LAUNCH_STATUS probe that
@@ -372,6 +406,16 @@ function spawnBackend(): void {
   backendSpawnError = null;
   lastBackendExit = null;
 
+  // Clear any reason left by a previous launch. The backend only writes
+  // this file on its way out, so deleting it here is what guarantees a
+  // message we later read belongs to the launch we are starting now,
+  // and it saves the backend from having to clear it on success.
+  try {
+    fs.unlinkSync(STARTUP_ERROR_FILE);
+  } catch {
+    /* absent is the normal case */
+  }
+
   const { executable, cwd, args, isDev } = resolveBackendCommand();
   console.log(
     `[Electron] Starting backend (${isDev ? 'development' : 'production'}):`,
@@ -383,6 +427,10 @@ function spawnBackend(): void {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env,
+      // The packaged backend binds the port itself from this setting;
+      // the dev command gets it as a --port arg. Passing it either way
+      // keeps one source of truth for which port we are talking to.
+      API_PORT: String(BACKEND_PORT),
       ...(isDev ? { PYTHONPATH: cwd } : {}),
     },
   });
@@ -539,14 +587,24 @@ function shellPage(bodyHtml: string): string {
     :root { color-scheme: light dark; }
     html, body { height: 100%; margin: 0; }
     body {
-      display: flex; align-items: center; justify-content: center;
+      /* "safe center" centres while the content fits and falls back to
+         top alignment when it does not. Plain centring would push the
+         start of a tall message off the top edge, out of reach even
+         with overflow set. */
+      display: flex; align-items: safe center; justify-content: center;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
       background: #0f6064; color: #ffffff; text-align: center; padding: 2rem;
+      overflow: auto;
     }
-    .box { max-width: 30rem; }
+    .box { max-width: 32rem; }
     h1 { font-size: 1.25rem; font-weight: 600; margin: 0 0 0.75rem; }
     p { margin: 0.5rem 0; line-height: 1.5; opacity: 0.92; }
     .msg { opacity: 0.85; font-size: 0.9rem; }
+    /* The backend's refusal is multi-line: a sentence, an indented list
+       of what is missing, then what to do about it. Without pre-wrap it
+       collapses into one run-on paragraph. Left-aligned so the list
+       reads as a list; the splash's .msg stays centred. */
+    .reason { white-space: pre-wrap; text-align: left; }
     .path { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.8rem; opacity: 0.8; }
     .spinner {
       width: 2.25rem; height: 2.25rem; margin: 0 auto 1rem;
@@ -579,7 +637,17 @@ function splashHtml(): string {
   );
 }
 
-function errorHtml(message: string): string {
+/**
+ * The startup error page.
+ *
+ * `recoverable` adds the two database recovery buttons. It is set only
+ * when the backend died and left a reason behind, which is the case
+ * where the database itself is the problem. A backend that is merely
+ * slow, or that died before it could say why, gets the plain page:
+ * offering to delete a database over a message we cannot explain would
+ * be the wrong thing to encourage.
+ */
+function errorHtml(message: string, recoverable: boolean): string {
   // Escape the backend message for safe HTML interpolation.
   const safe = message
     .replace(/&/g, '&amp;')
@@ -590,11 +658,15 @@ function errorHtml(message: string): string {
   // &quot; back to " when parsing the attribute value.
   const logsArg = JSON.stringify(LOGS_DIR).replace(/"/g, '&quot;');
   const pathText = LOGS_DIR.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const recovery = recoverable
+    ? `<button onclick="window.electronAPI.restoreDatabase()">Restore from backup…</button>` +
+      `<button onclick="window.electronAPI.resetDatabase()">Delete database and start fresh…</button>`
+    : '';
   return shellPage(
     `<h1>AddaxAI could not start</h1>` +
-      `<p class="msg">${safe}</p>` +
+      `<p class="msg reason">${safe}</p>` +
       `<p class="path">${pathText}</p>` +
-      `<div class="actions">` +
+      `<div class="actions">${recovery}` +
       `<button onclick="window.electronAPI.openPath(${logsArg})">Open logs folder</button>` +
       `<button onclick="window.electronAPI.retryBackend()">Retry</button>` +
       `<button onclick="window.electronAPI.quitApp()">Quit</button>` +
@@ -702,8 +774,11 @@ async function loadApp(route = ''): Promise<void> {
  * Replace the splash with an error page explaining why the backend did
  * not come up, with buttons to open the logs, retry, or quit.
  */
-async function showErrorPage(message: string): Promise<void> {
-  await loadHtml(errorHtml(message));
+async function showErrorPage(
+  message: string,
+  recoverable = false,
+): Promise<void> {
+  await loadHtml(errorHtml(message, recoverable));
   if (mainWindow && !mainWindow.isVisible()) {
     mainWindow.show();
     mainWindow.focus();
@@ -711,18 +786,47 @@ async function showErrorPage(message: string): Promise<void> {
 }
 
 /**
+ * Read the reason the backend refused to start, if it left one.
+ *
+ * Only meaningful once the process is gone: the file is written on the
+ * way out. A backend that is still alive but slow has not written it
+ * yet, and reading it then would show a stale-looking blank.
+ */
+function readStartupError(): string | null {
+  if (backendProcess) return null;
+  try {
+    const text = fs.readFileSync(STARTUP_ERROR_FILE, 'utf8').trim();
+    return text || null;
+  } catch {
+    return null;
+  }
+}
+
+// One startup attempt at a time. The error page's buttons are inline
+// onclicks with no debounce of their own, and two fast clicks would
+// otherwise race two backends against the same SQLite file.
+let startupInFlight = false;
+
+/**
  * Bring the backend up and load the app, showing the error page on any
  * failure instead of quitting. Used by the initial launch and the error
  * page's Retry button.
  */
 async function startBackendAndLoad(route = ''): Promise<void> {
+  if (startupInFlight) return;
+  startupInFlight = true;
   try {
     await ensureBackend();
     await loadApp(route);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error('[Electron] Startup failed:', message);
-    await showErrorPage(message);
+    // The backend's own explanation beats "exit code 3" whenever it
+    // managed to leave one.
+    const reason = readStartupError();
+    await showErrorPage(reason ?? message, reason !== null);
+  } finally {
+    startupInFlight = false;
   }
 }
 
@@ -959,13 +1063,18 @@ ipcMain.handle(
   'dialog:openFile',
   async (
     event,
-    opts?: { title?: string; filters?: Electron.FileFilter[] },
+    opts?: {
+      title?: string;
+      filters?: Electron.FileFilter[];
+      defaultPath?: string;
+    },
   ) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const options: Electron.OpenDialogOptions = {
       properties: ['openFile'],
       title: opts?.title ?? 'Select file',
       filters: opts?.filters,
+      defaultPath: opts?.defaultPath,
     };
     const result = win
       ? await dialog.showOpenDialog(win, options)
@@ -1012,6 +1121,71 @@ ipcMain.handle('app:relaunch', async () => {
 // if it still fails.
 ipcMain.handle('app:retryBackend', async () => {
   await startBackendAndLoad();
+});
+
+// ── Database recovery from the startup error page ────────────────────
+//
+// When the backend refuses a database, the API and the frontend never
+// come up, so the in-app Restore and Reset dialogs are unreachable: the
+// menu routes those through the renderer's <MenuCommands>, which is not
+// mounted on the error page. These two handlers are the way out, and
+// they add no new recovery machinery. Both write a marker file that the
+// backend lifespan already consumes on the next launch, and the backend
+// validates the restore source when it consumes it (rejecting and
+// self-cleaning on a bad file), so nothing here has to open SQLite.
+
+ipcMain.handle('db:restore', async (event) => {
+  if (startupInFlight) return;
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const options: Electron.OpenDialogOptions = {
+    properties: ['openFile'],
+    title: 'Choose a backup to restore',
+    // The app's own snapshots live here and are the files most likely
+    // to work, so start the picker where they are.
+    defaultPath: BACKUPS_DIR,
+    filters: [{ name: 'AddaxAI database', extensions: ['db'] }],
+  };
+  const result = win
+    ? await dialog.showOpenDialog(win, options)
+    : await dialog.showOpenDialog(options);
+  const source = result.canceled ? null : result.filePaths[0];
+  if (!source) return;
+
+  fs.mkdirSync(path.dirname(RESTORE_MARKER), { recursive: true });
+  fs.writeFileSync(RESTORE_MARKER, source, 'utf8');
+  console.log('[Electron] Restore scheduled from', source);
+  app.relaunch();
+  await gracefulShutdown();
+  app.exit(0);
+});
+
+ipcMain.handle('db:reset', async (event) => {
+  if (startupInFlight) return;
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const options: Electron.MessageBoxOptions = {
+    type: 'warning',
+    buttons: ['Cancel', 'Delete database'],
+    defaultId: 0,
+    cancelId: 0,
+    title: 'Delete database and start fresh',
+    message: 'Delete the AddaxAI database?',
+    detail:
+      'Your projects, deployments and verifications are stored in this ' +
+      'database and will be gone. Images and videos on disk are not ' +
+      'touched.\n\nA copy is saved to the backups folder first, so this ' +
+      'can still be undone.',
+  };
+  const { response } = win
+    ? await dialog.showMessageBox(win, options)
+    : await dialog.showMessageBox(options);
+  if (response !== 1) return;
+
+  fs.mkdirSync(path.dirname(DB_WIPE_MARKER), { recursive: true });
+  fs.writeFileSync(DB_WIPE_MARKER, new Date().toISOString(), 'utf8');
+  console.log('[Electron] Database wipe scheduled');
+  app.relaunch();
+  await gracefulShutdown();
+  app.exit(0);
 });
 
 // Return the runtime app version (e.g. "0.2.0-beta.1"). The version is

@@ -322,8 +322,8 @@
       },
       {
         "model_id": "AHDRIFT-v1",
-        "friendly_name": "Ohio (drift fences)",
-        "emoji": "🐍",
+        "friendly_name": "Midwest US (drift fences)",
+        "emoji": "🇺🇸",
         "env": "pytorch",
         "model_fname": "final-20251223.pt",
         "hf_repo": "Addax-Data-Science/AHDRIFT-v1",

@@ -187,14 +187,17 @@ def _collect_models_inventory(user_data_dir: Path) -> dict[str, object]:
 
 
 def _collect_db_info() -> dict[str, object]:
-    """Alembic head and per-table row counts. No row contents.
+    """Alembic revision, schema check and per-table row counts. No row contents.
 
-    Packaged builds bootstrap the schema via ``Base.metadata.create_all``
-    in ``init_db()`` and never run alembic, so ``alembic_version`` does
-    not exist there. Only dev installs that ran ``alembic upgrade head``
-    have it. Treat that as expected, not as an error: the alembic head
-    is best-effort and must not cause the table inventory to be
-    skipped.
+    Every build runs alembic at startup, so ``alembic_version`` should
+    always be present; its absence means the database predates the
+    2026-05-08 wiring and ``init_db`` would have refused it. Read it
+    best-effort so a surprise there cannot skip the table inventory.
+
+    ``schema_problems`` is the same check ``init_db`` refuses on, so a
+    non-empty list here is a database that will not open on the next
+    launch. It is in the report to answer "is anyone actually drifting?"
+    from real user data rather than from guesswork.
     """
     info: dict[str, object] = {}
     try:
@@ -235,6 +238,14 @@ def _collect_db_info() -> dict[str, object]:
             info["tables"] = tables
         finally:
             db.close()
+
+        try:
+            from app.db.base import get_engine
+            from app.db.migrations import schema_problems
+
+            info["schema_problems"] = schema_problems(get_engine())
+        except Exception as e:
+            info["schema_problems"] = f"error: {e}"
     except Exception as e:
         info["error"] = str(e)
     return info
@@ -289,7 +300,7 @@ def _build_diagnostic_zip() -> bytes:
                 "  - system.json           OS, Python, disk usage\n"
                 "  - env-status.json       installed conda envs and their validity\n"
                 "  - models.json           installed model directories and manifests\n"
-                "  - db-info.json          alembic schema version and per-table row counts\n"
+                "  - db-info.json          schema version, schema check, per-table row counts\n"
                 "  - recent-jobs.json      last 50 jobs with status + error fields\n"
                 "  - crash-sentinel.json   whether previous app shutdown was clean\n"
                 "  - crash-dumps/          Electron / Chromium minidumps from native\n"

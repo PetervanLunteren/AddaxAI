@@ -14,16 +14,19 @@
     "dev": "tsc && electron .",
     "build": "tsc",
     "start": "electron .",
-    "package": "electron-builder"
+    "package": "electron-builder",
+    "test:e2e": "tsc && playwright test"
   },
   "dependencies": {
     "electron-store": "^8.1.0"
   },
   "devDependencies": {
     "@electron/notarize": "^2.2.1",
+    "@playwright/test": "^1.62.0",
     "@types/node": "^20.10.0",
     "electron": "^34.0.0",
     "electron-builder": "^25.1.8",
+    "playwright": "^1.62.0",
     "typescript": "^5.3.3"
   },
   "build": {
@@ -46,7 +49,9 @@
     ],
     "mac": {
       "category": "public.app-category.education",
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "artifactName": "${productName}-${arch}.${ext}",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
@@ -70,11 +75,15 @@
       ]
     },
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "artifactName": "${productName}-Setup.${ext}",
       "signtoolOptions": {
         "publisherName": "Addax Data Science",
-        "signingHashAlgorithms": ["sha256"],
+        "signingHashAlgorithms": [
+          "sha256"
+        ],
         "rfc3161TimeStampServer": "http://timestamp.digicert.com"
       }
     },
@@ -84,7 +93,9 @@
       "include": "build/installer.nsh"
     },
     "linux": {
-      "target": ["deb"],
+      "target": [
+        "deb"
+      ],
       "icon": "build/icons",
       "artifactName": "${productName}-${arch}.${ext}",
       "category": "Science",

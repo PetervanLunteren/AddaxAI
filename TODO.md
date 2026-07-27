@@ -4,7 +4,6 @@
 - [ ] Beta report about the loading page on deletion of re analysis of folder run.  Read email thread below. This is an beta tester that has some issues with rerunning a folder run. It looks like its stuck. Its probabaly deleting the pold DB rows, but that shoudnt take up so much time, right? So please first investigate what the issue is, and then propose a fix. 
 
 ## Priority 2
-- [ ] MIGRATION RECONCILIATION REDESIGN - do this before the next data migration lands. The startup code does not trust `alembic_version`; it guesses the revision from a hand-maintained fingerprint table and, when the guess disagrees, re-stamps backwards and replays the chain. The chain contains destructive data migrations (`UPDATE event_observations SET human_count = max_n`, `DELETE FROM detections WHERE bbox_x IS NULL`), so that replay overwrites verification work. It already destroyed user data once (2026-05-27). Full problem statement, sources and proposed design in `future-plans/migration-reconciliation-redesign.md`. Needs its own session.
 - [ ]  
 
 ## Priority 3
@@ -53,4 +52,5 @@
 
 ### DOCS
 - [ ] Add something about how to install older versions. 
-- [ ] Make sure the FAQ answers these questions: (1) Are the models/ codes acceptable for commercial use for an environmental consultancy? (2) Will there be any training on our data? (3) They want to know if WSP can retain ownership of our own IP
+- [ ] Make sure the FAQ answers these questions: (1) Are the models/ codes acceptable for commercial use for an environmental consultancy? (2) Will there be any training on our data? 
+- [ ] FUll guide for Timelapse integration. 

@@ -91,8 +91,15 @@ def snapshot_db(src: Path, dst: Path) -> None:
 def validate_backup(path: Path) -> None:
     """Validate a candidate backup file. Raises `BackupInvalidError` if invalid.
 
-    Checks: file exists, has at least the SQLite header (100 bytes), and
-    `PRAGMA integrity_check` returns `ok`.
+    Checks: file exists, has at least the SQLite header (100 bytes),
+    `PRAGMA integrity_check` returns `ok`, and it carries an
+    `alembic_version` row.
+
+    The version-row check is what stops a restore turning into a loop.
+    A database with no `alembic_version` predates 2026-05-08 and
+    `init_db` refuses it, so without this check the user would restore
+    it happily and then meet the same startup error with no clue that
+    the file they picked was the problem.
     """
     if not path.is_file():
         raise BackupInvalidError(f"Not a file: {path}")
@@ -105,6 +112,22 @@ def validate_backup(path: Path) -> None:
             row = conn.execute("PRAGMA integrity_check").fetchone()
         except sqlite3.DatabaseError as e:
             raise BackupInvalidError(f"Not a valid SQLite database: {e}") from e
+
+        if row is not None and row[0] == "ok":
+            try:
+                versions = conn.execute(
+                    "SELECT version_num FROM alembic_version"
+                ).fetchall()
+            except sqlite3.DatabaseError as e:
+                raise BackupInvalidError(
+                    "This file is not an AddaxAI database, or it is from an "
+                    "early beta that this version cannot open."
+                ) from e
+            if len(versions) != 1:
+                raise BackupInvalidError(
+                    f"Expected one schema version in the backup, found "
+                    f"{len(versions)}."
+                )
     finally:
         conn.close()
 
@@ -174,17 +197,33 @@ def pre_restore_snapshot(settings: Settings) -> Path:
     return dst
 
 
-def pre_upgrade_backup(settings: Settings, rev: str | None) -> Path:
+def pre_upgrade_backup(settings: Settings, rev: str | None) -> Path | None:
     """Snapshot the live DB to a pre-upgrade-tagged file.
 
+    Returns `None` when a snapshot for `rev` already exists, because a
+    second copy of the same unmigrated database is worth nothing and
+    costs a full DB copy. Without that, repeated launches at the same
+    revision (a `uvicorn --reload` storm in dev, or a user clicking
+    Retry on the startup error page) push the real pre-upgrade snapshot
+    out of the ring buffer with identical duplicates. That is the one
+    snapshot that matters on the day a migration eats data.
+
     Rolls: keeps the newest `BACKUP_KEEP`. Older pre-upgrade snapshots
-    span schema versions you can't roll back across anyway (the app
-    refuses pre-floor DBs), and each is a full DB copy, so unbounded
-    accumulation is just wasted disk.
+    span schema versions you can't roll back across anyway, and each is
+    a full DB copy, so unbounded accumulation is just wasted disk.
     """
     src = _live_db_path(settings)
     backups_dir = _backups_dir(settings)
     dst = backups_dir / _pre_upgrade_filename(rev, _backup_timestamp())
+
+    tag = _PRE_UPGRADE_RE.match(dst.name).group(1)  # type: ignore[union-attr]
+    if any(
+        (m := _PRE_UPGRADE_RE.match(p.name)) and m.group(1) == tag
+        for p in backups_dir.glob("addaxai-pre-upgrade-*.db")
+    ):
+        logger.info(f"Pre-upgrade backup for {tag} already exists, skipping")
+        return None
+
     snapshot_db(src, dst)
     _prune_kind(backups_dir, _PRE_UPGRADE_RE, keep=BACKUP_KEEP)
     logger.info(f"Wrote pre-upgrade backup: {dst.name}")

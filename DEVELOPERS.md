@@ -63,23 +63,28 @@ PYTHONPATH=. alembic revision --autogenerate -m "short description"
 
 Review the generated file before committing. Autogenerate is helpful but imperfect: it misses index renames, check constraints, and server-default changes. Edit the upgrade/downgrade bodies if needed.
 
-**Shipped migrations are immutable.** Once a migration has shipped, never edit it or change the schema it created. Make a new migration instead. This is the one rule Alembic depends on: `upgrade head` is only reliable when every DB started at a known revision and ran the official chain forward, in order. Editing a shipped migration (or editing a model without a matching migration) makes the live schema disagree with what the recorded revision claims, and that drift is what caused the repeated startup crashes on beta-tester DBs. `test_upgrade_from_base_matches_models` in `tests/db/test_migrations.py` is the CI guard: it runs the whole chain from base and asserts the result matches `Base.metadata`, so a migration that drifts from the models fails the build.
+**Shipped migrations are immutable.** Once a migration has shipped, never edit it or change the schema it created. Make a new migration instead. This is the one rule Alembic depends on: `upgrade head` is only reliable when every DB started at a known revision and ran the official chain forward, in order. Editing a shipped migration (or editing a model without a matching migration) makes the live schema disagree with what the recorded revision claims, and that drift is what caused the repeated startup crashes on beta-tester DBs. `test_upgrade_from_base_matches_models` in `tests/db/test_migrations.py` is the CI guard: it runs the whole chain from base and asserts `schema_problems()` is empty, so a migration that drifts from the models fails the build.
 
-**The floor.** The initial migration (`9c173fff3bcd`) is the oldest DB shape the app knows how to upgrade. A DB older than that (an early beta from before the alembic wiring) is refused at startup with a reset message rather than crashed through a doomed upgrade; the lifespan has already snapshotted it to `~/AddaxAI/backups/` first. The floor is pinned by that revision's `_Fingerprint` marker column, `files.captured_at_local` (created NOT NULL by the initial migration, only ever made nullable later). If a future migration ever drops or renames that column, move the marker to another column the initial schema guarantees, or `detect_schema_revision` will start refusing healthy DBs.
+**`alembic_version` is ground truth.** The app does not try to work out what revision a schema is "really" at. It runs `alembic upgrade head` and then checks the result against `Base.metadata`. An earlier design did guess, by introspecting marker columns listed in a hand-maintained fingerprint table, and when the guess disagreed with the stamp it re-stamped the DB backwards and replayed the chain. Guessing cannot work in general (drops, renames and data backfills leave no trace), it needed a new bookkeeping row per migration forever, and the replay re-ran one-time data migrations over data that had already moved on. That destroyed user verification work on 2026-05-27. **Never reintroduce automatic replay.** A DB we cannot trust gets handed back to its owner with an error they can act on, not silently rewritten.
 
-**Drift on drop/rename.** For the rare case of a supported-but-inconsistent DB (a stamp that disagrees with the live schema), guard the DDL with a presence check instead of a bare batch op, so re-running the migration can't crash on a missing column. `d4e5f6a7b8c9` is the worked example. Bare `op.batch_alter_table(...).alter_column(...)` throws `KeyError` on SQLite when the reflected table lacks the column, which is exactly the issue #11 crash.
+**Four rules in `init_db()`:**
 
-**Three startup branches handled by `init_db()`:**
+1. Empty DB: `alembic upgrade head` builds the whole schema from base.
+2. User tables but no `alembic_version` row: refused. Alembic has run on every launch since 2026-05-08 (`78dc9d9c`, which replaced `Base.metadata.create_all` plus a hand-rolled column patcher), so such a DB is from an early beta. This is also what catches the issue #11 shape (Arky's Linux install), which used to be stamped at the initial revision and then died mid-chain with `KeyError: 'captured_at_local'`.
+3. A stamped revision that is not on disk, or more than one version row: refused. Alembic raises `CommandError` while resolving the chain, before running anything, and `ensure_upgradable` rejects an ambiguous version table up front rather than letting `get_current_revision` read whichever row SQLite returned first.
+4. After upgrading, `schema_problems()` must be empty. Anything missing means the stamp lied, so we stop.
 
-1. Fresh install (no DB file or empty DB): `alembic upgrade head` creates the schema from scratch.
-2. Versioned DB (`alembic_version` table present): `alembic upgrade head` is a no-op when current matches head, applies pending migrations otherwise.
-3. Legacy DB (schema present, no `alembic_version` table): stamped at head. This branch only matters for beta-tester databases that predate the runtime alembic wiring; it's a one-shot upgrade and subsequent launches go through branch 2.
+Every refusal raises `SchemaError`, whose message is written for the end user. The lifespan writes it to `~/AddaxAI/.startup-error.txt` and the Electron error page shows it verbatim with **Restore from backup** and **Delete database and start fresh** buttons, because the backend exits before the API or the frontend exist and the in-app dialogs are unreachable at that moment. Those buttons write the same `.restore-on-next-launch` / `.wipe-db-on-next-launch` markers the in-app flows use, so there is one recovery mechanism, not two. Electron deletes the error file just before every spawn, so a message there always belongs to the current launch.
 
-**Helpers** (in `backend/app/db/migrations.py`): `get_current_revision(engine)`, `get_head_revision()`, `needs_upgrade(engine)`, `stamp_head()`, `upgrade_to_head()`. All alembic imports are local to the function bodies so the module is cheap to import.
+**Migrations must tolerate their own target state.** Recovery no longer replays anything, but a DB whose stamp is legitimately *behind* still runs the chain forward, which is correct and routine: restoring an older backup does exactly that. So guard DDL with a presence check instead of a bare batch op. `d4e5f6a7b8c9` is the worked example. Bare `op.batch_alter_table(...).alter_column(...)` throws `KeyError` on SQLite when the reflected table lacks the column.
+
+**What `schema_problems()` compares.** Alembic's own `compare_metadata`, filtered to the additive operations, plus a hand-rolled walk over foreign key `ON DELETE` actions. One rule: anything the models declare that the DB lacks. That covers missing tables, columns, indexes and named unique constraints. It deliberately ignores the `remove_*` ops (a half-applied `DROP COLUMN` is harmless) and the `modify_*` ops (nullability, column types, server defaults), where SQLite's loose typing makes a false alarm likelier than the skipped migration it would catch, and a false alarm here refuses a healthy user's launch. The foreign key walk exists because `compare_metadata` reports no FK diffs at all, and a lost `ON DELETE CASCADE` is the one way this design can orphan or lose rows (see "Deleting analysis data").
+
+**Helpers** (in `backend/app/db/migrations.py`): `SchemaError`, `ensure_upgradable(engine)`, `schema_problems(engine)`, `get_current_revision(engine)`, `get_head_revision()`, `needs_upgrade(engine)`, `upgrade_to_head()`. All alembic imports are local to the function bodies so the module is cheap to import.
 
 **Dropping a column on SQLite: use raw DDL, not batch mode.** Alembic's `op.batch_alter_table(...) as batch: batch.drop_column(...)` is the textbook pattern but it builds its starting-point table from `target_metadata` (the SQLAlchemy models). When you remove the column from the model in the same commit as the migration (the natural workflow), the metadata no longer has the column and the batch flush dies with `KeyError`. `copy_from=sa.Table(name, sa.MetaData(), autoload_with=op.get_bind())` is the documented escape hatch but does not reliably pick up the column on every live DB. Since SQLite 3.35+ (Python 3.13 ships with 3.51) supports native `ALTER TABLE DROP COLUMN`, just write the DDL directly.
 
-**Always guard column drops with a presence check.** Some beta-tester DBs have ended up in states where the alembic stamp disagrees with the live schema (historical `stamp_head` bug, half-applied migration, hand-edited `alembic_version` row). A blind `DROP COLUMN` on a DB that's stamped past the add-column migration but never actually got the column will crash startup. Skip the DDL when the column isn't there — the end state matches what the migration was trying to achieve:
+**Always guard column drops with a presence check.** A blind `DROP COLUMN` on a DB that is stamped past the add-column migration but never actually got the column will crash startup, and a DB whose stamp is behind replays the chain forward as a matter of routine. Skip the DDL when the column isn't there, since the end state matches what the migration was trying to achieve:
 
 ```python
 import sqlalchemy as sa
@@ -141,13 +146,18 @@ Four kinds of snapshot:
 | Kind | When | Filename pattern | Retention |
 |---|---|---|---|
 | Daily rolling | App startup, throttled to one per UTC date | `addaxai-<utc-iso>.db` | Keep 5 newest |
-| Pre-upgrade | Startup, only when alembic detects a pending upgrade | `addaxai-pre-upgrade-<rev>-<utc-iso>.db` | Never auto-pruned |
-| Manual to ring buffer | User clicks "Back up database" → "Save to backups folder" | `addaxai-<utc-iso>.db` | Counts toward the daily cap |
+| Pre-upgrade | Startup, only when alembic detects a pending upgrade | `addaxai-pre-upgrade-<rev>-<utc-iso>.db` | Keep 5 newest, one per revision |
+| Pre-restore | Right before a restore swaps a backup in | `addaxai-pre-restore-<utc-iso>.db` | Keep 5 newest |
+| Manual | User clicks "Back up database", or the app is about to wipe the DB | `addaxai-manual-<utc-iso>.db` | Never auto-pruned |
 | Manual to chosen folder | User clicks "Back up database" → "Save to chosen folder…" | `addaxai-<utc-iso>.db` in user-picked dir | Untouched by the app |
 
-Pre-upgrade backups are intentionally exempt from pruning because they are the safety net for the day a migration eats data; we want them to survive a string of routine restarts.
+**One pre-upgrade snapshot per revision.** A second copy of the same unmigrated DB is worth nothing and costs a full DB copy, so `pre_upgrade_backup` returns `None` when it already has one for that revision. Without that, repeated launches at the same revision push the real pre-upgrade snapshot out of the ring buffer with identical duplicates, which is exactly the snapshot that matters on the day a migration eats data. Two real ways that happens: a `uvicorn --reload` storm in dev (one observed run left 805 MB of five identical copies), and a user clicking Retry on the startup error page.
 
-**Restore flow.** The frontend posts `/api/backup/restore` with a source path. The backend validates it (`PRAGMA integrity_check`) and writes `~/AddaxAI/.restore-on-next-launch` containing the absolute path. The renderer then asks Electron to quit; the next launch's lifespan calls `consume_restore_marker(settings)` before `init_db()`, which force-snapshots the current live DB to the ring buffer first, then swaps the source file in. The marker is consumed unconditionally even on failure, so a corrupt request can't loop the user through restore-fail-restore-fail forever; the live DB is left untouched on validation failure.
+**Deleting the DB takes a manual snapshot first.** The `.wipe-db-on-next-launch` marker used to be reachable only by typing `RESET` in the Settings dialog. The startup error page can now write it behind a native confirm, which is a lighter gate on an irreversible action, so the lifespan snapshots the DB before it unlinks it. Manual snapshots are never auto-pruned and show up in the restore picker, so the wipe stays undoable.
+
+**Restore flow.** The frontend posts `/api/backup/restore` with a source path. The backend validates it and writes `~/AddaxAI/.restore-on-next-launch` containing the absolute path. The renderer then asks Electron to quit; the next launch's lifespan calls `consume_restore_marker(settings)` before `init_db()`, which force-snapshots the current live DB to the ring buffer first, then swaps the source file in. The marker is consumed unconditionally even on failure, so a corrupt request can't loop the user through restore-fail-restore-fail forever; the live DB is left untouched on validation failure. The Electron startup error page writes the same marker directly, since a refused DB means the API never comes up.
+
+**Validation is `PRAGMA integrity_check` plus an `alembic_version` row.** The version row is not pedantry: a DB without one predates 2026-05-08 and `init_db` refuses it, so accepting it here would restore a file that fails on the very next launch, with nothing telling the user that the file they picked was the problem.
 
 **Key files:**
 
@@ -156,9 +166,11 @@ Pre-upgrade backups are intentionally exempt from pruning because they are the s
 | `backend/app/db/backup.py` | Snapshot / validate / ring-buffer logic, restore-marker helpers |
 | `backend/app/api/routers/backup.py` | `/api/backup/{dir,list,snapshot,restore}` endpoints |
 | `backend/app/main.py` lifespan | Consumes the restore marker, takes daily + pre-upgrade snapshots before `init_db()` |
+| `backend/app/core/startup_error.py` | Writes the refusal the Electron error page reads |
 | `frontend/src/components/diagnostics/BackupNowDialog.tsx` | Manual backup UI (ring buffer or chosen folder) |
 | `frontend/src/components/diagnostics/RestoreBackupDialog.tsx` | Restore UI with type-`RESTORE`-to-confirm gate |
 | `frontend/src/components/layout/AppHamburger.tsx` | Back up / Restore / Open backups folder menu items |
+| `electron/src/main.ts` (`db:restore`, `db:reset`) | The same two actions when the backend will not start |
 
 Pre-init backups in lifespan are best-effort. If `~/AddaxAI/` is read-only or the disk is full, the failed snapshot is logged at error level and startup continues, so the user can at least open the app to see the diagnostic banner and react.
 
@@ -251,6 +263,27 @@ Coverage is collected automatically (`--cov=app` in `pyproject.toml`).
 | `tests/` (root) | Standalone unit tests (scoring, websocket, etc.) |
 
 **Writing tests:** Use the factory helpers in `tests/conftest.py` (`make_project`, `make_site`, `make_deployment`, `make_file`, `make_detection`, `make_event_with_files`) to build test data. Use the `client` fixture for API tests and the `db` fixture for direct DB tests.
+
+### Electron end-to-end tests
+
+`electron/tests/` holds Playwright tests that launch the real app, which spawns the real backend against a real database.
+
+```bash
+cd electron
+nvm use 20
+npm run test:e2e
+```
+
+They exist for the startup error page, which has no unit-testable seam: the backend refuses a database and exits *before* the API or the frontend exist, so the whole recovery path lives in the main process (a file the backend writes, a page rendered from it, two IPC handlers writing marker files the backend consumes next launch). Only running the app proves those line up.
+
+Two settings exist so they can run in isolation, and both are worth knowing about outside tests too:
+
+- `USER_DATA_DIR` is honoured by the Electron side as well as the backend, so the whole app can point at a throwaway directory. Every path in `main.ts` derives from it. It has to: the two processes talk to each other through files in there, so a value they disagree on means markers land where nothing reads them.
+- `ADDAXAI_BACKEND_PORT` moves the backend off 8000. The app kills any AddaxAI backend already holding its port, so without this a test run would kill your dev server.
+
+Native dialogs cannot be driven from Playwright, so `dialog.showOpenDialog` / `showMessageBox` are stubbed via `electronApp.evaluate()`, along with `app.relaunch` (which would otherwise leave a second app running). What is under test is the wiring from button to marker file, not Electron's own APIs.
+
+Note that `npm run build` only typechecks `src/`; Playwright transpiles the specs without typechecking them.
 
 ## Detection threshold and verified override
 

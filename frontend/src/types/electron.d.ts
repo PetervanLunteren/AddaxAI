@@ -13,11 +13,13 @@ export interface ElectronAPI {
   /**
    * Open a single-file picker. `filters` is the standard Electron
    * file-filter shape; the dialog rejects extensions not listed.
-   * Returns the chosen absolute path, or null when the user cancels.
+   * `defaultPath` is where the picker opens. Returns the chosen
+   * absolute path, or null when the user cancels.
    */
   openFile: (opts?: {
     title?: string;
     filters?: { name: string; extensions: string[] }[];
+    defaultPath?: string;
   }) => Promise<string | null>;
   showItemInFolder: (filePath: string) => Promise<void>;
   /**
