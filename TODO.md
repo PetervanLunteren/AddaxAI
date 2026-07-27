@@ -52,5 +52,4 @@
 
 ### DOCS
 - [ ] Add something about how to install older versions. 
-- [ ] Make sure the FAQ answers these questions: (1) Are the models/ codes acceptable for commercial use for an environmental consultancy? (2) Will there be any training on our data? 
 - [ ] FUll guide for Timelapse integration. 
