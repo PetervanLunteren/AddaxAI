@@ -1,11 +1,15 @@
 import type { ReactNode } from "react";
 import styles from "./styles.module.css";
 
-// Download row for the install page. One card per operating system, so the
-// reader picks by platform rather than reading a table.
+// Download UI for the install page.
+// - <DownloadCards /> renders one card per OS (a picker).
+// - <DownloadCards os="windows" /> renders a single button for that OS,
+//   used inside the per-OS install tabs so the download follows the choice.
 
 const RELEASE =
   "https://github.com/PetervanLunteren/AddaxAI/releases/latest/download";
+
+type OsKey = "windows" | "macos" | "linux";
 
 interface Platform {
   name: string;
@@ -32,39 +36,44 @@ const LinuxIcon = (
   </svg>
 );
 
-const PLATFORMS: Platform[] = [
-  {
-    name: "Windows",
-    note: "Windows 10 and 11",
-    file: "AddaxAI-Setup.exe",
-    icon: WindowsIcon,
-  },
-  {
-    name: "macOS",
-    note: "Apple Silicon only",
-    file: "AddaxAI-arm64.dmg",
-    icon: AppleIcon,
-  },
-  {
-    name: "Linux",
-    note: "Debian and Ubuntu",
-    file: "AddaxAI-amd64.deb",
-    icon: LinuxIcon,
-  },
-];
+const PLATFORMS: Record<OsKey, Platform> = {
+  windows: { name: "Windows", note: "Windows 10 and 11", file: "AddaxAI-Setup.exe", icon: WindowsIcon },
+  macos: { name: "macOS", note: "Apple Silicon only", file: "AddaxAI-arm64.dmg", icon: AppleIcon },
+  linux: { name: "Linux", note: "Debian and Ubuntu", file: "AddaxAI-amd64.deb", icon: LinuxIcon },
+};
 
-export default function DownloadCards(): ReactNode {
+const ORDER: OsKey[] = ["windows", "macos", "linux"];
+
+export default function DownloadCards({ os }: { os?: OsKey }): ReactNode {
+  if (os) {
+    const p = PLATFORMS[os];
+    return (
+      <div className={styles.single}>
+        <a className={styles.singleBtn} href={`${RELEASE}/${p.file}`}>
+          <span className={styles.singleIcon}>{p.icon}</span>
+          Download for {p.name}
+        </a>
+        <div className={styles.singleMeta}>
+          {p.note} · <code className={styles.file}>{p.file}</code>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.row}>
-      {PLATFORMS.map((p) => (
-        <a key={p.name} className={styles.card} href={`${RELEASE}/${p.file}`}>
-          <span className={styles.icon}>{p.icon}</span>
-          <span className={styles.name}>{p.name}</span>
-          <span className={styles.note}>{p.note}</span>
-          <span className={styles.button}>Download</span>
-          <code className={styles.file}>{p.file}</code>
-        </a>
-      ))}
+      {ORDER.map((key) => {
+        const p = PLATFORMS[key];
+        return (
+          <a key={key} className={styles.card} href={`${RELEASE}/${p.file}`}>
+            <span className={styles.icon}>{p.icon}</span>
+            <span className={styles.name}>{p.name}</span>
+            <span className={styles.note}>{p.note}</span>
+            <span className={styles.button}>Download</span>
+            <code className={styles.file}>{p.file}</code>
+          </a>
+        );
+      })}
     </div>
   );
 }

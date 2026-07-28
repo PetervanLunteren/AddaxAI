@@ -20,46 +20,49 @@
    Tabs (used for the per-system install steps).
 
    The Docusaurus default is plain text with a thin underline, which reads as
-   loose words rather than tabs. This draws a real tab strip with the panel in
-   a connected box, so each group is one clear block on the page.
+   loose words. Instead: a segmented control (connected buttons on a track,
+   active segment filled teal), with the panel content flowing plainly below.
    --------------------------------------------------------------------------- */
 .tabs-container {
   margin: 1.5rem 0 2rem;
 }
 
+/* The track. overflow: visible kills the phantom vertical scrollbar
+   Docusaurus's default overflow-x:auto otherwise produces on the strip. */
 .tabs-container > ul.tabs {
-  border-bottom: 1px solid var(--ifm-color-emphasis-300);
-  margin-bottom: 0;
-  padding-left: 0;
+  display: inline-flex;
+  gap: 3px;
+  background: var(--ifm-color-emphasis-200);
+  border: none;
+  border-radius: 11px;
+  padding: 3px;
+  margin-bottom: 1.5rem;
+  overflow: visible;
 }
 
 .tabs__item {
-  border: 1px solid transparent;
-  border-bottom-width: 1px;
-  border-radius: 8px 8px 0 0;
-  margin-bottom: -1px;
-  padding: 0.55rem 1.15rem;
+  border: none;
+  border-radius: 8px;
+  padding: 0.45rem 1.25rem;
+  margin: 0;
   font-weight: 600;
+  color: var(--ifm-color-emphasis-700);
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
 .tabs__item:hover {
-  background: var(--ifm-color-emphasis-100);
+  color: var(--ifm-font-color-base);
+  background: transparent;
 }
 
-/* Active tab joins the panel below by hiding the strip's border under it. */
-.tabs__item--active {
-  background: var(--ifm-background-color);
-  border-color: var(--ifm-color-emphasis-300);
-  border-bottom-color: var(--ifm-background-color);
-  color: var(--ifm-color-primary);
+.tabs__item--active,
+.tabs__item--active:hover {
+  background: var(--ifm-color-primary);
+  color: #fff;
 }
 
-/* The panel: a box hanging off the tab strip. */
+/* Panel: no box, flows under the control. */
 .tabs-container > div {
-  border: 1px solid var(--ifm-color-emphasis-300);
-  border-top: none;
-  border-radius: 0 0 10px 10px;
-  padding: 1.25rem 1.25rem 0.35rem;
   margin-top: 0 !important;
 }
 

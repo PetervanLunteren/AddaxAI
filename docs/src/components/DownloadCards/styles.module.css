@@ -74,6 +74,48 @@
   padding: 0;
 }
 
+/* Single-OS download (inside the per-OS install tabs) */
+.single {
+  margin: 0 0 1.75rem;
+}
+
+.singleBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  background: var(--ifm-color-primary);
+  color: #fff !important;
+  font-weight: 600;
+  font-size: 1rem;
+  padding: 0.7rem 1.4rem;
+  border-radius: 10px;
+  text-decoration: none !important;
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.singleBtn:hover {
+  background: var(--ifm-color-primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(10, 40, 42, 0.18);
+}
+
+.singleIcon {
+  display: inline-flex;
+}
+
+.singleIcon svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+  display: block;
+}
+
+.singleMeta {
+  margin-top: 0.55rem;
+  font-size: 0.85rem;
+  color: var(--ifm-color-emphasis-600);
+}
+
 @media (max-width: 700px) {
   .row {
     grid-template-columns: 1fr;
