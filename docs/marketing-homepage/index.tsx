@@ -9,7 +9,7 @@ import styles from "./index.module.css";
 // curious, non-technical visitors: what it does, proof it runs on their own
 // computer, the download, and a look at the real interface.
 
-const RELEASE = "https://github.com/PetervanLunteren/AddaxAI-WebUI/releases/latest";
+const RELEASE = "https://github.com/PetervanLunteren/AddaxAI/releases/latest";
 const DOWNLOADS = {
   windows: `${RELEASE}/download/AddaxAI-Setup.exe`,
   macos: `${RELEASE}/download/AddaxAI-arm64.dmg`,

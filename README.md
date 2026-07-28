@@ -1,266 +1,68 @@
-# AddaxAI-WebUI
-A temporary repository to build a new AddaxAI version with backend / frontend / API / webUI features. Completely separate from its original repo https://github.com/PetervanLunteren/addaxai so that we can mess around and dont have to be gentle.
 
-### Logging System
+<p align="center">
+  <img src="https://github.com/PetervanLunteren/EcoAssist-metadata/blob/main/AddaxAI-logo/logo_incl_text_bottom.png" width=40% height="auto" />
+</p>
 
-The application includes a comprehensive logging system for debugging and diagnostics:
-- **Backend logs**: Python `logging` with rotating file handlers (`~/AddaxAI/logs/backend.log`)
-- **Frontend logs**: Batched logging forwarded to backend; window errors and unhandled promise rejections are also captured
-- **Electron logs**: Stdio captured to backend log; native renderer crashes go to `~/AddaxAI/crash-dumps/`
-- **Log retention**: ~7 days, max 100MB total (33MB per log file, 3 backups)
-- **Crash detection**: a sentinel file (`~/AddaxAI/.last-shutdown-clean`) is written on graceful exit; missing on next launch triggers a banner
+<div align="center">
 
-### When things go wrong
+[![status](https://joss.theoj.org/papers/dabe3753aae2692d9908166a7ce80e6e/status.svg)](https://joss.theoj.org/papers/dabe3753aae2692d9908166a7ce80e6e)
+[![Project Status: Active The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
+![GitHub](https://img.shields.io/github/license/PetervanLunteren/AddaxAI)
+![GitHub last commit](https://img.shields.io/github/last-commit/PetervanLunteren/AddaxAI)
 
-**If AddaxAI runs**: Settings page → **Diagnostics** → click **Export diagnostic report**. This builds a ZIP containing logs, system info, installed models, env state, and recent jobs. Save it to Downloads, then email to [peter@addaxdatascience.com](mailto:peter@addaxdatascience.com).
+</div>
 
-**If AddaxAI won't open**: zip the logs folder manually and email it.
+---
 
-| OS | Logs folder |
-|----|-------------|
-| macOS / Linux | `~/AddaxAI/logs/` |
-| Windows | `%USERPROFILE%\AddaxAI\logs\` |
+<div align="center">
+  
+[![](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://github.com/sponsors/PetervanLunteren)
 
-On macOS: open Finder → press `Cmd+Shift+G` → paste `~/AddaxAI/logs/` → right-click the folder → **Compress**. On Windows: open File Explorer → paste `%USERPROFILE%\AddaxAI\logs\` → right-click → **Send to → Compressed folder**. Native renderer crashes (segfault, OOM) leave minidumps under `~/AddaxAI/crash-dumps/` — include those too if present.
+<h3>
+  
+Official website: https://addaxdatascience.com/addaxai/
 
-Nothing is uploaded automatically. Sharing logs is always an explicit user action.
+</h3>
 
-### Start app
+</div>
 
-#### 1. Start backend
+AddaxAI is an application designed to streamline the work of ecologists dealing with camera trap images. It’s an AI platform that allows you to analyse images with machine learning models for automatic detection, offering ecologists a way to save time and focus on conservation efforts.
 
-    ```cmd
-    cd backend
-    source venv/bin/activate
-    uvicorn app.main:app --reload
-    ```
-
-#### 2. Start frontend
-
-    ```cmd
-    cd frontend
-    nvm use 20
-    npm run dev
-    ```
+<p align="center">
+  <img src="https://github.com/PetervanLunteren/EcoAssist-metadata/blob/main/imgs/teaser_animal.jpg" width=45% height="auto" />
+  <img src="https://github.com/PetervanLunteren/EcoAssist-metadata/blob/main/imgs/teaser_red_fox.JPG" width=45% height="auto" />
+  <img src="https://github.com/PetervanLunteren/EcoAssist-metadata/blob/main/imgs/teaser_ocelot.JPG" width=45% height="auto" /> 
+  <img src="https://github.com/PetervanLunteren/EcoAssist-metadata/blob/main/imgs/teaser_tinamou.JPG" width=45% height="auto" /> 
+</p>
 
 
-## Fresh installation
+## Project name change
 
-### Prerequisites
+To avoid any legal concerns, we have renamed our project from EcoAssist to AddaxAI. The project itself remains the same—only the name has changed. 
 
-- **Python 3.11-3.13** (check with `python3 --version`) - **Python 3.14 is NOT supported yet** due to pydantic-core compatibility
-- **Node.js 20+** and npm (check with `node --version`)
-- **Git**
+<p align="center">
+  <img src="https://github.com/PetervanLunteren/EcoAssist-metadata/blob/main/AddaxAI-logo/name-change.png" width=60% height="auto" />
+</p>
 
-### 1. Clone repository
+## Cite AddaxAI in your research
+If you used AddaxAI in your research, please include the following citation, along with the models used to analyze your data.
 
-```bash
-git clone https://github.com/PetervanLunteren/AddaxAI-WebUI.git
-cd AddaxAI-WebUI
+[Link to paper](https://joss.theoj.org/papers/10.21105/joss.05581)
+
+```BibTeX
+@article{van Lunteren2023,
+  title = {AddaxAI: A no-code platform to train and deploy custom YOLOv5 object detection models},
+  author = {Peter van Lunteren},
+  journal = {Journal of Open Source Software},
+  doi = {10.21105/joss.05581},
+  url = {https://doi.org/10.21105/joss.05581},
+  year = {2023},
+  publisher = {The Open Journal},
+  volume = {8},
+  number = {88},
+  pages = {5581}
+}
 ```
 
-### 2. Clean up any old data (if reinstalling)
-
-```bash
-# Remove old user data and database
-rm -rf ~/AddaxAI
-
-# Remove old virtual environments
-rm -rf backend/venv
-rm -rf frontend/node_modules
-```
-
-### 3. Set up backend
-
-```bash
-cd backend
-
-# Create Python virtual environment with Python 3.13 (or 3.12/3.11)
-python3.13 -m venv venv
-
-# Activate virtual environment
-source venv/bin/activate  # On macOS/Linux
-# or: .\venv\Scripts\activate  # On Windows
-
-# Install Python dependencies
-pip install --upgrade pip
-pip install -r requirements.txt
-
-# Database migrations run automatically on first launch via init_db().
-
-# Deactivate venv (optional)
-deactivate
-```
-
-### 4. Set up frontend
-
-```bash
-cd ../frontend
-
-# Use Node.js 20
-nvm install 20 && nvm use 20
-
-# Install dependencies
-npm install
-```
-
-### 5. Verify installation
-
-After setup, you should have:
-- `~/AddaxAI/addaxai.db` - SQLite database with schema initialized
-- `backend/venv/` - Python virtual environment
-- `frontend/node_modules/` - Node dependencies
-
-## Running the app (development mode)
-
-### Start backend (Terminal 1)
-
-```bash
-cd backend
-source venv/bin/activate
-uvicorn app.main:app --reload
-```
-
-Backend will be available at http://localhost:8000
-
-### Start frontend (Terminal 2)
-
-```bash
-cd frontend
-nvm use 20
-npm run dev
-```
-
-Frontend will be available at http://localhost:5173
-
-### Watch logs (Terminal 3 - optional)
-
-```bash
-tail -f ~/AddaxAI/logs/backend.log
-```
-
-## Timelapse Analyser integration (Windows only)
-
-AddaxAI produces an `addaxai-recognitions.json` for import in [Timelapse Analyser](https://saul.cpsc.ucalgary.ca/timelapse/).
-Run a folder analysis ("Analyse a folder") and keep the recognition file
-enabled in the save step; it is written into the analysed folder itself
-(the default output folder), where Timelapse expects it: Timelapse
-resolves the file paths inside the JSON against the folder the JSON
-sits in.
-
-Timelapse launches AddaxAI on a folder with:
-
-- `AddaxAI.exe --timelapse "C:\path\to\folder"`
-
-This opens "Analyse a folder" with the folder pre-filled, ready to run.
-
-The Windows installer drops a compatibility shim at
-`%ProgramFiles%\AddaxAI_files\AddaxAI\open.bat`. The legacy invocation
-(`open.bat timelapse <folder>`) is forwarded to the new exe transparently,
-so no changes are needed on the Timelapse side. After Saul updates
-Timelapse to call `AddaxAI.exe --timelapse "<folder>"` directly the shim
-becomes redundant; it stays in place as a long-term fallback.
-
-To let Timelapse find the exe without guessing a path (the installer lets
-users pick their own install directory), the Windows installer publishes a
-locator key. Read `HKCU` first, then `HKLM`, and still check the path
-exists before using it:
-
-```
-Software\AddaxAI
-  ExePath     full path to AddaxAI.exe
-  InstallDir  the install directory
-  Version     the version that wrote these values
-```
-
-This is a published contract for external tools. Treat it as append-only:
-renaming the key or its values breaks every consumer silently. Written and
-removed by `electron/build/installer.nsh`.
-
-The shim reads the same key, so custom install directories already work on
-current Timelapse versions. It falls back to the two default install
-locations when the key is missing.
-
-In Timelapse, after a run completes, open `Recognition > Import recognition
-data for this image set` and select the generated `recognitions.json`.
-
-## Key directories
-
-- `~/AddaxAI/` - User data directory (created automatically)
-  - `addaxai.db` - SQLite database
-  - `backups/` - Rolling DB snapshots (daily + pre-upgrade)
-  - `logs/` - Application logs
-  - `models/` - ML model weights and environments
-  - `envs/` - Isolated Python environments for ML models
-- `backend/` - FastAPI Python backend
-- `frontend/` - React TypeScript frontend
-- `electron/` - Electron desktop shell
-
-## Troubleshooting
-
-### Python 3.14 compatibility error
-
-If you see an error about Python 3.14 not being supported by PyO3/pydantic-core:
-
-```bash
-# Remove the venv created with Python 3.14
-rm -rf backend/venv
-
-# Check which Python versions you have installed
-python3.13 --version || python3.12 --version || python3.11 --version
-
-# Create venv with Python 3.13 (or 3.12/3.11)
-cd backend
-python3.13 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-### Database initialization failed
-
-If you get "no such table" errors or "Target database is not up to date" errors:
-
-```bash
-cd backend
-source venv/bin/activate
-
-# Delete the corrupted database
-rm ~/AddaxAI/addaxai.db
-
-# If you have old incremental migrations that don't include an initial schema,
-# delete them and regenerate:
-rm alembic/versions/*.py  # BE CAREFUL: This deletes all migrations
-
-# Generate fresh initial migration
-PYTHONPATH=. alembic revision --autogenerate -m "initial schema"
-
-# Apply it
-PYTHONPATH=. alembic upgrade head
-```
-
-### Port already in use
-
-```bash
-# Kill existing backend process
-lsof -ti:8000 | xargs kill -9
-
-# Kill existing frontend process
-lsof -ti:5173 | xargs kill -9
-```
-
-### Missing Python modules
-
-```bash
-cd backend
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-### Frontend build errors
-
-```bash
-cd frontend
-rm -rf node_modules package-lock.json
-npm install
-```
+## Contribute
+Interested in contributing to this project? There are always things to do. The list of to-do items, bug reports, and feature requests is always evolving. I try to keep a semi-structured list [here](https://github.com/PetervanLunteren/AddaxAI/blob/main/AddaxAI_GUI.py#L8). Is there something you would be interested in? [Get in touch](mailto:peter@addaxdatascience.com) and I will guide you in the right direction. Thanks!

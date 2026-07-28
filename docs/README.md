@@ -1,7 +1,7 @@
 # AddaxAI documentation site
 
 The AddaxAI docs, built with [Docusaurus](https://docusaurus.io/). Deployed to
-GitHub Pages at https://petervanlunteren.github.io/AddaxAI-WebUI/ by
+GitHub Pages at https://petervanlunteren.github.io/AddaxAI/ by
 `.github/workflows/docs.yml` on every push to `main` that touches `docs/`.
 
 ## Edit locally (do this, not push-and-wait)
@@ -16,7 +16,7 @@ npm install      # first time only
 npm start
 ```
 
-This opens a live preview at http://localhost:3000/AddaxAI-WebUI/ that reloads
+This opens a live preview at http://localhost:3000/AddaxAI/ that reloads
 the moment you save a file. Editing text, CSS or a component updates in about a
 second. `Ctrl+C` to stop.
 

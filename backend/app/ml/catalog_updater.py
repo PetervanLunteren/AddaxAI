@@ -51,7 +51,7 @@ class ModelCatalogUpdater:
 
         # Default to GitHub raw URL
         self.catalog_url = catalog_url or (
-            "https://raw.githubusercontent.com/PetervanLunteren/AddaxAI-WebUI/main/models.json"
+            "https://raw.githubusercontent.com/PetervanLunteren/AddaxAI/main/models.json"
         )
 
     def fetch_catalog(self, timeout: int = 2) -> dict[str, Any] | None:

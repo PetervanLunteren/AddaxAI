@@ -6,7 +6,7 @@ import { themes as prismThemes } from "prism-react-renderer";
 //
 // Layout: a custom marketing homepage at "/" (src/pages/index.tsx) and the
 // documentation under "/docs". Deployed to GitHub Pages at
-// https://petervanlunteren.github.io/AddaxAI-WebUI/ by
+// https://petervanlunteren.github.io/AddaxAI/ by
 // .github/workflows/docs.yml on every push to main.
 //
 // If you later point a custom domain (e.g. docs.addaxdatascience.com) at the
@@ -22,10 +22,10 @@ const config: Config = {
   },
 
   url: "https://petervanlunteren.github.io",
-  baseUrl: "/AddaxAI-WebUI/",
+  baseUrl: "/AddaxAI/",
 
   organizationName: "PetervanLunteren",
-  projectName: "AddaxAI-WebUI",
+  projectName: "AddaxAI",
 
   // Content has settled, so a dead link is a bug and should fail the build
   // rather than ship. Loosen to 'warn' only while restructuring.
@@ -94,12 +94,12 @@ const config: Config = {
         },
         { to: "/docs/troubleshooting/faq", label: "FAQ", position: "left" },
         {
-          href: "https://github.com/PetervanLunteren/AddaxAI-WebUI/releases/latest",
+          href: "https://github.com/PetervanLunteren/AddaxAI/releases/latest",
           label: "Download",
           position: "right",
         },
         {
-          href: "https://github.com/PetervanLunteren/AddaxAI-WebUI",
+          href: "https://github.com/PetervanLunteren/AddaxAI",
           label: "GitHub",
           position: "right",
         },
@@ -122,7 +122,7 @@ const config: Config = {
           items: [
             {
               label: "GitHub",
-              href: "https://github.com/PetervanLunteren/AddaxAI-WebUI",
+              href: "https://github.com/PetervanLunteren/AddaxAI",
             },
             {
               label: "Addax Data Science",

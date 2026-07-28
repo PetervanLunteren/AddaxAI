@@ -213,6 +213,16 @@ export default function AboutPage() {
             </a>
           </p>
           <p className="mt-3 text-sm text-muted-foreground">
+            To cite a specific version of the software, use the archived
+            release on Zenodo:{" "}
+            <a
+              href="https://doi.org/10.5281/zenodo.7223363"
+              className="text-primary hover:underline"
+            >
+              https://doi.org/10.5281/zenodo.7223363
+            </a>
+          </p>
+          <p className="mt-3 text-sm text-muted-foreground">
             Citations for the individual models you used (MegaDetector,
             DINOv2, classification models, etc.) are available via the{" "}
             <span className="font-medium">Model details</span> link below

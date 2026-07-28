@@ -40,7 +40,7 @@ interface GitHubRelease {
 // Drafts are not returned to unauthenticated callers, so they cannot
 // leak in.
 const RELEASES_API =
-  "https://api.github.com/repos/PetervanLunteren/AddaxAI-WebUI/releases?per_page=1";
+  "https://api.github.com/repos/PetervanLunteren/AddaxAI/releases?per_page=1";
 
 function normalize(v: string): string {
   return v.replace(/^v/, "").trim();

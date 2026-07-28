@@ -179,7 +179,7 @@ def _build_env_manifest(env_name: str = _REQUIRED_ENV) -> ModelManifest:
         model_fname="setup-stub",
         description="Synthetic manifest used by the first-run setup wizard.",
         developer="AddaxAI",
-        info_url="https://github.com/PetervanLunteren/AddaxAI-WebUI",
+        info_url="https://github.com/PetervanLunteren/AddaxAI",
         min_app_version="0.1.0",
     )
 
@@ -199,7 +199,7 @@ def _build_default_model_manifest(spec: dict) -> ModelManifest:
         hf_repo=spec["hf_repo"],
         description=f"Default {spec['category']} model installed by the setup wizard.",
         developer="AddaxAI",
-        info_url="https://github.com/PetervanLunteren/AddaxAI-WebUI",
+        info_url="https://github.com/PetervanLunteren/AddaxAI",
         min_app_version="0.1.0",
     )
     m.model_category = spec["category"]

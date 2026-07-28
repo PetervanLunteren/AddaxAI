@@ -75,7 +75,7 @@ class Settings(BaseSettings):
 
     # Model catalog sync
     model_catalog_url: str = Field(
-        default="https://raw.githubusercontent.com/PetervanLunteren/AddaxAI-WebUI/main/models.json",
+        default="https://raw.githubusercontent.com/PetervanLunteren/AddaxAI/main/models.json",
         description="URL to fetch model catalog from"
     )
     disable_model_updates: bool = Field(

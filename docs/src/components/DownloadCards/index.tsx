@@ -5,7 +5,7 @@ import styles from "./styles.module.css";
 // reader picks by platform rather than reading a table.
 
 const RELEASE =
-  "https://github.com/PetervanLunteren/AddaxAI-WebUI/releases/latest/download";
+  "https://github.com/PetervanLunteren/AddaxAI/releases/latest/download";
 
 interface Platform {
   name: string;

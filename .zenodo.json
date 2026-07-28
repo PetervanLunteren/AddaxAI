@@ -1,0 +1,25 @@
+{
+    "creators": [
+        {
+            "orcid": "0000-0001-5488-4225",
+            "affiliation": "Independent Researcher, The Netherlands",
+            "name": "van Lunteren, Peter"
+        }
+    ],
+
+    "related_identifiers": [
+        {
+            "scheme": "doi",
+            "identifier": "10.21105/joss.05581",
+            "resource_type": "publication-article"
+        }
+    ],
+
+    "license": "MIT",
+
+    "title": "AddaxAI: A no-code platform for AI-assisted camera trap image analysis",
+
+    "description": "AddaxAI is a desktop application that helps ecologists analyse camera trap images and videos with AI. It runs detection, species classification and embedding models over image folders, and offers verification, dashboards, spatial and temporal insights, and standardised exports for building long-term camera trap projects. It is free and open source, and runs on Windows, macOS and Linux.",
+
+    "keywords": ["python", "machine-learning", "conservation", "object-detection", "ecology", "camera-traps", "megadetector", "speciesnet", "biodiversity", "wildlife"]
+}
