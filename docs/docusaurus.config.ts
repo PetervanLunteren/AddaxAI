@@ -6,12 +6,8 @@ import { themes as prismThemes } from "prism-react-renderer";
 //
 // Layout: a custom marketing homepage at "/" (src/pages/index.tsx) and the
 // documentation under "/docs". Deployed to GitHub Pages at
-// https://petervanlunteren.github.io/AddaxAI/ by
-// .github/workflows/docs.yml on every push to main.
-//
-// If you later point a custom domain (e.g. docs.addaxdatascience.com) at the
-// site, change `url` to that domain and `baseUrl` to "/", and drop a CNAME
-// file into static/.
+// https://docs.addaxai.com/ by .github/workflows/docs.yml on every push to
+// main. The custom domain is kept across deploys by static/CNAME.
 const config: Config = {
   title: "AddaxAI",
   tagline: "Simplifying camera trap image analysis with AI",
@@ -21,8 +17,8 @@ const config: Config = {
     v4: true,
   },
 
-  url: "https://petervanlunteren.github.io",
-  baseUrl: "/AddaxAI/",
+  url: "https://docs.addaxai.com",
+  baseUrl: "/",
 
   organizationName: "PetervanLunteren",
   projectName: "AddaxAI",
