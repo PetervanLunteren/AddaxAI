@@ -1,16 +1,17 @@
 /**
  * Home screen.
  *
- * Task-based chooser per WORKFLOW_RECOMMENDATION.md: pick what you
- * want AddaxAI to do, not which mode you are in. Two equal-weight
- * paths:
+ * Task-based chooser: pick what you want AddaxAI to do, not which mode
+ * you are in. Two equal-weight paths:
  *
  * 1. Analyse a folder: a quick one-off run, results out, no setup.
  * 2. Build a project: the stored, revisitable project workspace.
  *
- * The two cards differentiate on one-off vs persistent (not on
- * feature count): a folder run hands you output files and steps back,
- * a project keeps everything in the app to return to and add to.
+ * The two cards differentiate on one-off vs persistent, not on camera
+ * count (a folder run handles many cameras too). A folder run hands you
+ * the raw output and steps back; a project asks for where each camera
+ * was, and uses that location to turn the results into insight (maps,
+ * rates, trends).
  *
  * Visual: a full-bleed forest photo (shared with AddaxAI-Connect's
  * login, so the two apps feel related) behind two frosted-glass cards.
@@ -97,8 +98,8 @@ export function HomePage() {
             <ChoiceCard
               icon={<LayoutDashboard className="h-6 w-6" />}
               title="Build a project"
-              lead="A workspace you come back to and keep adding cameras to."
-              body="Track many cameras over time: confirm species counts, keep verification history, watch dashboards and maps, compare activity, and export to Camtrap DP. Everything stays stored and revisitable in the app."
+              lead="A workspace you come back to and keep adding to."
+              body="Add where each camera was, and AddaxAI turns the results into insight: species counts, dashboards and maps, activity, and trap-night rates. Keep a verification history and export to Camtrap DP. Everything stays in the app to revisit and add to."
               cta="Open projects"
               onClick={() => navigate("/projects")}
             />

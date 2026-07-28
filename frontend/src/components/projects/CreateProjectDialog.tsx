@@ -331,9 +331,10 @@ export function CreateProjectDialog({
             <DialogHeader>
               <DialogTitle>Create new project</DialogTitle>
               <DialogDescription>
-                A project is a persistent workspace for many cameras over
-                time, holding sites, deployments, verification history,
-                dashboards, and exports.
+                A project is a persistent workspace. You record where each
+                camera was, and AddaxAI uses that to turn the results into
+                insight: dashboards, maps, rates, and Camtrap DP exports, with
+                a verification history kept over time.
               </DialogDescription>
             </DialogHeader>
 
