@@ -1,7 +1,8 @@
 # TODO
 
 ## Priority 1
-- [ ] Beta report about the loading page on deletion of re analysis of folder run.  Read email thread below. This is an beta tester that has some issues with rerunning a folder run. It looks like its stuck. Its probabaly deleting the pold DB rows, but that shoudnt take up so much time, right? So please first investigate what the issue is, and then propose a fix. 
+- [ ] If I'm reviewing suggestions in the labels page it shows a info bar "Showing the newest 8 of 814 embedded detections, capped to stay responsive. Verify some and reload to bring in more, or narrow the filters." This info bar is meant to show when there are more than embeddings than the limit (it hought hard coded at 20K?), but it is not supposed to show when you are reviewing a subset (liek you're doing on the review-suggestion-mode). SO I guess there is a condition that needs tweaking. Can you investigate?
+- [ ] We should probabaly get the overlay back to the visualisation on the CountsModal. Without the dark overlay, its quite difficult to see where the bbox is. Can we add a overlay outside the box in the countsModal and the labelDetailModal? 
 
 ## Priority 2
 - [ ]  
@@ -53,3 +54,4 @@
 ### DOCS
 - [ ] Add something about how to install older versions. 
 - [ ] FUll guide for Timelapse integration. 
+- [ ] 
