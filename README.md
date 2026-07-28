@@ -20,7 +20,11 @@
   
 Website: https://addaxdatascience.com/addaxai/
 
+---
+
 Documentation: https://docs.addaxai.com/
+
+---
 
 </h3>
 
