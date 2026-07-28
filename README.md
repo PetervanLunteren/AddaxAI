@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img src="https://github.com/PetervanLunteren/EcoAssist-metadata/blob/main/AddaxAI-logo/logo_incl_text_side.png" width=60% height="auto" />
+  <img src="https://github.com/PetervanLunteren/EcoAssist-metadata/blob/main/AddaxAI-logo/logo_incl_text_side.png" width=45% height="auto" />
 </p>
 
 <div align="center">
@@ -18,13 +18,9 @@
 
 <h3>
   
-Website: https://addaxdatascience.com/addaxai/
-
----
+Website: https://www.addaxai.com/
 
 Documentation: https://docs.addaxai.com/
-
----
 
 </h3>
 
