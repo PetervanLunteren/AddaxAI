@@ -47,6 +47,10 @@ export const shots: Record<string, Shot> = {
     src: `${A}/2626c447-c9f2-44fb-bab0-d6f0c223262f`,
     alt: "Counts page: how many animals of each species were seen per event",
   },
+  countsEvent: {
+    src: `${A}/18187698-57f3-4f07-8dbe-593d2e5e76db`,
+    alt: "An event opened on the Counts page: the best frame, the film strip of the event below, and the count editor with a Confirm button",
+  },
   processQueue: {
     src: `${A}/761518a9-272f-4f51-974f-cd58a7dc756e`,
     alt: "Process page: a new deployment being added and five waiting in the queue",
@@ -102,6 +106,10 @@ export const shots: Record<string, Shot> = {
   folderRun3Save: {
     src: `${A}/a22760e2-bc9b-4c3d-a047-69571b7f1984`,
     alt: "Analyse a folder, step 3: choose what to save",
+  },
+  folderRunSaved: {
+    src: `${A}/81742469-a11f-48f9-88f9-d22df197f5b6`,
+    alt: "Folder run finished: open the output folder, or turn it into a project",
   },
 };
 

@@ -1,0 +1,26 @@
+---
+sidebar_position: 6
+title: Use results in Timelapse
+---
+
+# Use results in Timelapse
+
+Timelapse is a separate program for reviewing camera trap photos. It runs on Windows only. AddaxAI writes a recognition file that Timelapse reads, so you can go through the AI results inside Timelapse.
+
+Only a folder run makes this file. Projects do not.
+
+## Two ways to start
+
+**From Timelapse.** Choose `Recognitions` > `AddaxAI Image Recognizer` > `Run AddaxAI recognizer on a folder…`. AddaxAI opens "Analyse a folder" with that folder already filled in.
+
+**From AddaxAI.** Start a folder analysis on the folder yourself. Either way you end with the same file.
+
+## Save the recognition file
+
+In the save step, keep "recognition file for Timelapse" turned on. When the run finishes, AddaxAI writes `addaxai-recognitions.json` next to your photos.
+
+Do not move this file. Timelapse finds your photos through paths relative to where the file sits.
+
+## Import into Timelapse
+
+In Timelapse, choose Recognition > Import recognition data for this image set, then pick the file.

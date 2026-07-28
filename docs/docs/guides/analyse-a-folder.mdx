@@ -7,45 +7,33 @@ import AppShot from "@site/src/components/AppShot";
 
 # Analyse a folder
 
-A one-off run over a single folder of images or videos. Three steps, then you get files out. Nothing is stored as a long-term project unless you promote the run to one at the end.
-
-<AppShot name="folderRun1Setup" />
-
-## The three steps
+A one-off run over a single folder of images or videos. Three steps, then you get files out.
 
 ```mermaid
 flowchart LR
   A[Setup] --> B[Labels] --> C[Save]
-  A -.-> A1[Pick folder + models]
-  B -.-> B1[Clean up labels]
-  C -.-> C1[Choose outputs]
+  classDef box fill:#0f6064,stroke:#0a4345,color:#ffffff;
+  class A,B,C box;
 ```
 
 ### 1. Setup
 
-Pick the folder to analyse and choose the models: a detector (finds animals, people, vehicles) and optionally a classifier (names the species). Start the run.
+Pick the folder and the models: a detector to find animals, people and vehicles, and a classifier to name the species. Start the run.
+
+<AppShot name="folderRun1Setup" />
 
 ### 2. Labels
 
-Once the AI has run, review and clean up the labels. Adjust the detection threshold, relabel, and filter by species. This step is optional: skip it if you just want the raw output.
+When the AI is done, you can check the labels. Relabel, filter by species, or refine the results by changing the thresholds and intervals. Skip this step if you just want the raw output.
+
+<AppShot name="folderRun2Labels" />
 
 ### 3. Save
 
-Choose what to write out:
+Choose what to write out: detection tables, a recognition file for Timelapse, species folders, or marked-up images. By default files land in the folder you analysed, but you can change where they go.
 
-- complete detection tables
-- a recognition file for Timelapse
-- species-separated folders
-- visualised or blurred images
+<AppShot name="folderRun3Save" />
 
-Outputs land in the analysed folder by default.
+## Timelapse
 
-:::tip Turn a run into a project
-
-After saving, you can promote the folder run into a project to keep tracking those cameras over time. See [Projects](./build-a-project.mdx).
-
-:::
-
-## Timelapse integration
-
-Windows only, because Timelapse itself is Windows only. In Timelapse, choose `Recognitions` > `AddaxAI Image Recognizer` > `Run AddaxAI recognizer on a folder…`. AddaxAI opens "Analyse a folder" with that folder filled in. Run it and keep the recognition file enabled in the save step. When it finishes, AddaxAI writes `addaxai-recognitions.json` next to your images. In Timelapse, go to Recognition > Import recognition data for this image set and pick that file.
+Using Timelapse to review your photos? See [use results in Timelapse](./timelapse.mdx).

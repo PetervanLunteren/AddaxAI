@@ -7,62 +7,46 @@ import AppShot from "@site/src/components/AppShot";
 
 # Check the labels
 
-The AI gives every animal a species. Some will be wrong. This page shows how to find the mistakes quickly instead of clicking through every photo.
-
-Checking is optional. But if you plan to report the numbers, check at least the species you will report on.
-
-## The grid
-
-The Labels page shows one card per detection: the cropped animal and the species the AI chose.
-
-<AppShot name="verify" />
-
-The bar at the top right shows how much of the project you have checked.
-
-## Sort by similarity, not by date
-
-This is the trick that saves the most time.
-
-Sorted by similarity, animals that look alike sit next to each other. You get a block of opossums, then a block of deer. Your eye only has to notice the odd one out.
-
-<AppShot name="verifyOddOneOut" />
-
-In this block every card is an opossum except two. The label colour is different, so they stand out without reading a word.
-
-## Fix a group at once
-
-Select the cards that are wrong, then apply one action to all of them.
+The AI gives every animal a species. Some will be wrong. This page shows how to find the mistakes quickly instead of clicking through every photo. Checking is optional, but recommended. If you plan to report the numbers, check at least the species you will report on.
 
 <AppShot name="verifyOddOneOutSelected" />
 
-- click a card to select it
-- shift click to select a run of cards
-- ctrl click, or cmd click on a Mac, to add single cards
+## The grid
 
-The bar at the bottom then lets you confirm the label, change it, mark the detection as false, or set it to unknown.
+The Labels page shows one card per detection: the cropped animal and the species the AI chose. A progress bar shows how much of the project you have checked.
 
-Correcting fifty photos of the same misidentified deer takes one action, not fifty.
+## Same in folder runs and projects
+
+It is the same grid in both modes: step 2 of a folder run, and the Labels page of a project. The one difference is where you change the refine settings, like thresholds and the event interval. In a folder run, use the Refine results button. In a project, they are on the Settings page.
+
+## Sort by similarity, not by date
+
+Sorting by similarity is the trick that saves the most time. Animals that look alike sit next to each other, so you get a block of opossums, then a block of deer, and your eye only has to notice the odd one out. In the screenshot above every card is an opossum except two. Their label is different, and in a different colour, so they stand out at a glance.
+
+You can also sort per event. That keeps each event's photos together and still orders the events by similarity. If you turned off the embedding model, there is no similarity score, so sorting falls back to date order.
+
+## Handle a group at once
+
+Work in bulk, not photo by photo. Select a group of cards, then apply one action to all of them: verify the ones that are right, relabel the ones that are wrong.
+
+A fast way is to sort per event and use the keyboard. Press **E** to select the whole event, then **M** to set it to the majority label. This is very fast if your independence interval fits your ecological context and few events hold more than one species, since then most events are a single species.
+
+Verified cards are hidden by default, so every group you clear leaves the grid.
+
+## Suggestions
+
+The app can point out likely mistakes for you. It pairs the AI's labels with the embedding model: for each animal it looks at its closest look-alikes, and if they mostly carry a different label, it flags that as a suggestion. A crop labelled "canis" whose look-alikes are all "domestic dog" is the classic case.
+
+When the toolbar shows a suggestions badge, click Review. The suggestions come grouped into cohorts, one fix each. Accept relabels and verifies the whole cohort in one click. Dismiss hides it and changes nothing.
 
 ## Filters
 
-Work through one thing at a time:
+Filters narrow the grid by label, verified status, site or date range. Similarity sorting works best when you do not filter to a single species. If you show only wolves, every card says wolf, so nothing stands out and the odd one is invisible. Filter to a broader group instead. If wolves are your target and you cannot review everything, filter to all canids in the taxonomic filter. A wolf mislabelled as a coyote then shows up among the real coyotes, where it is easy to catch.
 
-- **Labels** to check one species at a time
-- **Verified** to hide what you already did
-- **Sites** and **Date range** to focus on one camera or period
+## Your corrections win over the AI's
 
-A good order is: start with your most common species, confirm the obvious blocks fast, then look at the rare ones carefully. Rare species are where mistakes hurt most, because one wrong label changes the result a lot.
-
-## Your corrections are permanent
-
-Once you correct a detection, nothing overwrites it. Re-running the AI, changing a threshold or reprocessing all skip it.
-
-Verified detections also always count, even if their score is below your threshold. See [confidence and verification](../understanding/confidence-and-verification.md).
+Once you correct a detection, reprocessing and threshold changes leave it untouched, so your correction stays. Re-running the AI is the exception: it re-analyses from scratch and overwrites everything, including your corrections. See [confidence and verification](../understanding/confidence-and-verification.md).
 
 ## Labels are not counts
 
-Checking labels answers *which species*. It does not answer *how many*, and it does not confirm any count.
-
-The dashboard tracks the two separately, which is why "labels verified" and "counts confirmed" usually show different numbers.
-
-Do labels first, then counts. See [confirm the counts](./confirm-counts.mdx).
+Checking labels answers *which species*. It does not answer *how many*, and it does not confirm any count. The dashboard tracks the two separately, which is why "labels verified" and "counts confirmed" show different numbers. The most efficient and least noisy order is labels first, then counts. See [confirm the counts](./confirm-counts.mdx).

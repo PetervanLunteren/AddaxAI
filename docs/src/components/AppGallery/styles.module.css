@@ -1,0 +1,26 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.tile {
+  margin: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+  background: var(--ifm-color-emphasis-100);
+  /* Map screenshot is 1440x900 (8:5). Match it so every tile is the same
+     height; taller shots are cropped from the bottom, not squashed. */
+  aspect-ratio: 8 / 5;
+}
+
+.img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}

@@ -1,0 +1,66 @@
+.row {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 2), 1fr);
+  gap: 1.25rem;
+  margin: 1.75rem 0 2rem;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 14px;
+  padding: 1.5rem;
+  background: var(--ifm-background-color);
+}
+
+.title {
+  font-size: 1.3rem;
+  margin: 0 0 0.2rem;
+}
+
+.tagline {
+  color: var(--ifm-color-primary);
+  font-weight: 600;
+  margin: 0 0 1rem;
+}
+
+.dl {
+  margin: 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.dt {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ifm-color-emphasis-600);
+  margin-top: 0.9rem;
+}
+
+.dt:first-child {
+  margin-top: 0;
+}
+
+.dd {
+  margin: 0.2rem 0 0;
+  line-height: 1.5;
+  color: var(--ifm-color-emphasis-800);
+}
+
+.note {
+  margin: 1rem 0 0;
+  padding-top: 0.9rem;
+  border-top: 1px dashed var(--ifm-color-emphasis-300);
+  font-size: 0.9rem;
+  color: var(--ifm-color-emphasis-600);
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .row {
+    grid-template-columns: 1fr;
+  }
+}

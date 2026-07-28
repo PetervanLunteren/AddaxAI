@@ -1,0 +1,57 @@
+---
+sidebar_position: 3
+title: Choose a workflow
+---
+
+import ChoiceCards from "@site/src/components/ChoiceCards";
+import AppShot from "@site/src/components/AppShot";
+
+# Choose a workflow
+
+AddaxAI has two ways of working. Both run the same AI, so the detections and species labels are identical. What differs is what happens next: a folder run hands you the raw results, a project helps you interpret them.
+
+<AppShot name="appHome" />
+
+<ChoiceCards choices={[
+  {
+    title: "Analyse a folder",
+    tagline: "A quick, one-off run.",
+    bestFor: "One batch of imagery you will analyse elsewhere.",
+    gives: "Detection tables, a Timelapse recognition file, species-separated folders, and images with the animals marked.",
+    note: "No map, charts, or history. You take the tables into another tool such as Timelapse, R or Zooniverse.",
+  },
+  {
+    title: "Build a project",
+    tagline: "A workspace you keep adding to.",
+    bestFor: "Exploring and interpreting your data inside AddaxAI.",
+    gives: "Everything a folder run gives, plus a dashboard, a map, activity charts, trap-night rates, a verification history, and Camtrap DP export.",
+    note: "You add where each camera was. That is what powers the map, the rates and the trends.",
+  },
+]} />
+
+Nothing is locked in. A folder run can become a project later, keeping every detection and correction, with nothing analysed again.
+
+## What differs
+
+The AI output is the same in both. The difference is the layer AddaxAI builds on top.
+
+| | Analyse a folder | Build a project |
+|---|---|---|
+| Detections and species labels | Same | Same |
+| Counts per species | No suggestions | Suggested per event, review on the counts page |
+| Trap nights | Not available | Available |
+| Rates per 100 trap nights | Not available | Available |
+| Maps and graphs | Not available | Available |
+| Timelapse export | Available | Not available |
+
+A folder run hands you detections. A project turns them into observations: a species within an event. Ten photos of one deer in two minutes are ten detections, but one observation. See [detections, events and observations](../understanding/detections-events-observations.mdx).
+
+## Still not sure
+
+Start with a folder run. It is the quickest way to see what the AI found, and you can promote it to a project whenever you want more, without losing anything or analysing again.
+
+<AppShot name="folderRunSaved" width="50%" />
+
+Go straight to a project if you already know you want counts, rates or a map, and you can add where each camera was.
+
+Do you use Timelapse? Run a folder analysis. The recognition file it saves is the one Timelapse reads.
