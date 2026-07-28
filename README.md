@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img src="https://github.com/PetervanLunteren/EcoAssist-metadata/blob/main/AddaxAI-logo/logo_incl_text_bottom.png" width=40% height="auto" />
+  <img src="https://github.com/PetervanLunteren/EcoAssist-metadata/blob/main/AddaxAI-logo/logo_incl_text_side.png" width=60% height="auto" />
 </p>
 
 <div align="center">
