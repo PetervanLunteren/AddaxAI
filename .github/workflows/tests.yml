@@ -1,0 +1,86 @@
+name: Tests
+
+# Runs on every PR and on pushes to main. Three gates:
+#
+#  - Frontend typecheck: `vite build` (and `vite dev`) transpile with
+#    esbuild and never run the TypeScript compiler, so type errors
+#    otherwise accumulate invisibly and only surface on a manual `tsc -b`.
+#    This gate runs the compiler at PR time.
+#  - Backend lint: `ruff check app tests`. DEVELOPERS.md promised this ran
+#    in CI; it did not, so lint errors drifted onto main. Now it does.
+#  - Backend tests: the full pytest suite (in-memory SQLite, no network),
+#    which includes the migration-safety tests. Those catch the class of
+#    bug that destroyed user data on 2026-05-27 (a new alembic migration
+#    merged without a matching SCHEMA_FINGERPRINTS entry, so
+#    `reconcile_alembic_version` silently rolled the DB backward and re-ran
+#    the chain on startup). Slow tests are excluded via the `-m 'not slow'`
+#    default in pyproject.toml.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  frontend-typecheck:
+    name: Frontend typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Typecheck (tsc -b)
+        working-directory: frontend
+        run: npm run typecheck
+
+  backend-lint:
+    name: Backend lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # Pin to the version in requirements.txt so local and CI agree.
+      - name: Install ruff
+        run: pip install ruff==0.8.4
+
+      - name: Ruff check
+        working-directory: backend
+        run: ruff check app tests
+
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install exiftool
+        run: sudo apt-get update && sudo apt-get install -y libimage-exiftool-perl
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run backend test suite
+        working-directory: backend
+        run: python -m pytest -q

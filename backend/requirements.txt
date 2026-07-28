@@ -1,0 +1,58 @@
+# Web Framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+
+# Database
+sqlalchemy==2.0.36
+alembic==1.14.0
+
+# Async & WebSockets
+redis==5.2.1
+websockets==14.1
+
+# Data Validation
+pydantic==2.10.4
+pydantic-settings==2.7.0
+
+# Astronomy (sunrise/sunset computation for activity pattern chart)
+astral>=3.2
+
+# Offline lat/lon -> IANA timezone, used to derive a project's camera
+# timezone from its first site's coordinates. We use the lightweight
+# TimezoneFinderL class; the 62 MB full-polygon data file is pruned from
+# the PyInstaller bundle in backend.spec.
+timezonefinder>=8.2,<9
+
+# Image Processing
+Pillow==11.0.0
+
+# Numerical computing - used by best_frame, scoring, activity_analysis,
+# embedding_utils, and statistics. Imported in the bundled backend, not
+# only inside isolated inference envs.
+numpy==2.4.1
+
+# Video Processing
+opencv-python-headless==4.10.0.84  # For video frame extraction
+
+# Video Metadata
+PyExifTool==0.5.6
+
+# Data export formats
+openpyxl==3.1.5       # XLSX writer for observations export
+pyshp==2.3.1          # Shapefile writer for spatial export
+
+# ML & Model Management
+huggingface-hub>=0.20.0
+requests>=2.31.0  # Required by huggingface-hub
+truststore>=0.9.1  # Route TLS through the OS trust store (frozen-build CA fix)
+ijson>=3.2.0  # Stream large results JSON without loading it all into RAM
+pyyaml==6.0.2
+
+# Development
+pytest==8.3.4
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0
+httpx==0.28.1
+ruff==0.8.4
+mypy==1.13.0

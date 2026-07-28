@@ -1,0 +1,81 @@
+.row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin: 1.75rem 0 2rem;
+}
+
+/* The whole card is the link, so the click target is large and obvious. */
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 1.5rem 1rem 1.25rem;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 14px;
+  background: var(--ifm-background-color);
+  text-decoration: none !important;
+  color: inherit;
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.card:hover {
+  border-color: var(--ifm-color-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(10, 40, 42, 0.09);
+}
+
+.icon {
+  display: block;
+  margin-bottom: 0.75rem;
+  color: var(--ifm-color-primary);
+}
+
+.icon svg {
+  width: 34px;
+  height: 34px;
+  fill: currentColor;
+  display: block;
+}
+
+.name {
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.note {
+  font-size: 0.85rem;
+  color: var(--ifm-color-emphasis-600);
+  margin-top: 0.2rem;
+}
+
+.button {
+  margin-top: 1rem;
+  padding: 0.45rem 1.1rem;
+  border-radius: 8px;
+  background: var(--ifm-color-primary);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.card:hover .button {
+  background: var(--ifm-color-primary-dark);
+}
+
+.file {
+  margin-top: 0.7rem;
+  font-size: 0.72rem;
+  color: var(--ifm-color-emphasis-600);
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+@media (max-width: 700px) {
+  .row {
+    grid-template-columns: 1fr;
+  }
+}

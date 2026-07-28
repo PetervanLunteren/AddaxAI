@@ -1,0 +1,8 @@
+#!/bin/sh
+# Strip Claude co-author and generated-with lines from commit messages.
+MSG_FILE="$1"
+tmp="${MSG_FILE}.tmp"
+grep -v "^Co-Authored-By: Claude" "$MSG_FILE" | grep -v "Generated with \[Claude Code\]" > "$tmp"
+# Remove trailing blank lines
+sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$tmp" > "$MSG_FILE"
+rm -f "$tmp"

@@ -1,0 +1,147 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Country-flag emoji rendering on Windows.
+ *
+ * Windows' Segoe UI Emoji ships without country-flag glyphs, so 🇪🇺,
+ * 🇳🇱 etc. render as letter pairs ("EU", "NL"). The companion
+ * polyfill in main.tsx (`country-flag-emoji-polyfill`) registers a
+ * @font-face for "Twemoji Country Flags" with a unicode-range pinned
+ * to flag codepoints, but it's the caller's job to actually include
+ * that font in an element's font-family stack — without this CSS
+ * rule the @font-face is dead code and the polyfill silently no-ops.
+ *
+ * Putting the font first means the browser only consults it for
+ * codepoints inside its declared unicode-range (the flag glyphs);
+ * every other character falls through to the system font stack
+ * unchanged. No visual regression on non-flag text, no effect on
+ * macOS or Linux where the polyfill detects native flag support and
+ * never installs the @font-face in the first place.
+ */
+html, body {
+  font-family: "Twemoji Country Flags", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+/* react-day-picker v9 brand overrides. The library's default
+   stylesheet is imported via the Calendar component in TypeScript
+   (where Vite's bundler resolves the node-modules path directly).
+   Two CSS variables tint the selection to our teal brand. */
+.rdp-root {
+  --rdp-accent-color: #0f6064;
+  --rdp-accent-background-color: #e4ecee;
+  --rdp-day-height: 2rem;
+  --rdp-day-width: 2rem;
+  --rdp-day_button-height: 1.75rem;
+  --rdp-day_button-width: 1.75rem;
+  --rdp-nav-height: 2rem;
+  --rdp-nav_button-height: 1.5rem;
+  --rdp-nav_button-width: 1.5rem;
+  --rdp-months-gap: 1rem;
+  --rdp-weekday-padding: 0.25rem 0;
+  font-size: 0.8rem;
+}
+
+/* Default style.css makes selected days bold + font-size: large.
+   Tone that down to match the surrounding day numbers. */
+.rdp-root .rdp-selected {
+  font-weight: inherit;
+  font-size: inherit;
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 183 74% 23%;           /* #0f6064 - Teal brand color */
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 183 74% 23%;              /* Match primary color */
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 183 74% 23%;               /* #0f6064 - Same teal as light mode */
+    --primary-foreground: 210 40% 98%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@keyframes toast-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Map (Leaflet) */
+
+/* Contain Leaflet's internal pane z-indices (up to 700) inside a new
+ * stacking context so popovers, dropdowns, and dialogs portalled to
+ * document.body render above the map instead of being covered. */
+.leaflet-container {
+  position: relative;
+  z-index: 0;
+}
+
+/* Fullscreen toggle — the FullscreenControl button toggles this class
+ * on the map container element. */
+.leaflet-container.map-fullscreen {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 9999 !important;
+  border-radius: 0 !important;
+}
+
+/* Brief centered cue shown when the Counts auto-play loop wraps back to the
+   first frame, so the viewer knows a new pass started. */
+@keyframes restart-flash {
+  0% { opacity: 0; transform: scale(0.7); }
+  25% { opacity: 0.85; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.15); }
+}

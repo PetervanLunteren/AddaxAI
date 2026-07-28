@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+AppStream metadata. Ubuntu's App Center (gnome-software) reads this from
+inside the deb to show a proper name, summary, and publisher instead of
+the raw package name with "Unknown publisher". The launchable id must
+match the desktop file that electron-builder generates, which is named
+after the executable (addaxai-desktop.desktop).
+-->
+<component type="desktop-application">
+  <id>com.addaxai.cameratrap</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>AddaxAI</name>
+  <summary>Camera trap wildlife analysis platform</summary>
+  <developer id="com.addaxdatascience">
+    <name>Addax Data Science</name>
+  </developer>
+  <description>
+    <p>
+      AddaxAI analyses camera trap images and videos with machine learning
+      models. It detects animals, people, and vehicles, classifies species,
+      and helps you verify the results and export reports.
+    </p>
+  </description>
+  <launchable type="desktop-id">addaxai-desktop.desktop</launchable>
+  <url type="homepage">https://addaxdatascience.com</url>
+  <url type="bugtracker">https://github.com/PetervanLunteren/AddaxAI/issues</url>
+</component>

@@ -1,0 +1,2 @@
+# models.json is generated here at build time by scripts/sync-models.mjs.
+# This .gitkeep keeps the folder in git; the generated file is gitignored.

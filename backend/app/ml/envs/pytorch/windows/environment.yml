@@ -1,0 +1,47 @@
+# Windows env-pytorch.
+#
+# Same package set as darwin/pytorch/environment.yml (the curated
+# WebUI baseline). Windows gets cu128 wheels for torch + torchvision
+# so pytorch-based classifiers run on GPU, including RTX 50-series
+# (Blackwell, sm_120) with native kernels. Needs NVIDIA driver >= 555.
+# pip-system-certs is added at the end to match the legacy AddaxAI
+# Windows build workflow's corporate-SSL handling on every env.
+name: env-pytorch
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      # The +cu128 local-version suffix forces pip to fetch the GPU
+      # wheel from the cu128 index instead of falling back to the CPU
+      # wheel on PyPI when both versions match the bare `==2.8.0`.
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - torch==2.8.0+cu128
+      - torchvision==0.23.0+cu128
+      - ultralytics==8.3.177
+      - numpy==1.26.4
+      - humanfriendly==10.0
+      - jsonpickle==3.0.2
+      - timm
+      - dill
+      - omegaconf
+      # Required for SpeciesNet-fine-tuned classifiers (addax-sppnet
+      # type, e.g. HWI-ADS-v1, VIC-ADS-v1, SBUSA-ADS-v1, AHDRIFT-v1).
+      # Their backbone is a torch.fx GraphModule that pickled
+      # onnx2torch operator classes; loading the .pt fails with
+      # ModuleNotFoundError without this package.
+      - onnx2torch
+      # Required by the DeepForestVision classifier (dfv-v1,
+      # AFR-DFV-v1), whose architecture is a HuggingFace
+      # Dinov2ForImageClassification. The model ships
+      # facebook/dinov2-large's config.json in its own HF repo and
+      # builds from that, so nothing is fetched at inference time.
+      - transformers==4.49.0
+      - pytorch-lightning==2.4.0
+      - albumentations==1.4.24
+      # OpenCV (headless variant: no GUI deps, only the cv2 module).
+      # Used by the classification worker to stream frames straight
+      # from source videos so we never write frame JPEGs to disk.
+      - opencv-python-headless==4.11.0.86
+      - pip-system-certs

@@ -1,0 +1,34 @@
+---
+sidebar_position: 1
+title: What AddaxAI does
+---
+
+import AppShot from "@site/src/components/AppShot";
+
+# What AddaxAI does
+
+AddaxAI finds the animals in your camera trap photos and videos, and tells you which species they are. It runs on your own computer. Your files stay on your machine.
+
+You give it a folder. It does three things:
+
+1. **Find.** A detection model draws a box around each animal, person and vehicle.
+2. **Name.** A classification model says which species is in each box.
+3. **Check.** You review what the AI suggested and correct anything that is wrong.
+
+After that you get your data out: tables, sorted folders, or a file for another program such as Timelapse. In a project it goes one step further, and results from every camera add up over time into counts, rates and charts.
+
+## What it does not do
+
+- It does not replace your own analysis. The built-in charts and rates cover the usual camera trap questions, and for many projects that is enough. For anything more specific, like occupancy or density models, export the data and run it in R.
+- It does not upload anything. There is no account and no cloud.
+- It is not always right. The species and the counts are suggestions. Check the ones that matter to your result, and accept the rest. See [confidence and verification](../understanding/confidence-and-verification.md).
+
+## Two ways to work
+
+You can point at one folder and get the results out, or you can build a project that you keep adding to over time.
+
+The AI does the same work either way, so the detections and species are the same. What differs is how much interpreting AddaxAI does afterwards. And nothing is locked in: a folder run can become a project later, without losing anything.
+
+<AppShot name="appHome" />
+
+See [choose a workflow](./choose-a-workflow.md) for what each one gives you.

@@ -1,0 +1,53 @@
+name: env-addaxai-base
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  # exiftool binary for EXIF writes and video date extraction. The
+  # installers do not bundle exiftool and fresh machines do not have
+  # it on PATH; the backend resolves it from this env (exiftool_bin.py).
+  - exiftool
+  - pip:
+    # CUDA torch wheels installed from the pytorch.org cu128 index so
+    # GPU acceleration is available out of the box, including RTX
+    # 50-series (Blackwell, sm_120) with native kernels instead of the
+    # slow PTX JIT fallback. Needs NVIDIA driver >= 555. torch 2.8 still
+    # satisfies megadetector 10.0.18: it dropped the old `mkl<=2021.4.0`
+    # constraint (so megadetector's `mkl==2024.0` resolves) and is not
+    # 2.4.0 (which ultralytics 8.3.177 excludes on win32; linux kept on
+    # the same version for parity). Use --extra-index-url (not
+    # --index-url) so PyPI still serves the rest of the dependency tree.
+    - --extra-index-url https://download.pytorch.org/whl/cu128
+    - torch==2.8.0+cu128
+    - torchvision==0.23.0+cu128
+
+    # Image processing and metadata
+    - exifread
+    - piexif
+    - gpsphoto
+    - hachoir
+
+    # Utility packages
+    - appdirs
+    - requests
+    - pillow
+    - tqdm
+    - huggingface_hub
+    - anyio<4.0  # Pin to v3.x for Python 3.11 typing compatibility
+    - openpyxl
+
+    # Similarity search
+    - faiss-cpu>=1.7.4
+
+    # MegaDetector and detection packages
+    - setuptools<82  # yolov5 needs pkg_resources, removed in setuptools 82
+    # Prebuilt wheel for megadetector's ultralytics-yolov5 dependency.
+    # The PyPI release is sdist-only and its setup.py downloads a README
+    # from GitHub at build time; that crashes on machines where Python
+    # cannot load the Windows certificate store (ssl ASN1 error, beta
+    # report 2026-06-10). Installing a wheel skips setup.py entirely.
+    - ultralytics-yolov5 @ https://huggingface.co/Addax-Data-Science/pip-wheels/resolve/main/ultralytics_yolov5-0.1.1-py3-none-any.whl#sha256=d532e62d6d7cd6c7381e4453810f31f10fd269cf9f237494bc570e74168dc2e1
+    - megadetector==10.0.18
+    - ultralytics==8.3.177

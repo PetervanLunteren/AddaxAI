@@ -1,0 +1,34 @@
+name: env-pytorch
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - torch==2.8.0
+      - torchvision==0.23.0
+      - ultralytics==8.3.177
+      - numpy==1.26.4
+      - humanfriendly==10.0
+      - jsonpickle==3.0.2
+      - timm
+      - dill
+      - omegaconf
+      # Required for SpeciesNet-fine-tuned classifiers (addax-sppnet
+      # type, e.g. HWI-ADS-v1, VIC-ADS-v1, SBUSA-ADS-v1, AHDRIFT-v1).
+      # Their backbone is a torch.fx GraphModule that pickled
+      # onnx2torch operator classes; loading the .pt fails with
+      # ModuleNotFoundError without this package.
+      - onnx2torch
+      # Required by the DeepForestVision classifier (dfv-v1,
+      # AFR-DFV-v1), whose architecture is a HuggingFace
+      # Dinov2ForImageClassification. The model ships
+      # facebook/dinov2-large's config.json in its own HF repo and
+      # builds from that, so nothing is fetched at inference time.
+      - transformers==4.49.0
+      - pytorch-lightning==2.4.0
+      - albumentations==1.4.24
+      # OpenCV (headless variant: no GUI deps, only the cv2 module).
+      # Used by the classification worker to stream frames straight
+      # from source videos so we never write frame JPEGs to disk.
+      - opencv-python-headless==4.11.0.86

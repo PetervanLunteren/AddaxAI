@@ -1,6 +1,111 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+!electron/build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+# Python lib directories (but not frontend/src/lib)
+**/lib/
+!frontend/src/lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+venv/
+env/
+ENV/
+
+# Database
+*.sqlite
+*.sqlite3
+*.db
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+*~
+
+# macOS
 .DS_Store
-.vscode/settings.json
-global_vars.json
-**/__pycache__/
-.idea
-model_info/model_info_v5 copy.json
+.AppleDouble
+.LSOverride
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Frontend build
+frontend/dist/
+frontend/build/
+
+# Electron
+electron/dist/
+electron/dist-build/
+electron/test-results/
+electron/playwright-report/
+
+# Logs
+*.log
+logs/
+
+# User data directory (for local development)
+~/AddaxAI/
+
+# Secrets (never commit)
+*.pem
+*.key
+credentials.json
+secrets.yaml
+
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Linter caches
+.ruff_cache/
+
+# Playwright MCP screenshots and snapshots
+.playwright-mcp/
+
+# Alembic
+alembic/versions/*.pyc
+
+# SQLite runtime files
+*.db
+*.db-wal
+*.db-shm
+
+# stuff for myself
+future-plans/*
+skills/send-draft-model/
+
+# VERSION is deliberately tracked, do not add it here. backend.spec
+# bundles it into the PyInstaller build and backend/app/__init__.py
+# reads it at runtime. Untagged builds never rewrite it, so a fresh
+# clone must contain it or the build fails.
+

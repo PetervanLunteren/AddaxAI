@@ -1,0 +1,51 @@
+name: env-pywildlife
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      # Dedicated env for the Colombian Amazon classifier (pywildlife,
+      # CAM-AI4G-v1). It cannot share the `pytorch` env: PytorchWildlife
+      # needs torch 2.4, while that env is pinned to torch 2.0.1 and
+      # ultralytics 8.0.191 for the addax-yolov8 and SpeciesNet-finetune
+      # models. One model paying for its own env beats twenty models
+      # sharing a compromise.
+      #
+      # Python 3.11, unlike every other env here. Nothing in this stack
+      # needs 3.8: legacy's env-pywildlife is 3.8 only by accident, and
+      # 3.8 actively hurts, because supervision caps numpy below 1.23.3
+      # for python <= 3.10 and legacy's own env violates that pin. On
+      # 3.11 the cap lifts and the versions below resolve honestly.
+      #
+      # PytorchWildlife is pinned to 1.2.0: it is the version legacy
+      # ships and has validated, and its wheel declares no dependencies,
+      # so everything it needs is pinned explicitly here. 1.3.0 declares
+      # them and drags in yolov5 -> boto3, which sends pip backtracking
+      # through the AWS SDK for tens of minutes.
+      #
+      # supervision is required even though this model never detects
+      # anything: PytorchWildlife's package __init__ imports its
+      # detection modules, which import supervision.
+      - PytorchWildlife==1.2.0
+      - supervision==0.23.0
+      - numpy==1.24.4
+      - pillow==10.4.0
+      - humanfriendly==10.0
+      - jsonpickle==3.0.2
+      # PytorchWildlife pulls in yolov5, which imports pkg_resources.
+      # Same pin and same reason as the addaxai-base env.
+      - setuptools<82
+      # PytorchWildlife depends on ultralytics-yolov5. Use the same
+      # prebuilt wheel as the addaxai-base env: the PyPI release is
+      # sdist-only and its setup.py downloads a README from GitHub at
+      # build time, which crashes where Python cannot load the Windows
+      # certificate store (ssl ASN1 error, beta report 2026-06-10).
+      - ultralytics-yolov5 @ https://huggingface.co/Addax-Data-Science/pip-wheels/resolve/main/ultralytics_yolov5-0.1.1-py3-none-any.whl#sha256=d532e62d6d7cd6c7381e4453810f31f10fd269cf9f237494bc570e74168dc2e1
+      - --extra-index-url https://download.pytorch.org/whl/cu118
+      - torch==2.4.1+cu118
+      - torchvision==0.19.1+cu118
+      # OpenCV (headless variant: no GUI deps, only the cv2 module).
+      # Used by the classification worker to stream frames straight from
+      # source videos so we never write frame JPEGs to disk.
+      - opencv-python-headless==4.11.0.86

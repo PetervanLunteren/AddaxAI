@@ -1,0 +1,27 @@
+name: env-tensorflow-v1
+dependencies:
+  - python=3.8.15
+  - pip
+  - pip:
+    - humanfriendly
+    - imgaug
+    - jsonpickle
+    - keras_efficientnet_v2
+    - matplotlib
+    - numpy
+    - pandas
+    - piexif
+    - pillow
+    - pyyaml
+    - requests
+    - scikit-learn
+    - statistics
+    - tensorflow
+    - tensorflow-metal
+    - tensorflow_addons
+    - tqdm
+    # OpenCV (headless variant: no GUI deps, only the cv2 module).
+    # Used by the classification worker to stream frames straight
+    # from source videos so we never write frame JPEGs to disk.
+    # 4.10.0.84 is the last release that ships py3.8 wheels.
+    - opencv-python-headless==4.10.0.84

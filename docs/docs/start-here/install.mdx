@@ -1,0 +1,117 @@
+---
+sidebar_position: 2
+title: Installation
+---
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+import DownloadCards from "@site/src/components/DownloadCards";
+
+# Installation
+
+AddaxAI is a desktop app. Download it for your system and run the installer.
+
+<DownloadCards />
+
+:::note Intel Macs
+
+Only Apple Silicon is supported (M1, M2, M3, M4 and M5). Intel Macs cannot run AddaxAI.
+
+:::
+
+## Install
+
+<Tabs groupId="os">
+  <TabItem value="windows" label="Windows" default>
+
+Run the setup `.exe` and follow the installer.
+
+AddaxAI is code signed, but Windows can still show a SmartScreen warning. This is more likely on work computers, which are often locked down harder. Click **More info**, then **Run anyway**. If your computer blocks the app completely, ask whoever manages it to allow it.
+
+  </TabItem>
+  <TabItem value="macos" label="macOS">
+
+Open the dmg and drag AddaxAI into your Applications folder.
+
+The first time you open it, macOS may ask you to confirm because it was downloaded from the internet. Click **Open**. If the option is greyed out, open System Settings, then Privacy & Security, and click **Open Anyway** there.
+
+  </TabItem>
+  <TabItem value="linux" label="Linux">
+
+Double-click the `.deb` file. The App Center opens and shows it as `addaxai` from an unknown publisher, with a "potentially unsafe" warning.
+
+That warning is normal. Ubuntu shows it for every app installed outside its own store. Click **Install**.
+
+When it finishes, find AddaxAI in the app grid.
+
+  </TabItem>
+</Tabs>
+
+## Updating
+
+Your projects, corrections and settings live outside the app, so they survive an update. Install the new version over the old one.
+
+<Tabs groupId="os">
+  <TabItem value="windows" label="Windows" default>
+
+Run the new setup `.exe`. It replaces the old version.
+
+  </TabItem>
+  <TabItem value="macos" label="macOS">
+
+Open the new dmg, drag AddaxAI into Applications, and click **Replace**.
+
+  </TabItem>
+  <TabItem value="linux" label="Linux">
+
+The App Center shows a greyed out "Installed" button for a newer file and offers no update. That is a limitation of the App Center for packages from outside its store.
+
+Update from a terminal instead, in the folder you downloaded to:
+
+```bash
+sudo apt install ./AddaxAI-amd64.deb
+```
+
+  </TabItem>
+</Tabs>
+
+## GPU acceleration
+
+AddaxAI runs on any computer. A GPU only makes it faster.
+
+- **Apple Silicon**: the GPU is always used. Nothing to install.
+- **Windows and Linux**: an NVIDIA GPU is used automatically. The models ship with CUDA 12.8 builds, so recent cards including the RTX 50-series run at full speed. You need an NVIDIA driver of version 555 or newer.
+
+Without a supported GPU everything still works, just slower.
+
+## Uninstall
+
+<Tabs groupId="os">
+  <TabItem value="windows" label="Windows" default>
+
+Open Settings, then Apps, find AddaxAI and click **Uninstall**. The uninstaller asks whether to also remove your user data.
+
+  </TabItem>
+  <TabItem value="macos" label="macOS">
+
+Drag AddaxAI from Applications to the Trash.
+
+To also remove logs, models and the database, delete the folder at `/Users/<username>/AddaxAI`.
+
+  </TabItem>
+  <TabItem value="linux" label="Linux">
+
+```bash
+sudo apt remove addaxai
+```
+
+To also remove logs, models and the database, delete the folder at `/home/<username>/AddaxAI`.
+
+  </TabItem>
+</Tabs>
+
+:::caution Deleting your user data
+
+The AddaxAI folder holds the database with every label and count you confirmed. Removing it cannot be undone, and re-running the AI does not bring your corrections back. See [where your files live](../reference/file-locations.md).
+
+:::

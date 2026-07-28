@@ -1,0 +1,60 @@
+---
+sidebar_position: 5
+title: Export your results
+---
+
+import AppShot from "@site/src/components/AppShot";
+
+# Export your results
+
+Getting your data out of AddaxAI. Which format you want depends on what you will do next.
+
+<AppShot name="export" />
+
+## Which format
+
+| You want to | Use |
+|---|---|
+| Analyse in R, Python or Excel | CSV or XLSX |
+| Share or archive the dataset | Camtrap DP |
+| Carry on in Timelapse | Recognition file |
+| Sort photos into species folders | Species folders, folder run only |
+
+## CSV and XLSX
+
+The same four tables either way. CSV gives one file per table, XLSX puts them on separate sheets of one workbook.
+
+Start with the **observations** table. One row per species per event, with the count. That is the table most analyses need.
+
+Every column is described in [export columns](../reference/export-columns.md).
+
+## Camtrap DP
+
+A standard format for camera trap data. Other tools can read it without knowing anything about AddaxAI, so use it when you share data or deposit it in a repository.
+
+It needs locations and dates, so it is available for projects only.
+
+## Recognition file for Timelapse
+
+A JSON file that Timelapse reads. Written into the analysed folder, next to your photos, because Timelapse resolves paths relative to where the file sits. Do not move it.
+
+In Timelapse, choose Recognition, then import recognition data for this image set, and pick the file.
+
+## Species folders
+
+A folder run can copy your photos into one folder per species. Useful for a quick visual check or for sharing a subset.
+
+One thing to know: a photo with two species is copied into both folders. The copies are separate files, so the total will be larger than your original folder.
+
+## Filters apply
+
+What you export follows the filters you set. If you filtered to one site, you export one site.
+
+Check the threshold before exporting. Anything below it is left out, except detections you verified, which always count. See [confidence and verification](../understanding/confidence-and-verification.md).
+
+## Before you report the numbers
+
+- Check labels for the species you will report on
+- Confirm the counts for those events
+- Look at the deployment periods and trap nights, since rates depend on them
+- Check how many files had no date, as those drop out of time based results

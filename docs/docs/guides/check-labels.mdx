@@ -1,0 +1,68 @@
+---
+sidebar_position: 3
+title: Check the labels
+---
+
+import AppShot from "@site/src/components/AppShot";
+
+# Check the labels
+
+The AI gives every animal a species. Some will be wrong. This page shows how to find the mistakes quickly instead of clicking through every photo.
+
+Checking is optional. But if you plan to report the numbers, check at least the species you will report on.
+
+## The grid
+
+The Labels page shows one card per detection: the cropped animal and the species the AI chose.
+
+<AppShot name="verify" />
+
+The bar at the top right shows how much of the project you have checked.
+
+## Sort by similarity, not by date
+
+This is the trick that saves the most time.
+
+Sorted by similarity, animals that look alike sit next to each other. You get a block of opossums, then a block of deer. Your eye only has to notice the odd one out.
+
+<AppShot name="verifyOddOneOut" />
+
+In this block every card is an opossum except two. The label colour is different, so they stand out without reading a word.
+
+## Fix a group at once
+
+Select the cards that are wrong, then apply one action to all of them.
+
+<AppShot name="verifyOddOneOutSelected" />
+
+- click a card to select it
+- shift click to select a run of cards
+- ctrl click, or cmd click on a Mac, to add single cards
+
+The bar at the bottom then lets you confirm the label, change it, mark the detection as false, or set it to unknown.
+
+Correcting fifty photos of the same misidentified deer takes one action, not fifty.
+
+## Filters
+
+Work through one thing at a time:
+
+- **Labels** to check one species at a time
+- **Verified** to hide what you already did
+- **Sites** and **Date range** to focus on one camera or period
+
+A good order is: start with your most common species, confirm the obvious blocks fast, then look at the rare ones carefully. Rare species are where mistakes hurt most, because one wrong label changes the result a lot.
+
+## Your corrections are permanent
+
+Once you correct a detection, nothing overwrites it. Re-running the AI, changing a threshold or reprocessing all skip it.
+
+Verified detections also always count, even if their score is below your threshold. See [confidence and verification](../understanding/confidence-and-verification.md).
+
+## Labels are not counts
+
+Checking labels answers *which species*. It does not answer *how many*, and it does not confirm any count.
+
+The dashboard tracks the two separately, which is why "labels verified" and "counts confirmed" usually show different numbers.
+
+Do labels first, then counts. See [confirm the counts](./confirm-counts.mdx).

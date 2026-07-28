@@ -1,0 +1,20 @@
+---
+sidebar_position: 2
+title: Model zoo
+---
+
+import ModelZoo from "@site/src/components/ModelZoo";
+
+# Model zoo
+
+Every model AddaxAI ships, in one searchable table. Filter by type, filter by region, or search by name, developer, or region. This table is generated from the app's real model catalogue (`models.json`), so it always matches what the app installs.
+
+<ModelZoo />
+
+## Model types
+
+- **Detection**: finds animals, people, and vehicles in an image and draws boxes around them. MegaDetector is the default. Detection runs first, on every file.
+- **Classification**: names the species inside each animal box. SpeciesNet is the global default; regional classifiers cover specific ecosystems.
+- **Embedding**: turns each detection crop into a feature vector for similarity search and clustering, so you can find visually similar detections fast.
+
+The "Min app" column is the minimum AddaxAI version that can run the model. If a model needs a newer version than you have installed, update the app.

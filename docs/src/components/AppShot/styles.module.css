@@ -1,0 +1,24 @@
+.shot {
+  margin: 1.5rem 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+  background: var(--ifm-color-emphasis-100);
+}
+
+.img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.note {
+  margin: 0;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.78rem;
+  color: var(--ifm-color-emphasis-600);
+  text-align: center;
+  background: var(--ifm-color-emphasis-100);
+  border-top: 1px dashed var(--ifm-color-emphasis-300);
+}

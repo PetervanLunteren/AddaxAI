@@ -1,0 +1,130 @@
+/* Documentation home. Calm and functional: this page routes, it does not sell. */
+
+/* Forest photo behind a teal wash. The overlay is set inline in index.tsx so
+   the image path can go through useBaseUrl. Dark enough that white text stays
+   readable, in both light and dark theme. */
+.hero {
+  background-size: cover;
+  background-position: center;
+  color: #fff;
+  padding: 4rem 1rem 3.5rem;
+  text-align: center;
+}
+
+.heroInner {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.heroLogo {
+  height: 56px;
+  width: auto;
+  margin-bottom: 1.5rem;
+  /* the wordmark is dark teal on transparent, so it needs a light panel */
+  background: rgba(255, 255, 255, 0.92);
+  padding: 9px 15px;
+  border-radius: 13px;
+}
+
+.heroTitle {
+  font-size: clamp(1.8rem, 4vw, 2.5rem);
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.75rem;
+  color: #fff;
+}
+
+.heroSub {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+}
+
+.section {
+  padding: 3rem 1rem;
+}
+
+.sectionAlt {
+  background: var(--ifm-color-emphasis-100);
+}
+
+.wide {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+}
+
+/* Cards sit on the tinted band, so a white surface plus a soft shadow makes
+   them read as raised objects. In dark mode the shadow is invisible and the
+   tint sits lighter than the card, so the border does the work instead. */
+.card {
+  background: var(--ifm-background-color);
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 14px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 2px rgba(10, 40, 42, 0.05), 0 6px 18px rgba(10, 40, 42, 0.05);
+}
+
+:global(html[data-theme="dark"]) .card {
+  box-shadow: none;
+  border-color: var(--ifm-color-emphasis-300);
+}
+
+/* Last card spans the full row, so an odd number of cards stays balanced. */
+.cardWide {
+  grid-column: 1 / -1;
+}
+
+.cardTitle {
+  font-size: 1.25rem;
+  margin: 0 0 0.5rem;
+}
+
+.cardTitle a {
+  color: var(--ifm-heading-color);
+  text-decoration: none;
+}
+
+.cardTitle a:hover {
+  color: var(--ifm-color-primary);
+}
+
+.cardBody {
+  color: var(--ifm-color-emphasis-700);
+  line-height: 1.55;
+  margin: 0 0 1rem;
+  font-size: 0.97rem;
+}
+
+.cardLinks {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.cardLinks li {
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.cardLinks li:last-child {
+  border-bottom: none;
+}
+
+.cardLinks a {
+  display: block;
+  padding: 0.55rem 0;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 760px) {
+  .cards {
+    grid-template-columns: 1fr;
+  }
+}

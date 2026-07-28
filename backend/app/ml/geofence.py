@@ -1,0 +1,434 @@
+"""
+Geofence module for geographic label filtering.
+
+Reads geofence data from classification model directories to determine
+which labels are valid for a given country/state. Used to auto-populate
+excluded_classes when a project has geographic location configured.
+
+The geofence JSON maps taxonomy keys to allowed countries:
+    {
+        "mammalia;carnivora;felidae;panthera;pardus": {
+            "allow": {"KEN": [], "USA": ["CA", "FL"], ...}
+        }
+    }
+
+The labels file maps taxonomy keys to common names:
+    UUID;class;order;family;genus;species;common_name
+
+Matching is exact: each label's taxonomy key is checked directly
+against the geofence. No parent traversal is needed because the
+geofence already contains entries at every taxonomy level that the
+model can produce.
+"""
+
+from __future__ import annotations
+
+import json
+from functools import lru_cache
+from pathlib import Path
+
+from app.core.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+# Known labels file pattern for SpeciesNet models
+LABELS_EXTENSION = ".labels.txt"
+
+
+def find_geofence_file(model_dir: Path) -> Path | None:
+    """
+    Find a geofence JSON file in a model directory.
+
+    Looks for files matching 'geofence_release.*.json'.
+
+    Args:
+        model_dir: Path to model directory
+
+    Returns:
+        Path to geofence file, or None if not found
+    """
+    matches = sorted(model_dir.glob("geofence_release.*.json"))
+    if matches:
+        return matches[-1]
+    return None
+
+
+def find_labels_file(model_dir: Path) -> Path | None:
+    """
+    Find a labels file in a model directory.
+
+    Looks for files matching '*.labels*.txt' (supports date-suffixed
+    filenames like '*.labels.20251208.txt').
+
+    Args:
+        model_dir: Path to model directory
+
+    Returns:
+        Path to labels file, or None if not found
+    """
+    matches = sorted(model_dir.glob("*.labels*.txt"))
+    if matches:
+        return matches[0]
+    return None
+
+
+@lru_cache(maxsize=4)
+def _load_geofence_cached(geofence_path: str) -> dict:
+    """Load and cache geofence JSON (keyed by string path for lru_cache)."""
+    with open(geofence_path) as f:
+        return json.load(f)
+
+
+def load_geofence(model_dir: Path) -> dict | None:
+    """
+    Load geofence data from a model directory.
+
+    Results are cached in memory after first load.
+
+    Args:
+        model_dir: Path to model directory
+
+    Returns:
+        Parsed geofence dict, or None if no geofence file exists
+    """
+    geofence_path = find_geofence_file(model_dir)
+    if geofence_path is None:
+        return None
+    return _load_geofence_cached(str(geofence_path))
+
+
+@lru_cache(maxsize=4)
+def _parse_labels_cached(labels_path: str) -> tuple[tuple[str, str], ...]:
+    """Parse and cache labels file (keyed by string path for lru_cache).
+
+    Applies the same name-dedup logic as inference.py: empty or
+    duplicate common names fall back to the most specific taxonomy
+    rank, then UUID prefix if still duplicate.
+    """
+    labels = []
+    seen_names: set[str] = set()
+    with open(labels_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(";")
+            if len(parts) < 7:
+                continue
+            taxonomy_key = ";".join(parts[1:6])
+            common_name = parts[6]
+
+            if not common_name or common_name in seen_names:
+                taxonomy = [p for p in parts[1:6] if p]
+                if taxonomy:
+                    common_name = taxonomy[-1]
+
+            if common_name in seen_names:
+                common_name = f"{common_name} ({parts[0][:8]})"
+
+            seen_names.add(common_name)
+            labels.append((common_name, taxonomy_key))
+    return tuple(labels)
+
+
+def parse_labels_file(labels_path: Path) -> list[dict]:
+    """
+    Parse a SpeciesNet-format labels file.
+
+    Each line has format: UUID;class;order;family;genus;species;common_name
+    Results are cached after first load.
+
+    Args:
+        labels_path: Path to .labels.txt file
+
+    Returns:
+        List of dicts with 'common_name' and 'taxonomy_key' fields
+    """
+    return [
+        {"common_name": name, "taxonomy_key": key}
+        for name, key in _parse_labels_cached(str(labels_path))
+    ]
+
+
+@lru_cache(maxsize=64)
+def _get_allowed_labels_cached(
+    geofence_path: str,
+    labels_path: str,
+    country_code: str,
+    state_code: str | None,
+) -> tuple[str, ...]:
+    """Cached core of get_allowed_labels (string args for lru_cache)."""
+    geofence = _load_geofence_cached(geofence_path)
+    labels = _parse_labels_cached(labels_path)
+    country_upper = country_code.upper()
+    allowed = []
+
+    for common_name, taxonomy_key in labels:
+        if taxonomy_key == ";;;;":
+            allowed.append(common_name)
+            continue
+
+        geofence_entry = geofence.get(taxonomy_key)
+        if geofence_entry is None:
+            allowed.append(common_name)
+            continue
+
+        # Mirrors official SpeciesNet should_geofence_animal_classification():
+        # 1. Check allow rules (if present)
+        # 2. Check block rules (override allow)
+        # 3. If neither rule blocks, species is allowed
+        geofenced = False
+        state_upper = (
+            state_code.upper()
+            if state_code and state_code.upper() not in ("NONE", "")
+            else None
+        )
+
+        # Allow rules
+        allow_dict = geofence_entry.get("allow")
+        if allow_dict:
+            if country_upper not in allow_dict:
+                geofenced = True
+            else:
+                allow_states = allow_dict[country_upper]
+                if state_upper and allow_states and state_upper not in allow_states:
+                    geofenced = True
+
+        # Block rules (override allow)
+        if not geofenced:
+            block_dict = geofence_entry.get("block")
+            if block_dict and country_upper in block_dict:
+                block_states = block_dict[country_upper]
+                if not block_states:
+                    geofenced = True
+                elif state_upper and state_upper in block_states:
+                    geofenced = True
+
+        if geofenced:
+            continue
+
+        allowed.append(common_name)
+
+    return tuple(allowed)
+
+
+def get_allowed_labels(
+    model_dir: Path,
+    country_code: str,
+    state_code: str | None = None,
+) -> list[str]:
+    """
+    Get labels allowed for a given country/state based on geofence data.
+
+    For each label in the model's labels file, checks whether the label's
+    taxonomy key exists in the geofence and whether the country (and
+    optionally state) is in the allow list. Results are cached.
+
+    Args:
+        model_dir: Path to model directory
+        country_code: ISO country code (e.g., 'KEN', 'USA')
+        state_code: Optional US state code (e.g., 'CA', 'TX')
+
+    Returns:
+        List of allowed common_name strings
+
+    Raises:
+        FileNotFoundError: If geofence or labels file is missing
+    """
+    geofence_path = find_geofence_file(model_dir)
+    if geofence_path is None:
+        raise FileNotFoundError(
+            f"No geofence file found in {model_dir}"
+        )
+
+    labels_path = find_labels_file(model_dir)
+    if labels_path is None:
+        raise FileNotFoundError(
+            f"No labels file found in {model_dir}"
+        )
+
+    return list(_get_allowed_labels_cached(
+        str(geofence_path), str(labels_path), country_code, state_code,
+    ))
+
+
+def get_all_labels(model_dir: Path) -> list[str]:
+    """
+    Get all label common names from a model's labels file.
+
+    Args:
+        model_dir: Path to model directory
+
+    Returns:
+        List of all common_name strings
+
+    Raises:
+        FileNotFoundError: If labels file is missing
+    """
+    labels_path = find_labels_file(model_dir)
+    if labels_path is None:
+        raise FileNotFoundError(
+            f"No labels file found in {model_dir}"
+        )
+    labels = parse_labels_file(labels_path)
+    return [entry["common_name"] for entry in labels]
+
+
+def compute_excluded_classes(
+    model_dir: Path,
+    country_code: str,
+    state_code: str | None = None,
+) -> list[str]:
+    """
+    Compute excluded_classes list for a country/state combination.
+
+    Returns all labels NOT allowed for the given country/state.
+
+    Args:
+        model_dir: Path to model directory
+        country_code: ISO country code
+        state_code: Optional US state code
+
+    Returns:
+        List of excluded common_name strings
+    """
+    allowed = set(
+        get_allowed_labels(model_dir, country_code, state_code)
+    )
+    all_labels = get_all_labels(model_dir)
+    return [label for label in all_labels if label not in allowed]
+
+
+@lru_cache(maxsize=64)
+def _get_allowed_taxonomy_keys_cached(
+    geofence_path: str,
+    country_code: str,
+    state_code: str | None,
+) -> frozenset[str]:
+    """Get all taxonomy keys allowed for a country from the geofence."""
+    geofence = _load_geofence_cached(geofence_path)
+    country_upper = country_code.upper()
+    allowed_keys: set[str] = set()
+
+    state_upper = (
+        state_code.upper()
+        if state_code and state_code.upper() not in ("NONE", "")
+        else None
+    )
+
+    for taxonomy_key, entry in geofence.items():
+        geofenced = False
+
+        allow_dict = entry.get("allow")
+        if allow_dict:
+            if country_upper not in allow_dict:
+                geofenced = True
+            else:
+                allow_states = allow_dict[country_upper]
+                if state_upper and allow_states and state_upper not in allow_states:
+                    geofenced = True
+
+        if not geofenced:
+            block_dict = entry.get("block")
+            if block_dict and country_upper in block_dict:
+                block_states = block_dict[country_upper]
+                if not block_states:
+                    geofenced = True
+                elif state_upper and state_upper in block_states:
+                    geofenced = True
+
+        if not geofenced:
+            allowed_keys.add(taxonomy_key)
+
+    return frozenset(allowed_keys)
+
+
+def get_allowed_taxonomy_keys(
+    model_dir: Path,
+    country_code: str,
+    state_code: str | None = None,
+) -> frozenset[str]:
+    """
+    Get all taxonomy keys allowed for a country/state from the geofence.
+
+    These keys are in 'class;order;family;genus;species' format and
+    cover ALL taxonomy levels (not just species). Used by exclusion
+    rollup to check if an ancestor taxon is present in the country.
+
+    Args:
+        model_dir: Path to model directory
+        country_code: ISO country code
+        state_code: Optional US state code
+
+    Returns:
+        Frozenset of allowed taxonomy key strings
+
+    Raises:
+        FileNotFoundError: If geofence file is missing
+    """
+    geofence_path = find_geofence_file(model_dir)
+    if geofence_path is None:
+        raise FileNotFoundError(
+            f"No geofence file found in {model_dir}"
+        )
+
+    return _get_allowed_taxonomy_keys_cached(
+        str(geofence_path), country_code, state_code
+    )
+
+
+def compute_excluded_class_ids(
+    model_dir: Path,
+    country_code: str,
+    state_code: str | None,
+    db,
+) -> list[str]:
+    """
+    Compute excluded_classes as taxonomy UUIDs for a country/state.
+
+    Resolves excluded label names to their LabelTaxonomy IDs.
+
+    Args:
+        model_dir: Path to model directory
+        country_code: ISO country code
+        state_code: Optional US state code
+        db: SQLAlchemy Session
+
+    Returns:
+        List of excluded taxonomy UUID strings
+    """
+    from app.models.label_taxonomy import LabelTaxonomy
+
+    excluded_names = compute_excluded_classes(
+        model_dir, country_code, state_code
+    )
+    if not excluded_names:
+        return []
+
+    rows = (
+        db.query(LabelTaxonomy.id)
+        .filter(LabelTaxonomy.name.in_(excluded_names))
+        .all()
+    )
+    return [r[0] for r in rows]
+
+
+def get_available_countries(model_dir: Path) -> list[str]:
+    """
+    Get all country codes that appear in any geofence entry.
+
+    Args:
+        model_dir: Path to model directory
+
+    Returns:
+        Sorted list of ISO country codes
+    """
+    geofence = load_geofence(model_dir)
+    if geofence is None:
+        return []
+
+    countries = set()
+    for entry in geofence.values():
+        countries.update(entry.get("allow", {}).keys())
+
+    return sorted(countries)

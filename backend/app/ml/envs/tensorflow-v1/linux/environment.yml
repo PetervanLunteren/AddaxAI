@@ -1,0 +1,36 @@
+# Linux env-tensorflow-v1.
+#
+# Verbatim copy of the legacy AddaxAI source yml at
+# classification_utils/envs/tensorflow-linux-windows.yml. The Linux
+# installer feeds this same yml to `conda env create` for env-tensorflow.
+# Package versions are intentionally pinned for compatibility with TF
+# 2.10's only-supported CUDA combo (cudatoolkit 11.2 + cudnn 8.1).
+name: env-tensorflow-v1
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - conda-forge::cudatoolkit=11.2
+  - conda-forge::cudnn=8.1.0
+  - pip
+  - pip:
+    - humanfriendly
+    - imgaug
+    - jsonpickle
+    - keras==2.10.0
+    - keras_efficientnet_v2
+    - matplotlib
+    - numpy<2.0.0
+    - pandas
+    - piexif
+    - pillow
+    - pyyaml
+    - requests
+    - scikit-learn
+    - tensorflow==2.10.0
+    - tensorflow_addons
+    - tqdm
+    # OpenCV (headless variant: no GUI deps, only the cv2 module).
+    # Used by the classification worker to stream frames straight
+    # from source videos so we never write frame JPEGs to disk.
+    - opencv-python-headless==4.11.0.86

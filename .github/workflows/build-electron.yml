@@ -1,0 +1,376 @@
+name: Build Electron App
+
+# Triggers:
+# - release.published: Created a Release in the GitHub UI (with notes) and
+#   clicked "Publish". Builds binaries and attaches them to that release.
+# - workflow_dispatch: Manual run from the Actions tab. Produces unsigned
+#   debug builds (uploaded as workflow artifacts only, kept 14 days).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write  # Required to attach assets to a release
+
+jobs:
+  build:
+    name: Build (${{ matrix.label }})
+    runs-on: ${{ matrix.runs-on }}
+    continue-on-error: ${{ matrix.continue-on-error }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS is the canonical target. Hard fails on any error.
+          - label: macOS arm64
+            os: macos
+            runs-on: macos-14
+            continue-on-error: false
+            artifact-name: macos-installers
+            artifact-glob: |
+              electron/dist-build/*.dmg
+            electron-builder-args: --mac --arm64
+          # Linux is non-blocking until verified end-to-end.
+          - label: Linux x64
+            os: linux
+            runs-on: ubuntu-22.04
+            continue-on-error: true
+            artifact-name: linux-installers
+            artifact-glob: |
+              electron/dist-build/*.deb
+            electron-builder-args: --linux
+          # Windows hard-fails on release events: the installer must be
+          # code-signed (Authenticode) or SmartScreen scares users.
+          - label: Windows x64
+            os: windows
+            runs-on: windows-2022
+            continue-on-error: false
+            artifact-name: windows-installers
+            artifact-glob: |
+              electron/dist-build/*.exe
+            electron-builder-args: --win
+
+    defaults:
+      run:
+        # bash is available on all 3 runners (Git Bash on Windows). Keeps
+        # the YAML uniform; no PowerShell branches.
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # `git describe --tags --exact-match HEAD` (used in the
+          # version-sync step) needs the tag refs locally. Default
+          # checkout doesn't fetch them.
+          fetch-depth: 0
+          fetch-tags: true
+
+      # Fail BEFORE any expensive build if Apple credentials are missing
+      # on a release event. Avoids a 30-minute build that ends in a silent
+      # unsigned DMG. (Q3 hard-fail behaviour.)
+      - name: Verify Apple credentials
+        if: matrix.os == 'macos' && github.event_name == 'release'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=0
+          for v in MACOS_CERTIFICATE MACOS_CERTIFICATE_PWD APPLE_ID APPLE_ID_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Missing required secret: $v"
+              missing=1
+            fi
+          done
+          if [ "$missing" != "0" ]; then
+            exit 1
+          fi
+          echo "All required Apple credentials are set."
+
+      # Same idea on Windows: don't burn a 30-minute build to discover
+      # the signing secrets aren't there. Secret names match the
+      # AddaxAI repo's build-windows-release.yml exactly. Runs on every
+      # Windows build (including workflow_dispatch) so debug installers
+      # are signed too — Authenticode has no per-signature quota.
+      - name: Verify Windows code-signing credentials
+        if: matrix.os == 'windows'
+        env:
+          ADDAX_3YEAR_2025_BASE64: ${{ secrets.ADDAX_3YEAR_2025_BASE64 }}
+          ADDAX_3YEAR_2025_PFX_PASSWORD: ${{ secrets.ADDAX_3YEAR_2025_PFX_PASSWORD }}
+        run: |
+          missing=0
+          for v in ADDAX_3YEAR_2025_BASE64 ADDAX_3YEAR_2025_PFX_PASSWORD; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Missing required secret: $v"
+              missing=1
+            fi
+          done
+          if [ "$missing" != "0" ]; then
+            exit 1
+          fi
+          echo "All required Windows code-signing credentials are set."
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'backend/requirements.txt'
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            frontend/package-lock.json
+            electron/package-lock.json
+
+      - name: Install backend deps
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install electron deps
+        working-directory: electron
+        run: npm ci
+
+      # Source of truth for the installer version is the repo-root
+      # VERSION file (read at runtime by the backend) and
+      # electron/package.json (read by Electron's app.getVersion()).
+      # Both are rewritten in lockstep here.
+      #
+      # On a release event we trust the release tag.
+      # On workflow_dispatch we look for an exact-match tag at HEAD via
+      # git describe; if there's no tag (a debug build off main) we
+      # leave the working-copy versions alone, which keeps filenames
+      # predictable and makes it obvious in About that the binary is a
+      # dev build.
+      - name: Sync version from tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          else
+            TAG="$(git describe --tags --exact-match HEAD 2>/dev/null || true)"
+          fi
+          if [ -z "$TAG" ]; then
+            echo "No tag at HEAD; leaving VERSION and electron/package.json untouched."
+            exit 0
+          fi
+          VERSION="${TAG#v}"
+          echo "Setting version to $VERSION (from tag $TAG)"
+          printf '%s\n' "$VERSION" > VERSION
+          cd electron
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Build frontend
+        working-directory: frontend
+        # build:check runs `tsc -b && vite build`. Plain `vite build`
+        # transpiles with esbuild and never type-checks, so a type error
+        # would otherwise ship in a release bundle. Type-check first.
+        run: npm run build:check
+
+      - name: Build PyInstaller backend
+        working-directory: backend
+        run: python -m PyInstaller backend.spec --clean
+
+      # Stale signatures on bundled Python dylibs trip the Team-ID check
+      # when electron-builder re-signs the .app with our Developer ID.
+      # macOS-only by design (the script paths assume macOS dylibs).
+      - name: Strip stale signatures from Python libs
+        if: matrix.os == 'macos'
+        working-directory: backend
+        run: python3 remove_python_signature.py
+
+      - name: Verify backend build
+        working-directory: backend
+        run: ls -lh dist/backend/
+
+      - name: Import macOS signing certificate
+        if: matrix.os == 'macos'
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+        run: |
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          echo -n "$CERTIFICATE_BASE64" | base64 --decode -o "$CERTIFICATE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security import "$CERTIFICATE_PATH" -P "$CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security find-identity -v -p codesigning
+
+      # Decode the Authenticode PFX from a base64 secret to disk, then
+      # expose its path via CSC_LINK. electron-builder reads CSC_LINK +
+      # CSC_KEY_PASSWORD during the Package step and signs both the
+      # inner AddaxAI.exe and the outer NSIS installer with SHA-256 +
+      # RFC 3161 timestamping (configured in electron/package.json
+      # under win.signtoolOptions). Runs on every Windows build so
+      # workflow_dispatch installers are signed too.
+      - name: Import Windows signing certificate
+        if: matrix.os == 'windows'
+        env:
+          CERT_BASE64: ${{ secrets.ADDAX_3YEAR_2025_BASE64 }}
+        run: |
+          CERT_PATH="$RUNNER_TEMP/addax_cert.pfx"
+          echo -n "$CERT_BASE64" | base64 --decode > "$CERT_PATH"
+          if [ ! -s "$CERT_PATH" ]; then
+            echo "::error::Decoded PFX is empty; check ADDAX_3YEAR_2025_BASE64 secret"
+            exit 1
+          fi
+          echo "CSC_LINK=$CERT_PATH" >> "$GITHUB_ENV"
+          echo "WIN_CERT_PATH=$CERT_PATH" >> "$GITHUB_ENV"
+
+      - name: Package electron app
+        working-directory: electron
+        env:
+          # macOS: discover the signing identity from the temporary
+          # keychain. Off on Linux/Windows (Windows uses CSC_LINK +
+          # CSC_KEY_PASSWORD instead, set below; Linux is unsigned).
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.os == 'macos' && 'true' || 'false' }}
+          # Apple notarytool credentials. notarize.js reads these.
+          # Renamed: secret APPLE_ID_PASSWORD -> env APPLE_APP_SPECIFIC_PASSWORD.
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # When set to 1, notarize.js raises instead of silently
+          # skipping if credentials are missing. We require it on
+          # release events to enforce signed/notarized output.
+          REQUIRE_NOTARIZATION: ${{ matrix.os == 'macos' && github.event_name == 'release' && '1' || '0' }}
+          # Windows Authenticode signing. CSC_LINK is set by the
+          # "Import Windows signing certificate" step above; the
+          # password comes straight from the secret here. Empty string
+          # on non-Windows matrix cells so electron-builder skips
+          # signing cleanly.
+          CSC_KEY_PASSWORD: ${{ matrix.os == 'windows' && secrets.ADDAX_3YEAR_2025_PFX_PASSWORD || '' }}
+        run: |
+          npm run build
+          npx electron-builder ${{ matrix.electron-builder-args }}
+
+      # Defence-in-depth verification (Q10). If electron-builder produced
+      # an unsigned, non-notarized, or wrong-arch bundle, fail loudly here
+      # rather than shipping it to users.
+      - name: Verify macOS bundle (arch, signature, stapled ticket)
+        if: matrix.os == 'macos'
+        run: |
+          APP="electron/dist-build/mac-arm64/AddaxAI.app"
+          if [ ! -d "$APP" ]; then
+            echo "::error::App bundle not found at $APP"
+            ls -la electron/dist-build/ || true
+            exit 1
+          fi
+
+          echo "==> lipo -archs (main binary)"
+          lipo -archs "$APP/Contents/MacOS/AddaxAI"
+
+          echo "==> lipo -archs (backend exe)"
+          lipo -archs "$APP/Contents/Resources/backend/backend"
+
+          # arm64-only enforcement
+          for bin in \
+            "$APP/Contents/MacOS/AddaxAI" \
+            "$APP/Contents/Resources/backend/backend"; do
+            archs=$(lipo -archs "$bin")
+            if [ "$archs" != "arm64" ]; then
+              echo "::error::$bin has wrong arch: '$archs' (expected 'arm64')"
+              exit 1
+            fi
+          done
+
+          echo "==> codesign --verify --deep --strict"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "==> xcrun stapler validate"
+            xcrun stapler validate "$APP"
+          else
+            echo "==> Skipping stapler validate on workflow_dispatch"
+          fi
+
+      # Defence-in-depth verification on Windows: if electron-builder
+      # silently produced an unsigned installer (e.g. credentials
+      # mishandled, signtool missing), fail loudly here.
+      - name: Verify Windows installer signature
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter "signtool.exe" `
+            | Where-Object { $_.FullName -match '\\x64\\signtool.exe$' } `
+            | Sort-Object FullName -Descending `
+            | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) {
+            Write-Error "signtool.exe not found under Windows 10 SDK"
+            exit 1
+          }
+          Write-Host "Using $signtool"
+          $installer = Get-ChildItem -Path "electron\dist-build" -Filter "*.exe" `
+            | Select-Object -First 1
+          if (-not $installer) {
+            Write-Error "No .exe installer found in electron/dist-build/"
+            exit 1
+          }
+          Write-Host "==> signtool verify /pa /v on $($installer.FullName)"
+          & $signtool verify /pa /v $installer.FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Cleanup keychain
+        if: always() && matrix.os == 'macos'
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          security delete-keychain "$KEYCHAIN_PATH" || true
+
+      - name: Cleanup Windows certificate
+        if: always() && matrix.os == 'windows'
+        run: |
+          if [ -n "$WIN_CERT_PATH" ] && [ -f "$WIN_CERT_PATH" ]; then
+            rm -f "$WIN_CERT_PATH"
+            echo "Removed $WIN_CERT_PATH"
+          fi
+
+      - name: List build outputs
+        if: always()
+        run: ls -lh electron/dist-build/ || true
+
+      - name: Upload artifacts (workflow run, 14 days)
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: ${{ matrix.artifact-glob }}
+          retention-days: 14
+          if-no-files-found: error
+
+      # Attach binaries to the existing release. The release was already
+      # created in the UI (that's what fired this workflow); we never
+      # create or modify the release notes here.
+      - name: Attach to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: ${{ matrix.artifact-glob }}
+          fail_on_unmatched_files: true
+

@@ -1,0 +1,147 @@
+# -*- mode: python ; coding: utf-8 -*-
+"""
+PyInstaller spec file for AddaxAI backend.
+
+This builds a single-file executable that includes:
+- FastAPI application
+- All Python dependencies
+- Database migrations (alembic)
+"""
+
+import sys
+from pathlib import Path
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
+
+# Get the backend directory.
+# Using Path.cwd() here is fragile: PyInstaller's behaviour around the
+# spec-file's working directory varies between versions and invocation
+# styles, and conditional `(backend_dir / "x").exists()` checks below
+# depend on this resolving correctly. SPECPATH is a magic variable
+# PyInstaller injects when exec'ing the spec; it always points at the
+# directory containing this file.
+backend_dir = Path(SPECPATH).resolve()
+
+block_cipher = None
+
+# Collect all data from key packages
+datas = [
+    ('app', 'app'),
+    ('alembic', 'alembic'),
+    ('alembic.ini', '.'),
+    ('../frontend/dist', 'frontend/dist'),
+    # Single source of truth for the app version. Read at runtime by
+    # backend/app/__init__.py via sys._MEIPASS / 'VERSION'.
+    ('../VERSION', '.'),
+]
+
+# Collect data files from packages
+datas += collect_data_files('huggingface_hub')
+datas += collect_data_files('pydantic')
+datas += collect_data_files('fastapi')
+datas += collect_data_files('astral')   # astral ships timezone resources
+datas += collect_data_files('openpyxl') # openpyxl ships schema XSDs
+
+# timezonefinder: we only use the lightweight TimezoneFinderL, which needs the
+# shortcut files (~4 MB), NOT the 62 MB full-polygon boundary data that the
+# full TimezoneFinder uses for point-in-polygon lookups. Ship everything except
+# that one big file to keep the installer lean. Verified: TimezoneFinderL
+# resolves correctly with this file absent.
+_tzf_datas = collect_data_files('timezonefinder')
+_tzf_datas = [
+    (src, dest) for (src, dest) in _tzf_datas
+    if not src.replace('\\', '/').endswith('data/boundaries/coordinates.fbs')
+]
+datas += _tzf_datas
+
+# Comprehensive hidden imports - collect ALL submodules
+hiddenimports = []
+hiddenimports += collect_submodules('fastapi')
+hiddenimports += collect_submodules('starlette')
+hiddenimports += collect_submodules('uvicorn')
+hiddenimports += collect_submodules('pydantic')
+hiddenimports += collect_submodules('pydantic_core')
+hiddenimports += collect_submodules('pydantic_settings')
+hiddenimports += collect_submodules('sqlalchemy')
+hiddenimports += collect_submodules('alembic')
+hiddenimports += collect_submodules('huggingface_hub')
+hiddenimports += collect_submodules('PIL')
+hiddenimports += collect_submodules('multipart')
+hiddenimports += collect_submodules('websockets')
+hiddenimports += collect_submodules('httpx')
+hiddenimports += collect_submodules('redis')
+hiddenimports += collect_submodules('requests')  # Required by huggingface_hub
+hiddenimports += collect_submodules('truststore')  # OS trust store for TLS
+hiddenimports += collect_submodules('ijson')  # streaming JSON (results.json)
+hiddenimports += collect_submodules('cv2')       # opencv-python-headless
+hiddenimports += collect_submodules('astral')    # sunrise/sunset for activity overlap
+hiddenimports += collect_submodules('timezonefinder')  # lat/lon -> IANA tz
+hiddenimports += collect_submodules('openpyxl')  # XLSX export
+hiddenimports += ['exiftool']                    # PyExifTool: video metadata
+hiddenimports += ['shapefile']                   # pyshp: shapefile export
+hiddenimports += ['yaml', 'yaml.loader', 'yaml.dumper']
+
+a = Analysis(
+    ['run_server.py'],
+    pathex=[str(backend_dir)],
+    binaries=[],
+    datas=datas,
+    hiddenimports=hiddenimports,
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[
+        'pytest',
+        'mypy',
+        'ruff',
+        'tkinter',
+        'matplotlib',
+    ],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
+    noarchive=False,
+    # Use --collect-all for problematic packages
+    module_collection_mode={
+        'fastapi': 'py',
+        'starlette': 'py',
+        'uvicorn': 'py',
+        'pydantic': 'py',
+        'sqlalchemy': 'py',
+        'huggingface_hub': 'py',
+    }
+)
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    [],  # Remove binaries, zipfiles, datas - will be in COLLECT
+    exclude_binaries=True,  # Important: don't bundle everything into one file
+    name='backend',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,  # Disable UPX - can cause issues with code signing
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=True,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    # These options help with macOS code signing
+    bundle_identifier='com.addaxai.cameratrap.backend',
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name='backend',
+)

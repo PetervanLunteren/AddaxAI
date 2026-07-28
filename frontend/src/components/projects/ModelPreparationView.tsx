@@ -1,0 +1,126 @@
+/**
+ * Model Preparation View Component
+ *
+ * Replaces modal content during model preparation.
+ * Shows progress bar and real-time updates via WebSocket.
+ */
+
+import { useState } from "react";
+import { Button } from "../ui/button";
+import { Progress } from "../ui/progress";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
+import {
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+
+interface ModelPreparationViewProps {
+  modelName: string;
+  modelEmoji?: string | null;
+  progress: number; // 0.0-1.0
+  message: string;
+  onCancel: () => void;
+}
+
+export function ModelPreparationView({
+  modelName,
+  modelEmoji,
+  progress,
+  message,
+  onCancel,
+}: ModelPreparationViewProps) {
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+
+  const handleCancelClick = () => {
+    setShowCancelDialog(true);
+  };
+
+  const handleConfirmCancel = () => {
+    setShowCancelDialog(false);
+    // Stays in this view showing "Cancelling..." until the backend sends
+    // the cancelled terminal event, which the parent uses to reset.
+    setCancelling(true);
+    onCancel();
+  };
+
+  const progressPercent = Math.round(progress * 100);
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Preparing model...</DialogTitle>
+        <DialogDescription>
+          This may take several minutes. You can cancel below and prepare
+          again later.
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="py-6 space-y-6 min-w-0">
+        {/* Model Info */}
+        <div className="flex flex-col items-center gap-3 text-center">
+          <span className="text-[4.5rem]">{modelEmoji}</span>
+          <div>
+            <h3 className="font-semibold text-lg">{modelName}</h3>
+            <p className="text-sm text-muted-foreground">
+              {cancelling ? "Cancelling..." : "Downloading and installing..."}
+            </p>
+          </div>
+        </div>
+
+        {/* Progress Bar */}
+        <div className="space-y-2 min-w-0">
+          <Progress value={progressPercent} className="h-2" />
+          <div className="flex justify-end items-center text-sm">
+            <span className="text-muted-foreground">{progressPercent}%</span>
+          </div>
+        </div>
+
+        {/* Current Message */}
+        <div className="bg-muted/50 rounded-md px-3 py-2 min-w-0">
+          <p className="text-[11px] leading-none text-muted-foreground font-mono truncate">{message || "Preparing..."}</p>
+        </div>
+      </div>
+
+      {/* Cancel Button */}
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={handleCancelClick}
+          disabled={cancelling}
+        >
+          {cancelling ? "Cancelling..." : "Cancel"}
+        </Button>
+      </div>
+
+      {/* Cancel Confirmation Dialog */}
+      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel preparation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Model preparation is {progressPercent}% complete. Cancelling
+              stops it and discards the work in progress. You can prepare
+              again later.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continue preparing</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmCancel}>Cancel preparation</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}

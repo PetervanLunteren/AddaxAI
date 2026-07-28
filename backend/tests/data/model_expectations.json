@@ -1,0 +1,1046 @@
+{
+  "images": [
+    {
+      "name": "ena24_american_crow.jpg",
+      "url": "https://storage.googleapis.com/public-datasets-lila/ena24/images/7932.jpg",
+      "sha256": "834bcc11334de7e6e04231049630499bb7ecd5ef7c10eca6144612ccbda6ad9a",
+      "bbox": [
+        0.3533,
+        0.5305,
+        0.207,
+        0.1494
+      ]
+    }
+  ],
+  "models": {
+    "HWI-ADS-v1": {
+      "source": "legacy",
+      "legacy_key": "Hawaiʻi, USA - AI Puaʻa v1.0",
+      "legacy_type": "addax-sppnet",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "bird",
+          "confidence": 0.96278
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird",
+            "confidence": 0.96278
+          },
+          {
+            "label": "mongoose",
+            "confidence": 0.00448
+          },
+          {
+            "label": "rodent",
+            "confidence": 0.00352
+          },
+          {
+            "label": "wild pig",
+            "confidence": 0.00346
+          },
+          {
+            "label": "goat",
+            "confidence": 0.00314
+          }
+        ]
+      ]
+    },
+    "VIC-ADS-v1": {
+      "source": "legacy",
+      "legacy_key": "Victoria, Australia - Parks Victoria - Addax Data Science",
+      "legacy_type": "addax-sppnet",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "ravens and crows",
+          "confidence": 0.80318
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "ravens and crows",
+            "confidence": 0.80318
+          },
+          {
+            "label": "australian raven",
+            "confidence": 0.02246
+          },
+          {
+            "label": "australian magpie",
+            "confidence": 0.00972
+          },
+          {
+            "label": "purple swamphen",
+            "confidence": 0.00583
+          },
+          {
+            "label": "whistling kite",
+            "confidence": 0.0058
+          }
+        ]
+      ]
+    },
+    "SBUSA-ADS-v1": {
+      "source": "legacy",
+      "legacy_key": "Southwestern Borderlands USA",
+      "legacy_type": "addax-sppnet",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "unknown bird",
+          "confidence": 0.95197
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "unknown bird",
+            "confidence": 0.95197
+          },
+          {
+            "label": "unknown mouse",
+            "confidence": 0.0011
+          },
+          {
+            "label": "equus asinus",
+            "confidence": 0.00103
+          },
+          {
+            "label": "canis familiaris",
+            "confidence": 0.00094
+          },
+          {
+            "label": "didelphis virginiana",
+            "confidence": 0.00094
+          }
+        ]
+      ]
+    },
+    "SWUSA-SDZWA-v3": {
+      "source": "legacy",
+      "legacy_key": "Southwest USA v3 - San Diego Zoo Wildlife Alliance",
+      "legacy_type": "sdzwa-pt",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "corvid",
+          "confidence": 0.97625
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "corvid",
+            "confidence": 0.97625
+          },
+          {
+            "label": "bird",
+            "confidence": 0.01414
+          },
+          {
+            "label": "bobcat",
+            "confidence": 0.00761
+          },
+          {
+            "label": "cow",
+            "confidence": 0.00061
+          },
+          {
+            "label": "raptor",
+            "confidence": 0.00051
+          }
+        ]
+      ]
+    },
+    "TAS-BB-v1": {
+      "source": "legacy",
+      "legacy_key": "Tasmanian vertebrates",
+      "legacy_type": "mewc-keras",
+      "legacy_env": "tensorflow-v2",
+      "predictions": [
+        {
+          "label": "forest_raven",
+          "confidence": 0.99125
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "forest_raven",
+            "confidence": 0.99125
+          },
+          {
+            "label": "black_currawong",
+            "confidence": 0.00412
+          },
+          {
+            "label": "grey_currawong",
+            "confidence": 0.00399
+          },
+          {
+            "label": "australian_magpie",
+            "confidence": 0.0004
+          },
+          {
+            "label": "common_blackbird",
+            "confidence": 8e-05
+          }
+        ]
+      ]
+    },
+    "EUR-DF-v1-3": {
+      "source": "legacy",
+      "legacy_key": "Europe - DeepFaune v1.3",
+      "legacy_type": "deepfaune-v1.3",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "bird",
+          "confidence": 0.99783
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird",
+            "confidence": 0.99783
+          },
+          {
+            "label": "squirrel",
+            "confidence": 0.00075
+          },
+          {
+            "label": "cat",
+            "confidence": 0.00072
+          },
+          {
+            "label": "mustelid",
+            "confidence": 0.00019
+          },
+          {
+            "label": "dog",
+            "confidence": 8e-05
+          }
+        ]
+      ]
+    },
+    "NAM-ADS-v1": {
+      "source": "legacy",
+      "legacy_key": "Namibian Desert - Addax Data Science",
+      "legacy_type": "addax-yolov8",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "bird",
+          "confidence": 0.99612
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird",
+            "confidence": 0.99612
+          },
+          {
+            "label": "gemsbok",
+            "confidence": 0.00111
+          },
+          {
+            "label": "baboon",
+            "confidence": 0.0004
+          },
+          {
+            "label": "cattle",
+            "confidence": 0.00034
+          },
+          {
+            "label": "african wild cat",
+            "confidence": 0.00032
+          }
+        ]
+      ]
+    },
+    "IND-ADS-v1": {
+      "source": "legacy",
+      "legacy_key": "Central Indian Landscapes – Wildlife Conservation Trust",
+      "legacy_type": "addax-sppnet",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "birds",
+          "confidence": 0.95757
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "birds",
+            "confidence": 0.95757
+          },
+          {
+            "label": "livestock",
+            "confidence": 0.00141
+          },
+          {
+            "label": "palm civet",
+            "confidence": 0.00134
+          },
+          {
+            "label": "nilgai",
+            "confidence": 0.00132
+          },
+          {
+            "label": "chital",
+            "confidence": 0.00124
+          }
+        ]
+      ]
+    },
+    "ANT-ADS-v1": {
+      "source": "legacy",
+      "legacy_key": "Top End Savanna Vertebrates, Northern Territory Australia",
+      "legacy_type": "addax-sppnet",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "torresian crow",
+          "confidence": 0.95008
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "torresian crow",
+            "confidence": 0.95008
+          },
+          {
+            "label": "rodent sp",
+            "confidence": 0.00076
+          },
+          {
+            "label": "antilopine wallaroo",
+            "confidence": 0.0006
+          },
+          {
+            "label": "emerald dove",
+            "confidence": 0.00057
+          },
+          {
+            "label": "cane toad",
+            "confidence": 0.00056
+          }
+        ]
+      ]
+    },
+    "EUR-DF-v1-4": {
+      "source": "legacy",
+      "legacy_key": "Europe - DeepFaune v1.4",
+      "legacy_type": "deepfaune-v1.4",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "bird",
+          "confidence": 0.99997
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird",
+            "confidence": 0.99997
+          },
+          {
+            "label": "cat",
+            "confidence": 1e-05
+          },
+          {
+            "label": "bison",
+            "confidence": 0.0
+          },
+          {
+            "label": "badger",
+            "confidence": 0.0
+          },
+          {
+            "label": "ibex",
+            "confidence": 0.0
+          }
+        ]
+      ]
+    },
+    "EUR-DF-v1-2": {
+      "source": "legacy",
+      "legacy_key": "Europe - DeepFaune v1.2",
+      "legacy_type": "deepfaune-v1.2",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "bird",
+          "confidence": 0.99992
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird",
+            "confidence": 0.99992
+          },
+          {
+            "label": "cat",
+            "confidence": 1e-05
+          },
+          {
+            "label": "equid",
+            "confidence": 1e-05
+          },
+          {
+            "label": "marmot",
+            "confidence": 1e-05
+          },
+          {
+            "label": "sheep",
+            "confidence": 1e-05
+          }
+        ]
+      ]
+    },
+    "EUR-DF-v1-1": {
+      "source": "legacy",
+      "legacy_key": "Europe - DeepFaune v1.1",
+      "legacy_type": "deepfaune",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "bird",
+          "confidence": 0.99835
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird",
+            "confidence": 0.99835
+          },
+          {
+            "label": "fox",
+            "confidence": 0.0004
+          },
+          {
+            "label": "marmot",
+            "confidence": 0.00019
+          },
+          {
+            "label": "equid",
+            "confidence": 0.00014
+          },
+          {
+            "label": "dog",
+            "confidence": 0.0001
+          }
+        ]
+      ]
+    },
+    "PAN-SDZWA-v1": {
+      "source": "legacy",
+      "legacy_key": "Perivuan Andes - San Diego Zoo Wildlife Alliance",
+      "legacy_type": "sdzwa-pt",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "unknown bird",
+          "confidence": 0.99767
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "unknown bird",
+            "confidence": 0.99767
+          },
+          {
+            "label": "razor-billed curassow",
+            "confidence": 0.00209
+          },
+          {
+            "label": "andean guan",
+            "confidence": 7e-05
+          },
+          {
+            "label": "grison",
+            "confidence": 2e-05
+          },
+          {
+            "label": "andean bear",
+            "confidence": 1e-05
+          }
+        ]
+      ]
+    },
+    "QLD-WOB-v1": {
+      "source": "legacy",
+      "legacy_key": "Queensland Wet Tropics - WildObs",
+      "legacy_type": "wildobs-qld-wettropics",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "Megapodius_reinwardt",
+          "confidence": 0.75128
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "Megapodius_reinwardt",
+            "confidence": 0.75128
+          },
+          {
+            "label": "Heteromyias_cinereifrons",
+            "confidence": 0.18296
+          },
+          {
+            "label": "Orthonyx_spaldingii",
+            "confidence": 0.02666
+          },
+          {
+            "label": "Alectura_lathami",
+            "confidence": 0.02264
+          },
+          {
+            "label": "Perameles_nasuta",
+            "confidence": 0.00962
+          }
+        ]
+      ]
+    },
+    "AWC135-AWC-v1": {
+      "source": "legacy",
+      "legacy_key": "Australian Wildlife Classifier - AWC135",
+      "legacy_type": "awc135",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "corvid sp",
+          "confidence": 0.99623
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "corvid sp",
+            "confidence": 0.99623
+          },
+          {
+            "label": "currawong sp",
+            "confidence": 0.00167
+          },
+          {
+            "label": "small bird sp",
+            "confidence": 0.00021
+          },
+          {
+            "label": "short-nosed bandicoot sp",
+            "confidence": 0.0002
+          },
+          {
+            "label": "pig",
+            "confidence": 0.0002
+          }
+        ]
+      ]
+    },
+    "NEO-MNCN-v1-0": {
+      "source": "legacy",
+      "legacy_key": "Neotropical region - TropiCam-AI v1.0",
+      "legacy_type": "andrea-anpc",
+      "legacy_env": "tensorflow-v1",
+      "predictions": [
+        {
+          "label": "potos_flavus",
+          "confidence": 0.8447
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "potos_flavus",
+            "confidence": 0.8447
+          },
+          {
+            "label": "ramphastos_spp",
+            "confidence": 0.08838
+          },
+          {
+            "label": "leopardus_spp",
+            "confidence": 0.01925
+          },
+          {
+            "label": "bradypus_variegatus",
+            "confidence": 0.01672
+          },
+          {
+            "label": "didelphis_marsupialis",
+            "confidence": 0.00834
+          }
+        ]
+      ]
+    },
+    "PAM-SDZWA-v1": {
+      "source": "legacy",
+      "legacy_key": "Peruvian Amazon - San Diego Zoo Wildlife Alliance",
+      "legacy_type": "sdzwa-peru-amazon",
+      "legacy_env": "tensorflow-v1",
+      "predictions": [
+        {
+          "label": "Unknown bird",
+          "confidence": 0.99999
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "Unknown bird",
+            "confidence": 0.99999
+          },
+          {
+            "label": "Black-headed squirrel monkey",
+            "confidence": 0.0
+          },
+          {
+            "label": "Brazilian rabbit",
+            "confidence": 0.0
+          },
+          {
+            "label": "Brown agouti",
+            "confidence": 0.0
+          },
+          {
+            "label": "Bush dog",
+            "confidence": 0.0
+          }
+        ]
+      ]
+    },
+    "CAM-AI4G-v1": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "Crax",
+          "confidence": 0.9998784065246582
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "Crax",
+            "confidence": 0.9998784065246582
+          },
+          {
+            "label": "Unknown",
+            "confidence": 0.00010924710659310222
+          },
+          {
+            "label": "Canis",
+            "confidence": 4.5349038373387884e-06
+          },
+          {
+            "label": "Leopardus",
+            "confidence": 3.329728087919648e-06
+          },
+          {
+            "label": "Bos",
+            "confidence": 1.6926961734498036e-06
+          }
+        ]
+      ],
+      "note": "reference not legacy: legacy fed a uint8 double-transformed near-black image (never classified correctly); baseline from the corrected pipeline"
+    },
+    "AHDRIFT-v1": {
+      "source": "legacy",
+      "legacy_key": "AHDriFT-ID (Midwest US) v1.0",
+      "legacy_type": "addax-sppnet",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "american mink",
+          "confidence": 0.24212
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "american mink",
+            "confidence": 0.24212
+          },
+          {
+            "label": "indigo bunting",
+            "confidence": 0.09744
+          },
+          {
+            "label": "northern short-tailed shrew",
+            "confidence": 0.09679
+          },
+          {
+            "label": "striped skunk",
+            "confidence": 0.07665
+          },
+          {
+            "label": "dekay's brownsnake",
+            "confidence": 0.0479
+          }
+        ]
+      ]
+    },
+    "TERRAI-NEP-v1": {
+      "source": "legacy",
+      "legacy_key": "Terai region Nepal - Alexander Merdian-Tarko",
+      "legacy_type": "mewc-keras-alex",
+      "legacy_env": "tensorflow-v2",
+      "predictions": [
+        {
+          "label": "bird",
+          "confidence": 0.65236
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird",
+            "confidence": 0.65236
+          },
+          {
+            "label": "buffalo",
+            "confidence": 0.07092
+          },
+          {
+            "label": "leopard",
+            "confidence": 0.0597
+          },
+          {
+            "label": "elephant",
+            "confidence": 0.05081
+          },
+          {
+            "label": "wild_boar",
+            "confidence": 0.04609
+          }
+        ]
+      ]
+    },
+    "NZI-ADS-v1": {
+      "source": "legacy",
+      "legacy_key": "New Zealand Invasives - DOC NZ - Addax Data science",
+      "legacy_type": "addax-yolov8",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "other bird",
+          "confidence": 1.0
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "other bird",
+            "confidence": 1.0
+          },
+          {
+            "label": "caprid",
+            "confidence": 0.0
+          },
+          {
+            "label": "cat",
+            "confidence": 0.0
+          },
+          {
+            "label": "cow",
+            "confidence": 0.0
+          },
+          {
+            "label": "deer",
+            "confidence": 0.0
+          }
+        ]
+      ]
+    },
+    "TKM-ADS-v1": {
+      "source": "legacy",
+      "legacy_key": "Iran - Addax Data Science",
+      "legacy_type": "addax-yolov8",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "bird",
+          "confidence": 0.99999
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird",
+            "confidence": 0.99999
+          },
+          {
+            "label": "antilope",
+            "confidence": 0.0
+          },
+          {
+            "label": "camel",
+            "confidence": 0.0
+          },
+          {
+            "label": "caracal",
+            "confidence": 0.0
+          },
+          {
+            "label": "cat",
+            "confidence": 0.0
+          }
+        ]
+      ]
+    },
+    "KIR-HEX-v1": {
+      "source": "legacy",
+      "legacy_key": "Kirghizistan - Manas v1 - OSI-Panthera - Hex Data",
+      "legacy_type": "hex-data-pt",
+      "legacy_env": "pytorch",
+      "predictions": [
+        {
+          "label": "aves",
+          "confidence": 0.91629
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "aves",
+            "confidence": 0.91629
+          },
+          {
+            "label": "ursidae",
+            "confidence": 0.01035
+          },
+          {
+            "label": "canidae",
+            "confidence": 0.0091
+          },
+          {
+            "label": "panthera_uncia",
+            "confidence": 0.00891
+          },
+          {
+            "label": "marmota",
+            "confidence": 0.00832
+          }
+        ]
+      ]
+    },
+    "SPECIESNET-v4-0-2-A": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "bird",
+          "confidence": 0.6587696671485901
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird",
+            "confidence": 0.6587696671485901
+          },
+          {
+            "label": "american crow",
+            "confidence": 0.3000946640968323
+          },
+          {
+            "label": "corvus species",
+            "confidence": 0.019937504082918167
+          },
+          {
+            "label": "common raven",
+            "confidence": 0.01320961955934763
+          },
+          {
+            "label": "domestic cattle",
+            "confidence": 0.0026019890792667866
+          }
+        ]
+      ],
+      "note": "reference not legacy: legacy runs SpeciesNet outside the adapter contract this harness drives, so there is no legacy number; baseline from our pipeline"
+    },
+    "AFR-DFV-v1": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "african buffalo",
+          "confidence": 0.9615519642829895
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "african buffalo",
+            "confidence": 0.9615519642829895
+          },
+          {
+            "label": "spotted hyena",
+            "confidence": 0.026485318318009377
+          },
+          {
+            "label": "guineafowl",
+            "confidence": 0.00542849488556385
+          },
+          {
+            "label": "elephant",
+            "confidence": 0.0038654424715787172
+          },
+          {
+            "label": "bird",
+            "confidence": 0.0022694591898471117
+          }
+        ]
+      ],
+      "note": "reference not legacy: legacy stretched to 224 + square-expand crop, DeepForestVision uses AutoImageProcessor(dinov2-large) 256->centercrop-224 + plain crop; inference.py corrected 2026-07"
+    },
+    "GIF-JAP-v0-2": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "deer",
+          "confidence": 0.9245423078536987
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "deer",
+            "confidence": 0.9245423078536987
+          },
+          {
+            "label": "serow",
+            "confidence": 0.046579331159591675
+          },
+          {
+            "label": "squirrel",
+            "confidence": 0.01483060885220766
+          },
+          {
+            "label": "bird",
+            "confidence": 0.00985870324075222
+          },
+          {
+            "label": "bear",
+            "confidence": 0.0019974405877292156
+          }
+        ]
+      ],
+      "note": "reference not legacy: legacy omitted CIFAR-10 normalization and letterbox resize; inference.py corrected 2026-07, baseline from the corrected pipeline"
+    },
+    "SAH-DRY-ADS-v1": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "bird",
+          "confidence": 0.9983649849891663
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird",
+            "confidence": 0.9983649849891663
+          },
+          {
+            "label": "honey badger",
+            "confidence": 0.000237211468629539
+          },
+          {
+            "label": "rwenzori turaco",
+            "confidence": 0.0001986439892789349
+          },
+          {
+            "label": "white-quilled bustard",
+            "confidence": 0.00018326699500903487
+          },
+          {
+            "label": "red-crested bustard",
+            "confidence": 0.00015806891315151006
+          }
+        ]
+      ],
+      "note": "reference not legacy: legacy square-padded the crop, animl-py trains on a plain crop; inference.py corrected 2026-07, baseline from the corrected pipeline"
+    },
+    "NZS-WEK-v3-03": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "magpie",
+          "confidence": 0.8089949488639832
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "magpie",
+            "confidence": 0.8089949488639832
+          },
+          {
+            "label": "starling",
+            "confidence": 0.07353366166353226
+          },
+          {
+            "label": "tui",
+            "confidence": 0.0006414650124497712
+          },
+          {
+            "label": "blackbird",
+            "confidence": 0.00022699857072439045
+          },
+          {
+            "label": "myna",
+            "confidence": 0.00012556288857012987
+          }
+        ]
+      ],
+      "note": "reference not legacy: multi-label sigmoid; legacy rescales scores by 1/sum, so a legacy baseline is only label-comparable. Recording our own raw-sigmoid output makes the confidence comparable machine-to-machine."
+    },
+    "AFR-DFV-v2": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "bird of prey",
+          "confidence": 0.6752012372016907
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird of prey",
+            "confidence": 0.6752012372016907
+          },
+          {
+            "label": "pelecaniform",
+            "confidence": 0.05530770123004913
+          },
+          {
+            "label": "african buffalo",
+            "confidence": 0.021257318556308746
+          },
+          {
+            "label": "red-tailed monkey",
+            "confidence": 0.020075399428606033
+          },
+          {
+            "label": "turaco",
+            "confidence": 0.01957095041871071
+          }
+        ]
+      ]
+    }
+  }
+}
