@@ -11,29 +11,21 @@ These three words appear all over the app and they mean different things. Mixing
 
 ## Detection
 
-One box around one animal, in one file. A photo with three deer has three detections.
-
-Each detection has a species label and a confidence score. A detection is the smallest unit. It is what you correct on the Labels page.
+One box around one animal, in one file. A photo with three deer has three detections. Each detection has a species label and a confidence score. It is the smallest unit, and it is what you correct on the Labels page.
 
 ## Event
 
-Files from the same camera, taken close together in time. AddaxAI groups them for you.
-
-The gap that starts a new event is the **independence interval**. It is 30 minutes by default. So if a deer walks past and the camera fires 12 times in one minute, that is one event, not 12.
+Files from the same camera, taken close together in time. AddaxAI groups them for you. The gap that starts a new event is the independence interval, 30 minutes by default. So if a deer walks past and the camera fires 12 times in one minute, that is one event, not 12.
 
 Both modes group files into events. A folder run uses them behind the scenes, to smooth labels and to order the grid on the Labels page. Only a project turns them into counts you can confirm.
 
 ## Observation
 
-One species inside one event, with a count.
-
-If an event holds 8 photos of deer and 2 of a fox, that is one event with two observations: deer and fox.
+One species inside one event, with a count. If an event holds 8 photos of deer and 2 of a fox, that is one event with two observations: deer and fox.
 
 ## How the count is worked out
 
-The count for an observation is the **highest number of that species visible in any single photo** of the event. This is often called MaxN.
-
-An example. A deer walks past and the camera takes 5 photos:
+The count for an observation is the highest number of that species visible in any single photo of the event. This is often called MaxN. An example: a deer walks past and the camera takes 5 photos.
 
 | Photo | Deer visible |
 |---|---|
@@ -43,9 +35,7 @@ An example. A deer walks past and the camera takes 5 photos:
 | 4 | 1 |
 | 5 | 0 |
 
-The count is **2**, not 6. Two deer were there. Counting every photo would count the same animal again and again.
-
-If you confirm a different number yourself, your number is used instead. See [confidence and verification](./confidence-and-verification.md).
+The count is 2, not 6. Two deer were there, and counting every photo would count the same animal again and again. If you confirm a different number yourself, your number is used instead. See [confidence and verification](./confidence-and-verification.md).
 
 ## Why this matters
 

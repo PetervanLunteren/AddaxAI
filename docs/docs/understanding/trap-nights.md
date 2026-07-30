@@ -5,15 +5,11 @@ title: How trap nights are counted
 
 # How trap nights are counted
 
-A trap night is one camera working for one day. It is how you turn raw counts into a rate you can compare between sites.
-
-This page explains exactly how AddaxAI works the number out, because it surprises people.
+A trap night is one camera working for one day. It is how you turn raw counts into a rate you can compare between sites. This page explains exactly how AddaxAI works the number out, because it surprises people.
 
 ## The short version
 
-**Trap nights come from your photos, not from the dates you type in.**
-
-For each deployment, AddaxAI takes the first and last photo, and counts the days between them, including both ends:
+Trap nights come from your photos, not from the dates you type in. For each deployment, AddaxAI takes the first and last photo, and counts the days between them, including both ends.
 
 ```
 trap nights = (date of last photo) - (date of first photo) + 1
@@ -23,23 +19,17 @@ A deployment whose first photo is 1 September and last photo is 16 September cou
 
 ## Why photos and not the dates you enter
 
-The app can only be sure a camera was working when it produced a file. A start date in a form is a plan. A photo is proof.
-
-This also means a deployment with no photos counts as zero trap nights, even if you entered dates for it.
+The app can only be sure a camera was working when it produced a file. A start date in a form is a plan, a photo is proof. This also means a deployment with no photos counts as zero trap nights, even if you entered dates for it.
 
 ## What this means in practice
 
-Two cases catch people out.
+Two cases catch people out. **Your camera ran longer than its photos suggest:** you put it out on 1 September and collected it on 30 September, but the last photo is from 16 September because the battery died. AddaxAI counts 16 trap nights, not 30. That is the honest number, because the camera was not working after the 16th, so it should not count as effort.
 
-**Your camera ran longer than its photos suggest.** You put the camera out on 1 September and collected it on 30 September, but the last photo is from 16 September because the battery died. AddaxAI counts 16 trap nights, not 30. That is the honest number: the camera was not working after the 16th, so it should not count as effort.
-
-**Your camera took photos on only a few days.** First photo 1 September, last photo 16 September, but nothing in between. It still counts 16 trap nights. The camera was out and working that whole window, it just saw nothing. Empty days are effort too.
+**Your camera took photos on only a few days:** first photo 1 September, last photo 16 September, but nothing in between. It still counts 16 trap nights. The camera was out and working that whole window, it just saw nothing, and empty days are effort too.
 
 ## Cameras pulled more than once
 
-If a deployment folder has subfolders, AddaxAI treats each subfolder as a separate stretch and adds them up. This matches how people work: one subfolder per card swap.
-
-So a deployment with two subfolders, one covering 10 days and one covering 6, counts as 16 trap nights. If one subfolder ends on the same day the next one starts, that shared day is counted once, so you get 15.
+If a deployment folder has subfolders, AddaxAI treats each subfolder as a separate stretch and adds them up. This matches how people work, one subfolder per card swap. So a deployment with two subfolders, one covering 10 days and one covering 6, counts as 16 trap nights. If one subfolder ends on the same day the next one starts, that shared day is counted once, so you get 15.
 
 ## Rates per 100 trap nights
 
@@ -53,6 +43,4 @@ This lets you compare a camera that was out for two weeks with one that was out 
 
 ## Where to check the number
 
-The Deployments page shows the period and the file count for every deployment. The Deployment timeline shows the same thing as bars, and how many cameras ran at once.
-
-If a number looks wrong, check the first and last photo of that deployment. Photos with no date do not count at all. See [capture times](./capture-times.md).
+The Deployments page shows the period and the file count for every deployment, and the Deployment timeline shows the same thing as bars, plus how many cameras ran at once. If a number looks wrong, check the first and last photo of that deployment. Photos with no date do not count at all. See [capture times](./capture-times.md).

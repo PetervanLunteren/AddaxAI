@@ -13,47 +13,29 @@ People often think there is one confidence setting. There are three, and they do
 
 ### 1. What gets stored
 
-The detector keeps everything it finds above **0.005**. That is nearly everything, including very weak boxes.
-
-You cannot change this, and you do not need to. It means nothing is thrown away, so you can always lower a threshold later and see more without running the AI again.
+The detector keeps everything it finds above 0.005, which is nearly everything, including very weak boxes. You cannot change this, and you do not need to. It means nothing is thrown away, so you can always lower a threshold later and see more without running the AI again.
 
 ### 2. Which boxes get a species (classification gate, default 0.1)
 
-Only animal boxes above this score are sent to the species model. Weak boxes are left as plain "animal".
-
-Raise it to save time on a big folder. Lower it if you think real animals are being missed. This one applies while the AI runs, so changing it only affects new analyses.
+Only animal boxes above this score are sent to the species model, so weak boxes are left as plain "animal". Raise it to save time on a big folder, or lower it if you think real animals are being missed. This one applies while the AI runs, so changing it only affects new analyses.
 
 ### 3. What you see and what gets counted (default 0.2)
 
-This is the one you will actually use. Detections below it are hidden from the grid, the charts and the counts.
-
-Change it any time. Nothing is deleted, the app just shows more or less.
+This is the one you will actually use. Detections below it are hidden from the grid, the charts and the counts. Change it any time: nothing is deleted, the app just shows more or less.
 
 ## The rule that matters
 
-**Anything you verified always counts, whatever its score.**
-
-If you confirm a bobcat at 0.04 confidence, it stays in your counts and charts even though the threshold is 0.2. Your judgement beats the model's score. This is why your numbers do not drop when you raise the threshold after checking things.
+Anything you verified always counts, whatever its score. If you confirm a bobcat at 0.04 confidence, it stays in your counts and charts even though the threshold is 0.2. Your judgement beats the model's score, and this is why your numbers do not drop when you raise the threshold after checking things.
 
 ## Two kinds of checking
 
-The app tracks two separate things, and the dashboard shows both.
-
-**Labels verified.** You looked at a detection and either accepted the species or changed it. Counted per file.
-
-**Counts confirmed.** You looked at an event and signed off how many animals were there. Counted per event.
-
-You can do one without the other. Checking labels does not confirm counts.
+The app tracks two separate things, and the dashboard shows both. **Labels verified** means you looked at a detection and either accepted the species or changed it, counted per file. **Counts confirmed** means you looked at an event and signed off how many animals were there, counted per event. You can do one without the other: checking labels does not confirm counts.
 
 ## What happens when you correct a label
 
-The app keeps both versions. It stores what the AI said and what you changed it to. Reprocessing and changing a setting skip verified detections, so your correction stays.
+The app keeps both versions: what the AI said, and what you changed it to. Reprocessing and changing a setting skip verified detections, so your correction stays. One thing does wipe it, and that is re-running the AI, which deletes the results and analyses the folder again from scratch, including your corrections. The app warns you first.
 
-One thing does wipe it: re-running the AI. That deletes the results and analyses the folder again from scratch, including your corrections. The app warns you first.
-
-This is also what makes the confusion matrix work. It compares your confirmed label against the label the app showed you before you touched it, so you can see which species the model mixes up. It only uses detections you actually verified.
-
-That label is the one after cleanup, not the raw model output. So the matrix scores the whole pipeline, model plus rollup plus smoothing. See [how labels get cleaned up](./label-cleanup.md).
+Keeping both versions is also what makes the confusion matrix work. It compares your confirmed label against the label the app showed you before you touched it, using only detections you actually verified. That label is the one after cleanup, not the raw model output, so the matrix scores the whole pipeline: model plus rollup plus smoothing. See [how labels get cleaned up](./label-cleanup.md).
 
 ## When the model is unsure
 

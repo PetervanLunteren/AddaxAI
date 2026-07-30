@@ -7,11 +7,7 @@ title: Species names and taxonomy
 
 ## Two names for the same animal
 
-Every species has a common name and a scientific name. "Virginia opossum" and *Didelphis virginiana* are the same animal.
-
-You can switch which one the app shows. The choice is yours alone: it changes the display, not the data. Both names go into the exports, in separate columns.
-
-Use scientific names if you will publish, or if you work across languages. Common names are easier to scan while checking photos.
+Every species has a common name and a scientific name. "Virginia opossum" and *Didelphis virginiana* are the same animal. You can switch which one the app shows, and the choice is yours alone: it changes the display, not the data. Both names go into the exports, in separate columns. Use scientific names if you will publish, or if you work across languages. Common names are easier to scan while checking photos.
 
 ## Labels are grouped into a tree
 
@@ -21,9 +17,7 @@ Species are organised the standard way, from broad to specific:
 class > order > family > genus > species
 ```
 
-So a red fox sits under mammalia > carnivora > canidae > vulpes > vulpes vulpes.
-
-The filter on the Labels and Insights pages uses this tree. Picking "carnivora" selects every carnivore at once, instead of ticking twenty species by hand.
+So a red fox sits under mammalia > carnivora > canidae > vulpes > vulpes vulpes. The filter on the Labels and Insights pages uses this tree, so picking "carnivora" selects every carnivore at once, instead of ticking twenty species by hand.
 
 ## When you see a group instead of a species
 
@@ -40,6 +34,4 @@ These still count as animals in the totals. They just have no species. See [conf
 
 ## Which species a model can recognise
 
-Every model has its own fixed list. A European model does not know African species. Check the [model zoo](../reference/model-zoo.mdx) for what each one covers.
-
-Some models also use the country you set for the project, to rule out species that do not occur there. Set the country correctly or you may lose valid species.
+Every model has its own fixed list, so a European model does not know African species. Check the [model zoo](../reference/model-zoo.mdx) for what each one covers. Some models also use the country you set for the project, to rule out species that do not occur there, so set the country correctly or you may lose valid species.
