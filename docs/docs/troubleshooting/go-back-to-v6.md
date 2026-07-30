@@ -7,6 +7,12 @@ title: Go back to version 6
 
 Version 6 is the legacy AddaxAI, and the latest release is 6.37. If you would rather use it than version 7, here is how to install it. This page covers Windows and macOS. Linux is left out, because version 6 was buggy on Linux and never worked well there.
 
+:::note Version 6 is not maintained
+
+New models and bug fixes only go into the latest version. Version 6 stays as it is.
+
+:::
+
 <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-start'}}>
   <div style={{flex: '0.888 1 0', minWidth: '220px'}}>
     <img src="/img/v6-simple-mode.webp" alt="AddaxAI version 6, simple mode" style={{width: '100%', height: 'auto', display: 'block'}} />
