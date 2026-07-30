@@ -9,10 +9,10 @@ Version 6 is the legacy AddaxAI, and the latest release is 6.37. If you would ra
 
 <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-start'}}>
   <div style={{flex: '0.888 1 0', minWidth: '220px'}}>
-    <img src="/img/v6-simple-mode.png" alt="AddaxAI version 6, simple mode" style={{width: '100%', height: 'auto', display: 'block'}} />
+    <img src="/img/v6-simple-mode.webp" alt="AddaxAI version 6, simple mode" style={{width: '100%', height: 'auto', display: 'block'}} />
   </div>
   <div style={{flex: '1.389 1 0', minWidth: '220px'}}>
-    <img src="/img/v6-advanced-mode.png" alt="AddaxAI version 6, advanced mode" style={{width: '100%', height: 'auto', display: 'block'}} />
+    <img src="/img/v6-advanced-mode.webp" alt="AddaxAI version 6, advanced mode" style={{width: '100%', height: 'auto', display: 'block'}} />
   </div>
 </div>
 
@@ -36,4 +36,4 @@ Version 6 and version 7 do not share data, and they install in different places.
    - Open the installer again, and click Open on the last dialog.
 4. The installer then downloads and sets up version 6.
 
-<img src="/img/v6-macos-installer.png" alt="The version 6 installer downloading on macOS" style={{maxWidth: '420px', width: '100%', display: 'block'}} />
+<img src="/img/v6-macos-installer.webp" alt="The version 6 installer downloading on macOS" style={{maxWidth: '420px', width: '100%', display: 'block'}} />
