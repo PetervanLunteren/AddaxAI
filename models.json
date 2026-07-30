@@ -485,7 +485,7 @@
       },
       {
         "model_id": "AFR-DFV-v1",
-        "friendly_name": "African tropical forests v1",
+        "friendly_name": "African tropical forests (DeepForestVision v1)",
         "emoji": "🌳",
         "env": "pytorch",
         "model_fname": "DFV.pt",
@@ -499,7 +499,7 @@
       },
       {
         "model_id": "AFR-DFV-v2",
-        "friendly_name": "African tropical forests v2",
+        "friendly_name": "African tropical forests (DeepForestVision v2)",
         "emoji": "🌳",
         "env": "pytorch",
         "model_fname": "DeepForestVisionV2.pth",
