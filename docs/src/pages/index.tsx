@@ -37,6 +37,7 @@ const SECTIONS: Card[] = [
       { label: "Build a project", to: "/docs/guides/build-a-project" },
       { label: "Check the labels", to: "/docs/guides/check-labels" },
       { label: "Confirm the counts", to: "/docs/guides/confirm-counts" },
+      { label: "Use results in Timelapse", to: "/docs/guides/timelapse" },
     ],
   },
   {
