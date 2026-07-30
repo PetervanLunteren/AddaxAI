@@ -51,7 +51,7 @@ Yes. AddaxAI handles both photos and videos.
 
 A detection is one box on one photo. An observation is one species within one event, with a count.
 
-One deer that triggers the camera 40 times gives 40 detections but a single observation. For most ecological work you want observations. See [detections, events and observations](../understanding/detections-events-observations.mdx).
+One deer that triggers the camera 40 times gives 40 detections but a single observation. See [detections, events and observations](../understanding/detections-events-observations.mdx).
 
 ### Why is my trap night count different from what I expected?
 

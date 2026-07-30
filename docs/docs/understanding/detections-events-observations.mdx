@@ -7,7 +7,7 @@ import AppShot from "@site/src/components/AppShot";
 
 # Detections, events and observations
 
-These three words appear all over the app and they mean different things. Mixing them up is the most common reason two numbers do not match.
+These three words appear all over the app and they mean different things.
 
 ## Detection
 
@@ -15,17 +15,19 @@ One box around one animal, in one file. A photo with three deer has three detect
 
 ## Event
 
-Files from the same camera, taken close together in time. AddaxAI groups them for you. The gap that starts a new event is the independence interval, 30 minutes by default. So if a deer walks past and the camera fires 12 times in one minute, that is one event, not 12.
+Files from the same camera, taken close together in time. AddaxAI groups them for you. So if a deer walks past and the camera fires 12 times in one minute, that is one event, not 12.
+
+The gap that starts a new event is the independence interval, 30 minutes by default. That gap is measured from one photo to the next, not from the start of the event. So a photo joins the event when it comes within 30 minutes of the previous photo, and only a longer gap starts a new one. An event has no fixed length: it can run for hours if the camera keeps triggering.
 
 Both modes group files into events. A folder run uses them behind the scenes, to smooth labels and to order the grid on the Labels page. Only a project turns them into counts you can confirm.
 
 ## Observation
 
-One species inside one event, with a count. If an event holds 8 photos of deer and 2 of a fox, that is one event with two observations: deer and fox.
+One species inside one event, with a count. If an event holds 8 photos of deer and 2 of a fox, that is one event with two observations: deer and fox. If each photo shows a single animal, both counts are 1, not 8 and 2.
 
 ## How the count is worked out
 
-The count for an observation is the highest number of that species visible in any single photo of the event. This is often called MaxN. An example: a deer walks past and the camera takes 5 photos.
+The count starts as a suggestion from the AI, not a final number. It takes the highest number of that species visible in any single photo of the event, often called MaxN. An example: a deer walks past and the camera takes 5 photos.
 
 | Photo | Deer visible |
 |---|---|
@@ -35,17 +37,13 @@ The count for an observation is the highest number of that species visible in an
 | 4 | 1 |
 | 5 | 0 |
 
-The count is 2, not 6. Two deer were there, and counting every photo would count the same animal again and again. If you confirm a different number yourself, your number is used instead. See [confidence and verification](./confidence-and-verification.md).
+So the suggestion is 2, not 6. Two deer were there, and counting every photo would count the same animal again.
 
-## Why this matters
+On the Counts page you confirm that number or change it. Your number then replaces the suggestion everywhere: in the charts, the rates and the exports. See [confirm the counts](../guides/confirm-counts.mdx).
 
-Say one deer triggers your camera 40 times in an afternoon:
+## The same visit, counted three ways
 
-- **40 detections**
-- **1 event**
-- **1 observation, count 1**
-
-If you report detections you will say you saw 40 deer. You saw one. For almost all ecological work, use observations.
+Say one deer triggers your camera 40 times in an afternoon. That is 40 detections, 1 event, and 1 observation with a count of 1. Same data, three different numbers.
 
 <AppShot name="counts" />
 
@@ -57,4 +55,4 @@ If you report detections you will say you saw 40 deer. You saw one. For almost a
 | Events | Counts page, dashboard tile |
 | Observations | Dashboard, map, charts, observations export |
 
-The dashboard and the map use observations. The Labels page works on detections, because that is what you correct.
+The Labels page works on detections, because that is what you correct. The dashboard, the map and the charts use observations.

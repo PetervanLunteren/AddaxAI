@@ -41,9 +41,6 @@ Keeping both versions is also what makes the confusion matrix work. It compares 
 
 Sometimes the model cannot choose between similar species but is confident about the group. In that case it can fall back to a higher rank, for example "felidae" instead of a specific cat. You will see these in the label list alongside species names. See [species names and taxonomy](./species-names.md).
 
-## Practical advice
+## Working with the threshold
 
-- Leave the threshold at the default while you check labels.
-- Check the common species first. They drive most of your numbers.
-- Do not chase every weak detection. Verify what you will report on.
-- If you raise the threshold later, your verified detections stay.
+Leave the threshold at the default while you check labels. If you raise it later, your verified detections stay.

@@ -23,9 +23,9 @@ The app can only be sure a camera was working when it produced a file. A start d
 
 ## What this means in practice
 
-Two cases catch people out. **Your camera ran longer than its photos suggest:** you put it out on 1 September and collected it on 30 September, but the last photo is from 16 September because the battery died. AddaxAI counts 16 trap nights, not 30. That is the honest number, because the camera was not working after the 16th, so it should not count as effort.
+Two cases catch people out. **Your camera ran longer than its photos suggest:** you put it out on 1 September and collected it on 30 September, but the last photo is from 16 September because the battery died. AddaxAI counts 16 trap nights, not 30, because there are no files after the 16th.
 
-**Your camera took photos on only a few days:** first photo 1 September, last photo 16 September, but nothing in between. It still counts 16 trap nights. The camera was out and working that whole window, it just saw nothing, and empty days are effort too.
+**Your camera took photos on only a few days:** first photo 1 September, last photo 16 September, but nothing in between. It still counts 16 trap nights, because the camera was working across that whole window, it just saw nothing.
 
 ## Cameras pulled more than once
 
