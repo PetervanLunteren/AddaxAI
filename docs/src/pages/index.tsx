@@ -30,14 +30,13 @@ const SECTIONS: Card[] = [
   },
   {
     title: "Guides",
-    body: "Step by step: run an analysis, check labels and counts, and export. In a project, results add up into charts and maps.",
+    body: "Step by step: run an analysis, check labels and counts. In a project, results add up into charts and maps.",
     to: "/docs/guides/analyse-a-folder",
     links: [
       { label: "Analyse a folder", to: "/docs/guides/analyse-a-folder" },
       { label: "Build a project", to: "/docs/guides/build-a-project" },
       { label: "Check the labels", to: "/docs/guides/check-labels" },
       { label: "Confirm the counts", to: "/docs/guides/confirm-counts" },
-      { label: "Export your results", to: "/docs/guides/export-results" },
     ],
   },
   {
