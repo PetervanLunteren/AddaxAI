@@ -9,28 +9,24 @@ Timelapse is a separate program for reviewing camera trap photos. It runs on Win
 
 Only a folder run makes this file. Timelapse needs one fixed folder, with the recognition file sitting next to the photos. A folder run is exactly that. A project can hold many folders in different places that move over time, so it does not fit.
 
-## Two ways to start
+## Steps
 
-1. **From Timelapse.** Choose Recognitions > AddaxAI Image Recognizer > Run AddaxAI recognizer on a folder. AddaxAI opens "Analyse a folder" with that folder already filled in.
+1. **Start AddaxAI on your folder.** Two ways:
 
-   ![The AddaxAI recognizer in Timelapse's Recognitions menu](/img/timelapse-recognitions-menu.webp)
+   - **From Timelapse:** choose Recognitions > AddaxAI Image Recognizer > Run AddaxAI recognizer on a folder. AddaxAI opens "Analyse a folder" with that folder already filled in.
 
-2. **From AddaxAI.** Start a folder analysis on the folder yourself.
+     ![The AddaxAI recognizer in Timelapse's Recognitions menu](/img/timelapse-recognitions-menu.webp)
 
-   ![Start folder analysis from the AddaxAI home screen](/img/home-analyse-a-folder.webp)
+   - **From AddaxAI:** start a folder analysis on the folder yourself.
 
-Either way, run the folder analysis as normal. See [analyse a folder](./analyse-a-folder.mdx). Only the save step needs extra care for Timelapse.
+     ![Start folder analysis from the AddaxAI home screen](/img/home-analyse-a-folder.webp)
 
-## Save the recognition file
+2. **Run the folder analysis as normal.** Nothing here is Timelapse-specific. See [analyse a folder](./analyse-a-folder.mdx).
 
-In the save step, turn on JSON, the recognition file for Timelapse. When the run finishes, AddaxAI writes `addaxai-recognitions.json` next to your photos.
+3. **Save the recognition file.** In the save step, turn on JSON, the recognition file for Timelapse. AddaxAI writes `addaxai-recognitions.json` next to your photos. Do not move it: Timelapse finds your photos through paths relative to where the file sits.
 
-![The JSON recognition file option in the save step](/img/save-recognition-file.webp)
+   ![The JSON recognition file option in the save step](/img/save-recognition-file.webp)
 
-Do not move this file. Timelapse finds your photos through paths relative to where the file sits.
-
-## Import into Timelapse
-
-In Timelapse, choose Recognitions > Import image recognition data for this image set, then pick the file.
+4. **Import into Timelapse.** Choose Recognitions > Import image recognition data for this image set, then pick the file.
 
 For more detail on the Timelapse side, see their [image recognition guide](https://timelapse.ucalgary.ca/imagerecognition/).
