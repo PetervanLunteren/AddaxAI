@@ -69,6 +69,7 @@ const SECTIONS: Card[] = [
     links: [
       { label: "FAQ", to: "/docs/troubleshooting/faq" },
       { label: "Troubleshooting", to: "/docs/troubleshooting/" },
+      { label: "Go back to version 6", to: "/docs/troubleshooting/go-back-to-v6" },
     ],
   },
 ];
