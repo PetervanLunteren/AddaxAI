@@ -7,7 +7,7 @@ title: Export columns
 
 What every column in the CSV and XLSX files means. The two formats hold the same columns; XLSX just puts each table on its own sheet.
 
-There are four tables. Which one you want depends on the question you are asking.
+A project exports four tables. Which one you want depends on the question you are asking.
 
 | Table | One row is | Use it for |
 |---|---|---|
@@ -113,7 +113,7 @@ One row per camera period. This is your effort table.
 
 ## Folder runs
 
-A folder run writes the same tables, minus the columns that need a project. There is no `deployment_id` and no notes column, because a folder run has no sites or deployments.
+A folder run writes two of these tables, files and detections. It has no sites, deployments or confirmed counts, so the deployments and observations tables are projects only. Columns that need a project are dropped too, such as `deployment_id` and the notes columns.
 
 It also writes a recognition file for Timelapse and a text file describing the models and settings used.
 

@@ -77,7 +77,7 @@ AddaxAI never guesses a date from the file. See [dates, times and timezones](../
 
 ### What does each column in the CSV mean?
 
-Every column of all four tables is described in [export columns](../reference/export-columns.md). Start with the observations table, it is the one most analyses need.
+Every column of every table is described in [export columns](../reference/export-columns.md).
 
 ## Using AddaxAI
 
