@@ -11,7 +11,7 @@ title: FAQ
 
 Use a project if you want AddaxAI to do the interpreting: counts, rates, charts and maps. Use a folder run if another program will do the analysis, and you only want the AI to find and name the animals.
 
-Both run the same AI, so the detections and species are the same either way. If you are unsure, start with a folder run: it can become a project later without losing anything. See [choose a workflow](../start-here/choose-a-workflow.md).
+Both run the same AI, so the detections and species are the same either way. If you are unsure, start with a folder run: it can become a project later without losing anything. See [choose a workflow](../start-here/choose-a-workflow.mdx).
 
 ### Is it free?
 
@@ -67,7 +67,7 @@ Do labels first, then counts. See [confirm the counts](../guides/confirm-counts.
 
 ### Why does my folder run have no counts?
 
-A folder run stops after the AI and does not interpret the results. It gives you tables of files and detections to analyse elsewhere. Counts need events, and events only exist in projects. See [choose a workflow](../start-here/choose-a-workflow.md).
+A folder run stops after the AI and does not interpret the results. It gives you tables of files and detections to analyse elsewhere. Counts need events, and events only exist in projects. See [choose a workflow](../start-here/choose-a-workflow.mdx).
 
 ### Some photos have no date. What happens to them?
 
