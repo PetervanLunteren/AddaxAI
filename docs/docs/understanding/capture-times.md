@@ -1,5 +1,5 @@
 ---
-sidebar_position: 4
+sidebar_position: 5
 title: Dates, times and timezones
 ---
 
@@ -33,11 +33,13 @@ Some files have no readable capture time. Cameras get reset, files get edited, s
 
 AddaxAI does not guess. It does not use the file modification date, because that is usually the date you copied the files, not the date the animal walked past.
 
-A file with no time is still analysed. You keep the detections and the species. But it drops out of anything that needs a date:
+A file with no time is still analysed. You keep the detections and the species, and they still count in your species totals, because the file becomes an event of its own.
 
-- it is not grouped into an event
+But it drops out of anything that needs a date:
+
 - it does not count towards trap nights
 - it does not appear in the trend or activity charts
+- it is never grouped with other files, even ones taken at the same moment
 
 The app tells you how many files this affected after an analysis. If the number is large, fix the camera clock settings and analyse again.
 
@@ -45,7 +47,7 @@ The app tells you how many files this affected after an analysis. If the number 
 
 If a camera had the wrong date set, the photos carry that wrong date. AddaxAI stores what the camera said.
 
-You can correct this when adding a deployment by entering a time shift. Do it before you analyse. Fixing it afterwards means re-running.
+You can correct it with a time shift, either when you add the deployment or later by editing it. Editing it later is safe: AddaxAI shifts the stored times and updates the dates, events and charts. You do not have to analyse again.
 
 ## Quick checks
 

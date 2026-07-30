@@ -131,8 +131,9 @@ function LabelsGuide() {
       <Section title="How it works">
         <p>
           Each tile is one animal. Double-click a tile to open it and see the
-          file context. By default the grid sorts by visual similarity, so
-          look-alike crops sit next to each other and wrong labels stand out.
+          file context. By default the grid sorts by event, so the crops from
+          each visit stay together and look-alike events sit next to each
+          other.
         </p>
         <p>
           Click a tile to select it, <Kbd>Shift</Kbd>-click another to select
@@ -158,13 +159,12 @@ function LabelsGuide() {
 
       <Section title="Sorting">
         <p>
-          The sort menu reorders the grid. <Kbd>Similarity</Kbd> (the default)
-          puts look-alike crops next to each other. <Kbd>By event</Kbd> groups
-          the crops from each visit together; each event header has a{" "}
-          <Kbd>Select</Kbd> link, or press <Kbd>E</Kbd> to grab the next event
-          that still needs checking, then verify or relabel it in one go.{" "}
-          <Kbd>Lowest confidence first</Kbd> leads with the labels the AI was
-          least sure about.
+          The sort menu reorders the grid. <Kbd>Sort by event</Kbd> (the
+          default) groups the crops from each visit together; each event header
+          has a <Kbd>Select</Kbd> link, or press <Kbd>E</Kbd> to grab the next
+          event that still needs checking, then verify or relabel it in one go.{" "}
+          <Kbd>Sort by similarity</Kbd> ignores events and puts look-alike
+          crops next to each other across the whole project.
         </p>
       </Section>
 

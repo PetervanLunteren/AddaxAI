@@ -313,9 +313,9 @@ Three confidence values exist and must not be confused:
 
 All confidence defaults live in `backend/app/core/confidence.py`, mirrored by `frontend/src/lib/confidence.ts` — change them there, never as literals at call sites.
 2. **`Project.classification_gate`** (default 0.1) — detection confidence above which animal crops are classified and embedded. Inference-time; changing it applies to new analyses. Gating both per-crop model passes is what keeps the untresholded MD output from multiplying compute.
-3. **`Project.detection_threshold`** (default 0.2) — the counting/visualization filter described below. Folder runs pin it to the classification gate.
+3. **`Project.counting_threshold`** (default 0.2) — the counting/visualization filter described below. Folder runs pin it to the classification gate.
 
-Detections below `detection_threshold` are hidden from the UI. However, verified detections always pass, regardless of confidence. A human verification is a stronger signal than a model score.
+Detections below `counting_threshold` are hidden from the UI. However, verified detections always pass, regardless of confidence. A human verification is a stronger signal than a model score.
 
 **The rule:** anywhere you query detections and the result is user-facing, apply:
 

@@ -67,11 +67,11 @@ Do labels first, then counts. See [confirm the counts](../guides/confirm-counts.
 
 ### Why does my folder run have no counts?
 
-A folder run stops after the AI and does not interpret the results. It gives you tables of files and detections to analyse elsewhere. Counts need events, and events only exist in projects. See [choose a workflow](../start-here/choose-a-workflow.mdx).
+Confirming counts is a project feature. A folder run groups photos into events too, but only uses them behind the scenes, and hands you the raw tables instead. See [choose a workflow](../start-here/choose-a-workflow.mdx).
 
 ### Some photos have no date. What happens to them?
 
-They are still analysed, so you keep the detections and the species. But they drop out of anything that needs a date: events, trap nights, and the trend and activity charts.
+They are still analysed, so you keep the detections and the species, and they still count in your species totals. But they drop out of anything that needs a date: trap nights, and the trend and activity charts. They are also never grouped with other files.
 
 AddaxAI never guesses a date from the file. See [dates, times and timezones](../understanding/capture-times.md).
 

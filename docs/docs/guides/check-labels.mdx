@@ -19,11 +19,13 @@ The Labels page shows one card per detection: the cropped animal and the species
 
 It is the same grid in both modes: step 2 of a folder run, and the Labels page of a project. The one difference is where you change the refine settings, like thresholds and the event interval. In a folder run, use the Refine results button. In a project, they are on the Settings page.
 
-## Sort by similarity, not by date
+## Let look-alikes sit together
 
-Sorting by similarity is the trick that saves the most time. Animals that look alike sit next to each other, so you get a block of opossums, then a block of deer, and your eye only has to notice the odd one out. In the screenshot above every card is an opossum except two. Their label is different, and in a different colour, so they stand out at a glance.
+The grid opens sorted per event. That keeps each visit together, and orders the events so look-alike ones sit next to each other. It also gives you the fast keyboard flow below.
 
-You can also sort per event. That keeps each event's photos together and still orders the events by similarity. If you turned off the embedding model, there is no similarity score, so sorting falls back to date order.
+You can switch to sorting purely by similarity. Then animals that look alike sit next to each other across the whole project, so you get a block of opossums, then a block of deer, and your eye only has to notice the odd one out. In the screenshot above every card is an opossum except two. Their label is different, and in a different colour, so they stand out at a glance.
+
+Both need the embedding model. Without it, sorting falls back to date order.
 
 ## Handle a group at once
 

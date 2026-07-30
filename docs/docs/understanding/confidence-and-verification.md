@@ -47,9 +47,13 @@ You can do one without the other. Checking labels does not confirm counts.
 
 ## What happens when you correct a label
 
-The app keeps both versions. It stores what the AI said and what you changed it to. Nothing overwrites your correction: re-running, reprocessing or changing a setting all skip verified detections.
+The app keeps both versions. It stores what the AI said and what you changed it to. Reprocessing and changing a setting skip verified detections, so your correction stays.
 
-This is also what makes the confusion matrix work. It compares the AI's original label against your confirmed one, so you can see which species the model mixes up. It only uses detections you actually verified.
+One thing does wipe it: re-running the AI. That deletes the results and analyses the folder again from scratch, including your corrections. The app warns you first.
+
+This is also what makes the confusion matrix work. It compares your confirmed label against the label the app showed you before you touched it, so you can see which species the model mixes up. It only uses detections you actually verified.
+
+That label is the one after cleanup, not the raw model output. So the matrix scores the whole pipeline, model plus rollup plus smoothing. See [how labels get cleaned up](./label-cleanup.md).
 
 ## When the model is unsure
 

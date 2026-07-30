@@ -39,7 +39,7 @@ Two cases catch people out.
 
 If a deployment folder has subfolders, AddaxAI treats each subfolder as a separate stretch and adds them up. This matches how people work: one subfolder per card swap.
 
-So a deployment with two subfolders, one covering 10 days and one covering 6, counts as 16 trap nights.
+So a deployment with two subfolders, one covering 10 days and one covering 6, counts as 16 trap nights. If one subfolder ends on the same day the next one starts, that shared day is counted once, so you get 15.
 
 ## Rates per 100 trap nights
 

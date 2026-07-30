@@ -25,7 +25,7 @@ Nothing is ever uploaded automatically. Sharing logs is always an explicit actio
 
 ### Some images show no date or time
 
-A file with no readable capture timestamp is still detected and classified, but it drops out of time-based views (events, trap nights, activity, trend charts). Fix the source data and re-run if you need the timestamps.
+A file with no readable capture timestamp is still detected and classified, but it drops out of time-based views (trap nights, activity, trend charts) and is never grouped with other files. Fix the source data and re-run if you need the timestamps.
 
 ### My GPU isn't being used
 
