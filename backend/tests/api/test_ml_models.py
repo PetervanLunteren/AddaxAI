@@ -223,8 +223,21 @@ def test_update_model_clears_the_startup_snapshot(client, mock_managers):
 def test_redownload_endpoint_is_gone(client, mock_managers):
     """
     The old fire-and-forget contract is retired, not aliased, so a stale
-    client fails loudly. 405 rather than 404 because the SPA catch-all that
-    handles unknown paths only accepts GET.
+    client fails loudly rather than silently doing nothing.
+
+    Which 4xx it is depends on the environment, so this asserts the route
+    is absent rather than pinning a status code. `main.create_app` only
+    mounts the SPA catch-all (`GET /{full_path:path}`) when
+    `frontend/dist` exists: with a built frontend the path matches that
+    GET route and POST gives 405, without one there is no match at all
+    and it is 404. This used to assert 405, which passed for anyone who
+    had run a frontend build and failed in CI, where the backend job
+    never builds it.
     """
+    routes = {
+        getattr(r, "path", None) for r in client.app.routes
+    }
+    assert "/api/ml/models/{model_id}/redownload" not in routes
+
     resp = client.post("/api/ml/models/test-model/redownload")
-    assert resp.status_code == 405
+    assert resp.status_code in (404, 405)
