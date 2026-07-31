@@ -1021,7 +1021,10 @@ function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
       { type: 'separator' },
       {
         label: 'Troubleshooting',
-        click: () => shell.openExternal('https://docs.addaxai.com/docs/troubleshooting/'),
+        click: () =>
+          shell.openExternal(
+            'https://docs.addaxai.com/docs/help/troubleshooting',
+          ),
       },
       { label: 'Export diagnostic report', click: () => sendMenuCommand('export-diagnostic') },
       { type: 'separator' },
