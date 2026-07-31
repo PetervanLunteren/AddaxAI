@@ -348,7 +348,11 @@ MegaDetector sometimes produces false positive bounding boxes. When a classifica
 
 **Non-label classes** (defined in `backend/app/ml/label_exclusion.py`): `bait`, `blank`, `empty`, `false detection`, `none`, `vide` (French for empty). These are always stripped, regardless of project settings.
 
-**The rule:** a detection is skipped when the classifier returned output AND after filtering out non-label classes, zero classifications remain. Detections with no classifier output (unclassified animals) are still loaded with `label=NULL`. Person and vehicle detections are never classified and are always loaded.
+**The rule:** a detection is skipped when its **raw top-1** classification is a non-label class. That is `should_skip_detection`, and it is what the DB load calls (`json_pipeline.py`, gated on `category == "animal"`). Detections with no classifier output (unclassified animals) are still loaded with `label=NULL`. Person and vehicle detections are never classified and are always loaded.
+
+Do not confuse it with `is_non_label_detection` in the same module, which skips only when *every* remaining classification has been filtered out. That one is legacy: nothing in `app/` calls it, only the unit tests do. The distinction matters because the JSON keeps the top 5 classifications per detection, so "all filtered out" is a far rarer condition than "top-1 is blank", and reading the wrong function gives you the wrong mental model of what reaches the database.
+
+User species exclusion is a separate path: `apply_label_exclusion_to_results` in postprocessing, which builds its excluded set from the non-label classes plus the project's `excluded_classes`.
 
 **Observation type:** files where all detections were skipped get `observation_type="blank"`. They will not appear in the verification grid and will be counted as blank images on the dashboard.
 

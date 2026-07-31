@@ -226,7 +226,7 @@ async def export_spatial(
     format: Literal["geojson", "shapefile", "gpkg"] = Query("geojson"),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Spatial layers (deployments, observations, species summary)."""
+    """Spatial layers (deployments, species summary)."""
     project = _resolve_project(project_id, db)
     scoped = export_crud.get_scoped_detection_rows(db, project)
     layers, skipped_deployment_ids = export_crud.build_spatial_layers(

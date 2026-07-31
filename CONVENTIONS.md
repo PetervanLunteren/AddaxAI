@@ -13,6 +13,7 @@
 13. **Use built in features if possible** - Always check whether the required functionality is already available through built-in features. If so, prefer that over writing custom code. If a built-in option is close but does not fully meet the requirement, stop and discuss the pros and cons before proceeding.
 14. **No em dashes** - Never use em dashes (—) or double hyphens (--) in text. Use commas, colons, semicolons, or separate sentences instead.
 15. **Write like a person, not an LLM** - Avoid filler phrases like "it's important to note that", "let's", "dive into", "in order to", "leverage", "streamline", "it should be noted", or "please note that". Just say the thing directly. Keep text natural and to the point.
+* Return all your explanations, answers, reports, and investigations with a few sentence summary in plain English. Keep it simple. 
 * Follow the KISS principle. Keep things as simple as possible.                                                                       
 * Follow the DRY principle (Don't Repeat Yourself). Avoid duplication and maintain a single source of truth.                          
 * Follow the YAGNI principle (You Aren't Gonna Need It). Do not build functionality until it is actually needed. 

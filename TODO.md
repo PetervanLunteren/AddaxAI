@@ -3,7 +3,8 @@
 ## Priority 1
 - [ ] If I'm reviewing suggestions in the labels page it shows a info bar "Showing the newest 8 of 814 embedded detections, capped to stay responsive. Verify some and reload to bring in more, or narrow the filters." This info bar is meant to show when there are more than embeddings than the limit (it hought hard coded at 20K?), but it is not supposed to show when you are reviewing a subset (liek you're doing on the review-suggestion-mode). SO I guess there is a condition that needs tweaking. Can you investigate?
 - [ ] We should probabaly get the overlay back to the visualisation on the CountsModal. Without the dark overlay, its quite difficult to see where the bbox is. Can we add a overlay outside the box in the countsModal and the labelDetailModal? 
-- [ ] we can link the documentation menu item in the electron app to https://docs.addaxai.com/ now, its live. 
+- [ ] The 'soprt by similarity' / 'soprt by event' UI dropdown is really just: 'keep events together y/n' / 'group by event y/n', right? SHould we name it like such? So now dropdown, but a toggle? Isnt that better UX? 
+- [ ] The bug with the add custom label slideout and focus are on QBIF search widget is still present. Investigate. The slideout closed the moment you focus on the QBIF search input text widget... Sometimes, not always., That is the problem. Lets first see if we can reliably reprex. Thats the first step, then we can fix it. It seems to rtrigger on selecting the text in the widget, not by focussing only. That is also not always true. Perhaps if I select from right to left? I think we are closing into the bug... 
 
 ## Priority 2
 - [ ]  
@@ -56,3 +57,32 @@
 - [ ] Add something about how to install older versions. 
 - [ ] FUll guide for Timelapse integration. 
 - [ ] 
+
+
+
+
+
+
+
+
+
+### Dev testing:
+
+#### Start backend
+
+```cmd
+
+cd /Users/peter/Documents/Repos/AddaxAI/backend
+venv/bin/python -m uvicorn app.main:app --reload
+
+```
+
+#### Start frontend
+
+```cmd
+
+cd /Users/peter/Documents/Repos/AddaxAI/frontend
+nvm use 20
+npm run dev
+
+```
