@@ -22,6 +22,8 @@ Website: https://www.addaxai.com/
 
 Documentation: https://docs.addaxai.com/
 
+Forum: https://forum.addaxai.com/
+
 </h3>
 
 </div>
