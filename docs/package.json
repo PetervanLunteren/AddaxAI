@@ -11,7 +11,8 @@
     "build": "docusaurus build",
     "serve": "docusaurus serve",
     "clear": "docusaurus clear",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "fetch-species": "node scripts/fetch-species.mjs"
   },
   "dependencies": {
     "@docusaurus/core": "^3.7.0",
@@ -34,7 +35,11 @@
     "webpackbar": "^7.0.0"
   },
   "browserslist": {
-    "production": [">0.5%", "not dead", "not op_mini all"],
+    "production": [
+      ">0.5%",
+      "not dead",
+      "not op_mini all"
+    ],
     "development": [
       "last 3 chrome version",
       "last 3 firefox version",

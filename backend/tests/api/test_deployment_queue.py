@@ -38,6 +38,36 @@ def test_create_queue_entry_invalid_project(client):
     assert resp.status_code == 400
 
 
+def test_file_mtime_fallback_defaults_off(client, db):
+    """Omitting the field must never silently enable the fallback."""
+    p = make_project(db)
+    resp = _create_entry(client, p.id)
+    assert resp.status_code == 201
+    assert resp.json()["use_file_mtime_fallback"] is False
+
+
+def test_file_mtime_fallback_round_trips(client, db):
+    """The user ticks the box at queue-add time and the worker reads it
+    minutes or days later, so it has to survive on the row."""
+    p = make_project(db)
+    resp = client.post(
+        "/api/deployment-queue",
+        json={
+            "project_id": p.id,
+            "folder_path": "/some/folder",
+            "video_count": 1,
+            "image_count": 0,
+            "use_file_mtime_fallback": True,
+        },
+    )
+    assert resp.status_code == 201
+    entry_id = resp.json()["id"]
+
+    fetched = client.get(f"/api/deployment-queue/{entry_id}")
+    assert fetched.status_code == 200
+    assert fetched.json()["use_file_mtime_fallback"] is True
+
+
 def test_get_queue_entry(client, db):
     p = make_project(db)
     entry_id = _create_entry(client, p.id).json()["id"]

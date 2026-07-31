@@ -60,6 +60,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
   const [showAddSiteModal, setShowAddSiteModal] = useState(false);
   const [, setTouchedFields] = useState({ folder: false, site: false });
   const [datetimeOffsetSeconds, setDatetimeOffsetSeconds] = useState(0);
+  const [fileMtimeChecked, setFileMtimeChecked] = useState(false);
   const [offsetModalOpen, setOffsetModalOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [tags, setTags] = useState<Record<string, string>>({});
@@ -94,6 +95,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
       video_count: number;
       image_count: number;
       datetime_offset_seconds: number | null;
+      use_file_mtime_fallback: boolean;
       notes: string | null;
       tags: Record<string, string>;
     }) =>
@@ -104,6 +106,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
         video_count: data.video_count,
         image_count: data.image_count,
         datetime_offset_seconds: data.datetime_offset_seconds || null,
+        use_file_mtime_fallback: data.use_file_mtime_fallback,
         notes: data.notes,
         tags: data.tags,
       }),
@@ -115,6 +118,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
       setFolderPath(null);
       setSiteId(null);
       setDatetimeOffsetSeconds(0);
+      setFileMtimeChecked(false);
       setNotes("");
       setTags({});
     },
@@ -126,6 +130,12 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
 
   // Validation
   const hasFiles = scanResult && scanResult.total_count > 0;
+  // Only send the opt-in while the scan still reports no capture dates.
+  // Guards the case where the box is ticked and a later refetch turns up
+  // real dates: the checkbox unmounts, but raw state would persist.
+  const useFileMtimeFallback = Boolean(
+    fileMtimeChecked && scanResult?.missing_datetime,
+  );
   const blockingDeployment = folderPath
     ? projectDeployments?.find((d) => d.folder_path === folderPath)
     : undefined;
@@ -176,6 +186,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
         video_count: scanResult.video_count,
         image_count: scanResult.image_count,
         datetime_offset_seconds: datetimeOffsetSeconds || null,
+        use_file_mtime_fallback: useFileMtimeFallback,
         notes: notes.trim() || null,
         tags,
       });
@@ -187,6 +198,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
       setFolderPath(null);
       setSiteId(null);
       setDatetimeOffsetSeconds(0);
+      setFileMtimeChecked(false);
       setNotes("");
       setTags({});
     },
@@ -212,6 +224,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
       video_count: scanResult.video_count,
       image_count: scanResult.image_count,
       datetime_offset_seconds: datetimeOffsetSeconds || null,
+      use_file_mtime_fallback: useFileMtimeFallback,
       notes: notes.trim() || null,
       tags,
     });
@@ -239,10 +252,14 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
             onChange={(path) => {
               setFolderPath(path);
               setDatetimeOffsetSeconds(0); // Reset offset when folder changes
+              setFileMtimeChecked(false); // and the file-date opt-in
               setTouchedFields((prev) => ({ ...prev, folder: true }));
             }}
             datetimeOffsetSeconds={datetimeOffsetSeconds}
             onAdjustDates={() => setOffsetModalOpen(true)}
+            missingDateNote="AddaxAI will still detect and classify these files, but with no date they are left out of time-based stats, charts, and trap-night effort."
+            useFileMtimeFallback={useFileMtimeFallback}
+            onUseFileMtimeFallbackChange={setFileMtimeChecked}
             caption="The folder with the images or videos you want to analyse. Subfolders are included."
           />
 
@@ -364,6 +381,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
           folderPath={folderPath}
           currentOffsetSeconds={datetimeOffsetSeconds}
           onApply={setDatetimeOffsetSeconds}
+          useFileMtimeFallback={useFileMtimeFallback}
         />
       )}
 

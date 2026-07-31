@@ -18,7 +18,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Callout } from "@/components/ui/callout";
+import { Checkbox } from "@/components/ui/checkbox";
 import { FieldHeader } from "@/components/ui/field-header";
+import { formatDate, formatDateSpan } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -76,14 +78,25 @@ interface FolderSelectorProps {
   caption?: string;
   /** Hide the scan result caption (file counts, dates, adjust-dates link). */
   hideScanResult?: boolean;
-  /** Render scan results as a single muted dot-separated line instead
-   *  of the tall teal card, for places where vertical space is at a
-   *  premium. */
+  /** Render the "scanning..." state as a single muted line instead of a
+   *  bordered box, for places where vertical space is at a premium. */
   compactScanResult?: boolean;
   /** Skip the folder scan entirely. For picking a *destination* folder,
    *  which may not exist yet and whose contents are irrelevant. Pair
    *  with ``hideScanResult`` so no scan panel renders. */
   noScan?: boolean;
+  /** What the user loses when no file carries a capture date, phrased
+   *  for this mode: projects lose charts and trap nights, a folder run
+   *  gets an empty date column in its tables. Supplying this is what
+   *  renders the missing-date warning at all, so a picker that is not
+   *  about to analyse the folder (bulk relink) stays quiet. */
+  missingDateNote?: string;
+  /** Whether the file-date fallback is on for this folder. */
+  useFileMtimeFallback?: boolean;
+  /** Called when the user ticks the file-date fallback. Supplying this is
+   *  what renders the opt-in at all, so call sites that do not pass it
+   *  (bulk relink, destination pickers) are unaffected. */
+  onUseFileMtimeFallbackChange?: (value: boolean) => void;
 }
 
 export function FolderSelector({
@@ -97,12 +110,41 @@ export function FolderSelector({
   hideScanResult = false,
   compactScanResult = false,
   noScan = false,
+  missingDateNote,
+  useFileMtimeFallback = false,
+  onUseFileMtimeFallbackChange,
 }: FolderSelectorProps) {
   const { data: scanResult, isLoading: isScanning } = useFolderScan(
     noScan ? null : value,
   );
   const [isDragOver, setIsDragOver] = useState(false);
   const inElectron = isElectron();
+
+  // The scan only fills the mtime range when it found no capture dates, so
+  // this is both "the user opted in" and "there is something to show".
+  const showingFileDates = Boolean(
+    useFileMtimeFallback && scanResult?.mtime_start_date,
+  );
+  const captionStart = showingFileDates
+    ? scanResult!.mtime_start_date
+    : (scanResult?.start_date ?? null);
+  const captionEnd = showingFileDates
+    ? scanResult!.mtime_end_date
+    : (scanResult?.end_date ?? null);
+  // Reads "which run from 7 Apr 2024 to 28 Apr 2024", or "which are all
+  // 7 Apr 2024" when the whole folder lands on one day (common for a
+  // single clip). Null when the files could not be stat'ed, which is
+  // what hides the opt-in entirely.
+  const fileDatesPhrase = (() => {
+    const from = scanResult?.mtime_start_date;
+    const to = scanResult?.mtime_end_date;
+    if (!from || !to) return null;
+    const first = formatDate(from);
+    const last = formatDate(to);
+    return first === last
+      ? `which are all ${first}`
+      : `which run from ${first} to ${last}`;
+  })();
 
   // Handle Electron folder selection
   const handleElectronSelect = async () => {
@@ -244,43 +286,47 @@ export function FolderSelector({
               </div>
             )
           ) : hasFiles ? (
-            compactScanResult ? (
-              <CompactScanLine
-                imageCount={scanResult.image_count}
-                videoCount={scanResult.video_count}
-                startDate={scanResult.start_date}
-                endDate={scanResult.end_date}
-                offsetSeconds={datetimeOffsetSeconds}
-              />
-            ) : (
             <>
               <CompactScanLine
                 imageCount={scanResult.image_count}
                 videoCount={scanResult.video_count}
-                startDate={scanResult.start_date}
-                endDate={scanResult.end_date}
+                startDate={captionStart}
+                endDate={captionEnd}
                 offsetSeconds={datetimeOffsetSeconds}
                 onAdjustDates={onAdjustDates}
+                datesFromFileMtime={showingFileDates}
               />
 
-              {/* Some files lack a capture date. Non-blocking: the
-                  backend still detects and classifies them; they just
-                  drop out of time-based stats. */}
-              {scanResult.missing_datetime && (
+              {/* No file carried a capture date. Non-blocking: the
+                  backend still detects and classifies them, so the note
+                  explains what the run loses and offers the fallback. */}
+              {scanResult.missing_datetime && missingDateNote && (
                 <Callout variant="warning">
                   <div className="space-y-2">
                     <p className="font-medium">
-                      Some files have no capture date.
+                      No capture dates found.
                     </p>
 
-                    <p>
-                      AddaxAI will still detect and classify them. Files
-                      without a date are left out of time-based stats,
-                      charts, and trap-night effort. This usually means
-                      the files were copied or had their metadata
-                      stripped; raw files from the camera SD card keep
-                      it.
-                    </p>
+                    <p>{missingDateNote}</p>
+
+                    {/* Opt-in fallback. Only rendered where the parent
+                        can persist the choice, and only when the files
+                        could be read, so there is no dead state. The
+                        range is shown up front because it is the only
+                        safeguard: a copied folder reads as today. */}
+                    {onUseFileMtimeFallbackChange && fileDatesPhrase && (
+                      <label className="flex cursor-pointer items-start gap-3 rounded border border-amber-300 bg-amber-100 p-3">
+                        <Checkbox
+                          checked={useFileMtimeFallback}
+                          onCheckedChange={onUseFileMtimeFallbackChange}
+                          className="mt-0.5"
+                        />
+                        <span className="text-sm font-medium">
+                          Use the file dates from your computer,{" "}
+                          {fileDatesPhrase}
+                        </span>
+                      </label>
+                    )}
 
                     {/* Validation log */}
                     {scanResult.datetime_validation_log && scanResult.datetime_validation_log.length > 0 && (
@@ -301,7 +347,6 @@ export function FolderSelector({
                 </Callout>
               )}
             </>
-            )
           ) : (
             <Callout variant="error" size="compact">
               No images found in this folder
@@ -316,9 +361,9 @@ export function FolderSelector({
 /**
  * Single muted caption summarising a folder scan: file counts and rough
  * date span, dot-separated. Skips counts that are zero and falls back to a
- * "no datetime metadata" note when EXIF timestamps are absent. When
- * `onAdjustDates` is supplied, appends an "Adjust dates" link (and shows the
- * active offset) in the same style as the label picker's "Refine" link.
+ * "no dates found" note when timestamps are absent. When `onAdjustDates` is
+ * supplied, appends an "Adjust dates" link (and shows the active offset) in
+ * the same style as the label picker's "Refine" link.
  */
 function CompactScanLine({
   imageCount,
@@ -327,6 +372,7 @@ function CompactScanLine({
   endDate,
   offsetSeconds,
   onAdjustDates,
+  datesFromFileMtime = false,
 }: {
   imageCount: number;
   videoCount: number;
@@ -334,27 +380,23 @@ function CompactScanLine({
   endDate: string | null;
   offsetSeconds: number;
   onAdjustDates?: () => void;
+  /** The dates came from file modification times, not from the camera.
+   *  Names the source in the caption so the number is not mistaken for a
+   *  capture time. */
+  datesFromFileMtime?: boolean;
 }) {
-  // Date-only, rough estimate: the scan reads a sample of files, not every
-  // one, so this is an approximate span. Exact per-file times are in the
-  // Adjust-dates modal.
-  const fmt = (d: Date) =>
-    d.toLocaleDateString([], {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
+  // Date-only. For capture dates this is an estimate: the scan reads a
+  // sample of files, not every one. File dates are exact, since a stat()
+  // is cheap enough to run over the whole folder. Per-file times are in
+  // the Adjust-dates modal either way.
+  const range = formatDateSpan(startDate, endDate, offsetSeconds);
   let dateRange: string;
-  if (startDate && endDate) {
-    const offsetMs = offsetSeconds * 1000;
-    const s = new Date(new Date(startDate).getTime() + offsetMs);
-    const e = new Date(new Date(endDate).getTime() + offsetMs);
-    const range = s.toDateString() === e.toDateString()
-      ? fmt(s)
-      : `${fmt(s)} – ${fmt(e)}`;
-    dateRange = `Dates span roughly ${range}`;
+  if (range) {
+    dateRange = datesFromFileMtime
+      ? `Dates span roughly ${range} (from file dates)`
+      : `Dates span roughly ${range}`;
   } else {
-    dateRange = "No datetime metadata";
+    dateRange = "No dates found";
   }
 
   const parts: string[] = [];

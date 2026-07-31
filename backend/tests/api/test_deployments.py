@@ -1,5 +1,6 @@
 """Tests for the /api/deployments endpoints."""
 
+import os
 from datetime import date, datetime
 from unittest.mock import patch
 
@@ -199,6 +200,8 @@ def test_preview_folder_success(client):
         "end_date": "2024-01-31",
         "missing_datetime": 0,
         "datetime_validation_log": [],
+        "mtime_start_date": None,
+        "mtime_end_date": None,
     }
     with patch("app.api.routers.deployments.scan_folder", return_value=mock_result):
         resp = client.get("/api/deployments/preview-folder?path=/some/folder")
@@ -397,3 +400,43 @@ def test_deployment_info_verified_below_threshold_is_counted(client, db):
     resp = client.get(f"/api/deployments/{dep.id}/info")
     data = resp.json()
     assert data["mean_detection_confidence"] == 0.3
+
+
+# ── file-datetime probe: the opt-in mtime fallback ────────────────────────
+
+
+def _jpeg_with_mtime(folder, name, when):
+    """Write a tiny EXIF-less JPEG and set its modification time."""
+    from PIL import Image
+
+    path = folder / name
+    Image.new("RGB", (4, 4), (1, 2, 3)).save(path, format="JPEG")
+    os.utime(path, (when.timestamp(), when.timestamp()))
+    return path
+
+
+def test_file_datetime_without_fallback_returns_null(client, tmp_path):
+    """Default behaviour: no capture date means no date, mtime ignored."""
+    _jpeg_with_mtime(tmp_path, "a.jpg", datetime(2024, 4, 7, 15, 55, 26))
+
+    resp = client.get(
+        "/api/deployments/file-datetime"
+        f"?folder={tmp_path}&file=a.jpg"
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["file_datetime"] is None
+
+
+def test_file_datetime_with_fallback_returns_mtime(client, tmp_path):
+    """Without this the Adjust-dates modal would show "unknown" for every
+    file in a folder that opted in, so the offset could never be set."""
+    _jpeg_with_mtime(tmp_path, "a.jpg", datetime(2024, 4, 7, 15, 55, 26))
+
+    resp = client.get(
+        "/api/deployments/file-datetime"
+        f"?folder={tmp_path}&file=a.jpg&use_file_mtime_fallback=true"
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["file_datetime"] == datetime(2024, 4, 7, 15, 55, 26).isoformat()

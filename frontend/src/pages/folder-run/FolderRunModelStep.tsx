@@ -360,6 +360,15 @@ export function FolderRunModelStep() {
   // valid scan so we don't probe folders the user is mid-typing or
   // ones that turned out to be empty.
   const { data: scanResult, isLoading: isScanning } = useFolderScan(folderPath);
+  // Per-folder choice, so local state rather than the settings form:
+  // everything in that form is project-scoped and sticky across runs,
+  // which is the wrong shape for "these particular files have no dates".
+  const [fileMtimeChecked, setFileMtimeChecked] = useState(false);
+  // Only send it while the scan still reports no capture dates, in case
+  // a refetch turns some up after the box was ticked.
+  const useFileMtimeFallback = Boolean(
+    fileMtimeChecked && scanResult?.missing_datetime,
+  );
   const lookupReady =
     !!folderPath && !!scanResult && scanResult.total_count > 0;
   const { data: lookupRun, isFetching: isLookingUp } = useQuery({
@@ -695,6 +704,7 @@ export function FolderRunModelStep() {
           image_count: scanResult.image_count,
           video_count: scanResult.video_count,
           force_new: true,
+          use_file_mtime_fallback: useFileMtimeFallback,
         },
       },
       { onSettled: closeDialog },
@@ -730,6 +740,7 @@ export function FolderRunModelStep() {
           image_count: scanResult.image_count,
           video_count: scanResult.video_count,
           force_new: folderChanged,
+          use_file_mtime_fallback: useFileMtimeFallback,
         },
       });
       return;
@@ -856,9 +867,15 @@ export function FolderRunModelStep() {
                             <FormControl>
                               <FolderSelector
                                 value={field.value || null}
-                                onChange={(v) => field.onChange(v ?? "")}
+                                onChange={(v) => {
+                                  field.onChange(v ?? "");
+                                  setFileMtimeChecked(false);
+                                }}
                                 hideLabel
                                 compactScanResult
+                                missingDateNote="AddaxAI will still detect and classify these files, but the date column in your results will be empty."
+                                useFileMtimeFallback={useFileMtimeFallback}
+                                onUseFileMtimeFallbackChange={setFileMtimeChecked}
                               />
                             </FormControl>
                             {/* Re-entry shortcut: a folder run persists its

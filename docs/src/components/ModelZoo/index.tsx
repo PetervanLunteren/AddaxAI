@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactElement } from "react";
 import modelsData from "@site/src/data/models.json";
+import speciesData from "@site/src/data/species.json";
 import styles from "./styles.module.css";
 
 // Interactive, filterable model catalogue. Data comes from the repo-root
@@ -50,6 +51,39 @@ const REGIONS: string[] = Array.from(
   new Set(ALL_ROWS.map((r) => r.region).filter((r): r is string => Boolean(r))),
 ).sort();
 
+// Species a classification model can predict, from src/data/species.json
+// (see scripts/fetch-species.mjs). Underscores are how the model files spell
+// them; readers should not have to decode that.
+const SPECIES = speciesData as Record<string, string[]>;
+
+/** How many species to print before collapsing the tail into a count. */
+const SPECIES_SHOWN = 60;
+
+function prettySpecies(name: string): string {
+  return name.replace(/_/g, " ");
+}
+
+// Search matches species too, so "wolverine" answers "which models know
+// this animal?" — the question people actually arrive with. Precomputed
+// once because it runs against every row on every keystroke.
+const HAYSTACK = new Map<string, string>(
+  ALL_ROWS.map((r) => [
+    `${r.type}-${r.model_id}`,
+    [
+      r.friendly_name,
+      r.model_id,
+      r.developer,
+      r.description_short,
+      r.description,
+      r.region,
+      ...(SPECIES[r.model_id] ?? []).map(prettySpecies),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase(),
+  ]),
+);
+
 export default function ModelZoo(): ReactElement {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<ModelType | "all">("all");
@@ -68,18 +102,7 @@ export default function ModelZoo(): ReactElement {
         return false;
       }
       if (!q) return true;
-      const haystack = [
-        r.friendly_name,
-        r.model_id,
-        r.developer,
-        r.description_short,
-        r.description,
-        r.region,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(q);
+      return (HAYSTACK.get(`${r.type}-${r.model_id}`) ?? "").includes(q);
     });
   }, [query, typeFilter, regionFilter, regionApplies]);
 
@@ -213,6 +236,24 @@ export default function ModelZoo(): ReactElement {
                     <td colSpan={columnCount}>
                       <div className={styles.detail}>
                         {row.description ? <p>{row.description}</p> : null}
+                        {(() => {
+                          const species = SPECIES[row.model_id];
+                          if (!species || species.length === 0) return null;
+                          const shown = species.slice(0, SPECIES_SHOWN);
+                          const rest = species.length - shown.length;
+                          return (
+                            <div className={styles.species}>
+                              <div className={styles.speciesHead}>
+                                Knows {species.length}{" "}
+                                {species.length === 1 ? "label" : "labels"}
+                              </div>
+                              <p className={styles.speciesList}>
+                                {shown.map(prettySpecies).join(", ")}
+                                {rest > 0 ? `, and ${rest} more` : ""}
+                              </p>
+                            </div>
+                          );
+                        })()}
                         <dl className={styles.meta}>
                           {row.owner ? (
                             <>

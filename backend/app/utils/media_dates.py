@@ -1,8 +1,10 @@
 """
-Shared video date extraction using exiftool.
+Shared capture-date extraction.
 
-Extracts creation dates from video metadata. Used by both the folder scanner
-(for deployment preview) and the JSON pipeline (for file timestamps).
+Holds the exiftool video reader and the two opt-in last-resort fallbacks
+(filename marker, filesystem mtime). Used by the folder scanner (deployment
+preview), the per-file probe endpoint, and the JSON pipeline (file
+timestamps), so all three agree on where a capture date can come from.
 """
 
 import re
@@ -39,6 +41,28 @@ def parse_addaxai_filename_datetime(filename: str) -> datetime | None:
         return datetime.strptime(match.group(1) + match.group(2), "%Y%m%d%H%M%S")
     except ValueError:
         return None
+
+
+def file_mtime_datetime(path: Path) -> datetime | None:
+    """Filesystem mtime as a naive local datetime, or None if unreadable.
+
+    This is the computer's own wall clock, the same value Finder or File
+    Explorer shows, and the same value the folder scan shows the user
+    before they opt in. Truncated to whole seconds because every other
+    capture-date source is second-resolution.
+
+    Opt-in only, never a silent default: see `use_file_mtime_fallback` on
+    DeploymentQueue and the datetime conventions in DEVELOPERS.md. The
+    value is right only while the files have not been copied; copying can
+    reset it to the copy date or shift it by whole hours.
+    """
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime).replace(microsecond=0)
+    except OSError:
+        # Matches _safe_file_size in json_pipeline: a file can disappear
+        # between the detection run and the database load.
+        return None
+
 
 # Metadata fields tried in order of preference
 _DATE_FIELDS = [

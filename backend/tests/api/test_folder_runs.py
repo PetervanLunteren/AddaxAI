@@ -60,6 +60,34 @@ def test_create_folder_run_auto_name(client):
     assert body["queue_entry"]["image_count"] == 412
 
 
+def test_create_folder_run_file_mtime_fallback_defaults_off(client):
+    """Omitting the field must never silently enable the fallback."""
+    resp = client.post(
+        "/api/folder-runs",
+        json={"source_folder": "/Volumes/Photos/NoFlag", "image_count": 3},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["queue_entry"]["use_file_mtime_fallback"] is False
+
+
+def test_create_folder_run_carries_file_mtime_fallback(client):
+    """The opt-in has to reach the queue row, since that is what the
+    shared worker reads. A folder run draws no charts, but its exported
+    files table has a datetime column and its README reports the capture
+    range, so both are empty without this."""
+    resp = client.post(
+        "/api/folder-runs",
+        json={
+            "source_folder": "/Volumes/Photos/Gabon_AVI",
+            "image_count": 0,
+            "video_count": 1,
+            "use_file_mtime_fallback": True,
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["queue_entry"]["use_file_mtime_fallback"] is True
+
+
 def test_create_folder_run_explicit_name(client):
     resp = client.post(
         "/api/folder-runs",

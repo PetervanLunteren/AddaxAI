@@ -175,6 +175,25 @@
   color: var(--ifm-color-emphasis-800);
 }
 
+.species {
+  margin: 0 0 0.85rem;
+}
+
+.speciesHead {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ifm-color-emphasis-700);
+  margin-bottom: 0.2rem;
+}
+
+.speciesList {
+  margin: 0;
+  max-width: 70ch;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--ifm-color-emphasis-800);
+}
+
 .meta {
   display: grid;
   grid-template-columns: max-content 1fr;

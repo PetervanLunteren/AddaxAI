@@ -16,6 +16,9 @@ export interface DeploymentQueueEntry {
   image_count: number;
   site_id: string | null;
   datetime_offset_seconds: number | null;
+  /** Fill missing capture dates from each file's modification time.
+   * Never overrides a real capture date. */
+  use_file_mtime_fallback: boolean;
   notes: string | null;
   tags: Record<string, string>;
   status: "pending" | "processing" | "completed" | "failed";
@@ -36,6 +39,7 @@ export interface DeploymentQueueCreate {
   video_count?: number;
   image_count?: number;
   datetime_offset_seconds?: number | null;
+  use_file_mtime_fallback?: boolean;
   notes?: string | null;
   tags?: Record<string, string>;
 }

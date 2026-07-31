@@ -40,6 +40,11 @@ interface DatetimeOffsetModalProps {
   folderPath: string;
   currentOffsetSeconds: number;
   onApply: (offsetSeconds: number) => void;
+  /** Mirror of the folder-scan opt-in. Without it this modal would show
+   *  "unknown" for every file in a folder that has no capture dates, so
+   *  the offset could never be worked out for exactly the folders that
+   *  need it most. */
+  useFileMtimeFallback?: boolean;
 }
 
 /** Format a datetime string for display (shorter than ISO). */
@@ -69,6 +74,7 @@ export function DatetimeOffsetModal({
   folderPath,
   currentOffsetSeconds,
   onApply,
+  useFileMtimeFallback = false,
 }: DatetimeOffsetModalProps) {
   const [referenceIndex, setReferenceIndex] = useState(0);
   const [offsetSeconds, setOffsetSeconds] = useState(currentOffsetSeconds);
@@ -150,7 +156,10 @@ export function DatetimeOffsetModal({
     setDateFetching(true);
 
     fetch(
-      `${API_BASE_URL}/api/deployments/file-datetime?folder=${encodeURIComponent(folderPath)}&file=${encodeURIComponent(currentFile.path)}`,
+      `${API_BASE_URL}/api/deployments/file-datetime` +
+        `?folder=${encodeURIComponent(folderPath)}` +
+        `&file=${encodeURIComponent(currentFile.path)}` +
+        (useFileMtimeFallback ? "&use_file_mtime_fallback=true" : ""),
     )
       .then((r) => r.json())
       .then((data) => {
@@ -167,7 +176,7 @@ export function DatetimeOffsetModal({
       });
 
     return () => { cancelled = true; };
-  }, [open, referenceIndex, currentFile]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, referenceIndex, currentFile, useFileMtimeFallback]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync the corrected date display whenever the current image's datetime
   // becomes available (from cache or fresh fetch) or when navigating to a
@@ -196,10 +205,12 @@ export function DatetimeOffsetModal({
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Clear datetime cache when the folder changes (different files at same indices)
+  // Clear datetime cache when the folder changes (different files at same
+  // indices), or when the file-date fallback is toggled: the cached values
+  // were fetched under the other rule and would all read as unknown.
   useEffect(() => {
     setDateCache({});
-  }, [folderPath]);
+  }, [folderPath, useFileMtimeFallback]);
 
   // Sync offset from corrected date
   const handleCorrectedDateChange = useCallback(

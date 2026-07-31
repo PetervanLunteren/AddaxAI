@@ -131,6 +131,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
             folder_path = Path(entry.folder_path)
             datetime_offset_seconds = entry.datetime_offset_seconds or 0
+            use_file_mtime_fallback = entry.use_file_mtime_fallback
             if not folder_path.exists():
                 error_msg = f"Folder not found: {folder_path}"
                 logger.error(error_msg)
@@ -696,6 +697,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     taxonomy_name_to_id,
                     builtin_taxonomy_ids,
                     datetime_offset_seconds,
+                    use_file_mtime_fallback=use_file_mtime_fallback,
                 )
                 # The insert happened on another session; drop any stale state
                 # so the main session's later queries (taxonomy link,

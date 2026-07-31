@@ -53,11 +53,27 @@ pointing at real files.
 
 ## How the model zoo gets its data
 
+Two files feed it, and they work differently on purpose.
+
 `scripts/sync-models.mjs` copies the repo-root `models.json` into
 `src/data/models.json` before every `start` and `build` (via the npm
 `prestart` / `prebuild` hooks). That generated file is gitignored, so the table
 always reflects the real catalogue and never drifts. If your editor complains
 that `src/data/models.json` is missing, run `npm run sync-models` once.
+
+`scripts/fetch-species.mjs` downloads each classification model's
+`taxonomy.csv` from HuggingFace and writes the species lists to
+`src/data/species.json`. Run it by hand when the catalogue changes:
+
+```bash
+npm run fetch-species
+```
+
+That output **is** committed, unlike `models.json`. This data only exists on
+the network, and putting 29 HuggingFace requests in the build would mean an
+outage there blocks publishing the docs. So it is fetched rarely and read
+locally. The script writes nothing if any model fails, rather than silently
+shipping a shorter list.
 
 ## Build
 

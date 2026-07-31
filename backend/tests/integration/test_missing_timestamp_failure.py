@@ -8,8 +8,12 @@ lack a date. Time-based stats exclude the null-date rows and each
 becomes its own single-file event downstream. Nothing is dropped, and
 there is no hard failure even when every file lacks a timestamp.
 
-Observational datetimes are never guessed — see DEVELOPERS.md
-"Datetime conventions".
+Observational datetimes are never guessed. The one exception is the
+per-folder `use_file_mtime_fallback` opt-in, which is off in every test
+here, so these also pin the default behaviour: an mtime exists for all of
+these files and is deliberately not used. See DEVELOPERS.md "Datetime
+conventions", and tests/integration/test_mtime_fallback.py for the
+opted-in path.
 """
 
 from unittest.mock import patch

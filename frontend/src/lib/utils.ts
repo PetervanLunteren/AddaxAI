@@ -31,6 +31,42 @@ export function formatCompact(n: number): string {
 }
 
 /**
+ * Format one ISO datetime as a day, applying a datetime offset.
+ *
+ * Example: ("2024-03-03T08:12:00", 3600) -> "3 Mar 2024"
+ */
+export function formatDate(iso: string, offsetSeconds = 0): string {
+  const d = new Date(new Date(iso).getTime() + offsetSeconds * 1000);
+  return d.toLocaleDateString([], {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/**
+ * Format a date range for the folder scan, applying a datetime offset.
+ *
+ * Returns null when either end is missing, so callers can branch on that
+ * instead of rendering a half range. Collapses to a single date when both
+ * ends fall on the same day.
+ *
+ * Examples:
+ *   ("2024-03-03T…", "2024-03-19T…") -> "3 Mar 2024 – 19 Mar 2024"
+ *   ("2024-04-07T…", "2024-04-07T…") -> "7 Apr 2024"
+ */
+export function formatDateSpan(
+  startIso: string | null,
+  endIso: string | null,
+  offsetSeconds = 0,
+): string | null {
+  if (!startIso || !endIso) return null;
+  const start = formatDate(startIso, offsetSeconds);
+  const end = formatDate(endIso, offsetSeconds);
+  return start === end ? start : `${start} – ${end}`;
+}
+
+/**
  * Format a datetime offset in seconds as a human-readable string.
  * Shows every non-zero component (days, hours, minutes, seconds).
  *

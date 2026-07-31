@@ -26,6 +26,7 @@ from app.core.logging_config import get_logger
 from app.core.media_types import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from app.utils.media_dates import _DATE_FIELDS as _VIDEO_DATE_FIELDS
 from app.utils.media_dates import extract_video_dates as _shared_extract_video_dates
+from app.utils.media_dates import file_mtime_datetime
 
 logger = get_logger(__name__)
 
@@ -80,6 +81,11 @@ class FolderPreview(TypedDict):
     end_date: str | None  # ISO format datetime
     missing_datetime: bool  # True if no EXIF dates found
     datetime_validation_log: list[str]  # Log of what was tried and why rejected
+    # Range the opt-in file-modification-time fallback would produce.
+    # Non-null exactly when `missing_datetime` is True and the files could
+    # be stat'ed, so the UI has no third state to handle.
+    mtime_start_date: str | None  # ISO format datetime
+    mtime_end_date: str | None  # ISO format datetime
 
 
 def scan_folder(folder_path: str, gps_sample_size: int = 10) -> FolderPreview:
@@ -144,6 +150,22 @@ def scan_folder(folder_path: str, gps_sample_size: int = 10) -> FolderPreview:
     # Extract date range from images and videos with validation
     start_date, end_date, validation_log = _extract_date_range(image_files, video_files)
 
+    # When nothing carries a capture date, work out what the opt-in
+    # file-modification-time fallback would give, so the user can judge it
+    # before ticking the box. That displayed range is the only safeguard
+    # (there is no heuristic behind it), so it covers every file rather
+    # than the sample the metadata reads use: a stat() is cheap where an
+    # EXIF decode is not. Skipped entirely when real dates exist, so the
+    # common scan never pays for the pass.
+    mtime_start, mtime_end = (None, None)
+    if start_date is None and all_media:
+        mtime_start, mtime_end = _mtime_range(all_media)
+        if mtime_start is not None and mtime_end is not None:
+            validation_log.append(
+                f"File modification times span {mtime_start:%Y-%m-%d %H:%M} "
+                f"to {mtime_end:%Y-%m-%d %H:%M}"
+            )
+
     return FolderPreview(
         image_count=len(image_files),
         video_count=len(video_files),
@@ -154,7 +176,22 @@ def scan_folder(folder_path: str, gps_sample_size: int = 10) -> FolderPreview:
         end_date=end_date.isoformat() if end_date else None,
         missing_datetime=start_date is None or end_date is None,
         datetime_validation_log=validation_log,
+        mtime_start_date=mtime_start.isoformat() if mtime_start else None,
+        mtime_end_date=mtime_end.isoformat() if mtime_end else None,
     )
+
+
+def _mtime_range(files: list[Path]) -> tuple[datetime | None, datetime | None]:
+    """Earliest and latest file modification time across ``files``.
+
+    Both None when nothing could be stat'ed. Unreadable files are skipped
+    rather than failing the scan; a preview that shows a slightly narrower
+    range is more useful than no preview at all.
+    """
+    stamps = [ts for ts in (file_mtime_datetime(f) for f in files) if ts is not None]
+    if not stamps:
+        return None, None
+    return min(stamps), max(stamps)
 
 
 def _extract_gps_from_sample(
@@ -385,9 +422,10 @@ def _extract_date_range(
     # Combine all dates. Any timestamp found is used; the min/max give the
     # rough range the UI shows as a date-only estimate. There is no
     # minimum-span gate: the dates come from EXIF DateTimeOriginal (read
-    # from the Exif sub-IFD), never from file mtime, so a narrow span is a
-    # real narrow span, not the corrupt-mtime-cluster case the old 3-hour
-    # rule guarded against.
+    # from the Exif sub-IFD) and never from file mtime, which `scan_folder`
+    # reports separately and only when this function finds nothing. So a
+    # narrow span here is a real narrow span, not the corrupt-mtime-cluster
+    # case the old 3-hour rule guarded against.
     all_dates = image_dates + video_dates
 
     if all_dates:

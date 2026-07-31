@@ -52,6 +52,9 @@ export interface FolderRunCreate {
    * fresh one is created. Default false keeps the create-or-resume
    * behaviour for callers that don't care. */
   force_new?: boolean;
+  /** Fill missing capture dates from each file's modification time.
+   * Never overrides a real capture date. Defaults to false. */
+  use_file_mtime_fallback?: boolean;
 }
 
 /** Summary returned by GET /api/folder-runs/lookup. The Step 1 notice

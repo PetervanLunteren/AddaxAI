@@ -24,6 +24,13 @@ export interface FolderScanResult {
   end_date: string | null;
   missing_datetime: boolean;
   datetime_validation_log: string[];
+  /**
+   * Range the opt-in file-modification-time fallback would produce.
+   * Populated only when the scan found no capture dates, so these are
+   * non-null exactly when the opt-in is offered.
+   */
+  mtime_start_date: string | null;
+  mtime_end_date: string | null;
 }
 
 /**
@@ -48,6 +55,8 @@ export function useFolderScan(folderPath: string | null) {
           end_date: null,
           missing_datetime: false,
           datetime_validation_log: [],
+          mtime_start_date: null,
+          mtime_end_date: null,
         };
       }
 

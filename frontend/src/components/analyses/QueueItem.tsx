@@ -8,8 +8,10 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Folder, Trash2, Eye, EyeOff } from "lucide-react";
+import { Folder, Trash2, Eye, EyeOff, LifeBuoy } from "lucide-react";
 import { basename } from "@/lib/path-utils";
+import { formatDateSpan } from "@/lib/utils";
+import { exportDiagnosticReport } from "@/lib/diagnostic-export";
 import { Button } from "@/components/ui/button";
 import { TagPills } from "@/components/ui/tag-pills";
 import { sitesApi } from "@/api/sites";
@@ -179,24 +181,24 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
 
             {/* Date range from the folder scan (includes any datetime
                 offset). Date-only, rough: the scan reads a sample of files,
-                not every one, so this is an approximate span. */}
-            {!isScanning && scanResult?.start_date && scanResult?.end_date && (() => {
-              const fmt = (d: Date) =>
-                d.toLocaleDateString([], {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                });
-              const offsetMs = (entry.datetime_offset_seconds ?? 0) * 1000;
-              const start = new Date(new Date(scanResult.start_date).getTime() + offsetMs);
-              const end = new Date(new Date(scanResult.end_date).getTime() + offsetMs);
-              const range = start.toDateString() === end.toDateString()
-                ? fmt(start)
-                : `${fmt(start)} – ${fmt(end)}`;
+                not every one, so this is an approximate span. Entries that
+                opted into file dates read those instead, so the range the
+                user confirmed when adding the folder is still shown here. */}
+            {!isScanning && (() => {
+              const fromFileMtime = entry.use_file_mtime_fallback;
+              const range = formatDateSpan(
+                fromFileMtime ? scanResult?.mtime_start_date ?? null : scanResult?.start_date ?? null,
+                fromFileMtime ? scanResult?.mtime_end_date ?? null : scanResult?.end_date ?? null,
+                entry.datetime_offset_seconds ?? 0,
+              );
+              if (!range) return null;
               return (
                 <>
                   <dt className="text-gray-500 font-medium">Date range:</dt>
-                  <dd className="text-gray-900">{`roughly ${range}`}</dd>
+                  <dd className="text-gray-900">
+                    {`roughly ${range}`}
+                    {fromFileMtime && " (from file dates)"}
+                  </dd>
                 </>
               );
             })()}
@@ -235,11 +237,26 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
               </>
             )}
 
-            {/* Error */}
+            {/* Error. An analysis failure is the one error in the app the
+                user cannot act on from what is on screen: the story is in
+                the logs. The button is the same action Help > Export
+                diagnostic report runs, put where the user already is, so
+                reporting it does not start with hunting through a menu. */}
             {entry.error && (
               <>
                 <dt className="text-red-600 font-medium">Error:</dt>
-                <dd className="text-red-600">{entry.error}</dd>
+                <dd className="text-red-600">
+                  {entry.error}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 flex h-7 items-center gap-1.5 px-2 text-xs"
+                    onClick={() => void exportDiagnosticReport()}
+                  >
+                    <LifeBuoy className="h-3.5 w-3.5" />
+                    Export diagnostic report
+                  </Button>
+                </dd>
               </>
             )}
           </div>

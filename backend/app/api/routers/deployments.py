@@ -161,6 +161,8 @@ def preview_folder_path(
         end_date=preview["end_date"],
         missing_datetime=preview["missing_datetime"],
         datetime_validation_log=preview["datetime_validation_log"],
+        mtime_start_date=preview["mtime_start_date"],
+        mtime_end_date=preview["mtime_end_date"],
     )
 
 
@@ -529,12 +531,23 @@ def group_broken_deployments(
 def get_file_datetime(
     folder: str = Query(..., description="Absolute path to deployment folder"),
     file: str = Query(..., description="Relative file path"),
+    use_file_mtime_fallback: bool = Query(
+        False,
+        description="Fall back to the file's modification time when metadata has none",
+    ),
 ):
     """Extract the EXIF/metadata datetime from a single file on demand.
 
     Called lazily by the DatetimeOffsetModal as the user navigates through
     images, so we don't pay the cost of extracting all 10k+ datetimes
     during the initial folder scan.
+
+    `use_file_mtime_fallback` mirrors the opt-in the user ticked in the
+    folder scan. Without it this endpoint would return null for every file
+    in such a folder, and the modal that computes the datetime offset
+    would have nothing to compare against, so the offset (the documented
+    remedy for a camera clock that differed from the computer's) could
+    never be set.
     """
     if ".." in file or PurePosixPath(file).is_absolute():
         raise HTTPException(
@@ -567,6 +580,11 @@ def get_file_datetime(
         from app.utils.media_dates import extract_video_date
 
         dt = extract_video_date(file_path)
+
+    if dt is None and use_file_mtime_fallback:
+        from app.utils.media_dates import file_mtime_datetime
+
+        dt = file_mtime_datetime(file_path)
 
     return {"file_datetime": dt.isoformat() if dt else None}
 
@@ -911,4 +929,6 @@ def preview_deployment_folder(
         end_date=preview["end_date"],
         missing_datetime=preview["missing_datetime"],
         datetime_validation_log=preview["datetime_validation_log"],
+        mtime_start_date=preview["mtime_start_date"],
+        mtime_end_date=preview["mtime_end_date"],
     )

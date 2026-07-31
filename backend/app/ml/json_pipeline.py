@@ -34,6 +34,7 @@ from app.ml.results_json import iter_images, read_top_level_object
 from app.models import Deployment, File, Project
 from app.utils.media_dates import (
     extract_video_dates,
+    file_mtime_datetime,
     parse_addaxai_filename_datetime,
 )
 
@@ -46,27 +47,36 @@ def _resolve_capture_timestamp(
     is_video: bool,
     exif_metadata: dict | None,
     video_dates: dict[Path, datetime],
-) -> datetime | None:
+    use_file_mtime_fallback: bool,
+) -> tuple[datetime | None, bool]:
     """
-    Extract the camera's wall-clock capture time for a single file, or
-    return None if nothing is available.
+    Extract the camera's wall-clock capture time for a single file.
 
     Videos go through exiftool (`video_dates` pre-populated), images
-    through MegaDetector's embedded EXIF `DateTimeOriginal`. As a last
-    resort, an opt-in `…addaxai-YYYYMMDD-HHMMSS.<ext>` filename is parsed,
-    for files whose metadata carries no readable date. A file that still
-    returns None is ingested with captured_at_local=NULL and surfaced via
-    `PipelineResult.skipped_missing_timestamp`.
+    through MegaDetector's embedded EXIF `DateTimeOriginal`. Then two
+    opt-in last resorts, for files whose metadata carries no readable
+    date: an `…addaxai-YYYYMMDD-HHMMSS.<ext>` filename, and finally the
+    file's modification time when the user asked for it.
+
+    The mtime branch is last because it succeeds for every readable file:
+    anywhere earlier it would shadow every source below it.
+
+    Returns:
+        (timestamp, from_mtime). The timestamp is None when nothing was
+        available, in which case the file is ingested with
+        captured_at_local=NULL and surfaced via
+        `PipelineResult.skipped_missing_timestamp`. The flag is only used
+        for the caller's summary log line; it is never stored.
     """
     if is_video:
         ts = video_dates.get(absolute_path)
         if ts is not None:
-            return ts
+            return ts, False
     if exif_metadata and "DateTimeOriginal" in exif_metadata:
         try:
             return datetime.strptime(
                 exif_metadata["DateTimeOriginal"], "%Y:%m:%d %H:%M:%S"
-            )
+            ), False
         except (ValueError, TypeError):
             pass
     ts = parse_addaxai_filename_datetime(absolute_path.name)
@@ -74,7 +84,14 @@ def _resolve_capture_timestamp(
         logger.debug(
             "Capture time from addaxai filename: %s -> %s", absolute_path.name, ts
         )
-    return ts
+        return ts, False
+    if use_file_mtime_fallback:
+        # No per-file log here: unlike the filename marker this fires for
+        # every dateless file in the deployment. The caller counts them and
+        # logs one summary line instead.
+        ts = file_mtime_datetime(absolute_path)
+        return ts, ts is not None
+    return None, False
 
 
 def _safe_file_size(path: Path) -> int | None:
@@ -103,6 +120,7 @@ def load_json_to_database(
     ) = None,
     builtin_taxonomy_ids: dict[str, str] | None = None,
     datetime_offset_seconds: int = 0,
+    use_file_mtime_fallback: bool = False,
 ) -> PipelineResult:
     """
     Load JSON file (merged video+image results) to database.
@@ -154,12 +172,49 @@ def load_json_to_database(
         )
         non_label_ids = build_non_label_class_ids(class_categories)
 
+        # The detector's own category vocabulary, e.g. MegaDetector's
+        # {"1": "animal", "2": "person", "3": "vehicle"}. Read from the
+        # run rather than hardcoded, so a detector emitting `shark` /
+        # `fish` / `turtle` keeps its names all the way to the folder and
+        # the CSV. Every writer of this JSON emits the key: MegaDetector
+        # itself, and `full_image_detection.synthesize_*` for the
+        # detector-less path.
+        detection_categories = read_top_level_object(
+            json_path, "detection_categories"
+        )
+        if not detection_categories:
+            raise ValueError(
+                f"{json_path} has no 'detection_categories'. Without it "
+                f"there is no way to know what the detector's category "
+                f"ids mean, and guessing is how every category silently "
+                f"became 'animal'."
+            )
+
         # Project detection threshold: observation_type counts only
         # detections at or above it (verified is always False at ingestion),
         # so a file whose every box is below threshold ingests as "blank".
+        #
+        # Refused rather than defaulted. `0.0` used to stand in here, and
+        # it is the threshold at which every detection passes, including
+        # MegaDetector's raw 0.005 output floor, so a broken lookup would
+        # have ingested a whole deployment with every near-noise box
+        # counted as trusted content. Both foreign keys are NOT NULL with
+        # ON DELETE CASCADE, so neither row can be missing unless the
+        # database is corrupt.
         _dep = db.get(Deployment, deployment_id)
-        _proj = db.get(Project, _dep.project_id) if _dep else None
-        counting_threshold = _proj.counting_threshold if _proj else 0.0
+        if _dep is None:
+            raise ValueError(
+                f"Deployment {deployment_id} not found. Refusing to "
+                f"ingest against a guessed detection threshold."
+            )
+        _proj = db.get(Project, _dep.project_id)
+        if _proj is None:
+            raise ValueError(
+                f"Project {_dep.project_id} not found for deployment "
+                f"{deployment_id}. Refusing to ingest against a guessed "
+                f"detection threshold."
+            )
+        counting_threshold = _proj.counting_threshold
 
         # Track statistics
         total_files = 0
@@ -170,6 +225,11 @@ def load_json_to_database(
         classified_count = 0
         skipped_non_label = 0
         skipped_missing_timestamp: list[str] = []
+        # Files whose capture time came from the opt-in mtime fallback.
+        # Counted, not recorded per file: when the fallback is on these
+        # files stop appearing in skipped_missing_timestamp, so the summary
+        # log below is the only trace that it ran.
+        timestamped_from_mtime = 0
         # MegaDetector failure entries (undecodable video etc.), collected
         # during the insert pass instead of a separate collect_md_failures
         # pass over the whole dict.
@@ -223,14 +283,17 @@ def load_json_to_database(
             # Resolve capture timestamp inline (replaces the old pre-pass).
             # Recorded for every loadable image, including ones whose File
             # row already exists, to match the previous behaviour.
-            captured_at_local = _resolve_capture_timestamp(
+            captured_at_local, from_mtime = _resolve_capture_timestamp(
                 absolute_path,
                 is_video=is_video,
                 exif_metadata=img.get("exif_metadata"),
                 video_dates=video_dates,
+                use_file_mtime_fallback=use_file_mtime_fallback,
             )
             if captured_at_local is None:
                 skipped_missing_timestamp.append(str(absolute_path))
+            elif from_mtime:
+                timestamped_from_mtime += 1
 
             # Get or create File record
             # First check by file_id if provided in JSON
@@ -339,10 +402,21 @@ def load_json_to_database(
             # safe even if `loadable_images` filtering above is bypassed
             # by future callers passing in raw process_video output.
             for det in img.get("detections") or []:
-                # Map category
+                # Map the detector's category id to its own name. An id
+                # the run never declared is a broken or mismatched
+                # detector output, not something to guess at: this used
+                # to default to "animal", which turned every category of
+                # a non-MegaDetector model into wildlife without a word
+                # in the log.
                 category_num = det["category"]
-                category_map = {"1": "animal", "2": "person", "3": "vehicle"}
-                category = category_map.get(category_num, "animal")
+                category = detection_categories.get(category_num)
+                if category is None:
+                    raise ValueError(
+                        f"Detection category id {category_num!r} on "
+                        f"{relative_file} is not in the run's "
+                        f"detection_categories "
+                        f"({sorted(detection_categories)})."
+                    )
 
                 if category == "animal" and should_skip_detection(
                     det, non_label_ids,
@@ -460,6 +534,13 @@ def load_json_to_database(
                     f"{deployment.start_date_local} to {deployment.end_date_local}"
                 )
 
+        if timestamped_from_mtime:
+            logger.info(
+                f"{timestamped_from_mtime} file(s) timestamped from file "
+                f"modification time (opt-in fallback; no capture date in "
+                f"their metadata)"
+            )
+
         logger.info(
             f"Database load complete: {total_detections} detections, "
             f"{classified_count} classified, "
@@ -493,6 +574,7 @@ def load_json_to_database_owned_session(
     ) = None,
     builtin_taxonomy_ids: dict[str, str] | None = None,
     datetime_offset_seconds: int = 0,
+    use_file_mtime_fallback: bool = False,
 ) -> PipelineResult:
     """Run load_json_to_database with a session created in THIS thread.
 
@@ -519,6 +601,7 @@ def load_json_to_database_owned_session(
             taxonomy_name_to_id=taxonomy_name_to_id,
             builtin_taxonomy_ids=builtin_taxonomy_ids,
             datetime_offset_seconds=datetime_offset_seconds,
+            use_file_mtime_fallback=use_file_mtime_fallback,
         )
     finally:
         db.close()
@@ -581,6 +664,18 @@ async def run_classification_on_json(
     )
     best_frame_outputs: dict[str, str] = {}
     video_path_by_abs: dict[str, Path] = {}
+    # Best-frame scoring candidates, one list per video, carrying EVERY
+    # detection regardless of category. `items` below is animals above the
+    # classification gate, which is the wrong population to pick a
+    # thumbnail from: it makes a clip of a person score nothing at all, so
+    # the worker falls back to sharpness over three arbitrary samples and
+    # the chosen frame has no idea where the person was. Scoring on the
+    # detector's own confidence is the one signal present in every
+    # detector/classifier combination, so this also generalises to
+    # detectors whose categories are not animal/person/vehicle.
+    # `score_detections` applies its own confidence floor, so no filtering
+    # happens here: duplicating that constant is how the two drift apart.
+    scoring_detections: dict[str, list[dict]] = {}
     for img_info in md_results.get("images", []) or []:
         if img_info.get("failure"):
             continue
@@ -591,6 +686,15 @@ async def run_classification_on_json(
         dest_dir = _bf_base / relative_video_path
         best_frame_outputs[str(file_path)] = str(dest_dir)
         video_path_by_abs[str(file_path)] = file_path
+        scoring_detections[str(file_path)] = [
+            {
+                "frame_number": int(det["frame_number"]),
+                "conf": float(det.get("conf", 0.0)),
+                "bbox": det["bbox"],
+            }
+            for det in (img_info.get("detections") or [])
+            if det.get("frame_number") is not None
+        ]
 
     items: list[dict] = []
     indices: list[tuple[int, int]] = []
@@ -699,6 +803,7 @@ async def run_classification_on_json(
             classification_model.classify_detections(
                 items,
                 best_frame_outputs=best_frame_outputs,
+                scoring_detections=scoring_detections,
                 batch_size=batch_size,
                 progress_callback=on_progress,
                 device_callback=report_device,

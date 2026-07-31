@@ -21,6 +21,13 @@ class DeploymentQueueBase(BaseModel):
         None,
         description="Seconds to add to all file timestamps (null = no adjustment)",
     )
+    use_file_mtime_fallback: bool = Field(
+        False,
+        description=(
+            "Fill missing capture dates from each file's modification time. "
+            "Never overrides a real capture date"
+        ),
+    )
     notes: str | None = Field(
         None, max_length=1000, description="Optional deployment notes"
     )

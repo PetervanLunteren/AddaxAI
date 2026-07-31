@@ -7,6 +7,7 @@ capture times report "no datetime metadata" in the folder preview. These
 tests pin the sub-IFD read and the tolerant date parser.
 """
 
+import os
 from datetime import datetime
 
 import pytest
@@ -144,9 +145,10 @@ def test_scan_folder_random_sample_rescues_when_extremes_lack_exif(tmp_path):
 
 def test_scan_folder_accepts_short_span(tmp_path):
     """No minimum-span gate: dates only minutes apart are still reported.
-    Timestamps come from EXIF DateTimeOriginal, never file mtime, so a
-    narrow span is a real one, not the corrupt-mtime case the old 3-hour
-    rule rejected."""
+    `start_date` / `end_date` come from EXIF DateTimeOriginal and never
+    from file mtime (which the scan reports separately, and only when no
+    capture dates exist at all), so a narrow span is a real one, not the
+    corrupt-mtime case the old 3-hour rule rejected."""
     _write_jpeg(tmp_path / "a.jpg", datetime_original="2016:06:13 08:00:00")
     _write_jpeg(tmp_path / "b.jpg", datetime_original="2016:06:13 08:30:00")
 
@@ -155,3 +157,57 @@ def test_scan_folder_accepts_short_span(tmp_path):
     assert preview["missing_datetime"] is False
     assert preview["start_date"] == datetime(2016, 6, 13, 8, 0, 0).isoformat()
     assert preview["end_date"] == datetime(2016, 6, 13, 8, 30, 0).isoformat()
+
+
+# ── file-modification-time range ──────────────────────────────────────────
+
+
+def test_scan_folder_skips_mtime_range_when_dates_exist(tmp_path):
+    """The stat pass is not just correct, it does not run at all when the
+    files carry real capture dates. That laziness is what keeps the common
+    scan free on slow SD readers and network drives."""
+    _write_jpeg(tmp_path / "a.jpg", datetime_original="2016:06:13 08:00:00")
+    _write_jpeg(tmp_path / "b.jpg", datetime_original="2016:06:13 18:30:00")
+
+    preview = scan_folder(str(tmp_path))
+
+    assert preview["missing_datetime"] is False
+    assert preview["mtime_start_date"] is None
+    assert preview["mtime_end_date"] is None
+
+
+def test_scan_folder_reports_mtime_range_when_no_dates(tmp_path):
+    """With no capture dates anywhere, the scan offers the exact range the
+    opt-in fallback would produce. It covers EVERY file, not the sampled
+    subset the EXIF reads use: the displayed range is the only safeguard
+    the user gets, so it must not be an estimate. The outlier below sits
+    outside the first-5 / last-5 filename window on purpose."""
+    for i in range(1, 13):
+        target = tmp_path / f"{i:02d}.jpg"
+        Image.new("RGB", (4, 4), (1, 2, 3)).save(target, format="JPEG")
+        # File 07 is neither in the first 5 nor the last 5 by filename.
+        stamp = (
+            datetime(2024, 4, 1, 9, 0, 0)
+            if i == 7
+            else datetime(2024, 4, 8, 12, 0, 0)
+        ).timestamp()
+        os.utime(target, (stamp, stamp))
+
+    preview = scan_folder(str(tmp_path))
+
+    assert preview["missing_datetime"] is True
+    assert preview["mtime_start_date"] == datetime(2024, 4, 1, 9, 0, 0).isoformat()
+    assert preview["mtime_end_date"] == datetime(2024, 4, 8, 12, 0, 0).isoformat()
+    assert any(
+        "File modification times span" in line
+        for line in preview["datetime_validation_log"]
+    )
+
+
+def test_scan_folder_empty_folder_has_no_mtime_range(tmp_path):
+    """Nothing to stat, and no crash."""
+    preview = scan_folder(str(tmp_path))
+
+    assert preview["total_count"] == 0
+    assert preview["mtime_start_date"] is None
+    assert preview["mtime_end_date"] is None

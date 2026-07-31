@@ -115,6 +115,12 @@ class FolderRunCreate(BaseModel):
     cascade-deleted (DB rows + on-disk ``.addaxai`` cache) before the
     fresh one is created. Default ``False`` keeps the legacy
     create-or-resume behaviour: an existing run is returned as-is.
+
+    ``use_file_mtime_fallback`` is the opt-in the user ticked in the
+    folder scan when nothing in the folder carried a capture date. It
+    matters here even though a folder run draws no charts: the exported
+    files table carries a ``datetime`` column and the run README reports
+    the capture range, so without it both come out empty.
     """
 
     source_folder: str = Field(..., min_length=1)
@@ -122,6 +128,7 @@ class FolderRunCreate(BaseModel):
     video_count: int = Field(default=0, ge=0)
     image_count: int = Field(default=0, ge=0)
     force_new: bool = False
+    use_file_mtime_fallback: bool = False
 
 
 class FolderRunStepUpdate(BaseModel):
@@ -586,6 +593,7 @@ def create_folder_run(
         site_id=None,
         video_count=payload.video_count,
         image_count=payload.image_count,
+        use_file_mtime_fallback=payload.use_file_mtime_fallback,
     )
     queue_entry = crud_queue.create_queue_entry(db, queue_create)
 

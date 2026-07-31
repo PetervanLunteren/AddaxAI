@@ -9,7 +9,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -52,6 +52,15 @@ class DeploymentQueue(Base):
     # camera firmware had an incorrect clock (factory reset, AM/PM error, etc.).
     datetime_offset_seconds: Mapped[int | None] = mapped_column(
         Integer, nullable=True
+    )
+
+    # Fall back to each file's modification time for files whose metadata
+    # carries no capture date. Off unless the user ticked the box in the
+    # folder scan, which is only offered when the scan found no dates at
+    # all and which shows the resulting range first. Never overrides a real
+    # capture date. See DEVELOPERS.md "Datetime conventions".
+    use_file_mtime_fallback: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="0", default=False
     )
 
     # Optional metadata entered during deployment creation, carried over to

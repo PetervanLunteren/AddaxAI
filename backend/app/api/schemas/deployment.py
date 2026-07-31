@@ -409,3 +409,13 @@ class FolderPreviewResponse(BaseModel):
         default_factory=list,
         description="Log of datetime extraction attempts and validation results",
     )
+    mtime_start_date: datetime | None = Field(
+        None,
+        description=(
+            "Earliest file modification time. Populated only when no capture "
+            "dates were found, so the user can judge the opt-in fallback"
+        ),
+    )
+    mtime_end_date: datetime | None = Field(
+        None, description="Latest file modification time, same conditions"
+    )
