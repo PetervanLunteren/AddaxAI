@@ -7,6 +7,7 @@ Following DEVELOPERS.md principles:
 - Log all operations for debugging
 """
 
+import asyncio
 import json
 import urllib.request
 from datetime import UTC, datetime
@@ -14,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.logging_config import get_logger
+from app.ml.model_storage import find_stale_files
 from app.ml.schemas.model_manifest import resolve_hf_repo
 
 logger = get_logger(__name__)
@@ -241,67 +243,32 @@ class ModelCatalogUpdater:
             )
             return "unchanged"
 
-    def check_model_drift(
+    async def _find_stale_files(
         self, model_type: str, manifest_data: dict[str, Any]
-    ) -> bool | None:
+    ) -> list[str] | None:
         """
-        Compare the local manifest's recorded `hf_revision_sha` to the
-        live HuggingFace commit SHA for the same repo.
+        Repo-relative paths of this model's local files that no longer
+        match HuggingFace, or None when the model is not installed or the
+        question could not be answered.
 
-        Returns:
-            True  if the sentinel SHA disagrees with the upstream
-                  (drift; user should re-download).
-            False if they agree (in sync).
-            None  if drift can't be evaluated: legacy install with no
-                  recorded SHA, no `hf_repo` declared, network failure,
-                  or any other transient issue. Treat as "unknown but
-                  valid" and skip.
-
-        Never raises: HF auth / network / 404 errors collapse to None
-        so a drift pass can't take down startup.
+        Only models the user actually downloaded can be stale, so a
+        catalog stub (a manifest with no weights next to it) is skipped
+        without any HTTP call. Deliberately not `check_weights_ready`:
+        that answers "can inference run", and reports False for an install
+        that has its weights but is missing a support file, which is
+        exactly the install whose missing files this should restore.
         """
-        from huggingface_hub import HfApi
-        from huggingface_hub.utils import HfHubHTTPError
-
-        model_id = manifest_data["model_id"]
-        model_dir = self.models_dir / model_type / model_id
-        manifest_path = model_dir / "manifest.json"
-        if not manifest_path.exists():
+        model_dir = self.models_dir / model_type / manifest_data["model_id"]
+        if not (model_dir / manifest_data["model_fname"]).is_file():
             return None
 
-        try:
-            with open(manifest_path) as f:
-                local = json.load(f)
-        except (json.JSONDecodeError, OSError) as e:
-            logger.warning(
-                f"Could not read local manifest at {manifest_path}: {e}"
-            )
-            return None
-
-        recorded = local.get("hf_revision_sha")
-        if not recorded:
-            # Legacy install. Skip per "unknown but valid" rule.
-            return None
-
-        hf_repo = resolve_hf_repo(model_id, local.get("hf_repo"))
-        try:
-            info = HfApi().model_info(hf_repo)
-            remote = getattr(info, "sha", None)
-        except HfHubHTTPError as e:
-            logger.warning(
-                f"HF model_info({hf_repo}) HTTP error during drift check: {e}"
-            )
-            return None
-        except Exception as e:
-            logger.warning(
-                f"HF model_info({hf_repo}) failed during drift check: {e}"
-            )
-            return None
-
-        if not remote:
-            return None
-
-        return recorded != remote
+        hf_repo = resolve_hf_repo(
+            manifest_data["model_id"], manifest_data.get("hf_repo")
+        )
+        # One blocking HTTPS call plus a handful of local file reads, per
+        # installed model. Off the event loop so a slow or black-holed
+        # network cannot make the whole API unresponsive during startup.
+        return await asyncio.to_thread(find_stale_files, model_dir, hf_repo)
 
     async def sync(self) -> dict[str, Any]:
         """
@@ -315,6 +282,11 @@ class ModelCatalogUpdater:
                 "new_models":       [{"model_id", "friendly_name", "emoji"}, ...],
                 "refreshed_models": [{"model_id", "friendly_name"}, ...],
                 "drifted_models":   [{"model_id", "friendly_name", "emoji"}, ...],
+                    installed models with at least one file that no longer
+                    matches upstream. The file names go to the log rather
+                    than over the wire: nothing renders them, and this
+                    snapshot goes stale the moment upstream moves, so the
+                    update endpoint recomputes the list itself.
                 "drifted_envs":     [{"env_name"}, ...],
                 "checked_at":       "<UTC ISO timestamp>",
                 "error":            "<message>" (only if fetch failed),
@@ -367,15 +339,15 @@ class ModelCatalogUpdater:
                             }
                         )
 
-                    # Drift check: compare the local manifest's recorded
-                    # HF revision SHA to the upstream. Only models that
-                    # have actually been downloaded carry a recorded
-                    # SHA, so this naturally skips catalog-only stubs.
-                    # Skip on fresh installs too: there's nothing on
-                    # disk that could be drifted.
+                    # Compare the installed files against the upstream repo.
+                    # Skipped on fresh installs: nothing is on disk yet.
                     if not is_fresh_install:
-                        drifted = self.check_model_drift(model_type, manifest_data)
-                        if drifted:
+                        stale = await self._find_stale_files(model_type, manifest_data)
+                        if stale:
+                            logger.info(
+                                f"{model_type}/{manifest_data['model_id']} has "
+                                f"{len(stale)} file(s) to update: {', '.join(stale)}"
+                            )
                             result["drifted_models"].append(
                                 {
                                     "model_id": manifest_data["model_id"],
@@ -420,7 +392,7 @@ class ModelCatalogUpdater:
                     f"Model catalog sync complete: "
                     f"{len(result['new_models'])} new, "
                     f"{len(result['refreshed_models'])} refreshed, "
-                    f"{len(result['drifted_models'])} model(s) drifted, "
+                    f"{len(result['drifted_models'])} model(s) with files to update, "
                     f"{len(result['drifted_envs'])} env(s) drifted"
                 )
 

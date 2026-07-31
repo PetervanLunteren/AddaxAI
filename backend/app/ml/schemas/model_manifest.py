@@ -62,13 +62,10 @@ class ModelManifest(BaseModel):
     env: str
     model_fname: str
     hf_repo: str | None = None
-    # Commit SHA of the HuggingFace repo at the time the model was
-    # downloaded. Stored locally only (not in the central catalog) and
-    # used by ModelCatalogUpdater.sync() to detect when the upstream
-    # repo has moved past what's on disk. None on legacy installs that
-    # pre-date drift detection; absence is treated as "unknown but
-    # valid" rather than as drift.
-    hf_revision_sha: str | None = None
+    # A local manifest.json holds nothing beyond its catalog entry. Whether
+    # an install still matches upstream is answered by comparing the files
+    # themselves (model_storage.find_stale_files), so there is no recorded
+    # state here to fall out of date or to be overwritten by write_manifest.
 
     # Metadata
     description: str

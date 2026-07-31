@@ -81,13 +81,20 @@ class HuggingFaceRepoDownloader:
         self.start_time = 0.0
         self.lock = threading.Lock()
 
-    def get_repo_info(self, repo_id: str, revision: str = "main") -> tuple[int, list[dict]]:
+    def get_repo_info(
+        self,
+        repo_id: str,
+        revision: str = "main",
+        include: set[str] | None = None,
+    ) -> tuple[int, list[dict]]:
         """
         Get repository information including total size and file list.
 
         Args:
             repo_id: Repository ID (e.g., "Addax-Data-Science/MDV5A")
             revision: Branch or revision to download
+            include: Only describe these repo-relative paths. None means the
+                whole repo.
 
         Returns:
             Tuple of (total_size_bytes, files_info_list)
@@ -101,6 +108,12 @@ class HuggingFaceRepoDownloader:
 
             # Get repository files
             files = self.api.list_repo_files(repo_id=repo_id, revision=revision, repo_type="model")
+
+            if include is not None:
+                # Filter before the loop below, which costs one HTTP call per
+                # file. Updating a single file in a repo that vendors a whole
+                # source tree must not pay for all ~170 of its files.
+                files = [f for f in files if f in include]
 
             # Get detailed file information
             files_info = []
@@ -214,6 +227,7 @@ class HuggingFaceRepoDownloader:
         file_info: dict,
         local_dir: Path,
         should_cancel: Callable[[], bool] | None = None,
+        overwrite: bool = False,
     ) -> bool:
         """
         Download a single file with progress tracking.
@@ -225,6 +239,9 @@ class HuggingFaceRepoDownloader:
             should_cancel: Optional predicate polled between chunks; when it
                 returns True the download aborts, the partial .tmp file is
                 removed, and the method returns False.
+            overwrite: Fetch the file even when a local file of the same size
+                is already there. Needed by callers that decided by content
+                that the local copy is wrong.
 
         Returns:
             True if successful, False otherwise
@@ -236,8 +253,15 @@ class HuggingFaceRepoDownloader:
         local_file_path = local_dir / file_path
         local_file_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Skip if file already exists and has correct size
-        if local_file_path.exists() and local_file_path.stat().st_size == file_size:
+        # Skip if file already exists and has correct size. `overwrite`
+        # defeats this because size equality does not mean the contents
+        # match: an upstream edit of the same byte length would otherwise be
+        # skipped by the very call that came to replace it.
+        if (
+            not overwrite
+            and local_file_path.exists()
+            and local_file_path.stat().st_size == file_size
+        ):
             self.update_progress(file_size)
             return True
 
@@ -443,9 +467,11 @@ class HuggingFaceRepoDownloader:
         progress_callback: Callable[[str, float], None] | None = None,
         revision: str = "main",
         should_cancel: Callable[[], bool] | None = None,
+        include: set[str] | None = None,
+        overwrite: bool = False,
     ) -> bool:
         """
-        Download entire Hugging Face repository.
+        Download a Hugging Face repository, or a named subset of it.
 
         Args:
             repo_id: Repository ID (e.g., "Addax-Data-Science/MDV5A")
@@ -455,6 +481,10 @@ class HuggingFaceRepoDownloader:
             should_cancel: Optional predicate polled while downloading; when
                 it returns True the download is aborted and JobCancelledError
                 is raised so the caller can clean up and report cancellation.
+            include: Only download these repo-relative paths. None means the
+                whole repo.
+            overwrite: Fetch files even when a local file of the same size is
+                already there.
 
         Returns:
             True if successful, False otherwise
@@ -469,7 +499,7 @@ class HuggingFaceRepoDownloader:
                 progress_callback(f"Fetching repository info for {repo_id}...", 0.0)
 
             # Get repository info and total size
-            total_size, files_info = self.get_repo_info(repo_id, revision)
+            total_size, files_info = self.get_repo_info(repo_id, revision, include)
             self.total_bytes = total_size
             self.downloaded_bytes = 0
             self.start_time = time.time()
@@ -495,7 +525,7 @@ class HuggingFaceRepoDownloader:
                 # Submit all download tasks
                 future_to_file = {
                     executor.submit(
-                        self.download_file, file_info, local_dir, should_cancel
+                        self.download_file, file_info, local_dir, should_cancel, overwrite
                     ): file_info
                     for file_info in files_info
                 }

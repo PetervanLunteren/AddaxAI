@@ -111,6 +111,14 @@ class ModelInfo(BaseModel):
     default_batch_size_cpu: int
 
 
+class ModelUpdateResponse(BaseModel):
+    """Result of refreshing an installed model's out-of-date files."""
+
+    model_id: str
+    updated_files: list[str]
+    message: str
+
+
 # Lookup table mirroring the constants in app.ml.batch_size, used to
 # populate ModelInfo.default_batch_size_* by pipeline type.
 _DEFAULT_BATCH_SIZES_BY_TYPE: dict[str, tuple[int, int]] = {
@@ -271,55 +279,92 @@ async def prepare_model_weights(model_id: str) -> ModelPrepareResponse:
         ) from None
 
 
-@router.post("/models/{model_id}/redownload", status_code=status.HTTP_202_ACCEPTED)
-async def redownload_model(model_id: str) -> dict[str, str]:
+@router.post("/models/{model_id}/update", response_model=ModelUpdateResponse)
+async def update_model(model_id: str, request: Request) -> ModelUpdateResponse:
     """
-    Force-redownload a model's files when the upstream HF revision has
-    moved past the locally recorded SHA. Wipes everything in the model
-    directory except `manifest.json` (so the catalog stub survives) and
-    spawns the download as a fire-and-forget asyncio task. Returns 202
-    immediately; the next `ModelCatalogUpdater.sync()` (i.e. the next
-    app launch) will record the new SHA and clear the drift entry.
+    Re-download the files of an installed model that no longer match
+    HuggingFace, and nothing else. The weights are never fetched, so this
+    is a few kilobytes and finishes while the user waits, which is why it
+    answers when the work is done rather than returning 202.
 
-    No live progress is surfaced. The drift toast that triggered this
-    is intentionally minimal; users who want to monitor a download
-    closely should use the regular setup wizard / project flow that
-    already wires WebSocket progress.
+    `model_id` is the only thing the client gets to choose. Which files
+    are stale is recomputed here, so a caller can never name a path.
+
+    Not guarded against an analysis that is running right now and will
+    start a new inference subprocess after this returns: that would need
+    a job lookup, and the file swap itself is atomic. On Windows a file
+    held open by a running analysis fails the swap, which surfaces as a
+    409 telling the user to stop it and retry.
     """
+    _get_managers()
+
     try:
-        _get_managers()
         manifest = manifest_manager.get_model(model_id)
-
-        # Run the wipe + download in a worker thread so the request
-        # returns immediately. download_weights handles its own
-        # cleanup on failure; failures here just mean drift stays
-        # flagged on the next startup, which the user can retry.
-        async def _run() -> None:
-            try:
-                await asyncio.to_thread(
-                    model_storage.download_weights, manifest, None, True
-                )
-                logger.info(f"Force re-download of {model_id} complete")
-            except Exception as e:
-                logger.error(
-                    f"Force re-download of {model_id} failed: {e}",
-                    exc_info=True,
-                )
-
-        asyncio.create_task(_run())
-        return {"status": "started", "model_id": model_id}
-
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
         ) from None
+
+    # Reuse the prepare registry rather than adding a second one, so an
+    # update cannot run alongside a download writing to the same directory.
+    task_id = f"{model_id}-update"
+    if {task_id, model_id, f"{model_id}-weights"} & _active_prepares:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A download for {model_id} is already running",
+        )
+    _active_prepares.add(task_id)
+
+    try:
+        updated = await asyncio.to_thread(model_storage.update_stale_files, manifest)
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{model_id} is not installed, so there is nothing to update: {e}",
+        ) from None
+    except ConnectionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        ) from None
+    except OSError as e:
+        # Typically Windows refusing to replace a file a running analysis
+        # holds open.
+        logger.error(f"Update of {model_id} hit a file error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Model files are in use. Stop any running analysis and try again.",
+        ) from None
     except Exception as e:
-        logger.error(f"Failed to start re-download for {model_id}: {e}")
+        logger.error(f"Update of {model_id} failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to start re-download: {e}",
+            detail=f"Failed to update {model_id}: {e}",
         ) from None
+    finally:
+        _active_prepares.discard(task_id)
+
+    if updated:
+        # GET /api/ml/updates serves a snapshot taken at startup that lives
+        # until the next launch, so drop the row we just fixed or a window
+        # reload offers an update that already happened.
+        state = getattr(request.app.state, "model_updates", None)
+        if isinstance(state, dict) and state.get("drifted_models"):
+            state["drifted_models"] = [
+                m for m in state["drifted_models"] if m.get("model_id") != model_id
+            ]
+
+    # Nothing invalidates the ManifestManager cache on purpose: manifest.json
+    # is owned by the catalog, is not part of any HF repo, and is in
+    # model_storage._IGNORED_REPO_FILES, so an update can never rewrite it.
+    return ModelUpdateResponse(
+        model_id=model_id,
+        updated_files=updated,
+        message=(
+            f"Updated {len(updated)} file(s)" if updated else "Already up to date"
+        ),
+    )
 
 
 @router.post("/models/{model_id}/prepare-env", response_model=ModelPrepareResponse)

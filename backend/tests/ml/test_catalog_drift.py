@@ -1,4 +1,10 @@
-"""Tests for drift detection in app.ml.catalog_updater."""
+"""
+Tests for how ModelCatalogUpdater.sync() reports models with files to update.
+
+The per-file comparison itself lives in tests/ml/test_model_update.py. What
+matters here is which models sync() even asks about, and that a failure to
+ask never takes startup down.
+"""
 
 import json
 from pathlib import Path
@@ -8,163 +14,145 @@ import pytest
 
 from app.ml.catalog_updater import ModelCatalogUpdater
 
-
-def _write_local_manifest(
-    models_dir: Path,
-    model_type: str,
-    model_id: str,
-    *,
-    hf_repo: str | None = "Addax-Data-Science/test-model",
-    hf_revision_sha: str | None = None,
-) -> Path:
-    """
-    Plant a `manifest.json` on disk that looks like what the download
-    flow would write. Returns the manifest path so tests can mutate it.
-    """
-    model_dir = models_dir / model_type / model_id
-    model_dir.mkdir(parents=True, exist_ok=True)
-    manifest = {
-        "model_id": model_id,
-        "friendly_name": "Test Model",
-        "emoji": "🧪",
-        "env": "addaxai-base",
-        "model_fname": "weights.pt",
-        "hf_repo": hf_repo,
-        "description": "...",
-        "developer": "x",
-        "info_url": "https://example.com",
-        "min_app_version": "0.1.0",
-    }
-    if hf_revision_sha is not None:
-        manifest["hf_revision_sha"] = hf_revision_sha
-    path = model_dir / "manifest.json"
-    path.write_text(json.dumps(manifest))
-    return path
-
-
-def _make_updater(tmp_path: Path) -> ModelCatalogUpdater:
-    return ModelCatalogUpdater(models_dir=tmp_path / "models")
+ENTRY = {
+    "model_id": "TEST-v1",
+    "friendly_name": "Test model",
+    "emoji": "🧪",
+    "env": "addaxai-base",
+    "model_fname": "weights.pt",
+    "description": "...",
+    "developer": "x",
+    "info_url": "https://example.com",
+    "min_app_version": "0.1.0",
+}
+CATALOG = {"models": {"det": [], "cls": [ENTRY], "emb": []}}
 
 
 @pytest.fixture
 def updater(tmp_path: Path) -> ModelCatalogUpdater:
-    return _make_updater(tmp_path)
+    return ModelCatalogUpdater(models_dir=tmp_path / "models")
 
 
-def test_drift_check_returns_true_when_remote_sha_differs(
-    updater: ModelCatalogUpdater, tmp_path: Path
-) -> None:
-    """Recorded SHA != upstream SHA → drift detected."""
-    _write_local_manifest(
-        tmp_path / "models", "cls", "test-model",
-        hf_revision_sha="abc123" * 7,  # 42 chars, doesn't matter
-    )
-    fake_info = MagicMock(sha="def456" * 7)
-    with patch(
-        "huggingface_hub.HfApi.model_info", return_value=fake_info
+def _install(models_dir: Path, *, with_weights: bool) -> Path:
+    """Put a model on disk the way a previous launch would have left it."""
+    model_dir = models_dir / "cls" / "TEST-v1"
+    model_dir.mkdir(parents=True)
+    (model_dir / "manifest.json").write_text(json.dumps(ENTRY))
+    (model_dir / "taxonomy.csv").write_text("model_class,class\n")
+    if with_weights:
+        (model_dir / "weights.pt").write_bytes(b"w")
+    return model_dir
+
+
+async def _sync(updater: ModelCatalogUpdater) -> dict:
+    """Run sync() with the network and the env drift check stubbed out."""
+    with (
+        patch.object(updater, "fetch_catalog", return_value=CATALOG),
+        patch.object(updater, "download_taxonomy"),
+        patch("app.ml.environment_manager.EnvironmentManager") as mock_env,
     ):
-        manifest = {
-            "model_id": "test-model",
-            "friendly_name": "X",
-            "emoji": "🧪",
-        }
-        result = updater.check_model_drift("cls", manifest)
-    assert result is True
+        mock_env.return_value.check_yaml_drift.return_value = False
+        return await updater.sync()
 
 
-def test_drift_check_returns_false_when_shas_match(
+async def test_stub_without_weights_is_never_checked(
     updater: ModelCatalogUpdater, tmp_path: Path
 ) -> None:
-    """Recorded SHA == upstream SHA → no drift."""
-    sha = "abc123" * 7
-    _write_local_manifest(
-        tmp_path / "models", "cls", "test-model",
-        hf_revision_sha=sha,
-    )
-    fake_info = MagicMock(sha=sha)
-    with patch(
-        "huggingface_hub.HfApi.model_info", return_value=fake_info
-    ):
-        manifest = {
-            "model_id": "test-model",
-            "friendly_name": "X",
-            "emoji": "🧪",
-        }
-        result = updater.check_model_drift("cls", manifest)
-    assert result is False
+    """
+    A catalog stub is a manifest with no model next to it. Asking HuggingFace
+    about it would be one HTTP call per launch for every model the user never
+    downloaded.
+    """
+    _install(tmp_path / "models", with_weights=False)
 
-
-def test_drift_check_returns_none_when_no_local_sha(
-    updater: ModelCatalogUpdater, tmp_path: Path
-) -> None:
-    """Legacy install with no recorded SHA → unknown but valid."""
-    _write_local_manifest(
-        tmp_path / "models", "cls", "test-model", hf_revision_sha=None
-    )
-    manifest = {
-        "model_id": "test-model",
-        "friendly_name": "X",
-        "emoji": "🧪",
-    }
-    # HfApi should not even be called; assert that explicitly.
     with patch("huggingface_hub.HfApi.model_info") as mock_info:
-        result = updater.check_model_drift("cls", manifest)
-    assert result is None
+        result = await _sync(updater)
+
     mock_info.assert_not_called()
+    assert result["drifted_models"] == []
 
 
-def test_drift_check_returns_none_when_manifest_missing(
+async def test_installed_model_with_stale_files_is_reported(
     updater: ModelCatalogUpdater, tmp_path: Path
 ) -> None:
-    """Catalog stub the user never downloaded → skip the check."""
-    manifest = {
-        "model_id": "never-installed",
-        "friendly_name": "X",
-        "emoji": "🧪",
-    }
-    result = updater.check_model_drift("cls", manifest)
-    assert result is None
+    """The wire shape is exactly three keys: the file names stay in the log."""
+    _install(tmp_path / "models", with_weights=True)
 
-
-def test_drift_check_returns_none_when_hf_api_fails(
-    updater: ModelCatalogUpdater, tmp_path: Path
-) -> None:
-    """Network error / 404 / auth → silent skip, no startup crash."""
-    _write_local_manifest(
-        tmp_path / "models", "cls", "test-model",
-        hf_revision_sha="abc123" * 7,
-    )
     with patch(
-        "huggingface_hub.HfApi.model_info",
-        side_effect=ConnectionError("offline"),
+        "app.ml.catalog_updater.find_stale_files", return_value=["inference.py"]
     ):
-        manifest = {
-            "model_id": "test-model",
-            "friendly_name": "X",
-            "emoji": "🧪",
-        }
-        result = updater.check_model_drift("cls", manifest)
-    assert result is None
+        result = await _sync(updater)
+
+    assert result["drifted_models"] == [
+        {"model_id": "TEST-v1", "friendly_name": "Test model", "emoji": "🧪"}
+    ]
 
 
-def test_drift_check_returns_none_when_remote_has_no_sha(
+async def test_model_in_sync_is_not_reported(
     updater: ModelCatalogUpdater, tmp_path: Path
 ) -> None:
-    """If the HF response is missing a sha attribute, treat as unknown."""
-    _write_local_manifest(
-        tmp_path / "models", "cls", "test-model",
-        hf_revision_sha="abc123" * 7,
-    )
-    # Use a real object whose `sha` attribute is None.
-    fake_info = MagicMock()
-    fake_info.sha = None
+    _install(tmp_path / "models", with_weights=True)
+
+    with patch("app.ml.catalog_updater.find_stale_files", return_value=[]):
+        result = await _sync(updater)
+
+    assert result["drifted_models"] == []
+
+
+async def test_unreachable_huggingface_does_not_fail_the_sync(
+    updater: ModelCatalogUpdater, tmp_path: Path
+) -> None:
+    """
+    Offline is a normal state for plenty of users. Exercised through the real
+    code path rather than by mocking the guard that is supposed to catch it.
+    """
+    _install(tmp_path / "models", with_weights=True)
+
     with patch(
-        "huggingface_hub.HfApi.model_info", return_value=fake_info
+        "huggingface_hub.HfApi.model_info", side_effect=ConnectionError("offline")
     ):
-        manifest = {
-            "model_id": "test-model",
-            "friendly_name": "X",
-            "emoji": "🧪",
-        }
-        result = updater.check_model_drift("cls", manifest)
-    assert result is None
+        result = await _sync(updater)
+
+    assert result["drifted_models"] == []
+    assert "error" not in result
+
+
+async def test_fresh_install_is_never_checked(updater: ModelCatalogUpdater) -> None:
+    """First launch has nothing on disk that could be out of date."""
+    with patch("huggingface_hub.HfApi.model_info") as mock_info:
+        result = await _sync(updater)
+
+    mock_info.assert_not_called()
+    assert result["drifted_models"] == []
+    assert result["new_models"] == []
+
+
+async def test_manifest_is_not_rewritten_on_a_second_launch(
+    updater: ModelCatalogUpdater, tmp_path: Path
+) -> None:
+    """
+    Nothing local is stored in manifest.json any more, so a second launch
+    finds nothing to rewrite and reports nothing as refreshed. This is the
+    end of the churn the old recorded-SHA scheme caused.
+    """
+    _install(tmp_path / "models", with_weights=True)
+
+    with patch("app.ml.catalog_updater.find_stale_files", return_value=None):
+        first = await _sync(updater)
+        second = await _sync(updater)
+
+    assert first["refreshed_models"] == []
+    assert second["refreshed_models"] == []
+
+
+async def test_hf_is_asked_once_per_installed_model(
+    updater: ModelCatalogUpdater, tmp_path: Path
+) -> None:
+    _install(tmp_path / "models", with_weights=True)
+
+    with patch(
+        "huggingface_hub.HfApi.model_info", return_value=MagicMock(siblings=[])
+    ) as mock_info:
+        await _sync(updater)
+
+    assert mock_info.call_count == 1

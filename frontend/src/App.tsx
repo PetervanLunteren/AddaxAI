@@ -16,7 +16,7 @@ import {
   useLocation,
   useParams,
 } from "react-router-dom";
-import { X } from "lucide-react";
+import { Check, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { queryClient } from "./lib/query-client";
 import { AppLayout } from "./components/layout/AppLayout";
@@ -69,9 +69,21 @@ interface ModelUpdatesResponse {
   checked_at: string | null;
 }
 
+/**
+ * Per-row state of the update list. Absent means idle. A failed update
+ * has to be retryable, so the state it leaves behind must be replaceable
+ * by the next click.
+ */
+type UpdateState =
+  | { phase: "updating" }
+  | { phase: "done" }
+  | { phase: "error"; message: string };
+
 function ModelUpdateToast() {
   const [dismissed, setDismissed] = useState(false);
-  const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
+  const [updateStates, setUpdateStates] = useState<Record<string, UpdateState>>(
+    {},
+  );
 
   // Fetch model updates once on app load.
   const { data: updates } = useQuery({
@@ -100,22 +112,23 @@ function ModelUpdateToast() {
     return null;
   }
 
-  const markBusy = (id: string) => {
-    setBusyIds((prev) => new Set(prev).add(id));
+  const setUpdateState = (id: string, state: UpdateState) => {
+    setUpdateStates((prev) => ({ ...prev, [id]: state }));
   };
 
-  const handleRedownload = async (model: ModelUpdate) => {
-    if (busyIds.has(model.model_id)) return;
-    markBusy(model.model_id);
+  // The endpoint only fetches the files that actually changed, never the
+  // weights, so it answers in well under a second. That is why the result
+  // is shown here instead of asking the user to restart.
+  const handleUpdate = async (model: ModelUpdate) => {
+    if (updateStates[model.model_id]?.phase === "updating") return;
+    setUpdateState(model.model_id, { phase: "updating" });
     try {
-      await api.post(`/api/ml/models/${model.model_id}/redownload`, {});
-      toast.success(`Re-downloading ${model.friendly_name}`, {
-        description:
-          "Running in the background. Restart the app once it's done.",
-      });
+      await api.post(`/api/ml/models/${model.model_id}/update`, {});
+      setUpdateState(model.model_id, { phase: "done" });
     } catch (err) {
-      toast.error(`Re-download failed for ${model.friendly_name}`, {
-        description: err instanceof Error ? err.message : String(err),
+      setUpdateState(model.model_id, {
+        phase: "error",
+        message: err instanceof Error ? err.message : String(err),
       });
     }
   };
@@ -155,27 +168,48 @@ function ModelUpdateToast() {
                 Update{driftedModels.length === 1 ? "" : "s"} available
               </div>
               <ul className="text-sm text-muted-foreground space-y-1.5">
-                {driftedModels.map((model) => (
-                  <li
-                    key={model.model_id}
-                    className="flex items-center justify-between gap-2"
-                  >
-                    <span className="truncate">
-                      {model.emoji} {model.friendly_name}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 px-2 text-xs"
-                      disabled={busyIds.has(model.model_id)}
-                      onClick={() => handleRedownload(model)}
-                    >
-                      {busyIds.has(model.model_id)
-                        ? "Started"
-                        : "Re-download"}
-                    </Button>
-                  </li>
-                ))}
+                {driftedModels.map((model) => {
+                  const state = updateStates[model.model_id];
+                  return (
+                    <li key={model.model_id} className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate">
+                          {model.emoji} {model.friendly_name}
+                        </span>
+                        {state?.phase === "done" ? (
+                          <span className="flex shrink-0 items-center gap-1 text-xs text-primary">
+                            <Check className="h-3.5 w-3.5" />
+                            Updated
+                          </span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 shrink-0 px-2 text-xs"
+                            disabled={state?.phase === "updating"}
+                            onClick={() => handleUpdate(model)}
+                          >
+                            {state?.phase === "updating" ? (
+                              <>
+                                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                                Updating
+                              </>
+                            ) : state?.phase === "error" ? (
+                              "Try again"
+                            ) : (
+                              "Update"
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                      {state?.phase === "error" && (
+                        <p className="text-xs text-destructive">
+                          {state.message}
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}
@@ -264,9 +298,8 @@ function SetupGate({ children }: { children: ReactNode }) {
   // (Electron quit + relaunch), so the flag resets naturally and the
   // wizard still triggers on a genuinely-empty install. Without this,
   // any operation that briefly removes a default model weights file
-  // (e.g. the drift toast's force-redownload) flips setup-status to
-  // not-ready for the duration of the download and yanks the user back
-  // to the wizard mid-task.
+  // flips setup-status to not-ready for the duration and yanks the user
+  // back to the wizard mid-task.
   const everReadyRef = useRef(false);
 
   const { data, isLoading, isError, errorUpdatedAt, dataUpdatedAt, refetch } = useQuery({

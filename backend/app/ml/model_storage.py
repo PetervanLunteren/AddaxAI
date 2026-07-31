@@ -10,11 +10,12 @@ Following DEVELOPERS.md principles:
 - Type hints everywhere
 """
 
-import json
+import hashlib
 from collections.abc import Callable
 from pathlib import Path
 
 from huggingface_hub import HfApi
+from huggingface_hub.errors import RepositoryNotFoundError
 
 from app.core.job_cancellation import JobCancelledError
 from app.core.logging_config import get_logger
@@ -23,33 +24,104 @@ from app.ml.schemas.model_manifest import ModelManifest, resolve_hf_repo
 
 logger = get_logger(__name__)
 
+# Seconds to wait on the HuggingFace listing during a staleness check. The
+# check runs once per installed model at startup, so an unreachable host
+# must fail rather than hang.
+_HF_TIMEOUT = 10.0
 
-def _record_hf_revision_sha(manifest_path: Path, sha: str) -> None:
+# Repo files that are never part of a working model install, matched by
+# basename anywhere in the repo. Documentation the app never reads,
+# .gitattributes which only drives LFS server-side, Finder litter, and
+# manifest.json, which is written from models.json by the catalog updater:
+# if a repo ever shipped one, the two writers would overwrite each other on
+# alternating operations and the model would be permanently "out of date".
+_IGNORED_REPO_FILES = frozenset(
+    {
+        "README.md",
+        "LICENSE",
+        "LICENSE.md",
+        ".gitattributes",
+        ".DS_Store",
+        "manifest.json",
+    }
+)
+
+
+def git_blob_sha1(path: Path) -> str:
     """
-    Persist the HF commit SHA into the local manifest.json so a later
-    drift check can compare on-disk vs upstream. Read-modify-write on a
-    file the catalog updater also touches; both call sites update the
-    file rarely so the lack of locking is fine for now.
+    Git blob SHA-1 of a file: sha1(b"blob <bytelen>\\0" + contents).
 
-    Never raises; failure here just means drift detection won't fire
-    for this model until the next successful re-download. Logged at
-    warning so the diagnostic ZIP records the miss.
+    This is exactly what HuggingFace reports as a file's `blob_id`, so a
+    local file can be compared to upstream without downloading anything.
+    The algorithm is dictated by git's object format, not chosen by us:
+    see `find_stale_files`. Not to be confused with `hash_yaml_file` in
+    environment_manager.py, which is a plain sha256 over raw bytes and is
+    only ever compared against a value this app wrote itself.
+    """
+    data = path.read_bytes()
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+
+
+def find_stale_files(model_dir: Path, hf_repo: str) -> list[str] | None:
+    """
+    Repo-relative paths whose local copy differs from HuggingFace.
+
+    Every non-LFS file in the repo is compared by git blob SHA-1, which
+    HuggingFace reports in the same listing, so nothing is downloaded to
+    reach a verdict. LFS files are skipped: those are the model weights,
+    they are versioned by model_id rather than replaced in place, and
+    HuggingFace's blob_id for an LFS file is the hash of the pointer stub
+    rather than of the content, so comparing it would report every install
+    as stale forever. A file the repo has and the install does not counts
+    as stale. Local files the repo does not have are left alone: this
+    never proposes a deletion.
+
+    Returns:
+        Sorted repo-relative paths, [] when the install matches upstream,
+        or None when the question cannot be answered: offline, private or
+        missing repo, or an unreadable local file. Never raises, so a
+        staleness check cannot take down startup.
     """
     try:
-        with open(manifest_path) as f:
-            data = json.load(f)
-        if data.get("hf_revision_sha") == sha:
-            return
-        data["hf_revision_sha"] = sha
-        with open(manifest_path, "w") as f:
-            json.dump(data, f, indent=2)
-        logger.info(
-            f"Recorded hf_revision_sha={sha[:12]}... in {manifest_path}"
-        )
+        info = HfApi().model_info(hf_repo, files_metadata=True, timeout=_HF_TIMEOUT)
+    except RepositoryNotFoundError:
+        # Private or renamed repo. Permanent on this machine, so logging it
+        # at warning would repeat the same line on every single launch.
+        logger.debug(f"Repo {hf_repo} not accessible, skipping staleness check")
+        return None
     except Exception as e:
-        logger.warning(
-            f"Failed to record hf_revision_sha into {manifest_path}: {e}"
-        )
+        logger.warning(f"Could not list {hf_repo} to check for updates: {e}")
+        return None
+
+    stale: list[str] = []
+    for sibling in info.siblings or []:
+        if sibling.lfs:
+            continue
+        if Path(sibling.rfilename).name in _IGNORED_REPO_FILES:
+            continue
+        if not sibling.blob_id:
+            # Nothing to compare against. Treating it as stale would
+            # re-download the file and flag it again on the next launch,
+            # leaving an update prompt the user can never clear.
+            logger.debug(f"{hf_repo}/{sibling.rfilename} has no blob_id, skipping")
+            continue
+
+        local = model_dir / sibling.rfilename
+        if not local.is_file():
+            stale.append(sibling.rfilename)
+            continue
+        try:
+            digest = git_blob_sha1(local)
+        except OSError as e:
+            # An unreadable local file means we cannot answer the question
+            # at all. Calling it stale would just queue a download that
+            # hits the same error.
+            logger.warning(f"Could not read {local} to check for updates: {e}")
+            return None
+        if digest != sibling.blob_id:
+            stale.append(sibling.rfilename)
+
+    return sorted(stale)
 
 
 class ModelStorage:
@@ -113,18 +185,17 @@ class ModelStorage:
         self,
         manifest: ModelManifest,
         progress_callback: Callable[[str, float], None] | None = None,
-        force: bool = False,
         should_cancel: Callable[[], bool] | None = None,
     ) -> Path:
         """
         Download model weights from HuggingFace if not cached.
 
+        Refreshing an install that is already present is `update_stale_files`,
+        which fetches only what actually changed.
+
         Args:
             manifest: Model manifest
             progress_callback: Optional callback(message, progress) for updates
-            force: If True, wipe the model directory (preserving manifest.json)
-                before downloading. Used by the drift-redownload flow when the
-                upstream HF revision moved past the locally recorded SHA.
             should_cancel: Optional predicate polled while downloading; when it
                 returns True the partial download is removed and
                 JobCancelledError propagates to the caller.
@@ -143,38 +214,8 @@ class ModelStorage:
         ]
         model_path = self.models_dir / model_type / manifest.model_id
 
-        if force and model_path.exists():
-            # Wipe everything except manifest.json and the weights file
-            # itself. manifest.json must survive so the catalog stub is
-            # not lost. The weights file must survive so the setup-status
-            # check (`_models_present` in routers/setup.py) keeps
-            # returning True while the redownload runs; otherwise the
-            # SetupGate sees `ready=false` mid-download and redirects the
-            # user to the first-run wizard. The HF downloader is
-            # size-checked per file (hf_downloader.py:212-217), so a kept
-            # weights file is re-fetched only if its on-disk size differs
-            # from the upstream size.
-            keep = {"manifest.json", manifest.model_fname}
-            logger.info(
-                f"Force re-download: wiping cached files at {model_path} "
-                f"(keeping {sorted(keep)})"
-            )
-            for child in model_path.iterdir():
-                if child.name in keep:
-                    continue
-                try:
-                    if child.is_dir():
-                        import shutil
-                        shutil.rmtree(child)
-                    else:
-                        child.unlink()
-                except OSError as e:
-                    logger.warning(
-                        f"Could not remove {child} during force re-download: {e}"
-                    )
-
-        # Skip if already exists (and not forcing).
-        if not force and self.check_weights_ready(manifest):
+        # Skip if already downloaded.
+        if self.check_weights_ready(manifest):
             logger.info(f"Model {manifest.model_id} already cached at {model_path}")
             if progress_callback:
                 progress_callback("Model already cached", 1.0)
@@ -216,26 +257,6 @@ class ModelStorage:
 
             logger.info(f"Downloaded {manifest.model_id} to {model_path}")
 
-            # Record the HF commit SHA we just downloaded so a later
-            # ModelCatalogUpdater.sync() can spot drift when the
-            # upstream repo moves. Best-effort: any HF API failure here
-            # is logged and ignored. Without this, drift detection
-            # silently no-ops for this model.
-            try:
-                info = HfApi().model_info(hf_repo)
-                sha = getattr(info, "sha", None)
-                if sha:
-                    _record_hf_revision_sha(model_path / "manifest.json", sha)
-                else:
-                    logger.warning(
-                        f"HfApi.model_info({hf_repo}) returned no sha attribute"
-                    )
-            except Exception as e:
-                logger.warning(
-                    f"Failed to fetch HF revision SHA for {hf_repo} "
-                    f"after download: {e}"
-                )
-
             if progress_callback:
                 progress_callback("Download complete", 1.0)
 
@@ -263,6 +284,53 @@ class ModelStorage:
                 f"Failed to download {manifest.model_id} "
                 f"from {hf_repo}: {e}"
             ) from e
+
+    def update_stale_files(self, manifest: ModelManifest) -> list[str]:
+        """
+        Re-download only the repo files whose local copy differs from
+        HuggingFace. Nothing is wiped, nothing is deleted, and the weights
+        are never touched, so refreshing a fixed inference.py costs a few
+        kilobytes instead of the whole model.
+
+        Returns:
+            The sorted repo-relative paths that were refreshed. Empty means
+            the install already matched upstream.
+
+        Raises:
+            FileNotFoundError: the model is not installed on this machine.
+            ConnectionError: upstream could not be reached to decide.
+            RuntimeError: a file was found to be stale but failed to download.
+        """
+        # Raises FileNotFoundError with a message aimed at the user when the
+        # model directory or the weights file is absent.
+        model_dir = self.get_model_file(manifest).parent
+        hf_repo = resolve_hf_repo(manifest.model_id, manifest.hf_repo)
+
+        stale = find_stale_files(model_dir, hf_repo)
+        if stale is None:
+            raise ConnectionError(f"Could not reach {hf_repo} to check for updates")
+        if not stale:
+            return []
+
+        downloader = HuggingFaceRepoDownloader(max_workers=4)
+        success = downloader.download_repo(
+            repo_id=hf_repo,
+            local_dir=model_dir,
+            revision="main",
+            include=set(stale),
+            # These files were proven different by content, so the
+            # downloader's size-equality skip must not apply: an upstream
+            # edit that leaves the byte count unchanged would otherwise be
+            # skipped and reported as stale again forever.
+            overwrite=True,
+        )
+        if not success:
+            raise RuntimeError(f"Failed to update {manifest.model_id} from {hf_repo}")
+
+        logger.info(
+            f"Updated {len(stale)} file(s) for {manifest.model_id}: {', '.join(stale)}"
+        )
+        return stale
 
     def get_model_path(self, manifest: ModelManifest) -> Path:
         """
