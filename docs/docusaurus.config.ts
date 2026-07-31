@@ -88,7 +88,7 @@ const config: Config = {
           position: "left",
           label: "Documentation",
         },
-        { to: "/docs/troubleshooting/faq", label: "FAQ", position: "left" },
+        { to: "/docs/help/faq", label: "FAQ", position: "left" },
         {
           href: "https://github.com/PetervanLunteren/AddaxAI/releases/latest",
           label: "Download",
@@ -110,7 +110,7 @@ const config: Config = {
             { label: "Start here", to: "/docs/start-here/what-is-addaxai" },
             { label: "Understanding your results", to: "/docs/understanding/detections-events-observations" },
             { label: "Exports", to: "/docs/reference/exports" },
-            { label: "FAQ", to: "/docs/troubleshooting/faq" },
+            { label: "FAQ", to: "/docs/help/faq" },
           ],
         },
         {

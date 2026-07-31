@@ -53,24 +53,24 @@ const SECTIONS: Card[] = [
   },
   {
     title: "Reference",
-    body: "Look things up: what is in every export, every model, and what each setting changes.",
+    body: "Look things up: what is in every export, and what every model can recognise.",
     to: "/docs/reference/exports",
     links: [
       { label: "Exports", to: "/docs/reference/exports" },
       { label: "Model zoo", to: "/docs/reference/model-zoo" },
-      { label: "Settings", to: "/docs/reference/settings" },
       { label: "Where your files live", to: "/docs/reference/file-locations" },
     ],
   },
   {
     title: "Help",
     body: "Answers to the questions people ask most, and what to do when something goes wrong.",
-    to: "/docs/troubleshooting/faq",
+    to: "/docs/help/faq",
     wide: true,
     links: [
-      { label: "FAQ", to: "/docs/troubleshooting/faq" },
-      { label: "Troubleshooting", to: "/docs/troubleshooting/" },
-      { label: "Go back to version 6", to: "/docs/troubleshooting/go-back-to-v6" },
+      { label: "FAQ", to: "/docs/help/faq" },
+      { label: "Troubleshooting", to: "/docs/help/troubleshooting" },
+      { label: "Back up and restore", to: "/docs/help/back-up-and-restore" },
+      { label: "Go back to version 6", to: "/docs/help/go-back-to-v6" },
     ],
   },
 ];

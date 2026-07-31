@@ -5,9 +5,11 @@ title: Species names and taxonomy
 
 # Species names and taxonomy
 
+How AddaxAI names the animals it finds, how those names are organised, and how to add one it does not know.
+
 ## Two names for the same animal
 
-Every species has a common name and a scientific name. "Virginia opossum" and *Didelphis virginiana* are the same animal. You choose which one the app shows under View, then Species names. It starts on common names. The choice changes the display only, never the data, and both names go into the exports in separate columns.
+Every species has a common name and a scientific name. "Virginia opossum" and *Didelphis virginiana* are the same animal. You choose which one the app shows under View > Species names. It starts on common names. The choice changes the display only, never the data, and both names go into the exports in separate columns.
 
 ## Labels are grouped into a tree
 

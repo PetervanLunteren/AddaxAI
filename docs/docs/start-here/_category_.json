@@ -1,1 +1,1 @@
-{ "label": "Start here", "position": 1 }
+{ "label": "Start here", "position": 1, "link": { "type": "generated-index", "description": "What AddaxAI does, how to install it, and which way of working fits you." } }

@@ -1,0 +1,78 @@
+.item {
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+}
+
+/* Scrolled-to items land under the sticky navbar, not behind it. */
+.item {
+  scroll-margin-top: 4.5rem;
+}
+
+.summary {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.75rem 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary:hover .question {
+  color: var(--ifm-color-primary);
+}
+
+.caret,
+.caretOpen {
+  display: inline-block;
+  color: var(--ifm-color-emphasis-600);
+  transition: transform 0.15s ease;
+}
+
+.caretOpen {
+  transform: rotate(90deg);
+}
+
+.question {
+  flex: 1;
+  font-weight: 600;
+}
+
+/* Same idea as Docusaurus heading anchors: out of the way until wanted. */
+.hash {
+  opacity: 0;
+  padding: 0 0.25rem;
+  color: var(--ifm-color-emphasis-500);
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+
+.summary:hover .hash,
+.hash:focus {
+  opacity: 1;
+}
+
+.answer {
+  padding: 0 0 1rem 1.15rem;
+}
+
+.answer > :last-child {
+  margin-bottom: 0;
+}
+
+.expandAll {
+  margin-bottom: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: var(--ifm-global-radius);
+  background: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.expandAll:hover {
+  background: var(--ifm-color-emphasis-100);
+}

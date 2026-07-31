@@ -17,25 +17,25 @@ AddaxAI is a desktop app. Pick your system, then download and follow the steps.
 
 <DownloadCards os="windows" />
 
-#### Install
+## Install
 
 Run the setup `.exe` and follow the installer.
 
-AddaxAI is code signed, but Windows can still show a SmartScreen warning. This is more likely on work computers, which are often locked down harder. Click **More info**, then **Run anyway**. If your computer blocks the app completely, ask whoever manages it to allow it.
+AddaxAI is code signed, but Windows can still show a SmartScreen warning. This is more likely on work computers, which are often locked down harder. Click More info, then Run anyway. If your computer blocks the app completely, ask whoever manages it to allow it.
 
-#### Use a GPU
+## Use a GPU
 
-AddaxAI uses an NVIDIA GPU automatically. The models ship with CUDA 12.8 builds, so recent cards including the RTX 50-series run at full speed. You need an NVIDIA driver of version 555 or newer. Without a supported GPU it still works, just slower.
+AddaxAI uses an NVIDIA GPU automatically. The models ship with CUDA 12.8 builds, so recent cards including the RTX 50-series run at full speed. If the GPU is not being used, the driver is usually the reason, so install the latest one from NVIDIA's site. For an RTX 50-series card you need version 555 or newer, otherwise the card runs far below its speed. Without a supported GPU it still works, just slower.
 
-#### Update
+## Update
 
 Run the new setup `.exe`. It replaces the old version, and your projects and corrections survive.
 
-#### Uninstall
+## Uninstall
 
-Open Settings, then Apps, find AddaxAI and click **Uninstall**. The uninstaller asks whether to also remove your data, and keeps it unless you say yes.
+Open Settings > Apps, find AddaxAI and click Uninstall. The uninstaller asks whether to also remove your data, and keeps it unless you say yes.
 
-#### Remove your data
+## Remove your data
 
 Your projects database, models and logs live in a folder outside the app, at `%USERPROFILE%\AddaxAI`. Delete that folder to remove them. This includes the labels and counts you confirmed. Your original images and videos are never in there.
 
@@ -44,31 +44,27 @@ Your projects database, models and logs live in a folder outside the app, at `%U
 
 <DownloadCards os="macos" />
 
-:::note Intel Macs
-
 Only Apple Silicon is supported (M1, M2, M3, M4 and M5). Intel Macs cannot run AddaxAI.
 
-:::
-
-#### Install
+## Install
 
 Open the dmg and drag AddaxAI into your Applications folder.
 
-The first time you open it, macOS may ask you to confirm because it was downloaded from the internet. Click **Open**. If the option is greyed out, open System Settings, then Privacy & Security, and click **Open Anyway** there.
+The first time you open it, macOS may ask you to confirm because it was downloaded from the internet. Click Open. If the option is greyed out, open System Settings > Privacy & Security and click Open Anyway there.
 
-#### Use a GPU
+## Use a GPU
 
 On Apple Silicon the GPU is always used. There is nothing to install.
 
-#### Update
+## Update
 
-Open the new dmg, drag AddaxAI into Applications, and click **Replace**. Your projects and corrections survive.
+Open the new dmg, drag AddaxAI into Applications, and click Replace. Your projects and corrections survive.
 
-#### Uninstall
+## Uninstall
 
 Drag AddaxAI from Applications to the Trash.
 
-#### Remove your data
+## Remove your data
 
 Your projects database, models and logs live in a folder outside the app, at `/Users/<username>/AddaxAI`. Delete that folder to remove them. This includes the labels and counts you confirmed. Your original images and videos are never in there.
 
@@ -77,21 +73,19 @@ Your projects database, models and logs live in a folder outside the app, at `/U
 
 <DownloadCards os="linux" />
 
-#### Install
+## Install
 
 Double-click the `.deb` file. The App Center opens and shows it as `addaxai` from an unknown publisher, with a "potentially unsafe" warning.
 
-That warning is normal. Ubuntu shows it for every app installed outside its own store. Click **Install**.
+That warning is normal. Ubuntu shows it for every app installed outside its own store. Click Install.
 
 When it finishes, find AddaxAI in the app grid.
 
-#### Use a GPU
+## Use a GPU
 
-AddaxAI uses an NVIDIA GPU automatically. The models ship with CUDA 12.8 builds, so recent cards including the RTX 50-series run at full speed. You need an NVIDIA driver of version 555 or newer. Without a supported GPU it still works, just slower.
+AddaxAI uses an NVIDIA GPU automatically. The models ship with CUDA 12.8 builds, so recent cards including the RTX 50-series run at full speed. If the GPU is not being used, the driver is usually the reason, so install the latest one from NVIDIA's site. For an RTX 50-series card you need version 555 or newer, otherwise the card runs far below its speed. Without a supported GPU it still works, just slower.
 
-#### Update
-
-:::note Updates need the terminal
+## Update
 
 The App Center cannot update AddaxAI. It only updates apps from its own store, and shows a greyed out "Installed" button for a newer file. Update from a terminal instead, in the folder you downloaded to:
 
@@ -99,17 +93,15 @@ The App Center cannot update AddaxAI. It only updates apps from its own store, a
 sudo apt install ./AddaxAI-amd64.deb
 ```
 
-:::
-
 Your projects and corrections survive.
 
-#### Uninstall
+## Uninstall
 
 ```bash
 sudo apt remove addaxai
 ```
 
-#### Remove your data
+## Remove your data
 
 Your projects database, models and logs live in a folder outside the app, at `/home/<username>/AddaxAI`. Delete that folder to remove them. This includes the labels and counts you confirmed. Your original images and videos are never in there.
 

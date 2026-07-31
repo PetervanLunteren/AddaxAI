@@ -33,4 +33,4 @@ Two things follow from the three steps above. Your own corrections are never tou
 
 ## Changing it
 
-Steps 2 and 3 are project settings. You can turn rollup off, and you can make smoothing milder or stronger or turn it off. Step 1 always runs. See [settings](../reference/settings.mdx).
+Steps 2 and 3 are project settings. You can turn rollup off, and you can make smoothing milder or stronger or turn it off. Step 1 always runs.

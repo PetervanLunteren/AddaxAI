@@ -9,7 +9,7 @@ The AI gives two confidence scores, both between 0 and 1. The detector says how 
 
 This page explains where those scores are used, and what happens when you correct something. Both settings below work on the first one, the detector's score.
 
-![A coyote at night, with the box labelled Animal 90% and Coyote 98%](/img/two-confidences.webp)
+<img src="/img/two-confidences.webp" alt="A coyote at night, with the box labelled Animal 90% and Coyote 98%" style={{maxWidth: '620px', width: '100%', display: 'block'}} />
 
 <p style={{fontSize: '0.75rem', color: 'var(--ifm-color-emphasis-600)', marginTop: '-0.5rem'}}>
 Photo from the <a href="https://lila.science/datasets/ena24detection">ENA24-detection dataset</a>, used under the Community Data License Agreement (permissive variant). Please cite: Yousif H, Kays R, Zhihai H. Dynamic Programming Selection of Object Proposals for Sequence-Level Animal Species Classification in the Wild. IEEE Transactions on Circuits and Systems for Video Technology, 2019.

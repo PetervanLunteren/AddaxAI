@@ -66,10 +66,6 @@ export const shots: Record<string, Shot> = {
     src: "/img/project-export.webp",
     alt: "Export page with format options including Camtrap DP",
   },
-  settings: {
-    src: "/img/project-settings.webp",
-    alt: "Project settings: models, thresholds, and processing options",
-  },
   map: {
     src: "/img/insights-map.webp",
     alt: "Map of camera sites shaded by how often animals were seen",

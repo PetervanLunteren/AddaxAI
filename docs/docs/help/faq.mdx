@@ -1,0 +1,199 @@
+---
+sidebar_position: 2
+title: Frequently asked questions
+sidebar_label: FAQ
+---
+
+import { FaqItem, FaqExpandAll } from "@site/src/components/Faq";
+
+# Frequently asked questions
+
+Short answers, with a link to the full explanation. Select a question to open it.
+
+<FaqExpandAll />
+
+## Getting started
+
+<FaqItem id="which-workflow-should-i-use" q="Which workflow should I use?">
+
+Use a project if you want AddaxAI to do the interpreting: counts, rates, charts and maps. Use a folder run if you would rather do that part yourself in another program, Timelapse or R for example. Then AddaxAI only finds and names the animals, and hands you the results as tables and files for that program to read.
+
+Both run the same AI, so the detections and species are the same either way. If you are unsure, start with a folder run: it can become a project later without losing anything. See [choose a workflow](../start-here/choose-a-workflow.mdx).
+
+</FaqItem>
+
+<FaqItem id="is-it-free" q="Is it free?">
+
+Yes. AddaxAI is open source under the MIT licence, so it is free to use, also for commercial work.
+
+The models are separate. Each comes with its own licence and those differ, and many are Creative Commons non-commercial. Making sure a licence fits what you do is your responsibility, so read it before you use that model commercially. Every licence is listed in the [model zoo](../reference/model-zoo.mdx).
+
+</FaqItem>
+
+<FaqItem id="which-systems-does-it-run-on" q="Which systems does it run on?">
+
+Windows, macOS (Apple Silicon) and Linux. Intel Macs are not supported.
+
+</FaqItem>
+
+<FaqItem id="does-it-work-on-video" q="Does it work on video?">
+
+Yes. AddaxAI handles both photos and videos.
+
+</FaqItem>
+
+<FaqItem id="my-computer-warns-that-the-app-is-unsafe-or-blocks-it" q="My computer warns that the app is unsafe, or blocks it">
+
+That warning is normal for a newly released app and does not mean anything is wrong. On Windows click More info, then Run anyway. On macOS click Open, or allow it under System Settings > Privacy & Security. Work computers are often locked down harder, so if yours blocks the app completely, ask whoever manages it to allow it. See [installation](../start-here/install.mdx).
+
+</FaqItem>
+
+## Privacy and data
+
+<FaqItem id="does-my-data-get-uploaded-anywhere" q="Does my data get uploaded anywhere?">
+
+No. Everything runs on your own computer and your photos and videos never leave it.
+
+AddaxAI does go online, but only to fetch things it needs: the models and the software they run in, the list of available models when it starts, a check for a new version, and a GBIF lookup when you ask it to add a species, which sends the name you typed and nothing else.
+
+</FaqItem>
+
+<FaqItem id="do-i-need-an-internet-connection" q="Do I need an internet connection?">
+
+Only the first time you use a model. AddaxAI then downloads the model and the software it runs in, which can be several gigabytes. After that the analysis runs offline. At start it still tries to reach the model list and the update check, but both fail quietly, so the app works without a connection.
+
+If your internet is limited, run one small analysis from start to finish while you still have a good connection, using the models you plan to work with. That pulls down everything they need, so you will not find a model missing when you are offline.
+
+</FaqItem>
+
+<FaqItem id="does-addaxai-change-my-photos" q="Does AddaxAI change my photos?">
+
+No. It reads your images and videos and never writes to them.
+
+It does write new files. A hidden `.addaxai` folder goes inside the folder you analysed, and the save step writes whatever outputs you asked for. Species folders, images with boxes drawn on them and blurred versions are all copies, and those copies carry the labels in their metadata. Whatever you pick in the save step, your originals are never overwritten, moved or deleted. They stay exactly as they were. See [where your files live](../reference/file-locations.md).
+
+</FaqItem>
+
+## Requirements
+
+<FaqItem id="do-i-need-a-gpu" q="Do I need a GPU?">
+
+No. AddaxAI runs on any computer. It is faster with an NVIDIA GPU or Apple Silicon, but a GPU is not required.
+
+</FaqItem>
+
+<FaqItem id="how-long-does-an-analysis-take" q="How long does an analysis take?">
+
+It depends on your hardware, on how many files you have, and on whether they are photos or videos. A machine with an NVIDIA GPU or Apple Silicon is many times faster than one without.
+
+For real numbers per hardware type, see the [MegaDetector benchmark timings](https://github.com/agentmorris/MegaDetector/blob/main/megadetector.md#benchmark-timings). Those numbers are for the detection model only. The classification model and the embedding model add time on top, but the benchmarks still give a good indication. Video is slower than photos, because AddaxAI takes several frames out of every clip and runs the models on each one.
+
+</FaqItem>
+
+<FaqItem id="it-does-not-use-my-gpu-what-can-i-do" q="It does not use my GPU. What can I do?">
+
+On Windows and Linux AddaxAI uses an NVIDIA GPU automatically, so if it is not being used, the driver is usually the reason. Install the latest driver from NVIDIA's site. For an RTX 50-series card you need version 555 or newer, otherwise the card runs far below its speed. Without a supported GPU the app falls back to the processor and still works, just slower.
+
+</FaqItem>
+
+## Understanding the results
+
+<FaqItem id="what-is-the-difference-between-a-detection-and-an-observation" q="What is the difference between a detection and an observation?">
+
+A detection is one box on one photo. An observation is one species within one event, with a count. One deer that triggers the camera 40 times gives 40 detections but a single observation. See [detections, events and observations](../understanding/detections-events-observations.mdx).
+
+</FaqItem>
+
+<FaqItem id="why-are-labels-and-counts-not-the-same-thing" q="Why are labels and counts not the same thing?">
+
+Labels answer which species. Counts answer how many animals. You can correct every label in an event and that still does not say whether one deer walked past or four, so the number is a separate job. That is why they are checked on different pages, tracked separately, and why "labels verified" and "counts confirmed" on the dashboard usually show different numbers. It works best to do the labels first and the counts after, so you are not counting animals whose species still has to be corrected. See [confirm the counts](../guides/confirm-counts.mdx).
+
+</FaqItem>
+
+<FaqItem id="why-does-my-folder-run-have-no-counts" q="Why does my folder run have no counts?">
+
+Confirming counts is a project feature, and that is deliberate. A folder run is for people who do their own interpretation, and counting rules differ from study to study: how you group animals, what counts as one visit, how you handle a herd. AddaxAI is not going to make those calls for you, so a folder run neither counts nor suggests counts. It still groups photos into events behind the scenes, and hands you the raw tables to work from. See [choose a workflow](../start-here/choose-a-workflow.mdx).
+
+</FaqItem>
+
+<FaqItem id="some-photos-have-no-date-what-happens-to-them" q="Some photos have no date. What happens to them?">
+
+They are still analysed, so you keep the detections and the species, and they still count in your species totals. But they drop out of anything that needs a date: trap nights, and the trend and activity charts. They are also never grouped with other files.
+
+AddaxAI never invents a date by itself, but you can supply one, either in the filename or from your computer's file dates. See [dates, times and timezones](../understanding/capture-times.md).
+
+</FaqItem>
+
+<FaqItem id="what-does-each-column-in-the-csv-mean" q="What does each column in the CSV mean?">
+
+Every column of every table is described in [exports](../reference/exports.md).
+
+</FaqItem>
+
+## Using AddaxAI
+
+<FaqItem id="can-i-correct-the-ai" q="Can I correct the AI?">
+
+Yes. You can check and relabel any detection, and your version always wins over the AI's. Reprocessing and threshold changes leave your corrections alone.
+
+One thing does wipe them: re-running the AI on the folder, which analyses everything again from scratch. The app warns you first. See [confidence and verification](../understanding/confidence-and-verification.md).
+
+</FaqItem>
+
+<FaqItem id="which-species-can-it-recognise" q="Which species can it recognise?">
+
+It depends on the model. Each one covers a region or a group of animals. The [model zoo](../reference/model-zoo.mdx) lists the full species list of every model, and you can search it by species name.
+
+</FaqItem>
+
+<FaqItem id="can-i-add-a-species-the-model-does-not-know" q="Can I add a species the model does not know?">
+
+Yes, but only in your own data. Type the name in the relabel picker and add it as a new label, then give it a taxonomy so it sits in the right place in the tree and behaves like any other label. What it does not do is teach the model. The label lives in your database, in that project, and the model will never predict it by itself, so you keep assigning it by hand. See [species names and taxonomy](../understanding/species-names.md).
+
+</FaqItem>
+
+<FaqItem id="why-do-some-images-have-no-boxes-during-review" q="Why do some images have no boxes during review?">
+
+The detector runs at a low threshold and keeps everything. The review grid then hides detections below your chosen confidence, so an image can look empty even though it has a weak detection. Lower the threshold to see them.
+
+</FaqItem>
+
+<FaqItem id="what-is-the-difference-between-the-detection-models" q="What is the difference between the detection models?">
+
+MegaDetector v5a is the default and the most tested, and it is the one its developer recommends, so leave it alone unless you have a good reason. v5b is an alternative whose performance depends on your dataset. The MegaDetector v1000 models trade accuracy for speed: Cedar is about twice as fast for 1% less accuracy, Spruce is 13 times faster for 14% less. See the [model zoo](../reference/model-zoo.mdx).
+
+</FaqItem>
+
+<FaqItem id="can-several-people-work-on-the-same-project" q="Can several people work on the same project?">
+
+Not at the same time. AddaxAI is a desktop app with one database on one computer, and there is no server or shared project. You can hand your work to a colleague by backing up the database and restoring it on their machine, but only one person can work on it at a time. See [back up and restore](./back-up-and-restore.md).
+
+</FaqItem>
+
+<FaqItem id="can-i-move-my-work-to-another-computer" q="Can I move my work to another computer?">
+
+Yes. You need three things: the photos, the hidden `.addaxai` folders that sit with them, and a backup of the database. See [moving to another computer](../reference/file-locations.md#moving-to-another-computer).
+
+</FaqItem>
+
+<FaqItem id="can-i-undo-a-big-mistake" q="Can I undo a big mistake?">
+
+Often yes. AddaxAI copies your database every day and before every update, and you can roll back to one of those copies. See [back up and restore](./back-up-and-restore.md).
+
+</FaqItem>
+
+## Getting help
+
+<FaqItem id="something-went-wrong-or-i-found-a-bug" q="Something went wrong, or I found a bug">
+
+Open Help > Export diagnostic report and email the zip to [peter@addaxdatascience.com](mailto:peter@addaxdatascience.com), with what you were trying to do, what you expected, and what actually happened. A screenshot or a short screen recording helps a lot. See [troubleshooting](./troubleshooting.md).
+
+</FaqItem>
+
+<FaqItem id="how-do-i-cite-addaxai" q="How do I cite AddaxAI?">
+
+Cite the paper: van Lunteren, P. (2023). AddaxAI: A no-code platform to train and deploy custom YOLOv5 object detection models. Journal of Open Source Software, 8(88), 5581. [doi.org/10.21105/joss.05581](https://doi.org/10.21105/joss.05581).
+
+Please cite the models you used too. Their citation and licence are listed in the [model zoo](../reference/model-zoo.mdx).
+
+</FaqItem>

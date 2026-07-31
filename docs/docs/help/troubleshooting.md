@@ -5,9 +5,11 @@ title: Troubleshooting
 
 # Troubleshooting
 
+What to do when AddaxAI misbehaves, and how to send the information that helps most.
+
 ## Export a diagnostic report
 
-If something goes wrong, the fastest way to get help is a diagnostic report. Open the Help menu and click Export diagnostic report. It builds a zip of logs and saves it to your Downloads folder. Attach that to an email to [peter@addaxdatascience.com](mailto:peter@addaxdatascience.com), along with what you were trying to do, what you expected, and what actually happened. A screenshot or short screen recording helps a lot.
+If something goes wrong, the fastest way to get help is a diagnostic report. Open Help > Export diagnostic report. It builds a zip of logs and saves it to your Downloads folder. Attach that to an email to [peter@addaxdatascience.com](mailto:peter@addaxdatascience.com), along with what you were trying to do, what you expected, and what actually happened. A screenshot or short screen recording helps a lot.
 
 <img src="/img/help-diagnostic-report.webp" alt="The Help menu with Export diagnostic report highlighted" style={{maxWidth: '340px', width: '100%', display: 'block'}} />
 
