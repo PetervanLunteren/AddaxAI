@@ -70,6 +70,12 @@ function prettySpecies(name: string): string {
   return name.replace(/_/g, " ");
 }
 
+// The catalogue stores regions lowercase ("europe"). They are proper nouns,
+// so display them capitalised while filtering on the stored value.
+function prettyRegion(region: string): string {
+  return region.charAt(0).toUpperCase() + region.slice(1);
+}
+
 // Search matches species too, so "wolverine" answers "which models know
 // this animal?" — the question people actually arrive with. Precomputed
 // once because it runs against every row on every keystroke.
@@ -160,21 +166,26 @@ export default function ModelZoo(): ReactElement {
           ))}
         </div>
 
-        {regionApplies ? (
-          <select
-            className={styles.region}
-            value={regionFilter}
-            onChange={(e) => setRegionFilter(e.target.value)}
-            aria-label="Filter by region"
-          >
-            <option value="all">All regions</option>
-            {REGIONS.map((region) => (
-              <option key={region} value={region}>
-                {region}
-              </option>
-            ))}
-          </select>
-        ) : null}
+        {/* Stays put when it does not apply, rather than disappearing and
+            shifting the controls next to it. Only classification models
+            carry a region. */}
+        <select
+          className={styles.region}
+          value={regionFilter}
+          onChange={(e) => setRegionFilter(e.target.value)}
+          disabled={!regionApplies}
+          title={
+            regionApplies ? undefined : "Only classification models have a region"
+          }
+          aria-label="Filter by region"
+        >
+          <option value="all">All regions</option>
+          {REGIONS.map((region) => (
+            <option key={region} value={region}>
+              {prettyRegion(region)}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className={styles.count}>
@@ -223,7 +234,9 @@ export default function ModelZoo(): ReactElement {
                     <span className={styles.badge}>{TYPE_LABEL[row.type]}</span>
                   </td>
                   <td>{row.developer ?? "—"}</td>
-                  {regionApplies ? <td>{row.region ?? "—"}</td> : null}
+                  {regionApplies ? (
+                    <td>{row.region ? prettyRegion(row.region) : "—"}</td>
+                  ) : null}
                   <td className={styles.summary}>{row.description_short ?? "—"}</td>
                 </tr>,
                 isOpen ? (

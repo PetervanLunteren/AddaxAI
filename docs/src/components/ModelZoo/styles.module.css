@@ -61,6 +61,12 @@
   font-size: 0.9rem;
 }
 
+.region:disabled {
+  background: var(--ifm-color-emphasis-100);
+  color: var(--ifm-color-emphasis-500);
+  cursor: not-allowed;
+}
+
 .count {
   font-size: 0.85rem;
   color: var(--ifm-color-emphasis-600);
