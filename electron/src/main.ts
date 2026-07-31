@@ -1013,9 +1013,16 @@ function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
     role: 'help',
     label: 'Help',
     submenu: [
-      { label: 'Documentation (coming soon)', enabled: false },
+      {
+        label: 'Documentation',
+        click: () => shell.openExternal('https://docs.addaxai.com'),
+      },
       { label: 'Video tutorials (coming soon)', enabled: false },
       { type: 'separator' },
+      {
+        label: 'Troubleshooting',
+        click: () => shell.openExternal('https://docs.addaxai.com/docs/troubleshooting/'),
+      },
       { label: 'Export diagnostic report', click: () => sendMenuCommand('export-diagnostic') },
       { type: 'separator' },
       // Not setup-gated: an old AddaxAI can be cleared out at any point,
