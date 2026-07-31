@@ -508,8 +508,13 @@ export interface RunQueueResponse {
   job_ids: string[];
 }
 
-// Observation type (Camtrap DP observationType vocabulary)
-export type ObservationType = "animal" | "human" | "vehicle" | "blank" | "unknown" | "unclassified";
+// What a file is: the raw detector category of its strongest detection,
+// or "blank" when nothing passed. "animal" / "person" / "vehicle" from
+// MegaDetector, and whatever else a detector emits ("shark", "fish").
+// Not a fixed union: the vocabulary belongs to the model that produced
+// the run. The Camtrap DP export translates it back to that standard's
+// controlled vocabulary at the boundary; nothing here needs to.
+export type ObservationType = string;
 
 // File types
 export interface DetectionResponse {

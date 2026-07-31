@@ -104,6 +104,7 @@ class _StubClassifier:
 
     def __init__(self):
         self.seen_items: list[dict] | None = None
+        self.seen_scoring: dict[str, list[dict]] | None = None
         self.device_callback = None
 
     def classify_detections(
@@ -111,12 +112,16 @@ class _StubClassifier:
         items,
         *,
         best_frame_outputs,
+        scoring_detections,
         batch_size,
         progress_callback,
         device_callback=None,
         job_id,
     ):
         self.seen_items = items
+        # Best-frame scoring runs on this, not on `items`: every detection
+        # on the video, any category.
+        self.seen_scoring = scoring_detections
         # Surface the device the moment the worker would report it, the
         # same as the real classifier. Exercises the report_device path.
         self.device_callback = device_callback

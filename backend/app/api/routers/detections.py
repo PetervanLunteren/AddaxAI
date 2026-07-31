@@ -102,7 +102,15 @@ def delete_detections_by_file(
         ).all()
     ]
     affected_event_ids = get_event_ids_for_detections(db, det_ids) if det_ids else []
-    threshold = get_project_threshold_for_detections(db, det_ids) if det_ids else 0.0
+    # Only looked up when it will actually be used, and always before the
+    # delete: the lookup joins through the detection rows, so afterwards
+    # there is nothing to resolve. This used to be `... else 0.0`, a value
+    # that reads as "no threshold" but means "every detection passes".
+    threshold = (
+        get_project_threshold_for_detections(db, det_ids)
+        if affected_event_ids
+        else None
+    )
     count = detection_crud.delete_detections_by_file(db, file_id)
     file_crud.recompute_file_verified(db, [file_id])
     file_crud.recalculate_observation_type(db, file_id)

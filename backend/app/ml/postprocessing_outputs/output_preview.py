@@ -50,11 +50,10 @@ from app.models import (
 )
 
 from .separate_folders import (
-    _FALLBACK_FOLDER,
-    _OBSERVATION_TYPE_FOLDER,
     NameMode,
     SeparateGroupBy,
     _leaf_name,
+    _slug,
     _taxonomic_path_for_label,
     build_deployment_folders,
     build_event_primary_labels,
@@ -212,7 +211,10 @@ def build_output_preview(
         .join(File, Detection.file_id == File.id)
         .join(Deployment, File.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
-        .order_by(Detection.confidence.desc())
+        # Strongest first, same ordering as passing_detections_for_file
+        # and derive_observation_type, so the first passing row per file
+        # is the one that decides the folder.
+        .order_by(Detection.verified.desc(), Detection.confidence.desc())
     ).all()
 
     taxonomy_by_name = _load_taxonomy_map(db, project)
@@ -292,22 +294,27 @@ def build_output_preview(
         if written is not None:
             result.in_scope_bytes += written
 
-        # The species / observation folder for this file, per group_by.
+        # The species / category folder for this file, per group_by.
+        # Mirrors separate_folders._folder_for_file: the species of the
+        # strongest passing non-excluded detection, else that
+        # detection's own category.
         if group_by == "none":
             folder = ""
-        elif obs_type == "animal":
-            # Main species = the event's main species when grouping, else
-            # the file's most confident non-excluded label (idents is
-            # confidence-descending).
+        else:
             main = event_primary.get(row.id)
             if main is None:
-                for r in idents:
-                    if r.label and not _row_is_excluded(r):
-                        main = r.label
-                        break
+                strongest = next(
+                    (
+                        r for r in dets_per_file.get(row.id, [])
+                        if _row_passes(r) and not _row_is_excluded(r)
+                    ),
+                    None,
+                )
+                main = strongest.label if strongest else None
             if main is None:
-                # Animal known, species not — fallback "animal/" folder.
-                folder = _FALLBACK_FOLDER
+                # No species on the deciding detection, so its category
+                # names the folder (person / vehicle / blank / shark).
+                folder = _slug(obs_type)
             elif group_by == "taxonomic":
                 folder = _taxonomic_path_for_label(
                     main, taxonomy_by_name, name_mode
@@ -316,10 +323,6 @@ def build_output_preview(
                 folder = _leaf_name(
                     main, taxonomy_by_name.get(main), name_mode
                 )
-        else:
-            folder = _OBSERVATION_TYPE_FOLDER.get(
-                obs_type, _FALLBACK_FOLDER
-            )
 
         # Combine the species / observation folder with the preserved
         # source subfolder in the chosen order, exactly as

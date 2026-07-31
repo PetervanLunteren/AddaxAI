@@ -7,13 +7,21 @@ that experience on top of the modern DB pipeline.
 
 Single-destination rule:
 
-Every file lands in exactly one folder, its **main species** (the most
-confident species detection). An image with ``dog`` + ``wolf`` goes to
-``output_root/dog/`` only, never both. The output stays a clean,
-predictable mirror of the run with no duplication, images and videos
-alike. Multi-species findability is intentionally out of scope here:
-every species is in the CSV / recognition JSON, and projects mode is
-the place for richer querying.
+Every file lands in exactly one folder, named after its **strongest
+passing detection**: that detection's species if it has one, otherwise
+its detector category. An image with ``dog`` at 0.95 + ``wolf`` at 0.80
+goes to ``output_root/dog/`` only, never both. An image whose best box
+is a person goes to ``output_root/person/`` even if a weaker box
+carries a species. The output stays a clean, predictable mirror of the
+run with no duplication, images and videos alike. Multi-species
+findability is intentionally out of scope here: every species is in the
+CSV / recognition JSON, and projects mode is the place for richer
+querying.
+
+The category is the detector's own, never translated, so a detector
+emitting ``shark`` / ``fish`` / ``turtle`` writes those folder names
+with no change here. Only the Camtrap DP export translates, because
+its ``observationType`` field has a fixed controlled vocabulary.
 
 Original folder structure (suffix placement):
 
@@ -49,8 +57,10 @@ Grouping:
 - ``flat``: one folder per species label at the root (``dog/``,
   ``leopard/`` …). Best when only a few species are in play.
 
-Non-animal observation types (human / vehicle / blank / unknown /
-unclassified) route to a single fixed folder in both modes.
+A file with no species on its deciding detection routes to a single
+flat folder named after that detection's category (``person/``,
+``vehicle/``, ``blank/``, ``animal/`` for an unclassified animal), in
+both modes.
 
 Collision handling: ``output_root/<label>/IMG_001.jpg`` already
 exists → append ``_2``, ``_3``, … per destination folder until the
@@ -95,7 +105,7 @@ from app.models.event import event_files
 from ._exif_writer import ExifBatch, build_tag_set, is_image_path
 from ._label_filter import (
     file_is_dropped_by_filter,
-    passing_labels_for_file,
+    strongest_label_for_file,
 )
 from ._output_context import OutputContext
 
@@ -161,20 +171,15 @@ class SeparateFoldersResult:
         }
 
 
-# Non-animal observation types route to a fixed folder name at the
-# root of the output. Species-level taxonomy doesn't apply to
-# detector-level categories (person / vehicle / blank).
-_OBSERVATION_TYPE_FOLDER: dict[str, str] = {
-    "animal": "animal",
-    "human": "person",  # match the rest of the UI's wording
-    "vehicle": "vehicle",
-    "blank": "blank",
-    "unknown": "unknown",
-    "unclassified": "unclassified",
-}
-
-# Fallback folder name when nothing else fits.
-_FALLBACK_FOLDER = "animal"
+# A file with no species is named by its detector category: `person/`,
+# `vehicle/`, `blank/`, and `shark/` or `fish/` from a detector that
+# emits those. Species-level taxonomy does not apply to a detector
+# category, so these sit flat at the root of the output.
+#
+# There is no lookup table here any more. The category IS the folder
+# name, slugged. The old table also renamed `human` to `person`, which
+# is now unnecessary because `person` is what the detector called it and
+# what `observation_type` carries.
 
 
 def _build_taxonomy_map(
@@ -235,8 +240,6 @@ def build_event_primary_labels(
         .join(event_files, event_files.c.file_id == File.id)
         .join(Deployment, Deployment.id == File.deployment_id)
         .where(Deployment.project_id == project_id)
-        .where(File.observation_type == "animal")
-        .where(Detection.label.isnot(None))
         .where(
             or_(
                 Detection.confidence >= threshold,
@@ -265,6 +268,30 @@ def build_event_primary_labels(
         return False
 
     rows = [r for r in rows if not _is_excluded(r)]
+
+    # A file only votes when its own subject is a species, i.e. its
+    # strongest passing detection carries a label. A file whose best box
+    # is a person contributes nothing, even if a weaker animal box has a
+    # species on it: that is the same rule `_folder_for_file` applies per
+    # file, so a burst can never be named after something none of its
+    # files would be named after on their own.
+    #
+    # This used to be `File.observation_type == "animal"` in SQL, which
+    # read the stored column derived at the *project* threshold while
+    # every other gate in this module re-derives at the *media*
+    # threshold. Moving the Save-step slider therefore changed which
+    # files were placed but not which ones got a vote. Deriving it here
+    # from the same rows removes the second threshold entirely.
+    subject_is_species: dict[str, bool] = {}
+    for r in rows:
+        # Rows are strongest-first, so the first row seen for a file is
+        # that file's subject.
+        subject_is_species.setdefault(r.file_id, r.label is not None)
+
+    rows = [
+        r for r in rows
+        if r.label is not None and subject_is_species.get(r.file_id)
+    ]
 
     # A file in multiple events belongs to the event of its own strongest
     # detection. Rows are ordered verified-then-confidence, so the first row
@@ -393,23 +420,23 @@ def _folder_for_file(
 ) -> str:
     """The single destination folder for one file.
 
-    Non-animal files route to their fixed observation-type folder. Animal
-    files go to their **main species** (the most confident passing,
-    non-excluded label), as a nested taxonomic path (``taxonomic``) or a
-    single segment (``flat``). ``grouped_label``, when set, overrides the
+    A file goes to the species of its strongest passing detection, as a
+    nested taxonomic path (``taxonomic``) or a single segment
+    (``flat``). When that detection carries no species, the file is
+    named by its detector category instead: ``person/``, ``vehicle/``,
+    ``blank/``, or ``animal/`` for an unclassified animal, or whatever
+    else the detector emits. ``grouped_label``, when set, overrides the
     per-file choice with the event's main species (``group_events``).
-    Animal files with no surviving label fall back to ``animal/``. The
-    empty string means the output root (``group_by="none"``).
+    The empty string means the output root (``group_by="none"``).
 
     ``obs_type`` is the file's effective observation type at the media
     threshold (see ``derive_observation_type``), passed in by the caller
-    so the blank-skip and the routing here agree on one derivation.
+    so the blank-skip and the routing here agree on one derivation. It
+    is already the raw category of that same strongest detection, which
+    is why it can be used verbatim as the fallback folder name.
     """
     if group_by == "none":
         return ""
-
-    if obs_type != "animal":
-        return _OBSERVATION_TYPE_FOLDER.get(obs_type) or _FALLBACK_FOLDER
 
     def _folder_for(label: str) -> str:
         return (
@@ -422,15 +449,16 @@ def _folder_for_file(
     if grouped_label is not None:
         return _folder_for(grouped_label)
 
-    labels = passing_labels_for_file(
+    label = strongest_label_for_file(
         db, file, threshold, excluded_label_ids
     )
-    if not labels:
-        # Animal known, species not — top-level animal/ fallback.
-        return _FALLBACK_FOLDER
+    if label is None:
+        # No species on the deciding detection, so the category names
+        # the folder. `obs_type` and the label come from the same
+        # detection, so these two branches can never disagree.
+        return _slug(obs_type)
 
-    # ``labels`` is confidence-descending, so labels[0] is the main species.
-    return _folder_for(labels[0])
+    return _folder_for(label)
 
 
 def _unique_destination(

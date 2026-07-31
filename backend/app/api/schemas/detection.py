@@ -8,11 +8,17 @@ Following DEVELOPERS.md principles:
 """
 
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-DetectionCategory = Literal["animal", "person", "vehicle"]
+# The detector's own category, passed through verbatim: "animal" /
+# "person" / "vehicle" from MegaDetector, "shark" / "fish" / "turtle"
+# from a detector that emits those. Deliberately not a Literal: the
+# vocabulary belongs to whichever model produced the run, which the
+# ingest reads from that run's `detection_categories` map. Pinning three
+# names here rejected every other detector's output at the schema
+# boundary, before any of the code that would have handled it ran.
+DetectionCategory = str
 
 
 class DetectionBase(BaseModel):

@@ -1,10 +1,14 @@
 """
-Shared scoring logic for picking the best candidate from a set.
+Shared scoring logic for picking the best video frame.
 
 Used by:
-- best_frame.py: picks the best video frame during detection pipeline
-- event.py CRUD: picks the representative file for an event
-- classification_worker.py (subprocess): same scoring on the worker side
+- best_frame.py: classifier-off runs, which open the videos themselves
+- classification_worker.py (subprocess): classifier-on runs, which score
+  in the same pass that crops and classifies
+
+Both decide entirely from the detection JSON, before any frame is
+decoded, so the caller can decode exactly the frame it is going to keep.
+See `choose_frame_number`.
 
 The classifier subprocess runs in `env-pytorch` (Python 3.8), so this
 module must stay 3.8-importable. We use `from __future__ import
@@ -12,18 +16,14 @@ annotations` to defer PEP 585 generic syntax in function signatures
 and variable annotations, and `typing.Tuple` for the runtime `Bbox`
 alias (PEP 585 `tuple[...]` only supports subscription on 3.9+).
 
-Dependencies: only cv2, numpy. No app imports.
+Dependencies: stdlib only. No app imports, no cv2, no numpy.
 """
 
 from __future__ import annotations
 
 import math
 from collections import defaultdict
-from collections.abc import Callable
 from typing import Tuple  # noqa: UP035  -- runtime alias must work on py3.8 subprocess
-
-import cv2
-import numpy as np
 
 CONFIDENCE_THRESHOLD = 0.3
 TOP_FRACTION = 0.9  # candidates within 90% of top score
@@ -107,37 +107,35 @@ def score_detections(
     }
 
 
-def compute_sharpness(image_np: np.ndarray) -> float:
-    """
-    Image sharpness via Laplacian variance. Higher = sharper.
-    """
-    gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
-    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
-
-
 def pick_best_candidate(
     scores: dict[str, tuple[int, float]],
-    get_sharpest: Callable[[list[str]], str] | None = None,
-    fallback_keys: list[str] | None = None,
 ) -> str | None:
     """
     Pick the best candidate key using tiered lexicographic selection.
 
-    Algorithm:
-    1. If scores is empty (blank): call get_sharpest(fallback_keys).
-    2. Tier 1 — confidence bin: only candidates with the highest conf_bin.
-    3. Tier 2 — sqrt(area): among conf ties, within TOP_FRACTION of best.
-    4. Tier 3 — sharpness: tiebreaker among remaining candidates.
+    1. Tier 1 — confidence bin: only candidates with the highest conf_bin.
+    2. Tier 2 — sqrt(area): among conf ties, within TOP_FRACTION of best,
+       then the largest of those. Ties resolve to the first candidate
+       seen, which for video frames is the earliest frame because the
+       detection list arrives in frame order.
+
+    Returns None for empty scores; a blank video has no detection to
+    anchor on and its caller picks a frame by position instead.
+
+    There used to be a third tier, Laplacian sharpness, and a blank-video
+    branch that delegated to it. Both are gone. Sharpness required the
+    pixels of every candidate frame, which forced the caller to decode
+    and hold each one before it could know which single frame it wanted.
+    Measured over real deployments the tier never once broke a tie:
+    summed detection confidence decided every video that had detections
+    at all. Paying a decode of the whole candidate set for a tiebreak
+    that does not fire is a bad trade, and dropping it lets this module
+    answer from the JSON alone.
 
     Args:
         scores: output of score_detections(), mapping key -> (conf_bin, sqrt_area).
-        get_sharpest: takes a list of candidate keys, returns the sharpest one.
-            Called lazily only when needed (tiebreaker or blank case).
-        fallback_keys: keys to pass to get_sharpest when scores is empty.
     """
     if not scores:
-        if get_sharpest and fallback_keys:
-            return get_sharpest(fallback_keys)
         return None
 
     # Tier 1: highest confidence bin
@@ -155,8 +153,42 @@ def pick_best_candidate(
     if len(area_candidates) == 1:
         return area_candidates[0]
 
-    # Tier 3: sharpness tiebreaker
-    if get_sharpest:
-        return get_sharpest(area_candidates)
-
     return max(area_candidates, key=lambda k: scores[k][1])
+
+
+def choose_frame_number(
+    detections: list[dict],
+    total_frames: int,
+) -> int:
+    """
+    Decide a video's best frame from its detections alone. No pixels.
+
+    `detections` is every detection on the video, any category, each with
+    `frame_number`, `conf` and `bbox`. Scoring on the detector's own
+    confidence regardless of category is what makes this one rule for
+    every detector and classifier combination (see `best_frame.py`).
+
+    Blank videos, and videos whose detections are all below
+    CONFIDENCE_THRESHOLD, get the middle frame. There is nothing to aim
+    at, so position is as good a choice as any, and it beats the first
+    frame because camera traps often start on the empty scene that
+    triggered them.
+
+    The returned frame is the caller's target to decode, not a promise
+    that it decodes: a container can report more frames than it can
+    actually yield. Callers must handle the frame never arriving and
+    must keep `best_frame_number` and the written JPEG in agreement.
+    """
+    scored = [
+        (
+            str(int(det["frame_number"])),
+            float(det.get("conf", 0.0)),
+            tuple(det["bbox"]),
+        )
+        for det in detections
+        if det.get("frame_number") is not None
+    ]
+    best_key = pick_best_candidate(score_detections(scored))
+    if best_key is not None:
+        return int(best_key)
+    return max(0, total_frames // 2)

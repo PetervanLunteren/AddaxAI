@@ -14,10 +14,24 @@ Items come in two flavours via a `source` discriminator:
 
 Video items don't have a pre-extracted frame JPEG on disk. The worker
 opens the source video with cv2, iterates frames sequentially using
-`video_iter.iter_wanted_frames`, crops every item pinned to that frame,
-and (in the same pass) computes a sharpness score so we can pick the
-best frame per video before the worker exits. The chosen frame's JPEG
-is written to a per-video output directory listed in `best_frame_outputs`.
+`video_iter.iter_wanted_frames`, and crops every item pinned to that
+frame. In the same pass it keeps the one frame chosen as the video's
+best, and writes its JPEG to a per-video output directory listed in
+`best_frame_outputs`.
+
+Best-frame scoring runs on a separate population from classification,
+supplied as `scoring_detections`:
+
+    {"scoring_detections": {"...mp4": [{"frame_number": 42, "conf": 0.83,
+                                        "bbox": [x, y, w, h]}, ...]}}
+
+That list holds every detection on the video, any category. `items` holds
+only animals above the classification gate, which is the wrong population
+to pick a thumbnail from: a clip containing only people scored nothing and
+fell back to sharpness over three arbitrary samples. Detection confidence
+is emitted by every detector, so scoring on it is one rule that behaves
+the same with or without a classifier and needs no knowledge of what the
+categories mean (`fish`, `shark`, `turtle` work unchanged).
 
 Output JSON adds a `best_frames` map: `{video_path: best_frame_number}`
 so the parent process can stamp `best_frame_number` onto the deployment's
@@ -34,6 +48,9 @@ Updated on 2026-03-26 - Added image caching and batch inference support
 Updated on 2026-05-13 - Stream frames from source videos; fuse best-frame
                        scoring into the classification pass; stop relying
                        on bulk-extracted frame JPEGs.
+Updated on 2026-07-31 - Score the best frame on every detection regardless
+                       of category, via `scoring_detections`, instead of on
+                       the animals-only classification input.
 """
 
 from __future__ import annotations
@@ -47,25 +64,19 @@ import traceback
 from collections import defaultdict
 from pathlib import Path
 
-import cv2  # used for sharpness on the streaming path
-import numpy as np
+import cv2  # frame count for the blank-video fallback
+import numpy as np  # batch tensor stacking
 from PIL import Image
 
 # `video_iter` and `scoring` live next to this script. Python adds the
 # script's directory to sys.path automatically, so a flat import works
 # in the subprocess (which has no app.* on its path).
-from scoring import pick_best_candidate, score_detections  # noqa: E402
+from scoring import choose_frame_number  # noqa: E402
 from video_iter import (  # noqa: E402
     iter_wanted_frames,
     open_video,
-    pil_to_rgb_array,
-    sample_indices,
     write_best_frame,
 )
-
-# Number of frames to sample for sharpness on blank videos (no animal
-# detections). Mirrors the legacy disk-based fallback in best_frame.py.
-BLANK_VIDEO_SAMPLE_COUNT = 3
 
 # Keep only the top-N classifications per detection in the output JSON.
 # Classifiers like SpeciesNet return the full ~2000+ class softmax, almost all
@@ -89,13 +100,6 @@ def _has_nonfinite_confidence(classifications: list) -> bool:
         if not isinstance(conf, (int, float)) or not math.isfinite(conf):  # noqa: UP038 (Python 3.8 compat)
             return True
     return False
-
-
-def _compute_sharpness_bgr(image_pil: Image.Image) -> float:
-    """Laplacian-variance sharpness on a grayscale conversion."""
-    rgb = pil_to_rgb_array(image_pil)
-    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
 
 def load_inference_class(model_dir: Path, model_path: Path):
@@ -323,6 +327,7 @@ def _process_video_group(
     model_inference,
     video_path: str,
     video_items: list[tuple[int, dict]],
+    scoring_dets: list[dict],
     best_frame_dest_dir: Path | None,
     results: list,
     batched_state: dict | None,
@@ -334,6 +339,18 @@ def _process_video_group(
     chosen `best_frame_number` (or None if the video couldn't be opened
     / had no frames).
 
+    `video_items` is what gets classified: animals above the project's
+    classification gate. `scoring_dets` is what best-frame selection runs
+    on: every detection on this video, any category, as
+    `{"frame_number", "conf", "bbox"}`. The two populations are different
+    on purpose. Scoring off `video_items` meant a clip containing only
+    people scored nothing and fell through to sharpness over three
+    arbitrary samples, and it made the chosen frame depend on which
+    classifier was configured. Detection confidence is the one signal
+    every detector emits, so scoring on it behaves identically with or
+    without a classifier and needs no knowledge of what the categories
+    mean.
+
     `best_frame_dest_dir` is the directory the parent expects the chosen
     frame JPEG to land in. None means "skip the best-frame write" (only
     happens if the parent didn't supply a destination).
@@ -343,8 +360,6 @@ def _process_video_group(
     items_by_frame: dict[int, list[tuple[int, dict]]] = defaultdict(list)
     for orig_idx, item in video_items:
         items_by_frame[int(item["frame_number"])].append((orig_idx, item))
-
-    wanted = set(items_by_frame.keys())
 
     cap = open_video(video_path)
     if cap is None:
@@ -360,18 +375,22 @@ def _process_video_group(
         return None
 
     try:
-        # For blank videos (no detections), seed `wanted` with evenly
-        # spaced sample indices so we still have something to sharpness-
-        # score for best-frame selection.
-        if not wanted:
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            wanted = set(sample_indices(total_frames, BLANK_VIDEO_SAMPLE_COUNT))
+        # Decide the frame before decoding anything: the JSON already
+        # holds every input the choice needs. That is what keeps this
+        # loop down to two retained images instead of one per candidate.
+        best_frame_number = choose_frame_number(
+            scoring_dets, int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        )
 
-        # (frame_number_str, det_conf, bbox) tuples scored later; sharpness
-        # is recorded per frame and used as the tiebreaker.
-        det_tuples: list[tuple[str, float, tuple]] = []
-        sharpness_by_frame: dict[int, float] = {}
-        best_pixels: dict[int, Image.Image] = {}
+        # Frames to decode: everything we classify on, the frame we
+        # intend to keep, and frame 0 as the insurance policy. A
+        # container can advertise more frames than it yields, so the
+        # chosen frame may never arrive; frame 0 always does if the
+        # video opened at all.
+        wanted = set(items_by_frame.keys()) | {best_frame_number, 0}
+
+        chosen_pixels: Image.Image | None = None
+        first_pixels: Image.Image | None = None
 
         for frame_num, pil_image in iter_wanted_frames(cap, wanted):
             # Classify every item pinned to this frame.
@@ -386,53 +405,32 @@ def _process_video_group(
                 )
                 if batched_state is None:
                     per_crop_progress(1)
-                det_tuples.append(
-                    (
-                        str(frame_num),
-                        float(item.get("detection_conf", 0.0)),
-                        tuple(item["bbox"]),
-                    )
-                )
 
-            # Sharpness once per frame.
-            sharpness_by_frame[frame_num] = _compute_sharpness_bgr(pil_image)
-            best_pixels[frame_num] = pil_image
+            if frame_num == best_frame_number:
+                chosen_pixels = pil_image
+            if frame_num == 0:
+                first_pixels = pil_image
 
-        # In batch mode, flush leftover crops before we score (so failures
-        # in classify_batch propagate before we report success).
+        # In batch mode, flush leftover crops before we finish (so
+        # failures in classify_batch propagate before we report success).
         if batched_state is not None:
             batched_state["flush_batch"]()
     finally:
         cap.release()
 
-    # Pick best frame.
-    if not sharpness_by_frame:
-        return None
+    if chosen_pixels is None:
+        # The frame we picked never decoded. Fall back to frame 0 and
+        # move `best_frame_number` with it: the number and the JPEG must
+        # describe the same moment, or the Labels grid draws one frame's
+        # boxes over another frame's picture.
+        if first_pixels is None:
+            return None
+        best_frame_number, chosen_pixels = 0, first_pixels
 
-    frame_scores = score_detections(det_tuples)
-
-    def get_sharpest(keys: list[str]) -> str:
-        return str(
-            max(
-                (int(k) for k in keys),
-                key=lambda fn: sharpness_by_frame.get(fn, 0.0),
-            )
-        )
-
-    fallback_keys = [str(fn) for fn in sorted(sharpness_by_frame)]
-    best_key = pick_best_candidate(
-        frame_scores,
-        get_sharpest=get_sharpest,
-        fallback_keys=fallback_keys,
-    )
-    if best_key is None:
-        return None
-
-    best_frame_number = int(best_key)
-    if best_frame_dest_dir is not None and best_frame_number in best_pixels:
+    if best_frame_dest_dir is not None:
         dest = best_frame_dest_dir / f"frame{best_frame_number:06d}.jpg"
         try:
-            write_best_frame(best_pixels[best_frame_number], dest)
+            write_best_frame(chosen_pixels, dest)
         except Exception as e:
             print(
                 f"[Worker] Failed to write best frame for {video_path}: {e}",
@@ -450,6 +448,7 @@ def _run_items(
     model_inference,
     items: list[dict],
     best_frame_outputs: dict[str, str],
+    scoring_detections: dict[str, list[dict]],
     batch_size: int | None,
     emit_fn,
 ) -> tuple[list, dict[str, int]]:
@@ -525,11 +524,27 @@ def _run_items(
         )
 
     for video_path, video_items in videos.items():
+        # Every crop queued for classification on this video is itself one of
+        # that video's detections, so an empty scoring list alongside a
+        # non-empty item list cannot happen in correct operation. It means the
+        # two maps were built from different data, or keyed differently: both
+        # are keyed by a resolved absolute path built independently in the
+        # parent, which is exactly the kind of agreement that rots quietly.
+        scoring_dets = scoring_detections.get(video_path, [])
+        if video_items and not scoring_dets:
+            raise RuntimeError(
+                f"{len(video_items)} detection(s) queued for classification "
+                f"on {video_path}, but no scoring detections for it. Those "
+                f"crops are themselves detections, so this list cannot be "
+                f"empty unless the caller built the two maps inconsistently."
+            )
+
         dest_dir = best_frame_outputs.get(video_path)
         best_frame_number = _process_video_group(
             model_inference,
             video_path,
             video_items,
+            scoring_dets,
             Path(dest_dir) if dest_dir else None,
             results,
             batched_state,
@@ -580,6 +595,29 @@ def main() -> None:
 
         items = data["items"]
         best_frame_outputs: dict[str, str] = data.get("best_frame_outputs", {})
+
+        # A payload with videos but no `scoring_detections` key at all means
+        # the caller is older than this worker. That combination is not a
+        # degraded run, it is a wrong one: every video would score nothing
+        # and take the blank-video fallback, so each clip gets a thumbnail
+        # from its middle frame with no detection on it, the Labels grid
+        # shows no cards for it, and its species never becomes an
+        # observation. It looks like the analysis found nothing rather than
+        # like a failure. Classification subprocesses read this script fresh
+        # from disk on every spawn while the parent process does not, so a
+        # dev backend that has not restarted since an edit lands exactly
+        # here.
+        if "scoring_detections" not in data and best_frame_outputs:
+            raise RuntimeError(
+                f"Payload has {len(best_frame_outputs)} video(s) but no "
+                f"'scoring_detections' key. The calling process is running "
+                f"older code than this worker (restart the backend). "
+                f"Best-frame selection would silently fall back to the "
+                f"middle frame of every clip."
+            )
+        scoring_detections: dict[str, list[dict]] = data.get(
+            "scoring_detections", {}
+        )
         batch_size = data.get("batch_size")
         total = len(items)
         print(
@@ -596,7 +634,8 @@ def main() -> None:
         )
 
         results, best_frames = _run_items(
-            model_inference, items, best_frame_outputs, batch_size, emit
+            model_inference, items, best_frame_outputs, scoring_detections,
+            batch_size, emit,
         )
 
         success_count = sum(1 for r in results if r and r.get("success"))

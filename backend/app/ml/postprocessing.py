@@ -634,12 +634,25 @@ def update_database_from_smoothed_results(
     # Recompute observation_type for files with changed detections, from
     # the file's passing detections (over the project threshold or
     # verified), so a file left with only sub-threshold boxes reads "blank".
-    threshold = 0.0
+    # Refuse rather than fall back. `0.0` used to be the default here,
+    # and it is the threshold at which every detection passes, so a
+    # broken lookup would have quietly re-derived every file's
+    # observation_type against MegaDetector's raw 0.005 output floor.
+    # Both foreign keys are NOT NULL with ON DELETE CASCADE, so neither
+    # of these can be missing unless the database is corrupt.
     _dep = db.get(Deployment, deployment_id)
-    if _dep is not None:
-        _proj = db.get(Project, _dep.project_id)
-        if _proj is not None:
-            threshold = _proj.counting_threshold
+    if _dep is None:
+        raise ValueError(
+            f"Deployment {deployment_id} not found while recomputing "
+            f"observation types. Refusing to guess a threshold."
+        )
+    _proj = db.get(Project, _dep.project_id)
+    if _proj is None:
+        raise ValueError(
+            f"Project {_dep.project_id} not found for deployment "
+            f"{deployment_id}. Refusing to guess a threshold."
+        )
+    threshold = _proj.counting_threshold
     for file_id in changed_file_ids:
         file_record = db.query(File).filter(File.id == file_id).first()
         if not file_record:

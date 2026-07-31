@@ -296,10 +296,16 @@ def test_video_copied_as_best_frame_jpeg(db, tmp_path):
         file_path="/no/such/CLIP01.MP4",  # need not exist on disk
         file_type="video",
         file_format="mp4",
+        best_frame_number=0,
         best_frame_path=str(frame),
         observation_type="animal",
     )
-    make_detection(db, file_id=f.id, confidence=0.9, label="deer")
+    # On the best frame: json_pipeline derives best_frame_path *from*
+    # best_frame_number, so a video can never have one without the other,
+    # and only that frame's detections describe the JPEG being written.
+    make_detection(
+        db, file_id=f.id, confidence=0.9, label="deer", frame_number=0
+    )
 
     target = tmp_path / "out"
     result = separate_into_folders(db, project.id, _ctx(target), media_threshold=0.5)

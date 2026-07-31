@@ -552,3 +552,88 @@ def test_filter_options_min_label_confidence_null_when_unclassified(client, db):
     resp = client.get(f"/api/events/filter-options?project_id={p.id}")
     assert resp.status_code == 200
     assert resp.json()["min_label_confidence"] is None
+
+
+# ── filter-options follows the same visible surface as the label tree ──
+
+
+def _taxonomy_row(db, model_id, name, **kw):
+    from app.models.label_taxonomy import LabelTaxonomy
+
+    row = LabelTaxonomy(
+        classification_model_id=model_id,
+        name=name,
+        level="species",
+        scientific_name=name,
+        **kw,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def test_filter_options_hides_offbestframe_video_labels(db):
+    """`filter-options` is the flat label list shown when a project has no
+    taxonomy tree, so it stands in for the tree and must match it. Left
+    ungated it offered species living only on frames the grid never
+    renders, and picking one returned nothing."""
+    from app.api.crud.event import get_filter_options
+    from app.models import File
+
+    p = make_project(db, classification_model_id="EUR-DF-v1-3")
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    seen = _taxonomy_row(db, "EUR-DF-v1-3", "deer", taxon_genus="cervus")
+    ghost = _taxonomy_row(db, "EUR-DF-v1-3", "chimpanzee", taxon_genus="pan")
+
+    f = File(
+        id="vid-filter-options",
+        deployment_id=d.id,
+        file_path="/fake/clip.mp4",
+        file_type="video",
+        file_format="mp4",
+        best_frame_number=10,
+    )
+    db.add(f)
+    db.flush()
+    make_detection(
+        db, file_id=f.id, confidence=0.9, label="deer",
+        label_taxonomy_id=seen.id, frame_number=10,
+    )
+    make_detection(
+        db, file_id=f.id, confidence=0.9, label="chimpanzee",
+        label_taxonomy_id=ghost.id, frame_number=150,
+    )
+    db.flush()
+
+    options = get_filter_options(db, p.id)
+    assert seen.id in options["labels"]
+    assert ghost.id not in options["labels"]
+
+
+def test_filter_options_keeps_every_image_label(db):
+    """Images have no frames, so nothing about the gate may touch them."""
+    from app.api.crud.event import get_filter_options
+    from app.models import File
+
+    p = make_project(db, classification_model_id="EUR-DF-v1-3")
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    tax = _taxonomy_row(db, "EUR-DF-v1-3", "fox", taxon_genus="vulpes")
+
+    f = File(
+        id="img-filter-options",
+        deployment_id=d.id,
+        file_path="/fake/a.jpg",
+        file_type="image",
+        file_format="jpg",
+    )
+    db.add(f)
+    db.flush()
+    make_detection(
+        db, file_id=f.id, confidence=0.9, label="fox",
+        label_taxonomy_id=tax.id,
+    )
+    db.flush()
+
+    assert tax.id in get_filter_options(db, p.id)["labels"]

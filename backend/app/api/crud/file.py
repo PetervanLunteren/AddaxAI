@@ -13,15 +13,35 @@ from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, File, Project
 
 
-def _get_counting_threshold(db: Session, file: File) -> float:
-    """Get the project's detection threshold for a file."""
+def _project_threshold_for_file(db: Session, file: File) -> float:
+    """The detection threshold of the project a file belongs to.
+
+    ``observation_type`` counts only detections at or above this (or
+    verified), so the threshold has to come from the owning project.
+
+    Raises when the chain is broken. It cannot be: ``File.deployment_id``
+    and ``Deployment.project_id`` are both ``NOT NULL`` with
+    ``ON DELETE CASCADE``, and ``PRAGMA foreign_keys=ON`` is set on every
+    connection, so a file without a project means a corrupt database.
+    This used to return ``0.0``, which is not a neutral fallback: it is
+    the value at which *every* detection passes, including MegaDetector's
+    near-noise tail down to 0.005. A broken lookup silently reclassified
+    files and recomputed counts against the wrong floor instead of
+    saying anything.
+    """
     row = (
         db.query(Project.counting_threshold)
         .join(Deployment, Deployment.project_id == Project.id)
         .filter(Deployment.id == file.deployment_id)
         .first()
     )
-    return row[0] if row else 0.0
+    if row is None:
+        raise ValueError(
+            f"File {file.id} has no reachable project via deployment "
+            f"{file.deployment_id}. Refusing to guess a detection "
+            f"threshold."
+        )
+    return row[0]
 
 
 def get_files(
@@ -173,7 +193,7 @@ def recompute_file_verified(db: Session, file_ids: Iterable[str]) -> None:
     for f in files:
         dep_id = f.deployment_id
         if dep_id not in threshold_cache:
-            threshold_cache[dep_id] = _get_counting_threshold(db, f)
+            threshold_cache[dep_id] = _project_threshold_for_file(db, f)
         floor = threshold_cache[dep_id]
 
         rows = (
@@ -234,7 +254,7 @@ def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:
             file.verified_at_utc = now
             # Only verify detections above the project's detection threshold
             # (below-threshold detections are not visible to the user)
-            threshold = _get_counting_threshold(db, file)
+            threshold = _project_threshold_for_file(db, file)
             det_filter = [
                 Detection.file_id == file_id,
                 Detection.verified == False,  # noqa: E712
@@ -269,23 +289,6 @@ def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:
     db.commit()
     db.refresh(file)
     return file
-
-
-def _project_threshold_for_file(db: Session, file: File) -> float:
-    """The detection threshold of the project a file belongs to.
-
-    observation_type only counts detections at or above this (or verified),
-    so the threshold has to come from the owning project. Defaults to 0.0
-    if the chain is somehow broken (every detection then passes, matching
-    the pre-threshold behaviour).
-    """
-    row = (
-        db.query(Project.counting_threshold)
-        .join(Deployment, Deployment.project_id == Project.id)
-        .filter(Deployment.id == file.deployment_id)
-        .first()
-    )
-    return row[0] if row else 0.0
 
 
 def recalculate_observation_type(db: Session, file_id: str) -> None:

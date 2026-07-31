@@ -3,7 +3,7 @@ Streaming video frame iteration helpers.
 
 Used by `classification_worker.py` (subprocess, no app.* on sys.path) and
 by parent-process best-frame scoring fallbacks. Self-contained: only
-cv2, numpy, and PIL are imported.
+cv2 and PIL are imported.
 
 `open_video` mirrors MegaDetector's video_utils backend-fallback order
 (default -> FFMPEG -> AVFoundation -> DShow -> MSMF -> GStreamer) so we
@@ -23,7 +23,6 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import cv2
-import numpy as np
 from PIL import Image
 
 logger = logging.getLogger(__name__)
@@ -119,8 +118,8 @@ def iter_wanted_frames(
 
 def sample_indices(total: int, count: int) -> list[int]:
     """
-    Evenly-spaced frame indices from [0, total). Used for blank-video
-    sharpness fallback when there are no detections to anchor on.
+    Evenly-spaced frame indices from [0, total). Used by the filmstrip
+    to build a temporal preview of a clip.
     Returns at most `count` indices; clamps to `total` when smaller.
     """
     if total <= 0 or count <= 0:
@@ -129,14 +128,6 @@ def sample_indices(total: int, count: int) -> list[int]:
         return list(range(total))
     step = total / count
     return [int(i * step) for i in range(count)]
-
-
-def pil_to_rgb_array(image: Image.Image) -> np.ndarray:
-    """PIL image (any mode) -> RGB numpy array. Used to feed
-    `scoring.compute_sharpness`, which expects RGB."""
-    if image.mode != "RGB":
-        image = image.convert("RGB")
-    return np.array(image)
 
 
 def write_best_frame(

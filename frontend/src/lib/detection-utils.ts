@@ -106,7 +106,7 @@ export function getObservationBadge(type: string): {
         label: "Animal",
         className: "bg-green-100 text-green-800 border-green-200",
       };
-    case "human":
+    case "person":
       return {
         label: "Person",
         className: "text-white border-transparent",
@@ -128,8 +128,11 @@ export function getObservationBadge(type: string): {
         className: "bg-yellow-100 text-yellow-800 border-yellow-200",
       };
     default:
+      // A category from a detector we know nothing about ("shark",
+      // "fish"). Show what it is rather than "Unclassified", which
+      // would be a lie: the detector was perfectly clear about it.
       return {
-        label: "Unclassified",
+        label: type ? type[0].toUpperCase() + type.slice(1) : "Unclassified",
         className: "bg-gray-50 text-gray-500 border-gray-200",
       };
   }

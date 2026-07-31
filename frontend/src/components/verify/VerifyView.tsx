@@ -470,9 +470,9 @@ function EventCard({
   // Drop species chips whose display name duplicates an observation
   // badge ("Vehicle" / "Person") that's already on this card.
   const observationBadgeNames = new Set<string>(
-    event.observation_types
-      .filter((t) => t === "human" || t === "vehicle")
-      .map((t) => (t === "human" ? "person" : t)),
+    event.observation_types.filter(
+      (t) => t === "person" || t === "vehicle",
+    ),
   );
   const speciesLabels = event.labels.filter((sp) => {
     const display = (speciesLabelMap(event)[sp] || sp).toLowerCase();
@@ -510,7 +510,7 @@ function EventCard({
             overrides the Badge default rounded-full. */}
         <div className="flex flex-wrap gap-1 [&>*]:rounded-sm">
           {event.observation_types
-            .filter((t) => t === "human" || t === "vehicle")
+            .filter((t) => t === "person" || t === "vehicle")
             .map((t) => {
               const badge = getObservationBadge(t);
               return (

@@ -10,6 +10,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
+from app.ml.detection_visibility import on_visible_frame
 from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
 from app.models.label_taxonomy import LabelTaxonomy
@@ -76,6 +77,9 @@ def build_label_filter_tree(
             .filter(Deployment.project_id == project_id)
             .filter(Detection.label_taxonomy_id.isnot(None))
             .filter(or_(Detection.confidence >= threshold, Detection.verified == True))
+            # Only detections the user can actually reach. Without
+            # this the tree promised counts the grid cannot show.
+            .filter(on_visible_frame())
         )
         label_count_rows = (
             _apply_scope(query).group_by(Detection.label_taxonomy_id).all()
@@ -94,6 +98,9 @@ def build_label_filter_tree(
             .filter(Deployment.project_id == project_id)
             .filter(Detection.label_taxonomy_id.isnot(None))
             .filter(or_(Detection.confidence >= threshold, Detection.verified == True))
+            # Only detections the user can actually reach. Without
+            # this the tree promised counts the grid cannot show.
+            .filter(on_visible_frame())
         )
         label_count_rows = (
             _apply_scope(query).group_by(Detection.label_taxonomy_id).all()
@@ -111,6 +118,9 @@ def build_label_filter_tree(
             .filter(Deployment.project_id == project_id)
             .filter(Detection.label_taxonomy_id.isnot(None))
             .filter(or_(Detection.confidence >= threshold, Detection.verified == True))
+            # Only detections the user can actually reach. Without
+            # this the tree promised counts the grid cannot show.
+            .filter(on_visible_frame())
         )
         label_count_rows = (
             _apply_scope(query).group_by(Detection.label_taxonomy_id).all()

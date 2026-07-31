@@ -1171,9 +1171,15 @@ def get_detection_categories(
         row.obs_type: int(row.n or 0) for row in db.execute(query).all()
     }
 
+    # `observation_type` is the detector's own category, so `person` is
+    # literally "person" now (it used to be stored as "human"). Anything
+    # that is not a person, a vehicle or a blank is wildlife and counts
+    # towards `animal`, which keeps a future `shark` or `fish` visible in
+    # this chart rather than silently dropping out of all four buckets.
+    known = ("person", "vehicle", "blank")
     return DetectionCategories(
-        animal_count=counts.get("animal", 0),
-        person_count=counts.get("human", 0),
+        animal_count=sum(n for k, n in counts.items() if k not in known),
+        person_count=counts.get("person", 0),
         vehicle_count=counts.get("vehicle", 0),
         empty_count=counts.get("blank", 0),
     )

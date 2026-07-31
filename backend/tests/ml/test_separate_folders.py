@@ -364,3 +364,59 @@ def test_main_species_is_highest_confidence(db, tmp_path):
     assert result.copied_count == 1
     assert (target / "other" / "dog" / "IMG_M03.jpg").is_file()
     assert not (target / "other" / "wolf").exists()
+
+
+# ── The strongest detection names the folder ─────────────────────────
+
+
+def test_person_subject_beats_a_weaker_labelled_animal(db, tmp_path):
+    """The case that started this change. A clip whose strongest box is a
+    person files under ``person/`` even though a weaker animal box
+    carries a species. Reading the best *label* instead of the best
+    *detection* is what filed a person in camouflage under
+    ``chimpanzee/``, off one false-positive box the classifier guessed at
+    29%, while the still beside it was correctly labelled Person."""
+    project = make_project(db, name="sep-mixed", counting_threshold=0.2)
+    dep = make_deployment(db, project_id=project.id)
+    src = _make_source(tmp_path, "MIXED.jpg")
+    file = make_file(
+        db, deployment_id=dep.id, file_path=src, observation_type="person"
+    )
+    make_detection(
+        db, file_id=file.id, category="person", confidence=0.95
+    )
+    make_detection(
+        db,
+        file_id=file.id,
+        category="animal",
+        confidence=0.68,
+        label="chimpanzee",
+    )
+
+    target = tmp_path / "out"
+    ctx = _ctx(target)
+    result = separate_into_folders(db, project.id, ctx, media_threshold=0.2)
+
+    assert dict(result.by_label) == {"person": 1}
+    assert (target / "person" / "MIXED.jpg").is_file()
+    assert not (target / "other" / "chimpanzee").exists()
+
+
+def test_unlabelled_novel_category_names_its_own_folder(db, tmp_path):
+    """A detector with no classifier behind it still produces useful
+    folders, because the category is the folder. Every such file used to
+    collapse into one generic ``animal/``."""
+    project = make_project(db, name="sep-marine", counting_threshold=0.2)
+    dep = make_deployment(db, project_id=project.id)
+    src = _make_source(tmp_path, "REEF.jpg")
+    file = make_file(
+        db, deployment_id=dep.id, file_path=src, observation_type="shark"
+    )
+    make_detection(db, file_id=file.id, category="shark", confidence=0.9)
+
+    target = tmp_path / "out"
+    ctx = _ctx(target)
+    result = separate_into_folders(db, project.id, ctx, media_threshold=0.2)
+
+    assert dict(result.by_label) == {"shark": 1}
+    assert (target / "shark" / "REEF.jpg").is_file()

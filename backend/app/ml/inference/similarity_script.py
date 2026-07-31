@@ -102,14 +102,35 @@ _DETECTION_COLUMNS = """
         JOIN events e ON e.id = ef.event_id
         WHERE ef.file_id = f.id LIMIT 1) AS event_start_local"""
 
-# File / deployment / site joins + the project scope, shared by both
-# queries. Ends on the WHERE so `_build_query` can append " AND ..."
+# File / deployment / site joins + the project scope, shared by all three
+# queries. Ends on a WHERE clause so `_build_query` can append " AND ..."
 # filter clauses.
+#
+# The best-frame gate is part of the scope, not a user-facing filter. A
+# video's detections sit on every sampled frame, but only the best frame is
+# written to disk as a JPEG, so a detection on any other frame has no image
+# to crop. `crop_service` would answer with the best frame cropped at a
+# bbox belonging to a different moment: a picture of the wrong place, and
+# of nothing at all once the animal has moved on. Those detections stay in
+# the database (per-frame classifications are what smoothing and rollup
+# consume) and still draw in the video player, which has the real frames.
+#
+# Verified detections pass on any frame. A human decision must never end up
+# out of reach, and `rebuild_event_observations` already lets a species
+# verified on some frame into the counts, so the grid has to be able to
+# show the card that count came from.
+#
+# Images are never gated. This mirrors `on_embeddable_surface` in
+# routers/labels.py, `build_embedding_input`, the annotated exports and
+# `shouldDrawBbox` on the frontend.
 _COMMON_JOINS = """
 JOIN files f ON f.id = d.file_id
 JOIN deployments dep ON dep.id = f.deployment_id
 LEFT JOIN sites s ON s.id = dep.site_id
-WHERE dep.project_id = ?"""
+WHERE dep.project_id = ?
+  AND (f.file_type != 'video'
+       OR d.frame_number = f.best_frame_number
+       OR d.verified = 1)"""
 
 # Similarity / suggestions path: needs the embedding vector, so the base
 # table is detection_embeddings (only embedded detections appear).

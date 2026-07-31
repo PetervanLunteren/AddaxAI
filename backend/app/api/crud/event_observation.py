@@ -625,7 +625,23 @@ def get_project_threshold_for_detections(
     db: Session,
     detection_ids: list[str],
 ) -> float:
-    """Get the project counting_threshold for the given detections."""
+    """The project ``counting_threshold`` owning the given detections.
+
+    Requires at least one id, and requires it to resolve. Both used to
+    fall back to ``0.0``, which is not a neutral value: it is the
+    threshold at which every detection passes, including MegaDetector's
+    near-noise tail down to 0.005. A failed lookup therefore rebuilt an
+    event's counts against the wrong floor and said nothing.
+
+    Callers must capture the threshold *before* deleting detections; the
+    join runs through the detection rows themselves, so afterwards there
+    is nothing left to resolve.
+    """
+    if not detection_ids:
+        raise ValueError(
+            "get_project_threshold_for_detections needs at least one "
+            "detection id; there is no sensible threshold for none."
+        )
     row = (
         db.query(Project.counting_threshold)
         .join(Deployment, Deployment.project_id == Project.id)
@@ -634,4 +650,11 @@ def get_project_threshold_for_detections(
         .filter(Detection.id.in_(detection_ids))
         .first()
     )
-    return row[0] if row else 0.0
+    if row is None:
+        raise ValueError(
+            f"No project reachable from detections {detection_ids[:5]}"
+            f"{'...' if len(detection_ids) > 5 else ''}. Either they were "
+            f"already deleted (capture the threshold first) or the "
+            f"database is corrupt. Refusing to guess a threshold."
+        )
+    return row[0]

@@ -108,6 +108,7 @@ class CustomClassificationModel:
         items: list[dict],
         *,
         best_frame_outputs: dict[str, str] | None = None,
+        scoring_detections: dict[str, list[dict]],
         batch_size: int | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
         device_callback: Callable[[str], None] | None = None,
@@ -126,6 +127,15 @@ class CustomClassificationModel:
                 that classifies video detections, and writes one JPEG per
                 video into the supplied directory. Blank videos (no items
                 of source=video) still get scored if listed here.
+            scoring_detections: Map `{video_path: [{"frame_number", "conf",
+                "bbox"}, ...]}` of every detection on that video, all
+                categories. This is what best-frame scoring runs on.
+                `items` cannot serve: it holds only animals above the
+                classification gate, so a person-only clip would score
+                nothing and fall back to an arbitrary frame. Required, and
+                sent even when empty: the worker refuses a payload with
+                videos but no key, because that means the caller is running
+                older code than the worker it just spawned.
             batch_size: Number of crops processed per batch. None means let the
                 classification worker use its own default (auto-detects GPU).
                 A non-None integer is the user's Custom override.
@@ -154,7 +164,15 @@ class CustomClassificationModel:
             input_file = tempfile.NamedTemporaryFile(
                 mode="w", suffix=".json", prefix="cls_input_", delete=False
             )
-            payload: dict = {"items": items}
+            # `scoring_detections` is always sent, even when empty, and is a
+            # required argument above. Omitting the key on a falsy value let
+            # the worker read "the caller said nothing" as "these clips have
+            # nothing", which is how a backend running older code than its own
+            # subprocess silently gave every video a middle-frame thumbnail.
+            payload: dict = {
+                "items": items,
+                "scoring_detections": scoring_detections,
+            }
             if best_frame_outputs:
                 payload["best_frame_outputs"] = best_frame_outputs
             if batch_size is not None:
@@ -223,6 +241,12 @@ class CustomClassificationModel:
                 "init_fs_encoding",
                 "No module named 'encodings'",
             )
+            # The worker prints "[Worker] Fatal error during ...: <reason>"
+            # before exiting non-zero. Keep it so the reason reaches the
+            # user's error modal instead of only the log file. Without this
+            # every worker crash surfaces as "exited with code 1", which
+            # says nothing actionable and sends people to the logs.
+            fatal_line: str | None = None
             with track_subprocess(job_id, process):
                 # Read stderr line by line for progress
                 for line in process.stderr:
@@ -232,6 +256,9 @@ class CustomClassificationModel:
 
                     if any(m in line for m in CORRUPTED_ENV_MARKERS):
                         env_corrupted = True
+
+                    if "Fatal error" in line:
+                        fatal_line = line.removeprefix("[Worker] ")
 
                     # Try parsing as JSON status/progress
                     try:
@@ -275,6 +302,7 @@ class CustomClassificationModel:
                 raise RuntimeError(
                     f"Classification worker exited with code {process.returncode} "
                     f"for model {self.model_dir.name}"
+                    + (f". {fatal_line}" if fatal_line else "")
                 )
 
             # Read output JSON

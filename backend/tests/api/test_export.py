@@ -1029,3 +1029,39 @@ def test_events_by_file_survives_bound_parameter_limit(db):
 
     assert len(result) == n_files
     assert all(ev.id == event.id for ev in result.values())
+
+
+# ---------------------------------------------------------------------------
+# Camtrap DP is an external standard: observationType has a fixed vocabulary
+# ---------------------------------------------------------------------------
+
+
+def test_camtrap_observation_type_translates_raw_categories():
+    """`observation_type` and `Detection.category` carry the detector's own
+    words everywhere in the app, so a marine model's `shark` reaches the
+    folder tree and the generic CSV intact. Camtrap DP cannot take it: the
+    standard has no marine categories and expects all wildlife under
+    `animal` with the species in `scientificName`. This function is the
+    only place that translation happens."""
+    from app.api.crud.export import (
+        CAMTRAP_OBSERVATION_TYPES,
+        _obs_type_from_category,
+    )
+
+    # MegaDetector's three, including the one that is renamed.
+    assert _obs_type_from_category("animal") == "animal"
+    assert _obs_type_from_category("person") == "human"
+    assert _obs_type_from_category("vehicle") == "vehicle"
+    assert _obs_type_from_category("blank") == "blank"
+
+    # Anything else is wildlife. No list of marine categories to keep in
+    # step with the detectors.
+    for category in ("shark", "fish", "turtle", "something_new"):
+        assert _obs_type_from_category(category) == "animal"
+
+    # Whatever comes in, what comes out is always in the standard's
+    # vocabulary. This is the assertion that protects the export.
+    for category in (
+        "animal", "person", "vehicle", "blank", "shark", "fish", "",
+    ):
+        assert _obs_type_from_category(category) in CAMTRAP_OBSERVATION_TYPES

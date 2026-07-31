@@ -493,6 +493,82 @@ def test_event_sort_no_embeddings_groups_by_deployment(sort_db):
     assert ids == [d1_new.id, d1_old.id, d2.id]
 
 
+# ── Video detections are gated to the best frame ─────────────────────
+# Only the best frame of a video is written to disk as a JPEG, so a
+# detection on any other sampled frame has no image to crop. The grid used
+# to list all of them and `crop_service` answered every one with the best
+# frame cropped at a bbox from a different moment: a picture of wherever
+# the animal used to be. See tests/test_crop_service.py for the other half.
+
+
+def _video_with_detections(session, deployment_id, *, best_frame, frames):
+    """One video file plus a detection on each of `frames`. Returns
+    {frame_number: detection}."""
+    f = make_file(
+        session,
+        deployment_id=deployment_id,
+        file_type="video",
+        file_format="mp4",
+        file_path=f"/fake/{uuid.uuid4().hex}.mp4",
+        best_frame_number=best_frame,
+        best_frame_path=f"/fake/frame{best_frame:06d}.jpg",
+    )
+    out = {}
+    for fn in frames:
+        out[fn] = make_detection(session, file_id=f.id, frame_number=fn)
+    session.flush()
+    return out
+
+
+def test_metadata_load_drops_video_detections_off_the_best_frame(sort_db):
+    db_path, s = sort_db
+    p = make_project(s)
+    dep = make_deployment(s, project_id=p.id)
+    # A raccoon walking across the scene: MegaDetector fires on every
+    # sampled frame, but only frame 24 exists as a JPEG.
+    dets = _video_with_detections(
+        s, dep.id, best_frame=24, frames=[0, 24, 48, 72, 144]
+    )
+    s.commit()
+
+    ids, _, _ = _load_metadata(db_path, p.id, {})
+
+    assert set(ids) == {dets[24].id}
+
+
+def test_metadata_load_keeps_every_image_detection(sort_db):
+    """Images are never gated: `frame_number` is NULL on an image row and
+    the file itself is the croppable surface."""
+    db_path, s = sort_db
+    p = make_project(s)
+    dep = make_deployment(s, project_id=p.id)
+    f = make_file(s, deployment_id=dep.id)
+    a = make_detection(s, file_id=f.id)
+    b = make_detection(s, file_id=f.id)
+    s.commit()
+
+    ids, _, _ = _load_metadata(db_path, p.id, {})
+
+    assert set(ids) == {a.id, b.id}
+
+
+def test_metadata_load_keeps_verified_detections_off_the_best_frame(sort_db):
+    """A human decision must never end up out of reach. `rebuild_event_
+    observations` lets a species verified on any frame into the counts, so
+    the grid has to be able to show the card that count came from, even
+    though its thumbnail will be missing."""
+    db_path, s = sort_db
+    p = make_project(s)
+    dep = make_deployment(s, project_id=p.id)
+    dets = _video_with_detections(s, dep.id, best_frame=24, frames=[24, 144])
+    dets[144].verified = True
+    s.commit()
+
+    ids, _, _ = _load_metadata(db_path, p.id, {})
+
+    assert set(ids) == {dets[24].id, dets[144].id}
+
+
 def test_order_events_by_similarity_keeps_partial_event_intact(monkeypatch):
     # Event X has one embedded (x_emb, the representative) and one NON
     # embedded detection (x_plain); event Y is embedded. Both of X's

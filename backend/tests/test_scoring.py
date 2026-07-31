@@ -2,11 +2,10 @@
 Tests for the shared scoring module (app.ml.inference.scoring).
 """
 
-import numpy as np
 import pytest
 
 from app.ml.inference.scoring import (
-    compute_sharpness,
+    choose_frame_number,
     compute_union_area,
     pick_best_candidate,
     score_detections,
@@ -154,26 +153,6 @@ def test_score_more_individuals_beats_fewer():
 
 
 # ---------------------------------------------------------------------------
-# compute_sharpness
-# ---------------------------------------------------------------------------
-
-
-def test_compute_sharpness_uniform_image():
-    """A uniform image should have very low sharpness (near zero variance)."""
-    img = np.full((100, 100, 3), 128, dtype=np.uint8)
-    sharpness = compute_sharpness(img)
-    assert sharpness == pytest.approx(0.0, abs=0.01)
-
-
-def test_compute_sharpness_noisy_image():
-    """A noisy/edge-rich image should have higher sharpness than a uniform one."""
-    uniform = np.full((100, 100, 3), 128, dtype=np.uint8)
-    noisy = np.random.RandomState(42).randint(0, 256, (100, 100, 3), dtype=np.uint8)
-
-    assert compute_sharpness(noisy) > compute_sharpness(uniform)
-
-
-# ---------------------------------------------------------------------------
 # pick_best_candidate
 # ---------------------------------------------------------------------------
 
@@ -185,55 +164,23 @@ def test_pick_best_single_clear_winner():
     assert pick_best_candidate(scores) == "a"
 
 
-def test_pick_best_tiebreak_without_sharpness():
-    """Same conf_bin, area within TOP_FRACTION, no get_sharpest — largest area wins."""
+def test_pick_best_area_breaks_a_confidence_tie():
+    """Same conf_bin, both areas within TOP_FRACTION — largest area wins.
+
+    This is the last tier. Sharpness used to sit below it and was removed
+    on 2026-07-31: it needed the pixels of every candidate, which forced
+    the caller to decode and hold the whole candidate set to settle a
+    tiebreak that never fired on real footage.
+    """
     scores = {"a": (90, 1.0), "b": (90, 0.95)}
     # Both in same conf_bin, both within 90% of 1.0 (threshold = 0.9)
-    result = pick_best_candidate(scores)
-    assert result == "a"
+    assert pick_best_candidate(scores) == "a"
 
 
-def test_pick_best_tiebreak_with_sharpness():
-    """Same conf_bin, area within TOP_FRACTION — get_sharpest is called."""
-    scores = {"a": (90, 1.0), "b": (90, 0.95)}
-    # get_sharpest picks "b" as sharpest
-    result = pick_best_candidate(scores, get_sharpest=lambda keys: "b")
-    assert result == "b"
-
-
-def test_pick_best_empty_scores_with_fallback():
-    """Empty scores + fallback_keys — delegates to get_sharpest."""
-    result = pick_best_candidate(
-        {},
-        get_sharpest=lambda keys: keys[1],
-        fallback_keys=["x", "y", "z"],
-    )
-    assert result == "y"
-
-
-def test_pick_best_empty_scores_no_fallback():
-    """Empty scores, no fallback — returns None."""
+def test_pick_best_empty_scores():
+    """A blank video has nothing to anchor on; the caller picks by
+    position instead (see choose_frame_number)."""
     assert pick_best_candidate({}) is None
-
-
-def test_pick_best_empty_scores_no_sharpest():
-    """Empty scores, fallback_keys but no get_sharpest — returns None."""
-    assert pick_best_candidate({}, fallback_keys=["a", "b"]) is None
-
-
-def test_pick_best_sharpness_only_called_when_needed():
-    """get_sharpest should NOT be called when there's a clear winner."""
-    called = []
-
-    def spy_sharpest(keys):
-        called.append(keys)
-        return keys[0]
-
-    # "a" has higher conf_bin — wins at tier 1, no sharpness needed
-    scores = {"a": (95, 0.5), "b": (90, 1.0)}
-    result = pick_best_candidate(scores, get_sharpest=spy_sharpest)
-    assert result == "a"
-    assert called == []  # not called
 
 
 def test_pick_best_confidence_beats_larger_area():
@@ -250,3 +197,52 @@ def test_pick_best_confidence_beats_larger_area():
     scores = {"sharp": sharp, "blurry": blurry}
     result = pick_best_candidate(scores)
     assert result == "sharp"
+
+
+# ---------------------------------------------------------------------------
+# choose_frame_number
+# ---------------------------------------------------------------------------
+
+
+def _d(frame_number, conf, bbox=(0.4, 0.4, 0.2, 0.2)):
+    return {"frame_number": frame_number, "conf": conf, "bbox": list(bbox)}
+
+
+def test_choose_frame_number_takes_the_strongest_frame():
+    """Decided from the detection list alone, no pixels involved. That is
+    what lets the caller decode only the frame it keeps."""
+    dets = [_d(0, 0.40), _d(30, 0.95), _d(60, 0.55)]
+    assert choose_frame_number(dets, total_frames=90) == 30
+
+
+def test_choose_frame_number_sums_within_a_frame():
+    """Two solid detections on one frame beat one better detection
+    elsewhere: the frame showing more of the scene's subjects wins."""
+    dets = [_d(0, 0.90), _d(30, 0.50, (0.1, 0.1, 0.2, 0.2)), _d(30, 0.50, (0.6, 0.1, 0.2, 0.2))]
+    assert choose_frame_number(dets, total_frames=60) == 30
+
+
+def test_choose_frame_number_ignores_category():
+    """`conf` is the only field read. Nothing here says what the box
+    contains, which is what makes this work for any detector."""
+    dets = [_d(10, 0.99)]
+    assert choose_frame_number(dets, total_frames=100) == 10
+
+
+def test_choose_frame_number_blank_video_takes_the_middle():
+    """No detections: position is as good a choice as any, and the middle
+    beats the first frame because camera traps often open on the empty
+    scene that triggered them."""
+    assert choose_frame_number([], total_frames=100) == 50
+
+
+def test_choose_frame_number_all_below_the_floor_takes_the_middle():
+    """Detections under CONFIDENCE_THRESHOLD score nothing, so the video
+    is treated as blank rather than anchored on noise."""
+    dets = [_d(10, 0.05), _d(20, 0.09)]
+    assert choose_frame_number(dets, total_frames=100) == 50
+
+
+def test_choose_frame_number_survives_a_zero_length_video():
+    """cv2 can report 0 frames. Must not return a negative index."""
+    assert choose_frame_number([], total_frames=0) == 0

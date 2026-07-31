@@ -361,3 +361,120 @@ def test_f2a3b4c5d6e7_keeps_counts_and_boxed_rows_when_deleting_boxless_ones(
     assert _scalar(
         engine, "SELECT verified FROM events WHERE id = :i", i=unsigned_event
     ) == 0
+
+
+# ---------------------------------------------------------------------------
+# 5e6f7a8b9c0d — recompute observation_type under the strongest-detection rule
+# ---------------------------------------------------------------------------
+
+
+def _seed_file_with_detections(conn, deployment_id, dets, stored):
+    """One file with `dets` = [(category, confidence, verified), ...] and
+    an `observation_type` as the old rule would have stored it."""
+    file_id = insert_row(
+        conn,
+        "files",
+        deployment_id=deployment_id,
+        file_type="image",
+        observation_type=stored,
+    )
+    for category, conf, verified in dets:
+        insert_row(
+            conn,
+            "detections",
+            file_id=file_id,
+            category=category,
+            confidence=conf,
+            verified=verified,
+        )
+    return file_id
+
+
+def test_5e6f7a8b9c0d_recomputes_observation_type(engine):
+    """The old rule ranked categories, so an animal always beat a person.
+    The new rule ranks the detections themselves. Every stored value is
+    therefore suspect, and nothing recomputes a denormalised column on
+    its own, so the migration has to."""
+    upgrade_to("4d5e6f7a8b9c")
+
+    with engine.begin() as conn:
+        project_id = insert_row(
+            conn, "projects", name="Test project", counting_threshold=0.2
+        )
+        deployment_id = insert_row(
+            conn, "deployments", project_id=project_id
+        )
+
+        # The case that motivated the change: a confident person and a
+        # weaker animal. Priority said "animal"; the person is stronger.
+        mixed = _seed_file_with_detections(
+            conn, deployment_id,
+            [("person", 0.95, 0), ("animal", 0.80, 0)],
+            stored="animal",
+        )
+        # The mirror: nothing is biased against animals.
+        animal_wins = _seed_file_with_detections(
+            conn, deployment_id,
+            [("person", 0.80, 0), ("animal", 0.95, 0)],
+            stored="animal",
+        )
+        # A plain person file: only the spelling changes, human -> person.
+        person_only = _seed_file_with_detections(
+            conn, deployment_id, [("person", 0.90, 0)], stored="human",
+        )
+        # A human decision outranks a more confident model guess.
+        verified_person = _seed_file_with_detections(
+            conn, deployment_id,
+            [("animal", 0.99, 0), ("person", 0.10, 1)],
+            stored="animal",
+        )
+        # Everything below the project threshold: no trusted content.
+        all_below = _seed_file_with_detections(
+            conn, deployment_id, [("animal", 0.10, 0)], stored="animal",
+        )
+        # No detections at all.
+        no_dets = _seed_file_with_detections(
+            conn, deployment_id, [], stored="blank",
+        )
+
+    upgrade_to("5e6f7a8b9c0d")
+
+    def obs(file_id):
+        return _scalar(
+            engine,
+            "SELECT observation_type FROM files WHERE id = :i",
+            i=file_id,
+        )
+
+    assert obs(mixed) == "person"
+    assert obs(animal_wins) == "animal"
+    assert obs(person_only) == "person"
+    assert obs(verified_person) == "person"
+    assert obs(all_below) == "blank"
+    assert obs(no_dets) == "blank"
+
+
+def test_5e6f7a8b9c0d_passes_a_novel_detector_category_through(engine):
+    """A detector that is not MegaDetector keeps its own category. The
+    old rule dropped anything outside animal/person/vehicle, so such a
+    file read as blank."""
+    upgrade_to("4d5e6f7a8b9c")
+
+    with engine.begin() as conn:
+        project_id = insert_row(
+            conn, "projects", name="Marine", counting_threshold=0.2
+        )
+        deployment_id = insert_row(conn, "deployments", project_id=project_id)
+        shark = _seed_file_with_detections(
+            conn, deployment_id,
+            [("fish", 0.40, 0), ("shark", 0.90, 0)],
+            stored="blank",
+        )
+
+    upgrade_to("5e6f7a8b9c0d")
+
+    assert _scalar(
+        engine,
+        "SELECT observation_type FROM files WHERE id = :i",
+        i=shark,
+    ) == "shark"

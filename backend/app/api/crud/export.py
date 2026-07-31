@@ -1299,14 +1299,34 @@ def _camtrap_event_row(
     ]
 
 
+# The Camtrap DP `observationType` controlled vocabulary. Camtrap DP is
+# an external standard (https://camtrap-dp.tdwg.org/data/) and a value
+# outside this set fails validation in the camtrapdp R package and in
+# GBIF ingestion.
+CAMTRAP_OBSERVATION_TYPES = frozenset(
+    {"animal", "human", "vehicle", "blank", "unknown", "unclassified"}
+)
+
+
 def _obs_type_from_category(category: str) -> str:
-    if category == "animal":
-        return "animal"
+    """Translate our detector category into Camtrap DP's vocabulary.
+
+    This is the **only** place a raw category is translated. Everywhere
+    else in the app a category is passed through verbatim, so a marine
+    detector's `shark` reaches the folder tree and the generic CSV
+    intact. Camtrap DP cannot take it: the standard has no marine
+    categories and expects all wildlife under `animal`, with the species
+    carried separately in `scientificName`.
+
+    So anything that is not a person, a vehicle or a blank is wildlife.
+    That holds for `animal` today and for `shark` / `fish` / `turtle`
+    when such a detector lands, without needing a list of them.
+    """
     if category == "person":
         return "human"
-    if category == "vehicle":
-        return "vehicle"
-    return "unknown"
+    if category in ("vehicle", "blank"):
+        return category
+    return "animal"
 
 
 def _camtrap_blank_row(

@@ -21,7 +21,7 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { setupApi } from "../../api/setup";
 import { backupApi } from "../../api/backup";
-import { diagnosticsApi } from "../../api/diagnostics";
+import { exportDiagnosticReport } from "../../lib/diagnostic-export";
 import { getSpeciesNameMode, setSpeciesNameMode } from "../../lib/species-name-mode";
 import { ResetAppDialog } from "../diagnostics/ResetAppDialog";
 import { BackupNowDialog } from "../diagnostics/BackupNowDialog";
@@ -126,18 +126,6 @@ export function MenuCommands() {
     const api = window.electronAPI;
     if (!api?.onMenuCommand) return;
 
-    const exportDiagnostic = async () => {
-      try {
-        // Success feedback comes from the Electron download-complete toast
-        // (DownloadCompleteToasts in App.tsx), which names the file and
-        // offers "Show in folder". A second toast here would just duplicate
-        // it — this flow only runs in Electron (native menu command).
-        await diagnosticsApi.downloadDiagnosticZip();
-      } catch (err) {
-        toast.error(`Could not build diagnostic report: ${(err as Error).message}`);
-      }
-    };
-
     const openUserDataFolder = async () => {
       if (!setupStatus?.user_data_dir) {
         toast.error("User data path is unknown.");
@@ -194,7 +182,7 @@ export function MenuCommands() {
           void openBackupsFolder();
           break;
         case "export-diagnostic":
-          void exportDiagnostic();
+          void exportDiagnosticReport();
           break;
         case "species-common":
           setSpeciesNameMode("common");

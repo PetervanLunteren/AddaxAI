@@ -19,6 +19,7 @@ import {
   Tag,
   Tally5,
   LayoutDashboard,
+  LifeBuoy,
 } from "lucide-react";
 import { basename } from "@/lib/path-utils";
 import {
@@ -39,6 +40,7 @@ import {
   type DeploymentQueueEntry,
 } from "@/api/deployment-queue";
 import { downloadTextFile } from "@/lib/download";
+import { exportDiagnosticReport } from "@/lib/diagnostic-export";
 
 type Severity = "warning" | "error";
 
@@ -593,6 +595,41 @@ export function RunQueueModal({
           })()}
 
           {showLogTable && <LogTable rows={logRows} />}
+
+          {/* An error here is a pipeline failure, not something the user
+              typed wrong, so the log table tells them what broke and
+              nothing tells them what to do about it. This is the same
+              action as Help > Export diagnostic report, offered where
+              they already are.
+
+              Errors only, never warnings: a skipped file is expected
+              behaviour with its own explanation, and attaching a "report
+              this" prompt to it would train people to ignore the prompt.
+              Sits below the table rather than beside its "Logs" button,
+              which downloads the issue list for the user's own records
+              and would be easy to confuse with a bug report. */}
+          {inTerminalState &&
+            logRows.some((r) => r.severity === "error") && (
+              <Callout
+                variant="error"
+                title="Something went wrong during analysis"
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 gap-1.5"
+                    onClick={() => void exportDiagnosticReport()}
+                  >
+                    <LifeBuoy className="h-4 w-4" />
+                    Export diagnostic report
+                  </Button>
+                }
+              >
+                This is usually not something you can fix from here. The
+                diagnostic report bundles the logs needed to work out why,
+                and saves them to your Downloads folder.
+              </Callout>
+            )}
 
           {inTerminalState && datelessCount > 0 && (
             <div className="flex items-start gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">

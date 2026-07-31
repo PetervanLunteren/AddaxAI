@@ -90,8 +90,8 @@ def _crop_with_blur_fill(
     return canvas
 
 
-def _resolve_image_path(file: File) -> Path | None:
-    """Resolve the source image path for a file.
+def _resolve_image_path(file: File, detection: Detection) -> Path | None:
+    """Resolve the source image to crop this detection from.
 
     Images render from `file.file_path`. Videos render from
     `file.best_frame_path` (the canonical thumbnail written by the
@@ -99,8 +99,18 @@ def _resolve_image_path(file: File) -> Path | None:
     fall back to the .mp4 path: that would hand a video file to PIL,
     which crashes loudly downstream. Returning None lets the caller
     surface a clean "no thumbnail" state.
+
+    A video detection off the best frame gets None. It is the only frame
+    on disk, so cropping it at a bbox from another frame produces a
+    confident picture of the wrong place: the animal has moved, and the
+    crop shows the leaf litter it left behind. That looked like a working
+    thumbnail for as long as the subject sat still, which is why it went
+    unnoticed. No image is the honest answer; the video player is where
+    those detections are meant to be seen.
     """
     if file.file_type == "video":
+        if detection.frame_number != file.best_frame_number:
+            return None
         if file.best_frame_path:
             p = Path(file.best_frame_path)
             if p.exists():
@@ -140,7 +150,7 @@ def get_or_create_crop(detection_id: str, size: int, db: Session) -> bytes | Non
     if not file:
         return None
 
-    image_path = _resolve_image_path(file)
+    image_path = _resolve_image_path(file, detection)
     if not image_path:
         return None
 

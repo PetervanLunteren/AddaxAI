@@ -14,9 +14,18 @@ Two code paths can produce a best frame per video:
    (or evenly-spaced samples for blank videos), picks the winner with
    the existing detection-confidence scorer, and writes the JPEG.
 
-In both paths the picker is `scoring.pick_best_candidate` with the same
-tier rules, so a classifier-on vs classifier-off run produces consistent
-results.
+Both paths score **every detection, whatever its category**, on the
+detector's own confidence, and hand the result to
+`scoring.pick_best_candidate` with the same tier rules. So a
+classifier-on and a classifier-off run pick the same frame for the same
+video.
+
+That was not true until 2026-07-31: path 1 scored only the animals it was
+about to classify, so a clip containing only people scored nothing and
+fell back to sharpness over three arbitrary frames, while path 2 scored
+the people. Detection confidence is the one signal every detector emits,
+which is why it is the primary score: no category vocabulary is assumed,
+so a detector emitting `fish` / `shark` / `turtle` needs no change here.
 
 Created 2026-02-13. Rewritten 2026-05-13 to drop bulk frame extraction.
 """
@@ -28,19 +37,14 @@ from pathlib import Path
 
 from app.core.logging_config import get_logger
 from app.core.media_types import VIDEO_EXTENSIONS
-from app.ml.inference.scoring import compute_sharpness, pick_best_candidate, score_detections
+from app.ml.inference.scoring import choose_frame_number
 from app.ml.inference.video_iter import (
     iter_wanted_frames,
     open_video,
-    pil_to_rgb_array,
-    sample_indices,
     write_best_frame,
 )
 
 logger = get_logger(__name__)
-
-# Same constant the classifier worker uses for blank-video fallbacks.
-BLANK_VIDEO_SAMPLE_COUNT = 3
 
 
 def select_best_frames_streaming(
@@ -80,11 +84,6 @@ def select_best_frames_streaming(
             continue
 
         detections = img_entry.get("detections") or []
-        wanted: set[int] = {
-            int(d["frame_number"])
-            for d in detections
-            if d.get("frame_number") is not None
-        }
 
         cap = open_video(absolute)
         if cap is None:
@@ -95,59 +94,38 @@ def select_best_frames_streaming(
             continue
 
         try:
-            # Blank video fallback: sample N evenly-spaced frames so the
-            # sharpness scorer has something to work with.
-            if not wanted:
-                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                wanted = set(sample_indices(total_frames, BLANK_VIDEO_SAMPLE_COUNT))
-                if not wanted:
-                    logger.warning(
-                        f"select_best_frames_streaming: {absolute} has 0 "
-                        "frames according to cv2, skipping"
-                    )
-                    continue
+            # Decided from the JSON alone, before any frame is decoded,
+            # so we decode only the frame we are going to keep. Frame 0
+            # comes along as insurance: a container can advertise more
+            # frames than it yields, and the chosen one may never arrive.
+            best_frame_number = choose_frame_number(
+                detections, int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            )
+            wanted = {best_frame_number, 0}
 
-            sharpness_by_frame: dict[int, float] = {}
-            pixels_by_frame: dict[int, object] = {}
+            chosen_pixels = None
+            first_pixels = None
             for frame_num, pil_image in iter_wanted_frames(cap, wanted):
-                sharpness_by_frame[frame_num] = compute_sharpness(
-                    pil_to_rgb_array(pil_image)
-                )
-                pixels_by_frame[frame_num] = pil_image
+                if frame_num == best_frame_number:
+                    chosen_pixels = pil_image
+                if frame_num == 0:
+                    first_pixels = pil_image
         finally:
             cap.release()
 
-        if not sharpness_by_frame:
-            logger.warning(
-                f"select_best_frames_streaming: no decodable frames for "
-                f"{absolute}, skipping"
-            )
-            continue
+        if chosen_pixels is None:
+            # Move the number with the pixels. The stamped
+            # `best_frame_number` and the written JPEG must describe the
+            # same moment, or the Labels grid draws one frame's boxes
+            # over another frame's picture.
+            if first_pixels is None:
+                logger.warning(
+                    f"select_best_frames_streaming: no decodable frames for "
+                    f"{absolute}, skipping"
+                )
+                continue
+            best_frame_number, chosen_pixels = 0, first_pixels
 
-        det_tuples = [
-            (
-                str(int(d["frame_number"])),
-                float(d.get("conf", 0.0)),
-                tuple(d["bbox"]),
-            )
-            for d in detections
-            if d.get("frame_number") is not None
-        ]
-        frame_scores = score_detections(det_tuples)
-
-        def get_sharpest(keys: list[str], _sb=sharpness_by_frame) -> str:
-            return str(max((int(k) for k in keys), key=lambda fn: _sb.get(fn, 0.0)))  # noqa: B023
-
-        fallback_keys = [str(fn) for fn in sorted(sharpness_by_frame)]
-        best_key = pick_best_candidate(
-            frame_scores,
-            get_sharpest=get_sharpest,
-            fallback_keys=fallback_keys,
-        )
-        if best_key is None:
-            continue
-
-        best_frame_number = int(best_key)
         img_entry["best_frame_number"] = best_frame_number
 
         # Write the chosen JPEG using the same filename scheme legacy
@@ -155,7 +133,7 @@ def select_best_frames_streaming(
         relative_video_path = absolute.relative_to(deployment_folder)
         dest = output_base / relative_video_path / f"frame{best_frame_number:06d}.jpg"
         try:
-            write_best_frame(pixels_by_frame[best_frame_number], dest)
+            write_best_frame(chosen_pixels, dest)
         except Exception as e:
             logger.warning(
                 f"select_best_frames_streaming: failed to write best frame "

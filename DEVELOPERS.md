@@ -361,6 +361,24 @@ MegaDetector sometimes produces false positive bounding boxes. When a classifica
 | `backend/app/ml/label_exclusion.py` | `NON_LABEL_CLASSES` set, `is_non_label_detection()` helper |
 | `backend/app/ml/json_pipeline.py` | Skip logic in `load_json_to_database()` and `_load_to_database()` |
 
+## What a file is about
+
+One rule, everywhere:
+
+> A file is its **single strongest passing detection**. Strongest is verified first, then detector confidence. `File.observation_type` is that detection's raw category; the file's folder is that detection's species if it has one, else its category. Nothing passes, the file is `blank`.
+
+`derive_observation_type` in `backend/app/ml/observation_type.py` is the only implementation. It knows no category vocabulary, needs no classifier, and works for any detector.
+
+**Why not a category priority.** Until 2026-07-31 this ranked categories instead (animal > human > vehicle), so one animal box at 0.21 beat thirty person boxes at 0.95. A test clip of a person in camouflage inspecting a camera produced 31 person boxes at 0.65 to 0.95 and one false-positive animal box that SpeciesNet called "chimpanzee" at 29%. Priority made the file an animal, that lone box was then the only labelled detection so it named the folder, and the run wrote `addaxai-media/chimpanzee/IMG_0001_still.jpg` containing a picture correctly labelled `Person 73%`. Ranking categories cannot be right when the thing being ranked is the detector's own guess about the category.
+
+**The category is the detector's, and is never translated.** `Detection.category` and `File.observation_type` carry whatever the run's own `detection_categories` map said: `animal` / `person` / `vehicle` from MegaDetector, `shark` / `fish` / `turtle` from a detector that emits those. `json_pipeline` reads that map rather than assuming, and **refuses an id the run never declared** instead of defaulting it to `animal`, which is what silently turned every class of a non-MegaDetector model into wildlife.
+
+**The one translation is Camtrap DP.** `observationType` there has a fixed controlled vocabulary (`animal`, `human`, `vehicle`, `blank`, `unknown`, `unclassified`) defined by the standard, not by us. `_obs_type_from_category` in `crud/export.py` is the only place a category is converted: `person` becomes `human`, and anything that is not a person, vehicle or blank becomes `animal`, which is where Camtrap DP puts all wildlife with the species in `scientificName`. Emitting a raw `shark` there would fail validation in the `camtrapdp` R package and in GBIF ingestion.
+
+**Do not add a fifth category map.** There were four, all subtly different, and one Pydantic `Literal` that rejected any other detector's output at the schema boundary before the code that would have handled it ran. They are now one function plus the Camtrap boundary. If you find yourself writing `if category == "animal"`, ask whether you mean "is this the strongest detection" or "is this wildlife", and reuse the existing helper for the first.
+
+`observation_type` is denormalised, so it is recomputed at ingest, after postprocessing, on any detection edit, and on a project threshold change. A rule change therefore needs a data migration; `5e6f7a8b9c0d` is the worked example, with its data test in `tests/db/test_migration_data.py`.
+
 ## Datetime conventions
 
 There are two kinds of datetimes in this codebase and they must never be mixed in arithmetic or comparison:
@@ -430,11 +448,32 @@ References that motivate the design choices: Ridout & Linkie 2009 (J Agric Biol 
 
 After video detection (phase 1) and frame extraction, a single representative frame number is selected per video. The algorithm:
 
-1. Score each frame by summing animal detection confidences (>= 0.3)
-2. Among top candidates (within 10% of best score), pick the sharpest (Laplacian variance)
-3. Blank videos (no detections): sample ~10 evenly-spaced frames, pick the sharpest
+1. Score each frame by summing **every** detection's confidence (>= 0.3), whatever its category
+2. Among confidence ties, prefer the largest union bbox area (within 90% of the best)
+3. Blank videos, and videos whose detections are all below 0.3: the middle frame
 
-See `backend/app/ml/best_frame.py`.
+**The decision reads the JSON only, and happens before anything is decoded.** `scoring.choose_frame_number` takes the detection list plus the frame count and returns a number. Both callers then decode exactly two frames: the one they picked, and frame 0 as insurance. Ordering it this way is what keeps memory flat, and it is why there is no sharpness tier.
+
+There was one, Laplacian variance, sitting below the area tier and also deciding blank videos outright. It required the pixels of every candidate frame, so the caller had to decode and hold each one before it could know which single frame it wanted: tens of full-size images in RAM for a 30-second clip. Measured across real deployments the tier never once broke a tie, because summed detection confidence decided every video that had detections at all. Paying that to settle a tiebreak that does not fire is a bad trade. For blank videos the middle frame is as defensible as the sharpest of three arbitrary samples, and beats the first frame, which is often the empty scene that triggered the camera.
+
+**`best_frame_number` and the JPEG on disk must always describe the same frame.** Deciding before decoding means the chosen frame might never arrive, because containers over-report their frame count. When that happens both callers fall back to frame 0 *and move the stamped number with it*. Stamping the frame you wanted while writing the frame you got is the same class of bug as the crop-service one above: the Labels grid would draw one moment's boxes over another moment's picture.
+
+See `backend/app/ml/best_frame.py` and `scoring.choose_frame_number`.
+
+**Score on detection confidence, never on category and never on classification confidence.** Detection confidence is the only signal present in every detector and classifier combination, so one rule covers all of them, including detectors whose categories are not animal/person/vehicle (`fish`, `shark`, `turtle` need no code change). Two dead ends:
+
+- *Scoring only animals* is what the classifier-fused path did until 2026-07-31. It took its candidates from the classification input, which `extract_animal_detections` restricts to category `"1"` above the classification gate. A clip containing only people therefore scored nothing, fell through to the blank-video fallback, and picked a frame with no idea where the person was. Since the Labels grid only shows best-frame detections, such a video could show no cards at all. It also made the chosen frame depend on whether a classifier was configured, because `best_frame.py` always scored every category.
+- *Averaging detection and classification confidence* looks like the general rule and is not. It is really two rules, since a classifier-off run has no second number to average, so the same footage would get a different frame depending on a setting unrelated to how the frame looks. Classification confidence also has no fixed scale: SpeciesNet spreads mass over ~2500 classes and returns top-1 around 0.3 to 0.7 where a 20-class model returns 0.9+. Person and vehicle are never classified at all, so they would compete on a different scale within one frame. And a low classification score usually means two similar species, not a bad picture, which is the opposite of what best-frame is asking.
+
+Both code paths (`best_frame.py` for classifier-off runs, `classification_worker._process_video_group` for classifier-on) score the same population through the same `choose_frame_number`, so they pick the same frame for the same video. The worker receives the population as `scoring_detections`, separate from the `items` it classifies. `tests/ml/test_best_frame_scoring.py` pins all of this, including that the two paths agree.
+
+**A consequence worth knowing:** in a clip holding both, a confident person or vehicle can now win the frame over a marginal animal. Animals used to win by construction, because nothing else was scored.
+
+That reads like a cost and the first real example was the opposite. A test clip of a person in camouflage inspecting a camera produced 31 person detections at 0.65 to 0.95 and exactly one animal box at 0.677 on a single frame, which the classifier then labelled "chimpanzee" at 0.29. Scoring animals only made that lone false positive the whole video: best frame 150, observation "chimpanzee". Scoring every category picked frame 420 and reported "person", which is what the video shows.
+
+Weighting one category above the rest does not encode "animals matter more", it encodes "trust one detector output over its others". When the detector is wrong about the category, that is precisely backwards, and it is why re-introducing a category preference is not the safe-looking option it appears to be.
+
+**Changing this needs a re-analysis to take effect.** `best_frame_number` is written once at load time, so existing deployments keep whatever frame the old rule chose.
 
 **Storage:** No separate frame JPEG is saved; `best_frame_path` points to the frame inside `video_frames/`: `{deployment_folder}/.addaxai/video_frames/{video_name}/frame{N:06d}.jpg`. The `files` table stores `best_frame_number` (0-based index) and `best_frame_path` (absolute path to the JPEG). Both are `NULL` for images.
 
@@ -445,6 +484,46 @@ See `backend/app/ml/best_frame.py`.
 - Any future per-file visual feature
 
 If you're building a feature that works on images, check `file.best_frame_path` for videos instead of extracting frames yourself.
+
+### The best frame is the only frame a video detection can be shown on
+
+MegaDetector runs over every sampled frame, so a 30-second clip stores dozens of detections spread across dozens of frames. Only the best frame is written to disk as a JPEG. That makes one rule non-negotiable:
+
+> a video detection is displayable only when `Detection.frame_number == File.best_frame_number`
+
+Break it and nothing errors. `crop_service` happily crops the best frame at a bbox belonging to a different moment and returns a perfectly valid JPEG of the wrong place. On a clip of a person walking, 31 of 32 grid tiles were pictures of the background they had already left. The bug survived for months because a slow subject hides it completely: successive bboxes overlap, so the crops still contain the animal, just shifted, and they look right. Only a moving subject exposes it. If you are ever unsure whether a surface honours this, test it with a clip of something walking across the frame, never with a browsing deer.
+
+Enforced in:
+
+| Module | How |
+|--------|-----|
+| `services/crop_service.py` | `_resolve_image_path` returns `None` off the best frame |
+| `ml/inference/similarity_script.py` | `_COMMON_JOINS` gates all three grid queries |
+| `ml/embedding_utils.py` | `build_embedding_input` skips them (no pixels to embed) |
+| `api/routers/labels.py` | `on_embeddable_surface` in the stats and unprocessed counts |
+| `ml/postprocessing_outputs/annotated_copies.py` | one annotated still per video |
+| `api/crud/event_observation.py` | off-best-frame species don't spawn observation rows |
+| `frontend/src/lib/detection-utils.ts` | `shouldDrawBbox` for every canvas and overlay |
+
+**Verified detections are the one exception.** They pass on any frame, in the grid query and in `rebuild_event_observations`. A human decision must never end up out of reach: the counts already honour a species verified on some frame, so the grid has to be able to show the card that count came from. Its thumbnail will be missing, which is the honest answer, and `CropCard`'s `onError` degrades to a plain tile.
+
+**The off-best-frame detections are not junk, and are not deleted.** Their per-frame classifications are exactly what smoothing and taxonomic rollup consume, and they disagree a lot: one raccoon walking through a clip was read as northern raccoon, american badger, american badger, blank, virginia opossum, northern raccoon, blank on seven consecutive frames. Rollup turning that into one label is the system working. They also draw in `VideoPlayer`, which has the real frames. They are hidden from still surfaces only.
+
+## Keeping installed models up to date
+
+A model that is already downloaded is never re-fetched by the normal flows: `check_weights_ready` only tests that the weights file exists, so once the `.pt` is on disk, preparing the model downloads nothing. That is fine for weights and wrong for everything else in the repo, because a fixed `inference.py` or a corrected `taxonomy.csv` would never reach anyone who already had the model.
+
+On startup, `ModelCatalogUpdater.sync()` therefore asks HuggingFace for one file listing per **installed** model (a catalog stub with no weights next to it costs no request) and compares it to what is on disk. `find_stale_files` in `backend/app/ml/model_storage.py` is the whole rule:
+
+- **LFS files are skipped.** Those are the weights. HuggingFace's `blob_id` for an LFS file is the hash of the pointer stub rather than of the content, so comparing it would report every install as stale forever, and hashing the real file means reading gigabytes on every launch. Weights are versioned by `model_id` instead: re-uploading weights in place under the same id will not be noticed, so bump the id (`EUR-DF-v1-1` through `v1-4`, `AFR-DFV-v1` to `v2`).
+- **Documentation and OS litter are skipped** by basename: `README.md`, `LICENSE`, `LICENSE.md`, `.gitattributes`, `.DS_Store`, `manifest.json`.
+- **Everything else is compared by git blob SHA-1**, which is exactly what `blob_id` holds for a non-LFS file, so nothing is downloaded to reach a verdict. That covers `inference.py`, `taxonomy.csv`, `taxon-mapping.csv`, class lists, geofence JSON, `hubconf.py` and the vendored `dinov2/` and `dinov3/` trees with no allowlist to maintain. Covering all of them rather than just the obvious two matters: commits routinely touch several files at once, and shipping half of one leaves new code reading an old data file.
+
+`POST /api/ml/models/{id}/update` recomputes the stale set server-side (a client can never name a path) and downloads only those files, via the `include` and `overwrite` options on the HF downloader. `overwrite` is not decoration: the downloader otherwise skips any file whose byte size already matches, so an upstream edit of the same length would be skipped by the very call that came to replace it.
+
+**Nothing about upstream is recorded on disk.** An earlier design stored an `hf_revision_sha` in the local `manifest.json`, which `write_manifest` then overwrote from the catalog on the next launch, so the check silently never fired and every model was logged as refreshed forever. Comparing the files themselves has no state to fall out of date, works on an install that predates the feature, and self-heals a partial download. Keep it that way: if you add a local-only key to `manifest.json`, you reintroduce that bug.
+
+**`~/AddaxAI/models` is a managed cache, not a source tree.** Editing a model's `inference.py` in place now shows up as an available update on every launch, and applying it overwrites your edit with no backup.
 
 ## Creating a custom classification model
 

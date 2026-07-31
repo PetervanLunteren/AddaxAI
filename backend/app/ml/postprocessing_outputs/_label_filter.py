@@ -35,6 +35,7 @@ from __future__ import annotations
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.ml.detection_visibility import on_visible_frame_of
 from app.models import Detection, File
 
 
@@ -68,21 +69,33 @@ def passing_detections_for_file(
     excluded_label_ids: frozenset[str] | None = None,
 ) -> list[Detection]:
     """Return the file's passing detections with exclusion applied,
-    ordered by confidence descending.
+    strongest first.
 
     A "passing" detection is one over the project threshold (or
     verified) AND not in the user's exclusion set.
+
+    Strongest is verified first, then confidence, matching
+    ``derive_observation_type`` and ``build_event_primary_labels``. So
+    ``[0]`` is the detection that decides what the file is.
     """
     rows = db.execute(
         select(Detection)
         .where(Detection.file_id == file.id)
+        # A video is written to disk as its best-frame JPEG, so only that
+        # frame's detections may decide where the picture is filed. A box
+        # on some other frame naming the folder is the same bug as a box
+        # on some other frame being drawn on it.
+        .where(on_visible_frame_of(file))
         .where(
             or_(
                 Detection.confidence >= threshold,
                 Detection.verified == True,  # noqa: E712
             )
         )
-        .order_by(Detection.confidence.desc())
+        .order_by(
+            Detection.verified.desc(),
+            Detection.confidence.desc(),
+        )
     ).scalars().all()
 
     if not excluded_label_ids:
@@ -93,25 +106,29 @@ def passing_detections_for_file(
     ]
 
 
-def passing_labels_for_file(
+def strongest_label_for_file(
     db: Session,
     file: File,
     threshold: float,
     excluded_label_ids: frozenset[str] | None = None,
-) -> list[str]:
-    """Return the file's passing label strings (deduped, order-preserved
-    by descending confidence), with exclusion applied. Unlabelled
-    detections (no species attribution) are skipped.
+) -> str | None:
+    """The species label of the file's strongest passing detection, or
+    ``None`` when that detection carries no species.
+
+    This deliberately reads only the *strongest* detection rather than
+    the strongest *labelled* one. A clip whose best box is a person is a
+    person clip, even when a weaker animal box happens to carry a
+    species: taking the best label instead of the best detection is what
+    filed a person in camouflage under ``chimpanzee/`` off one
+    false-positive box the classifier guessed at 29%.
+
+    ``None`` therefore means "this file is not a species", and the
+    caller names it by its detector category instead.
     """
-    seen: set[str] = set()
-    out: list[str] = []
-    for det in passing_detections_for_file(
+    passing = passing_detections_for_file(
         db, file, threshold, excluded_label_ids
-    ):
-        if det.label and det.label not in seen:
-            seen.add(det.label)
-            out.append(det.label)
-    return out
+    )
+    return passing[0].label if passing else None
 
 
 def file_is_dropped_by_filter(
@@ -135,6 +152,11 @@ def file_is_dropped_by_filter(
     rows = db.execute(
         select(Detection)
         .where(Detection.file_id == file.id)
+        # Same visible surface as everything else. The label filter only
+        # offers labels the user can see, so only those may drop a file;
+        # otherwise a video could be dropped by a label that never
+        # appeared in the filter and could not be unticked.
+        .where(on_visible_frame_of(file))
         .where(
             or_(
                 Detection.label.isnot(None),

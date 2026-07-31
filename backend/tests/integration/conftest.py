@@ -44,6 +44,7 @@ def build_detection_json(
     images: list[dict],
     classification_categories: dict[str, str] | None = None,
     classification_category_descriptions: dict[str, str] | None = None,
+    detection_categories: dict[str, str] | None = None,
 ) -> dict:
     """
     Build a MegaDetector-format JSON dict.
@@ -58,9 +59,14 @@ def build_detection_json(
     plausible DateTimeOriginal so the loader has a timestamp to work
     with. Tests that care about timestamps set their own.
     """
+    # The detector declares its own vocabulary; the ingest reads it from
+    # here rather than assuming MegaDetector's three. Tests for other
+    # detectors pass their own map.
     result = {
         "images": [_with_default_exif(img) for img in images],
-        "detection_categories": {"1": "animal", "2": "person", "3": "vehicle"},
+        "detection_categories": detection_categories
+        if detection_categories is not None
+        else {"1": "animal", "2": "person", "3": "vehicle"},
         "info": {"detection_completion_time": "2026-01-01 00:00:00"},
     }
     if classification_categories is not None:

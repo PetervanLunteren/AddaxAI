@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.core.logging_config import get_logger
 from app.db.sql_params import iter_id_chunks
+from app.ml.detection_visibility import on_visible_frame
+from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
 from app.models.event_observation import EventObservation
@@ -819,18 +821,19 @@ def get_events_by_project(
                         if d.common_name and raw not in label_to_common:
                             label_to_common[raw] = d.common_name
 
-        # Determine dominant observation type (animal > human > vehicle > blank)
-        obs_priority = {"animal": 4, "human": 3, "vehicle": 2, "blank": 1}
-        dominant_type = "blank"
-        dominant_priority = 0
-        observation_types_set: set[str] = set()
-        for f in sorted_files:
-            if f.observation_type:
-                observation_types_set.add(f.observation_type)
-            p = obs_priority.get(f.observation_type, 0)
-            if p > dominant_priority:
-                dominant_priority = p
-                dominant_type = f.observation_type
+        # The event's dominant observation type is the same rule applied
+        # one level up: the category of the strongest detection anywhere
+        # in the event. This used to be a second priority table with its
+        # own weights ({"animal": 4, "human": 3, ...}), a duplicate of
+        # the one in observation_type.py that could drift from it. Now
+        # there is one rule and no vocabulary to keep in step.
+        observation_types_set: set[str] = {
+            f.observation_type for f in sorted_files if f.observation_type
+        }
+        dominant_type = derive_observation_type(
+            (d for f in sorted_files for d in f.detections),
+            project_floor if project_floor is not None else 0.0,
+        )
 
         # Count files by type and verification. Post-frame-row-removal
         # (2026-05) only "image" and "video" file types exist. The
@@ -1260,6 +1263,11 @@ def get_filter_options(db: Session, project_id: str) -> dict:
         .filter(Deployment.project_id == project_id)
         .filter(Detection.label_taxonomy_id.isnot(None))
         .filter(threshold_clause)
+        # Same visible surface as the label tree this list stands in for
+        # (it is the fallback shown when a project has no taxonomy). Without
+        # it the flat list offers species that live only on frames the grid
+        # never renders, so picking one returns nothing.
+        .filter(on_visible_frame())
         .distinct()
         .all()
     )
@@ -1289,6 +1297,7 @@ def get_filter_options(db: Session, project_id: str) -> dict:
         .filter(Deployment.project_id == project_id)
         .filter(Detection.label_taxonomy_id.isnot(None))
         .filter(threshold_clause)
+        .filter(on_visible_frame())
         .group_by(Detection.label_taxonomy_id)
         .all()
     )
