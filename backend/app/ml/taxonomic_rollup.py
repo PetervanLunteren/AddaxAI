@@ -68,6 +68,30 @@ def format_common_name(label: str) -> str:
     return cleaned[0].upper() + cleaned[1:]
 
 
+def format_leaf_annotation(label: str, scientific_name: str, level: str) -> str:
+    """
+    The qualifier rendered in italics beside a taxonomy tree leaf.
+
+    Both trees show the scientific name as the leaf's name, so the qualifier
+    carries the model's own label for that taxon, which is the second and
+    usually more recognisable name: ``Papio (baboon)``. When the label
+    already *is* the scientific name there is no second name to give, so the
+    qualifier names the rank instead: ``Gorilla (genus)``.
+
+    Shared by the model taxonomy tree (``ml.taxonomy_parser``, built from a
+    model's taxonomy.csv) and the label filter tree
+    (``api.crud.label_tree``, built from the label_taxonomy table) so the
+    same taxon reads identically in the species picker and in the Labels
+    filter. Keep it that way: the two trees are rendered by one component,
+    so a divergence here shows up as two rows that look alike and mean
+    different things.
+    """
+    cleaned = label.replace("_", " ")
+    if cleaned.lower() != scientific_name.lower():
+        return cleaned
+    return level
+
+
 def resolve_label_names(
     label: str | None,
     taxonomy: object | None,

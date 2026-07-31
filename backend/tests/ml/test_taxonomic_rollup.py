@@ -8,6 +8,7 @@ import pytest
 from app.ml.label_exclusion import NON_LABEL_CLASSES
 from app.ml.taxonomic_rollup import (
     apply_taxonomic_rollup_to_results,
+    format_leaf_annotation,
     load_taxonomy_lookup,
     rollup_single_detection,
 )
@@ -559,3 +560,42 @@ def test_rollup_threshold_parameter_loosens_kingdom_fallback(
     assert relaxed is not None
     assert relaxed["level"] == "class"
     assert relaxed["label"] == "mammalia"
+
+
+# ── The shared leaf-naming rule ──────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "label,scientific_name,level,expected",
+    [
+        # A second, more recognisable name exists: show it.
+        ("leopard", "P. pardus", "species", "leopard"),
+        ("baboon", "Papio", "genus", "baboon"),
+        ("guineafowl", "Numididae", "family", "guineafowl"),
+        ("micromammal", "Mammalia", "class", "micromammal"),
+        # Underscores are cleaned, as elsewhere in the naming helpers.
+        ("red_colobus", "Piliocolobus", "genus", "red colobus"),
+        # The label *is* the taxon, so there is no second name: name the rank.
+        ("gorilla", "Gorilla", "genus", "genus"),
+        ("numididae", "Numididae", "family", "family"),
+        ("mammalia", "Mammalia", "class", "class"),
+        # Case must not matter: rollup rows store a capitalised scientific
+        # name while the label stays lower case.
+        ("Felidae", "felidae", "family", "family"),
+    ],
+)
+def test_format_leaf_annotation(label, scientific_name, level, expected):
+    assert format_leaf_annotation(label, scientific_name, level) == expected
+
+
+def test_both_trees_use_this_helper():
+    """The species picker (ml.taxonomy_parser) and the Labels filter
+    (api.crud.label_tree) must render the same taxon identically, because
+    one component draws both and a divergence looks like two rows that
+    mean different things. Neither may re-implement the rule locally.
+    """
+    from app.api.crud import label_tree
+    from app.ml import taxonomy_parser
+
+    assert taxonomy_parser.format_leaf_annotation is format_leaf_annotation
+    assert label_tree.format_leaf_annotation is format_leaf_annotation

@@ -119,7 +119,7 @@ def test_build_tree_with_labels_and_rollups(db):
     assert felidae_node is not None
     # Rolled-up leaf should have clean name and annotation
     assert felidae_node["name"] == "Felidae"
-    assert felidae_node.get("annotation") == "unspecified"
+    assert felidae_node.get("annotation") == "family"
 
     # Leaf should be nested (not at root)
     root_ids = [n["id"] for n in tree]
@@ -327,10 +327,11 @@ def test_leaf_has_structured_fields(db):
     assert mammalia.get("count") is not None
 
 
-def test_rollup_leaf_annotation_falls_back_to_unspecified(db):
-    """Rollup leaf whose model label matches its rank-derived display
-    keeps the literal "unspecified" annotation. The classic case
-    (e.g. name=felidae, display=Felidae) reads naturally."""
+def test_rollup_leaf_annotation_falls_back_to_the_rank(db):
+    """A leaf whose model label matches its rank-derived display has no
+    second name to show, so the annotation names the rank: "Felidae
+    (family)". Same rule as the species picker, see
+    tests/ml/test_taxonomy_parser.py::test_leaf_naming_rule."""
     p = _setup_project_with_detections(db, ["felidae"])
     felidae_tax = _add_taxonomy(
         db, "felidae", "family",
@@ -355,7 +356,7 @@ def test_rollup_leaf_annotation_falls_back_to_unspecified(db):
     leaf = find_node(result["tree"], felidae_tax.id)
     assert leaf is not None
     assert leaf["name"] == "Felidae"
-    assert leaf["annotation"] == "unspecified"
+    assert leaf["annotation"] == "family"
 
 
 def test_rollup_leaf_annotation_disambiguates_collisions(db):
@@ -402,8 +403,8 @@ def test_rollup_leaf_annotation_disambiguates_collisions(db):
     mammalia_leaf = find_node(result["tree"], mammalia_tax.id)
     assert mammalia_leaf is not None
     assert mammalia_leaf["name"] == "Mammalia"
-    # name "mammalia" matches display "Mammalia" → literal "unspecified".
-    assert mammalia_leaf["annotation"] == "unspecified"
+    # name "mammalia" matches display "Mammalia" → the rank annotates it.
+    assert mammalia_leaf["annotation"] == "class"
 
 # ── Video counts follow what the grid can show ───────────────────────
 

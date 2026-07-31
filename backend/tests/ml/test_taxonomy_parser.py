@@ -98,26 +98,86 @@ def test_species_leaf_has_annotation(tmp_path):
     assert leaf["annotation"] == "leopard"
 
 
-def test_unspecified_leaf_has_annotation(tmp_path):
-    csv_path = _write_csv(tmp_path, [
-        "eagle,aves,accipitriformes,accipitridae,,",
-    ])
-    tree = parse_taxonomy_csv(csv_path)
+def _find_leaf(nodes, target_id):
+    for n in nodes:
+        if n["id"] == target_id:
+            return n
+        found = _find_leaf(n.get("children", []), target_id)
+        if found:
+            return found
+    return None
 
-    def find_leaf(nodes, target_id):
-        for n in nodes:
-            if n["id"] == target_id:
-                return n
-            found = find_leaf(n.get("children", []), target_id)
-            if found:
-                return found
-        return None
 
-    leaf = find_leaf(tree, "eagle")
+@pytest.mark.parametrize(
+    "row,model_class,name,annotation",
+    [
+        # Leaf is named for the taxon; the model's own label annotates it.
+        ("leopard,mammalia,carnivora,felidae,panthera,pardus",
+         "leopard", "P. pardus", "leopard"),
+        ("eagle,aves,accipitriformes,accipitridae,,",
+         "eagle", "Accipitridae", "eagle"),
+        ("baboon,mammalia,primates,cercopithecidae,papio,",
+         "baboon", "Papio", "baboon"),
+        ("rodent,mammalia,rodentia,,,", "rodent", "Rodentia", "rodent"),
+        # No second name to give, so the annotation names the rank instead.
+        ("gorilla,mammalia,primates,hominidae,gorilla,",
+         "gorilla", "Gorilla", "genus"),
+        ("felidae,mammalia,carnivora,felidae,,",
+         "felidae", "Felidae", "family"),
+        ("aves,aves,,,,", "aves", "Aves", "class"),
+    ],
+)
+def test_leaf_naming_rule(tmp_path, row, model_class, name, annotation):
+    """One rule at every rank: the leaf is named for the taxon and annotated
+    with the model's own label, or with the rank when the label *is* the
+    taxon name. Shared with the label filter tree, see
+    tests/api/test_label_tree.py.
+    """
+    tree = parse_taxonomy_csv(_write_csv(tmp_path, [row]))
+
+    leaf = _find_leaf(tree, model_class)
     assert leaf is not None
-    assert leaf["annotation"] == "unspecified"
+    assert leaf["name"] == name
+    assert leaf["annotation"] == annotation
     # Name should be clean (no markup)
     assert "_" not in leaf["name"]
+
+
+def test_no_leaf_is_annotated_unspecified(tmp_path):
+    """The literal "unspecified" is gone. It said nothing a user could act
+    on and, for a class named after its own taxon, wrongly implied a rollup.
+    """
+    tree = parse_taxonomy_csv(_write_csv(tmp_path, [
+        "leopard,mammalia,carnivora,felidae,panthera,pardus",
+        "baboon,mammalia,primates,cercopithecidae,papio,",
+        "felidae,mammalia,carnivora,felidae,,",
+        "aves,aves,,,,",
+    ]))
+
+    seen = []
+
+    def walk(nodes):
+        for n in nodes:
+            if n.get("annotation"):
+                seen.append(n["annotation"])
+            walk(n["children"])
+
+    walk(tree)
+    assert seen  # guard against the walk silently finding nothing
+    assert "unspecified" not in seen
+
+
+def test_rank_annotation_does_not_change_the_selectable_classes(tmp_path):
+    """The annotation is display only. Every model class stays a leaf, which
+    is what get_all_leaf_classes collects and what excluded_classes stores.
+    """
+    tree = parse_taxonomy_csv(_write_csv(tmp_path, [
+        "leopard,mammalia,carnivora,felidae,panthera,pardus",
+        "baboon,mammalia,primates,cercopithecidae,papio,",
+        "rodent,mammalia,rodentia,,,",
+    ]))
+
+    assert sorted(get_all_leaf_classes(tree)) == ["baboon", "leopard", "rodent"]
 
 
 def test_leaves_sorted(tmp_path):

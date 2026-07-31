@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
 from app.ml.detection_visibility import on_visible_frame
+from app.ml.taxonomic_rollup import format_leaf_annotation
 from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
 from app.models.label_taxonomy import LabelTaxonomy
@@ -219,44 +220,23 @@ def build_label_filter_tree(
         # Add leaf node
         count = label_event_counts.get(row.name, 0)
 
-        if row.level == "species":
-            display_label = row.scientific_name or row.name
-            scientific_name = row.name.replace("_", " ")
-            leaf_id = row.id
-            leaf_node = {
-                "id": leaf_id,
-                "name": display_label,
-                "annotation": scientific_name,
-                "count": count,
-                "children": {},
-                "is_leaf": True,
-                "_event_count": count,
-            }
-        else:
-            leaf_id = row.id
-            display = (
-                row.scientific_name
-                or row.name.replace("_", " ").capitalize()
-            )
-            # Annotation: show the underlying model label when it differs
-            # from the rank-derived display, otherwise the literal
-            # "unspecified". This matches the species annotation rule
-            # (model label in italics) and lets users tell apart sibling
-            # rollup leaves that share a display name (e.g. "micromammal"
-            # vs "mammalia" both rendering as "Mammalia").
-            if display and row.name.lower() != display.lower():
-                annotation = row.name.replace("_", " ")
-            else:
-                annotation = "unspecified"
-            leaf_node = {
-                "id": leaf_id,
-                "name": display,
-                "annotation": annotation,
-                "count": count,
-                "children": {},
-                "is_leaf": True,
-                "_event_count": count,
-            }
+        # One rule for every rank, shared with the model taxonomy tree in
+        # ml.taxonomy_parser: the leaf is named for the taxon and annotated
+        # with the model's own label, or with the rank when the label is
+        # itself the taxon name. That last case covers rollup rows
+        # ("Numididae (family)") and model classes named after their taxon
+        # ("Gorilla (genus)"), which the old literal "unspecified" conflated.
+        leaf_id = row.id
+        display = row.scientific_name or row.name.replace("_", " ").capitalize()
+        leaf_node = {
+            "id": leaf_id,
+            "name": display,
+            "annotation": format_leaf_annotation(row.name, display, row.level),
+            "count": count,
+            "children": {},
+            "is_leaf": True,
+            "_event_count": count,
+        }
 
         if leaf_id not in current:
             current[leaf_id] = leaf_node

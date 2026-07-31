@@ -17,6 +17,11 @@ import csv
 from pathlib import Path
 from typing import TypedDict
 
+from app.ml.taxonomic_rollup import (
+    format_leaf_annotation,
+    format_scientific_name_from_taxonomy_row,
+)
+
 
 class TaxonomyNode(TypedDict, total=False):
     """Node in taxonomy tree."""
@@ -26,7 +31,7 @@ class TaxonomyNode(TypedDict, total=False):
     level: int  # 1-6 (class, order, family, genus, species, model_class)
     children: list["TaxonomyNode"]
     selected: bool  # Default selection state
-    annotation: str  # Optional: e.g. "leopard", "unspecified"
+    annotation: str  # Optional: the model class, or the rank a class stops at
     child_count: int  # Optional: number of leaf descendants (parents only)
 
 
@@ -160,14 +165,21 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
 
                 current_level = current_level[node_value]["_children"]
 
-                # Add model_class as leaf with "unspecified" marker
+                # The class stops at this rank, so the leaf is named for the
+                # rank and annotated with the model's own label.
+                leaf_label = format_scientific_name_from_taxonomy_row(
+                    model_class, genus_name, species_name,
+                    family_name, order_name, class_name,
+                )
                 if model_class not in current_level:
                     current_level[model_class] = {
-                        "_label": scientific_name.capitalize(),
-                        "_annotation": "unspecified",
+                        "_label": leaf_label,
+                        "_annotation": format_leaf_annotation(
+                            model_class, leaf_label, level_name
+                        ),
                         "_value": model_class,
                         "_children": {},
-                        "_level": "unspecified",
+                        "_level": level_name,
                     }
                 break
 
@@ -177,17 +189,16 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
             )
 
             if is_last_level:
-                # Leaf node
-                if level_name == "species":
-                    if genus_name and species_name:
-                        g = genus_name.strip()
-                        leaf_label = f"{g[0].upper()}. {species_name}"
-                    else:
-                        leaf_label = species_name or scientific_name
-                    leaf_annotation = scientific_name
-                else:
-                    leaf_label = scientific_name.capitalize()
-                    leaf_annotation = "unspecified"
+                # Leaf node. One rule for every rank: named for the taxon,
+                # annotated with the model's own label (or the rank when the
+                # label is the taxon name).
+                leaf_label = format_scientific_name_from_taxonomy_row(
+                    model_class, genus_name, species_name,
+                    family_name, order_name, class_name,
+                )
+                leaf_annotation = format_leaf_annotation(
+                    model_class, leaf_label, level_name
+                )
 
                 if model_class not in current_level:
                     current_level[model_class] = {
