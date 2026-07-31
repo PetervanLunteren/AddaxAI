@@ -75,6 +75,42 @@ def test_writes_two_sheet_workbook(db, tmp_path):
         assert "event_id" in headers
 
 
+def test_files_sheet_keeps_the_species_columns(db, tmp_path):
+    """The XLSX writer is wired independently of the CSV one, so the folder-run
+    Files sheet needs its own pin that the one label per file is present."""
+    from openpyxl import load_workbook
+
+    project = make_project(db, name="xlsx-species")
+    dep = make_deployment(db, project_id=project.id)
+    file = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=_write_placeholder(tmp_path / "src" / "IMG.jpg"),
+        observation_type="animal",
+    )
+    make_detection(
+        db,
+        file_id=file.id,
+        category="animal",
+        confidence=0.9,
+        label="red fox",
+        scientific_name="Vulpes vulpes",
+        common_name="Red fox",
+    )
+
+    target = tmp_path / "out"
+    write_tables_xlsx(db, project.id, target)
+
+    wb = load_workbook(target / XLSX_FILENAME)
+    rows = list(wb["Files"].values)
+    headers, row = list(rows[0]), list(rows[1])
+    species = [
+        row[headers.index(name)]
+        for name in ("classification_label", "scientific_name", "common_name")
+    ]
+    assert species == ["red fox", "Vulpes vulpes", "Red fox"]
+
+
 def test_unknown_project_raises(db, tmp_path):
     with pytest.raises(ValueError, match="not found"):
         write_tables_xlsx(db, "no-such-id", tmp_path / "out")

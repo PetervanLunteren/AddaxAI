@@ -7,6 +7,7 @@ that it trims to the folder-run column set, and that ``relative_path`` on
 the files table is the file's path under its deployment's source folder.
 """
 
+import csv
 from datetime import datetime
 from pathlib import Path
 
@@ -108,6 +109,42 @@ def test_folder_run_headers_omit_deployment_id_and_notes(db, tmp_path):
 
     assert "detection_id" in det_headers
     assert "relative_path" in files_headers
+
+
+def test_folder_run_files_table_keeps_the_species_columns(db, tmp_path):
+    """A folder run's whole point is "what is in my folder", so the one label
+    per file has to survive the folder-run column trim. `folder_run_table`
+    drops by name, so this only breaks if someone adds them to OMITTED_COLUMNS."""
+    project = make_project(db, name="csv-species")
+    dep = make_deployment(db, project_id=project.id)
+    file = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=_write_placeholder(tmp_path / "src" / "IMG.jpg"),
+        observation_type="animal",
+    )
+    make_detection(
+        db,
+        file_id=file.id,
+        category="animal",
+        confidence=0.9,
+        label="red fox",
+        scientific_name="Vulpes vulpes",
+        common_name="Red fox",
+    )
+
+    target = tmp_path / "out"
+    write_tables_csv(db, project.id, target)
+
+    with open(target / FILES_FILENAME, newline="", encoding="utf-8") as f:
+        headers, row = list(csv.reader(f))
+
+    species = [
+        row[headers.index(name)]
+        for name in ("classification_label", "scientific_name", "common_name")
+    ]
+    assert species == ["red fox", "Vulpes vulpes", "Red fox"]
+    assert row[headers.index("observation_type")] == "animal"
 
 
 def test_projects_mode_builders_keep_every_column(db, tmp_path):

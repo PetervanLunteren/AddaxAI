@@ -327,6 +327,222 @@ def test_export_files_includes_empties(client, db):
     assert by_id[f_blank.id][dt_i].endswith("+01:00")
 
 
+# ---------------------------------------------------------------------------
+# The one label a file gets
+#
+# observation_type plus the three species columns beside it all describe the
+# SAME box: the file's strongest passing detection. These tests pin that they
+# never come from different boxes.
+# ---------------------------------------------------------------------------
+
+
+def _files_rows(client, project_id: str):
+    """`(headers, {file_id: row})` for the Files CSV export."""
+    resp = client.get(f"/api/projects/{project_id}/export/files?format=csv")
+    assert resp.status_code == 200, resp.text
+    rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
+    headers = rows[0]
+    fid_i = headers.index("file_id")
+    return headers, {r[fid_i]: r for r in rows[1:]}
+
+
+def _species(headers: list[str], row: list[str]) -> list[str]:
+    """The three species cells of a Files row, in column order."""
+    return [
+        row[headers.index(name)]
+        for name in ("classification_label", "scientific_name", "common_name")
+    ]
+
+
+def test_files_export_names_the_strongest_detections_species(client, db):
+    """The Files table answers "what is this file" on its own: the category of
+    the strongest box, then that same box's species and its two display names."""
+    project, _site, deployment = _build_simple_project(db)
+    f = make_file(db, deployment_id=deployment.id, observation_type="animal")
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=0.9,
+        label="red fox",
+        scientific_name="Vulpes vulpes",
+        common_name="Red fox",
+    )
+    db.commit()
+
+    headers, by_id = _files_rows(client, project.id)
+    # Directly after observation_type, so the four read as one answer.
+    obs_i = headers.index("observation_type")
+    assert headers[obs_i + 1 : obs_i + 4] == [
+        "classification_label",
+        "scientific_name",
+        "common_name",
+    ]
+    assert headers[0] == "file_id"
+    assert _species(headers, by_id[f.id]) == ["red fox", "Vulpes vulpes", "Red fox"]
+
+
+def test_files_export_does_not_take_the_best_label_off_a_weaker_box(client, db):
+    """The camouflage regression, and the reason this column is defined the way
+    it is. A clip of a person inspecting a camera produced person boxes at 0.65
+    to 0.95 plus one false-positive animal box the classifier called chimpanzee
+    at 29%. Reporting the best *label* labels that file a chimpanzee; reporting
+    the strongest *box* calls it a person, which is what the picture shows."""
+    project, _site, deployment = _build_simple_project(db)
+    f = make_file(db, deployment_id=deployment.id, observation_type="person")
+    make_detection(
+        db,
+        file_id=f.id,
+        category="person",
+        confidence=0.95,
+        scientific_name="Person",
+        common_name="Person",
+    )
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=0.677,
+        label="chimpanzee",
+        scientific_name="Pan troglodytes",
+        common_name="Chimpanzee",
+    )
+    db.commit()
+
+    headers, by_id = _files_rows(client, project.id)
+    assert _species(headers, by_id[f.id]) == ["", "Person", "Person"]
+    assert "chimpanzee" not in by_id[f.id]
+
+
+def test_files_export_species_are_blank_when_no_box_passes(client, db):
+    """No trusted box means there is nothing to name. observation_type already
+    carries "blank"; inventing a name here would put a file state into a
+    species column and break the join to detections.csv."""
+    project, _site, deployment = _build_simple_project(db)
+    f_empty = make_file(db, deployment_id=deployment.id, observation_type="blank")
+    f_weak = make_file(db, deployment_id=deployment.id, observation_type="blank")
+    make_detection(
+        db,
+        file_id=f_weak.id,
+        category="animal",
+        confidence=0.2,
+        label="deer",
+        scientific_name="Cervidae",
+        common_name="Deer",
+    )
+    db.commit()
+
+    headers, by_id = _files_rows(client, project.id)
+    for file_id in (f_empty.id, f_weak.id):
+        assert _species(headers, by_id[file_id]) == ["", "", ""]
+        assert by_id[file_id][headers.index("observation_type")] == "blank"
+
+
+def test_files_export_follows_the_verified_box(client, db):
+    """A human looked at the fox box, so it outranks a model that is merely
+    more confident about a deer. Same ordering the folder tree uses."""
+    project, _site, deployment = _build_simple_project(db)
+    f = make_file(db, deployment_id=deployment.id, observation_type="animal")
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=0.99,
+        label="deer",
+        scientific_name="Cervidae",
+        common_name="Deer",
+    )
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=0.30,
+        verified=True,
+        label="red fox",
+        scientific_name="Vulpes vulpes",
+        common_name="Red fox",
+    )
+    db.commit()
+
+    headers, by_id = _files_rows(client, project.id)
+    assert _species(headers, by_id[f.id]) == ["red fox", "Vulpes vulpes", "Red fox"]
+
+
+def test_files_export_reads_every_frame_of_a_video(client, db):
+    """Data exports are the complete record of a run, so the best-frame rule
+    that governs the media outputs does not apply here (see
+    ml/detection_visibility.py). Restricting to the visible frame would let
+    this column contradict the observation_type beside it, which is derived
+    over every frame."""
+    project, _site, deployment = _build_simple_project(db)
+    f = make_file(
+        db,
+        deployment_id=deployment.id,
+        file_type="video",
+        file_format="mp4",
+        best_frame_number=3,
+        observation_type="animal",
+    )
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=0.9,
+        frame_number=7,
+        label="deer",
+        scientific_name="Cervidae",
+        common_name="Deer",
+    )
+    make_detection(
+        db,
+        file_id=f.id,
+        category="person",
+        confidence=0.6,
+        frame_number=3,
+        scientific_name="Person",
+        common_name="Person",
+    )
+    db.commit()
+
+    headers, by_id = _files_rows(client, project.id)
+    assert _species(headers, by_id[f.id]) == ["deer", "Cervidae", "Deer"]
+
+
+def test_files_export_species_follow_the_export_scope(client, db):
+    """excluded_classes drops boxes from the export, but File.observation_type
+    is a stored column derived without exclusions, so the two can describe
+    different boxes when the exclusion list changed after analysis and nothing
+    reprocessed. That is deliberate: re-deriving observation_type here would
+    silently change a shipped column and make the export disagree with the app.
+    The species columns keep the more useful promise instead, that a non-empty
+    value always resolves to a row in detections.csv under the same file_id."""
+    project, _site, deployment = _build_simple_project(db)
+    project.excluded_classes = ["dog"]
+    f = make_file(db, deployment_id=deployment.id, observation_type="animal")
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=0.95,
+        label="dog",
+        scientific_name="Canis familiaris",
+        common_name="Dog",
+    )
+    make_detection(
+        db,
+        file_id=f.id,
+        category="person",
+        confidence=0.6,
+        scientific_name="Person",
+        common_name="Person",
+    )
+    db.commit()
+
+    headers, by_id = _files_rows(client, project.id)
+    assert by_id[f.id][headers.index("observation_type")] == "animal"
+    assert _species(headers, by_id[f.id]) == ["", "Person", "Person"]
+
+
 def test_event_id_is_blank_when_a_file_has_no_event(client, db):
     """`event_id` must never stand in a file id for a missing event: a
     consumer joining files.csv to counts.csv on event_id would match

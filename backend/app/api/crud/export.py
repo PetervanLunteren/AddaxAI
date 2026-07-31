@@ -35,6 +35,7 @@ from sqlalchemy.orm import Session, defer
 
 from app.api.crud.export_formats import slugify
 from app.db.sql_params import iter_id_chunks
+from app.ml.observation_type import strongest_passing_detection
 from app.models import (
     Deployment,
     Detection,
@@ -687,10 +688,28 @@ _FILES_HEADERS = [
     "relative_path",
     "absolute_path",
     "datetime",
-    # File-level rollup of what the file holds: animal / person / vehicle /
-    # blank (File.observation_type). Distinct from the per-box
+    # File-level rollup of what the file holds: the raw detector category
+    # of the file's strongest passing detection, or "blank"
+    # (File.observation_type). Distinct from the per-box
     # detection_category in detections.csv, and it uniquely carries "blank".
     "observation_type",
+    # The species of that same strongest box, plus its two display names.
+    # Deliberately NOT the highest-confidence label anywhere on the file:
+    # taking the best label instead of the best box is what filed a person
+    # in camouflage under "chimpanzee" (see DEVELOPERS.md "What a file is
+    # about"). Blank when the winning box carries no species, or when
+    # nothing passed at all.
+    #
+    # These are computed from the detections in *this export's scope*,
+    # while observation_type is read from the stored column, which is
+    # derived over every detection. An excluded_classes list that changed
+    # after analysis can therefore put the category and the species on
+    # different boxes; scoping buys the stronger promise that a non-empty
+    # species always resolves to a row in detections.csv under the same
+    # file_id. Pinned by test_files_export_species_follow_the_export_scope.
+    "classification_label",
+    "scientific_name",
+    "common_name",
     "is_verified",
     "notes",
 ]
@@ -713,7 +732,7 @@ def build_files_rows(
     event_map = _events_by_file(db, [f.id for f, _d, _s, _dets in grouped])
 
     rows: list[list[Any]] = []
-    for file_obj, deployment, _site, _detections in grouped:
+    for file_obj, deployment, _site, detections in grouped:
         event = event_map.get(file_obj.id)
         event_id = event.id if event else ""
         rows.append(
@@ -726,12 +745,46 @@ def build_files_rows(
                 file_obj.file_path,
                 _iso_datetime(file_obj.captured_at_local, tz_name),
                 file_obj.observation_type or "",
+                *_strongest_species_cells(project, detections),
                 "TRUE" if file_obj.verified else "FALSE",
                 file_obj.notes or "",
             ]
         )
 
     return _FILES_HEADERS, rows
+
+
+def _strongest_species_cells(
+    project: Project,
+    detections: Sequence[tuple[Detection, LabelTaxonomy | None]],
+) -> list[str]:
+    """`[classification_label, scientific_name, common_name]` of the file's
+    strongest passing detection, or three blanks when nothing passes.
+
+    The threshold is passed explicitly even though ``get_scoped_detection_rows``
+    already applied the same predicate in SQL. Re-applying it costs one pass
+    over a handful of already-loaded objects and keeps these columns tied to
+    the same threshold ``observation_type`` uses, so a later change to that
+    query's ``apply_threshold`` cannot silently desynchronise the two.
+
+    Names come off the detection, not off the joined ``LabelTaxonomy``. That is
+    the convention ``_detection_cells`` uses, so a Files row and its
+    detections.csv rows read identically with no join. (The other convention in
+    this module, ``_scientific_name``, blanks non-animals and reads the taxonomy
+    row; it serves the Camtrap and spatial builders.) The practical effect is
+    that a box with no species still names itself: ``Person``, ``Vehicle``,
+    ``Animal``, per ``resolve_label_names``.
+    """
+    best = strongest_passing_detection(
+        (det for det, _tax in detections), project.counting_threshold
+    )
+    if best is None:
+        return ["", "", ""]
+    return [
+        best.label or "",
+        best.scientific_name or "",
+        best.common_name or "",
+    ]
 
 
 # ---------------------------------------------------------------------------

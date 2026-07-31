@@ -1,4 +1,10 @@
-"""Single source of truth for a file's ``observation_type``.
+"""Single source of truth for which detection a file is about.
+
+Two functions, one rule. ``strongest_passing_detection`` picks the
+detection; ``derive_observation_type`` reads that detection's category.
+Anything that needs another attribute of the deciding box (the Files
+export needs its species) calls the first one, so the ordering rule
+still has exactly one implementation.
 
 ``observation_type`` is a denormalised summary of a file's *trusted*
 content: **the raw detector category of its single strongest passing
@@ -41,7 +47,7 @@ endpoints, and the threshold-change hook all agree.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Protocol
+from typing import Protocol, TypeVar
 
 # A file with no trusted content. Not a detector category, so it can
 # never collide with one.
@@ -54,26 +60,53 @@ class _DetectionLike(Protocol):
     verified: bool
 
 
+# Generic in, generic out: the caller gets back one of the objects it
+# passed in, not the bare Protocol, so it can read attributes the
+# Protocol does not declare (``label``, ``common_name``, ...).
+_D = TypeVar("_D", bound=_DetectionLike)
+
+
+def strongest_passing_detection(
+    detections: Iterable[_D], threshold: float
+) -> _D | None:
+    """The single detection a file is about, or ``None`` when none passes.
+
+    ``detections`` is any iterable of objects exposing ``category``,
+    ``confidence``, and ``verified``. A detection passes when it clears
+    ``threshold`` or a human has verified it.
+
+    The sort key is ``(verified, confidence, category)``. The category is
+    in there only to keep the result stable when two detections tie on
+    both of the first two. It is not enough to make the *object* unique:
+    two equally strong boxes of the same category with different species
+    still tie, and the first one in iteration order wins. A caller that
+    needs a stable pick therefore has to pass a stably ordered sequence.
+    ``build_files_rows`` does, via its query's ``ORDER BY ... Detection.id``.
+
+    The detection id is deliberately not in the key. Callers pass
+    SQLAlchemy Rows selected without it (``output_preview``), so adding it
+    to the Protocol would break them for a tie-break nobody can observe in
+    the category.
+    """
+    best: _D | None = None
+    best_key: tuple[bool, float, str] | None = None
+    for det in detections:
+        if not (det.confidence >= threshold or det.verified):
+            continue
+        key = (bool(det.verified), float(det.confidence), det.category)
+        if best_key is None or key > best_key:
+            best = det
+            best_key = key
+    return best
+
+
 def derive_observation_type(
     detections: Iterable[_DetectionLike], threshold: float
 ) -> str:
     """The file's ``observation_type`` from its detections at ``threshold``.
 
-    ``detections`` is any iterable of objects exposing ``category``,
-    ``confidence``, and ``verified``. Returns the raw category of the
-    strongest passing detection, or ``"blank"`` when nothing passes.
-
-    The sort key is ``(verified, confidence, category)``. The category
-    is in there only to make the result deterministic when two
-    detections tie on both of the first two: callers pass an unordered
-    ORM collection, so without it the same file could derive differently
-    between two runs.
+    The raw category of the strongest passing detection, or ``"blank"``
+    when nothing passes.
     """
-    best: tuple[bool, float, str] | None = None
-    for det in detections:
-        if not (det.confidence >= threshold or det.verified):
-            continue
-        key = (bool(det.verified), float(det.confidence), det.category)
-        if best is None or key > best:
-            best = key
-    return best[2] if best is not None else BLANK
+    best = strongest_passing_detection(detections, threshold)
+    return best.category if best is not None else BLANK

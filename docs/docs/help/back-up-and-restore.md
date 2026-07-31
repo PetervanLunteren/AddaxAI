@@ -15,13 +15,15 @@ The app copies the database into `backups/` once a day when it starts, before an
 
 ## Make one yourself
 
-Use File > Back up database. You can save into the backups folder, or into a folder you pick yourself, an external drive for example. Backups you make yourself are never deleted automatically, so this is also the way to move your work to another computer or hand it to a colleague. It is worth doing before anything big, like a re-run or a settings change across a whole project.
+Use File > Back up database. You can save into the backups folder, or into a folder you pick yourself, an external drive for example. Backups you make yourself are never deleted automatically, so this is also the way to move your work to another computer or hand it to a colleague.
 
 ## Go back to an earlier copy
 
 Use File > Restore from backup. You get a list of restore points, newest first, each with its date and the reason it exists: a daily backup, one saved before an app update, one saved before an earlier restore, or one you saved yourself. Pick one, type RESTORE to confirm, and the app restarts to swap it in. If your copy is in a folder of your own, use restore from a file instead.
 
 Two things to know before you do it. A restore is reversible, because AddaxAI saves the current database as a backup first. But a restore is a rollback, not a merge: everything you did after that copy was taken is gone. So pick the newest point that still has what you need.
+
+<img src="/img/restore-backup.webp" alt="The restore window, listing dated restore points with the reason each one exists, and a box to type RESTORE" style={{maxWidth: '440px', width: '100%', display: 'block'}} />
 
 ## If the app will not open
 

@@ -371,7 +371,7 @@ One rule, everywhere:
 
 > A file is its **single strongest passing detection**. Strongest is verified first, then detector confidence. `File.observation_type` is that detection's raw category; the file's folder is that detection's species if it has one, else its category. Nothing passes, the file is `blank`.
 
-`derive_observation_type` in `backend/app/ml/observation_type.py` is the only implementation. It knows no category vocabulary, needs no classifier, and works for any detector.
+`backend/app/ml/observation_type.py` is the only implementation, and it is two functions: `strongest_passing_detection` picks the box, `derive_observation_type` reads that box's category. Anything needing another attribute of the deciding box calls the first one rather than re-deriving the ordering. The Files export does exactly that, carrying `classification_label` / `scientific_name` / `common_name` off the same box `observation_type` came from. The rule knows no category vocabulary, needs no classifier, and works for any detector.
 
 **Why not a category priority.** Until 2026-07-31 this ranked categories instead (animal > human > vehicle), so one animal box at 0.21 beat thirty person boxes at 0.95. A test clip of a person in camouflage inspecting a camera produced 31 person boxes at 0.65 to 0.95 and one false-positive animal box that SpeciesNet called "chimpanzee" at 29%. Priority made the file an animal, that lone box was then the only labelled detection so it named the folder, and the run wrote `addaxai-media/chimpanzee/IMG_0001_still.jpg` containing a picture correctly labelled `Person 73%`. Ranking categories cannot be right when the thing being ranked is the detector's own guess about the category.
 

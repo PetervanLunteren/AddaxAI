@@ -76,6 +76,14 @@ def write_tables_csv(
     scoped = export_crud.get_scoped_detection_rows(
         db, project, apply_threshold=False
     )
+    # The files table is deliberately NOT unthresholded the way the
+    # detections table above is. Its observation_type and species columns
+    # both describe the file's strongest *passing* detection, so dropping
+    # the threshold here would make a file read as an animal that the app
+    # itself calls blank. The visible effect is that a file whose every box
+    # sits below the threshold has empty species columns while
+    # addaxai-detections.csv still lists those boxes. That is the two grains
+    # answering two different questions, not a bug to fix.
     files_headers, files_rows = folder_run_table(
         *export_crud.build_files_rows(db, project)
     )

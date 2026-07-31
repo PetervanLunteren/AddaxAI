@@ -357,8 +357,12 @@ def run_model(
         env_manager=EnvironmentManager(),
     )
     # batch_size=None lets the worker pick its own default, which is the
-    # path a real analysis takes.
-    results, class_names, device, _best = model.classify_detections(items)
+    # path a real analysis takes. scoring_detections is empty because the
+    # shared test set is images only, so there is no video to best-frame
+    # score; the worker only refuses a payload carrying videos without it.
+    results, class_names, device, _best = model.classify_detections(
+        items, scoring_detections={}
+    )
 
     result.device = device
     result.notes.extend(_check_taxonomy_joins(model_dir, class_names))

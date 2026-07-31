@@ -109,3 +109,5 @@ skills/send-draft-model/
 # reads it at runtime. Untagged builds never rewrite it, so a fresh
 # clone must contain it or the build fails.
 
+# Personal to-do list
+TODO.md

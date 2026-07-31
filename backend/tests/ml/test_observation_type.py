@@ -7,7 +7,10 @@ passing detection, strongest being verified first then confidence, and
 
 from dataclasses import dataclass
 
-from app.ml.observation_type import derive_observation_type
+from app.ml.observation_type import (
+    derive_observation_type,
+    strongest_passing_detection,
+)
 
 
 @dataclass
@@ -15,6 +18,9 @@ class _Det:
     category: str
     confidence: float
     verified: bool = False
+    # Not part of the Protocol. Only here so the picking tests below can
+    # tell two otherwise identical detections apart.
+    label: str | None = None
 
 
 def test_no_detections_is_blank():
@@ -94,6 +100,59 @@ def test_unknown_category_is_passed_through():
 def test_strongest_wins_across_a_novel_vocabulary():
     dets = [_Det("fish", 0.4), _Det("shark", 0.8), _Det("turtle", 0.6)]
     assert derive_observation_type(dets, 0.2) == "shark"
+
+
+# ── Picking the detection, not just reading its category ─────────────
+#
+# The Files export needs the deciding box itself so it can carry that
+# box's species. These pin that the picker and the category reading stay
+# one rule.
+
+
+def test_strongest_passing_detection_returns_the_object():
+    weak = _Det("animal", 0.6, label="fox")
+    strong = _Det("animal", 0.9, label="deer")
+    assert strongest_passing_detection([weak, strong], 0.5) is strong
+
+
+def test_strongest_passing_detection_is_none_when_nothing_passes():
+    assert strongest_passing_detection([], 0.5) is None
+    assert strongest_passing_detection([_Det("animal", 0.33)], 0.5) is None
+
+
+def test_strongest_passing_detection_prefers_verified():
+    """Object-level mirror of test_verified_beats_higher_confidence, so the
+    export cannot report the machine's box over the one a human confirmed."""
+    machine = _Det("animal", 0.99, label="deer")
+    human = _Det("animal", 0.30, verified=True, label="fox")
+    assert strongest_passing_detection([machine, human], 0.5) is human
+
+
+def test_derive_observation_type_reads_the_picked_detection():
+    """The DRY pin. If these two ever disagree, a file's category and its
+    species describe different boxes and the export contradicts itself."""
+    cases = [
+        [],
+        [_Det("animal", 0.33)],
+        [_Det("animal", 0.9)],
+        [_Det("person", 0.95), _Det("animal", 0.80)],
+        [_Det("animal", 0.99), _Det("person", 0.30, verified=True)],
+        [_Det("fish", 0.4), _Det("shark", 0.8), _Det("turtle", 0.6)],
+    ]
+    for dets in cases:
+        best = strongest_passing_detection(dets, 0.5)
+        expected = "blank" if best is None else best.category
+        assert derive_observation_type(dets, 0.5) == expected
+
+
+def test_exact_tie_takes_the_first_in_iteration_order():
+    """Two boxes tying on verified, confidence AND category still tie, so
+    the caller owns the ordering. build_files_rows passes rows ordered by
+    Detection.id, which makes the pick stable for one database."""
+    first = _Det("animal", 0.9, label="deer")
+    second = _Det("animal", 0.9, label="fox")
+    assert strongest_passing_detection([first, second], 0.5) is first
+    assert strongest_passing_detection([second, first], 0.5) is second
 
 
 # ── Threshold lookups refuse to guess ────────────────────────────────

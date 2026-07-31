@@ -13,7 +13,7 @@ AddaxAI exports four tables. Which one you want depends on the question you are 
 |---|---|---|---|
 | Counts | one species in one event | ecological analysis. Start here | Projects |
 | Detections | one box on one photo | model checking, bounding boxes | Both |
-| Files | one photo or video | file lists, finding blanks | Both |
+| Files | one photo or video | one label per file, file lists, finding blanks | Both |
 | Deployments | one camera period | effort, trap nights, locations | Projects |
 
 ## Counts
@@ -82,11 +82,24 @@ One row per photo or video, whether or not anything was found.
 | `relative_path` | Path inside the deployment folder |
 | `absolute_path` | Full path on the machine that ran the analysis |
 | `datetime` | Capture time, camera local time. Empty if the file had no readable date |
-| `observation_type` | What the file holds overall: animal, human, vehicle or blank |
+| `observation_type` | What the file holds overall: whatever the detector called it, so animal, person or vehicle for MegaDetector, or blank |
+| `classification_label` | The species on the file, as the model names it. Empty for a person, a vehicle, or an animal that was never classified |
+| `scientific_name` | Scientific name for that species |
+| `common_name` | Common name for that species |
 | `is_verified` | TRUE if every box on the file was checked |
 | `notes` | Your own notes |
 
 `observation_type` is the only place "blank" appears. Use it to count empty files.
+
+### The one label a file gets
+
+`observation_type`, `classification_label`, `scientific_name` and `common_name` all describe the same thing: the single strongest box on the file. Strongest means a box you checked yourself first, then the highest detection confidence. It is the same rule that names the folders when you separate your files into folders.
+
+That is worth knowing, because the obvious alternative is to report the most confident species anywhere on the file, which sounds the same and is not. A photo of a person sometimes holds one weak false box that the species model still guesses at. Reporting the best species would label that photo with the guess. Reporting the strongest box labels it a person, which is what the photo shows.
+
+So on a file whose strongest box is a person or a vehicle, `classification_label` is empty and the two name columns read `Person` or `Vehicle`. On an animal that was never classified they read `Animal`. On a blank file all three are empty and `observation_type` reads `blank`. `common_name` is therefore the column to use when you want exactly one label per file, filled in on every row that holds something.
+
+Two smaller things. On a video the strongest box can sit on a different frame than the still AddaxAI saved, so the species can name something you do not see in that one picture, and it can differ from the folder that video was copied into. And whatever you find in `classification_label` always has a matching row in the detections table under the same `file_id`, so you can go and look at the box it came from.
 
 ## Deployments
 

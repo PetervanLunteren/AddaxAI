@@ -65,8 +65,13 @@ class File(Base):
         JSON, nullable=True
     )  # Full EXIF as JSON blob
 
-    # Observation type (Camtrap DP observationType) - summary for filtering/browsing
-    # Priority derived from detections: animal > human > vehicle > blank > unclassified
+    # What the file is about: the raw detector category of its single
+    # strongest passing detection, else "blank". Strongest is verified
+    # first, then detector confidence. Derived by
+    # app/ml/observation_type.py, which is the only implementation of that
+    # rule -- do not re-derive it here or anywhere else. Until 2026-07-31
+    # this ranked categories instead (animal > human > vehicle), which
+    # filed a person in camouflage as a chimpanzee off one 29% box.
     observation_type: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="unclassified"
     )
