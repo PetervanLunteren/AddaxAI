@@ -63,17 +63,20 @@ that `src/data/models.json` is missing, run `npm run sync-models` once.
 
 `scripts/fetch-species.mjs` downloads each classification model's
 `taxonomy.csv` from HuggingFace and writes the species lists to
-`src/data/species.json`. Run it by hand when the catalogue changes:
+`src/data/species.json`. It runs on the same `prestart` / `prebuild` hooks, so
+adding a model to the catalogue is all you have to do: the next build picks up
+its species by itself.
 
-```bash
-npm run fetch-species
-```
+That output **is** committed, unlike `models.json`, because it is also the
+fallback. If HuggingFace is unreachable the script keeps the committed list for
+each model it could not refresh, prints a `::warning::` that GitHub Actions
+shows in the run summary, and exits 0. An outage therefore never blocks a
+deploy and never empties the table. A model with no data at all, new and
+unfetchable, is listed in `meta.unavailable` and the table says its species
+list could not be fetched.
 
-That output **is** committed, unlike `models.json`. This data only exists on
-the network, and putting 29 HuggingFace requests in the build would mean an
-outage there blocks publishing the docs. So it is fetched rarely and read
-locally. The script writes nothing if any model fails, rather than silently
-shipping a shorter list.
+Because the committed copy is the safety net, commit what a good run writes
+now and then, so the fallback does not drift far behind the catalogue.
 
 ## Build
 

@@ -52,9 +52,15 @@ const REGIONS: string[] = Array.from(
 ).sort();
 
 // Species a classification model can predict, from src/data/species.json
-// (see scripts/fetch-species.mjs). Underscores are how the model files spell
-// them; readers should not have to decode that.
-const SPECIES = speciesData as Record<string, string[]>;
+// (see scripts/fetch-species.mjs, which refreshes it on every build).
+// Underscores are how the model files spell them; readers should not have to
+// decode that. `unavailable` lists models whose list could not be fetched and
+// had no committed copy to fall back on, so the panel can say so rather than
+// look as though the model knows nothing.
+const SPECIES = (speciesData as { species: Record<string, string[]> }).species;
+const UNAVAILABLE = new Set(
+  (speciesData as { meta?: { unavailable?: string[] } }).meta?.unavailable ?? [],
+);
 
 /** How many species to print before collapsing the tail into a count. */
 const SPECIES_SHOWN = 60;
@@ -238,7 +244,14 @@ export default function ModelZoo(): ReactElement {
                         {row.description ? <p>{row.description}</p> : null}
                         {(() => {
                           const species = SPECIES[row.model_id];
-                          if (!species || species.length === 0) return null;
+                          if (!species || species.length === 0) {
+                            return UNAVAILABLE.has(row.model_id) ? (
+                              <p className={styles.speciesMissing}>
+                                The species list could not be fetched for this
+                                model. Open it in the app to see what it knows.
+                              </p>
+                            ) : null;
+                          }
                           const shown = species.slice(0, SPECIES_SHOWN);
                           const rest = species.length - shown.length;
                           return (

@@ -5,8 +5,8 @@
   "description": "AddaxAI documentation site (Docusaurus)",
   "scripts": {
     "sync-models": "node scripts/sync-models.mjs",
-    "prestart": "npm run sync-models",
-    "prebuild": "npm run sync-models",
+    "prestart": "npm run sync-models && npm run fetch-species",
+    "prebuild": "npm run sync-models && npm run fetch-species",
     "start": "docusaurus start",
     "build": "docusaurus build",
     "serve": "docusaurus serve",

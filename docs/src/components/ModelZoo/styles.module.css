@@ -186,6 +186,13 @@
   margin-bottom: 0.2rem;
 }
 
+.speciesMissing {
+  margin: 0 0 0.85rem;
+  font-size: 0.85rem;
+  color: var(--ifm-color-emphasis-700);
+  font-style: italic;
+}
+
 .speciesList {
   margin: 0;
   max-width: 70ch;
