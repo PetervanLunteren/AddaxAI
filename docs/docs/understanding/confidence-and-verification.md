@@ -5,37 +5,37 @@ title: Confidence and verification
 
 # Confidence and verification
 
-The AI gives two confidence scores, both between 0 and 1. The detector says how sure it is that the box holds an animal. The species model then says how sure it is about the species. This page explains where those scores are used, and what happens when you correct something.
+The AI gives two confidence scores, both between 0 and 1. The detector says how sure it is that the box holds an animal. The species model then says how sure it is about the species. You can see both on a marked-up image: this box is 90% animal and 98% coyote.
 
-The three settings below all work on the first one, the detector's score. There is no setting yet that filters on species confidence.
+This page explains where those scores are used, and what happens when you correct something. Both settings below work on the first one, the detector's score.
 
-## Three different numbers
+![A coyote at night, with the box labelled Animal 90% and Coyote 98%](/img/two-confidences.webp)
 
-People often think there is one confidence setting. There are three, and they do different jobs.
+<p style={{fontSize: '0.75rem', color: 'var(--ifm-color-emphasis-600)', marginTop: '-0.5rem'}}>
+Photo from the <a href="https://lila.science/datasets/ena24detection">ENA24-detection dataset</a>, used under the Community Data License Agreement (permissive variant). Please cite: Yousif H, Kays R, Zhihai H. Dynamic Programming Selection of Object Proposals for Sequence-Level Animal Species Classification in the Wild. IEEE Transactions on Circuits and Systems for Video Technology, 2019.
+</p>
 
-### 1. What gets stored
+## Two settings
 
-The detector keeps everything it finds above 0.005, which is nearly everything, including very weak boxes. You cannot change this, and you do not need to. It means nothing is thrown away, so you can always lower a threshold later and see more without running the AI again.
+They do different jobs, and it is worth knowing which is which.
 
-### 2. Which boxes get a species (classification gate, default 0.1)
+### 1. Which boxes get a species (classification gate, default 0.1)
 
-Only animal boxes above this score are sent to the species model, so weak boxes are left as plain "animal". The same score decides which boxes get an embedding, so a box below the gate also stays out of the similarity sort and never gets a suggestion. Raise it to save time on a big folder, or lower it if you think real animals are being missed. This one applies while the AI runs, so changing it only affects new analyses.
+Every animal the detector finds is stored, but not every one is sent to the species model. Only boxes above this score get a species, so weaker ones stay as plain "animal". The same score decides which boxes get an embedding, so a box below the gate also stays out of the similarity sort and never gets a suggestion. Raise it to save time on a big folder, or lower it if you think real animals are being missed. This one applies while the AI runs, so changing it only affects new analyses.
 
-### 3. What you see and what gets counted (counting threshold, default 0.2)
+### 2. What you see and what gets counted (counting threshold, default 0.2)
 
-This is the one you will actually use. Detections below it are hidden from the grid, the charts and the counts. Change it any time: nothing is deleted, the app just shows more or less. Leave it at the default while you check labels.
+This is the one most people are looking for. Detections below it are hidden from the grid, the charts and the counts. Change it any time: nothing is deleted, the app just shows more or less, so you can always lower it later and see more without running the AI again. Leave it at the default while you check labels.
 
 ## So what does species confidence do?
 
-Low species confidence does not hide a detection, it changes the label. The app falls back to a broader group, for example "felidae" instead of a specific cat. See [how labels get cleaned up](./label-cleanup.md).
+Low species confidence does not hide a detection, it changes the label. The app falls back to a broader group, for example "felidae" instead of a specific cat. You can turn this off in the project settings, and then you keep the model's best species guess. See [how labels get cleaned up](./label-cleanup.md).
+
+You can still filter on it while you work. Under More filters on the Labels page there are two confidence sliders, one for the detector's score and one for the species score. They only change what the grid shows you at that moment. Your data, your counts and your exports stay as they are.
 
 ## Verified detections always count
 
 Anything you verified always counts, whatever its score. If you confirm a bobcat at 0.04 confidence, it stays in your counts and charts even though the counting threshold is 0.2. Your judgement beats the model's score, and this is why your numbers do not drop when you raise the threshold after checking things.
-
-## Two kinds of checking
-
-The app tracks two separate things, and the dashboard shows both. **Labels verified** means you looked at a detection and either accepted the species or changed it, counted per file. **Counts confirmed** means you looked at an event and signed off how many animals were there, counted per event. You can do one without the other: checking labels does not confirm counts.
 
 ## What happens when you correct a label
 
