@@ -43,7 +43,8 @@ const TYPE_LABEL: Record<ModelType, string> = {
 
 const data = modelsData as { models: Record<ModelType, RawModel[]> };
 
-const ALL_ROWS: Row[] = (["det", "cls", "emb"] as ModelType[]).flatMap((type) =>
+// Classification first: it is the choice most people come here to make.
+const ALL_ROWS: Row[] = (["cls", "det", "emb"] as ModelType[]).flatMap((type) =>
   (data.models[type] ?? []).map((m) => ({ ...m, type })),
 );
 
@@ -114,12 +115,12 @@ export default function ModelZoo(): ReactElement {
 
   const typeButtons: Array<[ModelType | "all", string]> = [
     ["all", "All"],
-    ["det", "Detection"],
     ["cls", "Classification"],
+    ["det", "Detection"],
     ["emb", "Embedding"],
   ];
 
-  const columnCount = regionApplies ? 7 : 6;
+  const columnCount = regionApplies ? 5 : 4;
 
   function toggle(key: string): void {
     setExpanded((prev) => {
@@ -136,7 +137,7 @@ export default function ModelZoo(): ReactElement {
         <input
           type="search"
           className={styles.search}
-          placeholder="Search models, developers, regions…"
+          placeholder="Search species, models, developers, regions…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search models"
@@ -190,8 +191,6 @@ export default function ModelZoo(): ReactElement {
               <th>Developer</th>
               {regionApplies ? <th>Region</th> : null}
               <th>Summary</th>
-              <th>Min app</th>
-              <th>Info</th>
             </tr>
           </thead>
           <tbody>
@@ -226,16 +225,6 @@ export default function ModelZoo(): ReactElement {
                   <td>{row.developer ?? "—"}</td>
                   {regionApplies ? <td>{row.region ?? "—"}</td> : null}
                   <td className={styles.summary}>{row.description_short ?? "—"}</td>
-                  <td>{row.min_app_version ?? "—"}</td>
-                  <td>
-                    {row.info_url ? (
-                      <a href={row.info_url} target="_blank" rel="noreferrer">
-                        Link
-                      </a>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
                 </tr>,
                 isOpen ? (
                   <tr key={`${key}-detail`} className={styles.detailRow}>
@@ -272,6 +261,16 @@ export default function ModelZoo(): ReactElement {
                             <>
                               <dt>Owner</dt>
                               <dd>{row.owner}</dd>
+                            </>
+                          ) : null}
+                          {row.info_url ? (
+                            <>
+                              <dt>More info</dt>
+                              <dd>
+                                <a href={row.info_url} target="_blank" rel="noreferrer">
+                                  {row.info_url}
+                                </a>
+                              </dd>
                             </>
                           ) : null}
                           {row.license ? (
