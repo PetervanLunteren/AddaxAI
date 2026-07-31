@@ -98,6 +98,37 @@
   border-bottom: none;
 }
 
+/* The whole name cell is the disclosure control, so the hit target is
+   large and the caret is not a tiny separate button. */
+.nameButton {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.nameButton:hover .name {
+  color: var(--ifm-color-primary);
+}
+
+.caret,
+.caretOpen {
+  display: inline-block;
+  color: var(--ifm-color-emphasis-600);
+  transition: transform 0.15s ease;
+}
+
+.caretOpen {
+  transform: rotate(90deg);
+}
+
 .name {
   display: flex;
   gap: 0.4rem;
@@ -111,10 +142,13 @@
 }
 
 .summary {
-  min-width: 220px;
+  min-width: 200px;
   color: var(--ifm-color-emphasis-800);
 }
 
+/* Type badges are deliberately one neutral style. The label already says
+   which type it is, and colour-coding here read as a quality ranking
+   because the palette's three accents mean bad / middle / good. */
 .badge {
   display: inline-block;
   padding: 0.15rem 0.5rem;
@@ -122,25 +156,41 @@
   font-size: 0.72rem;
   font-weight: 600;
   white-space: nowrap;
-  color: #fff;
+  background: var(--ifm-color-emphasis-200);
+  color: var(--ifm-color-emphasis-800);
 }
 
-.badge_det {
-  background: #71b7ba;
+.rowOpen td {
+  border-bottom: none;
 }
 
-.badge_cls {
-  background: #0f6064;
+.detailRow td {
+  background: var(--ifm-color-emphasis-100);
+  padding: 0 0.75rem 0.9rem;
 }
 
-.badge_emb {
-  background: #882000;
+.detail p {
+  margin: 0 0 0.75rem;
+  max-width: 70ch;
+  color: var(--ifm-color-emphasis-800);
 }
 
-.links {
-  display: inline-flex;
-  gap: 0.5rem;
-  white-space: nowrap;
+.meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.meta dt {
+  font-weight: 600;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .empty {

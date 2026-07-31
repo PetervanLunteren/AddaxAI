@@ -109,7 +109,7 @@ const config: Config = {
           items: [
             { label: "Start here", to: "/docs/start-here/what-is-addaxai" },
             { label: "Understanding your results", to: "/docs/understanding/detections-events-observations" },
-            { label: "Export columns", to: "/docs/reference/export-columns" },
+            { label: "Exports", to: "/docs/reference/exports" },
             { label: "FAQ", to: "/docs/troubleshooting/faq" },
           ],
         },

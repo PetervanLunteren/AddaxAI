@@ -29,7 +29,7 @@ Smoothing works the other way too. If most of an event is confidently "lion" and
 
 ## What this means for you
 
-Two things follow from the three steps above. Your own corrections are never touched, because smoothing and rollup skip anything you verified, so your label always wins. And the AI's score is measured after cleanup: the confusion matrix compares your confirmed label against the label the app showed you, which is the cleaned-up one, not the raw model output. See [confidence and verification](./confidence-and-verification.md).
+Two things follow from the three steps above. Your own corrections are never touched, because smoothing and rollup skip anything you verified, so your label always wins. And the AI's score is measured after cleanup: the confusion matrix compares your verified label against the label the app showed you, which is the cleaned-up one, not the raw model output. See [confidence and verification](./confidence-and-verification.md).
 
 ## Changing it
 

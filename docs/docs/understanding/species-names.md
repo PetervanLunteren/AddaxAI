@@ -7,17 +7,22 @@ title: Species names and taxonomy
 
 ## Two names for the same animal
 
-Every species has a common name and a scientific name. "Virginia opossum" and *Didelphis virginiana* are the same animal. You can switch which one the app shows, and the choice is yours alone: it changes the display, not the data. Both names go into the exports, in separate columns. Use scientific names if you will publish, or if you work across languages. Common names are easier to scan while checking photos.
+Every species has a common name and a scientific name. "Virginia opossum" and *Didelphis virginiana* are the same animal. You choose which one the app shows under View, then Species names. It starts on common names. The choice changes the display only, never the data, and both names go into the exports in separate columns.
 
 ## Labels are grouped into a tree
 
 Species are organised the standard way, from broad to specific:
 
-```
-class > order > family > genus > species
+```mermaid
+flowchart LR
+  C[Class] --> O[Order] --> F[Family] --> G[Genus] --> S[Species]
+  classDef box fill:#0f6064,stroke:#0a4345,color:#ffffff;
+  class C,O,F,G,S box;
 ```
 
 So a red fox sits under mammalia > carnivora > canidae > vulpes > vulpes vulpes. The filter on the Labels and Insights pages uses this tree, so picking "carnivora" selects every carnivore at once, instead of ticking twenty species by hand.
+
+<img src="/img/label-filter-tree.webp" alt="The label filter, showing species nested under genus, family, order and class" style={{maxWidth: '560px', width: '100%', display: 'block'}} />
 
 ## When you see a group instead of a species
 
@@ -27,11 +32,19 @@ Sometimes a label is a family or an order rather than a species, for example "fe
 
 The box was found but never given a species. Two reasons:
 
-- the project has no species model, only a detector
-- the detection scored below the classification gate, so it was never sent to the species model
+1. The project has no species model, only a detector.
+2. The detection scored below the classification gate, so it was never sent to the species model.
 
 These still count as animals in the totals. They just have no species. See [confidence and verification](./confidence-and-verification.md).
 
-## Which species a model can recognise
+## Adding your own label
 
-Every model has its own fixed list, so a European model does not know African species. Check the [model zoo](../reference/model-zoo.mdx) for what each one covers. Some models also use the country you set for the project, to rule out species that do not occur there, so set the country correctly or you may lose valid species.
+Every model recognises a fixed list of species, which you can look up in the [model zoo](../reference/model-zoo.mdx). If the animal you need is not on that list, you can add it yourself. On the Labels page, select the detections, start a relabel, and type the name. When nothing matches, the picker offers to add it as a new label.
+
+<img src="/img/add-label-search.webp" alt="Typing a name in the relabel picker, with the option to add it as a new label" style={{maxWidth: '520px', width: '100%', display: 'block', marginBottom: '1.5rem'}} />
+
+Next you can give it a taxonomy, which is optional. The GBIF lookup searches an online species database and fills in the class, order, family and genus for you, so your label slots into the tree next to everything else and the group filters pick it up. Scientific names find the best matches. A label like "bait" does not need a taxonomy at all.
+
+<img src="/img/add-label-gbif.webp" alt="The add new label window, looking up reindeer in GBIF and setting its taxonomy" style={{maxWidth: '460px', width: '100%', display: 'block', marginBottom: '1.5rem', borderRadius: '12px', border: '1px solid var(--ifm-color-emphasis-200)', boxShadow: '0 6px 24px rgba(0, 0, 0, 0.08)'}} />
+
+Your label behaves like any other from then on: you can filter on it, count it, and export it. The one thing it does not do is teach the model. The AI cannot predict a label it was never trained on, so on the next analysis you will have to apply it by hand again.

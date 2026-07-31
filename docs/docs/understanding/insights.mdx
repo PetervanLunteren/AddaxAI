@@ -5,9 +5,11 @@ title: The charts explained
 
 import AppShot from "@site/src/components/AppShot";
 
-# Insights
+# The charts explained
 
-Insights are the in-depth views inside a project. They go deeper than the Dashboard, and each one is a scientifically grounded chart with its own filters. The screenshots below come from a demo survey of 12 camera sites across Pennsylvania.
+A project turns your results into charts. The Dashboard gives you the overview, and the Insights pages go deeper, each with its own filters.
+
+The screenshots below come from a demo survey of 12 camera sites across Pennsylvania. The photos are real, from the [ENA24 dataset](https://lila.science/datasets/ena24detection/), but we edited the capture times in the files to build a survey that spreads over a season and several cameras. So the animals and the species are genuine, while the dates, trends and trap nights are made up for the demo.
 
 ## Dashboard
 
@@ -17,13 +19,15 @@ The Dashboard is the quick overview: how many sites, deployments, trap nights, a
 
 ## Map
 
-Each camera site on a map, coloured by its observation rate per 100 trap nights. You can switch how the sites are drawn: one marker per site, nearby sites merged into a hex grid, or nearby sites grouped into clusters. Sites without coordinates do not appear.
+Each camera site on a map, coloured by its observation rate per 100 trap nights. You can switch how the sites are drawn: one marker per site, nearby sites merged into a hex grid, or nearby sites grouped into clusters. Sites without coordinates do not appear. Map style changes the background: Light, Satellite, or OpenStreetMap. Satellite is the useful one when you want to see the habitat around a camera, like where the forest gives way to open ground.
 
-<AppShot name="map" />
+<AppShot name="mapSatellite" />
 
 ## Activity overlap
 
 Compare the daily activity of one or two species. With two species selected, the chart also shows the overlap coefficient and labels each species as diurnal, nocturnal, crepuscular, or cathemeral. In the demo, the opossum comes out nocturnal and the chipmunk diurnal.
+
+You can read the day on two different clocks. Clock time is the plain 24 hour day. Sun time stretches each day so that sunrise and sunset line up across the whole survey. Use it when your data spans seasons or sites: 06:00 in December and 06:00 in June are not the same moment relative to dawn, and clock time would blur that difference away. It needs site coordinates to work out the sun.
 
 <AppShot name="activity" />
 
@@ -33,9 +37,9 @@ One bar per deployment, showing when each camera was active and what it recorded
 
 <AppShot name="timeline" />
 
-## Confusion matrix and per-class performance
+## Confusion matrix and class performance
 
-Where you have confirmed labels, these two views compare the AI's labels against your confirmed ones. The confusion matrix shows where the AI mixes up species. The per-class view shows accuracy per species.
+Where you have verified labels, these two views compare the AI's labels against your verified ones. The confusion matrix shows where the AI mixes up species. Class performance shows accuracy per species. Both only use detections you verified, so they stay empty until you have checked some labels.
 
 <AppShot name="confusionMatrix" />
 

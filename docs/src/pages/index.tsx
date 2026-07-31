@@ -53,10 +53,10 @@ const SECTIONS: Card[] = [
   },
   {
     title: "Reference",
-    body: "Look things up: every column in the exports, every model, and what each setting changes.",
-    to: "/docs/reference/export-columns",
+    body: "Look things up: what is in every export, every model, and what each setting changes.",
+    to: "/docs/reference/exports",
     links: [
-      { label: "Export columns", to: "/docs/reference/export-columns" },
+      { label: "Exports", to: "/docs/reference/exports" },
       { label: "Model zoo", to: "/docs/reference/model-zoo" },
       { label: "Settings", to: "/docs/reference/settings" },
       { label: "Where your files live", to: "/docs/reference/file-locations" },

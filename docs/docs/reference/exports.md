@@ -1,30 +1,24 @@
 ---
 sidebar_position: 1
-title: Export columns
+title: Exports
 ---
 
-# Export columns
+# Exports
 
-What every column in the CSV and XLSX files means. The two formats hold the same columns; XLSX just puts each table on its own sheet.
+What is in the files AddaxAI writes. Most of this page covers the columns in the CSV and XLSX tables, which hold the same columns either way; XLSX just puts each table on its own sheet. The recognition file is described at the end.
 
-A project exports four tables. Which one you want depends on the question you are asking.
+AddaxAI exports four tables. Which one you want depends on the question you are asking. A folder run has no sites, no deployments and no confirmed counts, so two of them are projects only.
 
-| Table | One row is | Use it for |
-|---|---|---|
-| Observations | one species in one event | ecological analysis. Start here |
-| Detections | one box on one photo | model checking, bounding boxes |
-| Files | one photo or video | file lists, finding blanks |
-| Deployments | one camera period | effort, trap nights, locations |
+| Table | One row is | Use it for | Available in |
+|---|---|---|---|
+| Counts | one species in one event | ecological analysis. Start here | Projects |
+| Detections | one box on one photo | model checking, bounding boxes | Both |
+| Files | one photo or video | file lists, finding blanks | Both |
+| Deployments | one camera period | effort, trap nights, locations | Projects |
 
-:::tip Which table should I use?
+## Counts
 
-For "how many animals did I see", use **observations**. It counts each animal once per event instead of once per photo. See [detections, events and observations](../understanding/detections-events-observations.mdx).
-
-:::
-
-## Observations
-
-One row per species per event, with the count. This is the analysis-ready table.
+One row per species per event, with the count. Each row is one [observation](../understanding/detections-events-observations.mdx), so an animal is counted once per event instead of once per photo. This is the analysis-ready table.
 
 | Column | Meaning |
 |---|---|
@@ -46,7 +40,7 @@ One row per species per event, with the count. This is the analysis-ready table.
 
 ## Detections
 
-One row per box. Use it when you care about individual boxes rather than ecology. Blank files do not appear here.
+One row per box. Use it when you care about individual boxes. Blank files do not appear here.
 
 | Column | Meaning |
 |---|---|
@@ -57,9 +51,9 @@ One row per box. Use it when you care about individual boxes rather than ecology
 | `detection_category` | animal, person or vehicle |
 | `detection_confidence` | How sure the detector was there is something there |
 | `classification_label` | The current species label. May be your correction |
-| `classification_confidence` | Score for the current label |
-| `ai_classification_label` | What the AI originally said, kept even after you change it |
-| `ai_classification_confidence` | Score for the AI's original label |
+| `classification_confidence` | Score for the current label. Always 1.0 when a human set it |
+| `ai_classification_label` | The label the app showed before you touched it, kept even after you relabel |
+| `ai_classification_confidence` | Score for that label |
 | `classification_method` | machine or human, who set the current label |
 | `is_verified` | TRUE if you checked this detection |
 | `taxon_class` to `taxon_species` | Taxonomy, broad to specific |
@@ -72,6 +66,8 @@ One row per box. Use it when you care about individual boxes rather than ecology
 Box positions are fractions of the image, not pixels. Multiply by the image width and height to get pixels.
 
 To see where the AI was wrong, compare `ai_classification_label` with `classification_label` on rows where `is_verified` is TRUE.
+
+One thing to know before you read too much into that. `ai_classification_label` is the label after cleanup, the one the app put in front of you, not the model's raw output. That raw call stays in the `results.json` on disk. So the comparison scores the whole pipeline, model plus rollup plus smoothing. See [how labels get cleaned up](../understanding/label-cleanup.md).
 
 ## Files
 
@@ -90,7 +86,7 @@ One row per photo or video, whether or not anything was found.
 | `is_verified` | TRUE if every box on the file was checked |
 | `notes` | Your own notes |
 
-`observation_type` is the only place "blank" appears. Use it to count empty photos.
+`observation_type` is the only place "blank" appears. Use it to count empty files.
 
 ## Deployments
 
@@ -113,9 +109,24 @@ One row per camera period. This is your effort table.
 
 ## Folder runs
 
-A folder run writes two of these tables, files and detections. It has no sites, deployments or confirmed counts, so the deployments and observations tables are projects only. Columns that need a project are dropped too, such as `deployment_id` and the notes columns.
+In the two tables a folder run writes, `deployment_id` is dropped because there is no deployment, and `notes` because nothing ever fills it.
 
-It also writes a recognition file for Timelapse and a text file describing the models and settings used.
+`event_id` stays. Files and detections from the same burst share one, so you can still group by visit. What you cannot do is look the event up, because the counts table is projects only. In a project that column points at a row in counts; in a folder run it is only a grouping key.
+
+## Recognition file (JSON)
+
+A folder run also writes `addaxai-recognitions.json`. This is the file Timelapse reads.
+
+It follows the MegaDetector output format, version 1.6, which is [documented here](https://microsoft.github.io/MegaDetector/output_format/). Four things are worth knowing on top of that spec:
+
+1. The `info` block carries an extra `addaxai` section with the app version and the settings the run used, such as smoothing, rollup and the independence interval. So the file records how it was produced.
+2. Each detection keeps only the top classification, not the full list the format allows.
+3. Nothing is filtered by a threshold. Every detection AddaxAI stored is in the file.
+4. File paths are relative to the folder the JSON sits in.
+
+## Spatial
+
+Projects can also export point layers for GIS tools such as QGIS and ArcGIS, as GeoJSON, Shapefile or GeoPackage. You get two layers: one point per camera, and one point per camera per species. Deployments with no site coordinates are left out.
 
 ## Camtrap DP
 

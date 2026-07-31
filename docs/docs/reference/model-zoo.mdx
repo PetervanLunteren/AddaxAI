@@ -7,14 +7,18 @@ import ModelZoo from "@site/src/components/ModelZoo";
 
 # Model zoo
 
-Every model AddaxAI ships, in one searchable table. Filter by type, filter by region, or search by name, developer, or region. This table is generated from the app's real model catalogue (`models.json`), so it always matches what the app installs.
+Every model AddaxAI ships, in one table. It is generated from the app's real model catalogue (`models.json`), so it always matches what the app installs. Select a model to read its full description, licence and citation.
+
+## Which one should you pick
+
+A run uses one detection model, and optionally one classification model and one embedding model. They do different jobs.
+
+- **Detection** finds animals, people and vehicles and draws boxes around them. It runs first, on every file. MegaDetector v5a is the default and works almost everywhere, so leave it alone unless you have a reason.
+- **Classification** names the species inside each animal box. SpeciesNet covers the whole world and is the safe starting point. The regional models know fewer species but were trained on one ecosystem, so they can do better where they apply.
+- **Embedding** turns each crop into a fingerprint, which is what powers the similarity sort and the suggestions on the Labels page. It changes no labels of its own.
+
+To see exactly which species a classification model knows, open it in the app. The species list comes with the model when you download it, so it is not on this page.
 
 <ModelZoo />
-
-## Model types
-
-- **Detection**: finds animals, people, and vehicles in an image and draws boxes around them. MegaDetector is the default. Detection runs first, on every file.
-- **Classification**: names the species inside each animal box. SpeciesNet is the global default; regional classifiers cover specific ecosystems.
-- **Embedding**: turns each detection crop into a feature vector for similarity search and clustering, so you can find visually similar detections fast.
 
 The "Min app" column is the minimum AddaxAI version that can run the model. If a model needs a newer version than you have installed, update the app.

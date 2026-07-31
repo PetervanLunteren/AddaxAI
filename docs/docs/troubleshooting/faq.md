@@ -29,7 +29,7 @@ That warning is normal for a newly released app and does not mean anything is wr
 
 ### Does my data get uploaded anywhere?
 
-No. Everything runs on your own computer. Your photos and videos never leave your machine. AddaxAI only goes online to download models and check for updates.
+No. Everything runs on your own computer. Your photos and videos never leave your machine. AddaxAI goes online for three things only: to download models, to check for updates, and to look up a taxonomy in GBIF when you ask it to, which sends the name you typed and nothing else.
 
 ## Requirements
 
@@ -73,11 +73,11 @@ Confirming counts is a project feature. A folder run groups photos into events t
 
 They are still analysed, so you keep the detections and the species, and they still count in your species totals. But they drop out of anything that needs a date: trap nights, and the trend and activity charts. They are also never grouped with other files.
 
-AddaxAI never guesses a date from the file. See [dates, times and timezones](../understanding/capture-times.md).
+AddaxAI never invents a date by itself, but you can supply one, either in the filename or from your computer's file dates. See [dates, times and timezones](../understanding/capture-times.md).
 
 ### What does each column in the CSV mean?
 
-Every column of every table is described in [export columns](../reference/export-columns.md).
+Every column of every table is described in [exports](../reference/exports.md).
 
 ## Using AddaxAI
 
