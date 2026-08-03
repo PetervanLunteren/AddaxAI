@@ -1,1 +1,7 @@
 snapshot_date,release_tag,asset_name,download_count
+2026-08-03,v7.0.3,AddaxAI-amd64.deb,8
+2026-08-03,v7.0.3,AddaxAI-arm64.dmg,33
+2026-08-03,v7.0.3,AddaxAI-Setup.exe,101
+2026-08-03,v7.0.2,AddaxAI-amd64.deb,8
+2026-08-03,v7.0.2,AddaxAI-arm64.dmg,27
+2026-08-03,v7.0.2,AddaxAI-Setup.exe,125
