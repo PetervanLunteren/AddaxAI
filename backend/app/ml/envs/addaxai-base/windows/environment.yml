@@ -14,7 +14,7 @@ dependencies:
     # GPU acceleration is available out of the box, including RTX
     # 50-series (Blackwell, sm_120) with native kernels instead of the
     # slow PTX JIT fallback. Needs NVIDIA driver >= 555. torch 2.8 still
-    # satisfies megadetector 10.0.18: it dropped the old `mkl<=2021.4.0`
+    # satisfies megadetector 10.0.24: it dropped the old `mkl<=2021.4.0`
     # Windows pin (so megadetector's `mkl==2024.0` resolves) and is not
     # 2.4.0 (which ultralytics 8.3.177 excludes on win32, `torch!=2.4.0`).
     # torchvision 0.23.0 is the matching release. Use --extra-index-url
@@ -49,7 +49,17 @@ dependencies:
     # cannot load the Windows certificate store (ssl ASN1 error, beta
     # report 2026-06-10). Installing a wheel skips setup.py entirely.
     - ultralytics-yolov5 @ https://huggingface.co/Addax-Data-Science/pip-wheels/resolve/main/ultralytics_yolov5-0.1.1-py3-none-any.whl#sha256=d532e62d6d7cd6c7381e4453810f31f10fd269cf9f237494bc570e74168dc2e1
-    - megadetector==10.0.18
+    - megadetector==10.0.24
+    # MDv1000-cedar is the only model in the zoo with a YOLOv9 architecture,
+    # and megadetector loads it through this package. Upstream treats each
+    # YOLO backend as an optional extra and dropped this one as a dependency
+    # in 10.0.20, so we pin it here; without it cedar fails to load at all.
+    # 10.0.23 is also the first release that runs cedar correctly: before it,
+    # cedar's anchor-free output went through the YOLOv5-shaped NMS, which
+    # read anchor positions as class ids and failed every batch. That crashed
+    # process_video with "exit code 1" and made images silently return
+    # nothing (beta report 2026-07-30).
+    - yolov9pip==0.0.4
     - ultralytics==8.3.177
 
     # Helps Windows pip use the system certificate store (matches the
