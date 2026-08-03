@@ -317,10 +317,25 @@ function ResultPanel({ results, deploymentsById, siteNames }: ResultPanelProps) 
                       {dep?.start_date_local && ` · ${dep.start_date_local}`}
                     </div>
                     {r.mismatches.length > 0 && (
-                      <div className="font-mono text-[10px] opacity-80">
-                        {r.mismatches.length} sample file
-                        {r.mismatches.length === 1 ? "" : "s"} didn't match
-                      </div>
+                      <>
+                        <div className="opacity-80">
+                          {r.mismatches.length} sample file
+                          {r.mismatches.length === 1 ? "" : "s"} didn't match
+                        </div>
+                        {/* The reasons, not just the count. Each one names
+                            the file and says whether it was missing or a
+                            different size, which is the only way to tell a
+                            wrong folder from a folder whose contents
+                            changed. `break-all` because these are absolute
+                            paths and the dialog is narrow. */}
+                        <ul className="mt-0.5 space-y-0.5 font-mono text-[10px] opacity-80">
+                          {r.mismatches.map((m, i) => (
+                            <li key={i} className="break-all">
+                              {m}
+                            </li>
+                          ))}
+                        </ul>
+                      </>
                     )}
                   </div>
                 );

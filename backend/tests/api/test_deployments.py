@@ -440,3 +440,115 @@ def test_file_datetime_with_fallback_returns_mtime(client, tmp_path):
 
     assert resp.status_code == 200
     assert resp.json()["file_datetime"] == datetime(2024, 4, 7, 15, 55, 26).isoformat()
+
+
+# ── Relink refusal ───────────────────────────────────────────────────────
+# A refused relink used to leave no trace anywhere: the endpoint answers
+# 200 with the reasons in the body, the UI rendered only how many samples
+# failed, and nothing was logged. A user (and a maintainer reading
+# backend.log afterwards) could not tell which file was wrong or why.
+
+
+def _deployment_with_files_on_disk(db, folder, names_and_sizes):
+    """A deployment whose File rows point at real files under `folder`."""
+    folder.mkdir(parents=True, exist_ok=True)
+    project = make_project(db)
+    deployment = make_deployment(
+        db, project_id=project.id, folder_path=str(folder)
+    )
+    for name, size in names_and_sizes:
+        path = folder / name
+        path.write_bytes(b"x" * size)
+        make_file(
+            db,
+            deployment_id=deployment.id,
+            file_path=str(path),
+            size_bytes=size,
+        )
+    db.commit()
+    return deployment
+
+
+def test_relink_refusal_reports_the_reason_per_file(db, tmp_path, caplog):
+    """A wrong folder is refused, and says which file and why."""
+    from app.api.crud.deployment import relink_deployment
+
+    old = tmp_path / "old"
+    deployment = _deployment_with_files_on_disk(db, old, [("a.jpg", 100)])
+
+    # Same filename, different contents: the lookalike case the size check
+    # exists to catch.
+    wrong = tmp_path / "wrong"
+    wrong.mkdir()
+    (wrong / "a.jpg").write_bytes(b"y" * 999)
+
+    with caplog.at_level("WARNING"):
+        result = relink_deployment(db, deployment.id, str(wrong))
+
+    assert result.success is False
+    assert result.files_rewritten == 0
+    assert result.verify_result is not None
+    assert len(result.verify_result.mismatches) == 1
+    reason = result.verify_result.mismatches[0]
+    assert "Size mismatch" in reason
+    assert "a.jpg" in reason
+    assert "expected 100" in reason and "got 999" in reason
+
+    # The reason reaches the log, not just the response body.
+    assert "Relink refused" in caplog.text
+    assert reason in caplog.text
+
+
+def test_relink_refusal_names_a_missing_file(db, tmp_path, caplog):
+    """The other failure mode: the file simply is not there."""
+    from app.api.crud.deployment import relink_deployment
+
+    old = tmp_path / "old"
+    deployment = _deployment_with_files_on_disk(db, old, [("a.jpg", 100)])
+    empty = tmp_path / "empty"
+    empty.mkdir()
+
+    with caplog.at_level("WARNING"):
+        result = relink_deployment(db, deployment.id, str(empty))
+
+    assert result.success is False
+    assert any("Missing" in m and "a.jpg" in m for m in result.verify_result.mismatches)
+    assert "Relink refused" in caplog.text
+
+
+def test_relink_refusal_changes_nothing_in_the_database(db, tmp_path):
+    """The refusal path must not half-apply. Files keep their old paths and
+    the deployment keeps its folder, so retrying with the right folder is
+    always possible."""
+    from app.api.crud.deployment import relink_deployment
+
+    old = tmp_path / "old"
+    deployment = _deployment_with_files_on_disk(db, old, [("a.jpg", 100)])
+    original_paths = sorted(f.file_path for f in deployment.files)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+
+    relink_deployment(db, deployment.id, str(empty))
+    db.expire_all()
+
+    assert deployment.folder_path == str(old)
+    assert sorted(f.file_path for f in deployment.files) == original_paths
+
+
+def test_relink_succeeds_when_the_folder_really_holds_the_files(db, tmp_path):
+    """The happy path, so the tests above cannot pass by refusing everything."""
+    from app.api.crud.deployment import relink_deployment
+
+    old = tmp_path / "old"
+    deployment = _deployment_with_files_on_disk(db, old, [("a.jpg", 100)])
+
+    moved = tmp_path / "moved"
+    moved.mkdir()
+    (moved / "a.jpg").write_bytes(b"x" * 100)
+
+    result = relink_deployment(db, deployment.id, str(moved))
+
+    assert result.success is True
+    assert result.files_rewritten == 1
+    assert deployment.folder_path == str(moved)
+    assert deployment.folder_status == "valid"
