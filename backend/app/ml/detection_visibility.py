@@ -28,18 +28,34 @@ written to disk as its best-frame JPEG, so deciding its folder, or
 whether to drop it, from a detection on some other frame files a picture
 under a label that picture does not show.
 
-**This does NOT apply to the data exports.** `addaxai-detections.csv`,
-the XLSX and the recognition JSON carry every detection on every frame by
-design: they are the complete record of the run, so the user can do their
-own filtering downstream in their own tools.
+**In the data exports the rule follows the grain, not the file format.**
+`addaxai-detections.csv`, the XLSX detections sheet and the recognition
+JSON are per *box*: they carry every detection on every frame by design,
+because they are the complete record of the run and the user filters them
+downstream in their own tools. The per *file* row of `addaxai-files.csv`
+is the other grain: one row standing for one video, so it describes the
+one frame that stands for that video, which is what keeps its
+`observation_type` and species columns describing a box the user can
+actually open.
 
-Three places cannot use these helpers and keep a hand-written copy:
+**Two lanes, one rule.** Have a query? Use a predicate. Have the
+detections already in memory? Use `visible_detections`. A parity test
+(`tests/ml/test_detection_visibility.py`) pins that the two agree, which
+is what makes having two of them safe.
+
+Places that cannot use any of these and keep a hand-written copy:
 `calculate_max_n_for_event` filters after the query to keep its grouping,
 `similarity_script` is a subprocess with no `app.*` on its path, and
-`shouldDrawBbox` in the frontend is TypeScript. Keep them in step.
+`shouldDrawBbox` in the frontend is TypeScript. There are more (`labels.py`
+twice, `embedding_utils`, `crop_service`, `annotated_copies` twice), which
+is itself the argument for reaching for a helper here rather than writing
+a tenth. Keep them in step.
 """
 
 from __future__ import annotations
+
+from collections.abc import Iterable
+from typing import Protocol, TypeVar
 
 from sqlalchemy import or_
 from sqlalchemy.sql.elements import ColumnElement
@@ -65,8 +81,13 @@ def on_visible_frame_of(file: File) -> ColumnElement[bool]:
 
     Used where the caller holds the ORM object and does not join
     ``File``, so the frame number is a plain value rather than a column.
-    A video with no best frame has no visible surface at all, and the
-    literal ``False`` says so rather than silently matching everything.
+    A video with no best frame has no visible surface beyond whatever a
+    human verified, so only verified detections pass.
+
+    The video branches return **only** the frame clause. A caller that is
+    not otherwise scoped to this file must keep its own
+    ``Detection.file_id == file.id`` filter; without it a video's
+    detections would be drawn from every file sharing that frame number.
     """
     if file.file_type != "video":
         return Detection.file_id == file.id
@@ -76,3 +97,34 @@ def on_visible_frame_of(file: File) -> ColumnElement[bool]:
         Detection.frame_number == file.best_frame_number,
         Detection.verified == True,  # noqa: E712
     )
+
+
+class _FramedDetection(Protocol):
+    frame_number: int | None
+    verified: bool
+
+
+_D = TypeVar("_D", bound=_FramedDetection)
+
+
+def visible_detections(file: File, detections: Iterable[_D]) -> list[_D]:
+    """The same rule again, for detections already in memory.
+
+    The Python twin of ``on_visible_frame_of``: use this where the caller
+    holds a list rather than a query it can filter. Input order is
+    preserved, because ``strongest_passing_detection`` makes a stable
+    order the caller's contract.
+
+    Takes the ``File`` rather than ``is_video`` / ``best_frame_number``
+    keywords on purpose. The ``file_type == "video"`` test is a third of
+    the rule, and passing it in as a flag would hand-copy that third to
+    every call site, which is the duplication this module exists to stop.
+    """
+    if file.file_type != "video":
+        return list(detections)
+    best = file.best_frame_number
+    return [
+        det
+        for det in detections
+        if det.verified or (best is not None and det.frame_number == best)
+    ]

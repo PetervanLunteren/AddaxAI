@@ -330,9 +330,9 @@ def test_export_files_includes_empties(client, db):
 # ---------------------------------------------------------------------------
 # The one label a file gets
 #
-# observation_type plus the three species columns beside it all describe the
-# SAME box: the file's strongest passing detection. These tests pin that they
-# never come from different boxes.
+# observation_type plus the species block beside it all describe the SAME box:
+# the file's strongest passing detection. These tests pin that they never come
+# from different boxes.
 # ---------------------------------------------------------------------------
 
 
@@ -346,18 +346,46 @@ def _files_rows(client, project_id: str):
     return headers, {r[fid_i]: r for r in rows[1:]}
 
 
+_RANK_COLUMNS = (
+    "taxon_class",
+    "taxon_order",
+    "taxon_family",
+    "taxon_genus",
+    "taxon_species",
+)
+
+
 def _species(headers: list[str], row: list[str]) -> list[str]:
-    """The three species cells of a Files row, in column order."""
+    """The label and the two display names of a Files row. The ranks are
+    checked by _ranks, so the common assertions stay readable."""
     return [
         row[headers.index(name)]
         for name in ("classification_label", "scientific_name", "common_name")
     ]
 
 
+def _ranks(headers: list[str], row: list[str]) -> list[str]:
+    """The five formal ranks of a Files row, broad to specific."""
+    return [row[headers.index(name)] for name in _RANK_COLUMNS]
+
+
 def test_files_export_names_the_strongest_detections_species(client, db):
     """The Files table answers "what is this file" on its own: the category of
-    the strongest box, then that same box's species and its two display names."""
+    the strongest box, then that same box's species, ranks and display names."""
     project, _site, deployment = _build_simple_project(db)
+    taxonomy = LabelTaxonomy(
+        classification_model_id="",
+        project_id=project.id,
+        name="red fox",
+        level="species",
+        taxon_class="mammalia",
+        taxon_order="carnivora",
+        taxon_family="canidae",
+        taxon_genus="vulpes",
+        taxon_species="vulpes",
+    )
+    db.add(taxonomy)
+    db.flush()
     f = make_file(db, deployment_id=deployment.id, observation_type="animal")
     make_detection(
         db,
@@ -365,21 +393,69 @@ def test_files_export_names_the_strongest_detections_species(client, db):
         category="animal",
         confidence=0.9,
         label="red fox",
+        label_taxonomy_id=taxonomy.id,
         scientific_name="Vulpes vulpes",
         common_name="Red fox",
     )
     db.commit()
 
     headers, by_id = _files_rows(client, project.id)
-    # Directly after observation_type, so the four read as one answer.
+    # One contiguous block straight after observation_type, in the same order
+    # detections.csv and counts.csv use it.
     obs_i = headers.index("observation_type")
-    assert headers[obs_i + 1 : obs_i + 4] == [
+    assert headers[obs_i + 1 : obs_i + 9] == [
         "classification_label",
+        "taxon_class",
+        "taxon_order",
+        "taxon_family",
+        "taxon_genus",
+        "taxon_species",
         "scientific_name",
         "common_name",
     ]
     assert headers[0] == "file_id"
     assert _species(headers, by_id[f.id]) == ["red fox", "Vulpes vulpes", "Red fox"]
+    assert _ranks(headers, by_id[f.id]) == [
+        "mammalia",
+        "carnivora",
+        "canidae",
+        "vulpes",
+        "vulpes",
+    ]
+
+
+def test_files_export_ranks_say_which_rank_the_label_is(client, db):
+    """Taxonomic rollup puts species, families and orders in one label column,
+    so "rodentia" and "porcupine" sit side by side. The ranks are the only
+    thing that says which is which; without them, grouping by the label
+    silently merges an order with the species inside it."""
+    project, _site, deployment = _build_simple_project(db)
+    order_level = LabelTaxonomy(
+        classification_model_id="",
+        project_id=project.id,
+        name="rodentia",
+        level="order",
+        taxon_class="mammalia",
+        taxon_order="rodentia",
+    )
+    db.add(order_level)
+    db.flush()
+    f = make_file(db, deployment_id=deployment.id, observation_type="animal")
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=0.9,
+        label="rodentia",
+        label_taxonomy_id=order_level.id,
+        scientific_name="Rodentia",
+        common_name="Rodentia",
+    )
+    db.commit()
+
+    headers, by_id = _files_rows(client, project.id)
+    # Filled down to order, empty below it: this label is not a species.
+    assert _ranks(headers, by_id[f.id]) == ["mammalia", "rodentia", "", "", ""]
 
 
 def test_files_export_does_not_take_the_best_label_off_a_weaker_box(client, db):
@@ -389,6 +465,21 @@ def test_files_export_does_not_take_the_best_label_off_a_weaker_box(client, db):
     at 29%. Reporting the best *label* labels that file a chimpanzee; reporting
     the strongest *box* calls it a person, which is what the picture shows."""
     project, _site, deployment = _build_simple_project(db)
+    # Give the false positive a full taxonomy, so the assertions below prove
+    # the ranks were not taken from it rather than merely finding it empty.
+    ape = LabelTaxonomy(
+        classification_model_id="",
+        project_id=project.id,
+        name="chimpanzee",
+        level="species",
+        taxon_class="mammalia",
+        taxon_order="primates",
+        taxon_family="hominidae",
+        taxon_genus="pan",
+        taxon_species="troglodytes",
+    )
+    db.add(ape)
+    db.flush()
     f = make_file(db, deployment_id=deployment.id, observation_type="person")
     make_detection(
         db,
@@ -404,6 +495,7 @@ def test_files_export_does_not_take_the_best_label_off_a_weaker_box(client, db):
         category="animal",
         confidence=0.677,
         label="chimpanzee",
+        label_taxonomy_id=ape.id,
         scientific_name="Pan troglodytes",
         common_name="Chimpanzee",
     )
@@ -411,7 +503,11 @@ def test_files_export_does_not_take_the_best_label_off_a_weaker_box(client, db):
 
     headers, by_id = _files_rows(client, project.id)
     assert _species(headers, by_id[f.id]) == ["", "Person", "Person"]
+    # The chimpanzee's taxonomy must not leak in either: the ranks describe
+    # the winning box, which is a person and has none.
+    assert _ranks(headers, by_id[f.id]) == ["", "", "", "", ""]
     assert "chimpanzee" not in by_id[f.id]
+    assert "primates" not in by_id[f.id]
 
 
 def test_files_export_species_are_blank_when_no_box_passes(client, db):
@@ -435,6 +531,7 @@ def test_files_export_species_are_blank_when_no_box_passes(client, db):
     headers, by_id = _files_rows(client, project.id)
     for file_id in (f_empty.id, f_weak.id):
         assert _species(headers, by_id[file_id]) == ["", "", ""]
+        assert _ranks(headers, by_id[file_id]) == ["", "", "", "", ""]
         assert by_id[file_id][headers.index("observation_type")] == "blank"
 
 
@@ -471,9 +568,12 @@ def test_files_export_follows_the_verified_box(client, db):
 def test_files_export_reads_every_frame_of_a_video(client, db):
     """Data exports are the complete record of a run, so the best-frame rule
     that governs the media outputs does not apply here (see
-    ml/detection_visibility.py). Restricting to the visible frame would let
-    this column contradict the observation_type beside it, which is derived
-    over every frame."""
+    ml/detection_visibility.py). A file-grain row is the other case: one row
+    stands for one video, so it describes the one frame that stands for that
+    video. Here the strongest box overall is a deer on frame 7, which was
+    never written to disk; the frame the user can open holds a person. The
+    row reports the person, and the deer is still in the detections table
+    under the same file_id."""
     project, _site, deployment = _build_simple_project(db)
     f = make_file(
         db,
@@ -481,7 +581,7 @@ def test_files_export_reads_every_frame_of_a_video(client, db):
         file_type="video",
         file_format="mp4",
         best_frame_number=3,
-        observation_type="animal",
+        observation_type="person",
     )
     make_detection(
         db,
@@ -505,7 +605,89 @@ def test_files_export_reads_every_frame_of_a_video(client, db):
     db.commit()
 
     headers, by_id = _files_rows(client, project.id)
-    assert _species(headers, by_id[f.id]) == ["deer", "Cervidae", "Deer"]
+    assert _species(headers, by_id[f.id]) == ["", "Person", "Person"]
+
+    # The off-frame deer is not lost: the per-box grain still carries it.
+    resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
+    det_rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
+    det_headers = det_rows[0]
+    labels = {
+        r[det_headers.index("classification_label")]
+        for r in det_rows[1:]
+        if r[det_headers.index("file_id")] == f.id
+    }
+    assert "deer" in labels
+
+
+def test_files_export_video_with_empty_best_frame_reads_blank(client, db):
+    """A video whose best frame holds nothing above the threshold reports
+    blank, even though a confident box exists on another frame. That box has
+    no card in the Labels grid, no MaxN count and no crop, so blank is the
+    truthful summary of what the user can see and act on. No fallback to the
+    other frames: that would be a second rule firing only sometimes."""
+    project, _site, deployment = _build_simple_project(db)
+    f = make_file(
+        db,
+        deployment_id=deployment.id,
+        file_type="video",
+        file_format="mp4",
+        best_frame_number=3,
+        observation_type="blank",
+    )
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=0.9,
+        frame_number=7,
+        label="deer",
+        scientific_name="Cervidae",
+        common_name="Deer",
+    )
+    db.commit()
+
+    headers, by_id = _files_rows(client, project.id)
+    assert _species(headers, by_id[f.id]) == ["", "", ""]
+    assert _ranks(headers, by_id[f.id]) == ["", "", "", "", ""]
+
+
+def test_files_export_verified_box_passes_on_any_frame(client, db):
+    """The escape hatch. A human decision must never be out of reach, so a
+    verified box counts wherever it sits, even though its thumbnail is
+    missing."""
+    project, _site, deployment = _build_simple_project(db)
+    f = make_file(
+        db,
+        deployment_id=deployment.id,
+        file_type="video",
+        file_format="mp4",
+        best_frame_number=3,
+        observation_type="animal",
+    )
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=0.30,
+        frame_number=7,
+        verified=True,
+        label="red fox",
+        scientific_name="Vulpes vulpes",
+        common_name="Red fox",
+    )
+    make_detection(
+        db,
+        file_id=f.id,
+        category="person",
+        confidence=0.6,
+        frame_number=3,
+        scientific_name="Person",
+        common_name="Person",
+    )
+    db.commit()
+
+    headers, by_id = _files_rows(client, project.id)
+    assert _species(headers, by_id[f.id]) == ["red fox", "Vulpes vulpes", "Red fox"]
 
 
 def test_files_export_species_follow_the_export_scope(client, db):
@@ -1034,6 +1216,43 @@ def test_export_camtrap_dp_blank_row_for_file_without_detections(client, db):
     assert obs_rows[1][0].startswith("obs-blank-")
     assert obs_rows[1][7] == "blank"
     assert obs_rows[1][2] == f.id
+
+
+def test_export_camtrap_dp_keeps_boxes_when_the_file_reads_blank(client, db):
+    """Camtrap DP is per box and is the archival export, so it must never
+    drop rows it holds. The blank branch used to also fire on the stored
+    observation_type, which was near-equivalent while that column was
+    derived over every frame. It is not equivalent now: this video reads
+    blank because its best frame is empty, yet it still has a passing box
+    on frame 50, and that box has to reach the archive."""
+    project, _site, deployment = _build_simple_project(db)
+    f = make_file(
+        db,
+        deployment_id=deployment.id,
+        captured_at_local=datetime(2024, 6, 15, 9, 0, 0),
+        file_type="video",
+        file_format="mp4",
+        best_frame_number=3,
+        observation_type="blank",
+    )
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=0.9,
+        frame_number=50,
+        label="deer",
+    )
+    db.commit()
+
+    resp = _run_camtrap_dp_export(client, db, project.id)
+    assert resp.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        obs_rows = list(csv.reader(io.StringIO(zf.read("observations.csv").decode())))
+
+    media_rows = [r for r in obs_rows[1:] if r[6] == "media"]
+    assert media_rows, "the box was dropped from the archival export"
+    assert not any(r[0].startswith("obs-blank-") for r in media_rows)
 
 
 def test_export_camtrap_dp_emits_media_and_event_rows(client, db):

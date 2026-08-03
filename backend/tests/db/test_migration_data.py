@@ -368,17 +368,31 @@ def test_f2a3b4c5d6e7_keeps_counts_and_boxed_rows_when_deleting_boxless_ones(
 # ---------------------------------------------------------------------------
 
 
-def _seed_file_with_detections(conn, deployment_id, dets, stored):
+def _seed_file_with_detections(
+    conn,
+    deployment_id,
+    dets,
+    stored,
+    *,
+    file_type="image",
+    best_frame_number=None,
+):
     """One file with `dets` = [(category, confidence, verified), ...] and
-    an `observation_type` as the old rule would have stored it."""
+    an `observation_type` as the old rule would have stored it.
+
+    A fourth element on a detection tuple is its `frame_number`, for the
+    video cases. Images leave it NULL, which is what they have in life.
+    """
     file_id = insert_row(
         conn,
         "files",
         deployment_id=deployment_id,
-        file_type="image",
+        file_type=file_type,
         observation_type=stored,
+        best_frame_number=best_frame_number,
     )
-    for category, conf, verified in dets:
+    for det in dets:
+        category, conf, verified = det[0], det[1], det[2]
         insert_row(
             conn,
             "detections",
@@ -386,6 +400,7 @@ def _seed_file_with_detections(conn, deployment_id, dets, stored):
             category=category,
             confidence=conf,
             verified=verified,
+            frame_number=det[3] if len(det) > 3 else None,
         )
     return file_id
 
@@ -478,3 +493,120 @@ def test_5e6f7a8b9c0d_passes_a_novel_detector_category_through(engine):
         "SELECT observation_type FROM files WHERE id = :i",
         i=shark,
     ) == "shark"
+
+
+# ---------------------------------------------------------------------------
+# 6f7a8b9c0d1e — video observation_type comes from the best frame
+# ---------------------------------------------------------------------------
+
+
+def _downgrade_to(revision: str) -> None:
+    """Run the chain back down to `revision`.
+
+    Test-local for the same reason `upgrade_to` is: the app only ever
+    upgrades to head, so a partial move does not belong in
+    `app.db.migrations`.
+    """
+    from alembic import command
+    from app.db.migrations import _alembic_config
+
+    command.downgrade(_alembic_config(), revision)
+
+
+def test_6f7a8b9c0d1e_videos_follow_their_best_frame(engine):
+    """A video is saved as one frame, so only that frame's boxes may say
+    what it is. The column is denormalised, so the migration has to
+    recompute it; images must come out untouched."""
+    upgrade_to("5e6f7a8b9c0d")
+
+    with engine.begin() as conn:
+        project_id = insert_row(
+            conn, "projects", name="Video project", counting_threshold=0.2
+        )
+        deployment_id = insert_row(conn, "deployments", project_id=project_id)
+
+        # The whole point: the strongest box sits on a frame that was
+        # never written to disk, so the video reads blank.
+        off_frame_only = _seed_file_with_detections(
+            conn, deployment_id,
+            [("animal", 0.90, 0, 7)],
+            stored="animal",
+            file_type="video",
+            best_frame_number=3,
+        )
+        # The strongest box on the saved frame decides, and the stronger
+        # box on another frame does not.
+        best_frame_wins = _seed_file_with_detections(
+            conn, deployment_id,
+            [("animal", 0.95, 0, 7), ("person", 0.60, 0, 3)],
+            stored="animal",
+            file_type="video",
+            best_frame_number=3,
+        )
+        # A human decision is never out of reach, whatever frame it is on.
+        verified_off_frame = _seed_file_with_detections(
+            conn, deployment_id,
+            [("animal", 0.10, 1, 7), ("person", 0.60, 0, 3)],
+            stored="person",
+            file_type="video",
+            best_frame_number=3,
+        )
+        # Frame extraction failed, so there is no visible surface at all.
+        no_best_frame = _seed_file_with_detections(
+            conn, deployment_id,
+            [("animal", 0.90, 0, 4)],
+            stored="animal",
+            file_type="video",
+            best_frame_number=None,
+        )
+        # An image has frame_number and best_frame_number both NULL. The
+        # UPDATE is scoped to videos precisely so `NULL = NULL` can never
+        # be evaluated for it.
+        image = _seed_file_with_detections(
+            conn, deployment_id, [("animal", 0.90, 0)], stored="animal",
+        )
+
+    upgrade_to("6f7a8b9c0d1e")
+
+    def obs(file_id):
+        return _scalar(
+            engine,
+            "SELECT observation_type FROM files WHERE id = :i",
+            i=file_id,
+        )
+
+    assert obs(off_frame_only) == "blank"
+    assert obs(best_frame_wins) == "person"
+    assert obs(verified_off_frame) == "animal"
+    assert obs(no_best_frame) == "blank"
+    assert obs(image) == "animal"
+
+
+def test_6f7a8b9c0d1e_downgrade_restores_the_every_frame_rule(engine):
+    """Downgrade means undo this revision, not undo two: it restores the
+    ungated strongest-detection rule, not the category priority that
+    5e6f7a8b9c0d replaced."""
+    upgrade_to("5e6f7a8b9c0d")
+
+    with engine.begin() as conn:
+        project_id = insert_row(
+            conn, "projects", name="Round trip", counting_threshold=0.2
+        )
+        deployment_id = insert_row(conn, "deployments", project_id=project_id)
+        video = _seed_file_with_detections(
+            conn, deployment_id,
+            [("animal", 0.90, 0, 7)],
+            stored="animal",
+            file_type="video",
+            best_frame_number=3,
+        )
+
+    upgrade_to("6f7a8b9c0d1e")
+    assert _scalar(
+        engine, "SELECT observation_type FROM files WHERE id = :i", i=video
+    ) == "blank"
+
+    _downgrade_to("5e6f7a8b9c0d")
+    assert _scalar(
+        engine, "SELECT observation_type FROM files WHERE id = :i", i=video
+    ) == "animal"

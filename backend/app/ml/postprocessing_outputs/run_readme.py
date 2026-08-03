@@ -214,6 +214,28 @@ def _kv(key: str, value: object) -> str:
     return f"  {key:<32} {value}\n"
 
 
+def _skipped_files(db: Session, project_id: str) -> list[tuple[str, str]]:
+    """`(path, reason)` for every file the detector could not read.
+
+    Read from ``Deployment.warnings``, the durable copy the analysis worker
+    writes. Files with no capture date are deliberately not included: they
+    were read fine and are in the data, so listing them here as "skipped"
+    would be wrong.
+    """
+    skipped: list[tuple[str, str]] = []
+    deployments = db.execute(
+        select(Deployment).where(Deployment.project_id == project_id)
+    ).scalars().all()
+    for deployment in deployments:
+        for warning in deployment.warnings or []:
+            if warning.get("type") != "video_processing_failure":
+                continue
+            path = warning.get("path")
+            if path:
+                skipped.append((path, warning.get("reason") or "Could not be read"))
+    return skipped
+
+
 def _build_readme_text(
     *,
     project: Project,
@@ -226,6 +248,7 @@ def _build_readme_text(
     geofence_summary: str,
     manifest_mgr: ManifestManager,
     media_threshold: float,
+    skipped_files: list[tuple[str, str]] | None = None,
 ) -> str:
     """Compose the README body. Returns a single newline-delimited
     string ready to write to disk."""
@@ -261,6 +284,11 @@ def _build_readme_text(
         lines.append(_kv("Media filter", MEDIA_FILTER_LABELS[project.media_filter]))
     lines.append(_kv("Earliest capture", earliest or "(no files)"))
     lines.append(_kv("Latest capture", latest or "(no files)"))
+    # The counts above are what reached the database, so a folder holding
+    # unreadable files silently reads as a smaller folder. This line, and
+    # the section at the end, are what tell those two apart.
+    if skipped_files:
+        lines.append(_kv("Files skipped (unreadable)", len(skipped_files)))
 
     lines.append(_section("Models"))
     lines.append(
@@ -354,6 +382,19 @@ def _build_readme_text(
         lines.append(_section("Top species"))
         lines.append("  (no species labels yet)\n")
 
+    # Last, and only when it happened: the files AddaxAI could not open.
+    # They are in no other output, because a file with no detections still
+    # gets a row and these never got one at all.
+    if skipped_files:
+        lines.append(_section("Files skipped (could not be read)"))
+        lines.append(
+            "  These are not in the tables or the recognition file's\n"
+            "  detections. Check them by hand.\n\n"
+        )
+        for path, reason in skipped_files:
+            lines.append(f"  {path}\n")
+            lines.append(f"      {reason}\n")
+
     return "".join(lines)
 
 
@@ -397,6 +438,7 @@ def write_run_readme(
         db, project_id, project.counting_threshold
     )
     verification = _verification_stats(db, project_id)
+    skipped_files = _skipped_files(db, project_id)
 
     settings = get_settings()
     models_dir = settings.user_data_dir / "models"
@@ -414,6 +456,7 @@ def write_run_readme(
         geofence_summary=geofence_summary,
         manifest_mgr=manifest_mgr,
         media_threshold=media_threshold,
+        skipped_files=skipped_files,
     )
 
     output_path = target_dir / SUMMARY_FILENAME

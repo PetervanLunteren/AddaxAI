@@ -133,7 +133,8 @@ def update_job_status(db: Session, job_id: str, status: str) -> Job | None:
 
 def reconcile_interrupted_jobs(db: Session) -> int:
     """
-    Fail jobs left `running` by a previous process. Call once on startup.
+    Fail jobs left `running` or `pending` by a previous process. Call once
+    on startup.
 
     Analysis runs in an in-memory worker. A backend restart or crash
     kills that worker but leaves the job row `running` forever, so it
@@ -142,12 +143,22 @@ def reconcile_interrupted_jobs(db: Session) -> int:
     every `running` job is marked `failed` and every still-`processing`
     queue entry is reset to `failed` too.
 
+    `pending` goes the same way, for the same reason. A job is created
+    pending and only starts when the frontend sends "ready" over the
+    WebSocket, which `ws_manager.register_start` holds an in-memory
+    callback for. That callback does not survive a restart, so a pending
+    row found here can never start: nothing is left to start it. Leaving
+    them alone is what let orphans accumulate for ever, invisible except
+    as a job list that never settles.
+
     Returns the number of jobs reconciled.
     """
     from app.models.deployment_queue import DeploymentQueue
 
     interrupted = list(
-        db.execute(select(Job).where(Job.status == "running")).scalars().all()
+        db.execute(
+            select(Job).where(Job.status.in_(("running", "pending")))
+        ).scalars().all()
     )
     stuck = list(
         db.execute(
@@ -161,10 +172,11 @@ def reconcile_interrupted_jobs(db: Session) -> int:
 
     now = datetime.now(UTC)
     reason = "Interrupted by a server restart before completion"
+    never_started = "Never started: the app restarted before this job began"
 
     for job in interrupted:
+        job.error = never_started if job.status == "pending" else reason
         job.status = "failed"
-        job.error = reason
         job.completed_at_utc = now
 
     for entry in stuck:

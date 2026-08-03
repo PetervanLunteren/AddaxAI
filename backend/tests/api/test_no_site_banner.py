@@ -8,6 +8,9 @@ Covers:
 - Exports include null-site deployments with blank lat/lon in flat CSV
 """
 
+import csv
+import io
+import zipfile
 from datetime import datetime
 
 from app.api.crud.statistics import (
@@ -98,13 +101,21 @@ def test_export_deployments_csv_writes_blanks_for_null_site(client, db):
     assert blank_rows, "expected at least one row with blank lat/lon"
 
 
-def test_export_camtrap_dp_skips_null_site_and_reports_header(client, db):
-    project, _site, _d1, _d2, dep_null = _seed_project_with_mixed_sites(db)
+def test_export_camtrap_dp_omits_a_deployment_with_no_site(client, db):
+    """Camtrap DP requires lat/lon, so a site-less deployment cannot be in
+    the package. Assert the omission itself rather than the response header
+    that used to announce it: nothing read that header, and the Export page
+    warns up front from /deployments-without-site instead."""
+    project, _site, dep_with_site, _d2, dep_null = _seed_project_with_mixed_sites(db)
 
     resp = _run_camtrap_dp_export(client, db, project.id)
     assert resp.status_code == 200
-    skipped_header = resp.headers.get("X-Skipped-Deployment-Ids", "")
-    assert dep_null.id in skipped_header
+
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        deployments_csv = zf.read("deployments.csv").decode()
+    ids = {r["deploymentID"] for r in csv.DictReader(io.StringIO(deployments_csv))}
+    assert dep_null.id not in ids
+    assert dep_with_site.id in ids
 
 
 def test_export_camtrap_dp_422_when_only_null_sites(client, db):

@@ -35,6 +35,7 @@ from sqlalchemy.orm import Session, defer
 
 from app.api.crud.export_formats import slugify
 from app.db.sql_params import iter_id_chunks
+from app.ml.detection_visibility import visible_detections
 from app.ml.observation_type import strongest_passing_detection
 from app.models import (
     Deployment,
@@ -693,12 +694,20 @@ _FILES_HEADERS = [
     # (File.observation_type). Distinct from the per-box
     # detection_category in detections.csv, and it uniquely carries "blank".
     "observation_type",
-    # The species of that same strongest box, plus its two display names.
-    # Deliberately NOT the highest-confidence label anywhere on the file:
-    # taking the best label instead of the best box is what filed a person
-    # in camouflage under "chimpanzee" (see DEVELOPERS.md "What a file is
-    # about"). Blank when the winning box carries no species, or when
-    # nothing passed at all.
+    # The species of that same strongest box, its formal ranks, and its two
+    # display names. Deliberately NOT the highest-confidence label anywhere
+    # on the file: taking the best label instead of the best box is what
+    # filed a person in camouflage under "chimpanzee" (see DEVELOPERS.md
+    # "What a file is about"). Blank when the winning box carries no
+    # species, or when nothing passed at all.
+    #
+    # The ranks are not decoration. Taxonomic rollup means
+    # classification_label holds whatever rank the pipeline could reach, so
+    # one column mixes species ("porcupine") with orders ("rodentia") and
+    # families ("bovidae"). The ranks are the only thing that says which is
+    # which, so grouping by the label alone silently merges an order with
+    # the species inside it. Same block, same order, same names as
+    # detections.csv and counts.csv.
     #
     # These are computed from the detections in *this export's scope*,
     # while observation_type is read from the stored column, which is
@@ -708,6 +717,11 @@ _FILES_HEADERS = [
     # species always resolves to a row in detections.csv under the same
     # file_id. Pinned by test_files_export_species_follow_the_export_scope.
     "classification_label",
+    "taxon_class",
+    "taxon_order",
+    "taxon_family",
+    "taxon_genus",
+    "taxon_species",
     "scientific_name",
     "common_name",
     "is_verified",
@@ -745,7 +759,7 @@ def build_files_rows(
                 file_obj.file_path,
                 _iso_datetime(file_obj.captured_at_local, tz_name),
                 file_obj.observation_type or "",
-                *_strongest_species_cells(project, detections),
+                *_strongest_species_cells(project, file_obj, detections),
                 "TRUE" if file_obj.verified else "FALSE",
                 file_obj.notes or "",
             ]
@@ -756,10 +770,21 @@ def build_files_rows(
 
 def _strongest_species_cells(
     project: Project,
+    file_obj: File,
     detections: Sequence[tuple[Detection, LabelTaxonomy | None]],
 ) -> list[str]:
-    """`[classification_label, scientific_name, common_name]` of the file's
-    strongest passing detection, or three blanks when nothing passes.
+    """The label / taxonomy / names block for the file's strongest passing
+    detection, or the same width in blanks when nothing passes.
+
+    Layout matches ``_detection_cells`` and ``build_observation_rows``:
+    label, the five formal ranks, then the two display names.
+
+    Gated to the file's visible surface, so for a video this is its best
+    frame. That is the same rule ``observation_type`` beside it now uses,
+    which is what keeps the whole block describing one box, and a box the
+    user can actually open. The gate runs in Python rather than in
+    ``get_scoped_detection_rows`` because that query is shared with the
+    Detections export, which is per box and keeps every frame by design.
 
     The threshold is passed explicitly even though ``get_scoped_detection_rows``
     already applied the same predicate in SQL. Re-applying it costs one pass
@@ -775,13 +800,19 @@ def _strongest_species_cells(
     that a box with no species still names itself: ``Person``, ``Vehicle``,
     ``Animal``, per ``resolve_label_names``.
     """
-    best = strongest_passing_detection(
-        (det for det, _tax in detections), project.counting_threshold
-    )
+    visible = visible_detections(file_obj, [det for det, _tax in detections])
+    best = strongest_passing_detection(visible, project.counting_threshold)
     if best is None:
-        return ["", "", ""]
+        # Nothing to name. Built from the same helper so the width can never
+        # drift from the populated branch below.
+        return ["", *_taxon_ranks(None), "", ""]
+
+    # The taxonomy joined to *that* box. Read off the row tuple rather than
+    # ``best.label_taxonomy``, which would lazy-load once per file.
+    taxonomy = next((tax for det, tax in detections if det is best), None)
     return [
         best.label or "",
+        *_taxon_ranks(taxonomy),
         best.scientific_name or "",
         best.common_name or "",
     ]
@@ -1191,7 +1222,14 @@ def build_camtrap_dp_tables(
                 },
             )
 
-        if not detections or file_obj.observation_type == "blank":
+        # The boxes about to be written are the honest test for "is this
+        # file blank". This used to also short-circuit on the stored
+        # `observation_type == "blank"`, which was near-equivalent while
+        # that column was derived over every frame. It is not equivalent
+        # now: a video whose best frame is empty but which still has
+        # passing boxes on other frames would take the blank branch and
+        # lose every per-box row from an archival export.
+        if not detections:
             observations_rows.append(
                 _camtrap_blank_row(
                     file_obj,

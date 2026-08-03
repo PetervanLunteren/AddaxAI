@@ -490,3 +490,155 @@ def test_preview_drops_excluded_person(db):
 
     assert preview.dropped_by_filter == 1
     assert preview.in_scope_files == 0
+
+
+def test_video_is_filed_by_its_best_frame_not_another_frame(db, tmp_path):
+    """The bug this gate fixes. The JPEG written here IS the best frame, so
+    deciding its folder from a box on another frame files a picture under a
+    label that picture does not show. Best frame holds a person; frame 50
+    holds a more confident animal called red fox. The copy must land in
+    `person/`, and the preview must say the same thing."""
+    project = make_project(db, name="vid-frame", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    ensure_builtin_labels(db)
+    frame = tmp_path / "cache" / "bf.jpg"
+    frame.parent.mkdir(parents=True)
+    frame.write_bytes(b"best-frame-bytes")
+    f = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path="/no/such/CLIP02.MP4",
+        file_type="video",
+        file_format="mp4",
+        best_frame_number=3,
+        best_frame_path=str(frame),
+        observation_type="animal",
+    )
+    make_detection(
+        db, file_id=f.id, category="person", confidence=0.80, frame_number=3
+    )
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=0.95,
+        label="red fox",
+        frame_number=50,
+    )
+    db.commit()
+
+    target = tmp_path / "out"
+    result = separate_into_folders(
+        db, project.id, _ctx(target), media_threshold=0.5, group_by="flat"
+    )
+
+    assert result.copied_count == 1
+    assert (target / "person" / "CLIP02_still.jpg").is_file()
+    assert not (target / "red-fox").exists()
+
+    preview = build_output_preview(
+        db, project.id, group_by="flat", media_threshold=0.5
+    )
+    assert preview.by_media_tree == {"person": 1}
+
+
+def test_video_whose_best_frame_is_empty_reads_blank(db, tmp_path):
+    """Nothing passes on the frame being written, so the copy is a blank,
+    not a red fox. With "copy empties" off it is skipped entirely. Either
+    way the off-frame box is still in the data exports."""
+    project = make_project(db, name="vid-empty", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    frame = tmp_path / "cache" / "empty.jpg"
+    frame.parent.mkdir(parents=True)
+    frame.write_bytes(b"bytes")
+    f = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path="/no/such/CLIP03.MP4",
+        file_type="video",
+        file_format="mp4",
+        best_frame_number=3,
+        best_frame_path=str(frame),
+        observation_type="animal",
+    )
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=0.95,
+        label="red fox",
+        frame_number=50,
+    )
+    db.commit()
+
+    target = tmp_path / "out"
+    result = separate_into_folders(
+        db, project.id, _ctx(target), media_threshold=0.5, group_by="flat"
+    )
+
+    assert result.copied_count == 1
+    assert (target / "blank" / "CLIP03_still.jpg").is_file()
+    assert not (target / "red-fox").exists()
+
+    skipped = separate_into_folders(
+        db,
+        project.id,
+        _ctx(tmp_path / "out2"),
+        media_threshold=0.5,
+        group_by="flat",
+        include_empty=False,
+    )
+    assert skipped.copied_count == 0
+
+
+def test_event_grouping_uses_each_videos_best_frame(db, tmp_path):
+    """`group_events` keeps a burst in one folder, and that folder is
+    decided by build_event_primary_labels. It must count only boxes that
+    exist as pictures: a video is copied to disk as its best frame, so an
+    off-frame box naming the burst's folder files every still in it under
+    a label none of them show. Caught by an end-to-end run, not by the
+    audit, because grouping is on by default."""
+    project = make_project(db, name="ev-frame", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+
+    frames = []
+    files = []
+    for i in range(2):
+        frame = tmp_path / "cache" / f"bf{i}.jpg"
+        frame.parent.mkdir(parents=True, exist_ok=True)
+        frame.write_bytes(b"bytes")
+        frames.append(frame)
+        f = make_file(
+            db,
+            deployment_id=dep.id,
+            file_path=f"/no/such/EV{i}.MP4",
+            file_type="video",
+            file_format="mp4",
+            best_frame_number=3,
+            best_frame_path=str(frame),
+            observation_type="animal",
+        )
+        files.append(f)
+        # On the saved frame: bushbuck. Off it, a more confident cattle box
+        # that used to name the whole burst.
+        make_detection(
+            db, file_id=f.id, confidence=0.80, label="bushbuck", frame_number=3
+        )
+        make_detection(
+            db, file_id=f.id, confidence=0.95, label="cattle", frame_number=50
+        )
+    _link_event(db, dep.id, [f.id for f in files])
+    db.commit()
+
+    target = tmp_path / "out"
+    separate_into_folders(
+        db,
+        project.id,
+        _ctx(target),
+        media_threshold=0.5,
+        group_by="flat",
+        group_events=True,
+    )
+
+    assert (target / "bushbuck").is_dir()
+    assert not (target / "cattle").exists()

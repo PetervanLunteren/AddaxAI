@@ -27,6 +27,7 @@ from app.core.job_cancellation import (
 )
 from app.core.logging_config import get_logger
 from app.core.subprocess_group import popen_group
+from app.ml.detection_visibility import on_visible_frame_of
 from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, File, Project
 from app.utils.subprocess_env import clean_python_env
@@ -659,7 +660,12 @@ def update_database_from_smoothed_results(
             continue
 
         file_detections = (
-            db.query(Detection).filter(Detection.file_id == file_id).all()
+            db.query(Detection)
+            .filter(Detection.file_id == file_id)
+            # Keep the file_id filter above: the video branches of this
+            # predicate carry only the frame clause.
+            .filter(on_visible_frame_of(file_record))
+            .all()
         )
         file_record.observation_type = derive_observation_type(
             file_detections, threshold

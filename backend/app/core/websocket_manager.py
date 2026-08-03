@@ -347,7 +347,13 @@ class ConnectionManager:
     async def _cleanup_pending_start(
         self, task_id: str, delay: int = _PENDING_START_TIMEOUT
     ) -> None:
-        """Remove a pending start if the frontend never sent 'ready'."""
+        """Remove a pending start if the frontend never sent 'ready'.
+
+        Also settles the job row. Dropping only the in-memory callback left
+        the row ``pending`` for ever: nothing can start it once the callback
+        is gone, and the startup reconciliation only ever looked at
+        ``running`` jobs, so an orphan survived every restart.
+        """
         await asyncio.sleep(delay)
         removed = self._pending_starts.pop(task_id, None)
         if removed is not None:
@@ -355,6 +361,39 @@ class ConnectionManager:
                 f"Cleaned up orphaned pending start for "
                 f"task {task_id} (no 'ready' after {delay}s)"
             )
+            _fail_orphaned_job(
+                task_id,
+                f"The app never connected to this job's progress channel "
+                f"within {delay} seconds, so it was never started. "
+                f"Run it again.",
+            )
+
+
+def _fail_orphaned_job(task_id: str, message: str) -> None:
+    """Mark a job row failed, if ``task_id`` names one.
+
+    Best-effort and quiet about misses: ``register_start`` is also used for
+    model preparation, where the task id is a model id and no job row
+    exists. Only a job still sitting in ``pending`` is touched, so this can
+    never overwrite the outcome of work that did run.
+
+    Imports are local to keep this module free of DB imports at import
+    time; it is loaded by the API layer very early.
+    """
+    try:
+        from app.db.base import get_session_factory
+        from app.models import Job
+
+        with get_session_factory()() as db:
+            job = db.get(Job, task_id)
+            if job is None or job.status != "pending":
+                return
+            job.status = "failed"
+            job.error = message
+            db.commit()
+            logger.warning(f"Marked never-started job {task_id} as failed")
+    except Exception as e:
+        logger.error(f"Could not fail orphaned job {task_id}: {e}", exc_info=True)
 
 
 # Global connection manager instance

@@ -24,6 +24,7 @@ from app.api.crud import detection as detection_crud
 from app.api.schemas.detection import DetectionCreate
 from app.core.logging_config import get_logger
 from app.core.media_types import VIDEO_EXTENSIONS
+from app.ml.detection_visibility import visible_detections
 from app.ml.inference.base import PipelineResult
 from app.ml.json_utils import (
     build_classification_category_descriptions,
@@ -295,6 +296,29 @@ def load_json_to_database(
             elif from_mtime:
                 timestamped_from_mtime += 1
 
+            # Best frame fields (video only). Resolved before the File
+            # lookup because BOTH branches need them: a new row takes them
+            # in its constructor, and an existing row must be refreshed.
+            #
+            # Refreshing matters now that observation_type is derived from
+            # the best frame. A re-ingest onto an existing row appends new
+            # detections carrying fresh frame numbers; leaving the old
+            # best_frame_number in place would compare the two against each
+            # other and read the file as blank. Keeping this out here also
+            # stops the value leaking across loop iterations, which it did
+            # while it was assigned only inside the new-row branch.
+            best_frame_number = img.get("best_frame_number")
+            best_frame_path = None
+            if best_frame_number is not None:
+                # MegaDetector's extract_frames preserves relative dir structure
+                relative_video_path = absolute_path.relative_to(deployment_folder)
+                best_frame_path = str(
+                    _af
+                    / "video_frames"
+                    / relative_video_path
+                    / f"frame{best_frame_number:06d}.jpg"
+                )
+
             # Get or create File record
             # First check by file_id if provided in JSON
             file_id = img.get("file_id")
@@ -326,19 +350,6 @@ def load_json_to_database(
                 # like factory resets to 1970 or AM/PM mistakes.
                 if datetime_offset_seconds and captured_at_local is not None:
                     captured_at_local += timedelta(seconds=datetime_offset_seconds)
-
-                # Best frame fields (video only)
-                best_frame_number = img.get("best_frame_number")
-                best_frame_path = None
-                if best_frame_number is not None:
-                    # MegaDetector's extract_frames preserves relative dir structure
-                    relative_video_path = absolute_path.relative_to(deployment_folder)
-                    best_frame_path = str(
-                        _af
-                        / "video_frames"
-                        / relative_video_path
-                        / f"frame{best_frame_number:06d}.jpg"
-                    )
 
                 # Frame rate + analysed frame numbers (video only) -
                 # output by MegaDetector's process_video. Both are
@@ -388,6 +399,12 @@ def load_json_to_database(
                 )
                 db.add(file_record)
                 db.flush()  # Get file_record.id
+            elif best_frame_number is not None:
+                # Existing row, re-ingested. Keep the stored best frame in
+                # step with the detections being appended below; see the
+                # note where these two are resolved.
+                file_record.best_frame_number = best_frame_number
+                file_record.best_frame_path = best_frame_path
 
             # Video detections live on the parent video File row and
             # keep their `frame_number` column. We no longer create one
@@ -505,11 +522,16 @@ def load_json_to_database(
                             category.capitalize()
                         )
 
-            # Set observation_type from the file's *trusted* detections
-            # (over threshold; verified is always False at ingestion). A
-            # file with only sub-threshold boxes reads as "blank".
+            # Set observation_type from the file's *trusted, visible*
+            # detections (over threshold; verified is always False at
+            # ingestion). A file with only sub-threshold boxes reads as
+            # "blank", and so does a video whose best frame holds none.
+            # Read the best frame off the row, never the local: on an
+            # existing row it is the stored value that the detections
+            # were just appended alongside.
             file_record.observation_type = derive_observation_type(
-                file_detection_records, counting_threshold
+                visible_detections(file_record, file_detection_records),
+                counting_threshold,
             )
 
         # Commit all records

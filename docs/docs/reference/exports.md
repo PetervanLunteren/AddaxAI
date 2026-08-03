@@ -82,24 +82,15 @@ One row per photo or video, whether or not anything was found.
 | `relative_path` | Path inside the deployment folder |
 | `absolute_path` | Full path on the machine that ran the analysis |
 | `datetime` | Capture time, camera local time. Empty if the file had no readable date |
-| `observation_type` | What the file holds overall: whatever the detector called it, so animal, person or vehicle for MegaDetector, or blank |
-| `classification_label` | The species on the file, as the model names it. Empty for a person, a vehicle, or an animal that was never classified |
-| `scientific_name` | Scientific name for that species |
-| `common_name` | Common name for that species |
+| `observation_type` | What the file holds, taken from its strongest box: the one you checked yourself, or else the one the detector scored highest. For a video, only boxes on the one frame AddaxAI saved count. The value is whatever the detector called it, so animal, person or vehicle for MegaDetector, or blank when no box passed |
+| `classification_label` | The species of that same strongest box, not the most confident species on the file. Empty for a person, a vehicle, or an animal that was never classified |
+| `taxon_class` to `taxon_species` | Taxonomy of that species, broad to specific. Only a species label fills all five, so check these before you group by `classification_label` |
+| `scientific_name` | Scientific name of that same box |
+| `common_name` | Common name of that same box. Never empty on a file that holds something: it reads `Person`, `Vehicle` or `Animal` when there is no species |
 | `is_verified` | TRUE if every box on the file was checked |
 | `notes` | Your own notes |
 
 `observation_type` is the only place "blank" appears. Use it to count empty files.
-
-### The one label a file gets
-
-`observation_type`, `classification_label`, `scientific_name` and `common_name` all describe the same thing: the single strongest box on the file. Strongest means a box you checked yourself first, then the highest detection confidence. It is the same rule that names the folders when you separate your files into folders.
-
-That is worth knowing, because the obvious alternative is to report the most confident species anywhere on the file, which sounds the same and is not. A photo of a person sometimes holds one weak false box that the species model still guesses at. Reporting the best species would label that photo with the guess. Reporting the strongest box labels it a person, which is what the photo shows.
-
-So on a file whose strongest box is a person or a vehicle, `classification_label` is empty and the two name columns read `Person` or `Vehicle`. On an animal that was never classified they read `Animal`. On a blank file all three are empty and `observation_type` reads `blank`. `common_name` is therefore the column to use when you want exactly one label per file, filled in on every row that holds something.
-
-Two smaller things. On a video the strongest box can sit on a different frame than the still AddaxAI saved, so the species can name something you do not see in that one picture, and it can differ from the folder that video was copied into. And whatever you find in `classification_label` always has a matching row in the detections table under the same `file_id`, so you can go and look at the box it came from.
 
 ## Deployments
 
@@ -116,7 +107,7 @@ One row per camera period. This is your effort table.
 | `site_tags` | Your tags on the site |
 | `deployment_start` | First day of the period |
 | `deployment_end` | Last day, empty if the camera is still out |
-| `trap_nights` | Days the camera produced photos. See [how trap nights are counted](../understanding/trap-nights.md) |
+| `trap_nights` | How long the camera was out: the days from its first file to its last, counting both ends. Not the number of days that produced photos. See [how trap nights are counted](../understanding/trap-nights.md) |
 | `deployment_notes` | Your notes on this deployment |
 | `deployment_tags` | Your tags on this deployment |
 

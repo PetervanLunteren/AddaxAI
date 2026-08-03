@@ -229,7 +229,12 @@ async def export_spatial(
     """Spatial layers (deployments, species summary)."""
     project = _resolve_project(project_id, db)
     scoped = export_crud.get_scoped_detection_rows(db, project)
-    layers, skipped_deployment_ids = export_crud.build_spatial_layers(
+    # Deployments with no site are dropped from the layers (GeoJSON needs
+    # coordinates). Their ids are not returned to the client: the Export
+    # page already warns before the download, via SpatialExportConfirmDialog
+    # driven by /deployments-without-site, so a response header saying the
+    # same thing had no reader and was dead weight on the API.
+    layers, _skipped_deployment_ids = export_crud.build_spatial_layers(
         db, project, scoped
     )
 
@@ -247,18 +252,10 @@ async def export_spatial(
         media_type = "application/geo+json"
         filename = f"{base}.geojson"
 
-    response_headers = _attachment_headers(filename)
-    if skipped_deployment_ids:
-        response_headers["X-Skipped-Deployment-Ids"] = ",".join(
-            skipped_deployment_ids
-        )
-        response_headers["Access-Control-Expose-Headers"] = (
-            "X-Skipped-Deployment-Ids"
-        )
     return StreamingResponse(
         BytesIO(payload),
         media_type=media_type,
-        headers=response_headers,
+        headers=_attachment_headers(filename),
     )
 
 
@@ -342,16 +339,13 @@ async def download_camtrap_dp(
         raise HTTPException(status_code=410, detail="Export ZIP expired")
 
     base = _filename_base(project, "camtrap-dp")
-    response_headers = _attachment_headers(f"{base}.zip")
-    skipped = payload.get("skipped_deployment_ids") or []
-    if skipped:
-        response_headers["X-Skipped-Deployment-Ids"] = ",".join(skipped)
-        response_headers["Access-Control-Expose-Headers"] = (
-            "X-Skipped-Deployment-Ids"
-        )
+    # Deployments with no site are absent from the package (Camtrap DP
+    # requires lat/lon). The user is told before the download, by
+    # CamtrapDPExportConfirmDialog on the Export page, so this response
+    # carried a header naming them that nothing ever read.
     return FileResponse(
         zip_path,
         media_type="application/zip",
         filename=f"{base}.zip",
-        headers=response_headers,
+        headers=_attachment_headers(f"{base}.zip"),
     )

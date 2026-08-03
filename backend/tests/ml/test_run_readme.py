@@ -204,3 +204,48 @@ def test_readme_omits_the_media_filter_by_default(db, tmp_path):
 def test_readme_unknown_project_raises(db, tmp_path):
     with pytest.raises(ValueError, match="not found"):
         write_run_readme(db, "no-such-id", tmp_path / "out", media_threshold=0.5)
+
+
+def test_readme_lists_files_that_could_not_be_read(db, tmp_path):
+    """A file the detector could not open has no File row, so it is in no
+    table and in no detection list. Without this section the run details
+    describe a smaller folder than the one the user pointed at, and nothing
+    on disk says which files went missing."""
+    project = make_project(db, name="readme-skipped", timezone="UTC")
+    dep = make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "src")
+    )
+    dep.warnings = [
+        {
+            "type": "video_processing_failure",
+            "path": "corrupt-video/broken.mp4",
+            "reason": "Error: found no frames in file",
+        },
+        # A dateless file was read perfectly well and IS in the data, so it
+        # must not be listed as skipped.
+        {"type": "missing_timestamp", "path": "/abs/undated.mp4"},
+    ]
+    db.commit()
+
+    target = tmp_path / "out"
+    write_run_readme(db, project.id, target, media_threshold=0.5)
+    text = (target / SUMMARY_FILENAME).read_text()
+
+    assert "Files skipped (unreadable)" in text
+    assert "corrupt-video/broken.mp4" in text
+    assert "found no frames" in text
+    assert "undated.mp4" not in text
+
+
+def test_readme_has_no_skipped_section_when_nothing_was_skipped(db, tmp_path):
+    project = make_project(db, name="readme-clean", timezone="UTC")
+    make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "src")
+    )
+
+    target = tmp_path / "out"
+    write_run_readme(db, project.id, target, media_threshold=0.5)
+    text = (target / SUMMARY_FILENAME).read_text()
+
+    assert "Files skipped" not in text
+    assert "could not be read" not in text

@@ -109,6 +109,7 @@ def test_files_sheet_keeps_the_species_columns(db, tmp_path):
         for name in ("classification_label", "scientific_name", "common_name")
     ]
     assert species == ["red fox", "Vulpes vulpes", "Red fox"]
+    assert "taxon_family" in headers
 
 
 def test_unknown_project_raises(db, tmp_path):

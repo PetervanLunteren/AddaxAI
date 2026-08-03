@@ -2,6 +2,9 @@
 
 from unittest.mock import patch
 
+from sqlalchemy.orm import sessionmaker
+
+from app.models import Job
 from tests.conftest import make_job, make_project
 
 
@@ -73,9 +76,13 @@ def test_run_queue_with_pending(client, db):
 
 def test_reconcile_interrupted_jobs(db):
     """
-    Startup reconciliation fails jobs left `running` by a previous process
-    and resets their stuck `processing` queue entries, leaving pending and
-    already-terminal rows untouched.
+    Startup reconciliation fails jobs left `running` OR `pending` by a
+    previous process and resets their stuck `processing` queue entries,
+    leaving already-terminal rows untouched.
+
+    `pending` counts as orphaned because a job only starts when the
+    frontend sends "ready" and `ws_manager` holds that callback in memory.
+    A restart drops it, so nothing is left that could ever start the job.
     """
     from app.api.crud import deployment_queue as crud_queue
     from app.api.crud.job import reconcile_interrupted_jobs
@@ -94,14 +101,18 @@ def test_reconcile_interrupted_jobs(db):
         db, DeploymentQueueCreate(project_id=project.id, folder_path="/y")
     )
 
-    assert reconcile_interrupted_jobs(db) == 1
+    assert reconcile_interrupted_jobs(db) == 2
 
     for job in (running, pending, completed):
         db.refresh(job)
     assert running.status == "failed"
     assert running.error
     assert running.completed_at_utc is not None
-    assert pending.status == "pending"
+    # Failed too, but with its own wording: it never ran at all, so
+    # "interrupted before completion" would misdescribe it.
+    assert pending.status == "failed"
+    assert "Never started" in pending.error
+    assert pending.completed_at_utc is not None
     assert completed.status == "completed"
 
     db.refresh(processing)
@@ -109,3 +120,63 @@ def test_reconcile_interrupted_jobs(db):
     assert processing.status == "failed"
     assert processing.error
     assert pending_entry.status == "pending"
+
+
+def _run_pending_cleanup(task_id: str) -> None:
+    """Register a pending start and immediately run its cleanup.
+
+    `register_start` schedules the cleanup on the running loop, so this has
+    to happen inside one. `_fail_orphaned_job` opens its own session via
+    `get_session_factory`, which in tests would otherwise point at a
+    different engine than the `db` fixture, so it is pointed at the shared
+    in-memory one (same approach as the Camtrap worker helper).
+    """
+    import asyncio
+    from unittest.mock import patch
+
+    from app.core.websocket_manager import ws_manager
+    from tests.conftest import _engine  # noqa: PLC2701 — shared test engine
+
+    session_factory = sessionmaker(bind=_engine)
+
+    async def _go() -> None:
+        ws_manager.register_start(task_id, lambda: None)
+        with patch("app.db.base.get_session_factory", lambda: session_factory):
+            await ws_manager._cleanup_pending_start(task_id, delay=0)
+
+    asyncio.run(_go())
+
+
+def test_orphaned_pending_start_fails_the_job(db):
+    """The 5-minute cleanup used to drop only the in-memory callback, so a
+    job whose frontend never connected stayed `pending` for ever: nothing
+    could start it, and startup reconciliation only looked at `running`.
+    Now the cleanup settles the row too."""
+    job = make_job(db, status="pending")
+    db.commit()
+
+    _run_pending_cleanup(job.id)
+
+    db.expire_all()
+    refreshed = db.get(Job, job.id)
+    assert refreshed.status == "failed"
+    assert "never connected" in refreshed.error
+
+
+def test_pending_start_cleanup_ignores_a_task_that_is_not_a_job(db):
+    """`register_start` is also used for model preparation, where the task
+    id is a model id and no job row exists. The cleanup must not care."""
+    _run_pending_cleanup("SPECIESNET-v4-0-2-A")  # must not raise
+
+
+def test_pending_start_cleanup_leaves_a_job_that_ran(db):
+    """A job that already started and finished must not be reopened by a
+    late cleanup tick."""
+    job = make_job(db, status="completed")
+    db.commit()
+
+    _run_pending_cleanup(job.id)
+
+    db.expire_all()
+    refreshed = db.get(Job, job.id)
+    assert refreshed.status == "completed"

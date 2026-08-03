@@ -632,3 +632,62 @@ def test_filename_is_canonical(db, tmp_path):
 def test_unknown_project_raises(db, tmp_path):
     with pytest.raises(ValueError, match="not found"):
         write_recognition_json(db, "no-such-id", tmp_path / "out")
+
+
+def test_unreadable_files_are_emitted_as_failure_entries(db, tmp_path):
+    """MegaDetector's format carries an unreadable file as
+    `{"file": ..., "failure": ...}`, and the internal results.json does.
+    Without re-emitting them, this file lists fewer videos than the folder
+    holds and a downstream tool cannot tell "nothing was found here" apart
+    from "this was never looked at"."""
+    project = make_project(db, name="rj-failure")
+    dep = make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "src")
+    )
+    good = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=str(tmp_path / "src" / "IMG_001.jpg"),
+    )
+    make_detection(db, file_id=good.id, category="animal", confidence=0.9)
+    dep.warnings = [
+        {
+            "type": "video_processing_failure",
+            "path": "corrupt-video/broken.mp4",
+            "reason": "Error: found no frames in file",
+        },
+        # Read fine, just undated: it has a real File row and must not be
+        # duplicated here as a failure.
+        {"type": "missing_timestamp", "path": "/abs/undated.mp4"},
+    ]
+    db.commit()
+
+    write_recognition_json(db, project.id, tmp_path / "out")
+    data = _load_json(tmp_path / "out")
+
+    by_file = {i["file"]: i for i in data["images"]}
+    assert "corrupt-video/broken.mp4" in by_file
+    failure = by_file["corrupt-video/broken.mp4"]
+    assert "found no frames" in failure["failure"]
+    assert "detections" not in failure
+    # The readable file is unaffected and still carries its detections.
+    assert by_file["IMG_001.jpg"]["detections"]
+    assert not any("undated" in name for name in by_file)
+
+
+def test_no_failure_entries_when_everything_was_readable(db, tmp_path):
+    project = make_project(db, name="rj-clean")
+    dep = make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "src")
+    )
+    make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=str(tmp_path / "src" / "IMG_001.jpg"),
+    )
+    db.commit()
+
+    write_recognition_json(db, project.id, tmp_path / "out")
+    data = _load_json(tmp_path / "out")
+
+    assert all("failure" not in i for i in data["images"])
