@@ -64,7 +64,9 @@ def stream_with_tail(
 
     Each non-empty stripped line is forwarded to `on_line` (for live
     progress / parsing) and appended to a ring buffer of the last
-    `max_tail` lines. Blocks until the subprocess terminates.
+    `max_tail` lines. Output is decoded as UTF-8 with replacement for
+    malformed bytes so Windows' locale encoding cannot abort a run.
+    Blocks until the subprocess terminates.
 
     `popen_factory` lets callers swap in a process-group launcher
     (e.g. `app.core.subprocess_group.popen_group`) so cancellation can
@@ -90,6 +92,8 @@ def stream_with_tail(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         bufsize=1,
         env=env,
         cwd=str(cwd) if cwd else None,
