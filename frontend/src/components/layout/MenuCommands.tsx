@@ -21,6 +21,8 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { setupApi } from "../../api/setup";
 import { backupApi } from "../../api/backup";
+import { useLatestRelease } from "../../hooks/useLatestRelease";
+import { formatVersion, parseVersion } from "../../lib/version";
 import { exportDiagnosticReport } from "../../lib/diagnostic-export";
 import { getSpeciesNameMode, setSpeciesNameMode } from "../../lib/species-name-mode";
 import { ResetAppDialog } from "../diagnostics/ResetAppDialog";
@@ -37,6 +39,15 @@ const FALLBACK_VERSION = "(dev)";
 // prompt. A UI preference, so it lives with the other one in
 // localStorage rather than becoming another marker file in ~/AddaxAI.
 const LEGACY_PROMPT_DISMISSED = "addaxai.legacy-prompt-dismissed";
+
+// The release version whose update toast the user has already closed.
+// Stores the version rather than a boolean so dismissing 7.0.5 says
+// nothing about 7.0.6: someone who cannot install updates on a managed
+// machine is not nagged every launch, and everybody still hears about
+// the next release.
+const UPDATE_TOAST_DISMISSED_VERSION = "addaxai.update-toast-dismissed-version";
+
+const UPDATE_TOAST_ID = "update-available";
 
 export function MenuCommands() {
   const navigate = useNavigate();
@@ -106,6 +117,55 @@ export function MenuCommands() {
     legacyPromptShown.current = true;
     setDialog("legacy");
   }, [legacy?.found, legacyDismissed]);
+
+  // Check for a newer release once per launch. Until this existed the
+  // only way to find out was the Help menu item, so nobody ever did:
+  // installs sat two releases behind while a fixed bug was still biting
+  // them. One request per launch is not polling, so GitHub's
+  // unauthenticated rate limit is not a concern.
+  //
+  // Gated on setup being ready for the same reason as the legacy prompt
+  // (never on top of the first-run wizard), and on the version parsing,
+  // which skips the browser dev server where it is "(dev)" and any
+  // build whose getVersion() failed. Failure and being up to date are
+  // both silent: neither is news.
+  const versionIsReal = parseVersion(version) !== null;
+  const { latest, updateAvailable } = useLatestRelease(
+    version,
+    Boolean(setupStatus?.ready) && versionIsReal,
+  );
+
+  // A ref for the same reason as legacyPromptShown: a background
+  // refetch must not resurrect a toast the user just closed.
+  const updateToastShown = useRef(false);
+
+  useEffect(() => {
+    if (updateToastShown.current || !updateAvailable || !latest) return;
+    if (localStorage.getItem(UPDATE_TOAST_DISMISSED_VERSION) === latest) return;
+    updateToastShown.current = true;
+
+    // A toast rather than the dialog: an update is worth mentioning, not
+    // worth blocking the app on. Closing it is the dismissal, so it
+    // never expires on its own; an update the user blinked past would
+    // otherwise be gone until the next release.
+    const remember = () =>
+      localStorage.setItem(UPDATE_TOAST_DISMISSED_VERSION, latest);
+
+    toast.info(`AddaxAI ${formatVersion(latest)} is available`, {
+      id: UPDATE_TOAST_ID,
+      description: `You are running ${formatVersion(version)}.`,
+      duration: Infinity,
+      onDismiss: remember,
+      action: {
+        label: "Details",
+        onClick: () => {
+          remember();
+          toast.dismiss(UPDATE_TOAST_ID);
+          setDialog("updates");
+        },
+      },
+    });
+  }, [updateAvailable, latest, version]);
 
   // Reflect the stored species-name mode in the menu radio. Sent on mount;
   // a change reloads the page, so the next mount re-syncs the checkmark.

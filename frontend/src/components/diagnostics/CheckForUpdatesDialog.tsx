@@ -1,17 +1,22 @@
 /**
  * Check for updates dialog.
  *
- * Fetches the latest GitHub release on open and compares to the
- * runtime app version. No background polling — only checks when the
- * user explicitly clicks the menu item, so we don't spam GitHub's
- * unauthenticated rate limit (60 req/hour/IP).
+ * Shows how the installed build compares to the newest published
+ * release. Opened from the Help menu, or from the startup toast that
+ * appears when an update is waiting (see MenuCommands).
+ *
+ * The comparison itself lives in useLatestRelease, shared with that
+ * toast so the two can never tell the user different things. Both read
+ * one query, so a launch costs one request whether or not the dialog is
+ * opened; there is still no background polling, which keeps us clear of
+ * GitHub's unauthenticated rate limit (60 req/hour/IP).
  */
 
-import { useQuery } from "@tanstack/react-query";
 import { ArrowUpRight } from "lucide-react";
 import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
-import { compareVersions, formatVersion } from "@/lib/version";
+import { formatVersion } from "@/lib/version";
+import { useLatestRelease } from "@/hooks/useLatestRelease";
 import {
   Dialog,
   DialogContent,
@@ -27,57 +32,20 @@ interface CheckForUpdatesDialogProps {
   currentVersion: string;
 }
 
-interface GitHubRelease {
-  tag_name: string;
-  html_url: string;
-}
-
-// Deliberately not /releases/latest: GitHub documents that one as "the
-// most recent non-prerelease, non-draft release", so the moment a
-// release is flagged as a pre-release in the GitHub UI it becomes
-// invisible there and users get told they are up to date on an older
-// build. We ship betas, so take the newest release whatever its flag.
-// Drafts are not returned to unauthenticated callers, so they cannot
-// leak in.
-const RELEASES_API =
-  "https://api.github.com/repos/PetervanLunteren/AddaxAI/releases?per_page=1";
-
-function normalize(v: string): string {
-  return v.replace(/^v/, "").trim();
-}
-
 export function CheckForUpdatesDialog({
   open,
   onOpenChange,
   currentVersion,
 }: CheckForUpdatesDialogProps) {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["latest-release"],
-    queryFn: async (): Promise<GitHubRelease> => {
-      const res = await fetch(RELEASES_API);
-      if (!res.ok) {
-        throw new Error(`GitHub returned ${res.status}`);
-      }
-      const releases: GitHubRelease[] = await res.json();
-      if (releases.length === 0) {
-        throw new Error("no published releases found");
-      }
-      return releases[0];
-    },
-    enabled: open,
-    staleTime: 60_000, // Don't re-fetch within a minute.
-  });
-
-  const latest = data ? normalize(data.tag_name) : null;
-  const current = normalize(currentVersion);
-  // Exact string equality is the only thing that claims "up to date",
-  // which keeps that branch as safe as it was before the comparator
-  // existed. The comparator only splits the remaining cases into
-  // "ahead of the latest release" and "an update exists", so a bug in
-  // it can never hide an available update from a user.
-  const upToDate = latest !== null && latest === current;
-  const ahead =
-    latest !== null && !upToDate && compareVersions(current, latest) === 1;
+  const {
+    latest,
+    current,
+    downloadUrl,
+    upToDate,
+    ahead,
+    isLoading,
+    error,
+  } = useLatestRelease(currentVersion, open);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -85,8 +53,8 @@ export function CheckForUpdatesDialog({
         <DialogHeader>
           <DialogTitle>Check for updates</DialogTitle>
           <DialogDescription>
-            Compares your installed version to the latest release on
-            GitHub.
+            Compares your installed version to the latest available
+            release.
           </DialogDescription>
         </DialogHeader>
 
@@ -99,12 +67,12 @@ export function CheckForUpdatesDialog({
 
           {error && (
             <Callout variant="error" size="compact">
-              Could not check for updates: {(error as Error).message}.
-              Check your internet connection.
+              Could not check for updates: {error.message}. Check your
+              internet connection.
             </Callout>
           )}
 
-          {data && latest && (
+          {latest && (
             <>
               <Row label="Latest" value={formatVersion(latest)} />
               {upToDate ? (
@@ -121,10 +89,12 @@ export function CheckForUpdatesDialog({
                   <div className="space-y-2">
                     <div>A newer version is available.</div>
                     <a
-                      href={data.html_url}
+                      href={downloadUrl}
+                      target="_blank"
+                      rel="noreferrer"
                       className="inline-flex items-center gap-1 text-primary hover:underline"
                     >
-                      View release notes and download
+                      Download the latest version
                       <ArrowUpRight className="h-3.5 w-3.5" />
                     </a>
                   </div>
