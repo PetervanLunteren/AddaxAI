@@ -77,3 +77,42 @@
   --ifm-color-primary-lightest: #8fd2d5;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 }
+
+/* Per-column links in reference tables (src/remark/table-row-anchors.ts).
+   Infima only reveals a .hash-link when its direct parent is hovered, which
+   would mean hovering the exact cell. Reveal it for the whole row instead,
+   so the target is the row you are reading. */
+tr[id]:hover .hash-link,
+.hash-link:focus {
+  opacity: 1;
+}
+
+/* Landing on a column link has to show you which row you landed on: a 20-row
+   table with no cue is barely better than linking to the table.
+
+   A translucent tint, not a solid fill. Infima's "lightest" primary is still
+   a saturated teal (#147d82), so filling with it puts dark body text and
+   teal links on a dark teal ground and the row becomes hard to read. An
+   alpha tint leaves every colour in the row alone. */
+:root {
+  --addax-row-target-bg: rgba(15, 96, 100, 0.12);
+}
+
+[data-theme="dark"] {
+  --addax-row-target-bg: rgba(79, 182, 186, 0.18);
+}
+
+tr[id] {
+  /* Clear the sticky navbar, or the row lands underneath it. */
+  scroll-margin-top: 5rem;
+}
+
+tr[id]:target > td {
+  background: var(--addax-row-target-bg);
+}
+
+/* A bar down the left edge, so the row is unmistakable without the fill
+   having to be strong enough to fight the text. */
+tr[id]:target > td:first-child {
+  box-shadow: inset 3px 0 0 var(--ifm-color-primary);
+}

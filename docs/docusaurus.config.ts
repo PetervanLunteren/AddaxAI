@@ -1,6 +1,7 @@
 import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
 import { themes as prismThemes } from "prism-react-renderer";
+import tableRowAnchors from "./src/remark/table-row-anchors";
 
 // AddaxAI documentation + landing site.
 //
@@ -57,6 +58,10 @@ const config: Config = {
         docs: {
           routeBasePath: "/docs",
           sidebarPath: "./sidebars.ts",
+          // Anchors every column row of a table, so a single column can be
+          // linked ("...#deployments-trap_nights") and not just the table
+          // above it. See src/remark/table-row-anchors.ts.
+          remarkPlugins: [tableRowAnchors],
           // No editUrl on purpose. That adds an "Edit this page" link aimed at
           // people who would open a pull request, and this site is written for
           // end users. Typos and mistakes come in by email instead.
