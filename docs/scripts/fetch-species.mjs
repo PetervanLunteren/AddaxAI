@@ -91,10 +91,24 @@ await Promise.all(
   }),
 );
 
+// The fetches above resolve in whatever order the network hands them back, so
+// writing `species` as built would key the file differently on every run. That
+// showed up as a diff on the committed fallback each time anyone built the
+// docs, always claiming a change when the content was identical. Sorting on
+// write makes the output depend only on the data.
+const sortedSpecies = Object.fromEntries(
+  Object.keys(species)
+    .sort()
+    .map((id) => [id, species[id]]),
+);
+
 mkdirSync(destDir, { recursive: true });
 writeFileSync(
   dest,
-  `${JSON.stringify({ meta: { unavailable: missingIds.map((m) => m.split(" ")[0]) }, species })}\n`,
+  `${JSON.stringify({
+    meta: { unavailable: missingIds.map((m) => m.split(" ")[0]).sort() },
+    species: sortedSpecies,
+  })}\n`,
 );
 
 const total = Object.values(species).reduce((n, list) => n + list.length, 0);
