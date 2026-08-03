@@ -1376,6 +1376,17 @@ export function LabelsTab({
   useEffect(() => {
     if (selectedIds.size === 0) return;
     function handleClick(e: MouseEvent) {
+      // A modal layer is open, so nothing behind it is a grid background
+      // click. Its overlay is not part of the grid, and a drag that
+      // starts inside the dialog and ends on the overlay fires `click`
+      // on their common ancestor, which is <body>. Both reached
+      // clearSelection below, which unmounts the BulkActionBar and the
+      // add-custom-label slideout living inside it: the sheet vanished
+      // mid-edit with no exit animation and no onOpenChange. Selecting
+      // text right to left in the sheet hit this constantly, because
+      // the sheet's left edge is the only boundary a drag can cross and
+      // it sits ~25px from the fields.
+      if (document.querySelector("[role='dialog'],[role='alertdialog']")) return;
       const el = e.target as HTMLElement;
       if (el.closest("[data-crop-card], button, a, input, select, [role='menu'], [role='dialog'], [data-radix-popper-content-wrapper]")) return;
       clearSelection();
