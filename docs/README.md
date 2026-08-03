@@ -51,6 +51,19 @@ So: `npm start` while writing, one `npm run build` before you push.
 Broken internal links fail the build (`onBrokenLinks: throw`), so keep links
 pointing at real files.
 
+## Redirects for moved pages
+
+`static/` is copied into the site as is, so a plain HTML file with a meta refresh
+is all it takes to keep an old URL alive. No plugin involved.
+
+`static/docs/troubleshooting/` holds three of these, left from renaming that
+folder to `help/`. They are not cosmetic: AddaxAI 7.0.3 shipped with its Help
+menu pointing at `docs.addaxai.com/docs/troubleshooting/`, so without the stub
+every one of those installs hits a 404 forever.
+
+If you move a page, add `static/<old path>/index.html`, copy an existing stub and
+change the two URLs in it.
+
 ## How the model zoo gets its data
 
 Two files feed it, and they work differently on purpose.
