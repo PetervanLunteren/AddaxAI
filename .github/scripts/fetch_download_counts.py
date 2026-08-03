@@ -5,6 +5,8 @@ Run by the "Download metrics" workflow on a weekly schedule. GitHub's
 dated row per asset to ``metrics/download_counts.csv`` to build a trend over
 time.
 
+Only releases from ``MIN_VERSION`` on are recorded, see the note there.
+
 Stdlib only (no dependencies): reads ``GITHUB_REPOSITORY`` and ``GITHUB_TOKEN``
 from the environment (both provided automatically inside GitHub Actions),
 fetches every release + asset, and appends one row per asset for today's UTC
@@ -30,16 +32,43 @@ FIELDNAMES = ["snapshot_date", "release_tag", "asset_name", "download_count"]
 API_ROOT = "https://api.github.com"
 PER_PAGE = 100
 
+# Only releases from v7.0.2 on are recorded. Older ones are v6 or v7 betas, and
+# their counts are not reported on. Without this every weekly run writes a row
+# for all 194 assets across 78 releases, forever, and the file grows faster as
+# releases accumulate. The current total of any release stays readable from the
+# API whenever it is wanted, so nothing is lost by leaving them out.
+MIN_VERSION = (7, 0, 2)
+
+
+def parse_version(tag: str) -> tuple[int, ...] | None:
+    """The leading numeric version in a release tag, or None if it has none.
+
+    Tags here are not consistent: ``v7.0.3``, ``v7.0.1-beta.16``, ``v6.37`` and
+    older ones like ``v.5.4``. Take the leading dot-separated numbers and drop
+    any suffix, so a beta sorts with the version it belongs to. Tags that are
+    not versions at all return None and are skipped.
+    """
+    head = tag.lstrip("v.").split("-")[0]
+    parts = head.split(".")
+    if not all(part.isdigit() for part in parts):
+        return None
+    return tuple(int(part) for part in parts)
+
 
 def build_rows(releases: list[dict], snapshot_date: str) -> list[dict]:
     """Turn the releases API response into tidy rows, one per asset.
 
-    Pure and side-effect free (this is the unit-tested part). A release with no
-    assets contributes no rows. ``download_count`` defaults to 0 defensively.
+    Pure and side-effect free (this is the unit-tested part). Releases older
+    than ``MIN_VERSION``, and tags that are not versions, are left out. A
+    release with no assets contributes no rows. ``download_count`` defaults to
+    0 defensively.
     """
     rows: list[dict] = []
     for release in releases:
         tag = release.get("tag_name", "")
+        version = parse_version(tag)
+        if version is None or version < MIN_VERSION:
+            continue
         for asset in release.get("assets", []):
             rows.append(
                 {
