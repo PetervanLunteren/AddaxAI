@@ -38,6 +38,7 @@ import {
   Tally5,
 } from "lucide-react";
 import { projectsApi } from "../../api/projects";
+import { useBrokenDeployments } from "../../hooks/useBrokenDeployments";
 import { cn } from "../../lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import {
@@ -61,6 +62,11 @@ interface NavItem {
    * children.
    */
   children?: NavItem[];
+  /**
+   * Draw an attention dot on the item's icon. Rendered by `LeafNavLink`
+   * only, so it does nothing on an item that has `children`.
+   */
+  dot?: boolean;
 }
 
 interface SidebarProps {
@@ -70,6 +76,9 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
   const { projectId } = useParams<{ projectId: string }>();
+  // Shares the deployments query the health toast already runs, so this
+  // subscribes to a cache entry rather than adding a request.
+  const brokenDeployments = useBrokenDeployments(projectId);
 
   const { data: project } = useQuery({
     queryKey: ["projects", projectId],
@@ -120,9 +129,18 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
   ];
 
   // "Config" pages — set up monitoring locations and deployments.
+  //
+  // Deployments carries a dot when any of them have lost their files. The
+  // startup toast says it loudly once; the dot is what keeps saying it,
+  // and it points at the page that fixes it.
   const configItems: NavItem[] = [
     { to: `/projects/${projectId}/sites`, icon: MapPin, label: "Sites" },
-    { to: `/projects/${projectId}/deployments`, icon: CardSim, label: "Deployments" },
+    {
+      to: `/projects/${projectId}/deployments`,
+      icon: CardSim,
+      label: "Deployments",
+      dot: brokenDeployments.length > 0,
+    },
   ];
 
   // Utility pages — settings only for now.
@@ -294,19 +312,39 @@ function useIsActive(to: string): boolean {
   return useMatch({ path: resolved.pathname, end: false }) !== null;
 }
 
+// What the dot means, in words. The dot alone is colour-only, which says
+// nothing to a screen reader and nothing in the collapsed rail's tooltip.
+const DOT_LABEL = "needs attention";
+
 function LeafNavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   const isActive = useIsActive(item.to);
   const link = (
     <NavLink to={item.to} className={parentLinkClass(isActive, collapsed)}>
-      <item.icon className="h-4 w-4 shrink-0" />
+      {/* The dot is an absolute overlay, not a sibling of the icon, for two
+          reasons: `parentLinkClass` sets no `relative`, so it needs its own
+          positioned ancestor, and in the collapsed rail `justify-center`
+          would centre an icon+dot pair and knock this one icon off the
+          centreline the rail width exists to protect. */}
+      <span className="relative shrink-0">
+        <item.icon className="h-4 w-4" />
+        {item.dot && (
+          <span
+            className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-red-600 ring-2 ring-white"
+            aria-hidden
+          />
+        )}
+      </span>
       {!collapsed && item.label}
+      {item.dot && <span className="sr-only">, {DOT_LABEL}</span>}
     </NavLink>
   );
   if (!collapsed) return link;
   return (
     <Tooltip>
       <TooltipTrigger asChild>{link}</TooltipTrigger>
-      <TooltipContent side="right">{item.label}</TooltipContent>
+      <TooltipContent side="right">
+        {item.dot ? `${item.label} (${DOT_LABEL})` : item.label}
+      </TooltipContent>
     </Tooltip>
   );
 }

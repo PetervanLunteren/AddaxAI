@@ -1,65 +1,73 @@
 /**
- * Startup health toast for deployments with broken folder links.
+ * Health toast for deployments with broken folder links.
  *
- * Mounted inside AppLayout so it activates for any project route.
- * On first mount per project per session, queries the deployments
- * list (reusing the cache that the deployments page populates) and
- * checks for any deployment with folder_status === "needs_relink".
+ * Mounted inside AppLayout so it activates for any project route. Fires a
+ * warning toast when the project holds any deployment whose files can no
+ * longer be found, with a "View" action that goes to the deployments page,
+ * where the relink banners live.
  *
- * If at least one is found, fires a sonner warning toast with a
- * "View" action that navigates to the deployments page with the
- * status filter pre-applied.
+ * The toast does not auto-close. A missing folder is a state that persists
+ * until the user fixes it, and it silently breaks crop thumbnails and video
+ * playback everywhere in the app, so a notice that vanishes after ten
+ * seconds is worse than useless: it teaches the user that nothing is wrong.
+ * Only the close button takes it away.
  *
- * Shown once per project per session via sessionStorage so it
- * doesn't nag users on every navigation.
+ * Shown once per project per session, so dismissing it silences it for the
+ * rest of the session but a still-missing folder announces itself again on
+ * the next app start (sessionStorage dies with the window).
+ *
+ * The sidebar dot (see `useBrokenDeployments`) reports the same state
+ * quietly and permanently. This toast is the one that grabs attention.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { deploymentsApi } from "../../api/deployments";
+import { useBrokenDeployments } from "../../hooks/useBrokenDeployments";
 
 const SESSION_STORAGE_PREFIX = "addaxai:deployment-health-toast-shown:";
+
+const toastIdFor = (projectId: string) => `deployment-health-${projectId}`;
 
 export function DeploymentHealthToast() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const firedRef = useRef(false);
+  const count = useBrokenDeployments(projectId).length;
 
-  const { data: deployments } = useQuery({
-    queryKey: ["deployments", projectId],
-    queryFn: () => deploymentsApi.list({ projectId: projectId! }),
-    enabled: !!projectId,
-  });
+  // The user reconnected the folder while the toast was still up. That is a
+  // normal route now, because the sidebar dot leads to the deployments page
+  // without touching the toast. A toast that never expires on its own must
+  // not be left asserting something that is no longer true. Dismissing an
+  // id that is not showing is a no-op, so this needs no bookkeeping.
+  useEffect(() => {
+    if (projectId && count === 0) toast.dismiss(toastIdFor(projectId));
+  }, [projectId, count]);
 
   useEffect(() => {
-    if (!projectId || !deployments || firedRef.current) return;
+    if (!projectId || count === 0) return;
 
     const sessionKey = `${SESSION_STORAGE_PREFIX}${projectId}`;
     if (sessionStorage.getItem(sessionKey)) return;
-
-    const broken = deployments.filter((d) => d.folder_status === "needs_relink");
-    if (broken.length === 0) return;
-
-    firedRef.current = true;
     sessionStorage.setItem(sessionKey, "1");
 
     toast.warning(
-      broken.length === 1
+      count === 1
         ? "1 deployment folder couldn't be found"
-        : `${broken.length} deployment folders couldn't be found`,
+        : `${count} deployment folders couldn't be found`,
       {
+        // A stable id keeps a re-run of this effect from stacking a second
+        // copy of a toast that now never expires on its own.
+        id: toastIdFor(projectId),
         description:
           "They may have been moved, renamed, or unmounted. We'll help reconnect them.",
+        duration: Infinity,
         action: {
           label: "View",
           onClick: () => navigate(`/projects/${projectId}/deployments`),
         },
-        duration: 10000,
-      }
+      },
     );
-  }, [projectId, deployments, navigate]);
+  }, [projectId, count, navigate]);
 
   return null;
 }
