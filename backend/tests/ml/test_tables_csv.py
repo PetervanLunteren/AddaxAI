@@ -145,6 +145,16 @@ def test_folder_run_files_table_keeps_the_species_columns(db, tmp_path):
     ]
     assert species == ["red fox", "Vulpes vulpes", "Red fox"]
     assert row[headers.index("observation_type")] == "animal"
+    # The five ranks come along too, so a folder run can be grouped by family
+    # or order without joining anything.
+    for rank in (
+        "taxon_class",
+        "taxon_order",
+        "taxon_family",
+        "taxon_genus",
+        "taxon_species",
+    ):
+        assert rank in headers
 
 
 def test_projects_mode_builders_keep_every_column(db, tmp_path):

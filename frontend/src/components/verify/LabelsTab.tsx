@@ -694,7 +694,12 @@ export function LabelsTab({
   // The subprocess caps a huge selection to the newest slice (a memory
   // guard); `total_matching` is the uncapped pool. When it exceeds what we
   // loaded, we show a notice and let the user reload.
-  const loadedCount = sortResult?.total_detections ?? 0;
+  //
+  // Compare against `total_loaded`, never `total_detections`. The
+  // suggestions sort returns only cohort members, so `total_detections` is
+  // a small subset of a pool that was never capped, and comparing it here
+  // fired the notice on every suggestions run.
+  const loadedCount = sortResult?.total_loaded ?? 0;
   const totalMatching = sortResult?.total_matching ?? 0;
   const isCapped = totalMatching > loadedCount;
   // Name the actual cap: similarity / suggestions walk embeddings (cap
@@ -1757,10 +1762,22 @@ export function LabelsTab({
                 </Button>
               }
             >
-              Showing the newest {loadedCount.toLocaleString()} of{" "}
-              {totalMatching.toLocaleString()} {capNoun}, capped to stay
-              responsive. Verify some and reload to bring in more, or narrow the
-              filters.
+              {resultSort === "suggestions" ? (
+                <>
+                  Suggestions were found in the newest{" "}
+                  {loadedCount.toLocaleString()} of{" "}
+                  {totalMatching.toLocaleString()} {capNoun}, capped to stay
+                  responsive. Verify some and reload to search the rest, or
+                  narrow the filters.
+                </>
+              ) : (
+                <>
+                  Showing the newest {loadedCount.toLocaleString()} of{" "}
+                  {totalMatching.toLocaleString()} {capNoun}, capped to stay
+                  responsive. Verify some and reload to bring in more, or narrow
+                  the filters.
+                </>
+              )}
             </Callout>
           )}
           <CropGrid

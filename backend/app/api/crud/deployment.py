@@ -838,6 +838,17 @@ def relink_deployment(
     # files. Uses the same sampling logic as the startup/modal check.
     result = verify_deployment_folder(deployment, new_folder_path)
     if result.status != "valid":
+        # Log every reason. The refusal is otherwise unactionable: the
+        # endpoint answers 200 with the mismatch list, so a rejected relink
+        # left no trace at all on the server and the user was told only how
+        # many samples failed, never which ones or why.
+        logger.warning(
+            f"Relink refused for deployment {deployment_id}: "
+            f"{len(result.mismatches)} of {result.checked_count} sampled "
+            f"file(s) did not match at {new_folder_path}"
+        )
+        for mismatch in result.mismatches:
+            logger.warning(f"  relink mismatch: {mismatch}")
         return RelinkResult(success=False, verify_result=result)
 
     old_folder = Path(deployment.folder_path)

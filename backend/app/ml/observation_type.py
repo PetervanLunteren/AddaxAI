@@ -6,6 +6,14 @@ Anything that needs another attribute of the deciding box (the Files
 export needs its species) calls the first one, so the ordering rule
 still has exactly one implementation.
 
+**The iterable you pass must already be the file's visible surface.**
+This module is frame-blind on purpose, so for a video the caller filters
+first, with ``on_visible_frame()`` / ``on_visible_frame_of()`` in a query
+or ``visible_detections(file, dets)`` on a list already in memory (both in
+``ml/detection_visibility.py``). Pass a video's raw detections here and
+you will summarise it by a box on a frame that was never written to disk,
+which is a label the user can neither see nor correct.
+
 ``observation_type`` is a denormalised summary of a file's *trusted*
 content: **the raw detector category of its single strongest passing
 detection**, else ``"blank"``. A detection passes when it clears the
@@ -16,10 +24,13 @@ below the threshold has no trusted content and reads as ``"blank"``,
 exactly as the verify grid hides those detections.
 
 Strongest means verified first, then detector confidence. Verification
-outranks confidence because a human looked at that box, which is the
-same ordering ``build_event_primary_labels`` uses to pick an event's
-folder, and the same principle as the verified-override on the
-threshold itself.
+outranks confidence because a human looked at that box, the same
+principle as the verified-override on the threshold itself. Note that it
+does not *count*: ten verified foxes and one verified deer on one file
+resolve to whichever single box scored highest, not to the fox.
+``build_event_primary_labels`` does count, deliberately, because an event
+is many noisy looks at one animal where a file is a single look. See
+DEVELOPERS.md "What a file is about" before unifying the two.
 
 **The category is passed through, never translated.** Whatever the
 detector called it is what lands here: ``animal`` / ``person`` /

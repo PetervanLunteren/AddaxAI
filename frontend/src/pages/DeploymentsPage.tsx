@@ -49,6 +49,7 @@ import {
   type SplitDeploymentTarget,
 } from "../components/deployments/SplitDeploymentDialog";
 import { RelinkGroupBanner } from "../components/deployments/RelinkGroupBanner";
+import { isBrokenDeployment } from "../hooks/useBrokenDeployments";
 
 type SortField =
   | "folder"
@@ -308,7 +309,7 @@ export function DeploymentsPage() {
   const brokenItems = useMemo(
     () =>
       (deployments ?? [])
-        .filter((d) => d.folder_status === "needs_relink" && d.folder_path)
+        .filter((d) => isBrokenDeployment(d) && d.folder_path)
         .map((d) => ({ id: d.id, folder_path: d.folder_path! })),
     [deployments]
   );
@@ -455,7 +456,7 @@ export function DeploymentsPage() {
                   >
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
-                        {dep.folder_status === "needs_relink" && (
+                        {isBrokenDeployment(dep) && (
                           <TooltipProvider delayDuration={100}>
                             <Tooltip>
                               <TooltipTrigger asChild>

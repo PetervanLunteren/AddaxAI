@@ -98,6 +98,7 @@ from sqlalchemy.orm import Session
 
 from app import __version__ as APP_VERSION
 from app.core.logging_config import get_logger
+from app.ml.detection_visibility import on_visible_frame, visible_detections
 from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, File, LabelTaxonomy, Project
 from app.models.event import event_files
@@ -219,6 +220,17 @@ def build_event_primary_labels(
     2. Otherwise it's the label of the single highest detection-confidence
        animal detection (the AI's best guess for the burst).
 
+    **Step 1 counts, and that is deliberately not what a file does.**
+    ``observation_type.strongest_passing_detection`` picks a *file's* subject
+    by taking the single strongest box, with no tally at all. The difference is
+    the grain, not drift, so do not unify them. A file is one photograph: one
+    look at the animal, nothing to average. An event is dozens of looks at the
+    same animal walking through, and per-frame classification is noisy enough
+    that one raccoon read as raccoon / badger / badger / blank / opossum /
+    raccoon / blank across seven consecutive frames. The mode cancels that;
+    the strongest box would let one misread frame name the whole visit, on the
+    folder the user actually sees. See DEVELOPERS.md "What a file is about".
+
     Only animal files in an event with at least one surviving species label
     appear in the map. A file in multiple events is assigned to the event of
     its own strongest detection (verified first, then confidence).
@@ -240,6 +252,13 @@ def build_event_primary_labels(
         .join(event_files, event_files.c.file_id == File.id)
         .join(Deployment, Deployment.id == File.deployment_id)
         .where(Deployment.project_id == project_id)
+        # Each video contributes only its best frame's boxes. This decides
+        # the folder a burst is copied into, and a video is written to disk
+        # as that one frame, so an off-frame box naming the folder files a
+        # picture under a label the picture does not show. The mode across
+        # the burst still denoises; it just counts boxes that exist as
+        # pictures.
+        .where(on_visible_frame())
         .where(
             or_(
                 Detection.confidence >= threshold,
@@ -701,7 +720,17 @@ def separate_into_folders(
             # Effective observation type at the media threshold. The
             # stored column is derived at the project threshold, which
             # no longer matches the media outputs' own confidence.
-            obs_type = derive_observation_type(file.detections, threshold)
+            #
+            # Gated to the file's visible surface, which for a video is
+            # the best frame: the artefact written here IS that frame's
+            # JPEG, so deciding whether it is empty, and which folder it
+            # goes in, from a box that is not in the picture is the bug
+            # this module's sibling helpers already prevent. Without the
+            # gate a clip whose best frame shows a person, with an animal
+            # box on some other frame, was copied into `animal/`.
+            obs_type = derive_observation_type(
+                visible_detections(file, file.detections), threshold
+            )
 
             # Empties are skipped from the copies unless opted in.
             if not include_empty and obs_type == "blank":

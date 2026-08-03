@@ -102,6 +102,34 @@ def _relative_path(file_path: str, base: str | None) -> str:
         return file_path
 
 
+def _failure_entries(db: Session, project_id: str) -> list[dict]:
+    """MegaDetector-format entries for files that could not be read.
+
+    Sourced from ``Deployment.warnings``, the durable record the analysis
+    worker writes (the queue entry carrying the same list is ephemeral).
+    Only decode failures are emitted: a file with no capture date was read
+    perfectly well and has a real File row already in ``images``.
+    """
+    entries: list[dict] = []
+    deployments = db.execute(
+        select(Deployment).where(Deployment.project_id == project_id)
+    ).scalars().all()
+    for deployment in deployments:
+        for warning in deployment.warnings or []:
+            if warning.get("type") != "video_processing_failure":
+                continue
+            path = warning.get("path")
+            if not path:
+                continue
+            entries.append(
+                {
+                    "file": _relative_path(path, deployment.folder_path),
+                    "failure": warning.get("reason") or "Could not be read",
+                }
+            )
+    return entries
+
+
 def _bbox_for_detection(det: Detection) -> list[float] | None:
     """Return the bbox in the canonical [x, y, w, h] order, or None
     for event-level observations where every bbox coordinate is null.
@@ -310,6 +338,15 @@ def write_recognition_json(
         if file.exif_data:
             image_entry["exif_metadata"] = file.exif_data
         images_out.append(image_entry)
+
+    # Files the detector could not read have no File row, so the loop above
+    # cannot emit them and the JSON would quietly describe a smaller folder
+    # than the one analysed. MegaDetector's own format carries them as
+    # `{"file": ..., "failure": ...}`, which is what the internal
+    # results.json holds; re-emit them so this file is a complete account of
+    # the folder and a downstream tool can tell "nothing found" apart from
+    # "never looked at".
+    images_out.extend(_failure_entries(db, project_id))
 
     classification_categories = {
         cid: name for name, cid in label_to_id.items()

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.core.logging_config import get_logger
 from app.db.sql_params import iter_id_chunks
-from app.ml.detection_visibility import on_visible_frame
+from app.ml.detection_visibility import on_visible_frame, visible_detections
 from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
@@ -830,8 +830,16 @@ def get_events_by_project(
         observation_types_set: set[str] = {
             f.observation_type for f in sorted_files if f.observation_type
         }
+        # Each file contributes only its visible surface, so a video is
+        # represented by its best frame here too. Flattening the raw
+        # relationship would let an off-frame box name the whole event,
+        # which the species chips built just above already refuse to do.
         dominant_type = derive_observation_type(
-            (d for f in sorted_files for d in f.detections),
+            (
+                d
+                for f in sorted_files
+                for d in visible_detections(f, f.detections)
+            ),
             project_floor if project_floor is not None else 0.0,
         )
 

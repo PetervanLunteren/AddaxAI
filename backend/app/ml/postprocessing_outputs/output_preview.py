@@ -40,6 +40,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ml.detection_visibility import on_visible_frame
 from app.ml.observation_type import derive_observation_type
 from app.models import (
     Deployment,
@@ -211,6 +212,13 @@ def build_output_preview(
         .join(File, Detection.file_id == File.id)
         .join(Deployment, File.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
+        # A video is written to disk as one frame, so only that frame's
+        # boxes may decide its type or its folder. Gating the query rather
+        # than each derivation below covers both consumers at once: the
+        # species pick and the observation type. Without it the preview
+        # promises a species folder that the run itself never creates,
+        # because `separate_folders` gates via `passing_detections_for_file`.
+        .where(on_visible_frame())
         # Strongest first, same ordering as passing_detections_for_file
         # and derive_observation_type, so the first passing row per file
         # is the one that decides the folder.

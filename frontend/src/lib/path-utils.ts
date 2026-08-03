@@ -82,11 +82,20 @@ export function longestCommonPrefix(paths: string[]): string {
 }
 
 /**
- * Replace the leading `oldPrefix` of `path` with `newPrefix`. Both
- * prefixes are normalized to end with a slash before substitution so
- * the result is well-formed regardless of how the user typed them.
+ * Replace the leading `oldPrefix` of `path` with `newPrefix`. Trailing
+ * separators on either prefix are ignored, so the result is well-formed
+ * regardless of how the user typed them.
  *
- * If `path` does not start with `oldPrefix`, returns `path` unchanged.
+ * `oldPrefix` may be the whole of `path`, which is what happens when the
+ * folder that went missing is the deployment's own folder rather than an
+ * ancestor of it. That is the common case: one folder renamed or moved.
+ * Requiring a trailing separator on both sides used to fail there, since
+ * `/a/deployment_001` does not start with `/a/deployment_001/`. The path
+ * came back unchanged and the caller then asked the backend to relink the
+ * deployment to the very folder that had gone missing, which it always
+ * refused with "Folder not found".
+ *
+ * If `path` is not `oldPrefix` or below it, returns `path` unchanged.
  */
 export function replacePrefix(
   path: string,
@@ -97,10 +106,16 @@ export function replacePrefix(
   // survives the substitution as a Windows path.
   const oldSep = pickSeparator(oldPrefix);
   const newSep = pickSeparator(newPrefix);
-  const oldNorm = oldPrefix.endsWith(oldSep) ? oldPrefix : oldPrefix + oldSep;
-  const newNorm = newPrefix.endsWith(newSep) ? newPrefix : newPrefix + newSep;
+  const stripTrailing = (p: string, sep: string) =>
+    p.endsWith(sep) ? p.slice(0, -sep.length) : p;
+  const oldBase = stripTrailing(oldPrefix, oldSep);
+  const newBase = stripTrailing(newPrefix, newSep);
+
+  if (path === oldBase) return newBase;
+
+  const oldNorm = oldBase + oldSep;
   if (!path.startsWith(oldNorm)) return path;
-  return newNorm + path.slice(oldNorm.length);
+  return newBase + newSep + path.slice(oldNorm.length);
 }
 
 export interface PathItem {

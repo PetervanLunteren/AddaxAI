@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -19,6 +19,11 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Tooltip,
   TooltipContent,
@@ -64,6 +69,11 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
   const [offsetModalOpen, setOffsetModalOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [tags, setTags] = useState<Record<string, string>>({});
+  // Notes and tags are collapsed by default: both are optional, both are
+  // editable later on the deployment itself, and a note usually only makes
+  // sense once the images have been looked at. Not persisted, matching the
+  // "Advanced settings" collapsible in FolderRunModelStep.
+  const [metadataOpen, setMetadataOpen] = useState(false);
   // Reprocess confirmation: shown when the folder is already a deployment.
   const [confirmReprocess, setConfirmReprocess] = useState(false);
 
@@ -278,29 +288,47 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
             deploymentGps={scanResult?.gps_location ?? null}
           />
 
-          {/* Notes */}
-          <div className="space-y-2">
-            <FieldHeader
-              label={<Label htmlFor="deployment-notes">Notes</Label>}
-              caption="Free-text for your own records. Shown on the deployment's info panel."
-            />
-            <Textarea
-              id="deployment-notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              maxLength={1000}
-              placeholder="e.g., Lens was covered in baboon fingerprints"
-            />
-          </div>
+          {/* Notes and tags */}
+          <Collapsible open={metadataOpen} onOpenChange={setMetadataOpen}>
+            <CollapsibleTrigger asChild>
+              <button
+                type="button"
+                className="flex items-center gap-2 text-left text-sm font-semibold leading-none transition-colors hover:text-primary"
+              >
+                <span>Notes and tags</span>
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${
+                    metadataOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-6 pt-4">
+              {/* Notes */}
+              <div className="space-y-2">
+                <FieldHeader
+                  label={<Label htmlFor="deployment-notes">Notes</Label>}
+                  caption="Free-text for your own records. Shown on the deployment's info panel."
+                />
+                <Textarea
+                  id="deployment-notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  maxLength={1000}
+                  placeholder="e.g., Lens was covered in baboon fingerprints"
+                />
+              </div>
 
-          {/* Tags */}
-          <TagsEditor
-            value={tags}
-            onChange={setTags}
-            keyPlaceholder="e.g., season"
-            valuePlaceholder="e.g., wet"
-            description="Labels to group and filter deployments later."
-          />
+              {/* Tags */}
+              <TagsEditor
+                value={tags}
+                onChange={setTags}
+                keyPlaceholder="e.g., season"
+                valuePlaceholder="e.g., wet"
+                description="Labels to group and filter deployments later."
+              />
+            </CollapsibleContent>
+          </Collapsible>
         </CardContent>
 
         <CardFooter className="flex-col gap-3 items-stretch">

@@ -9,6 +9,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.schemas.file import FileUpdate
+from app.ml.detection_visibility import on_visible_frame, on_visible_frame_of
 from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, File, Project
 
@@ -296,9 +297,10 @@ def recalculate_observation_type(db: Session, file_id: str) -> None:
     Re-derive observation_type from the file's *passing* detections.
 
     Passing = over the project threshold OR verified (see
-    ``derive_observation_type``). Called after any detection create /
-    update / delete / verify so the summary stays consistent with what
-    the verify grid shows.
+    ``derive_observation_type``), and on the file's visible surface (see
+    ``on_visible_frame_of``), which for a video is its best frame. Called
+    after any detection create / update / delete / verify so the summary
+    stays consistent with what the verify grid shows.
     """
     file = db.query(File).filter(File.id == file_id).first()
     if not file:
@@ -307,6 +309,9 @@ def recalculate_observation_type(db: Session, file_id: str) -> None:
     detections = (
         db.query(Detection)
         .filter(Detection.file_id == file_id)
+        # Keep the file_id filter above: the video branches of this
+        # predicate carry only the frame clause.
+        .filter(on_visible_frame_of(file))
         .all()
     )
     threshold = _project_threshold_for_file(db, file)
@@ -340,6 +345,9 @@ def recalculate_observation_types_for_project(
         .join(File, File.id == Detection.file_id)
         .join(Deployment, Deployment.id == File.deployment_id)
         .filter(Deployment.project_id == project_id)
+        # A video is only its best frame; File is joined, so the column
+        # form of the rule applies directly.
+        .filter(on_visible_frame())
         .all()
     )
     by_file: dict[str, list[Detection]] = {}
