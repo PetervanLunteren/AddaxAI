@@ -102,13 +102,22 @@ const sortedSpecies = Object.fromEntries(
     .map((id) => [id, species[id]]),
 );
 
+// Indented, which puts one species on each line. The file is only read by the
+// bundler, so the extra bytes cost nothing at runtime, and they buy a readable
+// diff: adding a species to a model shows up as one added line instead of the
+// whole 80 KB being replaced. That matters because this copy is the outage
+// fallback and gets refreshed by hand now and then.
 mkdirSync(destDir, { recursive: true });
 writeFileSync(
   dest,
-  `${JSON.stringify({
-    meta: { unavailable: missingIds.map((m) => m.split(" ")[0]).sort() },
-    species: sortedSpecies,
-  })}\n`,
+  `${JSON.stringify(
+    {
+      meta: { unavailable: missingIds.map((m) => m.split(" ")[0]).sort() },
+      species: sortedSpecies,
+    },
+    null,
+    2,
+  )}\n`,
 );
 
 const total = Object.values(species).reduce((n, list) => n + list.length, 0);
