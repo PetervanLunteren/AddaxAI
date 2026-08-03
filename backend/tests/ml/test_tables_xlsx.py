@@ -110,6 +110,11 @@ def test_files_sheet_keeps_the_species_columns(db, tmp_path):
     ]
     assert species == ["red fox", "Vulpes vulpes", "Red fox"]
     assert "taxon_family" in headers
+    assert "detection_confidence" in headers
+    assert "classification_confidence" in headers
+    # openpyxl gives these back as real numbers, not text, unlike every
+    # other cell in the Files sheet.
+    assert row[headers.index("detection_confidence")] == 0.9
 
 
 def test_unknown_project_raises(db, tmp_path):

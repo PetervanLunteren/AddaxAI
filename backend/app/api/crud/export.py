@@ -694,6 +694,22 @@ _FILES_HEADERS = [
     # (File.observation_type). Distinct from the per-box
     # detection_category in detections.csv, and it uniquely carries "blank".
     "observation_type",
+    # Everything from here to common_name describes that same strongest box.
+    # Each score sits directly after what it scores, the way
+    # _detection_cells lays out these two columns, because a bare
+    # confidence is meaningless without its subject beside it.
+    #
+    # **detection_confidence is the deciding box's score, not the file's
+    # highest.** strongest_passing_detection sorts on (verified, confidence),
+    # so a box a human verified at 0.30 beats an unverified one at 0.99 and
+    # this column then reads 0.30 — below the project's counting threshold.
+    # Filtering the CSV on `detection_confidence >= x` therefore drops
+    # exactly the files someone checked by hand, silently. is_verified does
+    # not rescue it: that column is File.verified, true only when *every*
+    # reviewable box is verified, so a part-reviewed file reads FALSE. Said
+    # plainly in docs/docs/reference/exports.md; if it ever bites a user the
+    # one-column answer is to append the deciding box's own verified flag.
+    "detection_confidence",
     # The species of that same strongest box, its formal ranks, and its two
     # display names. Deliberately NOT the highest-confidence label anywhere
     # on the file: taking the best label instead of the best box is what
@@ -706,8 +722,9 @@ _FILES_HEADERS = [
     # one column mixes species ("porcupine") with orders ("rodentia") and
     # families ("bovidae"). The ranks are the only thing that says which is
     # which, so grouping by the label alone silently merges an order with
-    # the species inside it. Same block, same order, same names as
-    # detections.csv and counts.csv.
+    # the species inside it. Same names as detections.csv and counts.csv,
+    # and the same pairing order as detections.csv; counts.csv has no
+    # confidence columns to pair, being one row per species per event.
     #
     # These are computed from the detections in *this export's scope*,
     # while observation_type is read from the stored column, which is
@@ -717,6 +734,9 @@ _FILES_HEADERS = [
     # species always resolves to a row in detections.csv under the same
     # file_id. Pinned by test_files_export_species_follow_the_export_scope.
     "classification_label",
+    # 1.0 whenever a human set the label, as in detections.csv. Blank for a
+    # person, a vehicle, or an animal that was never classified.
+    "classification_confidence",
     "taxon_class",
     "taxon_order",
     "taxon_family",
@@ -772,12 +792,18 @@ def _strongest_species_cells(
     project: Project,
     file_obj: File,
     detections: Sequence[tuple[Detection, LabelTaxonomy | None]],
-) -> list[str]:
-    """The label / taxonomy / names block for the file's strongest passing
+) -> list[Any]:
+    """Everything the Files row says about the file's strongest passing
     detection, or the same width in blanks when nothing passes.
 
-    Layout matches ``_detection_cells`` and ``build_observation_rows``:
-    label, the five formal ranks, then the two display names.
+    Order: detector score, label, label score, the five formal ranks, then
+    the two display names. The score/subject pairing is ``_detection_cells``'
+    layout; the label + ranks + names run is ``build_observation_rows``'.
+
+    Both confidences are read off the same ``best`` object as the label, so
+    they cannot describe a different box than the species does. Rounded to
+    six places like ``_detection_cells``, so a value here compares equal to
+    the same field of the same box in detections.csv.
 
     Gated to the file's visible surface, so for a video this is its best
     frame. That is the same rule ``observation_type`` beside it now uses,
@@ -803,15 +829,24 @@ def _strongest_species_cells(
     visible = visible_detections(file_obj, [det for det, _tax in detections])
     best = strongest_passing_detection(visible, project.counting_threshold)
     if best is None:
-        # Nothing to name. Built from the same helper so the width can never
-        # drift from the populated branch below.
-        return ["", *_taxon_ranks(None), "", ""]
+        # Nothing passed, so there is no box to describe. Blank, never 0.0:
+        # a zero would read as "the detector scored nothing" and would
+        # survive a `< x` filter as if it were a real measurement. The
+        # ranks come from the same helper as below; the four literals are
+        # this branch's own, so keep the two widths in step by hand (the
+        # row-width assertion in test_export_files_includes_empties is what
+        # catches it if they drift).
+        return ["", "", "", *_taxon_ranks(None), "", ""]
 
     # The taxonomy joined to *that* box. Read off the row tuple rather than
     # ``best.label_taxonomy``, which would lazy-load once per file.
     taxonomy = next((tax for det, tax in detections if det is best), None)
     return [
+        # Non-nullable, so no blank helper; label_confidence is nullable and
+        # gets one. Same two idioms as _detection_cells.
+        round(best.confidence, 6),
         best.label or "",
+        _round_or_blank(best.label_confidence, 6),
         *_taxon_ranks(taxonomy),
         best.scientific_name or "",
         best.common_name or "",

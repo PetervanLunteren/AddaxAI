@@ -317,6 +317,11 @@ def test_export_files_includes_empties(client, db):
 
     data = rows[1:]
     by_id = {r[fid_i]: r for r in data}
+    # Every row is as wide as the header, for the populated and the blank
+    # file alike. The block describing the deciding box is built by two
+    # branches with hand-kept widths, and a short row does not raise: CSV
+    # writes it happily and every column after the gap silently shifts left.
+    assert all(len(r) == len(headers) for r in data)
     # Both files appear, exactly once each; the empty file's observation_type
     # is blank.
     assert set(by_id) == {f_animal.id, f_blank.id}
@@ -369,6 +374,14 @@ def _ranks(headers: list[str], row: list[str]) -> list[str]:
     return [row[headers.index(name)] for name in _RANK_COLUMNS]
 
 
+def _confidences(headers: list[str], row: list[str]) -> list[str]:
+    """`[detection_confidence, classification_confidence]` of a Files row."""
+    return [
+        row[headers.index(name)]
+        for name in ("detection_confidence", "classification_confidence")
+    ]
+
+
 def test_files_export_names_the_strongest_detections_species(client, db):
     """The Files table answers "what is this file" on its own: the category of
     the strongest box, then that same box's species, ranks and display names."""
@@ -393,6 +406,7 @@ def test_files_export_names_the_strongest_detections_species(client, db):
         category="animal",
         confidence=0.9,
         label="red fox",
+        label_confidence=0.81,
         label_taxonomy_id=taxonomy.id,
         scientific_name="Vulpes vulpes",
         common_name="Red fox",
@@ -400,11 +414,16 @@ def test_files_export_names_the_strongest_detections_species(client, db):
     db.commit()
 
     headers, by_id = _files_rows(client, project.id)
-    # One contiguous block straight after observation_type, in the same order
-    # detections.csv and counts.csv use it.
+    # Every score sits directly after what it scores, the way detections.csv
+    # lays these two out. Pinning the pairing rather than mere contiguity:
+    # a bare confidence eight columns from its subject is unreadable, and
+    # two of them side by side are indistinguishable.
     obs_i = headers.index("observation_type")
-    assert headers[obs_i + 1 : obs_i + 9] == [
+    assert headers[obs_i : obs_i + 11] == [
+        "observation_type",
+        "detection_confidence",
         "classification_label",
+        "classification_confidence",
         "taxon_class",
         "taxon_order",
         "taxon_family",
@@ -415,6 +434,7 @@ def test_files_export_names_the_strongest_detections_species(client, db):
     ]
     assert headers[0] == "file_id"
     assert _species(headers, by_id[f.id]) == ["red fox", "Vulpes vulpes", "Red fox"]
+    assert _confidences(headers, by_id[f.id]) == ["0.9", "0.81"]
     assert _ranks(headers, by_id[f.id]) == [
         "mammalia",
         "carnivora",
@@ -456,6 +476,62 @@ def test_files_export_ranks_say_which_rank_the_label_is(client, db):
     headers, by_id = _files_rows(client, project.id)
     # Filled down to order, empty below it: this label is not a species.
     assert _ranks(headers, by_id[f.id]) == ["mammalia", "rodentia", "", "", ""]
+
+
+def test_files_export_confidences_come_from_the_deciding_box(client, db):
+    """Both numbers must be the winning box's own, not a maximum taken over
+    the file and not each other.
+
+    Every value is rank-inverted so each plausible wrong source yields a
+    different number. The winner has neither the highest detector score nor
+    the highest label score, and its own two scores run opposite ways, so a
+    max over the file, a read off the best-labelled box, or the two columns
+    swapped all produce something visibly wrong."""
+    project, _site, deployment = _build_simple_project(db)
+    f = make_file(db, deployment_id=deployment.id, observation_type="animal")
+    # Wins on the verified tier alone.
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=0.80,
+        verified=True,
+        label="red fox",
+        label_confidence=0.11,
+        scientific_name="Vulpes vulpes",
+        common_name="Red fox",
+    )
+    # Higher on both scores, but unverified.
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=0.99,
+        label="deer",
+        label_confidence=0.98,
+        scientific_name="Cervidae",
+        common_name="Deer",
+    )
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=0.60,
+        label="badger",
+        label_confidence=0.55,
+        scientific_name="Meles meles",
+        common_name="Badger",
+    )
+    db.commit()
+
+    headers, by_id = _files_rows(client, project.id)
+    row = by_id[f.id]
+    assert _species(headers, row) == ["red fox", "Vulpes vulpes", "Red fox"]
+    assert _confidences(headers, row) == ["0.8", "0.11"]
+    # Nothing from the decoy leaked into a column this test does not name.
+    assert "0.99" not in row
+    assert "0.98" not in row
+    assert "deer" not in row
 
 
 def test_files_export_does_not_take_the_best_label_off_a_weaker_box(client, db):
@@ -532,6 +608,9 @@ def test_files_export_species_are_blank_when_no_box_passes(client, db):
     for file_id in (f_empty.id, f_weak.id):
         assert _species(headers, by_id[file_id]) == ["", "", ""]
         assert _ranks(headers, by_id[file_id]) == ["", "", "", "", ""]
+        # Blank, never "0": a zero would read as a real measurement of zero
+        # and would survive a `< x` filter.
+        assert _confidences(headers, by_id[file_id]) == ["", ""]
         assert by_id[file_id][headers.index("observation_type")] == "blank"
 
 
@@ -606,6 +685,10 @@ def test_files_export_reads_every_frame_of_a_video(client, db):
 
     headers, by_id = _files_rows(client, project.id)
     assert _species(headers, by_id[f.id]) == ["", "Person", "Person"]
+    # 0.6 is the person on the saved frame, not the 0.9 deer on frame 7, so
+    # the confidence respects visible_detections and not only the strongest
+    # box overall. Empty label score: a person carries no species.
+    assert _confidences(headers, by_id[f.id]) == ["0.6", ""]
 
     # The off-frame deer is not lost: the per-box grain still carries it.
     resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")

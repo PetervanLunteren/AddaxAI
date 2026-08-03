@@ -155,6 +155,16 @@ def test_folder_run_files_table_keeps_the_species_columns(db, tmp_path):
         "taxon_species",
     ):
         assert rank in headers
+    # Both confidences survive the folder-run column trim too, each still
+    # paired with what it scores.
+    obs = headers.index("observation_type")
+    assert headers[obs : obs + 4] == [
+        "observation_type",
+        "detection_confidence",
+        "classification_label",
+        "classification_confidence",
+    ]
+    assert row[headers.index("detection_confidence")] == "0.9"
 
 
 def test_projects_mode_builders_keep_every_column(db, tmp_path):
