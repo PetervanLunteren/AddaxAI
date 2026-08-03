@@ -932,10 +932,15 @@ export interface DetectionSummary {
 
 export interface SortResponse {
   detections: DetectionSummary[];
-  /** Detections actually returned (after the memory-guard cap). */
+  /** Detections the sort returned. Equals `total_loaded` for the
+   * similarity and event sorts; the suggestions sort narrows to cohort
+   * members, so it returns far fewer. Never use this to detect a cap. */
   total_detections: number;
-  /** Uncapped size of the matching pool. When it exceeds
-   * `total_detections`, the result was capped to the newest subset. */
+  /** Rows this run actually loaded, i.e. min(total_matching, cap). When
+   * `total_matching` exceeds it, the result was capped to the newest
+   * subset. */
+  total_loaded: number;
+  /** Uncapped size of the matching pool. */
   total_matching: number;
 }
 

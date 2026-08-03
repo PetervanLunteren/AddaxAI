@@ -14,7 +14,8 @@ Usage:
 
 Output: NDJSON event stream on stdout. Each line is one of:
     {"type": "progress", "phase": "load|sort|neighbors", "done": N, "total": M}
-    {"type": "result", "detections": [...], "total_detections": N}
+    {"type": "result", "detections": [...], "total_detections": N,
+     "total_loaded": N, "total_matching": N}
     {"type": "error", "message": "..."}
 
 Exit code: 0 on success (with a "result" line), non-zero on unhandled
@@ -885,6 +886,16 @@ def _order_events_by_similarity(
 
 # ── Similarity sort ──────────────────────────────────────────────────────
 
+def _empty_result() -> dict:
+    """The nothing-matched result, in the shape every caller expects."""
+    return {
+        "detections": [],
+        "total_detections": 0,
+        "total_loaded": 0,
+        "total_matching": 0,
+    }
+
+
 def do_sort(db_path: str, project_id: str, params: dict) -> dict:
     """Sort detections for the Observations grid, chosen by ``params["sort"]``:
 
@@ -897,6 +908,25 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
       them by `(label, suggested_label, category)`, and orders cohorts
       by descending count. Skips the greedy walk because the embedding
       chain is irrelevant here.
+
+    **Three counts come back, and they are not interchangeable.**
+
+    - ``total_matching`` is the uncapped size of the pool the filters
+      select.
+    - ``total_loaded`` is how many of those rows this run actually read,
+      i.e. ``min(total_matching, cap)``. **This is the only one that says
+      whether the cap bit**, so ``total_matching > total_loaded`` is the
+      one correct test for "the result was truncated".
+    - ``total_detections`` is how many detections the sort returned. It
+      equals ``total_loaded`` for `similarity` and `events`, which return
+      every row they loaded, but `suggestions` narrows to cohort members
+      by design and returns far fewer.
+
+    That last difference is why ``total_loaded`` exists. The UI used to
+    read truncation off ``total_matching > total_detections``, which is
+    right for two sorts and wrong for the third: suggestions showed
+    "showing the newest 8 of 814, capped to stay responsive" on a pool
+    nowhere near the cap.
     """
     # `observation_sort` is a sibling file. Python prepends the running
     # script's dir to sys.path[0], so this resolves without the full
@@ -920,7 +950,7 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
             db_path, project_id, filters, max_detections=max_detections
         )
         if not det_ids:
-            return {"detections": [], "total_detections": 0, "total_matching": 0}
+            return _empty_result()
         # Order events by similarity of one representative crop each,
         # loading only those rep vectors (not every embedded detection).
         # With no embeddings this falls back to chronological, camera-grouped
@@ -938,6 +968,7 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
         return {
             "detections": detections,
             "total_detections": len(final_order),
+            "total_loaded": len(det_ids),
             "total_matching": total_matching,
         }
 
@@ -950,17 +981,23 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
 
     n = len(det_ids)
     if n == 0:
-        return {"detections": [], "total_detections": 0, "total_matching": 0}
+        return _empty_result()
 
     # Single detection — no sorting needed. Suggestions mode also
     # falls through here because a lone detection has no neighbours to
     # disagree with, so there's nothing to review.
     if n == 1:
         if sort_mode == "suggestions":
-            return {"detections": [], "total_detections": 0, "total_matching": 0}
+            return {
+                "detections": [],
+                "total_detections": 0,
+                "total_loaded": n,
+                "total_matching": total_matching,
+            }
         return {
             "detections": [_build_summary(det_ids[0], metas[0])],
             "total_detections": 1,
+            "total_loaded": n,
             "total_matching": total_matching,
         }
 
@@ -1037,6 +1074,7 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
     return {
         "detections": detections,
         "total_detections": len(final_order),
+        "total_loaded": n,
         "total_matching": total_matching,
     }
 
