@@ -771,10 +771,37 @@ async function createWindow(): Promise<void> {
     event.preventDefault();
   });
 
-  // Open external links in browser
+  // Open external links in browser. This only covers window.open() and
+  // anchors carrying target="_blank"; a plain <a href="https://..."> is
+  // a same-window navigation and never reaches it.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
+  });
+
+  // ...which is what will-navigate is for. Without it a plain external
+  // anchor replaces the app with that page and strands the user: the
+  // window has no browser chrome, the View menu offers Reload but no
+  // Back, and Reload re-loads the external page. Quitting was the only
+  // way out. Every external link in the app was written this way except
+  // two, and the Leaflet attribution links are injected by the library,
+  // so fixing it per-anchor would neither be complete nor stay fixed.
+  //
+  // React Router drives navigation with history.pushState, which does
+  // not emit will-navigate, so in-app routing is unaffected. What lands
+  // here is a real document navigation: an external anchor, or a
+  // renderer that has been talked into leaving the app.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url.startsWith(`${BACKEND_URL}/`) || url === BACKEND_URL) return;
+    event.preventDefault();
+    // Only hand real web URLs to the OS. shell.openExternal on an
+    // arbitrary scheme is how a malicious link becomes command
+    // execution, and nothing in this app needs to open anything else.
+    if (url.startsWith('https://') || url.startsWith('http://')) {
+      shell.openExternal(url);
+    } else {
+      console.log(`[Electron] Blocked navigation to non-web URL: ${url}`);
+    }
   });
 
   mainWindow.on('closed', () => {

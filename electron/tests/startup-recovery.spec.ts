@@ -15,16 +15,12 @@
  * pieces line up.
  */
 
-import { test, expect, _electron as electron } from '@playwright/test';
-import type { ElectronApplication, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-
-const REPO = path.join(__dirname, '..', '..');
-const BACKEND = path.join(REPO, 'backend');
-const VENV_PY = path.join(BACKEND, 'venv', 'bin', 'python');
+import { launch as launchApp, makeHealthyDb, appWindow } from './app-harness';
 
 // Its own port, so a running dev backend on 8000 is left alone. The app
 // kills whatever AddaxAI backend already holds its port.
@@ -36,57 +32,8 @@ test.setTimeout(180_000);
 
 let userDataDir = '';
 
-/** A user data dir with a database at head, built by the real chain. */
-function makeHealthyDb(dir: string): string {
-  const db = path.join(dir, 'addaxai.db');
-  execFileSync(
-    VENV_PY,
-    ['-c', 'from app.db.migrations import upgrade_to_head; upgrade_to_head()'],
-    {
-      cwd: BACKEND,
-      env: {
-        ...process.env,
-        PYTHONPATH: BACKEND,
-        USER_DATA_DIR: dir,
-        DATABASE_URL: `sqlite:///${db}`,
-      },
-    },
-  );
-  return db;
-}
-
-function launch(): Promise<ElectronApplication> {
-  return electron.launch({
-    args: [path.join(REPO, 'electron')],
-    env: {
-      ...process.env,
-      USER_DATA_DIR: userDataDir,
-      DATABASE_URL: `sqlite:///${path.join(userDataDir, 'addaxai.db')}`,
-      ADDAXAI_BACKEND_PORT: PORT,
-      // Keep the run offline and deterministic.
-      DISABLE_MODEL_UPDATES: 'true',
-    },
-  });
-}
-
-/**
- * The application window.
- *
- * Not `firstWindow()`: an unpackaged build opens DevTools, which
- * Playwright reports as a window too, and it is usually the one that
- * shows up first.
- */
-async function appWindow(app: ElectronApplication): Promise<Page> {
-  await app.firstWindow();
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const win = app
-      .windows()
-      .find((w) => !w.url().startsWith('devtools://'));
-    if (win) return win;
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-  throw new Error('Only DevTools appeared, never the app window');
+function launch(env?: Record<string, string>) {
+  return launchApp({ userDataDir, port: PORT, env });
 }
 
 test.beforeEach(() => {
@@ -129,17 +76,7 @@ test('a slow start says so, and never offers to start a second backend', async (
    * against the same SQLite file.
    */
   makeHealthyDb(userDataDir);
-  const app = await electron.launch({
-    args: [path.join(REPO, 'electron')],
-    env: {
-      ...process.env,
-      USER_DATA_DIR: userDataDir,
-      DATABASE_URL: `sqlite:///${path.join(userDataDir, 'addaxai.db')}`,
-      ADDAXAI_BACKEND_PORT: PORT,
-      DISABLE_MODEL_UPDATES: 'true',
-      ADDAXAI_SLOW_NOTICE_MS: '1',
-    },
-  });
+  const app = await launch({ ADDAXAI_SLOW_NOTICE_MS: '1' });
   const win = await appWindow(app);
 
   await expect(win.locator('h1')).toHaveText('Still working…', {
