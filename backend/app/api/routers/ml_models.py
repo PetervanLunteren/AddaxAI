@@ -441,7 +441,12 @@ async def _prepare_model_task(model_id: str, manifest, task_id: str) -> None:
         env_path = env_manager.envs_dir / env_name
         needs_env = not (env_path.exists() and env_manager._validate_env(env_path))
 
-        # Dynamically allocate progress ranges based on what's needed
+        # Dynamically allocate progress ranges based on what's needed.
+        # Bound before the chain: the else below returns, so neither name
+        # can be read unassigned, but mypy's possibly-undefined check
+        # widens its analysis inside the enclosing try and cannot see it.
+        weights_range: tuple[float, float] | None = None
+        env_range: tuple[float, float] | None = None
         if needs_weights and needs_env:
             # Both needed: weights 0-50%, env 50-100%
             weights_range = (0.0, 0.5)

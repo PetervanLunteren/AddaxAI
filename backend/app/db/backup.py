@@ -107,6 +107,14 @@ def validate_backup(path: Path) -> None:
         raise BackupInvalidError("File too small to be a SQLite database")
 
     conn = sqlite3.connect(str(path))
+    # Both bound before their try blocks. Neither can actually be read
+    # unassigned, because every except below raises, but mypy's
+    # possibly-undefined check widens its flow analysis inside a
+    # try/finally and cannot see that. Binding is cheaper than an ignore
+    # comment and survives someone later adding an except that returns
+    # instead of raising.
+    row: tuple | None = None
+    versions: list = []
     try:
         try:
             row = conn.execute("PRAGMA integrity_check").fetchone()

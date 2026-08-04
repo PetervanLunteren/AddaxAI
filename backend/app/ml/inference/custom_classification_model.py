@@ -86,9 +86,12 @@ class CustomClassificationModel:
                 f"Model developers must provide inference.py in their model directory."
             )
 
-        # Get Python path from designated environment
+        # Get Python path from designated environment. The name is built
+        # outside the try because the handler below quotes it: inside, a
+        # failure there would leave the error path reaching for a name
+        # that was never bound.
+        env_full_name = f"env-{env_name}"
         try:
-            env_full_name = f"env-{env_name}"
             self.python_path = env_manager.get_python(env_full_name)
             logger.info(
                 f"Custom classification model ({model_dir.name}) using Python: {self.python_path}"

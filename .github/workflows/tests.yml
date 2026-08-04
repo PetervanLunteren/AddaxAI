@@ -1,6 +1,6 @@
 name: Tests
 
-# Runs on every PR and on pushes to main. Three gates:
+# Runs on every PR and on pushes to main. Four gates:
 #
 #  - Frontend typecheck: `vite build` (and `vite dev`) transpile with
 #    esbuild and never run the TypeScript compiler, so type errors
@@ -8,6 +8,13 @@ name: Tests
 #    This gate runs the compiler at PR time.
 #  - Backend lint: `ruff check app tests`. DEVELOPERS.md promised this ran
 #    in CI; it did not, so lint errors drifted onto main. Now it does.
+#  - Backend possibly-undefined: one mypy error code, gating names that
+#    exist on only some paths through a function. Ruff has no equivalent
+#    rule and passed the code that shipped this bug to a user: a variable
+#    assigned inside `if classification_model_id:` and then read
+#    unconditionally, so every detection-only run crashed. The project's
+#    full mypy config is strict and reports 697 errors, so it cannot be a
+#    gate yet; this one code can, today.
 #  - Backend tests: the full pytest suite (in-memory SQLite, no network),
 #    which includes the migration-safety tests. Those catch the class of
 #    bug that destroyed user data on 2026-05-27 (a new alembic migration
@@ -59,6 +66,42 @@ jobs:
       - name: Ruff check
         working-directory: backend
         run: ruff check app tests
+
+  backend-possibly-undefined:
+    name: Backend possibly-undefined (mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # Pin to the version in requirements.txt so local and CI agree.
+      - name: Install mypy
+        run: pip install mypy==1.13.0
+
+      # One error code, not the whole of mypy. The project's own strict
+      # config reports 697 errors and has never been enforced, so a full
+      # gate is a separate project. This code alone catches names that
+      # exist on only some paths through a function, which is how a
+      # detection-only run started crashing at postprocessing on a
+      # variable assigned inside `if classification_model_id:`.
+      #
+      # Greps rather than trusting the exit code: the relaxed config
+      # still surfaces unrelated errors, and only this one should fail
+      # the build. `|| true` keeps the pipeline alive when mypy exits
+      # non-zero for those.
+      - name: Check for possibly-undefined names
+        working-directory: backend
+        run: |
+          mypy --config-file mypy-possibly-undefined.ini app > mypy.out || true
+          if grep -q 'possibly-undefined' mypy.out; then
+            echo "::error::Names used on paths where they may not be assigned:"
+            grep 'possibly-undefined' mypy.out
+            exit 1
+          fi
+          echo "No possibly-undefined names."
 
   backend-tests:
     name: Backend tests

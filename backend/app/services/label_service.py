@@ -166,8 +166,15 @@ def stream_labels_subprocess(
             except json.JSONDecodeError:
                 logger.debug(f"similarity_script non-JSON stdout: {line!r}")
                 continue
-            if event.get("type") in ("result", "error"):
-                saw_terminal_event = True
+            else:
+                # `else`, not a bare statement after the try: the except
+                # above continues, so this only ever runs with `event`
+                # bound, but mypy's possibly-undefined check widens its
+                # analysis inside the enclosing try/finally and cannot
+                # see that. `else` states the same thing in a form it
+                # does understand.
+                if event.get("type") in ("result", "error"):
+                    saw_terminal_event = True
             yield (line + "\n").encode("utf-8")
 
         process.wait(timeout=timeout_s)
@@ -440,8 +447,15 @@ async def stream_labels_subprocess_async(
             except json.JSONDecodeError:
                 logger.debug(f"similarity_script non-JSON stdout: {line!r}")
                 continue
-            if event.get("type") in ("result", "error"):
-                saw_terminal_event = True
+            else:
+                # `else`, not a bare statement after the try: the except
+                # above continues, so this only ever runs with `event`
+                # bound, but mypy's possibly-undefined check widens its
+                # analysis inside the enclosing try/finally and cannot
+                # see that. `else` states the same thing in a form it
+                # does understand.
+                if event.get("type") in ("result", "error"):
+                    saw_terminal_event = True
             yield (line + "\n").encode("utf-8")
     finally:
         if process.poll() is None:

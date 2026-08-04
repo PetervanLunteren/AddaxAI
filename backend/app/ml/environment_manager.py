@@ -446,6 +446,13 @@ class EnvironmentManager:
             RuntimeError: If environment creation fails
             JobCancelledError: If the build was cancelled via job_id
         """
+        # Bound before the try because the cleanup handler below reads it.
+        # It used to be assigned partway in, after `_ensure_runtime_dirs`
+        # and the YAML parse, both of which can raise. A failure there sent
+        # the handler looking for a name that did not exist yet, so the
+        # user got an UnboundLocalError instead of the thing that actually
+        # went wrong.
+        temp_env_path = env_path.parent / f".{env_name}.tmp"
         try:
             # Heal any missing on-disk state (bin/, envs/, micromamba binary)
             # before invoking subprocess. Reset application + a stale cached
@@ -483,8 +490,8 @@ class EnvironmentManager:
             if progress_callback:
                 progress_callback("Starting package installation...", 0.1)
 
-            # Create environment in temporary location first for atomic operation
-            temp_env_path = env_path.parent / f".{env_name}.tmp"
+            # (temp_env_path is bound above the try, so the cleanup
+            # handler can always read it.)
 
             # Clean up any existing temp directory from previous failed attempts
             if temp_env_path.exists():

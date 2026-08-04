@@ -128,6 +128,10 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
     # Reset per-iteration; only non-None if the current deployment row
     # was already created when cancel hit, so we know what to roll back.
     deployment: Deployment | None = None
+    # The cancel and failure handlers name the entry they died on. A
+    # cancel that lands before the loop's first iteration would otherwise
+    # crash the handler itself, turning a clean stop into a crash report.
+    entry_id: str | None = None
 
     try:
         for idx, entry_id in enumerate(queue_entry_ids, start=1):
@@ -740,6 +744,12 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             # ============================================================
             # PHASE 6: Load to Database
             # ============================================================
+            # Bound before the branch because the completion log at the end
+            # of this iteration reports it. A folder that produced no
+            # results.json at all (every file failed, or none matched the
+            # media filter) skips the branch, and reading the loader's
+            # `result` there would crash the run right at the finish line.
+            entry_detections = 0
             if final_json_path.exists():
                 logger.info("Phase 6: Loading results to database")
                 await deployment_progress_callback("Loading to database...", 0.0, "saving", 0.75)
@@ -801,7 +811,8 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 # postprocessing) see the just-committed files and detections.
                 db.expire_all()
 
-                total_detections += result.total_detections
+                entry_detections = result.total_detections
+                total_detections += entry_detections
                 logger.info(f"Database load complete: {result.total_detections} detections")
 
                 # Files without a capture timestamp are now ingested
@@ -1042,7 +1053,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
             logger.info(
                 f"Batch job {job_id}: Completed entry {idx}/{total_entries} - "
-                f"{result.total_detections} detections"
+                f"{entry_detections} detections"
             )
 
         # Update postprocessing settings hash
