@@ -44,6 +44,7 @@ const PHASE_ORDER = [
   "image_detection",
   "image_classification",
   "saving",
+  "postprocessing",
   "embedding",
   "finalize",
 ] as const;
@@ -361,6 +362,16 @@ export function AnalysisProgress({
     {
       label: "Saving",
       phase: "saving",
+    },
+    // Its own row rather than the tail of "Saving". This is label
+    // exclusion, geofencing, taxonomic rollup and smoothing, which on a
+    // large deployment is minutes of a different kind of work. Sharing
+    // the saving row meant that row sat at 100% while this ran, which is
+    // the lie these rows exist to avoid. Named for the "Refine results"
+    // settings that drive it.
+    {
+      label: "Refining results",
+      phase: "postprocessing",
     },
     deploymentContext.hasEmbedding && {
       label: "Embedding",

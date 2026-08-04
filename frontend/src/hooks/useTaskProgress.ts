@@ -29,6 +29,7 @@ export type AnalysisPhase =
   | "image_detection"
   | "image_classification"
   | "saving"
+  | "postprocessing"
   | "embedding"
   | "finalize";
 

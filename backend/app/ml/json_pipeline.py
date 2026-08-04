@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.api.crud import detection as detection_crud
 from app.api.schemas.detection import DetectionCreate
+from app.core.job_cancellation import JobCancelledError, is_cancel_requested
 from app.core.logging_config import get_logger
 from app.core.media_types import VIDEO_EXTENSIONS
 from app.ml.detection_visibility import visible_detections
@@ -31,6 +32,7 @@ from app.ml.json_utils import (
     extract_animal_detections,
 )
 from app.ml.observation_type import derive_observation_type
+from app.ml.progress import ProgressTicker
 from app.ml.results_json import iter_images, read_top_level_object
 from app.models import Deployment, File, Project
 from app.utils.media_dates import (
@@ -122,6 +124,7 @@ def load_json_to_database(
     builtin_taxonomy_ids: dict[str, str] | None = None,
     datetime_offset_seconds: int = 0,
     use_file_mtime_fallback: bool = False,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> PipelineResult:
     """
     Load JSON file (merged video+image results) to database.
@@ -242,7 +245,14 @@ def load_json_to_database(
         # as queue warnings; there is no usable file row to create here.
         video_extensions = {"mp4", "avi", "mov", "mkv", "m4v", "wmv", "flv"}
         video_paths: list[Path] = []
+        # Counted here, not from the caller's file list: this is the only
+        # place that knows how many entries the JSON actually holds, and
+        # it counts failures too so the tick below always reaches the
+        # total. The loader streams with ijson, so there is no length to
+        # ask for without this pass, and the pass already exists.
+        entry_count = 0
         for img in iter_images(json_path):
+            entry_count += 1
             if img.get("failure"):
                 continue
             abs_path = (deployment_folder / img["file"]).resolve()
@@ -250,6 +260,7 @@ def load_json_to_database(
             if fmt in video_extensions:
                 video_paths.append(abs_path)
         video_dates = extract_video_dates(video_paths) if video_paths else {}
+        ticker = ProgressTicker(progress_callback, entry_count)
 
         # Best-frame JPEGs (one per video) land under this directory.
         # `best_frame_path` on each video File row points into the same
@@ -261,6 +272,12 @@ def load_json_to_database(
         # failure skip) matches the old total_files = len(images).
         for img in iter_images(json_path):
             total_files += 1
+            ticker.tick(total_files)
+            # Cancel between files, not mid-file: a half-written file plus
+            # its detections is not a state anything downstream expects.
+            # The whole deployment is rolled back by the worker anyway.
+            if job_id and is_cancel_requested(job_id):
+                raise JobCancelledError()
             if img.get("failure"):
                 skipped_video_failures.append(
                     {"file": img.get("file"), "reason": img.get("failure")}
@@ -580,6 +597,12 @@ def load_json_to_database(
             skipped_video_failures=skipped_video_failures,
         )
 
+    except JobCancelledError:
+        # Must precede the blanket handler below. Without it a user's
+        # cancel is rewrapped as a RuntimeError and the run is reported as
+        # failed rather than cancelled, which is a different thing to the
+        # person who pressed the button.
+        raise
     except Exception as e:
         logger.error(f"Failed to load JSON to database: {e}", exc_info=True)
         raise RuntimeError(f"Database load failed: {e}") from e
@@ -597,6 +620,7 @@ def load_json_to_database_owned_session(
     builtin_taxonomy_ids: dict[str, str] | None = None,
     datetime_offset_seconds: int = 0,
     use_file_mtime_fallback: bool = False,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> PipelineResult:
     """Run load_json_to_database with a session created in THIS thread.
 
@@ -624,6 +648,7 @@ def load_json_to_database_owned_session(
             builtin_taxonomy_ids=builtin_taxonomy_ids,
             datetime_offset_seconds=datetime_offset_seconds,
             use_file_mtime_fallback=use_file_mtime_fallback,
+            progress_callback=progress_callback,
         )
     finally:
         db.close()

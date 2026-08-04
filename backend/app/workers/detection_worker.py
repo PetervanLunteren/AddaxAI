@@ -15,6 +15,7 @@ import asyncio
 import json
 import os
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -740,6 +741,35 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     load_json_to_database_owned_session,
                 )
 
+                load_loop = asyncio.get_running_loop()
+                load_started = time.monotonic()
+
+                def sync_db_load_progress(
+                    done: int,
+                    total: int,
+                    *,
+                    _loop=load_loop,
+                    _t0=load_started,
+                ) -> None:
+                    """Marshal progress from the executor thread to the loop."""
+                    elapsed = time.monotonic() - _t0
+                    metrics = {"current": done, "total": total, "unit": "file"}
+                    if done and elapsed > 0:
+                        rate = done / elapsed
+                        metrics["rate"] = rate
+                        metrics["elapsed"] = _tqdm_time(elapsed)
+                        metrics["remaining"] = _tqdm_time((total - done) / rate)
+                    asyncio.run_coroutine_threadsafe(
+                        deployment_progress_callback(
+                            f"Saving to database: {done}/{total}",
+                            0.0,
+                            "saving",
+                            (done / total) if total else 1.0,
+                            metrics,
+                        ),
+                        _loop,
+                    )
+
                 # Offloaded to a thread with its own DB session: the per-file
                 # insert loop over the whole deployment is the heavy blocker of
                 # the save phase. Running it on the event loop made the backend
@@ -757,6 +787,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     builtin_taxonomy_ids,
                     datetime_offset_seconds,
                     use_file_mtime_fallback=use_file_mtime_fallback,
+                    progress_callback=sync_db_load_progress,
                 )
                 # The insert happened on another session; drop any stale state
                 # so the main session's later queries (taxonomy link,
@@ -839,61 +870,59 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             # ============================================================
             if final_json_path.exists():
                 logger.info("Phase 7: Running postprocessing")
-                from app.ml.postprocessing import (
-                    run_postprocessing_for_deployment,
-                    update_database_from_smoothed_results,
-                )
 
-                smoothed = run_postprocessing_for_deployment(
-                    deployment.id, final_json_path, folder_path, project, db,
-                    job_id=job_id,
-                )
-                # Load taxonomy for scientific_name formatting
-                taxonomy_csv = None
-                if classification_model_id and cls_model_dir:
-                    _tax = cls_model_dir / "taxonomy.csv"
-                    if _tax.exists():
-                        taxonomy_csv = _tax
-                pp_tax = None
-                if taxonomy_csv and taxonomy_csv.exists():
-                    from app.ml.taxonomic_rollup import load_taxonomy_lookup
+                # Its own progress row. Everything before this point is
+                # "saving"; this is label exclusion, geofencing, taxonomic
+                # rollup and smoothing, which on a large deployment is
+                # minutes of work of a different kind. Sharing the saving
+                # row meant that row read 100% while this ran.
+                pp_loop = asyncio.get_running_loop()
+                pp_started = time.monotonic()
 
-                    pp_tax = load_taxonomy_lookup(taxonomy_csv)
-
-                # Resolve excluded_classes to taxonomy UUIDs
-                excluded_tax_ids: set[str] | None = None
-                if project.excluded_classes:
-                    from app.models.label_taxonomy import LabelTaxonomy
-
-                    exc_rows = (
-                        db.query(LabelTaxonomy.id)
-                        .filter(
-                            LabelTaxonomy.name.in_(
-                                project.excluded_classes
-                            ),
-                        )
-                        .all()
+                def sync_postprocessing_progress(
+                    done: int,
+                    total: int,
+                    *,
+                    _loop=pp_loop,
+                    _t0=pp_started,
+                ) -> None:
+                    """Marshal progress from the executor thread to the loop."""
+                    elapsed = time.monotonic() - _t0
+                    metrics = {"current": done, "total": total, "unit": "file"}
+                    if done and elapsed > 0:
+                        rate = done / elapsed
+                        metrics["rate"] = rate
+                        metrics["elapsed"] = _tqdm_time(elapsed)
+                        metrics["remaining"] = _tqdm_time((total - done) / rate)
+                    asyncio.run_coroutine_threadsafe(
+                        deployment_progress_callback(
+                            f"Refining results: {done}/{total}",
+                            0.0,
+                            "postprocessing",
+                            (done / total) if total else 1.0,
+                            metrics,
+                        ),
+                        _loop,
                     )
-                    excluded_tax_ids = {r[0] for r in exc_rows}
 
-                # Re-resolve taxonomy after rollup may have added entries
-                pp_name_to_id = batch_resolve_taxonomy_ids(
-                    list(
-                        smoothed.get(
-                            "classification_categories", {}
-                        ).values()
-                    ),
-                    classification_model_id,
-                    project_id,
-                    db,
-                ) if classification_model_id else taxonomy_name_to_id
-
-                pp_result = update_database_from_smoothed_results(
-                    deployment.id, smoothed, folder_path, db, pp_tax,
-                    excluded_classes=project.excluded_classes,
-                    excluded_taxonomy_ids=excluded_tax_ids,
-                    taxonomy_name_to_id=pp_name_to_id,
+                await deployment_progress_callback(
+                    "Refining results...", 0.0, "postprocessing", 0.0,
                 )
+                pp_result = await asyncio.to_thread(
+                    _run_postprocessing_owned_session,
+                    deployment.id,
+                    project_id,
+                    final_json_path,
+                    folder_path,
+                    classification_model_id,
+                    cls_model_dir,
+                    taxonomy_name_to_id,
+                    job_id=job_id,
+                    progress_callback=sync_postprocessing_progress,
+                )
+                # The thread committed through its own session, so rows
+                # this one already loaded (project, deployment) are stale.
+                db.expire_all()
                 logger.info(
                     f"Postprocessing complete: {pp_result.get('updated', 0)} updated"
                 )
@@ -1177,6 +1206,99 @@ async def process_deployment_analysis(job_id: str) -> None:
 
         # Send error message
         await ws_manager.send_error(job_id, str(e))
+
+
+def _run_postprocessing_owned_session(
+    deployment_id: str,
+    project_id: str,
+    json_path: Path,
+    deployment_folder: Path,
+    classification_model_id: str | None,
+    cls_model_dir: Path | None,
+    taxonomy_name_to_id: dict | None,
+    job_id: str | None = None,
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> dict:
+    """
+    Run phase 7 with a session created in THIS thread.
+
+    Phase 7 used to be a bare synchronous call on the event loop, so the
+    backend answered nothing for its whole duration: minutes on a large
+    deployment, and it could not report its own progress because the loop
+    that would send the websocket frame was the loop it was blocking.
+    That is the same defect already fixed here for the merge and the
+    database load, and it is the reason `asyncio.to_thread` is not
+    optional.
+
+    A SQLAlchemy session belongs to one thread, so this makes its own
+    rather than borrowing the worker's, exactly like
+    `load_json_to_database_owned_session`. The project is passed by id and
+    re-loaded here for the same reason: handing an ORM object across the
+    boundary would let a lazy load fire against a session owned by another
+    thread.
+
+    The caller must `db.expire_all()` afterwards, because rows this
+    commits are stale in its own session.
+    """
+    from app.db.base import get_session_factory
+    from app.ml.postprocessing import (
+        run_postprocessing_for_deployment,
+        update_database_from_smoothed_results,
+    )
+    from app.ml.taxonomic_rollup import load_taxonomy_lookup
+    from app.ml.taxonomy_db import batch_resolve_taxonomy_ids
+    from app.models import Project
+    from app.models.label_taxonomy import LabelTaxonomy
+
+    db = get_session_factory()()
+    try:
+        project = db.get(Project, project_id)
+        if project is None:
+            raise ValueError(f"Project {project_id} not found for postprocessing")
+
+        smoothed = run_postprocessing_for_deployment(
+            deployment_id, json_path, deployment_folder, project, db,
+            job_id=job_id,
+        )
+
+        # Taxonomy for scientific_name formatting.
+        pp_tax = None
+        if classification_model_id and cls_model_dir:
+            taxonomy_csv = cls_model_dir / "taxonomy.csv"
+            if taxonomy_csv.exists():
+                pp_tax = load_taxonomy_lookup(taxonomy_csv)
+
+        # Resolve excluded_classes to taxonomy UUIDs.
+        excluded_tax_ids: set[str] | None = None
+        if project.excluded_classes:
+            exc_rows = (
+                db.query(LabelTaxonomy.id)
+                .filter(LabelTaxonomy.name.in_(project.excluded_classes))
+                .all()
+            )
+            excluded_tax_ids = {r[0] for r in exc_rows}
+
+        # Re-resolve taxonomy after rollup may have added entries.
+        pp_name_to_id = (
+            batch_resolve_taxonomy_ids(
+                list(smoothed.get("classification_categories", {}).values()),
+                classification_model_id,
+                project_id,
+                db,
+            )
+            if classification_model_id
+            else taxonomy_name_to_id
+        )
+
+        return update_database_from_smoothed_results(
+            deployment_id, smoothed, deployment_folder, db, pp_tax,
+            excluded_classes=project.excluded_classes,
+            excluded_taxonomy_ids=excluded_tax_ids,
+            taxonomy_name_to_id=pp_name_to_id,
+            progress_callback=progress_callback,
+        )
+    finally:
+        db.close()
 
 
 def _tqdm_time(seconds: float) -> str:

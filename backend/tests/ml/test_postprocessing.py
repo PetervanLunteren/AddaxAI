@@ -27,6 +27,30 @@ def _make_project_mock(**overrides):
     return MagicMock(**defaults)
 
 
+def test_smoothing_timeout_scales_with_the_run():
+    """
+    The ceiling has to grow with the work, or a large library trips it.
+
+    A fixed 300s was fine until a beta tester brought a million images.
+    Smoothing scales with the file count; the timeout did not, and when it
+    fires the run continues with smoothing silently not applied.
+    """
+    from app.ml.postprocessing import (
+        SMOOTHING_TIMEOUT_BASE_S,
+        _smoothing_timeout_s,
+    )
+
+    # Small runs keep exactly the behaviour they had before.
+    assert _smoothing_timeout_s(0) == SMOOTHING_TIMEOUT_BASE_S
+    # And it grows from there, monotonically.
+    assert _smoothing_timeout_s(100_000) > _smoothing_timeout_s(10_000)
+    assert _smoothing_timeout_s(10_000) > SMOOTHING_TIMEOUT_BASE_S
+    # A million images must get well past the old fixed ceiling. Measured
+    # smoothing throughput is ~0.02 ms/image, so this allowance is deep
+    # headroom rather than a tight fit.
+    assert _smoothing_timeout_s(1_000_000) >= 1_000
+
+
 def test_hash_deterministic():
     p = _make_project_mock()
     h1 = compute_postprocessing_settings_hash(p)

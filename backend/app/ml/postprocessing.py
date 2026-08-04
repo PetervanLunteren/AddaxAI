@@ -16,6 +16,7 @@ import json
 import subprocess
 import tempfile
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -29,6 +30,7 @@ from app.core.logging_config import get_logger
 from app.core.subprocess_group import popen_group
 from app.ml.detection_visibility import on_visible_frame_of
 from app.ml.observation_type import derive_observation_type
+from app.ml.progress import ProgressTicker
 from app.models import Deployment, Detection, File, Project
 from app.utils.subprocess_env import clean_python_env
 
@@ -214,6 +216,32 @@ def _ensure_7_token_descriptions(md_results: dict, project, db: Session) -> bool
     return False
 
 
+# Smoothing runs as a subprocess, so it needs a timeout or a wedged one
+# would hang the run forever. A fixed 300s was fine until someone brought
+# a million images: the work scales with the file count, the ceiling did
+# not, and a timeout fires into an `except Exception` that logs and
+# silently returns unsmoothed results.
+#
+# Sized from measurement, with deliberate headroom. Timing the real
+# subprocess on synthetic runs: 0.88s for 2k images, 0.68s for 10k, 0.95s
+# for 25k. Almost all of that is the ~0.7s of interpreter and megadetector
+# import; the marginal cost is about 0.02 ms per image. The allowance
+# below is 1 ms per image, roughly fifty times the measured rate, because
+# a timeout should sit where it is definitely wrong rather than probably
+# enough: real runs carry more classifications per detection than the
+# benchmark, the JSON parse and write scale with them, and a user's
+# machine can be several times slower than the one this was measured on.
+#
+# The base keeps small runs behaving exactly as they did before.
+SMOOTHING_TIMEOUT_BASE_S = 300.0
+SMOOTHING_TIMEOUT_PER_IMAGE_S = 0.001
+
+
+def _smoothing_timeout_s(image_count: int) -> float:
+    """Seconds to allow the smoothing subprocess for this many images."""
+    return SMOOTHING_TIMEOUT_BASE_S + image_count * SMOOTHING_TIMEOUT_PER_IMAGE_S
+
+
 def run_postprocessing_for_deployment(
     deployment_id: str,
     json_path: Path,
@@ -382,13 +410,16 @@ def run_postprocessing_for_deployment(
             text=True,
             env=clean_python_env(),
         )
+        timeout_s = _smoothing_timeout_s(len(md_results.get("images") or []))
         with track_subprocess(job_id, process):
             try:
-                stdout, stderr = process.communicate(timeout=300)
+                stdout, stderr = process.communicate(timeout=timeout_s)
             except subprocess.TimeoutExpired as e:
                 process.kill()
                 stdout, stderr = process.communicate()
-                raise RuntimeError("Smoothing script timed out after 300s") from e
+                raise RuntimeError(
+                    f"Smoothing script timed out after {timeout_s:.0f}s"
+                ) from e
 
         if job_id and is_cancel_requested(job_id):
             raise JobCancelledError()
@@ -429,6 +460,7 @@ def update_database_from_smoothed_results(
     taxonomy_name_to_id: (
         dict[str, tuple[str, str | None]] | None
     ) = None,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> dict:
     """
     Update Detection records in the database from smoothed JSON results.
@@ -499,7 +531,15 @@ def update_database_from_smoothed_results(
 
     # `images or []` and the `failure` skip below tolerate failed-video
     # entries from process_video (their `detections` field is None).
-    for img in smoothed_results.get("images") or []:
+    #
+    # The tick counts every entry including failures, so it always reaches
+    # the total. Counting after the skip would leave the bar short of the
+    # end on any deployment holding an undecodable video.
+    images = smoothed_results.get("images") or []
+    ticker = ProgressTicker(progress_callback, len(images))
+
+    for done, img in enumerate(images, start=1):
+        ticker.tick(done)
         if img.get("failure"):
             continue
         relative_file = img["file"]
