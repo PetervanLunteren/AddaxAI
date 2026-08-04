@@ -91,6 +91,13 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
     # Load classification model (if configured)
     classification_model = None
     full_image_cls = False
+    # Bound unconditionally, like its two neighbours above. It used to be
+    # set only inside the branch below, which was survivable only because
+    # every reader wrote `if classification_model_id and cls_model_dir`
+    # and Python short-circuits before touching it. Passing it as a plain
+    # argument evaluates it every time, and a detection-only run then died
+    # at postprocessing with UnboundLocalError.
+    cls_model_dir = None
     if classification_model_id:
         cls_manifest = manifest_manager.get_model(classification_model_id)
         cls_model_path = model_storage.get_model_file(cls_manifest)
