@@ -55,6 +55,7 @@ import {
   useLabelSelectionCaption,
 } from "../taxonomy/LabelSelectionField";
 import { ModelSelect } from "../models/ModelSelect";
+import { toApiModelId } from "@/lib/model-id";
 import { NoClassifierNotice } from "../models/NoClassifierNotice";
 import { FieldHeader } from "../ui/field-header";
 import {
@@ -225,6 +226,11 @@ export function CreateProjectDialog({
       projectsApi.create({
         ...data,
         country_code: toApiCountryCode(data.country_code),
+        // "none" is a form-only sentinel; the API knows model ids or
+        // null. Without this a detection-only project is created with
+        // the string "none" as its classifier.
+        classification_model_id: toApiModelId(data.classification_model_id),
+        embedding_model_id: toApiModelId(data.embedding_model_id),
       }),
     onSuccess: async (newProject: ProjectResponse, variables: ProjectCreate) => {
       if (imageFile) {
@@ -239,11 +245,9 @@ export function CreateProjectDialog({
       // run pre-fills it. Only this subset is written; folder-run-only params
       // in the shared store are left untouched. "none" is normalised to null
       // so the store's canonical "no model" value is null.
-      const noneToNull = (v: string | null | undefined) =>
-        !v || v === "none" ? null : v;
       saveLastUsedSettings({
-        classification_model_id: noneToNull(variables.classification_model_id),
-        embedding_model_id: noneToNull(variables.embedding_model_id),
+        classification_model_id: toApiModelId(variables.classification_model_id),
+        embedding_model_id: toApiModelId(variables.embedding_model_id),
         country_code: variables.country_code ?? null,
         state_code: variables.state_code ?? null,
         excluded_classes: variables.excluded_classes,

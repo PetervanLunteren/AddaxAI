@@ -44,6 +44,7 @@ import {
 } from "../lib/advancedSettingsDefaults";
 import { useSidebarCollapsed } from "../components/layout/sidebar-context";
 import { ModelSelect } from "../components/models/ModelSelect";
+import { toApiModelId } from "../lib/model-id";
 import { NoClassifierNotice } from "../components/models/NoClassifierNotice";
 import { ModelInfoSheet } from "../components/models/ModelInfoSheet";
 import { ModelStatusBadge } from "../components/projects/ModelStatusBadge";
@@ -610,6 +611,11 @@ export default function SettingsPage() {
         timezone: data.timezone || null,
         // ALL is a form-only sentinel; the API knows ISO codes or null.
         country_code: toApiCountryCode(data.country_code),
+        // "none" is a form-only sentinel too. Without this the project
+        // stores the string "none" as its model and every later analysis
+        // is blocked by a "none needs setup" dialog.
+        classification_model_id: toApiModelId(data.classification_model_id),
+        embedding_model_id: toApiModelId(data.embedding_model_id),
       });
 
       // 3. If reprocess-triggering settings changed, kick off the job
