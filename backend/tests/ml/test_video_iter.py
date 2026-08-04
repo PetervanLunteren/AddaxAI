@@ -16,6 +16,7 @@ pytest.importorskip("cv2")
 from app.ml.inference.video_iter import (  # noqa: E402
     iter_wanted_frames,
     open_video,
+    read_frame_by_seek,
     sample_indices,
 )
 
@@ -101,3 +102,105 @@ def test_sample_indices_returns_evenly_spaced_indices():
     assert sample_indices(total=2, count=3) == [0, 1]
     assert sample_indices(total=0, count=3) == []
     assert sample_indices(total=10, count=0) == []
+
+
+# ---------------------------------------------------------------------------
+# read_frame_by_seek
+#
+# The contract that matters is "the frame you get back is the frame you
+# asked for, or you get nothing". Everything here is written against the
+# sequential walk, which is the definition of the right answer, so a seek
+# that silently lands elsewhere fails rather than passing on a filename.
+# ---------------------------------------------------------------------------
+
+# ("mp4v", ".mp4") is what every other video test uses. MJPG/.avi is here
+# because it is the shape DEVELOPERS.md calls out as the awkward one (the
+# Browning cameras that write MJPG AVI with no capture date).
+CODECS = [("mp4v", ".mp4"), ("MJPG", ".avi")]
+
+
+def _walk_to(cap, frame_number):
+    """Ground truth: the frame the sequential path would have produced."""
+    for num, image in iter_wanted_frames(cap, {frame_number}):
+        if num == frame_number:
+            return image
+    return None
+
+
+@pytest.mark.parametrize("codec,suffix", CODECS)
+def test_read_frame_by_seek_returns_the_frame_the_walk_would_have(
+    tmp_path, make_video, codec, suffix
+):
+    """Pixel equality against the walk, at several points in the clip."""
+    video = tmp_path / f"clip{suffix}"
+    make_video(video, total_frames=30, codec=codec)
+
+    for target in (0, 1, 7, 15, 29):
+        seek_cap = open_video(video)
+        walk_cap = open_video(video)
+        assert seek_cap is not None and walk_cap is not None
+        try:
+            seeked = read_frame_by_seek(seek_cap, target, 30)
+            walked = _walk_to(walk_cap, target)
+        finally:
+            seek_cap.release()
+            walk_cap.release()
+
+        assert walked is not None, f"walk could not reach frame {target}"
+        # A refused seek is allowed (the caller falls back), a wrong one
+        # is not.
+        if seeked is not None:
+            assert list(seeked.getdata()) == list(walked.getdata()), (
+                f"{codec}: seek to frame {target} returned different pixels "
+                f"than walking to it"
+            )
+
+
+@pytest.mark.parametrize("codec,suffix", CODECS)
+def test_read_frame_by_seek_fires_on_the_common_case(
+    tmp_path, make_video, codec, suffix
+):
+    """
+    The whole point is the middle frame of a blank clip. If this ever
+    starts returning None the fix still works but has stopped paying,
+    which is worth failing over rather than silently regressing.
+    """
+    video = tmp_path / f"clip{suffix}"
+    make_video(video, total_frames=30, codec=codec)
+    cap = open_video(video)
+    assert cap is not None
+    try:
+        assert read_frame_by_seek(cap, 15, 30) is not None
+    finally:
+        cap.release()
+
+
+def test_read_frame_by_seek_refuses_out_of_range(tiny_video):
+    """
+    The range guard, which is the real safety net. Frame 900 of a
+    20-frame clip must be refused from the frame count alone, without
+    depending on how a backend clamps an out-of-range seek. This is the
+    case `test_undecodable_winner_falls_back_without_lying` relies on.
+    """
+    cap = open_video(tiny_video)
+    assert cap is not None
+    try:
+        assert read_frame_by_seek(cap, 900, 20) is None
+        assert read_frame_by_seek(cap, 20, 20) is None  # off by one
+        assert read_frame_by_seek(cap, -1, 20) is None
+    finally:
+        cap.release()
+
+
+def test_read_frame_by_seek_refuses_unusable_frame_count(tiny_video):
+    """
+    A container that reports no usable frame count gets the walk. cv2
+    reports INT64_MIN for some truncated files, so this is not academic.
+    """
+    cap = open_video(tiny_video)
+    assert cap is not None
+    try:
+        assert read_frame_by_seek(cap, 5, 0) is None
+        assert read_frame_by_seek(cap, 5, -9223372036854775808) is None
+    finally:
+        cap.release()

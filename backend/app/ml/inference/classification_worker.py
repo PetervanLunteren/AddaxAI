@@ -75,6 +75,7 @@ from scoring import choose_frame_number  # noqa: E402
 from video_iter import (  # noqa: E402
     iter_wanted_frames,
     open_video,
+    read_frame_by_seek,
     write_best_frame,
 )
 
@@ -360,6 +361,50 @@ def _process_video_group(
     items_by_frame: dict[int, list[tuple[int, dict]]] = defaultdict(list)
     for orig_idx, item in video_items:
         items_by_frame[int(item["frame_number"])].append((orig_idx, item))
+
+    # Nothing to classify on this clip, so the thumbnail is the only
+    # reason to touch it: go straight to that one frame instead of
+    # walking to it. Worth having because this is the common case, not a
+    # corner: it covers every empty clip (most of a deployment) and
+    # every clip holding only people or vehicles, none of which are
+    # classified. A clip that *does* have crops keeps walking, because
+    # it wants 11 to 51 frames and seeking each of those is slower.
+    #
+    # `results` and `per_crop_progress` are only ever driven by
+    # `video_items`, which is empty here, so there is no bookkeeping to
+    # do. Any failure falls through to the walk below unchanged.
+    if not items_by_frame:
+        cap = open_video(video_path)
+        if cap is not None:
+            try:
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                best_frame_number = choose_frame_number(
+                    scoring_dets, total_frames
+                )
+                pixels = read_frame_by_seek(
+                    cap, best_frame_number, total_frames
+                )
+            finally:
+                cap.release()
+            if pixels is not None:
+                # Decode even when there is nowhere to write it: the
+                # decode is what proves the number, and `json_pipeline`
+                # builds `best_frame_path` from it without checking that
+                # the file exists.
+                if best_frame_dest_dir is not None:
+                    dest = (
+                        best_frame_dest_dir
+                        / f"frame{best_frame_number:06d}.jpg"
+                    )
+                    try:
+                        write_best_frame(pixels, dest)
+                    except Exception as e:
+                        print(
+                            f"[Worker] Failed to write best frame for "
+                            f"{video_path}: {e}",
+                            file=sys.stderr, flush=True,
+                        )
+                return best_frame_number
 
     cap = open_video(video_path)
     if cap is None:

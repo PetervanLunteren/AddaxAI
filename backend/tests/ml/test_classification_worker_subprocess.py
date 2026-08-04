@@ -131,6 +131,9 @@ def test_worker_scores_the_best_frame_on_every_category(tmp_path, make_video):
 
     assert out["best_frames"] == {str(video): 16}
     assert (frames_dir / "frame000016.jpg").is_file()
+    # This clip has a crop to classify, so it keeps the sequential walk.
+    # Pinning the pixels here too keeps both routes honest.
+    _assert_jpeg_shows_frame(frames_dir / "frame000016.jpg", 16)
     # Only the chosen frame is written, not one per candidate.
     assert sorted(p.name for p in frames_dir.glob("*.jpg")) == ["frame000016.jpg"]
 
@@ -138,6 +141,25 @@ def test_worker_scores_the_best_frame_on_every_category(tmp_path, make_video):
     assert len(out["results"]) == 1
     assert out["results"][0]["success"] is True
     assert out["class_names"] == {"1": "badger", "2": "fox"}
+
+
+def _assert_jpeg_shows_frame(path, frame_number):
+    """
+    `make_video` encodes the frame index in the blue channel, so a written
+    thumbnail can be checked against the frame it claims to be.
+
+    Worth the four lines: asserting the *filename* alone passes happily
+    if the frame is fetched from the wrong place, and fetching one frame
+    without walking to it is exactly the change that could do that. Same
+    tolerance as `test_video_iter.py`, loosened for lossy encoding.
+    """
+    from PIL import Image
+
+    with Image.open(path) as img:
+        blue = img.convert("RGB").getpixel((0, 0))[2]
+    assert abs(blue - frame_number) <= 12, (
+        f"{path.name} says frame {frame_number} but its pixels read {blue}"
+    )
 
 
 def test_worker_handles_a_video_with_nothing_to_classify(tmp_path, make_video):
@@ -164,6 +186,7 @@ def test_worker_handles_a_video_with_nothing_to_classify(tmp_path, make_video):
 
     assert out["best_frames"] == {str(video): 20}
     assert (frames_dir / "frame000020.jpg").is_file()
+    _assert_jpeg_shows_frame(frames_dir / "frame000020.jpg", 20)
     assert out["results"] == []
 
 
@@ -185,6 +208,7 @@ def test_worker_falls_back_to_the_middle_frame_when_blank(tmp_path, make_video):
 
     assert out["best_frames"] == {str(video): 10}
     assert (frames_dir / "frame000010.jpg").is_file()
+    _assert_jpeg_shows_frame(frames_dir / "frame000010.jpg", 10)
 
 
 # ---------------------------------------------------------------------------

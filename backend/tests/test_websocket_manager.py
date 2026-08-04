@@ -281,6 +281,63 @@ class TestSendProgress:
         assert mgr.current_state["job-1"]["message"] == "Step 2"
         assert mgr.current_state["job-1"]["progress"] == 0.6
 
+    async def test_compute_device_carries_within_a_phase(self, mgr):
+        """
+        Each subprocess announces its device once, seconds into its
+        phase, and every later message in that phase has to keep showing
+        it. This is also what a client reconnecting mid-phase replays.
+        """
+        await mgr.send_progress(
+            "job-1", "Initializing detector...", 0.0, "video_detection", 0.0,
+            {"compute_device": "GPU (NVIDIA)"},
+        )
+        await mgr.send_progress(
+            "job-1", "Processing video 5/10", 0.0, "video_detection", 0.5,
+            {"metrics": {"current": 5, "total": 10}},
+        )
+
+        assert (
+            mgr.current_state["job-1"]["data"]["compute_device"]
+            == "GPU (NVIDIA)"
+        )
+
+    async def test_compute_device_does_not_leak_into_the_next_phase(self, mgr):
+        """
+        The bug this guards: one device per *phase*, not per run. A
+        phase that has not announced yet must not borrow the previous
+        phase's hardware, or a CPU-only classifier reads as GPU for as
+        long as its model takes to load.
+        """
+        await mgr.send_progress(
+            "job-1", "Initializing detector...", 0.0, "video_detection", 0.0,
+            {"compute_device": "GPU (NVIDIA)"},
+        )
+        await mgr.send_progress(
+            "job-1", "Selecting video frames: 1/12", 0.0,
+            "video_frame_selection", 0.1,
+            {"metrics": {"current": 1, "total": 12}},
+        )
+
+        assert "compute_device" not in mgr.current_state["job-1"]["data"]
+
+    async def test_compute_device_in_the_message_always_wins(self, mgr):
+        """
+        A phase that states its own device overrides anything cached.
+        The case that matters: a classifier with no GPU build falls back
+        to CPU while the detector before it ran on the GPU, and the row
+        has to follow the model actually running.
+        """
+        await mgr.send_progress(
+            "job-1", "Initializing detector...", 0.0, "video_detection", 0.0,
+            {"compute_device": "GPU (NVIDIA)"},
+        )
+        await mgr.send_progress(
+            "job-1", "Worker ready", 0.0, "video_classification", 0.0,
+            {"compute_device": "CPU"},
+        )
+
+        assert mgr.current_state["job-1"]["data"]["compute_device"] == "CPU"
+
     async def test_send_progress_to_multiple_clients(self, mgr):
         ws1 = make_mock_ws()
         ws2 = make_mock_ws()

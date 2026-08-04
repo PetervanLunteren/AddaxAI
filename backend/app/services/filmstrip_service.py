@@ -7,11 +7,14 @@ frame. Nothing is persisted to disk: frames are decoded on request and the
 result is cached in memory (a filmstrip is immutable per video file).
 
 Reuses the decode primitives in `app.ml.inference.video_iter` so sampling
-and decoding behave exactly like the rest of the pipeline. Note that
-`iter_wanted_frames` reads sequentially from frame 0 (frame seeking is
-unreliable across codecs), so building a filmstrip decodes roughly the whole
-clip once. The in-memory cache and the frontend's prefetch hide that cost in
-normal use.
+and decoding behave exactly like the rest of the pipeline. It walks with
+`iter_wanted_frames` rather than seeking to each frame, which is the right
+call for a 9-frame sample: a seek costs about 55 walked frames, so seeking
+9 times only wins on clips longer than ~500 frames. That does leave a
+30-second clip decoding roughly its whole length for 9 frames. The
+in-memory cache and the frontend's prefetch hide the cost in normal use,
+and switching to seeks above a length threshold is a real optimisation
+nobody has needed yet.
 """
 
 from __future__ import annotations

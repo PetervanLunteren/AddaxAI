@@ -76,6 +76,17 @@ export function formatRate(
   return { label: `Time per ${unit}`, value };
 }
 
+/** One-word form of {@link formatRate}, for the collapsed summary line
+ * where there is no room for "Animals per second".
+ *
+ * Delegates rather than re-deriving, so the two can never disagree
+ * about which way round to express a given speed: "11.1/sec" above one
+ * per second, "34 sec each" below it. */
+export function formatRateShort(rate: number, unit: string): string {
+  const { value } = formatRate(rate, unit);
+  return rate >= 1 ? `${value}/sec` : `${value} each`;
+}
+
 /** Reformat a tqdm time string for display.
  *
  * Elapsed (``estimate=false``) is an exact fact, so it shows real

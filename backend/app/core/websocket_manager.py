@@ -147,14 +147,28 @@ class ConnectionManager:
 
         # Store state and snapshot connections atomically
         async with self._lock:
-            # compute_device is emitted exactly once at the start of a
-            # run, then never repeated. The cached state is what we
-            # replay to reconnecting clients, so without forwarding the
-            # value the UI would slip back to "detecting..." after a
-            # page reload. Carry it across messages.
+            # compute_device is announced once per phase, by whichever
+            # subprocess that phase runs, then never repeated. Every
+            # later message in the phase needs it: the cached state is
+            # what we replay to reconnecting clients, so without
+            # forwarding it the UI slips back to "detecting..." after a
+            # page reload.
+            #
+            # **Only within the same phase.** Each phase runs its own
+            # model and resolves its own device, and the announcement
+            # arrives seconds into the phase because it comes after the
+            # model loads. Carrying the value across a phase boundary
+            # fills that gap with the *previous* phase's hardware, which
+            # is wrong the moment two models resolve differently: a
+            # classifier with no GPU support falls back to CPU while
+            # MegaDetector runs on the GPU, and the row would still say
+            # GPU. A phase that never announces shows "detecting..."
+            # forever, which is the honest answer and the reason phases
+            # doing their own CPU work say so explicitly.
             prev = self.current_state.get(job_id)
             if (
                 prev
+                and prev.get("phase") == phase
                 and prev.get("data", {}).get("compute_device")
                 and not progress_data["data"].get("compute_device")
             ):

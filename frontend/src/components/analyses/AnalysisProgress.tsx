@@ -15,10 +15,21 @@
  * <AnalysisProgress /> and inherit fixes for free.
  */
 
-import { Loader2 } from "lucide-react";
+import { useState } from "react";
+import { ChevronRight, Loader2 } from "lucide-react";
 import { Progress } from "../ui/progress";
 import { Separator } from "../ui/separator";
-import { formatRate, humanizeTqdmTime } from "../../lib/duration";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../ui/collapsible";
+import { cn } from "../../lib/utils";
+import {
+  formatRate,
+  formatRateShort,
+  humanizeTqdmTime,
+} from "../../lib/duration";
 import type {
   DeploymentContext,
   TqdmMetrics,
@@ -28,6 +39,7 @@ import type {
 const PHASE_ORDER = [
   "init",
   "video_detection",
+  "video_frame_selection",
   "video_classification",
   "image_detection",
   "image_classification",
@@ -106,6 +118,14 @@ interface PhaseRowProps {
    * happening during long stretches with no tqdm progress.
    */
   message?: string;
+  /**
+   * Whether the metrics block is expanded. Owned by the parent and
+   * shared by every row, not held per row: only one phase is ever
+   * active, so per-row state would silently reset each time the run
+   * moved on and the user would have to reopen it six times.
+   */
+  detailsOpen: boolean;
+  onDetailsOpenChange: (open: boolean) => void;
 }
 
 function PhaseRow({
@@ -117,6 +137,8 @@ function PhaseRow({
   metrics,
   computeDevice,
   message,
+  detailsOpen,
+  onDetailsOpenChange,
 }: PhaseRowProps) {
   const isActive = phaseName === currentPhase;
   const isFinalizing = isActive && progress >= 100;
@@ -135,18 +157,69 @@ function PhaseRow({
   const unit = metrics?.unit || "items";
   const rateDisplay = metrics?.rate ? formatRate(metrics.rate, unit) : null;
 
+  // What the collapsed toggle shows beside it, so closing the details
+  // never costs you the answer to "how long is this going to take".
+  // Every part is optional: the first update of a phase has a count but
+  // no rate or estimate yet.
+  const summary = [
+    metrics?.current !== undefined && metrics?.total !== undefined
+      ? `${metrics.current.toLocaleString()} of ${metrics.total.toLocaleString()}`
+      : null,
+    metrics?.rate ? formatRateShort(metrics.rate, unit) : null,
+    metrics?.remaining
+      ? `${humanizeTqdmTime(metrics.remaining, true)} left`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-medium text-gray-700">{label}</p>
-        <span className="text-xs text-gray-500 font-mono">
+    <div>
+      {/* One line per phase. The label and percentage columns are fixed
+          so the bars line up down the list, which is what makes six of
+          them scannable at a glance. */}
+      <div className="flex items-center gap-3 py-1">
+        {/* w-36, not w-32. The longest label ("Video frame selection")
+            measures 126px, so a 128px column clears it by 2px here and
+            would truncate on a machine whose fonts render a hair wider.
+            The 16px comes off the bar, which has it to spare. */}
+        <p className="w-36 shrink-0 truncate text-xs font-medium text-gray-700">
+          {label}
+        </p>
+        <Progress value={progress} className="h-1.5 flex-1" />
+        <span className="w-9 shrink-0 text-right text-xs text-gray-500 font-mono">
           {progress.toFixed(0)}%
         </span>
       </div>
-      <Progress value={progress} className="h-2" />
 
+      {/* The active phase adds exactly one caption line: either what it
+          is busy with (no tqdm output yet) or its numbers. Never both,
+          so a row can only ever grow by one line. */}
       {hasValidMetrics && metrics && (
-        <div className="text-[11px] space-y-0.5 rounded-md bg-gray-50 p-3 font-mono text-gray-600">
+        <Collapsible open={detailsOpen} onOpenChange={onDetailsOpenChange}>
+          {/* items-center, not items-baseline. The trigger is a flex box
+              whose first child is the chevron SVG, and a flex container
+              takes its baseline from its first item, so baseline
+              alignment lifts "Details" above the summary beside it. The
+              two spans are the same size, so centring lines them up. */}
+          <div className="flex items-center gap-2 pb-1 pl-1">
+            <CollapsibleTrigger className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-primary hover:underline">
+              <ChevronRight
+                className={cn(
+                  "h-3 w-3 transition-transform",
+                  detailsOpen && "rotate-90",
+                )}
+              />
+              Details
+            </CollapsibleTrigger>
+            {!detailsOpen && summary && (
+              <span className="truncate text-[11px] font-mono text-gray-500">
+                {summary}
+              </span>
+            )}
+          </div>
+          <CollapsibleContent>
+            <div className="mb-1 text-[11px] space-y-0.5 rounded-md bg-gray-50 p-2.5 font-mono text-gray-600">
           <div className="flex justify-between">
             <span>Processing {unit}:</span>
             <span>
@@ -172,26 +245,29 @@ function PhaseRow({
               <span>{rateDisplay.value}</span>
             </div>
           )}
-          <div className="flex justify-between">
-            <span>Running on:</span>
-            <span className={computeDevice ? "" : "text-gray-400"}>
-              {computeDevice ?? "detecting..."}
-            </span>
-          </div>
-        </div>
+          {/* Only when this phase told us what it runs on. A phase that
+              does its own CPU work between two GPU phases (video frame
+              selection) says nothing, because a lone "CPU" row reads as
+              a fault rather than as the ordinary fact that decoding
+              video is not GPU work. */}
+          {computeDevice && (
+            <div className="flex justify-between">
+              <span>Running on:</span>
+              <span>{computeDevice}</span>
+            </div>
+          )}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       )}
 
-      {isStartingUp && (
-        <div className="flex items-center gap-2 text-[11px] font-mono text-gray-500 px-1">
+      {(isStartingUp || isFinalizing) && (
+        <div className="flex items-center gap-2 pb-1 pl-1 text-[11px] font-mono text-gray-500">
           <Loader2 className="h-3 w-3 animate-spin" style={{ color: "#156065" }} />
-          <span>{_cleanStatusMessage(message) ?? "Starting up..."}</span>
-        </div>
-      )}
-
-      {isFinalizing && (
-        <div className="flex items-center gap-2 text-[11px] font-mono text-gray-500 px-1">
-          <Loader2 className="h-3 w-3 animate-spin" style={{ color: "#156065" }} />
-          <span>{_cleanStatusMessage(message) ?? "Finalizing..."}</span>
+          <span className="truncate">
+            {_cleanStatusMessage(message) ??
+              (isFinalizing ? "Finalizing..." : "Starting up...")}
+          </span>
         </div>
       )}
     </div>
@@ -238,6 +314,10 @@ export function AnalysisProgress({
   message,
   hideDeploymentHeader = false,
 }: AnalysisProgressProps) {
+  // One toggle for the whole block, and it must be declared before the
+  // early return below or the hook count changes with the props.
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
   if (!deploymentContext) return null;
 
   // Only show the "Deployment X of N" badge when there's actually a
@@ -252,6 +332,14 @@ export function AnalysisProgress({
       label: "Video detection",
       phase: "video_detection",
     },
+    // Only without a classifier. With one, the classification worker
+    // picks and writes each video's frame as it goes, so the work is
+    // already inside the row below and a second row would be a lie.
+    deploymentContext.videoCount > 0 &&
+      !deploymentContext.hasClassifier && {
+        label: "Video frame selection",
+        phase: "video_frame_selection",
+      },
     deploymentContext.videoCount > 0 &&
       deploymentContext.hasClassifier && {
         label: "Video classification",
@@ -281,20 +369,25 @@ export function AnalysisProgress({
   ].filter(Boolean) as { label: string; phase: string }[];
 
   return (
-    <div className="border rounded-lg p-4 space-y-4">
+    <div className="border rounded-lg p-4">
       {showDeploymentHeader && (
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-gray-600">Deployment</span>
-          <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800">
-            {deploymentContext.deploymentIndex} of{" "}
-            {deploymentContext.totalDeployments}
-          </span>
-        </div>
+        <>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-gray-600">Deployment</span>
+            <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800">
+              {deploymentContext.deploymentIndex} of{" "}
+              {deploymentContext.totalDeployments}
+            </span>
+          </div>
+          <Separator className="my-3" />
+        </>
       )}
 
-      {phases.map((entry, idx) => (
+      {/* No rule between rows. Six of them each needed a separator plus
+          its margins, which cost more vertical space than the bars. The
+          fixed label and percentage columns already read as a table. */}
+      {phases.map((entry) => (
         <div key={entry.phase}>
-          {(idx > 0 || showDeploymentHeader) && <Separator className="mb-4" />}
           <PhaseRow
             label={entry.label}
             phaseName={entry.phase}
@@ -309,6 +402,8 @@ export function AnalysisProgress({
             metrics={metrics}
             computeDevice={computeDevice}
             message={message}
+            detailsOpen={detailsOpen}
+            onDetailsOpenChange={setDetailsOpen}
           />
         </div>
       ))}

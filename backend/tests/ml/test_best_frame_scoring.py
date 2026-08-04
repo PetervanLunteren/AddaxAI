@@ -37,6 +37,7 @@ from app.ml.json_pipeline import run_classification_on_json  # noqa: E402
 _INFERENCE_DIR = Path(__file__).resolve().parents[2] / "app" / "ml" / "inference"
 sys.path.insert(0, str(_INFERENCE_DIR))
 
+from app.ml import best_frame  # noqa: E402
 from app.ml.best_frame import select_best_frames_streaming  # noqa: E402
 from app.ml.inference.classification_worker import (  # noqa: E402
     _process_video_group,
@@ -292,3 +293,42 @@ def test_classifier_off_path_writes_only_the_chosen_frame(tmp_path, make_video):
 
     written = sorted(p.name for p in (tmp_path / "frames" / "clip.mp4").glob("*.jpg"))
     assert written == ["frame000015.jpg"]
+
+
+def test_result_is_identical_when_the_seek_is_refused(
+    tmp_path, make_video, monkeypatch
+):
+    """
+    Fetching one frame tries a seek first and walks the clip when the
+    seek cannot be verified. That fallback is what makes the whole
+    change safe on codecs nobody has tested, so it is pinned rather than
+    assumed: force every seek to be refused and the answer must not
+    move.
+    """
+    detections = [_det("1", 0.50, 5), _det("1", 0.90, 15), _det("1", 0.60, 25)]
+
+    def run(folder):
+        folder.mkdir()
+        video = folder / "clip.mp4"
+        make_video(video, total_frames=40, fps=10)
+        out = folder / "detection_video.json"
+        _write_json(out, "clip.mp4", detections)
+        select_best_frames_streaming(out, folder, folder / "frames")
+        frame_dir = folder / "frames" / "clip.mp4"
+        written = sorted(p.name for p in frame_dir.glob("*.jpg"))
+        return (
+            json.loads(out.read_text())["images"][0]["best_frame_number"],
+            written,
+            (frame_dir / written[0]).read_bytes(),
+        )
+
+    with_seek = run(tmp_path / "seek")
+
+    monkeypatch.setattr(best_frame, "read_frame_by_seek", lambda *a, **k: None)
+    without_seek = run(tmp_path / "walk")
+
+    assert with_seek[0] == without_seek[0] == 15
+    assert with_seek[1] == without_seek[1] == ["frame000015.jpg"]
+    assert with_seek[2] == without_seek[2], (
+        "the seek and the walk produced different pixels for the same frame"
+    )

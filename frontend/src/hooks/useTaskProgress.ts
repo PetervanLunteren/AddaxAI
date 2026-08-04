@@ -16,12 +16,28 @@ export interface TqdmMetrics {
   unit?: string;
 }
 
+/**
+ * The phases the analysis worker emits, in the order it emits them.
+ * `AnalysisProgress` keeps its own PHASE_ORDER because ordering is its
+ * concern; this is only the set of legal names.
+ */
+export type AnalysisPhase =
+  | "init"
+  | "video_detection"
+  | "video_frame_selection"
+  | "video_classification"
+  | "image_detection"
+  | "image_classification"
+  | "saving"
+  | "embedding"
+  | "finalize";
+
 export interface ProgressMessage {
   type: "progress" | "complete" | "error" | "cancelled";
   job_id: string;
   message: string;
   progress?: number; // 0.0-1.0 (overall progress, for backward compatibility)
-  phase?: "init" | "video_detection" | "video_classification" | "image_detection" | "image_classification" | "saving" | "embedding" | "finalize";
+  phase?: AnalysisPhase;
   phase_progress?: number; // 0.0-1.0 (progress within current phase)
   success?: boolean;
   data?: {
@@ -66,7 +82,7 @@ export function useTaskProgress({
 }: UseTaskProgressOptions) {
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("");
-  const [phase, setPhase] = useState<"init" | "video_detection" | "video_classification" | "image_detection" | "image_classification" | "saving" | "embedding" | "finalize" | null>(null);
+  const [phase, setPhase] = useState<AnalysisPhase | null>(null);
   const [phaseProgress, setPhaseProgress] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [deploymentContext, setDeploymentContext] = useState<DeploymentContext | null>(null);
@@ -83,7 +99,7 @@ export function useTaskProgress({
   const pendingUpdateRef = useRef<{
     message: string;
     progress: number;
-    phase: "init" | "video_detection" | "video_classification" | "image_detection" | "image_classification" | "saving" | "embedding" | "finalize" | null;
+    phase: AnalysisPhase | null;
     phaseProgress: number;
     metrics: TqdmMetrics | null;
   } | null>(null);
@@ -166,12 +182,21 @@ export function useTaskProgress({
               }
             }
 
-            // Extract compute device. The server keeps this sticky in
-            // its cached state, so a reconnecting client (page reload
-            // mid-run) gets the value back in the replayed message.
-            if (data.data?.compute_device) {
-              setComputeDevice(data.data.compute_device as string);
-            }
+            // Extract compute device. The server carries this forward
+            // across the messages of a single phase, so a reconnecting
+            // client (page reload mid-run) gets it back in the replayed
+            // message, and every message of a phase that announced one
+            // still has it.
+            //
+            // Follow the server exactly, including the absence: it stops
+            // carrying the value at a phase boundary because each phase
+            // resolves its own device. Latching here instead would put
+            // the previous phase's hardware on the next phase's row and
+            // undo that, which is how "Video frame selection" came to
+            // claim it ran on the GPU.
+            setComputeDevice(
+              (data.data?.compute_device as string | undefined) ?? null,
+            );
 
             // Store the pending update
             pendingUpdateRef.current = {

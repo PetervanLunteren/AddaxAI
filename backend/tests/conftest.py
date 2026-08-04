@@ -281,20 +281,28 @@ def make_event_with_files(
 
 @pytest.fixture
 def make_video():
-    """Factory to render a deterministic tiny MP4 for video tests.
+    """Factory to render a deterministic tiny video for video tests.
 
     Each frame is a solid colour whose blue channel encodes the frame index
     (i % 256), so tests can verify which frames were decoded. Returns a
-    callable: make(path, total_frames, fps=10, size=(64, 48)).
+    callable: make(path, total_frames, fps=10, size=(64, 48), codec="mp4v").
+
+    `codec` is a four-character cv2 fourcc. It exists so frame-fetch tests
+    can cover more than one container and codec without carrying binary
+    fixtures in the repo; pick the extension to match ("mp4v" -> .mp4,
+    "MJPG" -> .avi). A codec the local build cannot encode skips the test
+    rather than failing it, since the encoder set varies per OpenCV build.
     """
     cv2 = pytest.importorskip("cv2")
     import numpy as np
 
-    def _make(path, total_frames, fps=10, size=(64, 48)):
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    def _make(path, total_frames, fps=10, size=(64, 48), codec="mp4v"):
+        fourcc = cv2.VideoWriter_fourcc(*codec)
         writer = cv2.VideoWriter(str(path), fourcc, fps, size)
         if not writer.isOpened():
-            pytest.skip("cv2.VideoWriter could not open mp4v encoder on this machine")
+            pytest.skip(
+                f"cv2.VideoWriter could not open the {codec} encoder on this machine"
+            )
         try:
             for i in range(total_frames):
                 frame = np.zeros((size[1], size[0], 3), dtype=np.uint8)

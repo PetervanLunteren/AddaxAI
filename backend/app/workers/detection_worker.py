@@ -14,6 +14,7 @@ Created by Claude Code on 2026-01-04
 import asyncio
 import json
 import os
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -416,24 +417,82 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             # When a classifier is configured, the classification worker
             # iterates each video itself (Phase 2 below) and writes the
             # winning JPEG as a side effect, so we have nothing to do
-            # here. Without a classifier we still want a thumbnail per
-            # video, so run a small streaming pass that opens each video
-            # once, sharpness-scores the detection-bearing frames, and
-            # writes the chosen JPEG.
+            # here. Without a classifier we still owe every video its one
+            # representative frame, so run a pass that opens each video
+            # once and fetches the frame the detection JSON already
+            # picked out.
+            #
+            # Offloaded, and it has to be. This runs once per video and
+            # on a folder of thousands it is minutes of work; a beta
+            # tester's 1595-video run spent 85 minutes here during which
+            # the backend answered no HTTP requests at all, because this
+            # call sat on the event loop. It looked like a hang rather
+            # than a slow step, since the websocket that would have said
+            # otherwise was blocked behind it.
             if (
                 video_files
                 and video_json_path.exists()
                 and classification_model is None
             ):
+                loop = asyncio.get_running_loop()
+                frame_selection_started = time.monotonic()
+
+                def sync_frame_selection_progress(
+                    done: int,
+                    total: int,
+                    *,
+                    _loop=loop,
+                    _t0=frame_selection_started,
+                ) -> None:
+                    """Marshal progress from the executor thread to the loop.
+
+                    Every other phase gets its elapsed / remaining / rate
+                    by parsing a subprocess's tqdm output. This one is a
+                    plain Python loop, so it does the same arithmetic
+                    itself and emits the same tqdm time format the
+                    frontend already parses.
+
+                    No `compute_device`. This step is CPU-only while the
+                    phases around it run on the GPU, and a lone "CPU" row
+                    reads as something being wrong rather than as the
+                    plain fact that decoding video is not GPU work.
+                    """
+                    elapsed = time.monotonic() - _t0
+                    metrics = {"current": done, "total": total, "unit": "video"}
+                    if done and elapsed > 0:
+                        rate = done / elapsed
+                        metrics["rate"] = rate
+                        metrics["elapsed"] = _tqdm_time(elapsed)
+                        metrics["remaining"] = _tqdm_time((total - done) / rate)
+                    asyncio.run_coroutine_threadsafe(
+                        deployment_progress_callback(
+                            f"Selecting video frames: {done}/{total}",
+                            0.0,
+                            "video_frame_selection",
+                            (done / total) if total else 1.0,
+                            metrics,
+                        ),
+                        _loop,
+                    )
+
                 try:
                     from app.ml.best_frame import select_best_frames_streaming
 
-                    select_best_frames_streaming(
+                    await asyncio.to_thread(
+                        select_best_frames_streaming,
                         video_json_path,
                         deployment_folder=folder_path,
                         output_base=artifacts_folder / "video_frames",
+                        progress_callback=sync_frame_selection_progress,
+                        job_id=job_id,
                     )
                     logger.info("Best frame selection complete (no-classifier path)")
+                except JobCancelledError:
+                    # Now that this step is cancellable, the cancel has to
+                    # survive the except below, which would otherwise
+                    # swallow it and let the run continue as if the user
+                    # never clicked.
+                    raise
                 except Exception as e:
                     logger.error(
                         f"Best frame selection failed: {e}", exc_info=True
@@ -1118,6 +1177,24 @@ async def process_deployment_analysis(job_id: str) -> None:
 
         # Send error message
         await ws_manager.send_error(job_id, str(e))
+
+
+def _tqdm_time(seconds: float) -> str:
+    """
+    Format seconds the way tqdm does: ``M:SS``, or ``H:MM:SS`` past an
+    hour.
+
+    Phases driven by a subprocess pass tqdm's own strings straight
+    through, and the frontend's `tqdmTimeToSeconds` only accepts those
+    two shapes. A phase that does its own timing has to match them or
+    its times render as raw text.
+    """
+    seconds = max(0, int(seconds))
+    hours, rest = divmod(seconds, 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
 
 
 def media_filter_allows(media_filter: str, file_type: str) -> bool:
