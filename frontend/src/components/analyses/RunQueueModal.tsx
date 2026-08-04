@@ -63,6 +63,18 @@ const TYPE_LABELS: Record<string, string> = {
   job_failed: "Deployment failed",
 };
 
+// Warnings about the run rather than about a file. Everything else in
+// the warning table names a file that did not make it into the database,
+// and the summary counts those as "N files skipped". A run-level warning
+// counted there makes the summary claim a file was skipped when none
+// was, so they are excluded from every file tally. One line to add
+// another, same as TYPE_LABELS above.
+const RUN_LEVEL_WARNING_TYPES = new Set(["smoothing_failed"]);
+
+function isSkippedFileRow(row: { severity: string; type: string }): boolean {
+  return row.severity === "warning" && !RUN_LEVEL_WARNING_TYPES.has(row.type);
+}
+
 // Used to split skipped-file warnings into image vs video buckets for
 // the success message. Anything not matched as video is counted as
 // an image (the queue only enqueues image/video media).
@@ -431,7 +443,7 @@ export function RunQueueModal({
     (sum, e) => sum + (e.video_count || 0),
     0,
   );
-  const warningRows = logRows.filter((r) => r.severity === "warning");
+  const warningRows = logRows.filter(isSkippedFileRow);
   const skippedVideoCount = warningRows.filter((r) =>
     IMAGE_VIDEO_RE.video.test(r.detail),
   ).length;
@@ -483,7 +495,7 @@ export function RunQueueModal({
         <div className="space-y-3">
           {isComplete && !hasError && (() => {
             const failureCount = logRows.filter((r) => r.severity === "error").length;
-            const warningCount = logRows.filter((r) => r.severity === "warning").length;
+            const warningCount = logRows.filter(isSkippedFileRow).length;
             const totalAttempted = successCount + failureCount;
             const stillLoading = runEntries.length === 0;
 
