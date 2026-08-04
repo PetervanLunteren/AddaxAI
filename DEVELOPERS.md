@@ -147,7 +147,11 @@ Without it, SQLAlchemy loads every child row into memory as a Python object befo
 
 **Index the child column of every foreign key.** When a parent row is deleted, SQLite has to find the rows referencing it. With no index on the child column that is a full table scan **per deleted parent row**. `event_observations.max_n_file_id` (`ON DELETE SET NULL` to `files`) was unindexed, so deleting a 50,000-file run scanned the whole observations table 50,000 times: 8 minutes on a fast Mac, hours on a beta tester's laptop. The same shape applies to `NO ACTION` foreign keys, where SQLite still has to prove no child references the row.
 
-These indexes exist for constraint enforcement, not for queries, so they look unused when you grep for them. Do not remove them. `test_upgrade_from_base_creates_every_model_index` and `test_upgrade_from_base_preserves_fk_ondelete_actions` in `tests/db/test_migrations.py` guard both halves; the older `test_upgrade_from_base_matches_models` only compares tables and columns.
+These indexes exist for constraint enforcement, not for queries, so they look unused when you grep for them. Do not remove them. `test_upgrade_from_base_matches_models` in `tests/db/test_migrations.py` is the guard: it runs the chain from base and asserts `schema_problems()` is empty, which covers missing tables, columns, indexes, named unique constraints and foreign key `ON DELETE` actions in one assertion.
+
+**That guard is one-directional, on purpose.** `schema_problems()` reports only what the models declare and the database lacks (`_ADDITIVE_OPS`). So it catches "added an index to the model, forgot the migration", which is the mistake people actually make, and it stays quiet about an index the migrations create that no model declares. Verified by removing each half in turn: the forgotten migration fails with `missing index <name> on <table>`, the extra live index passes. If you need a query index gone, remove it from both sides or it silently survives.
+
+Also index the columns a hot query filters on, not only foreign keys. `files.file_path` was unindexed while ingest looked every file up by `(file_path, deployment_id)` before inserting it, so the planner fell back to `idx_files_deployment`, which has no selectivity when a whole library sits in one deployment. File N scanned N rows and a 1M-image ingest spent ~11 hours on lookups alone. `idx_files_deployment_path` (migration `7a8b9c0d1e2f`) makes it a single seek.
 
 **Consequences to know about:**
 

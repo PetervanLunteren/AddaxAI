@@ -151,6 +151,20 @@ class File(Base):
     # Indexes for common queries
     __table_args__ = (
         Index("idx_files_deployment", "deployment_id"),
+        # Ingest looks every file up by (deployment_id, file_path) before
+        # inserting it. Without this the planner falls back to
+        # idx_files_deployment, which has no selectivity when a whole
+        # library sits in one deployment: it hands back every row already
+        # inserted and compares file_path on each, so file N scans N
+        # rows. That is quadratic, and it is why a 1M-image ingest sat in
+        # "Loading to database" for 12 hours. Measured: 16 ms per lookup
+        # at 200k rows and rising, versus 5 us and flat with this index.
+        #
+        # deployment_id leads on purpose. That order serves the ingest
+        # lookup, still serves deployment-only queries, and stays usable
+        # for foreign-key enforcement on the delete cascade, so it is a
+        # strict superset of idx_files_deployment above.
+        Index("idx_files_deployment_path", "deployment_id", "file_path"),
         Index("idx_files_captured_at_local", "captured_at_local"),
         Index("idx_files_verified", "verified"),
         Index("idx_files_flagged", "flagged"),
