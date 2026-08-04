@@ -376,9 +376,9 @@ export function RunQueueModal({
   });
 
   const runEntries = (allEntries || []).filter((e) => queueEntryIds.includes(e.id));
-  // Files with no capture date were still detected and classified and live
-  // in the database; they are NOT skipped or failed. Keep them out of the
-  // issues table and the skipped tally, and surface them as a calm note.
+  // Files with no capture date were still analysed and live in the database;
+  // they are NOT skipped or failed. Keep them out of the issues table and the
+  // skipped tally, and surface them as a calm note.
   const allRows = buildLogRows(runEntries);
   const datelessCount = allRows.filter((r) => r.type === "missing_timestamp").length;
   const logRows = allRows.filter((r) => r.type !== "missing_timestamp");
@@ -470,10 +470,13 @@ export function RunQueueModal({
                     : "Analyzing"}
           </DialogTitle>
           <DialogDescription>
+            {/* Wording stays true whether or not a classification model
+                ran. A detection-only run gets no species at all, so any
+                sentence promising one is wrong for those users. */}
             {isComplete
               ? mode === "folder-run"
-                ? "Your folder has been analysed. AddaxAI suggested a species for everything it found. You can review and edit the labels, or go straight to saving."
-                : "AddaxAI filled in a suggested species label and a count for everything it found. You can accept these as they are, but the AI makes mistakes, so a quick review is recommended."
+                ? "Your folder has been analysed. You can review and edit the labels, or go straight to saving."
+                : "AddaxAI filled in what it found. You can accept the results as they are, but the AI makes mistakes, so a quick review is recommended."
               : hasCancelled
                 ? mode === "folder-run"
                   ? "The run was stopped before finishing."
@@ -649,7 +652,7 @@ export function RunQueueModal({
               <Info className="h-4 w-4 shrink-0 mt-0.5" />
               <span>
                 {datelessCount} file{datelessCount === 1 ? "" : "s"} had no
-                capture date. They were still detected and classified and are in
+                capture date. They were still analysed and are in
                 your data, just left out of time-based stats and charts.
               </span>
             </div>
@@ -665,7 +668,7 @@ export function RunQueueModal({
               <NextStepRow
                 icon={Tag}
                 title="Check the labels"
-                description="Correct the species the AI assigned to each animal."
+                description="Check and correct the species on each animal."
                 disabled={isClosing}
                 onClick={async () => {
                   await handleClose();

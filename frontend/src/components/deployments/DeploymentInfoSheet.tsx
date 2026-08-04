@@ -304,8 +304,8 @@ function DeploymentWarningsSection({
 }: {
   warnings: NonNullable<DeploymentInfo["warnings"]>;
 }) {
-  // Files with no capture date were still detected and classified and live
-  // in the database; they are NOT skipped. Keep them separate from the
+  // Files with no capture date were still analysed and live in the
+  // database; they are NOT skipped. Keep them separate from the
   // genuinely-skipped files (corrupt / unreadable) so the user isn't told a
   // processed file was dropped.
   const dateless = warnings.filter((w) => w.type === "missing_timestamp");
@@ -375,7 +375,7 @@ function DeploymentWarningsSection({
             {dateless.length === 1
               ? "1 file had no capture date."
               : `${dateless.length} files had no capture date.`}{" "}
-            They were detected and classified and are in the database, just left
+            They were still analysed and are in the database, just left
             out of time-based stats, charts, and trap-night effort.
           </p>
         </Section>

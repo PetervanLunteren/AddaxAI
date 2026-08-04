@@ -1533,14 +1533,14 @@ export function FolderRunModelStep() {
                 <NextStepRow
                   icon={Tag}
                   title="Review and edit labels"
-                  description="The human-in-the-loop step: edit the species AddaxAI assigned."
+                  description="The human-in-the-loop step: check and edit the species on each animal."
                   disabled={isClosing}
                   onClick={goTo("labels")}
                 />
                 <NextStepRow
                   icon={ArrowRight}
                   title="Go straight to saving"
-                  description="Keep the AI labels as they are and save the results or media copies for further analysis."
+                  description="Keep the labels as they are and save the results or media copies for further analysis."
                   disabled={isClosing}
                   onClick={goTo("save")}
                 />
