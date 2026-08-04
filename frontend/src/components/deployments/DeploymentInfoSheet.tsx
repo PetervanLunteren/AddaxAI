@@ -309,7 +309,13 @@ function DeploymentWarningsSection({
   // genuinely-skipped files (corrupt / unreadable) so the user isn't told a
   // processed file was dropped.
   const dateless = warnings.filter((w) => w.type === "missing_timestamp");
-  const skipped = warnings.filter((w) => w.type !== "missing_timestamp");
+  // A processing warning is not a skipped file. Nothing was left out of
+  // the database, so it must stay out of the "Skipped files" section,
+  // whose whole text says those files are absent from the dashboard.
+  const processing = warnings.filter((w) => w.type === "smoothing_failed");
+  const skipped = warnings.filter(
+    (w) => w.type !== "missing_timestamp" && w.type !== "smoothing_failed",
+  );
 
   // Group skipped files by type so the user reads "3 files: could not be
   // read" rather than a flat list. Inside each group the paths are listed.
@@ -372,6 +378,19 @@ function DeploymentWarningsSection({
             They were detected and classified and are in the database, just left
             out of time-based stats, charts, and trap-night effort.
           </p>
+        </Section>
+      )}
+
+      {(skipped.length > 0 || dateless.length > 0) &&
+        processing.length > 0 && <Separator />}
+
+      {processing.length > 0 && (
+        <Section title="Steps that did not run">
+          {processing.map((w, idx) => (
+            <p key={idx} className="text-xs text-muted-foreground">
+              {w.message}
+            </p>
+          ))}
         </Section>
       )}
     </>

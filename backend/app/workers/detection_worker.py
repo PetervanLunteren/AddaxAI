@@ -908,6 +908,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 await deployment_progress_callback(
                     "Refining results...", 0.0, "postprocessing", 0.0,
                 )
+                pp_warnings: list[dict] = []
                 pp_result = await asyncio.to_thread(
                     _run_postprocessing_owned_session,
                     deployment.id,
@@ -919,6 +920,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     taxonomy_name_to_id,
                     job_id=job_id,
                     progress_callback=sync_postprocessing_progress,
+                    warnings=pp_warnings,
                 )
                 # The thread committed through its own session, so rows
                 # this one already loaded (project, deployment) are stale.
@@ -926,6 +928,19 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 logger.info(
                     f"Postprocessing complete: {pp_result.get('updated', 0)} updated"
                 )
+
+                # Smoothing can fail without failing the run (it times out
+                # and the results fall back to rollup-only). Append rather
+                # than replace: phase 6 already recorded skipped files on
+                # the same rows, and this must not wipe them.
+                if pp_warnings:
+                    existing = list(deployment.warnings or [])
+                    combined = existing + pp_warnings
+                    queue_crud.update_queue_warnings(
+                        db, entry_id, json.dumps(combined)
+                    )
+                    deployment.warnings = combined
+                    db.commit()
 
             # ============================================================
             # PHASE 8: Embedding (DINOv2) — fatal if configured
@@ -1218,6 +1233,7 @@ def _run_postprocessing_owned_session(
     taxonomy_name_to_id: dict | None,
     job_id: str | None = None,
     progress_callback: Callable[[int, int], None] | None = None,
+    warnings: list[dict] | None = None,
 ) -> dict:
     """
     Run phase 7 with a session created in THIS thread.
@@ -1259,6 +1275,7 @@ def _run_postprocessing_owned_session(
         smoothed = run_postprocessing_for_deployment(
             deployment_id, json_path, deployment_folder, project, db,
             job_id=job_id,
+            warnings=warnings,
         )
 
         # Taxonomy for scientific_name formatting.

@@ -249,6 +249,7 @@ def run_postprocessing_for_deployment(
     project,
     db: Session,
     job_id: str | None = None,
+    warnings: list[dict] | None = None,
 ) -> dict:
     """
     Run classification postprocessing (smoothing + taxonomic rollup) on a deployment.
@@ -263,6 +264,12 @@ def run_postprocessing_for_deployment(
         deployment_folder: Path to deployment folder
         project: Project ORM object
         db: Database session
+        warnings: Appended to when smoothing fails. The run continues with
+            rollup-only results, so without this the user is handed results
+            that quietly differ from the settings they chose, and the only
+            trace is a log line they will never read. Optional so the
+            existing tests and callers that do not surface warnings keep
+            working unchanged.
 
     Returns:
         Smoothed MegaDetector-format results dict
@@ -441,6 +448,20 @@ def run_postprocessing_for_deployment(
             f"returning rollup-only results: {e}",
             exc_info=True,
         )
+        # Tell the user, not just the log. The run carries on and produces
+        # usable results, but they are not the results that were asked
+        # for: smoothing was on in the settings and did not run. Silently
+        # handing back different output is the failure mode this whole
+        # branch would otherwise be.
+        if warnings is not None:
+            warnings.append({
+                "type": "smoothing_failed",
+                "message": (
+                    f"Event smoothing did not run ({e}). Detections and "
+                    f"species labels are unaffected; only the smoothing "
+                    f"pass over each event was skipped."
+                ),
+            })
         return md_results
 
     finally:

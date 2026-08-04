@@ -367,3 +367,91 @@ def test_smoothing_failure_returns_rollup_results(db):
     assert len(result["images"]) == 1
     det = result["images"][0]["detections"][0]
     assert det["classifications"][0][0] == "1"
+
+
+def test_smoothing_failure_is_reported_to_the_user(db):
+    """
+    Falling back to rollup-only must not be silent.
+
+    The run carries on and produces usable results, but they are not the
+    results the settings asked for: smoothing was on and did not happen.
+    Without a warning the only trace is a log line the user never reads,
+    and they are handed quietly different output.
+    """
+    p = make_project(db)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id, folder_path="/fake/folder")
+    make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 1, 1, 12, 0, 0))
+
+    results = {
+        "images": [{
+            "file": "img_001.jpg",
+            "detections": [{
+                "category": "1", "conf": 0.9, "bbox": [0.1, 0.2, 0.3, 0.4],
+                "classifications": [["1", 0.85]],
+            }],
+        }],
+        "classification_categories": {"1": "lion"},
+        "classification_category_descriptions": {
+            "1": "lion;mammalia;carnivora;felidae;panthera;leo;lion"
+        },
+    }
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(results, f)
+        json_path = f.name
+
+    project_mock = _make_project_mock(
+        classification_model_id=None,
+        excluded_classes=[],
+        taxonomic_rollup=False,
+        counting_threshold=0.5,
+    )
+    warnings: list[dict] = []
+
+    with (
+        patch(
+            "app.ml.postprocessing.subprocess.run",
+            side_effect=lambda *a, **k: MagicMock(
+                returncode=1, stderr="boom", stdout=""
+            ),
+        ),
+        patch("app.ml.postprocessing._get_ml_python_path", return_value="/fake/python"),
+    ):
+        run_postprocessing_for_deployment(
+            d.id, json_path, "/fake/folder", project_mock, db,
+            warnings=warnings,
+        )
+
+    assert len(warnings) == 1, "the user was told nothing about the failure"
+    assert warnings[0]["type"] == "smoothing_failed"
+    # Carries a message rather than a path: nothing was skipped, so the
+    # UI must not file this under "skipped files".
+    assert warnings[0].get("message")
+    assert "path" not in warnings[0]
+
+
+def test_successful_smoothing_reports_no_warning(db):
+    """The warning must only appear when something actually went wrong."""
+    p = make_project(db)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id, folder_path="/fake/folder")
+
+    results = {"images": [], "classification_categories": {}}
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(results, f)
+        json_path = f.name
+
+    project_mock = _make_project_mock(
+        classification_model_id=None,
+        excluded_classes=[],
+        taxonomic_rollup=False,
+        event_smoothing=False,  # nothing to smooth, so nothing to warn about
+        counting_threshold=0.5,
+    )
+    warnings: list[dict] = []
+
+    run_postprocessing_for_deployment(
+        d.id, json_path, "/fake/folder", project_mock, db, warnings=warnings,
+    )
+
+    assert warnings == []

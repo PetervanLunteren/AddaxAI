@@ -255,14 +255,23 @@ export interface SiteInfo {
   last_captured_at_local: string | null;
 }
 
-/** One row in DeploymentResponse.warnings — a file the pipeline skipped
- * for a non-fatal reason. `path` is the file path (relative or absolute
- * depending on which phase recorded it). `reason` is present for
- * decoder failures, absent for missing-timestamp skips. */
+/** One row in DeploymentResponse.warnings — something non-fatal the run
+ * has to admit to.
+ *
+ * Usually a file the pipeline skipped, in which case `path` is set
+ * (relative or absolute depending on which phase recorded it) and
+ * `reason` carries the decoder's own words. A warning can also be about
+ * the run rather than a file, like a processing step that did not
+ * complete; those carry `message` and no path, so both are optional. */
 export interface DeploymentWarning {
-  type: "missing_timestamp" | "video_processing_failure" | string;
-  path: string;
+  type:
+    | "missing_timestamp"
+    | "video_processing_failure"
+    | "smoothing_failed"
+    | string;
+  path?: string;
   reason?: string;
+  message?: string;
 }
 
 // Deployment types
