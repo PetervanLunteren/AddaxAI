@@ -17,6 +17,7 @@
 * Follow the DRY principle (Don't Repeat Yourself). Avoid duplication and maintain a single source of truth.                          
 * Follow the YAGNI principle (You Aren't Gonna Need It). Do not build functionality until it is actually needed. 
 * Use shared helpers if possible. I do not want drift and maintain different code sets. Also, shared halpers make sure the UI looks and feels the same, and possible bugs are fixed sooner. 
+* ALways ask before opening a new branch. Prefer to work on main, except for very large tasks or rewrites. If preferable to have a separate branch, ask permission first. 
 
 
 
