@@ -12,7 +12,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field, model_validator
 
 
-def _reject_null_island(latitude: float | None, longitude: float | None) -> None:
+def reject_null_island(latitude: float | None, longitude: float | None) -> None:
     """Reject 0,0: it is the form default and 'null island', so almost always
     a forgotten location rather than a real site."""
     if latitude == 0 and longitude == 0:
@@ -50,7 +50,7 @@ class SiteCreate(SiteBase):
 
     @model_validator(mode="after")
     def _check_null_island(self) -> "SiteCreate":
-        _reject_null_island(self.latitude, self.longitude)
+        reject_null_island(self.latitude, self.longitude)
         return self
 
 
@@ -72,7 +72,7 @@ class SiteUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _check_null_island(self) -> "SiteUpdate":
-        _reject_null_island(self.latitude, self.longitude)
+        reject_null_island(self.latitude, self.longitude)
         return self
 
 

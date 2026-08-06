@@ -7,6 +7,13 @@
  */
 
 import { api } from "../lib/api-client";
+import type {
+  CsvImportPreview,
+  CsvImportResult,
+  DeploymentImportRow,
+} from "./types";
+
+export type { DeploymentImportRow };
 
 export interface DeploymentQueueEntry {
   id: string;
@@ -89,4 +96,24 @@ export const deploymentQueueApi = {
    */
   process: (data: ProcessQueueRequest) =>
     api.post<ProcessQueueResponse>("/api/deployment-queue/process", data),
+
+  /**
+   * Check a deployment CSV without writing anything.
+   */
+  importPreview: (projectId: string, file: File) =>
+    api.upload<CsvImportPreview<DeploymentImportRow>>(
+      `/api/deployment-queue/import/preview?project_id=${projectId}`,
+      file
+    ),
+
+  /**
+   * Import a deployment CSV into the queue, all or nothing. The file is sent
+   * again rather than the previewed rows, so the backend checks one thing in
+   * one way.
+   */
+  importCsv: (projectId: string, file: File) =>
+    api.upload<CsvImportResult>(
+      `/api/deployment-queue/import?project_id=${projectId}`,
+      file
+    ),
 };

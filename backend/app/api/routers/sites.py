@@ -7,11 +7,17 @@ Following DEVELOPERS.md principles:
 - Crash on unexpected errors (let FastAPI handle them)
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.crud import site as crud_site
+from app.api.schemas.csv_import import (
+    CsvImportProblem,
+    CsvImportResult,
+    SiteImportPreview,
+    SiteImportRow,
+)
 from app.api.schemas.site import (
     SiteCreate,
     SiteInfoResponse,
@@ -21,9 +27,47 @@ from app.api.schemas.site import (
 )
 from app.core.logging_config import get_logger
 from app.db.base import get_db
+from app.models import Project
+from app.services.csv_import import MAX_CSV_BYTES, drop_problem_rows
+from app.services.csv_import_sites import parse_site_csv, validate_site_rows
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/sites", tags=["Sites"])
+
+
+def _require_project(db: Session, project_id: str) -> None:
+    """404 when the project is gone, with the wording the other routers use."""
+    if db.get(Project, project_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project with id '{project_id}' not found",
+        )
+
+
+def _read_csv_upload(file: UploadFile) -> bytes:
+    """The uploaded bytes, refusing anything too big to hold in memory."""
+    contents = file.file.read()
+    if len(contents) > MAX_CSV_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The file is larger than 2 MB. Import your sites in smaller files.",
+        )
+    return contents
+
+
+def _check_site_csv(
+    db: Session, project_id: str, contents: bytes
+) -> tuple[list[SiteImportRow], list[CsvImportProblem]]:
+    """Parse and validate in one go, the way both import routes need it.
+
+    Rows that turned out to have a problem are dropped, so what comes back is
+    exactly what would be created.
+    """
+    rows, problems = parse_site_csv(contents)
+    problems += validate_site_rows(db, project_id, rows)
+    # File-level problems (no row number) first, then in file order.
+    problems.sort(key=lambda p: (p.row is not None, p.row or 0))
+    return drop_problem_rows(rows, problems), problems
 
 
 @router.get("", response_model=list[SiteResponse])
@@ -69,6 +113,78 @@ def create_site(site: SiteCreate, db: Session = Depends(get_db)) -> SiteResponse
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Site with name '{site.name}' already exists in this project",
         ) from e
+
+
+@router.post("/import/preview", response_model=SiteImportPreview)
+def preview_site_import(
+    file: UploadFile,
+    project_id: str = Query(..., description="Project the sites would be added to"),
+    db: Session = Depends(get_db),
+) -> SiteImportPreview:
+    """
+    Check a site CSV without writing anything.
+
+    Always 200: per-row problems are the expected case and are reported in
+    the body, not raised. An empty `problems` list means the same file can be
+    posted to /import.
+    """
+    _require_project(db, project_id)
+    rows, problems = _check_site_csv(db, project_id, _read_csv_upload(file))
+    return SiteImportPreview(rows=rows, problems=problems)
+
+
+@router.post("/import", response_model=CsvImportResult)
+def import_sites(
+    file: UploadFile,
+    project_id: str = Query(..., description="Project the sites are added to"),
+    db: Session = Depends(get_db),
+) -> CsvImportResult:
+    """
+    Import a site CSV, all or nothing.
+
+    The file is checked again rather than trusting the preview: the project
+    may have gained a clashing site name in between. Any problem means
+    nothing is written and `imported` is 0.
+    """
+    _require_project(db, project_id)
+    rows, problems = _check_site_csv(db, project_id, _read_csv_upload(file))
+    if problems:
+        return CsvImportResult(imported=0, problems=problems)
+
+    creates = [
+        SiteCreate(
+            project_id=project_id,
+            name=row.name,
+            latitude=row.latitude,
+            longitude=row.longitude,
+            elevation_m=row.elevation_m,
+            habitat_type=row.habitat_type,
+            notes=row.notes,
+        )
+        for row in rows
+    ]
+
+    try:
+        created = crud_site.create_sites_bulk(db, creates)
+    except IntegrityError as e:
+        # Unreachable unless a site was created between the check above and
+        # the insert. Roll back or the session stays unusable.
+        db.rollback()
+        logger.warning(f"Site CSV import failed for project {project_id}: {e}")
+        return CsvImportResult(
+            imported=0,
+            problems=[
+                CsvImportProblem(
+                    message=(
+                        "The sites could not be saved because the project changed "
+                        "during the import. Import the file again."
+                    )
+                )
+            ],
+        )
+
+    logger.info(f"Imported {len(created)} sites into project {project_id}")
+    return CsvImportResult(imported=len(created), problems=[])
 
 
 @router.get("/with-stats", response_model=list[SiteWithStats])

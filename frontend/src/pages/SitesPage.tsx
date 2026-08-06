@@ -7,7 +7,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "react-router-dom";
-import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, MapPin, Plus, Info } from "lucide-react";
+import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, MapPin, Plus, Info, Upload } from "lucide-react";
 import { sitesApi } from "../api/sites";
 import type { SiteWithStats, SiteResponse } from "../api/types";
 import { Button } from "../components/ui/button";
@@ -31,6 +31,7 @@ import {
 } from "../components/ui/dropdown-menu";
 import { AddSiteModal } from "../components/analyses/AddSiteModal";
 import { DeleteSiteDialog } from "../components/sites/DeleteSiteDialog";
+import { ImportSitesDialog } from "../components/sites/ImportSitesDialog";
 import { SiteInfoSheet } from "../components/sites/SiteInfoSheet";
 
 type SortField = "name" | "elevation_m" | "habitat_type" | "deployment_count" | "notes" | "tag_count";
@@ -68,6 +69,7 @@ export function SitesPage() {
   const [deletingSite, setDeletingSite] = useState<SiteWithStats | null>(null);
   const [infoSiteId, setInfoSiteId] = useState<string | null>(null);
   const [createSiteOpen, setCreateSiteOpen] = useState(false);
+  const [importSitesOpen, setImportSitesOpen] = useState(false);
 
   const { data: sites, isLoading } = useQuery({
     queryKey: ["sites-with-stats", projectId],
@@ -237,6 +239,10 @@ export function SitesPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setImportSitesOpen(true)}>
+                <Upload className="mr-2 h-4 w-4" />
+                Import from CSV
+              </Button>
               <Button onClick={() => setCreateSiteOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 New site
@@ -344,7 +350,8 @@ export function SitesPage() {
             <CardContent className="flex flex-col items-center justify-center py-12">
               <MapPin className="h-12 w-12 mb-3 text-muted-foreground/30" />
               <p className="text-muted-foreground">
-                No sites yet. Sites are created when you add deployments.
+                No sites yet. Add one with the new site button, or import many
+                at once from a CSV file.
               </p>
             </CardContent>
           </Card>
@@ -371,6 +378,12 @@ export function SitesPage() {
         projectId={projectId}
         open={createSiteOpen}
         onOpenChange={setCreateSiteOpen}
+      />
+
+      <ImportSitesDialog
+        projectId={projectId}
+        open={importSitesOpen}
+        onOpenChange={setImportSitesOpen}
       />
 
       <DeleteSiteDialog

@@ -17,6 +17,7 @@ import { deploymentsApi } from "../../api/deployments";
 import { ApiError } from "../../lib/api-client";
 import { invalidateProjectData } from "../../lib/invalidate-project";
 import { Button } from "../ui/button";
+import { StartTruncatedPath } from "../ui/start-truncated-path";
 import {
   Dialog,
   DialogContent,
@@ -216,42 +217,5 @@ export function SplitDeploymentDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/**
- * Path renderer that keeps the end of the path visible and puts the ellipsis
- * at the start when the container is too narrow.
- *
- * The tail of a path carries the meaningful bits (site, deployment name);
- * the leading `/Users/peter/...` prefix is noise that repeats across every
- * row. CSS `direction: rtl` flips the overflow side so ellipsis sits on the
- * left; a nested `<bdi>` keeps the text itself rendering left-to-right.
- * Full path is in the hover title for when the user needs the prefix.
- */
-function StartTruncatedPath({
-  path,
-  className,
-  emptyLabel,
-}: {
-  path: string | null;
-  className?: string;
-  emptyLabel?: string;
-}) {
-  if (!path) {
-    return (
-      <span className={`italic text-muted-foreground ${className ?? ""}`}>
-        {emptyLabel ?? ""}
-      </span>
-    );
-  }
-  return (
-    <span
-      className={`truncate block ${className ?? ""}`}
-      style={{ direction: "rtl", textAlign: "left" }}
-      title={path}
-    >
-      <bdi>{path}</bdi>
-    </span>
   );
 }

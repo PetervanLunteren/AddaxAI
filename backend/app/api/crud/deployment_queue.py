@@ -45,16 +45,10 @@ def get_queue_entry(db: Session, entry_id: str) -> DeploymentQueue | None:
     return result.scalar_one_or_none()
 
 
-def create_queue_entry(db: Session, entry: DeploymentQueueCreate) -> DeploymentQueue:
-    """
-    Create a new queue entry.
-
-    Crashes if database constraint violated.
-    This is intentional - we want to surface errors immediately.
-
-    Note: Model configuration is now project-scoped (not per-deployment).
-    """
-    db_entry = DeploymentQueue(
+def _new_queue_entry(entry: DeploymentQueueCreate) -> DeploymentQueue:
+    """Build the row. Shared so the single and bulk paths cannot drift apart
+    when a column is added."""
+    return DeploymentQueue(
         project_id=entry.project_id,
         folder_path=entry.folder_path,
         site_id=entry.site_id,
@@ -66,10 +60,36 @@ def create_queue_entry(db: Session, entry: DeploymentQueueCreate) -> DeploymentQ
         tags=entry.tags,
         status="pending",
     )
+
+
+def create_queue_entry(db: Session, entry: DeploymentQueueCreate) -> DeploymentQueue:
+    """
+    Create a new queue entry.
+
+    Crashes if database constraint violated.
+    This is intentional - we want to surface errors immediately.
+
+    Note: Model configuration is now project-scoped (not per-deployment).
+    """
+    db_entry = _new_queue_entry(entry)
     db.add(db_entry)
     db.commit()
     db.refresh(db_entry)
     return db_entry
+
+
+def create_queue_entries_bulk(
+    db: Session, entries: list[DeploymentQueueCreate]
+) -> list[DeploymentQueue]:
+    """Create many queue entries in one transaction.
+
+    Used by the CSV import, which is all or nothing: one commit means either
+    every row lands or none does.
+    """
+    db_entries = [_new_queue_entry(entry) for entry in entries]
+    db.add_all(db_entries)
+    db.commit()
+    return db_entries
 
 
 def update_queue_counts(

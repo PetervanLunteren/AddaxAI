@@ -36,6 +36,19 @@ Add each camera period as a deployment and point it at that folder of files. Add
 
 <AppShot name="processQueue" />
 
+## Import from a spreadsheet
+
+If you already keep your cameras in a spreadsheet, you can add them in one go instead of typing each one. Save your sheet as a CSV file and use "Import from CSV". There are two separate imports:
+
+- **Sites**, on the Sites page. Columns: `name`, `latitude`, `longitude`, and optionally `elevation_m`, `habitat_type` and `notes`.
+- **Deployments**, on the Process page. Columns: `folder`, and optionally `site` and `notes`. The `folder` column holds the full path to the folder with the images or videos. The `site` column holds the name of a site that already exists, so import your sites first. Leave it empty to set the site later.
+
+Numbers always use a dot as the decimal separator, like `52.0907`, and never a thousands separator. If your spreadsheet writes `52,0907`, replace the commas with dots before you save the file.
+
+Both dialogs offer an example file to download, and both show you what would be created before anything is saved. If any row has a problem, nothing is imported: you fix the file and choose it again. That way you never end up with half a survey and no way to undo it.
+
+Deployment folders need no dates. AddaxAI reads the capture times from the files themselves when it analyses them.
+
 ## Refine as you go
 
 You don't have to get the structure right the first time. Add your folders and start checking results. Two things add more later:

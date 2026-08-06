@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { ChevronDown, Plus } from "lucide-react";
+import { ChevronDown, Plus, Upload } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -49,6 +49,7 @@ import { TagsEditor } from "@/components/ui/tags-editor";
 import { FolderSelector } from "./FolderSelector";
 import { SiteSelector } from "./SiteSelector";
 import { AddSiteModal } from "./AddSiteModal";
+import { ImportDeploymentsDialog } from "./ImportDeploymentsDialog";
 import { DatetimeOffsetModal } from "./DatetimeOffsetModal";
 import { useFolderScan } from "@/hooks/useFolderScan";
 
@@ -76,6 +77,11 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
   const [metadataOpen, setMetadataOpen] = useState(false);
   // Reprocess confirmation: shown when the folder is already a deployment.
   const [confirmReprocess, setConfirmReprocess] = useState(false);
+  // The bulk alternative to this form. It lives on this card rather than in
+  // the page header because this card is the create surface: the two ways to
+  // add a deployment belong next to each other, the same as "Import from CSV"
+  // sits beside "New site" on the Sites page.
+  const [importOpen, setImportOpen] = useState(false);
 
   // Get folder scan results for validation
   const { data: scanResult, isLoading: isScanning } = useFolderScan(folderPath);
@@ -247,12 +253,33 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
   return (
     <>
       <Card>
+        {/* Only the title shares a row with the button. The description stays
+            a direct child of CardHeader so it keeps the standard title-to-
+            caption gap (space-y-1.5) and the full card width, matching every
+            other card and the captioned fields below. Nesting it inside the
+            flex row silently drops both. */}
         <CardHeader>
-          <CardTitle>New deployment</CardTitle>
-          <CardDescription>
-            Pick a folder to add it to the queue. Everything else is optional
-            and can be added later.
-          </CardDescription>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle>New deployment</CardTitle>
+            {/* -my-1.5 cancels the button's extra height. A sm button is 36px
+                and the title's line box is 24px, so without it the row grows
+                and the caption below sits 12px lower than on a card whose
+                header has no button. The button must not move the caption. */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 -my-1.5"
+              onClick={() => setImportOpen(true)}
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Import from CSV
+            </Button>
+          </div>
+          {/* Which fields are optional is marked on the fields themselves,
+              the same way the CSV import dialog marks its columns. Saying it
+              once up here meant saying it before the reader had seen the
+              fields it was talking about. */}
+          <CardDescription>Pick a folder to add it to the queue.</CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-6">
@@ -295,7 +322,12 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
                 type="button"
                 className="flex items-center gap-2 text-left text-sm font-semibold leading-none transition-colors hover:text-primary"
               >
-                <span>Notes and tags</span>
+                <span>
+                  Notes and tags
+                  <span className="ml-1 font-normal text-muted-foreground">
+                    optional
+                  </span>
+                </span>
                 <ChevronDown
                   className={`h-4 w-4 transition-transform ${
                     metadataOpen ? "rotate-180" : ""
@@ -452,6 +484,13 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
             ? { lat: scanResult.gps_location.latitude, lon: scanResult.gps_location.longitude }
             : undefined
         }
+      />
+
+      {/* Bulk alternative to the form above */}
+      <ImportDeploymentsDialog
+        projectId={projectId}
+        open={importOpen}
+        onOpenChange={setImportOpen}
       />
     </>
   );

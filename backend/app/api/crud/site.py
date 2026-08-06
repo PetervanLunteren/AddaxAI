@@ -40,16 +40,10 @@ def get_site(db: Session, site_id: str) -> Site | None:
     return result.scalar_one_or_none()
 
 
-def create_site(db: Session, site: SiteCreate) -> Site:
-    """
-    Create a new site.
-
-    Crashes if:
-    - Project doesn't exist (foreign key constraint)
-    - Duplicate site name in same project (unique constraint)
-    This is intentional - we want to surface errors immediately.
-    """
-    db_site = Site(
+def _new_site(site: SiteCreate) -> Site:
+    """Build the row. Shared so the single and bulk paths cannot drift apart
+    when a column is added."""
+    return Site(
         project_id=site.project_id,
         name=site.name,
         latitude=site.latitude,
@@ -59,23 +53,62 @@ def create_site(db: Session, site: SiteCreate) -> Site:
         notes=site.notes,
         tags=site.tags,
     )
+
+
+def _apply_project_timezone_from_site(db: Session, db_site: Site) -> None:
+    """Auto-derive the project's camera timezone from this site's
+    coordinates, but only if the project has none yet (KISS: the first
+    sited site wins; later sites never change it). Coordinates are the
+    authoritative source for the sun-based insights, replacing the old
+    browser-timezone guess. A failed lookup leaves the timezone unset.
+    """
+    project = db.get(Project, db_site.project_id)
+    if project is None or project.timezone is not None:
+        return
+
+    derived = tz_from_coords(db_site.latitude, db_site.longitude)
+    if derived is None:
+        return
+
+    project.timezone = derived
+    db.commit()
+
+
+def create_site(db: Session, site: SiteCreate) -> Site:
+    """
+    Create a new site.
+
+    Crashes if:
+    - Project doesn't exist (foreign key constraint)
+    - Duplicate site name in same project (unique constraint)
+    This is intentional - we want to surface errors immediately.
+    """
+    db_site = _new_site(site)
     db.add(db_site)
     db.commit()
     db.refresh(db_site)
-
-    # Auto-derive the project's camera timezone from this site's
-    # coordinates, but only if the project has none yet (KISS: the first
-    # sited site wins; later sites never change it). Coordinates are the
-    # authoritative source for the sun-based insights, replacing the old
-    # browser-timezone guess. A failed lookup leaves the timezone unset.
-    project = db.get(Project, db_site.project_id)
-    if project is not None and project.timezone is None:
-        derived = tz_from_coords(db_site.latitude, db_site.longitude)
-        if derived is not None:
-            project.timezone = derived
-            db.commit()
-
+    _apply_project_timezone_from_site(db, db_site)
     return db_site
+
+
+def create_sites_bulk(db: Session, sites: list[SiteCreate]) -> list[Site]:
+    """Create many sites in one transaction.
+
+    Used by the CSV import, which is all or nothing: one commit means either
+    every row lands or none does.
+
+    Raises IntegrityError on a duplicate name. The caller must roll back, the
+    session is unusable until it does.
+    """
+    db_sites = [_new_site(site) for site in sites]
+    db.add_all(db_sites)
+    db.commit()
+
+    # Same rule as create_site: the first sited site wins.
+    if db_sites:
+        _apply_project_timezone_from_site(db, db_sites[0])
+
+    return db_sites
 
 
 def update_site(db: Session, site_id: str, site: SiteUpdate) -> Site | None:

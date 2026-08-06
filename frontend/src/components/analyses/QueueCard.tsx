@@ -131,25 +131,21 @@ export function QueueCard({ projectId }: QueueCardProps) {
   return (
     <>
       <Card>
+        {/* Only the title shares a row with the button. The description stays
+            a direct child of CardHeader so it keeps the standard title-to-
+            caption gap (space-y-1.5) and the full card width, matching every
+            other card. Nesting it inside the flex row silently drops both. */}
         <CardHeader>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <CardTitle>Analysis queue</CardTitle>
-              <CardDescription>
-                {entries && entries.length > 0 ? (
-                  <span>
-                    {pendingCount} {pendingCount === 1 ? "deployment" : "deployments"} pending
-                  </span>
-                ) : (
-                  <span>No deployments in queue yet</span>
-                )}
-              </CardDescription>
-            </div>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle>Analysis queue</CardTitle>
+            {/* -my-1.5 cancels the button's extra height, so the caption does
+                not shift down by 12px the moment this button appears. Same
+                reason as the Import button on the New deployment card. */}
             {otherCount > 0 && (
               <Button
                 variant="ghost"
                 size="sm"
-                className="shrink-0"
+                className="shrink-0 -my-1.5"
                 onClick={() => setShowAllStatuses((v) => !v)}
               >
                 {showAllStatuses ? (
@@ -166,6 +162,15 @@ export function QueueCard({ projectId }: QueueCardProps) {
               </Button>
             )}
           </div>
+          <CardDescription>
+            {entries && entries.length > 0 ? (
+              <span>
+                {pendingCount} {pendingCount === 1 ? "deployment" : "deployments"} pending
+              </span>
+            ) : (
+              <span>No deployments in queue yet</span>
+            )}
+          </CardDescription>
         </CardHeader>
 
         <CardContent>

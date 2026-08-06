@@ -8,7 +8,10 @@
 
 import { api } from "../lib/api-client";
 import type {
+  CsvImportPreview,
+  CsvImportResult,
   SiteCreate,
+  SiteImportRow,
   SiteDetectionCategories,
   SiteFileCounts,
   SiteInfo,
@@ -75,4 +78,20 @@ export const sitesApi = {
    * Aggregates across every deployment at this site.
    */
   getInfo: (id: string) => api.get<SiteInfo>(`/api/sites/${id}/info`),
+
+  /**
+   * Check a site CSV without writing anything.
+   */
+  importPreview: (projectId: string, file: File) =>
+    api.upload<CsvImportPreview<SiteImportRow>>(
+      `/api/sites/import/preview?project_id=${projectId}`,
+      file
+    ),
+
+  /**
+   * Import a site CSV, all or nothing. The file is sent again rather than
+   * the previewed rows, so the backend checks one thing in one way.
+   */
+  importCsv: (projectId: string, file: File) =>
+    api.upload<CsvImportResult>(`/api/sites/import?project_id=${projectId}`, file),
 };

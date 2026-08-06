@@ -55,6 +55,39 @@ def prune_unscannable_dirs(root: str, dirnames: list[str]) -> list[str]:
     ]
 
 
+def walk_media_files(folder: Path) -> tuple[list[Path], list[Path]]:
+    """Every image and video under ``folder``, as ``(images, videos)``.
+
+    Filenames only: nothing is opened and no metadata is read. Dot-folders
+    and AddaxAI output folders are skipped via ``prune_unscannable_dirs``.
+    """
+    images: list[Path] = []
+    videos: list[Path] = []
+
+    for root, dirs, files in os.walk(folder):
+        dirs[:] = prune_unscannable_dirs(root, dirs)
+        for filename in files:
+            file_path = Path(root) / filename
+            ext = file_path.suffix.lower()
+            if ext in IMAGE_EXTENSIONS:
+                images.append(file_path)
+            elif ext in VIDEO_EXTENSIONS:
+                videos.append(file_path)
+
+    return images, videos
+
+
+def count_media_files(folder: Path) -> tuple[int, int]:
+    """How many images and videos are under ``folder``, as ``(images, videos)``.
+
+    The cheap counterpart to ``scan_folder``, which additionally reads EXIF
+    and GPS from a sample of the files. The CSV import needs the counts for
+    every folder in one request, so it cannot pay for the metadata reads.
+    """
+    images, videos = walk_media_files(folder)
+    return len(images), len(videos)
+
+
 class GPSCoordinates(TypedDict):
     """GPS coordinates extracted from EXIF."""
 
@@ -111,22 +144,10 @@ def scan_folder(folder_path: str, gps_sample_size: int = 10) -> FolderPreview:
     if not folder.is_dir():
         raise NotADirectoryError(f"Path is not a directory: {folder_path}")
 
-    # Recursively find all media files
-    image_files: list[Path] = []
-    video_files: list[Path] = []
-
-    for root, dirs, files in os.walk(folder):
-        # Skip dot-folders (.addaxai etc.) and any folder carrying the
-        # output marker — that's an AddaxAI results folder whose copies
-        # must not be scanned back in as input media.
-        dirs[:] = prune_unscannable_dirs(root, dirs)
-        for filename in files:
-            file_path = Path(root) / filename
-            ext = file_path.suffix.lower()
-            if ext in IMAGE_EXTENSIONS:
-                image_files.append(file_path)
-            elif ext in VIDEO_EXTENSIONS:
-                video_files.append(file_path)
+    # Recursively find all media files. Dot-folders and AddaxAI output
+    # folders are skipped inside the walk, so a previous run's separated /
+    # visualised copies never get scanned back in as input media.
+    image_files, video_files = walk_media_files(folder)
 
     # Build the full file list for the "Adjust dates" modal. Users
     # browse files to compare burned-in pixel dates with extracted

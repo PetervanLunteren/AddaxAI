@@ -1013,3 +1013,55 @@ export interface ProjectModelReadiness {
   ready: boolean;
   missing: MissingModel[];
 }
+
+// ---------------------------------------------------------------------------
+// CSV bulk import (sites and deployments)
+// ---------------------------------------------------------------------------
+
+/**
+ * One thing the user has to fix before an import can go ahead.
+ *
+ * `message` is a constant string from the backend, never interpolated with
+ * the offending value: that is what lets the dialog group rows sharing a
+ * mistake into one line. The value itself is in `value`.
+ */
+export interface CsvImportProblem {
+  /** Line number as a spreadsheet shows it. Null for problems about the
+   * whole file, which the backend sorts first. */
+  row: number | null;
+  column: string | null;
+  message: string;
+  value: string | null;
+}
+
+/** Dry run of a CSV. Empty `problems` means the same file can be imported. */
+export interface CsvImportPreview<TRow> {
+  rows: TRow[];
+  problems: CsvImportProblem[];
+}
+
+/** Outcome of a real import. `imported` is 0 whenever `problems` is not
+ * empty: the import is all or nothing. */
+export interface CsvImportResult {
+  imported: number;
+  problems: CsvImportProblem[];
+}
+
+export interface SiteImportRow {
+  row: number;
+  name: string;
+  latitude: number;
+  longitude: number;
+  elevation_m: number | null;
+  habitat_type: string | null;
+  notes: string | null;
+}
+
+export interface DeploymentImportRow {
+  row: number;
+  folder: string;
+  site: string | null;
+  notes: string | null;
+  image_count: number;
+  video_count: number;
+}

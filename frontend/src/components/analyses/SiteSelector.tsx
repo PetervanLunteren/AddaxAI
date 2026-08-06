@@ -108,8 +108,18 @@ export function SiteSelector({
 
   return (
     <div className="space-y-2">
+      {/* Shared with EditDeploymentDialog, so the caption has to read
+          sensibly in both. That rules out a "you can set it later" note,
+          which is odd wording inside the very dialog for setting it later.
+          The marker carries it: optional means you may leave it blank, and
+          NoSiteBanner nudges anyone who does. */}
       <FieldHeader
-        label={<label className="text-sm font-medium">Camera site</label>}
+        label={
+          <label className="text-sm font-medium">
+            Camera site
+            <span className="ml-1 font-normal text-muted-foreground">optional</span>
+          </label>
+        }
         caption="Link this camera to a location to plot it on the map and compare activity across sites."
       />
 
