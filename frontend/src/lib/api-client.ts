@@ -17,9 +17,11 @@ import { logger } from "./logger";
  * two stay together wherever the port lands. A hardcoded 127.0.0.1:8000 was
  * baked in at build time, so moving the backend off 8000 broke every request.
  *
- * Dev still overrides this with VITE_API_URL to reach the backend from the
- * Vite dev server on 5173. Keep it absolute: useTaskProgress parses it with
- * `new URL()` to derive the WebSocket URL.
+ * Dev is the other way round, because there Vite serves the SPA and the backend
+ * is elsewhere. VITE_API_URL addresses it directly; with no .env the origin is
+ * the dev server, which proxies both /api and /ws onward (see vite.config.ts).
+ * Keep it absolute: useTaskProgress parses it with `new URL()` to derive the
+ * WebSocket URL.
  */
 export const API_BASE_URL = import.meta.env.VITE_API_URL || window.location.origin;
 
