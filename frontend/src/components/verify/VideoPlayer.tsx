@@ -592,7 +592,7 @@ export function VideoPlayer({
           Without this line the flicker reads as the app dropping a
           correction: a beta user relabelled a wood pigeon, saw the old
           guesses still playing, and wrote in to ask what went wrong. */}
-      <p className="pointer-events-none absolute bottom-2 left-3 max-w-[60%] text-xs leading-snug text-white/70">
+      <p className="pointer-events-none absolute bottom-2 left-3 right-20 text-xs leading-snug text-white/70">
         The AI checks every frame, so labels can change while the video
         plays. Only one frame per video decides the species and the count.
       </p>
