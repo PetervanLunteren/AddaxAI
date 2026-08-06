@@ -296,13 +296,6 @@ export function DeploymentsPage() {
     return result;
   }, [rows, siteIds, dateFrom, dateTo, search, tagKeysFilter, sortField, sortDir]);
 
-  if (!projectId) {
-    return <div>Project ID missing</div>;
-  }
-
-  const isLoading = deploymentsLoading;
-  const headClass = "cursor-pointer select-none hover:text-foreground";
-
   // Broken deployments grouped by their deepest missing ancestor.
   // Grouping happens on the backend because only the filesystem knows
   // which ancestor was actually renamed — see /api/deployments/group-broken.
@@ -328,6 +321,20 @@ export function DeploymentsPage() {
     for (const d of deployments ?? []) map.set(d.id, d);
     return map;
   }, [deployments]);
+
+  // Every hook has to be called above this line. React matches hooks
+  // across renders by call order alone, so a render that returns early
+  // and skips some makes the next one fail with "Rendered fewer hooks
+  // than expected". This particular guard cannot fire (the router never
+  // matches an empty :projectId, so the page only mounts with one), but
+  // adding an `if (isLoading) return <Skeleton />` here would, and that
+  // is an ordinary-looking line to add.
+  if (!projectId) {
+    return <div>Project ID missing</div>;
+  }
+
+  const isLoading = deploymentsLoading;
+  const headClass = "cursor-pointer select-none hover:text-foreground";
 
   // Distinct tag keys across all loaded deployments, sorted alphabetically.
   const tagKeyOptions = (() => {
