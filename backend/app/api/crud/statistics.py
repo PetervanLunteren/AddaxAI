@@ -24,6 +24,7 @@ from app.api.schemas.statistics import (
     VerificationProgress,
     VerificationProgressByLabel,
 )
+from app.ml.detection_visibility import on_visible_frame
 from app.ml.taxonomic_rank import HIGHER_LEVEL_TAXA, NO_TAXONOMY
 from app.ml.taxonomic_rank import RANK_COLUMNS as _RANK_COLUMNS
 from app.models.deployment import Deployment
@@ -1226,7 +1227,10 @@ def get_verification_progress_by_label(
 
     One row per (label_taxonomy_id, category). Each detection has
     exactly one label so rows partition cleanly. Counts respect the
-    project's detection threshold (floor with the verified override).
+    project's detection threshold (floor with the verified override)
+    and the visible surface, so a video contributes its best frame
+    rather than every sampled frame: these rows break down the same
+    population the Labels page asks the user to check.
     `false detection` rows are excluded since they are not a real class.
     Sorted by total descending so the highest-support classes come first.
     """
@@ -1253,6 +1257,7 @@ def get_verification_progress_by_label(
         .where(
             (Detection.label.is_(None)) | (Detection.label != "false detection"),
         )
+        .where(on_visible_frame())
         .group_by(
             Detection.label_taxonomy_id,
             Detection.category,

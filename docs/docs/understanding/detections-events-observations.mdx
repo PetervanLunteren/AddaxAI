@@ -13,6 +13,16 @@ These three words appear all over the app and they mean different things.
 
 One box around one animal, in one file. A photo with three deer has three detections. Each detection has a species label and a confidence score. It is the smallest unit, and it is what you correct on the Labels page.
 
+## Videos
+
+A video is many frames and the AI checks each one. So one clip holds many detections, and the species can change from frame to frame. One raccoon walking through a clip was read as raccoon, badger, badger, blank and opossum on five frames in a row. Per-frame guesses are noisy. This is normal.
+
+AddaxAI picks one frame per video and uses only that one. It is the frame where the AI is most sure it saw something. That frame decides the species, the count, the picture in the grid, and the folder the video is copied into.
+
+You only see the other frames when you play the clip. The boxes and labels there belong to the frame on screen, so they change while it plays. Your correction stays on the frame that counts, even when older guesses still flash past.
+
+Nothing is thrown away. The Detections export still has one row per box, on every frame. The Files export has one row per video, describing the single frame that stands for it.
+
 ## Event
 
 Files from the same camera, taken close together in time. AddaxAI groups them for you. So if a deer walks past and the camera fires 12 times in one minute, that is one event, not 12.

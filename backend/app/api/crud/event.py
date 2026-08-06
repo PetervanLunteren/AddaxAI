@@ -1186,11 +1186,19 @@ def get_event_verification_stats(
     # Denominator and numerator share the same filter so the ratio is
     # meaningful (sharing it with `total_observations`, an effective-count
     # sum, would give nonsense like 23 / 12).
+    #
+    # Same visible surface as the Labels grid these numbers describe. A
+    # video stores a detection per sampled frame but only its best frame
+    # is renderable, so without this the denominator counts labels the
+    # user can never open: a video project sat at 19% with every card on
+    # screen already verified, and could not have reached 100%. Verified
+    # detections pass on any frame, so only the denominator moves.
     det_total_q = (
         db.query(func.count(Detection.id))
         .join(File, File.id == Detection.file_id)
         .join(event_files, event_files.c.file_id == File.id)
         .filter(event_files.c.event_id.in_(select(event_ids_subq.c.id)))
+        .filter(on_visible_frame())
     )
     det_verified_q = (
         db.query(
@@ -1199,6 +1207,7 @@ def get_event_verification_stats(
         .join(File, File.id == Detection.file_id)
         .join(event_files, event_files.c.file_id == File.id)
         .filter(event_files.c.event_id.in_(select(event_ids_subq.c.id)))
+        .filter(on_visible_frame())
     )
     if project_floor is not None:
         floor_clause = or_(

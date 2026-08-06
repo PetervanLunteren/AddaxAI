@@ -181,13 +181,6 @@ class LabelStatsResponse(BaseModel):
     """Embedding coverage stats."""
 
     total_detections: int
-    # Verification progress pill, counted over the population the
-    # Labels view shows (embedded + threshold-or-verified, i.e.
-    # the similarity-sort population). `verified_detections /
-    # reviewable_detections` is the % bar; counting the whole dataset
-    # rather than the user's active filters, but matching what's on
-    # screen so it can't read 95% while every visible item is verified.
-    reviewable_detections: int
     verified_detections: int
     embedded_detections: int
     missing_embeddings: int

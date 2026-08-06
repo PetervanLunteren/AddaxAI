@@ -1,5 +1,6 @@
 """Tests for the /api/events endpoints."""
 
+import uuid
 from datetime import datetime
 from unittest.mock import patch
 
@@ -637,3 +638,158 @@ def test_filter_options_keeps_every_image_label(db):
     db.flush()
 
     assert tax.id in get_filter_options(db, p.id)["labels"]
+
+
+# ── Verification progress counts only what the grid can show ─────────
+
+
+def _video_event(db, project, frames, best_frame=10, verified_frames=()):
+    """One event holding one video with `best_frame_number=best_frame` and
+    a `deer` detection on each of `frames`. Detections whose frame is in
+    `verified_frames` are marked verified."""
+    from app.models import File
+    from app.models.event import Event
+    from app.models.event import event_files as event_files_table
+
+    s = make_site(db, project_id=project.id)
+    d = make_deployment(db, site_id=s.id)
+    tax = _taxonomy_row(db, "EUR-DF-v1-3", "deer", taxon_genus="cervus")
+
+    f = File(
+        id=f"vid-{uuid.uuid4().hex[:8]}",
+        deployment_id=d.id,
+        file_path=f"/fake/{uuid.uuid4().hex}.mp4",
+        file_type="video",
+        file_format="mp4",
+        best_frame_number=best_frame,
+    )
+    db.add(f)
+    db.flush()
+
+    for frame in frames:
+        make_detection(
+            db,
+            file_id=f.id,
+            confidence=0.9,
+            label="deer",
+            label_taxonomy_id=tax.id,
+            frame_number=frame,
+            verified=frame in verified_frames,
+        )
+
+    ev = Event(
+        id=f"ev-{uuid.uuid4().hex[:8]}",
+        deployment_id=d.id,
+        event_start_local=datetime(2024, 1, 1, 12, 0),
+        event_end_local=datetime(2024, 1, 1, 12, 0),
+        file_count=1,
+    )
+    db.add(ev)
+    db.flush()
+    db.execute(
+        event_files_table.insert().values(
+            event_id=ev.id, file_id=f.id, sequence_number=0
+        )
+    )
+    db.flush()
+    return f, tax
+
+
+def test_verification_stats_count_only_the_best_frame(client, db):
+    """The pill's denominator has to be the population the Labels grid
+    can render. A video stores a detection per sampled frame but only the
+    best frame is renderable, so counting all of them left a video project
+    stuck at 19% with every card on screen already verified, and unable to
+    reach 100% however much work the user did."""
+    p = make_project(db, classification_model_id="EUR-DF-v1-3")
+    _video_event(db, p, frames=[5, 10, 20])
+
+    resp = client.get(f"/api/events/verification-stats?project_id={p.id}")
+    assert resp.status_code == 200
+    assert resp.json()["total_detections"] == 1
+
+
+def test_verification_stats_reach_100_percent_when_grid_is_done(client, db):
+    """Verifying every card the grid shows must read as fully verified."""
+    p = make_project(db, classification_model_id="EUR-DF-v1-3")
+    _video_event(db, p, frames=[5, 10, 20], verified_frames=(10,))
+
+    data = client.get(
+        f"/api/events/verification-stats?project_id={p.id}"
+    ).json()
+    assert data["verified_detections"] == 1
+    assert data["total_detections"] == 1
+
+
+def test_verification_stats_keep_offbestframe_verified_detections(client, db):
+    """Verified detections pass on any frame, so a species a human named
+    on some other frame stays in both halves of the ratio. Dropping it
+    from the numerator would lose the human decision; dropping it from
+    the denominator alone would push the bar above 100%."""
+    p = make_project(db, classification_model_id="EUR-DF-v1-3")
+    _video_event(db, p, frames=[5, 10, 20], verified_frames=(5, 10))
+
+    data = client.get(
+        f"/api/events/verification-stats?project_id={p.id}"
+    ).json()
+    assert data["total_detections"] == 2
+    assert data["verified_detections"] == 2
+
+
+def test_verification_stats_keep_every_image_detection(client, db):
+    """Images have no frames, so nothing about the gate may touch them."""
+    from app.models import File
+    from app.models.event import Event
+    from app.models.event import event_files as event_files_table
+
+    p = make_project(db, classification_model_id="EUR-DF-v1-3")
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+
+    f = File(
+        id="img-verification-stats",
+        deployment_id=d.id,
+        file_path="/fake/a.jpg",
+        file_type="image",
+        file_format="jpg",
+    )
+    db.add(f)
+    db.flush()
+    for _ in range(3):
+        make_detection(db, file_id=f.id, confidence=0.9)
+
+    ev = Event(
+        id="ev-img-verification-stats",
+        deployment_id=d.id,
+        event_start_local=datetime(2024, 1, 1, 12, 0),
+        event_end_local=datetime(2024, 1, 1, 12, 0),
+        file_count=1,
+    )
+    db.add(ev)
+    db.flush()
+    db.execute(
+        event_files_table.insert().values(
+            event_id=ev.id, file_id=f.id, sequence_number=0
+        )
+    )
+    db.flush()
+
+    data = client.get(
+        f"/api/events/verification-stats?project_id={p.id}"
+    ).json()
+    assert data["total_detections"] == 3
+
+
+def test_progress_by_label_counts_only_the_best_frame(client, db):
+    """The dashboard's per-species rows break down the same population as
+    the bar above them, so they carry the same gate."""
+    p = make_project(db, classification_model_id="EUR-DF-v1-3")
+    _f, tax = _video_event(db, p, frames=[5, 10, 20], verified_frames=(10,))
+
+    resp = client.get(
+        f"/api/statistics/verification-progress-by-label?project_id={p.id}"
+    )
+    assert resp.status_code == 200
+    rows = {r["scientific_name"]: r for r in resp.json()["rows"]}
+    assert rows[tax.scientific_name]["total"] == 1
+    assert rows[tax.scientific_name]["verified"] == 1

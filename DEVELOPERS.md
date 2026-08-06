@@ -538,6 +538,8 @@ Enforced in:
 | `api/routers/labels.py` | `on_embeddable_surface` in the stats and unprocessed counts |
 | `ml/postprocessing_outputs/annotated_copies.py` | one annotated still per video |
 | `api/crud/event_observation.py` | off-best-frame species don't spawn observation rows |
+| `api/crud/event.py` | the label filter list, and the detection counts behind the verification percentage |
+| `api/crud/statistics.py` | the dashboard's per-species verification rows |
 | `frontend/src/lib/detection-utils.ts` | `shouldDrawBbox` for every canvas and overlay |
 | `api/crud/file.py`, `ml/json_pipeline.py`, `ml/postprocessing.py` | the three writers of `File.observation_type` |
 | `api/crud/export.py`, `ml/postprocessing_outputs/{separate_folders,output_preview}.py` | the Files export species block, the folder a video is copied into, and its preview |

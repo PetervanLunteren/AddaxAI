@@ -228,31 +228,16 @@ def get_label_stats(
         .scalar()
     ) or 0
 
-    # Verification progress pill. This must count the population the
-    # Labels view actually shows — detections that HAVE an
-    # embedding AND pass the project's threshold-or-verified rule —
-    # mirroring the similarity-sort query. Counting the raw embeddable
-    # population instead (no threshold, embedding not required) would
-    # report e.g. 95% while every on-screen label is verified,
-    # because below-threshold / not-yet-embedded detections drag it
-    # down even though they never appear here.
-    threshold = project.counting_threshold if project else 0.0
+    # The verification progress pill does NOT come from here. It reads
+    # `verified_detections` / `total_detections` off
+    # `/api/events/verification-stats`, which counts the whole reviewable
+    # population rather than only the embedded part of it, so the Labels
+    # pill and the dashboard bar agree. Do not add a percentage to this
+    # endpoint: requiring an embedding would under-count, because the
+    # event sort renders detections that have none.
     has_embedding = exists().where(
         DetectionEmbedding.detection_id == Detection.id
     )
-    floor_or_verified = or_(
-        Detection.confidence >= threshold,
-        Detection.verified == True,  # noqa: E712
-    )
-    reviewable = (
-        db.query(func.count(Detection.id))
-        .join(File, File.id == Detection.file_id)
-        .join(Deployment, Deployment.id == File.deployment_id)
-        .filter(Deployment.project_id == project_id)
-        .filter(has_embedding)
-        .filter(floor_or_verified)
-        .scalar()
-    ) or 0
     verified = (
         db.query(func.count(Detection.id))
         .join(File, File.id == Detection.file_id)
@@ -291,7 +276,6 @@ def get_label_stats(
 
     return LabelStatsResponse(
         total_detections=total,
-        reviewable_detections=reviewable,
         verified_detections=verified,
         embedded_detections=embedded,
         missing_embeddings=total - embedded,

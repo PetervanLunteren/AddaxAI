@@ -990,9 +990,6 @@ export interface CohortsResponse {
 
 export interface LabelStatsResponse {
   total_detections: number;
-  /** Observations the view can show (embedded + threshold-or-verified).
-   * Denominator for the verification pill. */
-  reviewable_detections: number;
   verified_detections: number;
   embedded_detections: number;
   missing_embeddings: number;
