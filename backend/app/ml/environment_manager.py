@@ -558,6 +558,17 @@ class EnvironmentManager:
             env["MAMBA_REMOTE_CONNECT_TIMEOUT_SECS"] = "120"
             env["MAMBA_REMOTE_READ_TIMEOUT_SECS"] = "120"
             env["MAMBA_REMOTE_MAX_RETRIES"] = "5"
+            # We read this pipe as UTF-8 (stream_with_tail). micromamba is
+            # a native binary and emits UTF-8 whatever the locale, but the
+            # pip it runs is Python and would use the system codepage, so
+            # on a cp932 / cp936 / cp949 machine pip's non-ASCII output
+            # (user paths in tracebacks) would reach us as U+FFFD, losing
+            # the diagnostic exactly when the install failed. Forcing the
+            # nested interpreter to UTF-8 makes the whole stream one
+            # encoding. PYTHONIOENCODING, not PYTHONUTF8: the latter is
+            # ignored for stdio whenever the former is already set (PEP
+            # 540), so it cannot be relied on to win.
+            env["PYTHONIOENCODING"] = "utf-8"
 
             # pip stages downloads and build dirs in TMPDIR. On Ubuntu
             # 24.10+ /tmp is a tmpfs capped at half the RAM with per-user
