@@ -18,12 +18,22 @@ if getattr(sys, 'frozen', False):
 if __name__ == "__main__":
     import uvicorn
 
+    from app.core.config import get_settings
+
     # Start uvicorn server
-    # Configuration is handled by app/core/config.py with sensible defaults
+    # Configuration is handled by app/core/config.py with sensible defaults.
+    #
+    # The port MUST come from settings rather than a literal. Electron picks
+    # the port and passes it down as API_PORT (see spawnBackend in
+    # electron/src/main.ts), then waits for /health on that same port. A
+    # hardcoded 8000 here meant the packaged backend ignored the setting, so
+    # the app could not be moved off a port another application already held.
+    settings = get_settings()
+
     uvicorn.run(
         "app.main:app",
         host="127.0.0.1",
-        port=8000,
+        port=settings.api_port,
         log_level="info",
         reload=False,
     )

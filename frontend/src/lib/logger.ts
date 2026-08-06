@@ -103,7 +103,9 @@ class Logger {
     this.buffer = [];
 
     try {
-      const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+      // Same fallback as lib/api-client.ts. Resolved here rather than imported
+      // because api-client imports this logger, and the two would form a cycle.
+      const API_BASE_URL = import.meta.env.VITE_API_URL || window.location.origin;
 
       await fetch(`${API_BASE_URL}/api/logs`, {
         method: "POST",
