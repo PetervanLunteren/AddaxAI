@@ -15,13 +15,13 @@ One box around one animal, in one file. A photo with three deer has three detect
 
 ## Videos
 
-A video is many frames and the AI checks each one. So one clip holds many detections, and the species can change from frame to frame. One raccoon walking through a clip was read as raccoon, badger, badger, blank and opossum on five frames in a row. Per-frame guesses are noisy. This is normal.
+AddaxAI takes several frames out of every clip and checks those, not the whole video. So one clip holds many detections, and the species can change from one checked frame to the next. One raccoon walking through a clip was read as raccoon, badger, badger, blank and opossum on five frames in a row. These guesses are noisy. This is normal.
 
 AddaxAI picks one frame per video and uses only that one. It is the frame where the AI is most sure it saw something. That frame decides the species, the count, the picture in the grid, and the folder the video is copied into.
 
 You only see the other frames when you play the clip. The boxes and labels there belong to the frame on screen, so they change while it plays. Your correction stays on the frame that counts, even when older guesses still flash past.
 
-Nothing is thrown away. The Detections export still has one row per box, on every frame. The Files export has one row per video, describing the single frame that stands for it.
+Nothing is thrown away. The Detections export still has one row per box, on every frame that was checked. The Files export has one row per video, describing the single frame that stands for it.
 
 ## Event
 

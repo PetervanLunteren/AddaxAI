@@ -1050,8 +1050,8 @@ export function EventDetailModal({
                     to read. */}
                 {currentFile?.file_type === "video" && (
                   <div className="pt-1 text-[11px] leading-snug text-muted-foreground/70">
-                    The AI checks every frame, so labels can change during
-                    the clip. Only one frame per video decides the species
+                    The AI checks several frames per clip, so labels can
+                    change between them. Only one frame decides the species
                     and the count.
                   </div>
                 )}
