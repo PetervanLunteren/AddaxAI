@@ -1,0 +1,142 @@
+---
+sidebar_position: 5
+title: Install in mainland China
+hide_table_of_contents: true
+---
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+# Install in mainland China
+
+The first launch downloads the AI models and the software they run in. In mainland China those downloads cannot finish, because the network blocks huggingface.co. The fix is to use mirrors: copies of the same files on Chinese servers. The same steps can help on other networks with a strict firewall.
+
+You need AddaxAI 7.0.7 or newer.
+
+<Tabs groupId="os" queryString="os">
+  <TabItem value="windows" label="Windows" default>
+
+## Point the app to the mirrors
+
+1. Open the Start menu and search for "environment variables".
+2. Open Edit the system environment variables, then click Environment Variables.
+3. Under User variables, click New and add name `HF_ENDPOINT` with value `https://hf-mirror.com`.
+4. Click New again and add name `HF_HUB_DISABLE_XET` with value `1`.
+5. Click OK to close the windows.
+
+## Point the installer to the mirrors
+
+1. Open Notepad and paste this:
+
+   ```ini
+   [global]
+   index-url = https://mirrors.aliyun.com/pypi/simple/
+   extra-index-url =
+       https://mirror.nju.edu.cn/pytorch/whl/cu128
+       https://mirror.nju.edu.cn/pytorch/whl/cu118
+   find-links = C:\wheels
+   ```
+
+2. Save it as `pip.ini` in the folder `C:\Users\<your name>\AppData\Roaming\pip`. Create the `pip` folder if it is not there.
+
+## Restart
+
+Restart your computer, open AddaxAI, and run the setup again. It continues where it stopped.
+
+  </TabItem>
+  <TabItem value="macos" label="macOS">
+
+## Point the app to the mirrors
+
+Open Terminal and run these two lines:
+
+```bash
+launchctl setenv HF_ENDPOINT https://hf-mirror.com
+launchctl setenv HF_HUB_DISABLE_XET 1
+```
+
+These reset when your Mac restarts. That is fine for daily use: you only need them again when AddaxAI downloads something new, like a model you install later.
+
+## Point the installer to the mirrors
+
+Run these lines in the same Terminal:
+
+```bash
+mkdir -p ~/.config/pip
+cat > ~/.config/pip/pip.conf << 'EOF'
+[global]
+index-url = https://mirrors.aliyun.com/pypi/simple/
+EOF
+```
+
+## Run the setup
+
+Open AddaxAI and run the setup again. It continues where it stopped.
+
+  </TabItem>
+  <TabItem value="linux" label="Linux">
+
+## Point the installer to the mirrors
+
+Open a terminal and run:
+
+```bash
+mkdir -p ~/.config/pip
+cat > ~/.config/pip/pip.conf << 'EOF'
+[global]
+index-url = https://mirrors.aliyun.com/pypi/simple/
+EOF
+```
+
+## Start AddaxAI with the mirror
+
+Set the two variables and start AddaxAI from that same terminal:
+
+```bash
+export HF_ENDPOINT=https://hf-mirror.com
+export HF_HUB_DISABLE_XET=1
+addaxai-desktop
+```
+
+Daily use does not need this. Start AddaxAI this way only when it downloads something new, like the first setup or a model you install later. If you have installed everything you need, you can start AddaxAI normally.
+
+  </TabItem>
+</Tabs>
+
+The mirrors are free services from universities and volunteers. They can move or go offline. If one stops working, [let me know](mailto:peter@addaxdatascience.com).
+
+## If it still does not work
+
+The steps above are enough for most people. Only if setup still fails, open the part below that matches your problem.
+
+<details>
+<summary>The big download still stalls (Only for Windows users)</summary>
+
+One file is about 3.4 GB, and setup sometimes still fetches it from the slow official server. Download it yourself instead:
+
+1. Download [torch-2.8.0+cu128-cp311-cp311-win_amd64.whl](https://mirror.nju.edu.cn/pytorch/whl/cu128/torch-2.8.0%2Bcu128-cp311-cp311-win_amd64.whl). If the download keeps stopping halfway, use a download manager: a program that can continue a broken download instead of starting over. For example [Free Download Manager](https://www.freedownloadmanager.org), or [Xunlei](https://www.xunlei.com) (迅雷), which is common in China.
+2. Create the folder `C:\wheels` and save the file there. Some programs save the file with `%2B` in the name instead of `+`, like `torch-2.8.0%2Bcu128-cp311-cp311-win_amd64.whl`. Rename it to `torch-2.8.0+cu128-cp311-cp311-win_amd64.whl`, otherwise setup does not recognise the file.
+3. Run the setup again.
+
+This file only exists on Windows. Macs use a much smaller file that rarely stalls.
+
+</details>
+
+<details>
+<summary>A model download keeps failing</summary>
+
+You can fetch the model files yourself. Open the model's page on the mirror, download every file, and put them in the model's folder under `C:\Users\<your name>\AddaxAI\models` (on macOS and Linux: `~/AddaxAI/models`). Keep the file names as they are.
+
+| Model | Files | Folder |
+|---|---|---|
+| MegaDetector v5A | [hf-mirror.com/Addax-Data-Science/MD5A-0-0](https://hf-mirror.com/Addax-Data-Science/MD5A-0-0/tree/main) | `models\det\MD5A-0-0` |
+| DINOv2 ViT-S/14 | [hf-mirror.com/Addax-Data-Science/DINOV2-VITS14](https://hf-mirror.com/Addax-Data-Science/DINOV2-VITS14/tree/main) | `models\emb\DINOV2-VITS14` |
+| SpeciesNet 4.0.2a | [hf-mirror.com/Addax-Data-Science/SPECIESNET-v4-0-2-A](https://hf-mirror.com/Addax-Data-Science/SPECIESNET-v4-0-2-A/tree/main) | `models\cls\SPECIESNET-v4-0-2-A` |
+
+Other species models work the same way. Their folder is `models\cls\<model id>`, with the id as shown in the [model zoo](../reference/model-zoo.mdx).
+
+</details>
+
+## Still stuck
+
+Email [peter@addaxdatascience.com](mailto:peter@addaxdatascience.com) with a [diagnostic report](troubleshooting.md), and mention which country or network you are on. I will help you through it.

@@ -65,3 +65,44 @@ def test_addaxai_base_pins_ultralytics_yolov5_wheel(platform_dir: str) -> None:
     assert any(d.startswith("megadetector==") for d in pip_deps), (
         f"{yaml_path}: megadetector pin missing"
     )
+
+
+def test_docs_torch_wheel_link_matches_windows_pin() -> None:
+    """
+    The "install in mainland China" docs page links the Windows torch
+    wheel by exact file name, so users behind the firewall can download
+    it directly. That name embeds the torch version, CUDA tag and
+    Python version pinned here, so a bump that skips the docs would
+    leave the page pointing at the wrong wheel, silently.
+    """
+    yaml_path = ENVS_DIR / "addaxai-base" / "windows" / "environment.yml"
+    data = yaml.safe_load(yaml_path.read_text())
+
+    python_pins = [
+        d
+        for d in data["dependencies"]
+        if isinstance(d, str) and d.startswith("python=")
+    ]
+    assert len(python_pins) == 1, python_pins
+    major, minor = python_pins[0].removeprefix("python=").split(".")[:2]
+
+    torch_pins = [d for d in _pip_deps(yaml_path) if d.startswith("torch==")]
+    assert len(torch_pins) == 1, torch_pins
+    version = torch_pins[0].removeprefix("torch==")
+
+    wheel_name = (
+        f"torch-{version.replace('+', '%2B')}"
+        f"-cp{major}{minor}-cp{major}{minor}-win_amd64.whl"
+    )
+    docs_page = (
+        Path(__file__).resolve().parents[3]
+        / "docs"
+        / "docs"
+        / "help"
+        / "install-in-china.mdx"
+    )
+    assert wheel_name in docs_page.read_text(), (
+        f"{docs_page.name} must link the pinned Windows torch wheel "
+        f"{wheel_name}; update the download link after a torch or "
+        f"python bump"
+    )
