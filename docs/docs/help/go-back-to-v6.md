@@ -27,6 +27,8 @@ Version 6 and version 7 do not share data, and they install in different places.
 1. Download [windows-installer.exe](https://github.com/PetervanLunteren/AddaxAI/releases/download/v6.37/windows-installer.exe).
 2. Run it. Windows may warn that the publisher is unknown. Choose More info, then Run anyway.
 
+If the installer is blocked on your machine, for example by antivirus or a company policy, you can [install version 6 manually](https://github.com/PetervanLunteren/AddaxAI/blob/v6/install_files/windows/manual-install.md) from a ZIP file. If the app later fails to download its analysis environments, you can [download those manually](https://github.com/PetervanLunteren/AddaxAI/blob/v6/markdown/manual-download-environments.md) as well.
+
 ## macOS
 
 1. Download [macos-installer.zip](https://github.com/PetervanLunteren/AddaxAI/releases/download/v6.37/macos-installer.zip) and unzip it. You get an installer app.
