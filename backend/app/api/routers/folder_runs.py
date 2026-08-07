@@ -121,6 +121,11 @@ class FolderRunCreate(BaseModel):
     matters here even though a folder run draws no charts: the exported
     files table carries a ``datetime`` column and the run README reports
     the capture range, so without it both come out empty.
+
+    ``datetime_offset_seconds`` is the camera clock correction from the
+    Adjust dates modal on the setup step, applied to every capture
+    timestamp at ingest. Same plumbing as the deployment queue flow:
+    the value is stamped onto the queue entry below.
     """
 
     source_folder: str = Field(..., min_length=1)
@@ -129,6 +134,7 @@ class FolderRunCreate(BaseModel):
     image_count: int = Field(default=0, ge=0)
     force_new: bool = False
     use_file_mtime_fallback: bool = False
+    datetime_offset_seconds: int | None = None
 
 
 class FolderRunStepUpdate(BaseModel):
@@ -594,6 +600,7 @@ def create_folder_run(
         video_count=payload.video_count,
         image_count=payload.image_count,
         use_file_mtime_fallback=payload.use_file_mtime_fallback,
+        datetime_offset_seconds=payload.datetime_offset_seconds,
     )
     queue_entry = crud_queue.create_queue_entry(db, queue_create)
 

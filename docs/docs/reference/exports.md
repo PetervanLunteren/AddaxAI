@@ -129,6 +129,7 @@ It follows the MegaDetector output format, version 1.6, which is [documented her
 2. Each detection keeps only the top classification, not the full list the format allows.
 3. Nothing is filtered by a threshold. Every detection AddaxAI stored is in the file.
 4. File paths are relative to the folder the JSON sits in.
+5. The `exif_metadata` block per image is the file's raw EXIF, copied verbatim. A date correction made with Adjust dates does not change it: the corrected timestamps are in the `datetime` column of the files table, while this block stays in sync with what the image files themselves say, which is also what Timelapse reads from them.
 
 ## Spatial
 

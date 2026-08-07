@@ -88,6 +88,30 @@ def test_create_folder_run_carries_file_mtime_fallback(client):
     assert resp.json()["queue_entry"]["use_file_mtime_fallback"] is True
 
 
+def test_create_folder_run_carries_datetime_offset(client):
+    """The Adjust dates correction has to reach the queue row, since the
+    shared worker applies it to every capture timestamp at ingest."""
+    resp = client.post(
+        "/api/folder-runs",
+        json={
+            "source_folder": "/Volumes/Photos/WrongClock",
+            "image_count": 5,
+            "datetime_offset_seconds": -2325283200,
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["queue_entry"]["datetime_offset_seconds"] == -2325283200
+
+
+def test_create_folder_run_datetime_offset_defaults_null(client):
+    resp = client.post(
+        "/api/folder-runs",
+        json={"source_folder": "/Volumes/Photos/GoodClock", "image_count": 3},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["queue_entry"]["datetime_offset_seconds"] is None
+
+
 def test_create_folder_run_explicit_name(client):
     resp = client.post(
         "/api/folder-runs",

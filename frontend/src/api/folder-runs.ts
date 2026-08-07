@@ -55,6 +55,9 @@ export interface FolderRunCreate {
   /** Fill missing capture dates from each file's modification time.
    * Never overrides a real capture date. Defaults to false. */
   use_file_mtime_fallback?: boolean;
+  /** Camera clock correction from the Adjust dates modal, applied to
+   * every capture timestamp at ingest. Omit / null for no correction. */
+  datetime_offset_seconds?: number | null;
 }
 
 /** Summary returned by GET /api/folder-runs/lookup. The Step 1 notice

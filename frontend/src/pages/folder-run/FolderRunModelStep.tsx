@@ -104,6 +104,7 @@ import { FolderSelector } from "../../components/analyses/FolderSelector";
 import { RunQueueModal } from "../../components/analyses/RunQueueModal";
 import { CompletedRunNotice } from "../../components/folder-run/CompletedRunNotice";
 import { RecentRunsDialog } from "../../components/folder-run/RecentRunsDialog";
+import { DatetimeOffsetModal } from "../../components/analyses/DatetimeOffsetModal";
 import { RerunConfirmDialog } from "../../components/folder-run/RerunConfirmDialog";
 import { StepHeader } from "../../components/folder-run/StepHeader";
 import { ClassificationModelGroupedItems } from "../../components/models/ClassificationModelGroupedItems";
@@ -369,6 +370,11 @@ export function FolderRunModelStep() {
   const useFileMtimeFallback = Boolean(
     fileMtimeChecked && scanResult?.missing_datetime,
   );
+  // Camera clock correction from the Adjust dates modal, per folder
+  // like the mtime opt-in. Applied to every capture timestamp at
+  // ingest via the queue entry, same as the deployment-queue flow.
+  const [datetimeOffsetSeconds, setDatetimeOffsetSeconds] = useState(0);
+  const [offsetModalOpen, setOffsetModalOpen] = useState(false);
   const lookupReady =
     !!folderPath && !!scanResult && scanResult.total_count > 0;
   const { data: lookupRun, isFetching: isLookingUp } = useQuery({
@@ -705,6 +711,7 @@ export function FolderRunModelStep() {
           video_count: scanResult.video_count,
           force_new: true,
           use_file_mtime_fallback: useFileMtimeFallback,
+          datetime_offset_seconds: datetimeOffsetSeconds || null,
         },
       },
       { onSettled: closeDialog },
@@ -741,6 +748,7 @@ export function FolderRunModelStep() {
           video_count: scanResult.video_count,
           force_new: folderChanged,
           use_file_mtime_fallback: useFileMtimeFallback,
+          datetime_offset_seconds: datetimeOffsetSeconds || null,
         },
       });
       return;
@@ -870,12 +878,15 @@ export function FolderRunModelStep() {
                                 onChange={(v) => {
                                   field.onChange(v ?? "");
                                   setFileMtimeChecked(false);
+                                  setDatetimeOffsetSeconds(0); // per-folder correction
                                 }}
                                 hideLabel
                                 compactScanResult
                                 missingDateNote="AddaxAI will still detect and classify these files, but the date column in your results will be empty."
                                 useFileMtimeFallback={useFileMtimeFallback}
                                 onUseFileMtimeFallbackChange={setFileMtimeChecked}
+                                datetimeOffsetSeconds={datetimeOffsetSeconds}
+                                onAdjustDates={() => setOffsetModalOpen(true)}
                               />
                             </FormControl>
                             {/* Re-entry shortcut: a folder run persists its
@@ -1495,6 +1506,19 @@ export function FolderRunModelStep() {
         onCancel={() => setRerunOpen(false)}
         onConfirm={confirmRerun}
       />
+
+      {/* Datetime offset modal (camera clock correction) */}
+      {folderPath && scanResult && (
+        <DatetimeOffsetModal
+          open={offsetModalOpen}
+          onOpenChange={setOffsetModalOpen}
+          sampleFiles={scanResult.sample_files}
+          folderPath={folderPath}
+          currentOffsetSeconds={datetimeOffsetSeconds}
+          onApply={setDatetimeOffsetSeconds}
+          useFileMtimeFallback={useFileMtimeFallback}
+        />
+      )}
 
       {runState && runId && (
         <RunQueueModal
