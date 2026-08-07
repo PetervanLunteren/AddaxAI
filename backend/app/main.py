@@ -539,13 +539,17 @@ def create_app() -> FastAPI:
             )
 
     # CORS middleware - allow frontend to access API
-    # In Electron: frontend and backend both served from port 8000 (same origin)
-    # In dev: frontend on Vite dev server (5173), backend on 8000
+    # In Electron: frontend and backend both served from the API port (same origin)
+    # In dev: frontend on Vite dev server (5173), backend on the API port
+    #
+    # These follow settings.api_port rather than a literal: the port is
+    # configurable (API_PORT), and entries pinned to 8000 would stop matching
+    # the moment the backend was moved off it.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
-            "http://localhost:8000",  # Electron app (same origin)
-            "http://127.0.0.1:8000",  # Electron app (same origin)
+            f"http://localhost:{settings.api_port}",  # Electron app (same origin)
+            f"http://127.0.0.1:{settings.api_port}",  # Electron app (same origin)
             "http://localhost:3000",
             "http://127.0.0.1:3000",
             "http://localhost:5173",  # Vite dev server

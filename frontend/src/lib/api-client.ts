@@ -9,7 +9,21 @@
 
 import { logger } from "./logger";
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+/**
+ * Base URL for every API call, image, and WebSocket.
+ *
+ * The fallback is the current origin, not a literal port. In the packaged app
+ * the backend serves this SPA, so the origin already IS the backend and the
+ * two stay together wherever the port lands. A hardcoded 127.0.0.1:8000 was
+ * baked in at build time, so moving the backend off 8000 broke every request.
+ *
+ * Dev is the other way round, because there Vite serves the SPA and the backend
+ * is elsewhere. VITE_API_URL addresses it directly; with no .env the origin is
+ * the dev server, which proxies both /api and /ws onward (see vite.config.ts).
+ * Keep it absolute: useTaskProgress parses it with `new URL()` to derive the
+ * WebSocket URL.
+ */
+export const API_BASE_URL = import.meta.env.VITE_API_URL || window.location.origin;
 
 /**
  * Error thrown when the API returns a non-2xx response. Preserves the

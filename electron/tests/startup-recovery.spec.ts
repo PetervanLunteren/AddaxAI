@@ -18,6 +18,7 @@
 import { test, expect } from '@playwright/test';
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
+import * as http from 'http';
 import * as os from 'os';
 import * as path from 'path';
 import { launch as launchApp, makeHealthyDb, appWindow } from './app-harness';
@@ -94,6 +95,45 @@ test('a slow start says so, and never offers to start a second backend', async (
     .toContain(`localhost:${PORT}`);
 
   await app.close();
+});
+
+test('a port held by another application names the port, not an exit code', async () => {
+  /**
+   * The reported case: an unrelated service holds the backend port and
+   * answers 404 on /health. probeHealth only accepts a 200, so it
+   * returned null, the app read that as "port free", spawned a backend
+   * that could not bind, and showed "The backend stopped while starting
+   * up (exit code 1)". The port never got a mention, so the user had no
+   * way to know that ADDAXAI_BACKEND_PORT was the way out.
+   */
+  makeHealthyDb(userDataDir);
+
+  const squatter = http.createServer((_req, res) => {
+    res.statusCode = 404;
+    res.end('not found');
+  });
+  await new Promise<void>((resolve) => {
+    squatter.listen(Number(PORT), '127.0.0.1', resolve);
+  });
+
+  try {
+    const app = await launch();
+    const win = await appWindow(app);
+
+    await expect(win.locator('h1')).toHaveText('AddaxAI could not start', {
+      timeout: 60_000,
+    });
+    await expect(win.locator('.reason')).toContainText(
+      `Port ${PORT} is in use by another application`,
+    );
+    // The way out has to be on the page. Quitting the other application
+    // is not always possible.
+    await expect(win.locator('.reason')).toContainText('ADDAXAI_BACKEND_PORT');
+
+    await app.close();
+  } finally {
+    await new Promise<void>((resolve) => squatter.close(() => resolve()));
+  }
 });
 
 test('a broken database shows the reason and the recovery buttons', async () => {

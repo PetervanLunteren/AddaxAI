@@ -301,6 +301,34 @@ function isAddaxaiHealth(body: HealthBody | null): boolean {
 }
 
 /**
+ * Is anything at all listening on `port`?
+ *
+ * A plain TCP connect, deliberately not an HTTP request. probeHealth
+ * only reports a server that answers /health with 200, so a foreign
+ * process on the port is indistinguishable from a free port there: a
+ * bare 404 is the common case and it reads as "nothing here". This asks
+ * the only question that matters before we try to bind.
+ *
+ * Cheap enough for the startup path (a loopback connect either lands or
+ * is refused immediately), which is why it is not the netstat/lsof scan
+ * that killProcessOnPort needs to identify a pid.
+ */
+function isPortOccupied(port: number, timeoutMs = 1000): Promise<boolean> {
+  const net = require('net');
+  return new Promise((resolve) => {
+    const socket = net.connect({ host: '127.0.0.1', port, family: 4 });
+    const finish = (occupied: boolean) => {
+      socket.destroy();
+      resolve(occupied);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false));
+    socket.once('error', () => finish(false));
+  });
+}
+
+/**
  * Kill whatever process is *listening* on `port`. Best-effort and
  * guarded: a missing tool or no-match just logs and returns. Only ever
  * called once we have already confirmed (via /health) that the listener
@@ -470,24 +498,31 @@ function spawnBackend(): void {
  */
 async function ensureBackend(): Promise<void> {
   const existing = await probeHealth(1500);
-  if (existing) {
-    if (isAddaxaiHealth(existing)) {
-      console.warn(
-        `[Electron] A backend is already on port ${BACKEND_PORT} ` +
-          `(version ${existing.version}); reclaiming the port.`,
-      );
-      killProcessOnPort(BACKEND_PORT);
-      // Wait for the port to actually free up (max ~5s).
-      for (let i = 0; i < 10; i++) {
-        if (!(await probeHealth(500))) break;
-        await delay(500);
-      }
-    } else {
-      throw new Error(
-        `Port ${BACKEND_PORT} is in use by another application. Quit ` +
-          `whatever is using it and relaunch AddaxAI.`,
-      );
+  if (existing && isAddaxaiHealth(existing)) {
+    console.warn(
+      `[Electron] A backend is already on port ${BACKEND_PORT} ` +
+        `(version ${existing.version}); reclaiming the port.`,
+    );
+    killProcessOnPort(BACKEND_PORT);
+    // Wait for the port to actually free up (max ~5s).
+    for (let i = 0; i < 10; i++) {
+      if (!(await probeHealth(500))) break;
+      await delay(500);
     }
+  } else if (await isPortOccupied(BACKEND_PORT)) {
+    // Something that is not us holds the port. Ask at the TCP level
+    // rather than trusting /health: a foreign server that answers
+    // anything other than 200 leaves probeHealth null, and a plain 404
+    // is the common case. That read as "port free", so we spawned a
+    // backend that could not bind and the user got a bare exit code
+    // instead of the reason. Naming the override matters as much as the
+    // diagnosis, because quitting the other application is not an
+    // option when it is a service that restarts on every boot.
+    throw new Error(
+      `Port ${BACKEND_PORT} is in use by another application. Quit ` +
+        `whatever is using it and relaunch AddaxAI, or set ` +
+        `ADDAXAI_BACKEND_PORT to a free port.`,
+    );
   }
 
   spawnBackend();
