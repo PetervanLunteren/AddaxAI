@@ -53,6 +53,26 @@ def hash_yaml_file(yaml_path: Path) -> str:
 ENV_PROGRESS_FLOOR = 0.10
 
 
+def substitute_hf_endpoint(yaml_text: str, endpoint: str | None) -> str:
+    """
+    Point hardcoded huggingface.co URLs in an env YAML at the mirror
+    named by HF_ENDPOINT.
+
+    The YAMLs pin one wheel by direct huggingface.co URL, and pip has no
+    index configuration that can redirect a direct-URL requirement. On a
+    network where huggingface.co is blocked (mainland China) that single
+    line fails the whole env build, whatever the user configures.
+    huggingface_hub already honours HF_ENDPOINT for model weights; this
+    extends the same opt-in to the env build. The #sha256= fragment is
+    kept, so a mirror serving different bytes still fails the install.
+    """
+    if not endpoint:
+        return yaml_text
+    return yaml_text.replace(
+        "https://huggingface.co/", endpoint.rstrip("/") + "/"
+    )
+
+
 def parse_micromamba_progress(
     line: str,
     current_progress: float,
@@ -518,7 +538,16 @@ class EnvironmentManager:
             # root-owned /opt for a deb). Build from a copy in the writable
             # envs dir instead.
             yaml_copy_path = env_path.parent / f".{env_name}.environment.yml"
-            shutil.copyfile(yaml_path, yaml_copy_path)
+            # newline="" so the copy keeps the bundled file's line
+            # endings instead of Windows text-mode translation.
+            yaml_copy_path.write_text(
+                substitute_hf_endpoint(
+                    yaml_path.read_text(encoding="utf-8"),
+                    os.environ.get("HF_ENDPOINT"),
+                ),
+                encoding="utf-8",
+                newline="",
+            )
 
             logger.info(f"Running micromamba create for {env_name} (temp: {temp_env_path})...")
             cmd = [
