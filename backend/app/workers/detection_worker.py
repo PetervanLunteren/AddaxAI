@@ -39,7 +39,7 @@ from app.ml.json_pipeline import merge_json_files, run_classification_on_json
 from app.ml.manifest_manager import ManifestManager
 from app.ml.model_storage import ModelStorage
 from app.models import Deployment
-from app.services.folder_scanner import prune_unscannable_dirs
+from app.services.folder_scanner import prune_hidden_files, prune_unscannable_dirs
 from app.utils.fs_hidden import mkdir_hidden_addaxai
 
 logger = get_logger(__name__)
@@ -1404,8 +1404,9 @@ def scan_folder_for_images(folder_path: Path) -> list[Path]:
     for root, dirs, files in os.walk(folder_path):
         # Skip dot-folders AND AddaxAI output folders, so a previous run's
         # separated / visualised copies are never re-ingested as input.
+        # Dot-files (macOS `._*` sidecars) are skipped too.
         dirs[:] = prune_unscannable_dirs(root, dirs)
-        for filename in files:
+        for filename in prune_hidden_files(files):
             file_path = Path(root) / filename
             if file_path.suffix.lower() in IMAGE_EXTENSIONS:
                 image_files.append(file_path)
@@ -1431,8 +1432,9 @@ def scan_folder_for_videos(folder_path: Path) -> list[Path]:
     for root, dirs, files in os.walk(folder_path):
         # Skip dot-folders AND AddaxAI output folders, so a previous run's
         # separated / visualised copies are never re-ingested as input.
+        # Dot-files (macOS `._*` sidecars) are skipped too.
         dirs[:] = prune_unscannable_dirs(root, dirs)
-        for filename in files:
+        for filename in prune_hidden_files(files):
             file_path = Path(root) / filename
             if file_path.suffix.lower() in VIDEO_EXTENSIONS:
                 video_files.append(file_path)

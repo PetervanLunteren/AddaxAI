@@ -55,18 +55,32 @@ def prune_unscannable_dirs(root: str, dirnames: list[str]) -> list[str]:
     ]
 
 
+def prune_hidden_files(filenames: list[str]) -> list[str]:
+    """Filter an ``os.walk`` file list down to non-hidden files.
+
+    Drops dot-files: macOS AppleDouble ``._*`` sidecars (written next to
+    real files on FAT-formatted SD cards), ``.DS_Store`` and friends. A
+    sidecar carries a media extension, so without this it is counted,
+    sampled in the Adjust-dates modal, and sent to the detector as if it
+    were a real image or video. The file-side counterpart of
+    ``prune_unscannable_dirs``, shared by the same walkers.
+    """
+    return [f for f in filenames if not f.startswith(".")]
+
+
 def walk_media_files(folder: Path) -> tuple[list[Path], list[Path]]:
     """Every image and video under ``folder``, as ``(images, videos)``.
 
     Filenames only: nothing is opened and no metadata is read. Dot-folders
-    and AddaxAI output folders are skipped via ``prune_unscannable_dirs``.
+    and AddaxAI output folders are skipped via ``prune_unscannable_dirs``,
+    dot-files via ``prune_hidden_files``.
     """
     images: list[Path] = []
     videos: list[Path] = []
 
     for root, dirs, files in os.walk(folder):
         dirs[:] = prune_unscannable_dirs(root, dirs)
-        for filename in files:
+        for filename in prune_hidden_files(files):
             file_path = Path(root) / filename
             ext = file_path.suffix.lower()
             if ext in IMAGE_EXTENSIONS:

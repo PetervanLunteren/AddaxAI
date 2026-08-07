@@ -60,3 +60,37 @@ def test_preview_scan_skips_output_folder(tmp_path):
     preview = scan_folder(str(tmp_path))
     # Only the one real source image is counted, not the output copy.
     assert preview["image_count"] == 1
+
+
+def _make_tree_with_hidden_files(tmp_path):
+    """Source folder with real media plus dot-file litter: macOS AppleDouble
+    sidecars (media extensions, junk content) and a .DS_Store."""
+    _write_jpeg(tmp_path / "IMG_0001.jpg")
+    (tmp_path / "VID_0001.mp4").write_bytes(b"\x00")  # bare file, not real video
+    (tmp_path / "._IMG_0001.jpg").write_bytes(b"\x00\x05\x16\x07")
+    (tmp_path / "._VID_0001.mp4").write_bytes(b"\x00\x05\x16\x07")
+    (tmp_path / ".DS_Store").write_bytes(b"\x00")
+    return tmp_path
+
+
+def test_worker_image_scan_skips_hidden_files(tmp_path):
+    _make_tree_with_hidden_files(tmp_path)
+    names = {p.name for p in scan_folder_for_images(tmp_path)}
+    assert names == {"IMG_0001.jpg"}
+
+
+def test_worker_video_scan_skips_hidden_files(tmp_path):
+    _make_tree_with_hidden_files(tmp_path)
+    names = {p.name for p in scan_folder_for_videos(tmp_path)}
+    assert names == {"VID_0001.mp4"}
+
+
+def test_preview_scan_skips_hidden_files(tmp_path):
+    _make_tree_with_hidden_files(tmp_path)
+    preview = scan_folder(str(tmp_path))
+    assert preview["image_count"] == 1
+    assert preview["video_count"] == 1
+    # The Adjust-dates sample list must not offer sidecars either: they
+    # sort to the front (`.` before letters) and can never have a date.
+    sample_paths = {f["path"] for f in preview["sample_files"]}
+    assert sample_paths == {"IMG_0001.jpg", "VID_0001.mp4"}

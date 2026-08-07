@@ -235,6 +235,12 @@ export function EditDeploymentDialog({
           folderPath={deployment.folder_path}
           currentOffsetSeconds={datetimeOffset}
           onApply={setDatetimeOffset}
+          // The queue entry's mtime opt-in is gone after analysis, so
+          // derive it: when the scan finds no metadata dates, any dates
+          // in the DB can only have come from file modification times,
+          // and those are the reference the offset must be computed
+          // against.
+          useFileMtimeFallback={scanResult.missing_datetime}
         />
       )}
 

@@ -448,9 +448,13 @@ export function DatetimeOffsetModal({
                       Clicking the display opens the native browser picker
                       via showPicker(). The formatted text matches the
                       "Date extracted from file" field above. */}
+                  {/* Without an extracted date there is nothing to compute
+                      the offset against, so the picker is disabled rather
+                      than silently ignoring the picked date. */}
                   <button
                     type="button"
-                    className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-1 text-sm text-left hover:bg-muted/50 transition-colors"
+                    disabled={!currentDatetime}
+                    className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-1 text-sm text-left hover:bg-muted/50 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-background"
                     onClick={() => {
                       const input = document.getElementById("datetime-offset-picker") as HTMLInputElement;
                       input?.showPicker();
@@ -472,6 +476,12 @@ export function DatetimeOffsetModal({
                     className="sr-only"
                     tabIndex={-1}
                   />
+                  {!currentDatetime && !dateFetching && (
+                    <p className="text-xs text-muted-foreground">
+                      No date could be read from this file. Browse to a file
+                      with a date, or use the buttons above.
+                    </p>
+                  )}
                 </div>
               </div>
 
