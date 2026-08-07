@@ -18,7 +18,7 @@ AddaxAI uses separate virtual environments for different model types. The error 
 
 In the instructions below, replace `{name}` with the environment name from the table above (e.g., `pytorch`, `speciesnet`).
 
-1. Go to the AddaxAI releases page: [https://github.com/PetervanLunteren/AddaxAI/releases/latest](https://github.com/PetervanLunteren/AddaxAI/releases/latest)
+1. Go to the AddaxAI v6.37 release page (the final version 6 release): [https://github.com/PetervanLunteren/AddaxAI/releases/tag/v6.37](https://github.com/PetervanLunteren/AddaxAI/releases/tag/v6.37)
 
 2. Scroll down to the **Assets** section at the bottom of the page.
 
@@ -38,7 +38,7 @@ In the instructions below, replace `{name}` with the environment name from the t
    ```
    If you downloaded a single `.zip` file (not split), skip this step.
 
-5. Navigate to your `AddaxAI_files` folder. On Windows, this is usually located at `C:\Users\<username>\AddaxAI_files`. See [this page](https://github.com/PetervanLunteren/AddaxAI/blob/main/markdown/AddaxAI_files_location.md) if you're not sure where it is.
+5. Navigate to your `AddaxAI_files` folder. On Windows, this is usually located at `C:\Users\<username>\AddaxAI_files`. See [this page](https://github.com/PetervanLunteren/AddaxAI/blob/v6/markdown/AddaxAI_files_location.md) if you're not sure where it is.
 
 6. Open the `envs` subfolder inside `AddaxAI_files`. If it doesn't exist, create it.
 
@@ -82,13 +82,13 @@ If your internet connection is unstable and the browser download keeps failing, 
 
 If the environment is a single file:
 ```
-curl --retry 5 --retry-delay 10 --continue-at - -L -o "%USERPROFILE%\Downloads\windows-env-{name}.zip" "https://github.com/PetervanLunteren/AddaxAI/releases/latest/download/windows-env-{name}.zip"
+curl --retry 5 --retry-delay 10 --continue-at - -L -o "%USERPROFILE%\Downloads\windows-env-{name}.zip" "https://github.com/PetervanLunteren/AddaxAI/releases/download/v6.37/windows-env-{name}.zip"
 ```
 
 If the environment is split into parts (check the releases page to see which files are available):
 ```
-curl --retry 5 --retry-delay 10 --continue-at - -L -o "%USERPROFILE%\Downloads\windows-env-{name}.zip.001" "https://github.com/PetervanLunteren/AddaxAI/releases/latest/download/windows-env-{name}.zip.001"
-curl --retry 5 --retry-delay 10 --continue-at - -L -o "%USERPROFILE%\Downloads\windows-env-{name}.zip.002" "https://github.com/PetervanLunteren/AddaxAI/releases/latest/download/windows-env-{name}.zip.002"
+curl --retry 5 --retry-delay 10 --continue-at - -L -o "%USERPROFILE%\Downloads\windows-env-{name}.zip.001" "https://github.com/PetervanLunteren/AddaxAI/releases/download/v6.37/windows-env-{name}.zip.001"
+curl --retry 5 --retry-delay 10 --continue-at - -L -o "%USERPROFILE%\Downloads\windows-env-{name}.zip.002" "https://github.com/PetervanLunteren/AddaxAI/releases/download/v6.37/windows-env-{name}.zip.002"
 copy /b "%USERPROFILE%\Downloads\windows-env-{name}.zip.001"+"%USERPROFILE%\Downloads\windows-env-{name}.zip.002" "%USERPROFILE%\Downloads\windows-env-{name}.zip"
 ```
 

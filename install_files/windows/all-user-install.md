@@ -8,7 +8,7 @@ The software works if the files (i.e., the "AddaxAI_files" folder) are located i
 
 That means we _just_ need to move the files to the other location (and some other things):
 
-1. Install AddaxAI using the normal install: https://addaxdatascience.com/addaxai-windows/. That will install everything at `C:\Users\<username>\AddaxAI_files\`. 
+1. Install AddaxAI version 6 using the normal install: https://docs.addaxai.com/docs/help/go-back-to-v6. That will install everything at `C:\Users\<username>\AddaxAI_files\`. If the installer is blocked on your machine, use the [manual install](manual-install.md) instead. 
 2. Now manually move the entire folder from `C:\Users\<username>\AddaxAI_files\` to `C:\Program Files\AddaxAI_files`. You might be prompted to fill in your admin password. This can take some time since it contains many files.
 
 <img width="449" alt="Screenshot 2025-02-21 at 08 18 04" src="https://github.com/user-attachments/assets/49147cde-2116-4807-a01f-cd43c87a68d0" />

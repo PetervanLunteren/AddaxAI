@@ -1,12 +1,14 @@
 
 # Steps to manually install AddaxAI
 
-Below are instructions for AddaxAI users who are unable to execute the normal install due to unstable internet, security issues, or something else. Installing AddaxAI should be plan B, as the normal installation is much quicker, performs additional checks, and automates the whole process. If you haven't tried the [normal install](https://addaxdatascience.com/AddaxAI-windows/) yet, please try that first. 
+Below are instructions for AddaxAI version 6 users who are unable to execute the normal install due to unstable internet, security issues, or something else. Installing AddaxAI this way should be plan B, as the normal installation is much quicker, performs additional checks, and automates the whole process. If you haven't tried the [normal install](https://docs.addaxai.com/docs/help/go-back-to-v6) yet, please try that first.
+
+Note that version 6 is deprecated and no longer maintained. The final release is 6.37, which is what the links below point to. The current version of AddaxAI is installed differently, see [the documentation](https://docs.addaxai.com/docs/start-here/install).
 
 **Follow the steps below to install AddaxAI from a ZIP file.**
 1. Download both parts of the compressed files:
-   - [Part 1 (~1.9 GB)](https://github.com/PetervanLunteren/AddaxAI/releases/latest/download/windows-base-install.7z.001)
-   - [Part 2 (~1.1 GB)](https://github.com/PetervanLunteren/AddaxAI/releases/latest/download/windows-base-install.7z.002)
+   - [Part 1 (~1.9 GB)](https://github.com/PetervanLunteren/AddaxAI/releases/download/v6.37/windows-base-install.7z.001)
+   - [Part 2 (~1.1 GB)](https://github.com/PetervanLunteren/AddaxAI/releases/download/v6.37/windows-base-install.7z.002)
 
    If the internet connection is too unstable or slow for this to work, see the 'Download using the command line for a resume option in unstable internet' alternative at the bottom of this page.
 <div align="center"><img width="400" alt="Screenshot 2025-01-26 at 11 28 56" src="https://github.com/user-attachments/assets/e18ab79e-e955-426e-ac99-6cdc3e6a7d80"></div>
@@ -67,8 +69,8 @@ Open up a command prompt window (you might have to search for it via 'Start') an
   <br>
 
 ```
-curl --retry 5 --retry-delay 10 --continue-at - -L -o "%USERPROFILE%\Downloads\windows-base-install.7z.001" "https://github.com/PetervanLunteren/AddaxAI/releases/latest/download/windows-base-install.7z.001"
-curl --retry 5 --retry-delay 10 --continue-at - -L -o "%USERPROFILE%\Downloads\windows-base-install.7z.002" "https://github.com/PetervanLunteren/AddaxAI/releases/latest/download/windows-base-install.7z.002"
+curl --retry 5 --retry-delay 10 --continue-at - -L -o "%USERPROFILE%\Downloads\windows-base-install.7z.001" "https://github.com/PetervanLunteren/AddaxAI/releases/download/v6.37/windows-base-install.7z.001"
+curl --retry 5 --retry-delay 10 --continue-at - -L -o "%USERPROFILE%\Downloads\windows-base-install.7z.002" "https://github.com/PetervanLunteren/AddaxAI/releases/download/v6.37/windows-base-install.7z.002"
 copy /b "%USERPROFILE%\Downloads\windows-base-install.7z.001"+"%USERPROFILE%\Downloads\windows-base-install.7z.002" "%USERPROFILE%\Downloads\base-install.7z"
 ```
 
