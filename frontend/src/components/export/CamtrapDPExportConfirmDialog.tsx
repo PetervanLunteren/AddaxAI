@@ -12,6 +12,7 @@
 import { Link } from "react-router-dom";
 
 import { Button } from "../ui/button";
+import { Callout } from "../ui/callout";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,8 @@ interface CamtrapDPExportConfirmDialogProps {
   projectId: string;
   /** Number of deployments in the project with no camera site. */
   noSiteCount: number;
+  /** Number of files in the project with no capture date. */
+  noDateCount: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onProceed: () => void;
@@ -34,11 +37,13 @@ interface CamtrapDPExportConfirmDialogProps {
 export function CamtrapDPExportConfirmDialog({
   projectId,
   noSiteCount,
+  noDateCount,
   open,
   onOpenChange,
   onProceed,
 }: CamtrapDPExportConfirmDialogProps) {
   const depWord = noSiteCount === 1 ? "deployment" : "deployments";
+  const fileWord = noDateCount === 1 ? "file has" : "files have";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -91,6 +96,14 @@ export function CamtrapDPExportConfirmDialog({
               </Link>
               .
             </div>
+          )}
+
+          {noDateCount > 0 && (
+            <Callout variant="warning" size="compact">
+              {noDateCount} {fileWord} no capture date. Camtrap DP
+              requires a timestamp on every record, so these files are
+              left out of this export.
+            </Callout>
           )}
         </div>
 

@@ -145,6 +145,14 @@ export const projectsApi = {
     ),
 
   /**
+   * Count of files in this project with no capture date. Feeds the
+   * warning in the CamtrapDP export dialog (the schema requires a
+   * timestamp per record, so these files are left out of that export).
+   */
+  getFilesWithoutDate: (id: string) =>
+    api.get<{ count: number }>(`/api/projects/${id}/files-without-date`),
+
+  /**
    * Get postprocessing status (needs reprocessing?)
    */
   getPostprocessingStatus: (id: string) =>

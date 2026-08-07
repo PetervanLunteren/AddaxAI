@@ -34,6 +34,7 @@ from sqlalchemy import Row, and_, func, or_, select, true
 from sqlalchemy.orm import Session, defer
 
 from app.api.crud.export_formats import slugify
+from app.core.logging_config import get_logger
 from app.db.sql_params import iter_id_chunks
 from app.ml.detection_visibility import visible_detections
 from app.ml.observation_type import strongest_passing_detection
@@ -49,6 +50,8 @@ from app.models import (
     event_files,
 )
 from app.utils.datetime_serialization import to_local_iso_with_offset
+
+logger = get_logger(__name__)
 
 # CamTrap DP v1.0 schema URLs (from the official TDWG repo)
 CAMTRAP_DP_VERSION = "1.0"
@@ -1205,14 +1208,23 @@ def build_camtrap_dp_tables(
     # deployments.csv stage (CamtrapDP requires lat/lon). Skip their
     # media and observations rows here so the package stays consistent.
     skipped_dep_set = set(camtrap_skipped_deployment_ids)
+    files_without_date = 0
     for file_obj, deployment, _site, detections in _group_rows_by_file(scoped_rows):
         if deployment.id in skipped_dep_set:
             continue
-        if file_obj.captured_at_local is not None:
-            if first_captured is None or file_obj.captured_at_local < first_captured:
-                first_captured = file_obj.captured_at_local
-            if last_captured is None or file_obj.captured_at_local > last_captured:
-                last_captured = file_obj.captured_at_local
+        # media.timestamp and observations.eventStart / eventEnd are
+        # required datetime fields in the CamtrapDP schema, so a file
+        # with no capture date cannot be represented: an empty string
+        # there fails validation in the camtrapdp R package and GBIF
+        # ingestion, poisoning the whole package. The export dialog
+        # warns about these via /files-without-date.
+        if file_obj.captured_at_local is None:
+            files_without_date += 1
+            continue
+        if first_captured is None or file_obj.captured_at_local < first_captured:
+            first_captured = file_obj.captured_at_local
+        if last_captured is None or file_obj.captured_at_local > last_captured:
+            last_captured = file_obj.captured_at_local
 
         # Row order must match _CAMTRAP_MEDIA_HEADERS exactly.
         media_rows.append(
@@ -1362,6 +1374,12 @@ def build_camtrap_dp_tables(
             observations_rows.append(
                 _camtrap_event_row(obs, ctx, count, sci_name, classified_by)
             )
+
+    if files_without_date:
+        logger.info(
+            f"CamtrapDP export: left out {files_without_date} file(s) with no "
+            f"capture date (schema requires a timestamp per record)"
+        )
 
     datapackage = _build_datapackage(
         project,

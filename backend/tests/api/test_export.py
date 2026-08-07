@@ -1338,6 +1338,57 @@ def test_export_camtrap_dp_keeps_boxes_when_the_file_reads_blank(client, db):
     assert not any(r[0].startswith("obs-blank-") for r in media_rows)
 
 
+def test_export_camtrap_dp_leaves_out_files_without_date(client, db):
+    """CamtrapDP requires a timestamp on media rows and eventStart/eventEnd
+    on observation rows, so a file with no capture date cannot be
+    represented: an empty string there fails validation in the camtrapdp
+    R package and GBIF ingestion, poisoning the whole package. Such
+    files are left out; the export dialog warns about them via the
+    /files-without-date count."""
+    project, _site, deployment = _build_simple_project(db)
+    dated = make_file(
+        db,
+        deployment_id=deployment.id,
+        captured_at_local=datetime(2024, 6, 15, 9, 0, 0),
+    )
+    # make_file coalesces None to a default date, so null it afterwards.
+    dateless = make_file(db, deployment_id=deployment.id)
+    dateless.captured_at_local = None
+    make_detection(db, file_id=dateless.id, category="animal", confidence=0.9)
+    db.commit()
+
+    resp = _run_camtrap_dp_export(client, db, project.id)
+    assert resp.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        media_rows = list(csv.reader(io.StringIO(zf.read("media.csv").decode())))
+        obs_rows = list(csv.reader(io.StringIO(zf.read("observations.csv").decode())))
+
+    media_ids = {r[0] for r in media_rows[1:]}
+    assert dated.id in media_ids
+    assert dateless.id not in media_ids
+    # No observation row references the dateless file, and every emitted
+    # row has non-empty eventStart / eventEnd.
+    assert not any(r[2] == dateless.id for r in obs_rows[1:])
+    assert all(r[4] and r[5] for r in obs_rows[1:])
+
+
+def test_files_without_date_count_endpoint(client, db):
+    """The CamtrapDP export dialog warns using this count."""
+    project, _site, deployment = _build_simple_project(db)
+    make_file(
+        db,
+        deployment_id=deployment.id,
+        captured_at_local=datetime(2024, 6, 15, 9, 0, 0),
+    )
+    dateless = make_file(db, deployment_id=deployment.id)
+    dateless.captured_at_local = None
+    db.commit()
+
+    resp = client.get(f"/api/projects/{project.id}/files-without-date")
+    assert resp.status_code == 200
+    assert resp.json() == {"count": 1}
+
+
 def test_export_camtrap_dp_emits_media_and_event_rows(client, db):
     """Camtrap-DP dual model: one media-level row per bounding box, plus
     one event-level row per species carrying the effective (human) count

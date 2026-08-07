@@ -12,6 +12,7 @@
 
 import React, { useState } from "react";
 import { useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, ChevronDown, Download, Loader2 } from "lucide-react";
 
 import { Card, CardContent } from "../components/ui/card";
@@ -28,6 +29,7 @@ import {
   type ObservationFormat,
   type SpatialFormat,
 } from "../api/export";
+import { projectsApi } from "../api/projects";
 import { useNoSiteDeployments } from "../hooks/useNoSiteDeployments";
 import { ExportScopeSelect } from "../components/export/ExportScopeSelect";
 import { SpatialExportConfirmDialog } from "../components/export/SpatialExportConfirmDialog";
@@ -146,6 +148,15 @@ function ExportRow({
 export default function ExportPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const { data: noSite } = useNoSiteDeployments(projectId);
+  // Files with no capture date cannot be represented in CamtrapDP (the
+  // schema requires a timestamp per record); the confirm dialog warns
+  // that they are left out.
+  const { data: noDate } = useQuery({
+    queryKey: ["files-without-date", projectId],
+    queryFn: () => projectsApi.getFilesWithoutDate(projectId!),
+    enabled: !!projectId,
+    staleTime: 30_000,
+  });
 
   // Export scope reported by the picker. Undefined = whole project.
   // Applies only to the Spreadsheet export, not spatial or CamTrap DP.
@@ -349,6 +360,7 @@ export default function ExportPage() {
           <CamtrapDPExportConfirmDialog
             projectId={projectId}
             noSiteCount={noSiteCount}
+            noDateCount={noDate?.count ?? 0}
             open={dpConfirmOpen}
             onOpenChange={setDpConfirmOpen}
             onProceed={() => void runCamtrapDPExport(dpIncludesThumbnails)}

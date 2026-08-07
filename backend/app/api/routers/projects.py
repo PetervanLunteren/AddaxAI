@@ -1334,6 +1334,29 @@ def get_deployments_without_site(
     return {"count": len(ids), "deployment_ids": ids}
 
 
+@router.get("/{project_id}/files-without-date")
+def get_files_without_date(
+    project_id: str,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Count files in this project with no capture date.
+
+    Used by the CamtrapDP export dialog: the schema requires a timestamp
+    on every media and observation record, so these files are left out
+    of that export and the dialog warns about them up front.
+
+    Returns ``{"count": N}``.
+    """
+    count = (
+        db.query(func.count(File.id))
+        .join(Deployment, File.deployment_id == Deployment.id)
+        .filter(Deployment.project_id == project_id)
+        .filter(File.captured_at_local.is_(None))
+        .scalar()
+    )
+    return {"count": count or 0}
+
+
 @router.get("/{project_id}/postprocessing-status")
 def get_postprocessing_status(
     project_id: str,
