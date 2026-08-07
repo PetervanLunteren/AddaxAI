@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { API_BASE_URL } from "@/lib/api-client";
+import { msToNaiveString, naiveDateMs } from "@/lib/datetime";
 import { formatOffset } from "@/lib/utils";
 
 interface SampleFile {
@@ -61,10 +62,16 @@ function fmtDate(iso: string | null): string {
   });
 }
 
-/** Convert a Date to a local datetime-local input value (YYYY-MM-DDTHH:MM:SS). */
-function toDatetimeLocal(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+/** Reference datetime plus offset, as a datetime-local input value.
+ *
+ * All arithmetic runs in naive wall-clock space (naiveDateMs), matching
+ * how the backend applies the offset. Browser-local epoch math here used
+ * to shift the result an hour when the offset crossed a DST transition
+ * in the viewer's timezone.
+ */
+function shiftedDateStr(iso: string, offsetSeconds: number): string {
+  const ms = naiveDateMs(iso);
+  return ms === null ? "" : msToNaiveString(ms + offsetSeconds * 1000);
 }
 
 export function DatetimeOffsetModal({
@@ -184,11 +191,7 @@ export function DatetimeOffsetModal({
   // create a feedback loop with user edits to the date picker.
   useEffect(() => {
     if (currentDatetime) {
-      setCorrectedDateStr(
-        toDatetimeLocal(
-          new Date(new Date(currentDatetime).getTime() + offsetSeconds * 1000),
-        ),
-      );
+      setCorrectedDateStr(shiftedDateStr(currentDatetime, offsetSeconds));
     } else {
       setCorrectedDateStr("");
     }
@@ -212,17 +215,17 @@ export function DatetimeOffsetModal({
     setDateCache({});
   }, [folderPath, useFileMtimeFallback]);
 
-  // Sync offset from corrected date
+  // Sync offset from corrected date. Diffed in naive wall-clock space:
+  // the backend applies the offset to naive datetimes, so an epoch diff
+  // taken across a DST boundary would be an hour off what the user typed.
   const handleCorrectedDateChange = useCallback(
     (dateStr: string) => {
       setCorrectedDateStr(dateStr);
       if (!currentDatetime || !dateStr) return;
-      const original = new Date(currentDatetime);
-      const corrected = new Date(dateStr);
-      if (Number.isNaN(corrected.getTime())) return;
-      setOffsetSeconds(
-        Math.round((corrected.getTime() - original.getTime()) / 1000),
-      );
+      const originalMs = naiveDateMs(currentDatetime);
+      const correctedMs = naiveDateMs(dateStr);
+      if (originalMs === null || correctedMs === null) return;
+      setOffsetSeconds(Math.round((correctedMs - originalMs) / 1000));
     },
     [currentDatetime],
   );
@@ -233,8 +236,7 @@ export function DatetimeOffsetModal({
       const newOffset = offsetSeconds + deltaSeconds;
       setOffsetSeconds(newOffset);
       if (currentDatetime) {
-        const ref = new Date(currentDatetime);
-        setCorrectedDateStr(toDatetimeLocal(new Date(ref.getTime() + newOffset * 1000)));
+        setCorrectedDateStr(shiftedDateStr(currentDatetime, newOffset));
       }
     },
     [offsetSeconds, currentDatetime],
@@ -248,7 +250,7 @@ export function DatetimeOffsetModal({
   const handleReset = useCallback(() => {
     setOffsetSeconds(0);
     if (currentDatetime) {
-      setCorrectedDateStr(toDatetimeLocal(new Date(currentDatetime)));
+      setCorrectedDateStr(shiftedDateStr(currentDatetime, 0));
     } else {
       setCorrectedDateStr("");
     }
@@ -361,11 +363,7 @@ export function DatetimeOffsetModal({
                             const next = referenceIndex - 1;
                             setReferenceIndex(next);
                             const dt = dateCache[next];
-                            if (dt) {
-                              setCorrectedDateStr(toDatetimeLocal(new Date(new Date(dt).getTime() + offsetSeconds * 1000)));
-                            } else {
-                              setCorrectedDateStr("");
-                            }
+                            setCorrectedDateStr(dt ? shiftedDateStr(dt, offsetSeconds) : "");
                           }}
                         >
                           <ChevronLeft className="h-4 w-4" />
@@ -383,11 +381,7 @@ export function DatetimeOffsetModal({
                             const next = referenceIndex + 1;
                             setReferenceIndex(next);
                             const dt = dateCache[next];
-                            if (dt) {
-                              setCorrectedDateStr(toDatetimeLocal(new Date(new Date(dt).getTime() + offsetSeconds * 1000)));
-                            } else {
-                              setCorrectedDateStr("");
-                            }
+                            setCorrectedDateStr(dt ? shiftedDateStr(dt, offsetSeconds) : "");
                           }}
                         >
                           <ChevronRight className="h-4 w-4" />

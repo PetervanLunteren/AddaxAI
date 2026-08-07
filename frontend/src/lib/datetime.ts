@@ -91,6 +91,33 @@ export function asCameraDate(iso: string | null | undefined): Date | null {
 }
 
 /**
+ * Milliseconds for a naive wall-clock datetime string, pinned to UTC.
+ *
+ * All datetime-offset arithmetic must go through this and
+ * `msToNaiveString`, never through `new Date(str).getTime()` in the
+ * browser's timezone: the backend applies the offset to naive wall-clock
+ * values, and an epoch difference taken across a DST transition in the
+ * viewer's timezone is an hour off the wall-clock difference. That
+ * mismatch silently shifted every corrected date by an hour.
+ */
+export function naiveDateMs(iso: string | null | undefined): number | null {
+  return parseLocalAsUtc(iso)?.getTime() ?? null;
+}
+
+/**
+ * Inverse of `naiveDateMs`: format UTC-pinned milliseconds back into a
+ * naive `YYYY-MM-DDTHH:MM:SS` string (the `datetime-local` input format).
+ */
+export function msToNaiveString(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` +
+    `T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
+  );
+}
+
+/**
  * Format a plain `YYYY-MM-DD` date string (no time component, no tz) in
  * the viewer's locale, e.g. "1 Apr 2011" on en-GB or "Apr 1, 2011" on
  * en-US. Used for deployment bound dates which are stored as SQL Date.

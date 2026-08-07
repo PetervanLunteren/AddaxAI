@@ -9,6 +9,8 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+import { naiveDateMs } from "./datetime";
+
 /**
  * Merges Tailwind CSS classes with proper precedence.
  * Used by shadcn/ui components for conditional styling.
@@ -36,11 +38,16 @@ export function formatCompact(n: number): string {
  * Example: ("2024-03-03T08:12:00", 3600) -> "3 Mar 2024"
  */
 export function formatDate(iso: string, offsetSeconds = 0): string {
-  const d = new Date(new Date(iso).getTime() + offsetSeconds * 1000);
-  return d.toLocaleDateString([], {
+  // Naive wall-clock arithmetic (see naiveDateMs): adding the offset in
+  // browser-local epoch space lands an hour off when the offset crosses a
+  // DST transition in the viewer's timezone.
+  const ms = naiveDateMs(iso);
+  if (ms === null) return "";
+  return new Date(ms + offsetSeconds * 1000).toLocaleDateString([], {
     day: "numeric",
     month: "short",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 
