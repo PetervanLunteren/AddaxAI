@@ -13,11 +13,11 @@ from datetime import datetime
 import pytest
 from PIL import Image
 
-from app.services.folder_scanner import (
-    _extract_exif_date_single,
-    _parse_exif_datetime,
-    _read_exif_datetime,
-    scan_folder,
+from app.services.folder_scanner import scan_folder
+from app.utils.media_dates import (
+    extract_image_date,
+    parse_exif_datetime,
+    read_exif_datetime,
 )
 
 
@@ -33,7 +33,7 @@ def _write_jpeg(path, *, datetime_original=None, datetime_tag=None) -> None:
     img.save(path, format="JPEG", exif=exif)
 
 
-# ── _parse_exif_datetime ──────────────────────────────────────────────────
+# ── parse_exif_datetime ──────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(
@@ -57,7 +57,7 @@ def _write_jpeg(path, *, datetime_original=None, datetime_tag=None) -> None:
     ],
 )
 def test_parse_exif_datetime_formats(raw, expected):
-    assert _parse_exif_datetime(raw) == expected
+    assert parse_exif_datetime(raw) == expected
 
 
 @pytest.mark.parametrize(
@@ -73,10 +73,10 @@ def test_parse_exif_datetime_formats(raw, expected):
     ],
 )
 def test_parse_exif_datetime_rejects(raw):
-    assert _parse_exif_datetime(raw) is None
+    assert parse_exif_datetime(raw) is None
 
 
-# ── _read_exif_datetime / _extract_exif_date_single ───────────────────────
+# ── read_exif_datetime / extract_image_date ───────────────────────
 
 
 def test_reads_datetime_original_from_sub_ifd(tmp_path):
@@ -84,21 +84,21 @@ def test_reads_datetime_original_from_sub_ifd(tmp_path):
     p = tmp_path / "img.jpg"
     _write_jpeg(p, datetime_original="2016:06:13 14:21:45")
     with Image.open(p) as img:
-        assert _read_exif_datetime(img) == datetime(2016, 6, 13, 14, 21, 45)
-    assert _extract_exif_date_single(p) == datetime(2016, 6, 13, 14, 21, 45)
+        assert read_exif_datetime(img) == datetime(2016, 6, 13, 14, 21, 45)
+    assert extract_image_date(p) == datetime(2016, 6, 13, 14, 21, 45)
 
 
 def test_falls_back_to_base_ifd_datetime(tmp_path):
     """No sub-IFD original, but DateTime (306) in the base IFD is used."""
     p = tmp_path / "img.jpg"
     _write_jpeg(p, datetime_tag="2016:06:13 09:00:00")
-    assert _extract_exif_date_single(p) == datetime(2016, 6, 13, 9, 0, 0)
+    assert extract_image_date(p) == datetime(2016, 6, 13, 9, 0, 0)
 
 
 def test_no_exif_returns_none(tmp_path):
     p = tmp_path / "plain.jpg"
     Image.new("RGB", (4, 4), (1, 2, 3)).save(p, format="JPEG")
-    assert _extract_exif_date_single(p) is None
+    assert extract_image_date(p) is None
 
 
 # ── scan_folder integration ───────────────────────────────────────────────

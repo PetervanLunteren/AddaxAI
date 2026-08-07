@@ -17,10 +17,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import cv2
-from PIL import ExifTags, Image
+from PIL import Image
 
 from app.core.logging_config import get_logger
 from app.ml.inference.video_iter import open_video
+from app.utils.media_dates import read_exif_datetime
 
 logger = get_logger(__name__)
 
@@ -30,38 +31,24 @@ logger = get_logger(__name__)
 # is defined in one place.
 _FULL_FRAME_BBOX = [0.0, 0.0, 1.0, 1.0]
 
-# DateTimeOriginal lives in the Exif SubIFD, reachable via the IFD pointer
-# at tag 0x8769 in the base IFD. Resolve the tag id once at import time.
-_EXIF_IFD_POINTER = 0x8769
-_DATETIME_ORIGINAL_TAG = next(
-    tag_id for tag_id, name in ExifTags.TAGS.items()
-    if name == "DateTimeOriginal"
-)
-
 
 def _read_image_metadata(
     image_path: Path,
 ) -> tuple[int, int, str | None]:
     """
-    Return (width, height, DateTimeOriginal-or-None) for one image.
+    Return (width, height, capture-datetime-or-None) for one image.
 
-    DateTimeOriginal is normalised to MD's wire format
-    ("YYYY:MM:DD HH:MM:SS"). When EXIF is missing or unreadable the
-    timestamp is None and the JSON pipeline's pre-flight pass will skip
-    the file (same path as a corrupt-EXIF image would take coming out
-    of MegaDetector).
+    The capture time comes from the shared EXIF tag ladder
+    (DateTimeOriginal → DateTimeDigitized → DateTime), normalised to
+    MD's wire format ("YYYY:MM:DD HH:MM:SS"). When EXIF is missing or
+    unreadable the timestamp is None and the JSON pipeline's pre-flight
+    pass will skip the file (same path as a corrupt-EXIF image would
+    take coming out of MegaDetector).
     """
     with Image.open(image_path) as img:
         width, height = img.size
-        exif = img.getexif()
-        dto: str | None = None
-        if exif:
-            sub = exif.get_ifd(_EXIF_IFD_POINTER)
-            raw = sub.get(_DATETIME_ORIGINAL_TAG) if sub else None
-            if isinstance(raw, str):
-                cleaned = raw.strip("\x00").strip()
-                if cleaned:
-                    dto = cleaned
+        dt = read_exif_datetime(img)
+    dto = dt.strftime("%Y:%m:%d %H:%M:%S") if dt else None
     return width, height, dto
 
 

@@ -36,6 +36,8 @@ from app.ml.progress import ProgressTicker
 from app.ml.results_json import iter_images, read_top_level_object
 from app.models import Deployment, File, Project
 from app.utils.media_dates import (
+    date_from_exif_dict,
+    extract_image_date,
     extract_video_dates,
     file_mtime_datetime,
     parse_addaxai_filename_datetime,
@@ -51,7 +53,7 @@ def _resolve_capture_timestamp(
     exif_metadata: dict | None,
     video_dates: dict[Path, datetime],
     use_file_mtime_fallback: bool,
-) -> tuple[datetime | None, bool]:
+) -> tuple[datetime | None, str]:
     """
     Extract the camera's wall-clock capture time for a single file.
 
@@ -65,36 +67,46 @@ def _resolve_capture_timestamp(
     anywhere earlier it would shadow every source below it.
 
     Returns:
-        (timestamp, from_mtime). The timestamp is None when nothing was
-        available, in which case the file is ingested with
+        (timestamp, source). The timestamp is None (source "none") when
+        nothing was available, in which case the file is ingested with
         captured_at_local=NULL and surfaced via
-        `PipelineResult.skipped_missing_timestamp`. The flag is only used
-        for the caller's summary log line; it is never stored.
+        `PipelineResult.skipped_missing_timestamp`. The source
+        ("metadata", "exif_reread", "filename", "mtime", "none") is only
+        used for the caller's summary log lines; it is never stored.
     """
     if is_video:
         ts = video_dates.get(absolute_path)
         if ts is not None:
-            return ts, False
-    if exif_metadata and "DateTimeOriginal" in exif_metadata:
-        try:
-            return datetime.strptime(
-                exif_metadata["DateTimeOriginal"], "%Y:%m:%d %H:%M:%S"
-            ), False
-        except (ValueError, TypeError):
-            pass
+            return ts, "metadata"
+    ts = date_from_exif_dict(exif_metadata)
+    if ts is not None:
+        return ts, "metadata"
+    if not is_video:
+        # The detection JSON's exif_metadata only carries what the detector
+        # was asked to extract (DateTimeOriginal). The folder scan reads
+        # the full tag ladder (DateTimeOriginal → DateTimeDigitized →
+        # DateTime) from the image itself, so a camera that writes only
+        # the weaker tags previews dates the JSON cannot deliver. Re-read
+        # the file with the same shared reader so ingest keeps the scan's
+        # promise. Costs one image open, and only for files the JSON left
+        # dateless.
+        ts = extract_image_date(absolute_path)
+        if ts is not None:
+            return ts, "exif_reread"
     ts = parse_addaxai_filename_datetime(absolute_path.name)
     if ts is not None:
         logger.debug(
             "Capture time from addaxai filename: %s -> %s", absolute_path.name, ts
         )
-        return ts, False
+        return ts, "filename"
     if use_file_mtime_fallback:
         # No per-file log here: unlike the filename marker this fires for
         # every dateless file in the deployment. The caller counts them and
         # logs one summary line instead.
         ts = file_mtime_datetime(absolute_path)
-        return ts, ts is not None
-    return None, False
+        if ts is not None:
+            return ts, "mtime"
+    return None, "none"
 
 
 def _safe_file_size(path: Path) -> int | None:
@@ -234,6 +246,7 @@ def load_json_to_database(
         # files stop appearing in skipped_missing_timestamp, so the summary
         # log below is the only trace that it ran.
         timestamped_from_mtime = 0
+        timestamped_from_exif_reread = 0
         # MegaDetector failure entries (undecodable video etc.), collected
         # during the insert pass instead of a separate collect_md_failures
         # pass over the whole dict.
@@ -301,7 +314,7 @@ def load_json_to_database(
             # Resolve capture timestamp inline (replaces the old pre-pass).
             # Recorded for every loadable image, including ones whose File
             # row already exists, to match the previous behaviour.
-            captured_at_local, from_mtime = _resolve_capture_timestamp(
+            captured_at_local, timestamp_source = _resolve_capture_timestamp(
                 absolute_path,
                 is_video=is_video,
                 exif_metadata=img.get("exif_metadata"),
@@ -310,8 +323,10 @@ def load_json_to_database(
             )
             if captured_at_local is None:
                 skipped_missing_timestamp.append(str(absolute_path))
-            elif from_mtime:
+            elif timestamp_source == "mtime":
                 timestamped_from_mtime += 1
+            elif timestamp_source == "exif_reread":
+                timestamped_from_exif_reread += 1
 
             # Best frame fields (video only). Resolved before the File
             # lookup because BOTH branches need them: a new row takes them
@@ -572,6 +587,13 @@ def load_json_to_database(
                     f"Set deployment {deployment_id} dates from file timestamps: "
                     f"{deployment.start_date_local} to {deployment.end_date_local}"
                 )
+
+        if timestamped_from_exif_reread:
+            logger.info(
+                f"{timestamped_from_exif_reread} file(s) timestamped from a "
+                f"fallback EXIF tag read off the image itself (the detection "
+                f"JSON carried no DateTimeOriginal)"
+            )
 
         if timestamped_from_mtime:
             logger.info(

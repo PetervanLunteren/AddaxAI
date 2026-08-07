@@ -573,9 +573,9 @@ def get_file_datetime(
     dt = None
     ext = file_path.suffix.lower()
     if ext in IMAGE_EXTENSIONS:
-        from app.services.folder_scanner import _extract_exif_date_single
+        from app.utils.media_dates import extract_image_date
 
-        dt = _extract_exif_date_single(file_path)
+        dt = extract_image_date(file_path)
     elif ext in VIDEO_EXTENSIONS:
         from app.utils.media_dates import extract_video_date
 

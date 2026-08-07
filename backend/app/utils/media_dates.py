@@ -1,10 +1,12 @@
 """
 Shared capture-date extraction.
 
-Holds the exiftool video reader and the two opt-in last-resort fallbacks
-(filename marker, filesystem mtime). Used by the folder scanner (deployment
-preview), the per-file probe endpoint, and the JSON pipeline (file
-timestamps), so all three agree on where a capture date can come from.
+Holds the image EXIF reader, the exiftool video reader, and the two
+opt-in last-resort fallbacks (filename marker, filesystem mtime). Used by
+the folder scanner (deployment preview), the per-file probe endpoint, and
+the JSON pipeline (file timestamps), so all three agree on where a
+capture date can come from and what the preview promises is what ingest
+stores.
 """
 
 import re
@@ -12,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 import exiftool
+from PIL import Image
 
 from app.core.logging_config import get_logger
 from app.utils.exiftool_bin import resolve_exiftool
@@ -197,3 +200,130 @@ def extract_video_date(path: Path) -> datetime | None:
     """Extract creation date from a single video file using exiftool."""
     date_map = extract_video_dates([path])
     return date_map.get(path)
+
+
+# ── Image EXIF dates ──────────────────────────────────────────────────────
+#
+# DateTimeOriginal (36867) and DateTimeDigitized (36868) live in the Exif
+# sub-IFD, reached via the pointer tag 0x8769 in the base IFD. They are NOT
+# in the base IFD that Image.getexif() returns directly; reading them off
+# the base IFD always yields None. DateTime (306) does live in the base IFD.
+# Reading 36867/36868 off the base IFD was the bug that made camera-trap
+# images with perfectly good capture times report "no datetime metadata".
+_EXIF_IFD_POINTER = 0x8769
+_TAG_DATETIME_ORIGINAL = 36867
+_TAG_DATETIME_DIGITIZED = 36868
+_TAG_DATETIME = 306
+
+# The same ladder by key name, for callers holding an already-extracted
+# EXIF dict (MegaDetector's `exif_metadata` block) instead of an open
+# image. Priority order matters: DateTimeOriginal is the capture moment,
+# DateTimeDigitized the digitisation moment, DateTime the in-camera file
+# write. The weaker tags are only consulted when the stronger are absent,
+# so an edited image whose DateTime holds the edit moment still resolves
+# to its DateTimeOriginal.
+EXIF_DATE_KEYS = ["DateTimeOriginal", "DateTimeDigitized", "DateTime"]
+
+# Trailing timezone designator: "Z", "+02:00", "-0500", etc. Observational
+# datetimes are stored naive in camera-local wall-clock time (see
+# DEVELOPERS.md "Datetime conventions"), so any offset is dropped, never
+# applied.
+_TZ_SUFFIX_RE = re.compile(r"(?:Z|[+-]\d{2}:?\d{2})$")
+
+# strptime patterns tried in order. EXIF standard is colon-separated
+# ("YYYY:MM:DD HH:MM:SS"); real cameras and re-encoders also emit dash or
+# slash date separators, ISO "T", and date-only stamps.
+_DATETIME_FORMATS = (
+    "%Y:%m:%d %H:%M:%S",
+    "%Y-%m-%d %H:%M:%S",
+    "%Y/%m/%d %H:%M:%S",
+    "%Y:%m:%dT%H:%M:%S",
+    "%Y-%m-%dT%H:%M:%S",
+    "%Y:%m:%d %H:%M",
+    "%Y-%m-%d %H:%M",
+    "%Y:%m:%d",
+    "%Y-%m-%d",
+)
+
+
+def parse_exif_datetime(raw: object) -> datetime | None:
+    """Parse an EXIF date value into a naive datetime, tolerant of formats.
+
+    Handles bytes or str, trailing NULs / whitespace, sub-second fractions,
+    timezone suffixes (dropped — stored values are camera-local wall clock),
+    and colon / dash / slash / ISO-"T" separators. The all-zero placeholder
+    ("0000:00:00 ...") that re-encoders leave behind is rejected. Returns
+    None when nothing parseable is found.
+    """
+    if isinstance(raw, bytes):
+        raw = raw.decode("ascii", "ignore")
+    if not isinstance(raw, str):
+        return None
+    s = raw.replace("\x00", "").strip()
+    if not s or s.startswith("0000:00:00") or s.startswith("0000-00-00"):
+        return None
+    # Drop a timezone suffix, then a sub-second fraction, leaving the bare
+    # wall-clock components for the format table below.
+    s = _TZ_SUFFIX_RE.sub("", s).strip()
+    s = re.sub(r"\.\d+$", "", s)
+    for fmt in _DATETIME_FORMATS:
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    # Last resort: normalise an EXIF "YYYY:MM:DD" date head to dashes and let
+    # fromisoformat handle whatever time part remains.
+    iso = re.sub(r"^(\d{4}):(\d{2}):(\d{2})", r"\1-\2-\3", s).replace(" ", "T", 1)
+    try:
+        return datetime.fromisoformat(iso).replace(tzinfo=None)
+    except ValueError:
+        return None
+
+
+def read_exif_datetime(img: Image.Image) -> datetime | None:
+    """Best capture datetime for an open image, or None.
+
+    Reads DateTimeOriginal then DateTimeDigitized from the Exif sub-IFD
+    (where they actually live), then DateTime from the base IFD. Also checks
+    the base IFD for the first two in case a non-standard writer put them
+    there. First parseable value wins.
+    """
+    exif = img.getexif()
+    if not exif:
+        return None
+    sub = exif.get_ifd(_EXIF_IFD_POINTER) or {}
+    for raw in (
+        sub.get(_TAG_DATETIME_ORIGINAL),
+        sub.get(_TAG_DATETIME_DIGITIZED),
+        exif.get(_TAG_DATETIME_ORIGINAL),  # non-standard: in base IFD
+        exif.get(_TAG_DATETIME_DIGITIZED),
+        exif.get(_TAG_DATETIME),
+    ):
+        dt = parse_exif_datetime(raw)
+        if dt is not None:
+            return dt
+    return None
+
+
+def extract_image_date(img_path: Path) -> datetime | None:
+    """Extract the EXIF datetime from a single image. Returns None on failure."""
+    try:
+        with Image.open(img_path) as img:
+            return read_exif_datetime(img)
+    except Exception:
+        return None
+
+
+def date_from_exif_dict(exif_metadata: dict | None) -> datetime | None:
+    """Best capture datetime from an already-extracted EXIF dict, or None.
+
+    Same tag ladder as `read_exif_datetime`, keyed by name, for the
+    `exif_metadata` block a detection JSON carries per image.
+    """
+    if not exif_metadata:
+        return None
+    for key in EXIF_DATE_KEYS:
+        dt = parse_exif_datetime(exif_metadata.get(key))
+        if dt is not None:
+            return dt
+    return None
