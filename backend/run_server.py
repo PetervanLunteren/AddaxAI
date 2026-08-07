@@ -16,6 +16,14 @@ if getattr(sys, 'frozen', False):
     sys.path.insert(0, str(bundle_dir))
 
 if __name__ == "__main__":
+    # Scripted setup for IT deployments: `backend --setup [MODEL_ID ...]`
+    # or `backend --list-models`. Runs the first-launch setup from the
+    # command line and exits, no server. See app/setup_cli.py.
+    if "--setup" in sys.argv or "--list-models" in sys.argv:
+        from app.setup_cli import run_cli
+
+        sys.exit(run_cli(sys.argv[1:]))
+
     import uvicorn
 
     from app.core.config import get_settings

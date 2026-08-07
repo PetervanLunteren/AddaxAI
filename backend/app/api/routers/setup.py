@@ -206,108 +206,127 @@ def _build_default_model_manifest(spec: dict) -> ModelManifest:
     return m
 
 
-def _install_env_blocking(force_envs: tuple[str, ...] = ()) -> None:
+def setup_complete() -> bool:
+    """True when the base env and the default model weights are present."""
+    settings = get_settings()
+    return _env_present() and _models_present(settings.user_data_dir / "models")
+
+
+def run_setup(
+    progress_cb: Callable[[str, float], None],
+    force_envs: tuple[str, ...] = (),
+) -> None:
     """
-    Sync worker driving setup: env install plus HF downloads of the
-    default model weights. Runs in a thread. All steps are idempotent so
-    retrying after a partial failure picks up where it left off.
+    Run setup synchronously: base env install plus HF downloads of the
+    default model weights. All steps are idempotent so retrying after a
+    partial failure picks up where it left off. Raises on failure.
+
+    Progress is reported as progress_cb(message, fraction 0..1). Shared
+    by the wizard endpoint (via _install_env_blocking) and the --setup
+    CLI (app/setup_cli.py).
 
     `force_envs` lets the drift-rebuild flow request that specific
     envs be wiped and rebuilt regardless of whether they already exist
     on disk. Caller passes env names like "addaxai-base" or "pytorch".
     """
-    try:
-        settings = get_settings()
-        models_dir = settings.user_data_dir / "models"
-        storage = ModelStorage(models_dir)
-        em = _get_env_manager()
+    settings = get_settings()
+    models_dir = settings.user_data_dir / "models"
+    storage = ModelStorage(models_dir)
+    em = _get_env_manager()
 
-        # Wipe envs explicitly requested for rebuild before the
-        # presence check below decides whether to add an install step.
-        # Out-of-loop so the wipes are visible regardless of step
-        # ordering.
-        for env_name in force_envs:
-            wipe_path = em.envs_dir / f"env-{env_name}"
-            if wipe_path.exists():
-                logger.info(
-                    f"Force-rebuild: wiping existing env at {wipe_path}"
-                )
-                try:
-                    em._safe_rmtree(wipe_path)
-                except Exception as e:
-                    logger.error(
-                        f"Failed to wipe env {env_name} for rebuild: {e}",
-                        exc_info=True,
-                    )
-
-        # Each step: (label_for_logs, fn(progress_cb)). Skipped if already
-        # complete so retries go straight to whatever's missing.
-        steps: list[tuple[str, Callable[[Callable[[str, float], None]], None]]] = []
-
-        if not _env_present():
-            def _env_step(cb: Callable[[str, float], None]) -> None:
-                _get_env_manager().get_or_create_env(_build_env_manifest(), cb)
-            steps.append(("Analysis environment", _env_step))
-
-        # Add explicit rebuild steps for any forced env that isn't the
-        # default one (the default is already covered above via
-        # _env_present()). Order doesn't matter for correctness; users
-        # see them sequentially in the progress modal.
-        for env_name in force_envs:
-            if env_name == _REQUIRED_ENV:
-                continue
-            def _force_env_step(
-                cb: Callable[[str, float], None],
-                _name: str = env_name,
-            ) -> None:
-                _get_env_manager().get_or_create_env(
-                    _build_env_manifest(_name), cb
-                )
-            steps.append((f"Environment ({env_name})", _force_env_step))
-
-        for spec in _DEFAULT_MODELS:
-            weight = (
-                models_dir / spec["type_dir"] / spec["model_id"] / spec["model_fname"]
+    # Wipe envs explicitly requested for rebuild before the
+    # presence check below decides whether to add an install step.
+    # Out-of-loop so the wipes are visible regardless of step
+    # ordering.
+    for env_name in force_envs:
+        wipe_path = em.envs_dir / f"env-{env_name}"
+        if wipe_path.exists():
+            logger.info(
+                f"Force-rebuild: wiping existing env at {wipe_path}"
             )
-            if weight.is_file():
-                continue
-            manifest = _build_default_model_manifest(spec)
+            try:
+                em._safe_rmtree(wipe_path)
+            except Exception as e:
+                logger.error(
+                    f"Failed to wipe env {env_name} for rebuild: {e}",
+                    exc_info=True,
+                )
 
-            def _model_step(
-                cb: Callable[[str, float], None], _m: ModelManifest = manifest
-            ) -> None:
-                storage.download_weights(_m, cb)
+    # Each step: (label_for_logs, fn(progress_cb)). Skipped if already
+    # complete so retries go straight to whatever's missing.
+    steps: list[tuple[str, Callable[[Callable[[str, float], None]], None]]] = []
 
-            steps.append((spec["friendly_name"], _model_step))
+    if not _env_present():
+        def _env_step(cb: Callable[[str, float], None]) -> None:
+            _get_env_manager().get_or_create_env(_build_env_manifest(), cb)
+        steps.append(("Analysis environment", _env_step))
 
-        if not steps:
-            _install_state.finish(error=None)
-            return
+    # Add explicit rebuild steps for any forced env that isn't the
+    # default one (the default is already covered above via
+    # _env_present()). Order doesn't matter for correctness; users
+    # see them sequentially in the progress modal.
+    for env_name in force_envs:
+        if env_name == _REQUIRED_ENV:
+            continue
+        def _force_env_step(
+            cb: Callable[[str, float], None],
+            _name: str = env_name,
+        ) -> None:
+            _get_env_manager().get_or_create_env(
+                _build_env_manifest(_name), cb
+            )
+        steps.append((f"Environment ({env_name})", _force_env_step))
 
-        # Equal-slot progress allocation. Env install dominates real time
-        # but the bar stays alive either way; weighting it would just
-        # surprise users when the downloads "sprint" through 80-100%.
-        # Prefix messages with Step N/M when there is more than one step
-        # so the user knows which phase is running. Mirrors the format
-        # used by the in-app model install (routers/ml_models.py).
-        n = len(steps)
-        for i, (label, run) in enumerate(steps):
-            slot_start = i / n
-            slot_span = 1.0 / n
-            prefix = f"Step {i + 1}/{n} - " if n > 1 else ""
-            logger.info(f"Setup step {i + 1}/{n}: {label}")
+    for spec in _DEFAULT_MODELS:
+        weight = (
+            models_dir / spec["type_dir"] / spec["model_id"] / spec["model_fname"]
+        )
+        if weight.is_file():
+            continue
+        manifest = _build_default_model_manifest(spec)
 
-            def cb(
-                msg: str,
-                prog: float,
-                _s: float = slot_start,
-                _sp: float = slot_span,
-                _p: str = prefix,
-            ) -> None:
-                _install_state.update(f"{_p}{msg}", _s + prog * _sp)
+        def _model_step(
+            cb: Callable[[str, float], None], _m: ModelManifest = manifest
+        ) -> None:
+            storage.download_weights(_m, cb)
 
-            run(cb)
+        steps.append((spec["friendly_name"], _model_step))
 
+    if not steps:
+        return
+
+    # Equal-slot progress allocation. Env install dominates real time
+    # but the bar stays alive either way; weighting it would just
+    # surprise users when the downloads "sprint" through 80-100%.
+    # Prefix messages with Step N/M when there is more than one step
+    # so the user knows which phase is running. Mirrors the format
+    # used by the in-app model install (routers/ml_models.py).
+    n = len(steps)
+    for i, (label, run) in enumerate(steps):
+        slot_start = i / n
+        slot_span = 1.0 / n
+        prefix = f"Step {i + 1}/{n} - " if n > 1 else ""
+        logger.info(f"Setup step {i + 1}/{n}: {label}")
+
+        def cb(
+            msg: str,
+            prog: float,
+            _s: float = slot_start,
+            _sp: float = slot_span,
+            _p: str = prefix,
+        ) -> None:
+            progress_cb(f"{_p}{msg}", _s + prog * _sp)
+
+        run(cb)
+
+
+def _install_env_blocking(force_envs: tuple[str, ...] = ()) -> None:
+    """
+    Wizard wrapper around run_setup. Runs in a thread and mirrors
+    progress and the outcome into _install_state for the polling UI.
+    """
+    try:
+        run_setup(_install_state.update, force_envs)
         _install_state.finish(error=None)
     except Exception as e:
         logger.error(f"Setup install failed: {e}", exc_info=True)
@@ -344,11 +363,7 @@ async def install_env(
 
     # Skip-fast applies only when nothing is being forced. A force
     # request always triggers the install loop.
-    if (
-        not force_envs
-        and _env_present()
-        and _models_present(settings.user_data_dir / "models")
-    ):
+    if not force_envs and setup_complete():
         return {"status": "already_installed"}
 
     # Disk-space pre-flight. Unpacked env (~3 GB) plus default model
