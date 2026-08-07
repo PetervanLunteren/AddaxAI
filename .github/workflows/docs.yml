@@ -58,3 +58,12 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          # The action polls the Pages status API and, on expiry, cancels
+          # the deployment. Its 10 minute default is not always enough:
+          # on 2026-08-06 two runs sat in `deployment_in_progress` past it
+          # and went red, while the content published anyway (the live
+          # site's last-modified matched the moment the action gave up).
+          # A red run that already shipped is the worst of both, so give
+          # a slow Pages backend room instead of cancelling on it.
+          timeout: 1800000
