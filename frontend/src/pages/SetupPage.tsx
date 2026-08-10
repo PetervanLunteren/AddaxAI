@@ -50,7 +50,13 @@ export default function SetupPage() {
   }
 
   const inProgress = status.install_in_progress;
-  const hasError = !!status.error && !inProgress;
+  // Two error sources. A started install that fails reports through the
+  // polled status. A refusal before the install starts (e.g. the
+  // disk-space pre-flight 507) is only on the mutation itself; the
+  // status endpoint never learns about it.
+  const statusError = !inProgress ? status.error : null;
+  const errorText = statusError ?? install.error?.message ?? null;
+  const hasError = errorText !== null;
   // The button must surface whenever something is still missing, not just
   // when env is missing. Otherwise a half-complete state (env installed but
   // bundled models missing, common in dev mode) leaves the user with no
@@ -125,7 +131,7 @@ export default function SetupPage() {
         {hasError && (
           <div className="mt-6 space-y-3">
             <Callout variant="error" title="Setup failed">
-              <span className="text-xs break-words">{status.error}</span>
+              <span className="text-xs break-words">{errorText}</span>
             </Callout>
             <Button onClick={() => install.mutate()} className="w-full">
               Try again
