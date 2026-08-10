@@ -677,6 +677,18 @@ async def _prepare_env_task(model_id: str, manifest, task_id: str) -> None:
         clear_cancel(task_id)
 
 
+@router.get("/prepares/active")
+def get_active_prepares() -> dict[str, int]:
+    """
+    How many model-prepare workers (weights / env downloads) are running.
+
+    Consumed by the Electron keep-awake poll: prepares run in in-memory
+    tasks with no job row, so without this the machine could go to sleep
+    in the middle of a model download.
+    """
+    return {"count": len(_active_prepares)}
+
+
 @router.get("/updates")
 def get_model_updates(request: Request) -> dict:
     """

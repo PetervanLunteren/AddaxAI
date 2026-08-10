@@ -8,7 +8,7 @@
  * - Clean shutdown of backend on quit
  */
 
-import { app, BrowserWindow, crashReporter, session, shell, ipcMain, dialog, Menu } from 'electron';
+import { app, BrowserWindow, crashReporter, session, shell, ipcMain, dialog, Menu, powerSaveBlocker } from 'electron';
 import { spawn, execSync, ChildProcess } from 'child_process';
 import * as os from 'os';
 import * as path from 'path';
@@ -248,19 +248,19 @@ const BACKEND_SLOW_NOTICE_MS =
   Number(process.env.ADDAXAI_SLOW_NOTICE_MS) || 60000;
 
 /**
- * One IPv4 GET to /health. Resolves the parsed JSON body on a 200, or
- * null when nothing answers / it times out / the status is not 200.
- * A 200 with a non-JSON body (some other server on the port) resolves
- * to `{}`, which `isAddaxaiHealth` then rejects.
+ * One IPv4 GET to a backend path, parsed as JSON. Resolves the parsed
+ * body on a 200, or null when nothing answers / it times out / the
+ * status is not 200 / the body is not JSON (some other server on the
+ * port).
  */
-function probeHealth(timeoutMs = 2000): Promise<HealthBody | null> {
+function httpGetJson(path: string, timeoutMs: number): Promise<unknown> {
   const http = require('http');
   return new Promise((resolve) => {
     const req = http.get(
       {
         hostname: '127.0.0.1',
         port: BACKEND_PORT,
-        path: '/health',
+        path,
         family: 4, // Force IPv4
         timeout: timeoutMs,
       },
@@ -278,7 +278,7 @@ function probeHealth(timeoutMs = 2000): Promise<HealthBody | null> {
           try {
             resolve(JSON.parse(body));
           } catch {
-            resolve({});
+            resolve(null);
           }
         });
       },
@@ -289,6 +289,14 @@ function probeHealth(timeoutMs = 2000): Promise<HealthBody | null> {
       resolve(null);
     });
   });
+}
+
+/**
+ * One GET to /health. Resolves the parsed JSON body on a 200, or null,
+ * which `isAddaxaiHealth` rejects either way.
+ */
+async function probeHealth(timeoutMs = 2000): Promise<HealthBody | null> {
+  return (await httpGetJson('/health', timeoutMs)) as HealthBody | null;
 }
 
 /**
@@ -587,6 +595,78 @@ async function waitForBackend(): Promise<void> {
     }
     await delay(1000);
   }
+}
+
+/**
+ * Keep the machine awake while the backend is working.
+ *
+ * An analysis of a large folder runs for hours, and on default power
+ * settings the OS puts the whole machine to sleep after 15 to 30
+ * minutes, silently stalling the run until the user wakes it. While
+ * any backend job is running we hold Electron's built-in power-save
+ * blocker. `prevent-app-suspension` stops system sleep but still lets
+ * the display turn off, which is exactly the overnight case.
+ *
+ * The main process polls the backend rather than having the renderer
+ * report work starting and ending over IPC: a poll cannot leak the
+ * blocker when a renderer reloads mid-run. Three signals cover all
+ * long work: the jobs table (analysis, embedding, reprocessing,
+ * exports, save outputs), setup status (the first-run env and model
+ * download), and active model prepares (per-model downloads, which run
+ * in in-memory tasks with no job row). Releasing the blocker does
+ * nothing active; the machine just falls back to the user's own power
+ * settings.
+ *
+ * A backend that answers decides immediately, in both directions. A
+ * backend that does not answer is not the same as "no work": a heavy
+ * phase can hold it past the request timeout (verified with SIGSTOP),
+ * and dropping the shield then opens a sleep window on a machine that
+ * is hours past its idle threshold. So a held blocker survives up to
+ * KEEP_AWAKE_MAX_MISSES failed polls (~2 minutes) before releasing,
+ * which still bounds a genuinely dead backend (its jobs died with it;
+ * reconcile_interrupted_jobs marks them failed on the next launch).
+ */
+const KEEP_AWAKE_POLL_MS = 30000;
+const KEEP_AWAKE_MAX_MISSES = 4;
+let keepAwakeBlockerId: number | null = null;
+let keepAwakeMissedPolls = 0;
+
+function setKeepAwake(active: boolean): void {
+  if (active && keepAwakeBlockerId === null) {
+    keepAwakeBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+    console.log('[Electron] Backend working; keeping the machine awake');
+  } else if (!active && keepAwakeBlockerId !== null) {
+    powerSaveBlocker.stop(keepAwakeBlockerId);
+    keepAwakeBlockerId = null;
+    console.log('[Electron] Backend idle; machine may sleep again');
+  }
+}
+
+function startKeepAwakePolling(): void {
+  setInterval(async () => {
+    const [jobs, setup, prepares] = await Promise.all([
+      httpGetJson('/api/jobs?status=running', 5000),
+      httpGetJson('/api/setup/status', 5000),
+      httpGetJson('/api/ml/prepares/active', 5000),
+    ]);
+    // The jobs read is the canary for "did the backend answer": it is
+    // the one endpoint that always exists and returns an array.
+    if (Array.isArray(jobs)) {
+      keepAwakeMissedPolls = 0;
+      const installing =
+        (setup as { install_in_progress?: boolean } | null)
+          ?.install_in_progress === true;
+      const preparing =
+        ((prepares as { count?: number } | null)?.count ?? 0) > 0;
+      setKeepAwake(jobs.length > 0 || installing || preparing);
+    } else if (
+      keepAwakeBlockerId !== null &&
+      ++keepAwakeMissedPolls >= KEEP_AWAKE_MAX_MISSES
+    ) {
+      keepAwakeMissedPolls = 0;
+      setKeepAwake(false);
+    }
+  }, KEEP_AWAKE_POLL_MS);
 }
 
 /**
@@ -1388,6 +1468,10 @@ app.on('ready', async () => {
   try {
     setupDownloadHandler();
     setupApplicationMenu();
+    // Runs for the whole app lifetime; while the backend is down every
+    // poll reads "no jobs" and the blocker stays off, so there is
+    // nothing to wire into the backend start/stop/retry paths.
+    startKeepAwakePolling();
     // Show the window (splash) immediately, then bring the backend up.
     await createWindow();
     // When launched via `AddaxAI.exe --timelapse <folder>` (Saul's
