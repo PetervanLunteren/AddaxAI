@@ -24,11 +24,13 @@ Destination resolution (via ``OutputContext``):
   ``output_root`` (``<original_name>`` for images, ``<stem>.jpg`` for
   videos). Collision-suffixed to avoid clobbering an existing file.
 
-EXIF: every saved destination gets the detection tag set written via
-the shared ``ExifBatch``. PIL save strips EXIF from the source, so
-this module writes it back on its own outputs whether or not
-separation already wrote the same tags on the (now-overwritten)
-separated copy.
+EXIF: the source's own EXIF block (capture date, camera make / model,
+GPS) is passed back to the PIL save, which would otherwise strip it on
+re-encode; Timelapse and the camera-metadata export columns depend on
+those tags surviving in copies. On top of that, every saved
+destination gets the detection tag set written via the shared
+``ExifBatch``, whether or not separation already wrote the same tags
+on the (now-overwritten) separated copy.
 
 Source-vs-destination semantics:
 
@@ -607,6 +609,12 @@ def write_annotated_copies(
                 )
                 continue
 
+            # The source's raw EXIF bytes, held here because the
+            # alpha-composite below builds a fresh Image that carries no
+            # ``info``. Passed back at save so the camera's own metadata
+            # (capture date, make / model, GPS) survives the re-encode.
+            source_exif = image.info.get("exif")
+
             # Blur first, so the box drawn over a blurred person sits
             # on the obscured pixels (matches legacy ordering).
             if blur_targets:
@@ -642,7 +650,10 @@ def write_annotated_copies(
             for dest in destinations:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 try:
-                    image.save(dest)
+                    if source_exif:
+                        image.save(dest, exif=source_exif)
+                    else:
+                        image.save(dest)
                 except OSError as e:
                     result.errors.append(
                         f"Could not save {dest}: {e}"
@@ -654,8 +665,8 @@ def write_annotated_copies(
 
                 result.written_count += 1
 
-                # PIL drops EXIF on save, so re-write the predictions
-                # tag set onto every saved file.
+                # Add the predictions tag set on top of the carried-over
+                # source EXIF (exiftool preserves existing tags).
                 if tag_set is not None and is_image_path(dest):
                     try:
                         exif_batch.write(dest, tag_set)

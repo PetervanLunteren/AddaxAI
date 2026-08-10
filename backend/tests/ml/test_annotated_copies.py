@@ -84,6 +84,69 @@ def test_visualise_only_writes_bboxes_and_skips_blur(db, tmp_path):
     assert (target / "animal.jpg").is_file()
 
 
+def test_annotated_copy_keeps_the_source_exif(db, tmp_path):
+    """The re-encode must carry the camera's own EXIF into the copy.
+    PIL strips it on save unless the raw bytes are passed back; losing
+    it breaks Timelapse date reading on copies and drops the camera
+    metadata this project exports."""
+    src_path = tmp_path / "src" / "with-exif.jpg"
+    src_path.parent.mkdir(parents=True, exist_ok=True)
+    exif = Image.Exif()
+    exif[0x010F] = "RECONYX"                 # Make
+    exif[0x0110] = "HC600 HYPERFIRE"         # Model
+    exif[0x0132] = "2024:06:15 09:00:00"     # DateTime
+    Image.new("RGB", (200, 200), (180, 200, 220)).save(
+        src_path, format="JPEG", exif=exif
+    )
+
+    project = make_project(db, name="exif-keep", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    file = make_file(
+        db, deployment_id=dep.id, file_path=str(src_path), observation_type="animal"
+    )
+    make_detection(db, file_id=file.id, category="animal", confidence=0.9, label="dog")
+
+    target = tmp_path / "out"
+    result = write_annotated_copies(
+        db,
+        project.id,
+        _ctx(target),
+        draw_bboxes=True,
+        anonymise=False,
+        media_threshold=0.5,
+    )
+
+    assert result.written_count == 1
+    with Image.open(target / "with-exif.jpg") as copy:
+        copied = copy.getexif()
+    assert copied[0x010F] == "RECONYX"
+    assert copied[0x0110] == "HC600 HYPERFIRE"
+    assert copied[0x0132] == "2024:06:15 09:00:00"
+
+
+def test_annotated_copy_of_exifless_source_still_saves(db, tmp_path):
+    """A source with no EXIF at all (the pre-fix common case) must keep
+    working: plain save, no exif kwarg, no crash."""
+    project = make_project(db, name="exif-none", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    src = _write_jpeg(tmp_path / "src" / "bare.jpg")
+    file = make_file(
+        db, deployment_id=dep.id, file_path=src, observation_type="animal"
+    )
+    make_detection(db, file_id=file.id, category="animal", confidence=0.9, label="dog")
+
+    result = write_annotated_copies(
+        db,
+        project.id,
+        _ctx(tmp_path / "out"),
+        draw_bboxes=True,
+        anonymise=False,
+        media_threshold=0.5,
+    )
+    assert result.written_count == 1
+    assert (tmp_path / "out" / "bare.jpg").is_file()
+
+
 def test_anonymise_only_writes_blur_and_skips_bboxes(db, tmp_path):
     project = make_project(db, name="blur-only", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
