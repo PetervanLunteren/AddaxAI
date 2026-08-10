@@ -344,11 +344,26 @@ def get_classification_performance(
     # us recover the row (and its common_name) from that scientific
     # string. At family / order / class ranks the class is a taxon name
     # that already matches LabelTaxonomy.name, so the by-name lookup hits.
-    by_scientific = {
-        r.scientific_name.lower(): r
-        for r in taxonomy_lookup.values()
-        if r.scientific_name
+    #
+    # Abbreviated scientific names collide across the model's full
+    # vocabulary (Sciurus carolinensis and Sitta carolinensis are both
+    # "S. carolinensis"), and the loser of the dict overwrite lends its
+    # common name to the winner's class. Rows whose label actually
+    # occurs in this project's verified detections win the key, so a
+    # collision with a species that never appears here cannot mislabel
+    # the axis.
+    observed_labels = {
+        d.label.lower() for d in verified_detections if d.label
+    } | {
+        d.original_label.lower() for d in verified_detections if d.original_label
     }
+    by_scientific: dict[str, LabelTaxonomy] = {}
+    for r in taxonomy_lookup.values():
+        if not r.scientific_name:
+            continue
+        key = r.scientific_name.lower()
+        if key not in by_scientific or r.name.lower() in observed_labels:
+            by_scientific[key] = r
 
     display_lookup: dict[str, str] = {}
     common_lookup: dict[str, str] = {}
