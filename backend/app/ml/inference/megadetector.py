@@ -84,7 +84,12 @@ def _build_run_detector_batch_cmd(
         "megadetector.detection.run_detector_batch",
         "--include_image_size",
         "--include_exif_tags",
-        "datetimeoriginal,gpsinfo",
+        # Kept per image as `exif_metadata` in results.json, stored verbatim
+        # in File.exif_data at ingest, and surfaced as the camera_* /
+        # ambient_temperature columns of the Files export. Read via PIL, so
+        # standard EXIF only: never "all", which would drag the stringified
+        # MakerNote byte blob into the JSON and the DB for nothing.
+        "datetimeoriginal,gpsinfo,make,model,ambienttemperature,bodyserialnumber",
         "--threshold",
         str(confidence_threshold),
         str(model_path),
@@ -113,7 +118,7 @@ class MegaDetectorV1000(DetectionModel):
         --recursive \\
         --output_relative_filenames \\
         --include_image_size \\
-        --include_exif_tags "datetimeoriginal,gpsinfo" \\
+        --include_exif_tags "datetimeoriginal,gpsinfo,make,model,..." \\
         --threshold 0.005 \\
         model.pt folder/ output.json
     """

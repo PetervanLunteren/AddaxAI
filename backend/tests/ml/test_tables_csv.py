@@ -110,6 +110,16 @@ def test_folder_run_headers_omit_deployment_id_and_notes(db, tmp_path):
     assert "detection_id" in det_headers
     assert "relative_path" in files_headers
 
+    # The camera EXIF columns survive the folder-run trim: they are file
+    # metadata, not projects-only structure.
+    for name in (
+        "camera_make",
+        "camera_model",
+        "ambient_temperature",
+        "camera_serial",
+    ):
+        assert name in files_headers
+
 
 def test_folder_run_files_table_keeps_the_species_columns(db, tmp_path):
     """A folder run's whole point is "what is in my folder", so the one label

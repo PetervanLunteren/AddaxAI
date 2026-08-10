@@ -692,6 +692,17 @@ _FILES_HEADERS = [
     "relative_path",
     "absolute_path",
     "datetime",
+    # What the camera wrote into the image's EXIF at capture time, as
+    # extracted during analysis (megadetector.py's --include_exif_tags)
+    # and stored in File.exif_data. Blank for videos (no EXIF), for
+    # cameras that do not record the tag (most brands keep temperature
+    # in maker notes the PIL-based reader cannot see), and for analyses
+    # run before these tags were extracted; a re-analysis fills them,
+    # reprocessing cannot (it reuses the stored results.json).
+    "camera_make",
+    "camera_model",
+    "ambient_temperature",
+    "camera_serial",
     # File-level rollup of what the file holds: the raw detector category
     # of the file's strongest passing detection, or "blank"
     # (File.observation_type). Distinct from the per-box
@@ -752,6 +763,43 @@ _FILES_HEADERS = [
 ]
 
 
+# The EXIF tags behind the four camera columns, in column order. Keys are
+# the PIL tag names as they appear in File.exif_data.
+_CAMERA_EXIF_KEYS = ("Make", "Model", "AmbientTemperature", "BodySerialNumber")
+
+_BLANK_CAMERA_CELLS = ["", "", "", ""]
+
+
+def _camera_cells_by_file(
+    db: Session, file_ids: Sequence[str]
+) -> dict[str, list[str]]:
+    """The four camera cells (make, model, temperature, serial) per file id.
+
+    Fetched in a separate chunked query rather than through
+    ``get_scoped_detection_rows``: that query defers ``File.exif_data`` so
+    the blobs stay out of its ORDER BY sorter (the SQLITE_FULL fix noted
+    there), and this one has no ORDER BY, so reading them here is safe.
+    Only the four small strings are kept; files with no stored EXIF are
+    simply absent (callers fall back to blanks).
+    """
+    cells: dict[str, list[str]] = {}
+    for chunk in iter_id_chunks(file_ids):
+        stmt = select(File.id, File.exif_data).where(File.id.in_(chunk))
+        for file_id, blob in db.execute(stmt):
+            if not blob:
+                continue
+            # EXIF ASCII fields are fixed-length and NUL-padded, and the
+            # detector's reader keeps the padding ('HC500 HYPERFIRE\x00\x00',
+            # or a Make that is nothing but NULs). Strip NULs and whitespace:
+            # bare NULs would land in the CSV verbatim and crash openpyxl
+            # (IllegalCharacterError) in the XLSX export.
+            cells[file_id] = [
+                str(blob.get(key) or "").replace("\x00", "").strip()
+                for key in _CAMERA_EXIF_KEYS
+            ]
+    return cells
+
+
 def build_files_rows(
     db: Session,
     project: Project,
@@ -766,7 +814,9 @@ def build_files_rows(
         db, project, deployment_ids=deployment_ids
     )
     grouped = list(_group_rows_by_file(scoped_rows))
-    event_map = _events_by_file(db, [f.id for f, _d, _s, _dets in grouped])
+    file_ids = [f.id for f, _d, _s, _dets in grouped]
+    event_map = _events_by_file(db, file_ids)
+    camera_map = _camera_cells_by_file(db, file_ids)
 
     rows: list[list[Any]] = []
     for file_obj, deployment, _site, detections in grouped:
@@ -781,6 +831,7 @@ def build_files_rows(
                 _relative_path(file_obj, deployment),
                 file_obj.file_path,
                 _iso_datetime(file_obj.captured_at_local, tz_name),
+                *camera_map.get(file_obj.id, _BLANK_CAMERA_CELLS),
                 file_obj.observation_type or "",
                 *_strongest_species_cells(project, file_obj, detections),
                 "TRUE" if file_obj.verified else "FALSE",

@@ -249,3 +249,61 @@ def test_unknown_category_id_is_refused(deployment_scaffold):
                 db=db,
                 artifacts_folder=s["artifacts"],
             )
+
+
+def test_reload_refreshes_exif_data_on_existing_rows(deployment_scaffold):
+    """One rule: when the JSON carries an exif_metadata block, the row
+    stores it, on re-ingest as much as on create. An old JSON with no
+    block leaves the stored data alone (never blanks it)."""
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+
+    rel = str(s["img_paths"][0].relative_to(deploy_dir))
+
+    def _load(exif_metadata: dict | None) -> None:
+        image: dict = {
+            "file": rel,
+            "detections": [
+                {"category": "1", "conf": 0.9, "bbox": [0.1, 0.2, 0.3, 0.4]},
+            ],
+        }
+        if exif_metadata is not None:
+            image["exif_metadata"] = exif_metadata
+        md_json = build_detection_json([image])
+        json_path = write_json(s["artifacts"] / "results.json", md_json)
+        with patch("app.ml.json_pipeline.extract_video_dates", return_value={}):
+            load_json_to_database(
+                json_path=json_path,
+                deployment_id=s["deployment"].id,
+                deployment_folder=deploy_dir,
+                job_id=s["job"].id,
+                db=db,
+                artifacts_folder=s["artifacts"],
+            )
+
+    old_block = {"DateTimeOriginal": "2024:06:15 09:00:00"}
+    new_block = {
+        "DateTimeOriginal": "2024:06:15 09:00:00",
+        "Make": "RECONYX",
+        "Model": "HC600 HYPERFIRE",
+        "AmbientTemperature": "23.65",
+    }
+
+    _load(old_block)
+    file_record = (
+        db.query(File).filter(File.deployment_id == s["deployment"].id).one()
+    )
+    assert file_record.exif_data == old_block
+
+    # Re-analysis with the widened tag list lands on the same row and
+    # refreshes the stored block.
+    _load(new_block)
+    db.expire_all()
+    assert file_record.exif_data == new_block
+
+    # An empty block is falsy and must not blank the stored data.
+    # (Passed explicitly: build_detection_json defaults a block in only
+    # when the test sets none at all.)
+    _load({})
+    db.expire_all()
+    assert file_record.exif_data == new_block

@@ -311,13 +311,18 @@ def load_json_to_database(
             is_video = file_format in video_extensions
             file_type = "video" if is_video else "image"
 
+            # The EXIF block the detector extracted for this image (absent
+            # for videos). Read once here: the timestamp resolver consumes
+            # it, and both File branches below store it.
+            exif_metadata = img.get("exif_metadata")
+
             # Resolve capture timestamp inline (replaces the old pre-pass).
             # Recorded for every loadable image, including ones whose File
             # row already exists, to match the previous behaviour.
             captured_at_local, timestamp_source = _resolve_capture_timestamp(
                 absolute_path,
                 is_video=is_video,
-                exif_metadata=img.get("exif_metadata"),
+                exif_metadata=exif_metadata,
                 video_dates=video_dates,
                 use_file_mtime_fallback=use_file_mtime_fallback,
             )
@@ -374,9 +379,6 @@ def load_json_to_database(
                 if not file_id:
                     file_id = str(uuid.uuid4())
 
-                # captured_at_local already resolved inline above.
-                exif_metadata = img.get("exif_metadata")
-
                 # Apply user-specified datetime offset (from the "Adjust
                 # dates" modal). This corrects camera firmware clock errors
                 # like factory resets to 1970 or AM/PM mistakes.
@@ -431,12 +433,18 @@ def load_json_to_database(
                 )
                 db.add(file_record)
                 db.flush()  # Get file_record.id
-            elif best_frame_number is not None:
-                # Existing row, re-ingested. Keep the stored best frame in
-                # step with the detections being appended below; see the
-                # note where these two are resolved.
-                file_record.best_frame_number = best_frame_number
-                file_record.best_frame_path = best_frame_path
+            else:
+                if best_frame_number is not None:
+                    # Existing row, re-ingested. Keep the stored best frame
+                    # in step with the detections being appended below; see
+                    # the note where these two are resolved.
+                    file_record.best_frame_number = best_frame_number
+                    file_record.best_frame_path = best_frame_path
+                if exif_metadata:
+                    # Same principle for the EXIF block: the stored data
+                    # agrees with the JSON being loaded. An old JSON that
+                    # carries no block leaves the row's data alone.
+                    file_record.exif_data = exif_metadata
 
             # Video detections live on the parent video File row and
             # keep their `frame_number` column. We no longer create one

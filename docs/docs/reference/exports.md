@@ -82,6 +82,10 @@ One row per photo or video, whether or not anything was found.
 | `relative_path` | Path inside the deployment folder |
 | `absolute_path` | Full path on the machine that ran the analysis |
 | `datetime` | Capture time, camera local time. Empty if the file had no readable date |
+| `camera_make` | Camera manufacturer, from the image's own EXIF (`Make`), read once during analysis |
+| `camera_model` | Camera model, from EXIF `Model`, read once during analysis |
+| `ambient_temperature` | Temperature at capture, from EXIF `AmbientTemperature`, read once during analysis. The standard says degrees Celsius, but camera trap thermometers are rough, so treat it as indicative |
+| `camera_serial` | The camera's serial number, from EXIF `BodySerialNumber`, read once during analysis. Useful to confirm which physical camera took the file |
 | `observation_type` | What the file holds, taken from its strongest box: the one you checked yourself, or else the one the detector scored highest. For a video, only boxes on the one frame AddaxAI saved count. The value is whatever the detector called it, so animal, person or vehicle for MegaDetector, or blank when no box passed |
 | `detection_confidence` | How sure the detector was there is something there, for that same box. A verified box counts whatever its score, so this can sit below your [counting threshold](../understanding/confidence-and-verification.md) |
 | `classification_label` | The species of that same strongest box, not the most confident species on the file. Empty for a person, a vehicle, or an animal that was never classified |

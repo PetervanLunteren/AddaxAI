@@ -332,6 +332,69 @@ def test_export_files_includes_empties(client, db):
     assert by_id[f_blank.id][dt_i].endswith("+01:00")
 
 
+def test_files_export_camera_columns_come_from_stored_exif(client, db):
+    """The four camera columns sit directly after datetime and read the EXIF
+    block stored at analysis time (File.exif_data). A file without one, a
+    video, an old analysis, or a camera that writes no such tags, reads
+    four blanks."""
+    project, _site, deployment = _build_simple_project(db)
+    # NUL padding and trailing spaces are what real files carry: EXIF ASCII
+    # fields are fixed-length, and the detector's reader keeps the padding
+    # ('HC500 HYPERFIRE\x00\x00\x00\x00', 'Reconyx  ' — observed in the
+    # example-data test images). Bare NULs in a cell crash openpyxl.
+    f_exif = make_file(
+        db,
+        deployment_id=deployment.id,
+        observation_type="blank",
+        exif_data={
+            "DateTimeOriginal": "2024:06:15 09:00:00",
+            "Make": "RECONYX ",
+            "Model": "HC600 HYPERFIRE\x00\x00\x00\x00",
+            "AmbientTemperature": "23.65",
+            "BodySerialNumber": "H600FF01234567",
+        },
+    )
+    # A Make that is nothing but padding reads blank, not garbage.
+    f_nul = make_file(
+        db,
+        deployment_id=deployment.id,
+        observation_type="blank",
+        exif_data={"Make": "\x00\x00\x00\x00\x00\x00\x00"},
+    )
+    # Only the date, the shape every pre-change analysis stored.
+    f_dated = make_file(
+        db,
+        deployment_id=deployment.id,
+        observation_type="blank",
+        exif_data={"DateTimeOriginal": "2024:06:15 09:00:00"},
+    )
+    f_bare = make_file(db, deployment_id=deployment.id, observation_type="blank")
+    db.commit()
+
+    headers, by_id = _files_rows(client, project.id)
+    dt_i = headers.index("datetime")
+    assert headers[dt_i : dt_i + 5] == [
+        "datetime",
+        "camera_make",
+        "camera_model",
+        "ambient_temperature",
+        "camera_serial",
+    ]
+
+    def camera_cells(row: list[str]) -> list[str]:
+        return row[dt_i + 1 : dt_i + 5]
+
+    assert camera_cells(by_id[f_exif.id]) == [
+        "RECONYX",
+        "HC600 HYPERFIRE",
+        "23.65",
+        "H600FF01234567",
+    ]
+    assert camera_cells(by_id[f_nul.id]) == ["", "", "", ""]
+    assert camera_cells(by_id[f_dated.id]) == ["", "", "", ""]
+    assert camera_cells(by_id[f_bare.id]) == ["", "", "", ""]
+
+
 # ---------------------------------------------------------------------------
 # The one label a file gets
 #

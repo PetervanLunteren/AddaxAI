@@ -54,6 +54,17 @@ def test_image_cmd_defaults_add_no_inference_flags():
     assert cmd[-3:] == ["model.pt", "files.json", "out.json"]
 
 
+def test_image_cmd_extracts_the_camera_exif_tags():
+    """The Files export's camera columns exist only if the detector was
+    asked for these tags at analysis time; a tag missing here is blank in
+    every export forever (reprocessing reuses the stored JSON)."""
+    cmd = _image_cmd()
+    tags = cmd[cmd.index("--include_exif_tags") + 1]
+    assert tags == (
+        "datetimeoriginal,gpsinfo,make,model,ambienttemperature,bodyserialnumber"
+    )
+
+
 def test_image_cmd_image_size_and_augment():
     cmd = _image_cmd(image_size=1920, augment=True)
     assert cmd[cmd.index("--image_size") + 1] == "1920"
