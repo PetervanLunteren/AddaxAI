@@ -1,0 +1,16 @@
+.frame {
+  margin: 1.5rem 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+  background: var(--ifm-color-emphasis-100);
+  aspect-ratio: 16 / 9;
+}
+
+.player {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
