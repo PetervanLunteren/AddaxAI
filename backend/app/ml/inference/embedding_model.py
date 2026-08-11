@@ -21,6 +21,7 @@ from app.core.job_cancellation import (
 from app.core.logging_config import get_logger
 from app.core.subprocess_group import popen_group
 from app.ml.environment_manager import EnvironmentManager
+from app.ml.gpu_guard import cuda_guard_overrides
 from app.ml.schemas.model_manifest import ModelManifest
 from app.utils.subprocess_env import clean_python_env
 
@@ -64,6 +65,7 @@ class EmbeddingModel:
 
         self.model_path = model_path
         self.manifest = manifest
+        self.env_manager = env_manager
         self.python_path = env_manager.get_python("env-addaxai-base")
         self.script_path = Path(__file__).parent / "embedding_script.py"
 
@@ -129,7 +131,9 @@ class EmbeddingModel:
             progress_callback("Loading embedding model...", 0.0, None)
 
 
-        env = clean_python_env(PYTHONUNBUFFERED="1")
+        env = clean_python_env(
+            PYTHONUNBUFFERED="1", **cuda_guard_overrides(self.env_manager)
+        )
 
         process = popen_group(
             cmd,

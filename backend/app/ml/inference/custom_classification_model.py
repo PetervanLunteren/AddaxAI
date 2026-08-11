@@ -28,6 +28,7 @@ from app.core.job_cancellation import (
 from app.core.logging_config import get_logger
 from app.core.subprocess_group import popen_group
 from app.ml.environment_manager import EnvironmentManager
+from app.ml.gpu_guard import cuda_guard_overrides
 from app.ml.inference.base import ClassificationResult
 from app.utils.subprocess_env import clean_python_env
 
@@ -77,6 +78,7 @@ class CustomClassificationModel:
         self.model_dir = model_dir
         self.model_path = model_path
         self.env_name = env_name
+        self.env_manager = env_manager
 
         # Verify inference.py exists
         inference_script = model_dir / "inference.py"
@@ -203,7 +205,7 @@ class CustomClassificationModel:
             ]
 
             # Prepare environment
-            env = clean_python_env()
+            env = clean_python_env(**cuda_guard_overrides(self.env_manager))
             if platform.system() == "Darwin":
                 env["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
             # On Windows, tensorflow-v1 needs its conda CUDA DLLs (which live
