@@ -16,7 +16,10 @@ import { ArrowUpRight } from "lucide-react";
 import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
 import { formatVersion } from "@/lib/version";
-import { useLatestRelease } from "@/hooks/useLatestRelease";
+import {
+  ALL_RELEASE_NOTES_URL,
+  useLatestRelease,
+} from "@/hooks/useLatestRelease";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +28,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
+
+/**
+ * Release notes arrive as short "- item" bullet lines. Strip the bullet
+ * markers and render as a list; a release without notes yields an empty
+ * array and the section is omitted.
+ */
+function noteLines(body: string | null): string[] {
+  if (!body) return [];
+  return body
+    .split("\n")
+    .map((line) => line.trim().replace(/^[-*]\s+/, ""))
+    .filter((line) => line.length > 0);
+}
 
 interface CheckForUpdatesDialogProps {
   open: boolean;
@@ -39,6 +55,7 @@ export function CheckForUpdatesDialog({
 }: CheckForUpdatesDialogProps) {
   const {
     latest,
+    latestNotes,
     current,
     downloadUrl,
     upToDate,
@@ -46,6 +63,8 @@ export function CheckForUpdatesDialog({
     isLoading,
     error,
   } = useLatestRelease(currentVersion, open);
+
+  const notes = noteLines(latestNotes);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -88,15 +107,33 @@ export function CheckForUpdatesDialog({
                 <Callout variant="info">
                   <div className="space-y-2">
                     <div>A newer version is available.</div>
-                    <a
-                      href={downloadUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-primary hover:underline"
-                    >
-                      Download the latest version
-                      <ArrowUpRight className="h-3.5 w-3.5" />
-                    </a>
+                    {notes.length > 0 && (
+                      <ul className="max-h-72 list-disc space-y-1 overflow-y-auto pl-4">
+                        {notes.map((line, i) => (
+                          <li key={i}>{line}</li>
+                        ))}
+                      </ul>
+                    )}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                      <a
+                        href={downloadUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-blue-900 underline hover:no-underline"
+                      >
+                        Download the latest version
+                        <ArrowUpRight className="h-3.5 w-3.5" />
+                      </a>
+                      <a
+                        href={ALL_RELEASE_NOTES_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-blue-900 underline hover:no-underline"
+                      >
+                        All release notes
+                        <ArrowUpRight className="h-3.5 w-3.5" />
+                      </a>
+                    </div>
                   </div>
                 </Callout>
               )}

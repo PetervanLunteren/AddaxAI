@@ -14,6 +14,9 @@ import { compareVersions, parseVersion } from "@/lib/version";
 export interface GitHubRelease {
   tag_name: string;
   html_url: string;
+  /** Release notes as written on the GitHub release: short "- item"
+   *  bullet lines aimed at users. May be empty. */
+  body: string | null;
 }
 
 // Deliberately not /releases/latest: GitHub documents that one as "the
@@ -32,6 +35,11 @@ const RELEASES_API =
 // download story and can change it without an app release.
 export const DOWNLOAD_URL = "https://addaxai.com";
 
+// Full changelog for users several versions behind. The releases list
+// is mostly the notes themselves, unlike a single release page.
+export const ALL_RELEASE_NOTES_URL =
+  "https://github.com/PetervanLunteren/AddaxAI/releases";
+
 function normalize(v: string): string {
   return v.replace(/^v/, "").trim();
 }
@@ -39,6 +47,9 @@ function normalize(v: string): string {
 export interface LatestReleaseState {
   /** Newest published release version, without a leading "v". */
   latest: string | null;
+  /** That release's notes, verbatim. Null until fetched or when the
+   *  release has none. */
+  latestNotes: string | null;
   /** The installed version, normalised the same way. */
   current: string;
   /** Where to send the user to download it. */
@@ -104,6 +115,7 @@ export function useLatestRelease(
 
   return {
     latest,
+    latestNotes: data?.body || null,
     current,
     downloadUrl: DOWNLOAD_URL,
     upToDate,
