@@ -135,7 +135,25 @@ export function BackupNowDialog({ open, onOpenChange }: BackupNowDialogProps) {
           <Input
             id="backup-note"
             value={note}
-            onChange={(e) => setNote(normalizeNote(e.target.value))}
+            onChange={(e) => {
+              // Normalizing rewrites the typed character (uppercase,
+              // space), and a controlled input then drops the caret to
+              // the end when editing mid-string. Map the caret through
+              // the transform (normalize the prefix before it) and put
+              // both value and caret back on the DOM synchronously,
+              // which also covers React bailing out of a re-render
+              // when the normalized value is unchanged.
+              const el = e.target;
+              const pos = el.selectionStart ?? el.value.length;
+              const next = normalizeNote(el.value);
+              const caret = Math.min(
+                normalizeNote(el.value.slice(0, pos)).length,
+                next.length,
+              );
+              setNote(next);
+              el.value = next;
+              el.setSelectionRange(caret, caret);
+            }}
             placeholder="e.g. before the big run"
             disabled={busy !== null}
           />
