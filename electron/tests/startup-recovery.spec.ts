@@ -244,3 +244,38 @@ test('Delete database is gated on the confirm dialog', async () => {
 
   expect(fs.existsSync(marker)).toBe(true);
 });
+
+test('an unwritable data folder shows a clear error instead of a dead app', async () => {
+  /**
+   * The one startup failure the backend cannot report itself: its log
+   * file and the startup error file both live inside the directory that
+   * is broken. The Electron pre-flight has to catch it and explain it.
+   * Locking the parent (r-x) makes the data dir uncreatable, the same
+   * shape as ADDAXAI_USER_DATA_DIR pointing into a root-owned folder.
+   */
+  const lockedParent = path.join(userDataDir, 'locked');
+  fs.mkdirSync(lockedParent);
+  fs.chmodSync(lockedParent, 0o555);
+  const target = path.join(lockedParent, 'data');
+
+  try {
+    const app = await launch({ ADDAXAI_USER_DATA_DIR: target });
+    const win = await appWindow(app);
+
+    await expect(win.locator('.reason')).toContainText(
+      'cannot write to its data folder',
+      { timeout: 60_000 },
+    );
+    await expect(win.locator('.reason')).toContainText(target);
+    // Not recoverable: the restore/wipe buttons write marker files into
+    // the very folder that cannot be written.
+    await expect(
+      win.getByRole('button', { name: /Restore from backup/ }),
+    ).toHaveCount(0);
+    await expect(win.getByRole('button', { name: /Retry/ })).toHaveCount(1);
+
+    await app.close();
+  } finally {
+    fs.chmodSync(lockedParent, 0o755);
+  }
+});

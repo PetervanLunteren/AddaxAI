@@ -22,14 +22,14 @@ let backendSpawnError: Error | null = null;
 let lastBackendExit: { code: number | null; signal: string | null } | null = null;
 // Overridable so the app can be launched against a throwaway user data
 // dir without fighting a dev instance for the port. `spawnBackend`
-// passes the same value to the backend as API_PORT, so the two agree in
+// passes the same value to the backend as ADDAXAI_API_PORT, so the two agree in
 // both dev and packaged builds from this one setting.
 const BACKEND_PORT = Number(process.env.ADDAXAI_BACKEND_PORT) || 8000;
 const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
 
 /**
  * The user data directory, resolved the same way the backend resolves
- * it (`USER_DATA_DIR`, falling back to `~/AddaxAI`). Every path below
+ * it (`ADDAXAI_USER_DATA_DIR`, falling back to `~/AddaxAI`). Every path below
  * derives from this.
  *
  * The two processes have to agree: they communicate through files in
@@ -39,8 +39,23 @@ const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
  * them, which is also what made the app impossible to run end to end
  * against a throwaway database.
  */
-const USER_DATA_DIR =
-  process.env.USER_DATA_DIR || path.join(os.homedir(), 'AddaxAI');
+function resolveUserDataDir(): string {
+  const fallback = path.join(os.homedir(), 'AddaxAI');
+  const raw = (process.env.ADDAXAI_USER_DATA_DIR ?? '').trim();
+  if (!raw) return fallback;
+  if (!path.isAbsolute(raw)) {
+    // A relative path would resolve against each process's own working
+    // directory, so Electron and the backend would stop agreeing on
+    // where the marker files live. The backend refuses such values too;
+    // since spawnBackend passes our resolved value, it never sees one.
+    console.error(
+      `[Electron] Ignoring ADDAXAI_USER_DATA_DIR "${raw}": not an absolute path`,
+    );
+    return fallback;
+  }
+  return raw;
+}
+const USER_DATA_DIR = resolveUserDataDir();
 const LOGS_DIR = path.join(USER_DATA_DIR, 'logs');
 
 /**
@@ -471,7 +486,11 @@ function spawnBackend(): void {
       // The packaged backend binds the port itself from this setting;
       // the dev command gets it as a --port arg. Passing it either way
       // keeps one source of truth for which port we are talking to.
-      API_PORT: String(BACKEND_PORT),
+      ADDAXAI_API_PORT: String(BACKEND_PORT),
+      // Both processes must agree on the data directory (they talk
+      // through marker files in it). Pass the resolved value explicitly
+      // instead of relying on the process.env spread above.
+      ADDAXAI_USER_DATA_DIR: USER_DATA_DIR,
       ...(isDev ? { PYTHONPATH: cwd } : {}),
     },
   });
@@ -991,6 +1010,32 @@ function readStartupError(): string | null {
   }
 }
 
+/**
+ * Verify the data directory can be created and written before anything
+ * is spawned. When it cannot, the backend has no way to report the
+ * failure: its log file and the startup error file both live inside the
+ * very directory that is broken. So this is the one error that must be
+ * detected and explained from the Electron side. Returns null when the
+ * directory is usable, or a user-facing message when it is not.
+ */
+function preflightUserDataDir(): string | null {
+  try {
+    fs.mkdirSync(USER_DATA_DIR, { recursive: true });
+    const probe = path.join(USER_DATA_DIR, '.write-probe');
+    fs.writeFileSync(probe, 'ok');
+    fs.unlinkSync(probe);
+    return null;
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    return (
+      `AddaxAI cannot write to its data folder at ${USER_DATA_DIR}. ` +
+      `The folder must exist (or be creatable) and be writable by your user account. ` +
+      `If the ADDAXAI_USER_DATA_DIR environment variable is set, check that it points to a ` +
+      `folder you have permission to write to, then click Retry.\n\n(${detail})`
+    );
+  }
+}
+
 // One startup attempt at a time. The error page's buttons are inline
 // onclicks with no debounce of their own, and two fast clicks would
 // otherwise race two backends against the same SQLite file.
@@ -1005,6 +1050,14 @@ async function startBackendAndLoad(route = ''): Promise<void> {
   if (startupInFlight) return;
   startupInFlight = true;
   try {
+    // Checked on every attempt, so fixing the permissions and clicking
+    // Retry recovers without a relaunch.
+    const dirProblem = preflightUserDataDir();
+    if (dirProblem) {
+      console.error('[Electron] Data dir pre-flight failed:', dirProblem);
+      await showErrorPage(dirProblem, false);
+      return;
+    }
     await ensureBackend();
     await loadApp(route);
   } catch (error) {

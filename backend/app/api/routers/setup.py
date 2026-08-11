@@ -144,7 +144,7 @@ class SetupStatus(BaseModel):
 @router.get("/status", response_model=SetupStatus)
 def get_setup_status() -> SetupStatus:
     settings = get_settings()
-    models_dir = settings.user_data_dir / "models"
+    models_dir = settings.models_dir
 
     models_ok = _models_present(models_dir)
     env_ok = _env_present()
@@ -209,7 +209,7 @@ def _build_default_model_manifest(spec: dict) -> ModelManifest:
 def setup_complete() -> bool:
     """True when the base env and the default model weights are present."""
     settings = get_settings()
-    return _env_present() and _models_present(settings.user_data_dir / "models")
+    return _env_present() and _models_present(settings.models_dir)
 
 
 def run_setup(
@@ -230,7 +230,7 @@ def run_setup(
     on disk. Caller passes env names like "addaxai-base" or "pytorch".
     """
     settings = get_settings()
-    models_dir = settings.user_data_dir / "models"
+    models_dir = settings.models_dir
     storage = ModelStorage(models_dir)
     em = _get_env_manager()
 

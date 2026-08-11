@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from app.core.config import get_settings
 from app.core.logging_config import get_logger
 from app.ml.model_storage import find_stale_files
 from app.ml.schemas.model_manifest import resolve_hf_repo
@@ -44,11 +45,10 @@ class ModelCatalogUpdater:
         Initialize catalog updater.
 
         Args:
-            models_dir: Directory where models are stored (default: ~/AddaxAI/models)
+            models_dir: Directory where models are stored (default: settings.models_dir)
             catalog_url: URL to fetch catalog from (default: from config)
         """
-        user_data_dir = Path.home() / "AddaxAI"
-        self.models_dir = models_dir or (user_data_dir / "models")
+        self.models_dir = models_dir or get_settings().models_dir
         self.models_dir.mkdir(parents=True, exist_ok=True)
 
         # Default to GitHub raw URL

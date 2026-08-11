@@ -102,7 +102,7 @@ def create_project(
 
     # Validate models exist
     settings = get_settings()
-    manifest_mgr = ManifestManager(settings.user_data_dir / "models")
+    manifest_mgr = ManifestManager(settings.models_dir)
 
     # Validate detection model
     try:
@@ -150,7 +150,7 @@ def create_project(
             from app.ml.geofence import compute_excluded_classes, find_geofence_file
 
             model_dir = (
-                settings.user_data_dir / "models" / "cls"
+                settings.models_dir / "cls"
                 / project.classification_model_id
             )
             if model_dir.exists() and find_geofence_file(model_dir):
@@ -427,7 +427,7 @@ def update_project(
         from app.ml.manifest_manager import ManifestManager
 
         settings = get_settings()
-        manifest_mgr = ManifestManager(settings.user_data_dir / "models")
+        manifest_mgr = ManifestManager(settings.models_dir)
         try:
             manifest_mgr.get_model(project.embedding_model_id)
         except ValueError:
@@ -447,7 +447,7 @@ def update_project(
 
                 settings = get_settings()
                 taxonomy_path = (
-                    settings.user_data_dir / "models" / "cls"
+                    settings.models_dir / "cls"
                     / db_existing.classification_model_id / "taxonomy.csv"
                 )
                 if taxonomy_path.exists():

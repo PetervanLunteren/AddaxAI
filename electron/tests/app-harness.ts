@@ -32,8 +32,9 @@ export function makeHealthyDb(dir: string): string {
       env: {
         ...process.env,
         PYTHONPATH: BACKEND,
-        USER_DATA_DIR: dir,
-        DATABASE_URL: `sqlite:///${db}`,
+        // The DB path derives from ADDAXAI_USER_DATA_DIR (Settings
+        // derivation); no separate ADDAXAI_DATABASE_URL needed.
+        ADDAXAI_USER_DATA_DIR: dir,
       },
     },
   );
@@ -59,16 +60,17 @@ export function launch(options: LaunchOptions): Promise<ElectronApplication> {
       // immediately, and every test in the run fails with the useless
       // "Process failed to launch! ... exitCode=0". Note this is
       // Chromium's profile directory and has nothing to do with the
-      // app's own USER_DATA_DIR below.
+      // app's own ADDAXAI_USER_DATA_DIR below.
       `--user-data-dir=${path.join(userDataDir, 'chromium-profile')}`,
     ],
     env: {
       ...process.env,
-      USER_DATA_DIR: userDataDir,
-      DATABASE_URL: `sqlite:///${path.join(userDataDir, 'addaxai.db')}`,
+      // The backend derives its DB and models paths from this one
+      // variable, so it is the whole isolation story.
+      ADDAXAI_USER_DATA_DIR: userDataDir,
       ADDAXAI_BACKEND_PORT: port,
       // Keep the run offline and deterministic.
-      DISABLE_MODEL_UPDATES: 'true',
+      ADDAXAI_DISABLE_MODEL_UPDATES: 'true',
       ...env,
     },
   });

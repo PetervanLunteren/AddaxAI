@@ -108,10 +108,10 @@ export function BackupNowDialog({ open, onOpenChange }: BackupNowDialogProps) {
             <div className="flex-1">
               <div className="font-medium">Save to backups folder</div>
               <p className="text-sm text-muted-foreground mt-0.5">
-                Adds a snapshot to{" "}
-                <code className="text-xs">~/AddaxAI/backups/</code>. The
-                folder keeps the five most recent daily snapshots
-                automatically.
+                Adds a snapshot to the{" "}
+                <code className="text-xs">backups</code> folder inside the
+                app's data folder. The folder keeps the five most recent
+                daily snapshots automatically.
               </p>
             </div>
             {busy === "ring" && (

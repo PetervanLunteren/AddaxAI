@@ -34,8 +34,7 @@ class ManifestManager:
             models_dir: Root models directory containing det/ and cls/ subdirectories
         """
         if models_dir is None:
-            settings = get_settings()
-            models_dir = settings.user_data_dir / "models"
+            models_dir = get_settings().models_dir
         self.models_dir = models_dir
         self._cache: dict[str, ModelManifest] | None = None
 

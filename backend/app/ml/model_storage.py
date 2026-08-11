@@ -17,6 +17,7 @@ from pathlib import Path
 from huggingface_hub import HfApi
 from huggingface_hub.errors import RepositoryNotFoundError
 
+from app.core.config import get_settings
 from app.core.job_cancellation import JobCancelledError
 from app.core.logging_config import get_logger
 from app.ml.hf_downloader import HuggingFaceRepoDownloader
@@ -83,7 +84,9 @@ def find_stale_files(model_dir: Path, hf_repo: str) -> list[str] | None:
         staleness check cannot take down startup.
     """
     try:
-        info = HfApi().model_info(hf_repo, files_metadata=True, timeout=_HF_TIMEOUT)
+        info = HfApi(endpoint=get_settings().hf_endpoint).model_info(
+            hf_repo, files_metadata=True, timeout=_HF_TIMEOUT
+        )
     except RepositoryNotFoundError:
         # Private or renamed repo. Permanent on this machine, so logging it
         # at warning would repeat the same line on every single launch.
@@ -136,10 +139,9 @@ class ModelStorage:
         Initialize model storage manager.
 
         Args:
-            models_dir: Directory to store model weights (default: ~/AddaxAI/models)
+            models_dir: Directory to store model weights (default: settings.models_dir)
         """
-        user_data_dir = Path.home() / "AddaxAI"
-        self.models_dir = models_dir or (user_data_dir / "models")
+        self.models_dir = models_dir or get_settings().models_dir
         self.models_dir.mkdir(parents=True, exist_ok=True)
 
     def check_weights_ready(self, manifest: ModelManifest) -> bool:

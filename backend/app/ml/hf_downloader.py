@@ -25,6 +25,7 @@ import requests
 from huggingface_hub import HfApi
 from huggingface_hub.utils import RepositoryNotFoundError, RevisionNotFoundError
 
+from app.core.config import get_settings
 from app.core.job_cancellation import JobCancelledError
 from app.core.logging_config import get_logger
 
@@ -63,7 +64,13 @@ class HuggingFaceRepoDownloader:
         self.max_workers = max_workers
         self.chunk_size = chunk_size
         self.timeout = timeout
-        self.api = HfApi()
+        # Mirror support (mainland China): both the API metadata calls
+        # and the direct download URLs must go through the endpoint, or
+        # the mirror only covers half the traffic.
+        self.endpoint = (
+            get_settings().hf_endpoint or "https://huggingface.co"
+        ).rstrip("/")
+        self.api = HfApi(endpoint=self.endpoint)
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "AddaxAI-HuggingFace-Downloader/1.0"})
 
@@ -132,7 +139,7 @@ class HuggingFaceRepoDownloader:
                     )
 
                     hf_url = (
-                        f"https://huggingface.co/{repo_id}"
+                        f"{self.endpoint}/{repo_id}"
                         f"/resolve/{revision}/{file_path}"
                     )
                     if (
@@ -163,7 +170,7 @@ class HuggingFaceRepoDownloader:
                     logger.warning(f"Could not get size for {file_path}: {e}")
                     # Add file without size info
                     hf_url = (
-                        f"https://huggingface.co/{repo_id}"
+                        f"{self.endpoint}/{repo_id}"
                         f"/resolve/{revision}/{file_path}"
                     )
                     files_info.append(

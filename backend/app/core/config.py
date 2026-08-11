@@ -6,12 +6,18 @@ Following DEVELOPERS.md principles:
 - Can be overridden via environment variables
 - Crash early if configuration is invalid
 - Type hints everywhere
+
+Every setting reads its env var with the ADDAXAI_ prefix
+(ADDAXAI_USER_DATA_DIR, ADDAXAI_DATABASE_URL, ...). Unprefixed names
+like DATABASE_URL are common enough in other tooling that a stray
+export would silently redirect the app.
 """
 
+import os
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,6 +46,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
+        env_prefix="ADDAXAI_",
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
@@ -82,6 +89,60 @@ class Settings(BaseSettings):
         default=False,
         description="Disable automatic model catalog sync on startup"
     )
+
+    # HuggingFace mirror (mainland China). ADDAXAI_HF_ENDPOINT is the
+    # documented name; the ecosystem-standard HF_ENDPOINT still works as
+    # a fallback because huggingface_hub honours it natively and early
+    # adopters configured it per the original docs.
+    hf_endpoint: str | None = Field(
+        default=None,
+        description="Base URL of a HuggingFace mirror, e.g. https://hf-mirror.com"
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_blank_values(cls, data: dict) -> dict:
+        """
+        Treat blank strings as unset. An env var that is defined but
+        empty (a half-filled GPO entry, `ADDAXAI_USER_DATA_DIR= app` in
+        a shell script) would otherwise resolve paths against the
+        working directory. Electron treats blank as unset too, so this
+        keeps the two processes in agreement.
+        """
+        if isinstance(data, dict):
+            return {
+                k: v
+                for k, v in data.items()
+                if not (isinstance(v, str) and not v.strip())
+            }
+        return data
+
+    @model_validator(mode="after")
+    def _derive_from_user_data_dir(self) -> "Settings":
+        """
+        Derive database_url and models_dir from user_data_dir unless they
+        were set explicitly (env var, .env file, or constructor argument).
+        This is what makes ADDAXAI_USER_DATA_DIR alone relocate the
+        whole app; without it the two defaults resolve to ~/AddaxAI
+        regardless of the override.
+        """
+        # A relative path would silently resolve against the working
+        # directory, which differs between Electron and the backend, so
+        # the two processes would stop agreeing on where markers live.
+        # Electron ignores non-absolute values; here we crash early for
+        # anyone running the backend or CLI directly.
+        if not self.user_data_dir.is_absolute():
+            raise ValueError(
+                f"ADDAXAI_USER_DATA_DIR must be an absolute path, "
+                f"got {str(self.user_data_dir)!r}"
+            )
+        if "database_url" not in self.model_fields_set:
+            self.database_url = f"sqlite:///{self.user_data_dir / 'addaxai.db'}"
+        if "models_dir" not in self.model_fields_set:
+            self.models_dir = self.user_data_dir / "models"
+        if self.hf_endpoint is None:
+            self.hf_endpoint = os.environ.get("HF_ENDPOINT", "").strip() or None
+        return self
 
     def __init__(self, **kwargs: object) -> None:
         """

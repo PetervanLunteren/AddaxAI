@@ -58,7 +58,7 @@ def _resolve_models(model_ids: list[str]) -> list:
     """
     from app.ml.manifest_manager import ManifestManager
 
-    models_dir = get_settings().user_data_dir / "models"
+    models_dir = get_settings().models_dir
     manifests = ManifestManager(models_dir)
     return [manifests.get_model(model_id) for model_id in model_ids]
 
@@ -67,7 +67,7 @@ def _install_models(resolved: list) -> None:
     from app.ml.environment_manager import EnvironmentManager
     from app.ml.model_storage import ModelStorage
 
-    models_dir = get_settings().user_data_dir / "models"
+    models_dir = get_settings().models_dir
     storage = ModelStorage(models_dir)
     em = EnvironmentManager()
 
@@ -84,7 +84,7 @@ def _list_models() -> int:
     from app.ml.manifest_manager import ManifestManager
 
     _sync_catalog()
-    models_dir = get_settings().user_data_dir / "models"
+    models_dir = get_settings().models_dir
     manifests = ManifestManager(models_dir).load_manifests()
     if not manifests:
         print(

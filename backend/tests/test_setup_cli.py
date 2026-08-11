@@ -15,8 +15,8 @@ from app.api.routers import setup as setup_router
 
 @pytest.fixture(autouse=True)
 def isolated_user_data_dir(monkeypatch, tmp_path):
-    """Point USER_DATA_DIR at a throwaway dir so no test touches ~/AddaxAI."""
-    monkeypatch.setenv("USER_DATA_DIR", str(tmp_path))
+    """Point the data dir at a throwaway dir so no test touches ~/AddaxAI."""
+    monkeypatch.setenv("ADDAXAI_USER_DATA_DIR", str(tmp_path))
     return tmp_path
 
 

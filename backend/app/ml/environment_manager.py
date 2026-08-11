@@ -22,6 +22,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import ClassVar
 
+from app.core.config import get_settings
 from app.core.job_cancellation import JobCancelledError, is_cancel_requested
 from app.core.logging_config import get_logger
 from app.ml.schemas.model_manifest import ModelManifest
@@ -56,13 +57,14 @@ ENV_PROGRESS_FLOOR = 0.10
 def substitute_hf_endpoint(yaml_text: str, endpoint: str | None) -> str:
     """
     Point hardcoded huggingface.co URLs in an env YAML at the mirror
-    named by HF_ENDPOINT.
+    named by ADDAXAI_HF_ENDPOINT (settings.hf_endpoint, which also
+    falls back to the ecosystem-standard HF_ENDPOINT).
 
     The YAMLs pin one wheel by direct huggingface.co URL, and pip has no
     index configuration that can redirect a direct-URL requirement. On a
     network where huggingface.co is blocked (mainland China) that single
-    line fails the whole env build, whatever the user configures.
-    huggingface_hub already honours HF_ENDPOINT for model weights; this
+    line fails the whole env build, whatever the user configures. The
+    model downloads go through the same endpoint (hf_downloader); this
     extends the same opt-in to the env build. The #sha256= fragment is
     kept, so a mirror serving different bytes still fails the install.
     """
@@ -192,10 +194,10 @@ class EnvironmentManager:
         Initialize environment manager.
 
         Args:
-            envs_dir: Directory to store environments (default: ~/AddaxAI/envs)
-            micromamba_path: Path to micromamba binary (default: ~/AddaxAI/bin/micromamba)
+            envs_dir: Directory to store environments (default: <user data dir>/envs)
+            micromamba_path: Path to micromamba binary (default: <user data dir>/bin/micromamba)
         """
-        user_data_dir = Path.home() / "AddaxAI"
+        user_data_dir = get_settings().user_data_dir
         self.envs_dir = envs_dir or (user_data_dir / "envs")
 
         bin_dir = user_data_dir / "bin"
@@ -543,7 +545,7 @@ class EnvironmentManager:
             yaml_copy_path.write_text(
                 substitute_hf_endpoint(
                     yaml_path.read_text(encoding="utf-8"),
-                    os.environ.get("HF_ENDPOINT"),
+                    get_settings().hf_endpoint,
                 ),
                 encoding="utf-8",
                 newline="",

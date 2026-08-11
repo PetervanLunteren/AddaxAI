@@ -154,9 +154,8 @@ def _collect_env_status() -> dict[str, object]:
         return {"error": str(e)}
 
 
-def _collect_models_inventory(user_data_dir: Path) -> dict[str, object]:
+def _collect_models_inventory(models_dir: Path) -> dict[str, object]:
     """List of installed model dirs by category."""
-    models_dir = user_data_dir / "models"
     inventory: dict[str, object] = {"models_dir": str(models_dir), "models": {}}
     if not models_dir.exists():
         inventory["note"] = "models_dir does not exist"
@@ -359,7 +358,7 @@ def _build_diagnostic_zip() -> bytes:
             zf.writestr(
                 "models.json",
                 json.dumps(
-                    _collect_models_inventory(settings.user_data_dir),
+                    _collect_models_inventory(settings.models_dir),
                     indent=2,
                     default=str,
                 ),

@@ -380,7 +380,7 @@ def _friendly_model_name(model_id: str | None) -> str | None:
     settings = get_settings()
     try:
         manifest = ManifestManager(
-            settings.user_data_dir / "models"
+            settings.models_dir
         ).get_model(model_id)
         return manifest.friendly_name or model_id
     except Exception:

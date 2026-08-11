@@ -126,7 +126,7 @@ async def process_postprocessing_job(job_id: str) -> None:
 
             settings = get_settings()
             cls_model_dir = (
-                settings.user_data_dir / "models" / "cls"
+                settings.models_dir / "cls"
                 / project.classification_model_id
             )
             if cls_model_dir.exists():

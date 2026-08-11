@@ -910,7 +910,7 @@ def get_model_taxonomy(model_id: str):
 
     # Find taxonomy.csv in model directory
     # Look in ~/AddaxAI/models/cls/{model_id}/taxonomy.csv
-    taxonomy_path = settings.user_data_dir / "models" / "cls" / model_id / "taxonomy.csv"
+    taxonomy_path = settings.models_dir / "cls" / model_id / "taxonomy.csv"
 
     if not taxonomy_path.exists():
         raise HTTPException(
@@ -964,7 +964,7 @@ def get_model_geofence(
     )
 
     settings = get_settings()
-    model_dir = settings.user_data_dir / "models" / "cls" / model_id
+    model_dir = settings.models_dir / "cls" / model_id
 
     if not model_dir.exists():
         raise HTTPException(

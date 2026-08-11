@@ -539,7 +539,8 @@ function IssuesPanel({ issues }: { issues: string[] }) {
           ))}
           {extra > 0 && (
             <li className="italic">
-              and {extra} more (see ~/AddaxAI/logs/backend.log)
+              and {extra} more (see logs/backend.log in the app's data
+              folder)
             </li>
           )}
         </ul>

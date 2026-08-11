@@ -441,7 +441,7 @@ def write_run_readme(
     skipped_files = _skipped_files(db, project_id)
 
     settings = get_settings()
-    models_dir = settings.user_data_dir / "models"
+    models_dir = settings.models_dir
     manifest_mgr = ManifestManager(models_dir)
     geofence_summary = _geofence_summary(project, models_dir)
 

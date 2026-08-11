@@ -16,16 +16,18 @@ from datetime import date, datetime
 from pathlib import Path
 
 # --- Environment isolation (must happen before any app imports) ---
+# ADDAXAI_DATABASE_URL and ADDAXAI_MODELS_DIR are not set here on
+# purpose: Settings derives both from ADDAXAI_USER_DATA_DIR, and the
+# whole suite running on the derived values is what keeps that
+# derivation covered.
 _TEST_DIR = Path(tempfile.mkdtemp(prefix="addaxai_test_"))
 (_TEST_DIR / "models" / "det").mkdir(parents=True)
 (_TEST_DIR / "models" / "cls").mkdir(parents=True)
 (_TEST_DIR / "models" / "emb").mkdir(parents=True)
 (_TEST_DIR / "logs").mkdir(parents=True)
-os.environ.setdefault("DATABASE_URL", f"sqlite:///{_TEST_DIR / 'test.db'}")
-os.environ.setdefault("USER_DATA_DIR", str(_TEST_DIR))
-os.environ.setdefault("MODELS_DIR", str(_TEST_DIR / "models"))
-os.environ.setdefault("ENVIRONMENT", "test")
-os.environ.setdefault("DISABLE_MODEL_UPDATES", "true")
+os.environ.setdefault("ADDAXAI_USER_DATA_DIR", str(_TEST_DIR))
+os.environ.setdefault("ADDAXAI_ENVIRONMENT", "test")
+os.environ.setdefault("ADDAXAI_DISABLE_MODEL_UPDATES", "true")
 
 import pytest
 from fastapi.testclient import TestClient
@@ -33,6 +35,7 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.config import get_settings
 from app.db.base import Base, get_db
 from app.models.deployment import Deployment
 from app.models.detection import Detection
@@ -41,6 +44,22 @@ from app.models.file import File
 from app.models.job import Job
 from app.models.project import Project
 from app.models.site import Site
+
+# Crash early if an ambient env var (a developer's shell export of
+# ADDAXAI_USER_DATA_DIR, ADDAXAI_DATABASE_URL, or ADDAXAI_MODELS_DIR)
+# beat the setdefault calls above. Without this the suite would quietly
+# read and write the real data directory, and nothing else would notice.
+_settings = get_settings()
+for _name, _value in (
+    ("user_data_dir", str(_settings.user_data_dir)),
+    ("database_url", _settings.database_url),
+    ("models_dir", str(_settings.models_dir)),
+):
+    assert str(_TEST_DIR) in _value, (
+        f"test isolation broken: settings.{_name} = {_value!r} does not "
+        f"point inside the test dir {_TEST_DIR}. Unset the ambient "
+        f"environment variable and re-run."
+    )
 
 # Shared in-memory engine — single connection shared across all tests via StaticPool.
 # This ensures all sessions see the same data (in-memory SQLite is per-connection).
