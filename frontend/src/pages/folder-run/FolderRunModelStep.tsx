@@ -1414,18 +1414,20 @@ export function FolderRunModelStep() {
                               className="gap-2"
                               size="lg"
                             >
-                              {isMutating ? (
+                              {isMutating || isScanning ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
                                 <Sparkles className="h-4 w-4" />
                               )}
                               {isMutating
                                 ? "Starting..."
-                                : "Start analysis"}
+                                : isScanning
+                                  ? "Scanning folder..."
+                                  : "Start analysis"}
                             </Button>
                           </span>
                         </TooltipTrigger>
-                        {!canStart && !isMutating && (
+                        {!canStart && !isMutating && !isScanning && (
                           <TooltipContent>
                             <p>{actionTooltip(
                               folderReady,
