@@ -98,7 +98,9 @@ For real numbers per hardware type, see the [MegaDetector benchmark timings](htt
 
 <FaqItem id="it-does-not-use-my-gpu-what-can-i-do" q="It does not use my GPU. What can I do?">
 
-On Windows and Linux AddaxAI uses an NVIDIA GPU automatically, so if it is not being used, the driver is usually the reason. Install the latest driver from NVIDIA's site. For an RTX 50-series card you need version 555 or newer, otherwise the card runs far below its speed. Without a supported GPU the app falls back to the processor and still works, just slower.
+On Windows and Linux AddaxAI uses an NVIDIA GPU automatically, so if it is not being used, the driver is usually the reason. Install the latest driver from NVIDIA's site. For an RTX 50-series card you need version 555 or newer, otherwise the card runs far below its speed.
+
+Some cards are too old for the AI models we ship and cannot be used even with the latest driver. On Windows that is the GTX 900 series and older, and the matching Quadro M cards. On Linux the GTX 10 series and Quadro P cards are also too old. AddaxAI detects this, notes it in the log, and runs on the processor instead. Everything still works, just slower.
 
 </FaqItem>
 
