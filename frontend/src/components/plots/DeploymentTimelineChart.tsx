@@ -3,9 +3,11 @@
  *
  * One `<svg>` hosts three regions stacked vertically:
  *   - Top: x-axis with month / year ticks.
- *   - Middle: one row per site, outer light-teal bar per deployment,
+ *   - Below it: step-function area chart of concurrent active cameras.
+ *     It sits above the Gantt so the survey-wide summary stays visible
+ *     however many site rows follow.
+ *   - Bottom: one row per site, outer light-teal bar per deployment,
  *             inner primary-teal bars per trap-night interval.
- *   - Bottom: step-function area chart of concurrent active cameras.
  *
  * Dates arrive as `YYYY-MM-DD` strings. They are parsed via
  * `Date.UTC(...)` to stay tz-agnostic (same reasoning as frontend/src/lib/datetime.ts).
@@ -273,6 +275,10 @@ export function DeploymentTimelineChart({
     // disjoint-sequential intervals collapse to one track. No cap: if a
     // deployment bundles 20 cameras, the row grows to accommodate all 20.
     const axisY = TOP_PADDING + AXIS_HEIGHT;
+    // Concurrent strip first, directly under the axis, so it is visible
+    // without scrolling on projects with hundreds of rows.
+    const concurrentTop = axisY + SECTION_GAP;
+    const concurrentBottom = concurrentTop + CONCURRENT_HEIGHT;
     interface SiteGeom {
       trackCount: number;
       rowTop: number;
@@ -280,7 +286,7 @@ export function DeploymentTimelineChart({
       depTracks: Map<string, { trackByIndex: number[]; trackCount: number }>;
     }
     const siteGeoms: SiteGeom[] = [];
-    let cursorY = axisY;
+    let cursorY = concurrentBottom + SECTION_GAP;
     for (const site of data.sites) {
       const depTracks = new Map<
         string,
@@ -302,18 +308,8 @@ export function DeploymentTimelineChart({
       });
       cursorY += rowHeight + densityConfig.rowGap;
     }
-    const ganttHeight = cursorY - axisY;
-    const totalHeight =
-      TOP_PADDING
-      + AXIS_HEIGHT
-      + ganttHeight
-      + SECTION_GAP
-      + CONCURRENT_HEIGHT
-      + 18;
-
-    const ganttBottom = axisY + ganttHeight;
-    const concurrentTop = ganttBottom + SECTION_GAP;
-    const concurrentBottom = concurrentTop + CONCURRENT_HEIGHT;
+    const ganttBottom = cursorY;
+    const totalHeight = ganttBottom + 18;
 
     const dateToX = (ms: number) =>
       plotLeft + ((ms - xMin) / (xMax - xMin)) * plotWidth;
@@ -442,7 +438,7 @@ export function DeploymentTimelineChart({
               x1={x}
               x2={x}
               y1={geometry.axisY}
-              y2={geometry.concurrentBottom}
+              y2={geometry.ganttBottom}
               stroke={GRID_STROKE}
               strokeWidth={1}
               shapeRendering="crispEdges"
@@ -577,7 +573,7 @@ export function DeploymentTimelineChart({
             x={Math.min(drag.startX, drag.currentX)}
             y={geometry.axisY}
             width={Math.abs(drag.currentX - drag.startX)}
-            height={geometry.concurrentBottom - geometry.axisY}
+            height={geometry.ganttBottom - geometry.axisY}
             fill={BAR_FILL}
             opacity={0.12}
             pointerEvents="none"

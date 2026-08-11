@@ -2,7 +2,7 @@
  * Insights → Deployment timeline page.
  *
  * Row-per-site Gantt with folder-aware trap-night intervals, plus a
- * concurrent-cameras area chart beneath the Gantt and a reactive
+ * concurrent-cameras area chart above the Gantt and a reactive
  * metrics strip above it. See `/Users/peter/.claude/plans/in-depth-plot-concurrent-waterfall.md`
  * for the design rationale.
  */
@@ -263,8 +263,8 @@ export function DeploymentTimelinePage() {
               One row per site. Each teal bar is a folder-aware trap-night
               interval: the camera's first file to its last file in one
               subfolder. Whitespace between bars on the same row is time
-              the site was not monitored. The area chart beneath shows how
-              many cameras were active on each day across the whole
+              the site was not monitored. The area chart at the top shows
+              how many cameras were active on each day across the whole
               survey. Drag horizontally across the date axis at the top to
               zoom into a specific range.
             </p>
@@ -282,7 +282,7 @@ export function DeploymentTimelinePage() {
               <p>
                 Stacked bars on one row mean the deployment contained files
                 from multiple cameras running at the same time. The
-                concurrent-cameras chart underneath counts how many cameras
+                concurrent-cameras chart at the top counts how many cameras
                 were recording on each calendar day. Rows with many gaps, or
                 deployments with tall stacks, usually flag uneven sampling
                 effort, worth mentioning in methods or controlling for in
