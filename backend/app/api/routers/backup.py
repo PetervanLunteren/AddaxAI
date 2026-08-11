@@ -32,6 +32,7 @@ from app.core.logging_config import get_logger
 from app.db.backup import (
     BackupInvalidError,
     list_ring_buffer,
+    manual_backup_filename,
     manual_snapshot,
     schedule_restore,
     snapshot_db,
@@ -60,6 +61,7 @@ def list_backups() -> BackupListResponse:
             size_bytes=e.size_bytes,
             created_utc=e.created_utc,
             kind=e.kind,
+            note=e.note,
         )
         for e in list_ring_buffer(settings)
     ]
@@ -74,13 +76,17 @@ def take_snapshot(req: SnapshotRequest) -> SnapshotResponse:
     folder (always produces one; ignores the daily throttle).
 
     With `target_dir`: writes to the chosen folder using the same
-    `addaxai-manual-<utc-iso>.db` filename. The folder must exist. These
-    are the user's to manage and are not listed by GET /list.
+    `addaxai-manual-<utc-iso>[-<note>].db` filename. The folder must
+    exist. These are the user's to manage and are not listed by
+    GET /list.
+
+    `note` is optional free text; it is slugged into the filename on
+    both paths so the restore picker can show why the snapshot exists.
     """
     settings = get_settings()
 
     if req.target_dir is None:
-        path = manual_snapshot(settings)
+        path = manual_snapshot(settings, note=req.note)
         return SnapshotResponse(path=str(path), size_bytes=path.stat().st_size)
 
     target = Path(req.target_dir)
@@ -90,9 +96,8 @@ def take_snapshot(req: SnapshotRequest) -> SnapshotResponse:
             detail=f"Target folder does not exist: {target}",
         )
 
-    from app.db.backup import _backup_timestamp, _manual_filename
     src = settings.user_data_dir / "addaxai.db"
-    dst = target / _manual_filename(_backup_timestamp())
+    dst = target / manual_backup_filename(req.note)
     snapshot_db(src, dst)
     logger.info(f"Wrote backup to user-chosen folder: {dst}")
     return SnapshotResponse(path=str(dst), size_bytes=dst.stat().st_size)

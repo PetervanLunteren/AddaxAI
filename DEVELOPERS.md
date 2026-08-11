@@ -172,8 +172,10 @@ Four kinds of snapshot:
 | Daily rolling | App startup, throttled to one per UTC date | `addaxai-<utc-iso>.db` | Keep 5 newest |
 | Pre-upgrade | Startup, only when alembic detects a pending upgrade | `addaxai-pre-upgrade-<rev>-<utc-iso>.db` | Keep 5 newest, one per revision |
 | Pre-restore | Right before a restore swaps a backup in | `addaxai-pre-restore-<utc-iso>.db` | Keep 5 newest |
-| Manual | User clicks "Back up database", or the app is about to wipe the DB | `addaxai-manual-<utc-iso>.db` | Never auto-pruned |
-| Manual to chosen folder | User clicks "Back up database" → "Save to chosen folder…" | `addaxai-<utc-iso>.db` in user-picked dir | Untouched by the app |
+| Manual | User clicks "Back up database", or the app is about to wipe the DB | `addaxai-manual-<utc-iso>[-<note>].db` | Never auto-pruned |
+| Manual to chosen folder | User clicks "Back up database" → "Save to chosen folder…" | `addaxai-manual-<utc-iso>[-<note>].db` in user-picked dir | Untouched by the app |
+
+**The optional note lives in the filename.** The backup dialog offers a short note ("before the big run"), slugged to lowercase `[a-z0-9-]` and capped at 40 chars by `_slugify_note` in `backup.py`; the restore picker parses it back out of `_MANUAL_RE` and shows it on the card. No sidecar files and no registry, so the note travels with the file and there is no state to fall out of sync. Consequence: app versions from before the note feature do not match the noted filename and will not list such a backup in their restore picker (it stays restorable via "Restore from a file"). The frontend input mirrors the slug rule (`normalizeNote` in `BackupNowDialog.tsx`) so the field shows exactly what the filename gets.
 
 **One pre-upgrade snapshot per revision.** A second copy of the same unmigrated DB is worth nothing and costs a full DB copy, so `pre_upgrade_backup` returns `None` when it already has one for that revision. Without that, repeated launches at the same revision push the real pre-upgrade snapshot out of the ring buffer with identical duplicates, which is exactly the snapshot that matters on the day a migration eats data. Two real ways that happens: a `uvicorn --reload` storm in dev (one observed run left 805 MB of five identical copies), and a user clicking Retry on the startup error page.
 

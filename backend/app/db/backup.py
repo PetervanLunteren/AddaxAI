@@ -10,8 +10,16 @@ Storage layout under `~/AddaxAI/backups/`:
 - `addaxai-<utc-iso>.db`                        — daily rolling snapshot
 - `addaxai-pre-upgrade-<rev>-<utc-iso>.db`      — pre-upgrade snapshot
 - `addaxai-pre-restore-<utc-iso>.db`            — safety snapshot before a restore
-- `addaxai-manual-<utc-iso>.db`                 — user-initiated "back up now"
+- `addaxai-manual-<utc-iso>[-<note>].db`        — user-initiated "back up now"
 - `.last-rolling-utc-date`                      — daily-throttle marker
+
+Manual backups may carry an optional user note, slugged into the
+filename (lowercase a-z, 0-9, hyphens). The filename is the only place
+the note lives, so it travels with the file to external drives and
+needs no sidecar state. One consequence: app versions older than the
+note feature do not match the noted filename and will not list such a
+backup in their restore picker; it stays restorable there via the
+"Restore from a file" escape hatch.
 
 Each automatic kind keeps its own rolling ring of the 5 newest (daily,
 pre-upgrade, pre-restore): they are full DB copies, so unbounded
@@ -26,6 +34,7 @@ manage.
 import re
 import shutil
 import sqlite3
+import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -48,7 +57,13 @@ _TS = r"\d{4}-\d{2}-\d{2}T\d{6}Z"
 _DAILY_RE = re.compile(rf"^addaxai-({_TS})\.db$")
 _PRE_UPGRADE_RE = re.compile(rf"^addaxai-pre-upgrade-([^-\s]+)-({_TS})\.db$")
 _PRE_RESTORE_RE = re.compile(rf"^addaxai-pre-restore-({_TS})\.db$")
-_MANUAL_RE = re.compile(rf"^addaxai-manual-({_TS})\.db$")
+# The optional note group accepts more than `_slugify_note` generates
+# (trailing hyphens, `--` runs), on purpose: a file the user renamed by
+# hand should stay listable as long as it stays lowercase.
+_MANUAL_RE = re.compile(rf"^addaxai-manual-({_TS})(?:-([a-z0-9][a-z0-9-]*))?\.db$")
+
+# Longest note slug we ever write into a filename.
+NOTE_SLUG_MAX_LEN = 40
 
 BackupKind = Literal["daily", "pre-upgrade", "pre-restore", "manual"]
 
@@ -65,6 +80,9 @@ class BackupEntry:
     size_bytes: int
     created_utc: datetime
     kind: BackupKind
+    # User note parsed from a manual backup's filename; None for the
+    # automatic kinds and for manual backups saved without one.
+    note: str | None = None
 
 
 def snapshot_db(src: Path, dst: Path) -> None:
@@ -177,16 +195,29 @@ def force_ring_buffer_backup(settings: Settings) -> Path:
     return dst
 
 
-def manual_snapshot(settings: Settings) -> Path:
+def manual_snapshot(settings: Settings, note: str | None = None) -> Path:
     """Snapshot the live DB to a manual-tagged file (user "back up now").
 
     Kept indefinitely (not part of the daily cap): the user asked for it.
+    An optional note is slugged into the filename so the restore picker
+    can show why the snapshot was taken.
     """
     src = _live_db_path(settings)
-    dst = _backups_dir(settings) / _manual_filename(_backup_timestamp())
+    dst = _backups_dir(settings) / manual_backup_filename(note)
     snapshot_db(src, dst)
     logger.info(f"Wrote manual backup: {dst.name}")
     return dst
+
+
+def manual_backup_filename(note: str | None = None) -> str:
+    """Filename for a manual snapshot taken now, with the note slugged in.
+
+    The one public builder for the manual pattern; also used by the
+    snapshot endpoint's save-to-chosen-folder branch.
+    """
+    ts = _backup_timestamp()
+    slug = _slugify_note(note)
+    return f"addaxai-manual-{ts}-{slug}.db" if slug else f"addaxai-manual-{ts}.db"
 
 
 def pre_restore_snapshot(settings: Settings) -> Path:
@@ -259,6 +290,7 @@ def list_ring_buffer(settings: Settings) -> list[BackupEntry]:
                 size_bytes=stat.st_size,
                 created_utc=datetime.fromtimestamp(stat.st_mtime, tz=UTC),
                 kind=kind,
+                note=_manual_note(child.name) if kind == "manual" else None,
             )
         )
     entries.sort(key=lambda e: e.created_utc, reverse=True)
@@ -370,8 +402,31 @@ def _pre_restore_filename(ts: str) -> str:
     return f"addaxai-pre-restore-{ts}.db"
 
 
-def _manual_filename(ts: str) -> str:
-    return f"addaxai-manual-{ts}.db"
+def _slugify_note(raw: str | None) -> str | None:
+    """Reduce a free-text note to a filename slug, or None if nothing survives.
+
+    ASCII-fold, lowercase, collapse every run of anything else into one
+    hyphen, strip the ends, cap at `NOTE_SLUG_MAX_LEN`. Deliberately not
+    the app's other slugifiers: `export_formats.slugify` keeps non-ASCII
+    letters (which `_MANUAL_RE` would refuse, silently unlisting the
+    file) and `separate_folders._slug` separates with underscores.
+    """
+    if not raw:
+        return None
+    folded = (
+        unicodedata.normalize("NFKD", raw)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .lower()
+    )
+    slug = re.sub(r"[^a-z0-9]+", "-", folded).strip("-")
+    return slug[:NOTE_SLUG_MAX_LEN].rstrip("-") or None
+
+
+def _manual_note(name: str) -> str | None:
+    """The note slug in a manual backup's filename, or None."""
+    m = _MANUAL_RE.match(name)
+    return m.group(2) if m else None
 
 
 def _classify(name: str) -> BackupKind | None:

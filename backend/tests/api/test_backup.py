@@ -1,5 +1,6 @@
 """Tests for the /api/backup endpoints."""
 
+import re
 import shutil
 import sqlite3
 from datetime import UTC, datetime
@@ -103,6 +104,36 @@ def test_snapshot_to_missing_target_dir_returns_400(client, live_db, tmp_path: P
     assert "does not exist" in resp.json()["detail"]
 
 
+def test_snapshot_with_note_slugs_it_into_filename(client, live_db) -> None:
+    resp = client.post("/api/backup/snapshot", json={"note": "My Note"})
+    assert resp.status_code == 200, resp.text
+    path = Path(resp.json()["path"])
+    assert path.name.endswith("-my-note.db")
+    assert _classify(path.name) == "manual"
+
+
+def test_snapshot_to_target_dir_with_note(client, live_db, tmp_path: Path) -> None:
+    chosen = tmp_path / "user-chosen"
+    chosen.mkdir()
+
+    resp = client.post(
+        "/api/backup/snapshot",
+        json={"target_dir": str(chosen), "note": "Before verifying A, B"},
+    )
+    assert resp.status_code == 200, resp.text
+    path = Path(resp.json()["path"])
+    assert path.parent == chosen
+    assert path.name.endswith("-before-verifying-a-b.db")
+    assert _classify(path.name) == "manual"
+
+
+def test_snapshot_with_unusable_note_falls_back_to_plain(client, live_db) -> None:
+    resp = client.post("/api/backup/snapshot", json={"note": "!!!"})
+    assert resp.status_code == 200, resp.text
+    path = Path(resp.json()["path"])
+    assert re.fullmatch(r"addaxai-manual-\d{4}-\d{2}-\d{2}T\d{6}Z\.db", path.name)
+
+
 def test_snapshot_force_ignores_daily_throttle(client, live_db) -> None:
     first = client.post("/api/backup/snapshot", json={})
     assert first.status_code == 200
@@ -134,6 +165,19 @@ def test_list_classifies_daily_and_pre_upgrade(client, live_db) -> None:
     by_name = {Path(e["path"]).name: e["kind"] for e in entries}
     assert by_name[daily_path.name] == "daily"
     assert by_name[pre_path.name] == "pre-upgrade"
+
+
+def test_list_carries_note_for_manual_entries(client, live_db) -> None:
+    noted = client.post("/api/backup/snapshot", json={"note": "big run"})
+    plain = client.post("/api/backup/snapshot", json={})
+    noted_name = Path(noted.json()["path"]).name
+    plain_name = Path(plain.json()["path"]).name
+
+    resp = client.get("/api/backup/list")
+    assert resp.status_code == 200
+    by_name = {Path(e["path"]).name: e["note"] for e in resp.json()["entries"]}
+    assert by_name[noted_name] == "big-run"
+    assert by_name[plain_name] is None
 
 
 # ── /api/backup/restore ──────────────────────────────────────────────

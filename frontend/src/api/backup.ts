@@ -16,6 +16,8 @@ export interface BackupEntry {
   size_bytes: number;
   created_utc: string;
   kind: BackupKind;
+  /** Note slug from a manual backup's filename; null otherwise. */
+  note: string | null;
 }
 
 export interface BackupListResponse {
@@ -34,10 +36,13 @@ export interface SnapshotResponse {
 export const backupApi = {
   getDir: () => api.get<BackupDirResponse>("/api/backup/dir"),
   list: () => api.get<BackupListResponse>("/api/backup/list"),
-  snapshotToRingBuffer: () =>
-    api.post<SnapshotResponse>("/api/backup/snapshot", {}),
-  snapshotToFolder: (target_dir: string) =>
-    api.post<SnapshotResponse>("/api/backup/snapshot", { target_dir }),
+  snapshotToRingBuffer: (note?: string) =>
+    api.post<SnapshotResponse>("/api/backup/snapshot", { note: note || null }),
+  snapshotToFolder: (target_dir: string, note?: string) =>
+    api.post<SnapshotResponse>("/api/backup/snapshot", {
+      target_dir,
+      note: note || null,
+    }),
   restore: (source_path: string) =>
     api.post<{ scheduled: true }>("/api/backup/restore", { source_path }),
 };

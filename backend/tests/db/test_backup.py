@@ -1,6 +1,7 @@
 """Tests for `app.db.backup`."""
 
 import os
+import re
 import sqlite3
 import time
 from datetime import UTC, datetime
@@ -15,11 +16,15 @@ from app.db.backup import (
     BackupInvalidError,
     _classify,
     _daily_filename,
+    _manual_note,
     _pre_upgrade_filename,
     _prune_ring_buffer,
+    _slugify_note,
     consume_restore_marker,
     force_ring_buffer_backup,
     list_ring_buffer,
+    manual_backup_filename,
+    manual_snapshot,
     pre_upgrade_backup,
     restore_db,
     ring_buffer_backup,
@@ -234,6 +239,106 @@ def test_pre_upgrade_backup_skips_a_revision_it_already_has(
     assert second is not None and second.name != first.name
 
 
+# ── manual snapshots and note slugs ──────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Camera Trap 3", "camera-trap-3"),
+        ("  Überraschung!  ", "uberraschung"),
+        ("wifi 2.4GHz", "wifi-2-4ghz"),
+        ("---", None),
+        ("", None),
+        (None, None),
+        ("🦊🦊", None),
+        ("a" * 50, "a" * 40),
+        # Truncation landing on a hyphen must not leave one dangling.
+        ("a" * 39 + " bc", "a" * 39),
+    ],
+)
+def test_slugify_note(raw: str | None, expected: str | None) -> None:
+    assert _slugify_note(raw) == expected
+
+
+def test_slugify_note_is_idempotent() -> None:
+    for raw in ("Camera Trap 3", "wifi 2.4GHz", "a" * 50):
+        once = _slugify_note(raw)
+        assert _slugify_note(once) == once
+
+
+def test_manual_backup_filename_round_trip() -> None:
+    plain = manual_backup_filename()
+    noted = manual_backup_filename("Before the Big Run!")
+    assert _classify(plain) == "manual"
+    assert _classify(noted) == "manual"
+    assert _manual_note(plain) is None
+    assert _manual_note(noted) == "before-the-big-run"
+
+
+def test_manual_snapshot_with_note_lists_note(tmp_settings: Settings) -> None:
+    path = manual_snapshot(tmp_settings, note="My Note")
+    assert path.is_file()
+    notes = {e.path.name: e.note for e in list_ring_buffer(tmp_settings)}
+    assert notes[path.name] == "my-note"
+
+
+def test_manual_snapshot_without_note_keeps_legacy_shape(
+    tmp_settings: Settings,
+) -> None:
+    """Regression guard for the note-less wipe caller in the lifespan."""
+    path = manual_snapshot(tmp_settings)
+    assert re.fullmatch(
+        r"addaxai-manual-\d{4}-\d{2}-\d{2}T\d{6}Z\.db", path.name
+    )
+    entry = next(
+        e for e in list_ring_buffer(tmp_settings) if e.path.name == path.name
+    )
+    assert entry.kind == "manual"
+    assert entry.note is None
+
+
+def test_hand_renamed_manual_backup_stays_listed(tmp_settings: Settings) -> None:
+    """The parse language is wider than what we generate, on purpose:
+    a file the user renamed by hand stays listable while it stays
+    lowercase."""
+    backups_dir = tmp_settings.user_data_dir / "backups"
+    backups_dir.mkdir(parents=True, exist_ok=True)
+    renamed = backups_dir / "addaxai-manual-2026-01-01T000000Z-a-.db"
+    renamed.write_bytes(b"x" * 200)
+
+    entries = {e.path.name: e for e in list_ring_buffer(tmp_settings)}
+    assert entries[renamed.name].kind == "manual"
+    assert entries[renamed.name].note == "a-"
+
+
+def test_prune_does_not_touch_manual(tmp_path: Path) -> None:
+    base_ts = time.time()
+    manual_files = []
+    for i in range(3):
+        p = tmp_path / f"addaxai-manual-2026-01-0{i + 1}T000000Z-note-{i}.db"
+        _make_dummy_backup(p, mtime=base_ts - i * 86400)
+        manual_files.append(p)
+
+    # Add many daily files so prune runs.
+    for i in range(8):
+        ts_str = datetime.fromtimestamp(base_ts - (i + 100) * 86400, tz=UTC).strftime(
+            "%Y-%m-%dT%H%M%SZ"
+        )
+        _make_dummy_backup(tmp_path / _daily_filename(ts_str), mtime=base_ts - (i + 100) * 86400)
+
+    _prune_ring_buffer(tmp_path, keep=DAILY_BACKUP_KEEP)
+
+    for p in manual_files:
+        assert p.exists(), f"Manual backup {p.name} was incorrectly pruned"
+
+
+def test_schedule_restore_accepts_noted_manual(tmp_settings: Settings) -> None:
+    snap = manual_snapshot(tmp_settings, note="before big run")
+    marker = schedule_restore(tmp_settings, snap)
+    assert marker.read_text().strip() == str(snap.resolve())
+
+
 # ── list_ring_buffer ─────────────────────────────────────────────────
 
 
@@ -260,12 +365,15 @@ def test_list_ring_buffer_ignores_unrelated_files(tmp_settings: Settings) -> Non
     backups_dir.mkdir(parents=True, exist_ok=True)
     (backups_dir / "stray.txt").write_text("hello")
     (backups_dir / "addaxai-not-a-real-backup.db").write_bytes(b"x" * 200)
+    # Uppercase in a note slug is outside the parse language.
+    (backups_dir / "addaxai-manual-2026-01-01T000000Z-CAPS.db").write_bytes(b"x" * 200)
     ring_buffer_backup(tmp_settings)
 
     entries = list_ring_buffer(tmp_settings)
     names = {e.path.name for e in entries}
     assert "stray.txt" not in names
     assert "addaxai-not-a-real-backup.db" not in names
+    assert "addaxai-manual-2026-01-01T000000Z-CAPS.db" not in names
 
 
 # ── restore_db ───────────────────────────────────────────────────────

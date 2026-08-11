@@ -171,6 +171,9 @@ export function RestoreBackupDialog({
             entries.map((e) => {
               const f = FLAVOUR[e.kind];
               const when = formatAuditWhen(e.created_utc);
+              // A manual backup's note says why it exists, which beats
+              // the generic "you saved this".
+              const sub = e.note ? e.note.replace(/-/g, " ") : f.sub;
               const isSel = !customPath && selectedPath === e.path;
               return (
                 <button
@@ -202,7 +205,7 @@ export function RestoreBackupDialog({
                       {when.rel}
                     </span>
                     <span className="block truncate text-xs text-muted-foreground tabular-nums">
-                      {when.abs} · {f.sub}
+                      {when.abs} · {sub}
                     </span>
                   </span>
                   <span className="flex shrink-0 flex-col items-end gap-1">

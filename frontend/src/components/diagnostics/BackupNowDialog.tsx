@@ -11,9 +11,12 @@
  *
  * On success we show a toast with a "Reveal" action that opens the
  * file in the OS file manager.
+ *
+ * An optional note is slugged into the backup's filename (both paths)
+ * and shown again on the card in the restore picker.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Database, FolderOpen, HardDrive } from "lucide-react";
 import { toast } from "sonner";
@@ -27,6 +30,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
+import { FieldHeader } from "../ui/field-header";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+
+/**
+ * Live mirror of the backend's `_slugify_note` (`app/db/backup.py`), so
+ * the field shows exactly what ends up in the filename. Same accepted
+ * mirror pattern as confidence.py / confidence.ts. One deliberate
+ * difference: no edge-hyphen stripping here, or typing the space in
+ * "camera trap" would be eaten mid-word; the backend strips edges on
+ * save.
+ */
+function normalizeNote(raw: string): string {
+  return raw
+    .normalize("NFKD")
+    .replace(/[^\x00-\x7F]/g, "") // ascii-fold, like encode("ascii", "ignore")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .slice(0, 40);
+}
 
 interface BackupNowDialogProps {
   open: boolean;
@@ -41,9 +64,16 @@ function revealAfterSave(savedPath: string): void {
 
 export function BackupNowDialog({ open, onOpenChange }: BackupNowDialogProps) {
   const [busy, setBusy] = useState<"ring" | "folder" | null>(null);
+  const [note, setNote] = useState("");
+
+  // Reset on close so last session's note can't silently attach to the
+  // next backup.
+  useEffect(() => {
+    if (!open) setNote("");
+  }, [open]);
 
   const ringMut = useMutation({
-    mutationFn: () => backupApi.snapshotToRingBuffer(),
+    mutationFn: () => backupApi.snapshotToRingBuffer(note),
     onMutate: () => setBusy("ring"),
     onSettled: () => setBusy(null),
     onSuccess: (data) => {
@@ -65,7 +95,7 @@ export function BackupNowDialog({ open, onOpenChange }: BackupNowDialogProps) {
       }
       const dir = await window.electronAPI.selectFolder();
       if (!dir) return null; // user cancelled
-      return await backupApi.snapshotToFolder(dir);
+      return await backupApi.snapshotToFolder(dir, note);
     },
     onMutate: () => setBusy("folder"),
     onSettled: () => setBusy(null),
@@ -96,6 +126,20 @@ export function BackupNowDialog({ open, onOpenChange }: BackupNowDialogProps) {
             original images and videos are not touched.
           </DialogDescription>
         </DialogHeader>
+
+        <div className="space-y-2">
+          <FieldHeader
+            label={<Label htmlFor="backup-note">Note</Label>}
+            caption="Optional. Becomes part of the file name so you can recognise this backup when restoring."
+          />
+          <Input
+            id="backup-note"
+            value={note}
+            onChange={(e) => setNote(normalizeNote(e.target.value))}
+            placeholder="e.g. before the big run"
+            disabled={busy !== null}
+          />
+        </div>
 
         <div className="space-y-3">
           <button
