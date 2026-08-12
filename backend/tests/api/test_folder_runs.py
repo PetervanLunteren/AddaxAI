@@ -771,12 +771,31 @@ def _create_run(client, source: str) -> str:
     return resp.json()["project"]["id"]
 
 
-def test_save_outputs_marks_media_subdir_not_output_root(client, tmp_path):
-    """The scan-skip marker goes on the addaxai-media subfolder only.
+def _run_save_worker(db, monkeypatch, job_id: str) -> None:
+    """Run the save-outputs worker synchronously on the test session."""
+    import asyncio
 
-    The output dir defaults to the source folder itself; a marker at
-    its root would make every future re-scan skip the user's entire
-    source. Pinned here because the regression is silent and severe.
+    import app.workers.folder_run_save_outputs_worker as worker
+
+    def _test_get_db():
+        yield db
+
+    monkeypatch.setattr(worker, "get_db", _test_get_db)
+    asyncio.run(worker.process_save_outputs_job(job_id))
+
+
+def test_save_outputs_marks_media_subdir_not_output_root(
+    client, db, tmp_path, monkeypatch
+):
+    """The scan-skip marker goes on the addaxai-media subfolder only,
+    and only the WORKER writes it.
+
+    Root placement is pinned because a marker at the output root (which
+    defaults to the source folder) would make every future re-scan skip
+    the user's entire source. Worker-only writing is pinned because the
+    marker is the wipe's ownership proof: the endpoint stamping it
+    before the worker's check handed that proof to any pre-existing
+    addaxai-media and got the user's own files deleted.
     """
     source = tmp_path / "src"
     source.mkdir()
@@ -787,10 +806,45 @@ def test_save_outputs_marks_media_subdir_not_output_root(client, tmp_path):
         json={"output_dir": str(source), "separate_folders": True},
     )
     assert resp.status_code == 200
-    assert resp.json()["job_id"]
+    job_id = resp.json()["job_id"]
+
+    # The endpoint alone must not have stamped anything.
+    assert not (source / "addaxai-media" / ".addaxai-output").exists()
+
+    _run_save_worker(db, monkeypatch, job_id)
 
     assert (source / "addaxai-media" / ".addaxai-output").is_file()
     assert not (source / ".addaxai-output").exists()
+
+
+def test_save_outputs_leaves_foreign_media_dir_alone(
+    client, db, tmp_path, monkeypatch
+):
+    """A pre-existing addaxai-media folder the app never created (no
+    marker) must survive a media save through the real API path.
+
+    Regression: the endpoint used to stamp the marker before spawning
+    the job, so the worker's ownership check always found a marker and
+    wiped the folder — including one holding the user's own files.
+    """
+    source = tmp_path / "src"
+    source.mkdir()
+    foreign = source / "addaxai-media" / "users-own-file.txt"
+    foreign.parent.mkdir()
+    foreign.write_text("keep me")
+    run_id = _create_run(client, str(source))
+
+    resp = client.post(
+        f"/api/folder-runs/{run_id}/save-outputs",
+        json={"output_dir": str(source), "separate_folders": True},
+    )
+    assert resp.status_code == 200
+
+    _run_save_worker(db, monkeypatch, resp.json()["job_id"])
+
+    assert foreign.read_text() == "keep me"
+    # And not claimed: a marker here would let the NEXT save wipe it.
+    assert not (source / "addaxai-media" / ".addaxai-output").exists()
 
 
 def test_save_outputs_data_only_creates_no_media_dir(client, tmp_path):

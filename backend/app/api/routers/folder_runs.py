@@ -46,7 +46,6 @@ from app.core.confidence import DEFAULT_COUNTING_THRESHOLD
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
-from app.ml.postprocessing_outputs._output_context import MEDIA_SUBDIR
 from app.ml.postprocessing_outputs.output_preview import (
     build_output_preview,
 )
@@ -61,7 +60,6 @@ from app.models import (
     File,
     Project,
 )
-from app.services.folder_scanner import OUTPUT_DIR_MARKER
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/folder-runs", tags=["Folder runs"])
@@ -966,23 +964,12 @@ async def save_outputs(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Could not create output folder: {e}",
         ) from e
-    # Mark the media subfolder so future scans skip it — its copies and
-    # visualisations must never be re-ingested as input media. Only the
-    # media dir gets the marker, never the output root: the root
-    # defaults to the source folder itself, and marking it would make
-    # re-scans skip the user's entire source. The loose data exports
-    # need no marker (scans only ingest image / video extensions).
-    # Best-effort: a failed marker doesn't block the save.
-    if payload.separate_folders or payload.draw_bboxes or payload.anonymise:
-        media_root = output_root / MEDIA_SUBDIR
-        try:
-            media_root.mkdir(parents=True, exist_ok=True)
-            (media_root / OUTPUT_DIR_MARKER).touch(exist_ok=True)
-        except OSError as e:
-            logger.warning(
-                f"Could not write output marker in {media_root}: {e}"
-            )
-
+    # The scan-skip marker on addaxai-media is written by the WORKER,
+    # never here. The worker wipes a marker-stamped media tree before
+    # rebuilding it (retries must replace copies, not duplicate them),
+    # and the marker is its proof of ownership. Stamping the folder
+    # here would hand that proof to a pre-existing addaxai-media the
+    # app never created, and the wipe would delete the user's files.
     job = job_crud.create_job(
         db,
         JobCreate(

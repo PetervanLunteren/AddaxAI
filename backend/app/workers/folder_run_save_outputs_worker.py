@@ -64,6 +64,8 @@ from app.ml.postprocessing_outputs.tables_xlsx import (
     write_tables_xlsx,
 )
 from app.services.folder_scanner import OUTPUT_DIR_MARKER
+from app.utils.fs_remove import safe_rmtree
+from app.utils.process_memory import rss_mb
 
 logger = get_logger(__name__)
 
@@ -91,6 +93,12 @@ _MODULE_LABELS: dict[str, str] = {
     "xlsx": "Writing XLSX",
     "run_readme": "Writing run details",
 }
+
+
+def _rss_for_log() -> str:
+    """Current RSS formatted for a log line; 'unknown' when unreadable."""
+    value = rss_mb()
+    return f"{value:.0f}" if value is not None else "unknown"
 
 
 def _check_cancelled(job_id: str) -> None:
@@ -139,19 +147,49 @@ async def process_save_outputs_job(job_id: str) -> None:
             payload.get("separate_folders") or draw_bboxes or anonymise
         )
         if media_active:
+            # Rebuild the media tree from scratch. A save always places
+            # copies (mode="copy" below), so the tree holds nothing the
+            # user can lose, and without this every retry of a failed
+            # save re-copies each file under a `_2` / `_3` name (the
+            # destinations from the earlier attempt already exist), and
+            # a re-save with different grouping interleaves the old
+            # layout with the new one. The marker check is the
+            # ownership proof: a folder we did not stamp is left alone.
+            # If a "move" file mode ever becomes reachable, this wipe
+            # must not run for it — the moved originals would live in
+            # this tree.
+            owned = (media_root / OUTPUT_DIR_MARKER).is_file()
+            if owned:
+                if not safe_rmtree(media_root):
+                    logger.warning(
+                        f"Could not fully clear {media_root}; retried "
+                        f"copies may get suffixed names"
+                    )
             # Mark the media folder so future scans (preview + the
             # analysis worker's input enumeration) skip it — its
             # separated / annotated copies must never be re-ingested as
             # input media. Only the media subfolder gets the marker:
             # marking the output root would make re-scans skip the whole
-            # source folder when the default (source root) is used. The
-            # save endpoint also writes this, but doing it here too
-            # guarantees the marker is co-located with the tree this
-            # worker creates, regardless of how the save was triggered.
-            # Best-effort.
+            # source folder when the default (source root) is used.
+            #
+            # Ownership rules, all load-bearing (2026-08 e2e pass):
+            # - This worker is the ONLY writer of the marker. The save
+            #   endpoint must never stamp it: the marker is the wipe's
+            #   proof of ownership, so stamping before the check above
+            #   would hand that proof to a pre-existing addaxai-media
+            #   the app never created, and the wipe would delete the
+            #   user's files.
+            # - A pre-existing UNMARKED addaxai-media is never stamped
+            #   either, or the next save would wipe it — same loss, one
+            #   save later. Copies placed into such a folder keep their
+            #   collision suffixes and it is never scan-skipped; both
+            #   are the price of refusing to manage a tree we do not
+            #   own. Best-effort.
+            stamp = owned or not media_root.is_dir()
             try:
                 media_root.mkdir(parents=True, exist_ok=True)
-                (media_root / OUTPUT_DIR_MARKER).touch(exist_ok=True)
+                if stamp:
+                    (media_root / OUTPUT_DIR_MARKER).touch(exist_ok=True)
             except OSError as e:
                 logger.warning(
                     f"Could not write output marker in {media_root}: {e}"
@@ -323,7 +361,20 @@ async def process_save_outputs_job(job_id: str) -> None:
                     ).to_dict()
                 raise ValueError(f"Unknown module: {m}")
 
+            # Start/done lines with elapsed time and process RSS. These
+            # are the only trace left when a module kills the process
+            # (Wayne's 2026-08 report: three deaths in this loop with
+            # nothing in the log naming the module or the memory curve).
+            logger.info(
+                f"save_outputs: module={module} start rss_mb={_rss_for_log()}"
+            )
+            module_started = time.monotonic()
             module_result = await loop.run_in_executor(None, _run)
+            logger.info(
+                f"save_outputs: module={module} done "
+                f"elapsed_s={time.monotonic() - module_started:.1f} "
+                f"rss_mb={_rss_for_log()}"
+            )
             result_payload[module] = module_result
 
         # Persist the full result on the job so the UI can pull it
@@ -363,8 +414,15 @@ async def process_save_outputs_job(job_id: str) -> None:
         logger.exception(
             f"folder_run_save_outputs job {job_id} failed: {e}"
         )
+        # Persist the message on the job row, not only on the live
+        # WebSocket: after a reload or restart the failed run's error
+        # text is all the user (and a diagnostics bundle) has.
         try:
-            job_crud.update_job_status(db, job_id, "failed")
+            from app.api.schemas.job import JobUpdate
+
+            job_crud.update_job(
+                db, job_id, JobUpdate(status="failed", error=str(e))
+            )
         except Exception:
             pass
         await ws_manager.send_error(job_id, str(e))
@@ -457,6 +515,11 @@ def _make_file_progress_cb(
             job_id,
             f"{label} ({done:,} / {total:,})",
             overall,
+            # Within-module fraction. The save modal's bar renders this
+            # one, so it matches the "(N / M)" text beside it instead of
+            # sitting near zero while the first (and longest) module
+            # walks its files.
+            phase_progress=file_frac,
             data={
                 "current_module": module,
                 "module_index": module_index,

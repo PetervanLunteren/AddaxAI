@@ -672,10 +672,14 @@ def separate_into_folders(
     # subfolder structure under the species folder.
     dep_folders = build_deployment_folders(db, project_id)
 
+    # Stable order (matches output_preview) so collision suffixes land on
+    # the same files every run: two same-named files from different
+    # subfolders must not swap IMG_006.jpg / IMG_006_2.jpg between runs.
     files = db.execute(
         select(File)
         .join(Deployment, File.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
+        .order_by(File.file_path)
     ).scalars().all()
 
     result = SeparateFoldersResult()
