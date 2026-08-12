@@ -25,7 +25,6 @@ import { DashboardAboutPopover } from "./DashboardAboutPopover";
 import { MissingDatesIcon } from "./MissingDatesWarning";
 import { statisticsApi } from "../../api/statistics";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
-import { getSpeciesColor, getSpeciesColorWithAlpha } from "../../utils/species-colors";
 import type { DateRange } from "./index";
 import type { DetectionTrendPoint } from "../../api/statistics";
 
@@ -258,23 +257,21 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
     [normalizedValues, smoothingWindow],
   );
 
-  // Derive line color from selected species
-  const lineColor = selectedSpecies === "all" ? "#0f6064" : getSpeciesColor(selectedSpecies);
+  // One series at a time, so the color carries no information: always teal.
+  // Species colors from species-colors.ts are for charts where several
+  // species appear together; the light end of that gradient is barely
+  // visible as a single line on the white card.
+  const lineColor = "#0f6064";
 
   // Build gradient fill for the line
   const createGradient = useCallback(
     (ctx: CanvasRenderingContext2D, chartArea: { top: number; bottom: number }) => {
       const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-      if (selectedSpecies === "all") {
-        gradient.addColorStop(0, "rgba(15, 96, 100, 0.4)");
-        gradient.addColorStop(1, "rgba(15, 96, 100, 0.02)");
-      } else {
-        gradient.addColorStop(0, getSpeciesColorWithAlpha(selectedSpecies, 0.4));
-        gradient.addColorStop(1, getSpeciesColorWithAlpha(selectedSpecies, 0.02));
-      }
+      gradient.addColorStop(0, "rgba(15, 96, 100, 0.4)");
+      gradient.addColorStop(1, "rgba(15, 96, 100, 0.02)");
       return gradient;
     },
-    [selectedSpecies],
+    [],
   );
 
   const chartData = useMemo(
@@ -287,7 +284,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
           borderColor: lineColor,
           backgroundColor: (context: { chart: ChartJS }) => {
             const { chart } = context;
-            if (!chart.chartArea) return getSpeciesColorWithAlpha(selectedSpecies === "all" ? "" : selectedSpecies, 0.2);
+            if (!chart.chartArea) return "rgba(15, 96, 100, 0.2)";
             return createGradient(chart.ctx, chart.chartArea);
           },
           fill: true,
@@ -315,7 +312,6 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
       smoothingLabel,
       lineColor,
       createGradient,
-      selectedSpecies,
     ],
   );
 
