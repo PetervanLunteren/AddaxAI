@@ -30,7 +30,6 @@ import {
   ExportBody,
   MediaBody,
   OutputFolderField,
-  SaveErrorLine,
 } from "./save/SaveShared";
 import { OutputPreviewPanel } from "./save/OutputPreviewPanel";
 import {
@@ -194,8 +193,6 @@ export function FolderRunSaveStep() {
         >
           <MediaBody form={form} />
         </GroupCard>
-
-        <SaveErrorLine error={form.saveError} />
       </div>
 
       <OutputPreviewPanel
@@ -220,7 +217,7 @@ export function FolderRunSaveStep() {
           moduleIndex={moduleIndex}
           totalModules={totalModules}
           message={progress.message}
-          progress={progress.progress}
+          phaseProgress={progress.phaseProgress}
         />
       </JobProgressModal>
 

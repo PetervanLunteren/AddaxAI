@@ -370,7 +370,7 @@ export function ExportBody({
 export function SaveErrorLine({ error }: { error: Error | null }) {
   if (!error) return null;
   return (
-    <p className="text-sm text-destructive">
+    <p className="line-clamp-2 min-w-0 flex-1 break-words text-sm text-destructive">
       Could not save outputs: {error.message}
     </p>
   );
@@ -575,6 +575,11 @@ export function BackSaveBar({
         <ArrowLeft className="h-4 w-4" />
         Back
       </Button>
+      {/* In the sticky bar, not under the form: the bar overlays the
+          end of the column while scrolled, which clipped the message
+          exactly when it appeared. Here it sits beside the button the
+          user just clicked and is always visible. */}
+      <SaveErrorLine error={form.saveError} />
       <Button
         onClick={form.saveAll}
         disabled={!form.canSave}
