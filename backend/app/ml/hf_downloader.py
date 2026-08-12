@@ -5,7 +5,9 @@ Adapted from streamlit-AddaxAI's proven downloader.
 Optimized multi-threaded downloader for HuggingFace model repositories with:
 - Adaptive worker scaling based on connection speed
 - Progress tracking via callbacks
-- Resume capability for interrupted downloads
+- Per-file retries, and a skip for files already complete on disk, so a
+  retried repo download only fetches what is still missing. There is no
+  resume within a file: an interrupted file restarts from byte 0.
 - Thread-safe progress updates
 
 Following DEVELOPERS.md principles:
@@ -38,6 +40,17 @@ logger = get_logger(__name__)
 # are not worth the extra requests and take the plain single path.
 _PARALLEL_MIN_BYTES = 16 * 1024 * 1024
 _PARALLEL_CONNECTIONS = 4
+
+# Attempts per file before the repo download is called failed. The session
+# carries urllib3's default Retry(total=0), so before this one transient
+# failure on any single file killed the whole download: on 2026-08-12 a
+# 12 KB inference.py could not resolve huggingface.co while the other four
+# files in the same repo downloaded fine in the same second, and the 1.13 GB
+# already on disk was thrown away. Files at or above _PARALLEL_MIN_BYTES
+# effectively had a second chance already, since a failed range falls back
+# to a single connection; this gives every file the same, plus the short
+# pause a momentary resolver failure needs.
+_FILE_ATTEMPTS = 3
 
 
 class HuggingFaceRepoDownloader:
@@ -274,45 +287,70 @@ class HuggingFaceRepoDownloader:
 
         # Download to temporary file first
         temp_file_path = local_file_path.with_suffix(local_file_path.suffix + ".tmp")
-        start_time = time.time()
 
-        try:
-            if file_size >= _PARALLEL_MIN_BYTES and self._supports_range(file_url):
-                downloaded = self._download_ranges(
-                    file_url, temp_file_path, file_size, should_cancel
+        for attempt in range(1, _FILE_ATTEMPTS + 1):
+            start_time = time.time()
+            try:
+                if file_size >= _PARALLEL_MIN_BYTES and self._supports_range(file_url):
+                    downloaded = self._download_ranges(
+                        file_url, temp_file_path, file_size, should_cancel
+                    )
+                else:
+                    downloaded = self._download_stream(
+                        file_url, temp_file_path, should_cancel
+                    )
+
+                if downloaded is None:  # cancelled mid-download
+                    return False
+
+                # Verify size matches expected
+                if file_size > 0 and temp_file_path.stat().st_size != file_size:
+                    actual = temp_file_path.stat().st_size
+                    raise ValueError(
+                        f"Downloaded file size mismatch: "
+                        f"expected {file_size}, got {actual}"
+                    )
+
+                # Atomic move to the final location, only after a successful
+                # download. Path.replace (not rename) because when the file is
+                # being re-downloaded the destination already exists, and on
+                # Windows rename() over an existing file raises WinError 183;
+                # replace() overwrites atomically on both POSIX and Windows.
+                temp_file_path.replace(local_file_path)
+
+                self.measure_download_speed(start_time, downloaded)
+                return True
+
+            except Exception as e:
+                # Un-count what this attempt wrote before dropping it, or the
+                # retry counts those bytes twice and the progress bar runs
+                # past 100%. Measured off the partial file so this stays a
+                # delta: the counter is shared with every other file's
+                # threads, so it can never be restored to a snapshot.
+                partial = (
+                    temp_file_path.stat().st_size if temp_file_path.exists() else 0
                 )
-            else:
-                downloaded = self._download_stream(
-                    file_url, temp_file_path, should_cancel
+                if partial:
+                    with self.lock:
+                        self.downloaded_bytes = max(0, self.downloaded_bytes - partial)
+                temp_file_path.unlink(missing_ok=True)
+
+                if attempt == _FILE_ATTEMPTS:
+                    logger.error(
+                        f"Failed to download {file_path} after "
+                        f"{attempt} attempt(s): {e}"
+                    )
+                    return False
+                if should_cancel is not None and should_cancel():
+                    logger.info(f"Not retrying {file_path}: cancelled")
+                    return False
+                logger.warning(
+                    f"Attempt {attempt}/{_FILE_ATTEMPTS} for {file_path} failed "
+                    f"({e}); retrying in {attempt}s"
                 )
+                time.sleep(attempt)  # 1 s, then 2 s
 
-            if downloaded is None:  # cancelled mid-download
-                return False
-
-            # Verify size matches expected
-            if file_size > 0 and temp_file_path.stat().st_size != file_size:
-                actual = temp_file_path.stat().st_size
-                raise ValueError(
-                    f"Downloaded file size mismatch: "
-                    f"expected {file_size}, got {actual}"
-                )
-
-            # Atomic move to the final location, only after a successful
-            # download. Path.replace (not rename) because when the file is
-            # being re-downloaded the destination already exists, and on
-            # Windows rename() over an existing file raises WinError 183;
-            # replace() overwrites atomically on both POSIX and Windows.
-            temp_file_path.replace(local_file_path)
-
-            self.measure_download_speed(start_time, downloaded)
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to download {file_path}: {e}")
-            # Clean up partial temp file
-            if temp_file_path.exists():
-                temp_file_path.unlink()
-            return False
+        return False
 
     def _download_stream(
         self,

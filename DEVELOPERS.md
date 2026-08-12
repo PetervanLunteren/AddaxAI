@@ -579,6 +579,25 @@ On startup, `ModelCatalogUpdater.sync()` therefore asks HuggingFace for one file
 
 **`~/AddaxAI/models` is a managed cache, not a source tree.** Editing a model's `inference.py` in place now shows up as an available update on every launch, and applying it overwrites your edit with no backup.
 
+## What a download leaves behind when it does not finish
+
+Two rules in `download_weights`, and the difference between them is deliberate:
+
+| Outcome | What happens to the model directory |
+|---|---|
+| Failed | Nothing is removed. A retry fetches only what is missing. |
+| Cancelled | Every downloaded file is removed, `manifest.json` is kept. |
+
+**A failed download must not clean up.** `download_file` streams every file to a `.tmp` sibling and only `replace()`s it into place once it is complete and its size matches, so a file sitting at its final path is whole, and the size check at the top of `download_file` skips it next time. There is no resume *within* a file: an interrupted file restarts from byte 0, so what a retry saves is whole files, which for a model is nearly all of the bytes.
+
+This used to `shutil.rmtree` the whole directory. That was written in December 2025 for a downloader that streamed straight to the final path and could therefore leave truncated files behind; the `.tmp` plus atomic rename that landed two weeks later removed that failure mode, and the wipe was never revisited. On 2026-08-12 it cost a beta run twice: one 12 KB `inference.py` that could not resolve `huggingface.co` deleted the 1.13 GB weights file that had downloaded perfectly beside it, so the retry paid for the whole model again, and it deleted `manifest.json`.
+
+**`manifest.json` is never deleted by either path.** It is written from `models.json` by the catalog updater, no HF repo ships one (it is in `_IGNORED_REPO_FILES`), so a download can remove it but nothing except the next launch's `sync()` puts it back. Without it `ManifestManager` skips the directory entirely, and the model is gone from the catalog while its weights sit on disk. The symptom appears far from the cause: `POST /api/projects` refuses with **"Classification model '<id>' not found"**, and because `routers/ml_models.py` holds a process-lifetime `ManifestManager` cache while `routers/projects.py` builds a fresh one per request, the model still lists as installed and still reports "prepared successfully" in the same session. `_clear_downloaded_files` is the one cleanup helper, and the only place that deletes selectively inside a model directory. The Settings reset is not an exception: it removes the whole `models/` tree (`_WIPE_DIRS` in `routers/setup.py`), which the next launch's `sync()` rebuilds from scratch.
+
+**One transient failure no longer fails a whole download.** The `requests` session carries urllib3's default `Retry(total=0)`, so a single DNS or connection blip on any one file used to end the run. `download_file` now makes `_FILE_ATTEMPTS` (3) attempts per file with a 1s then 2s pause, and re-checks `should_cancel` before each retry. Files at or above `_PARALLEL_MIN_BYTES` effectively had a second chance already, since a failed range falls back to a single connection; this gives every file the same. The cost is that a link which dies at 90% repeatedly now re-transfers up to three times instead of failing to the user after one, which is the right trade until someone reports otherwise. Byte-range resume within a file is the real fix and is not built (YAGNI).
+
+Pinned by `tests/ml/test_download_cleanup.py` and the retry tests in `tests/ml/test_hf_downloader.py`.
+
 ## Creating a custom classification model
 
 To add a new classification model to AddaxAI, create an `inference.py` file in your model's directory that implements the `ModelInference` class.

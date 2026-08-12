@@ -22,6 +22,7 @@ from app.core.job_cancellation import JobCancelledError
 from app.core.logging_config import get_logger
 from app.ml.hf_downloader import HuggingFaceRepoDownloader
 from app.ml.schemas.model_manifest import ModelManifest, resolve_hf_repo
+from app.utils.fs_remove import safe_rmtree
 
 logger = get_logger(__name__)
 
@@ -46,6 +47,27 @@ _IGNORED_REPO_FILES = frozenset(
         "manifest.json",
     }
 )
+
+
+def _clear_downloaded_files(model_dir: Path) -> None:
+    """
+    Remove everything a download put in `model_dir`, keeping manifest.json.
+
+    manifest.json is the one file in a model directory that no download
+    owns: it is written from models.json by the catalog updater and is in
+    `_IGNORED_REPO_FILES`, so a download can delete it but never put it
+    back. Losing it drops the model out of the catalog until the next
+    launch's sync, which the user meets as "Classification model '<id>'
+    not found" the next time they create a project, while the weights sit
+    on disk. Per-entry `safe_rmtree` so one locked file cannot abort the
+    rest of the cleanup.
+    """
+    if not model_dir.exists():
+        return
+    for entry in model_dir.iterdir():
+        if entry.name == "manifest.json":
+            continue
+        safe_rmtree(entry)
 
 
 def git_blob_sha1(path: Path) -> str:
@@ -265,23 +287,28 @@ class ModelStorage:
             return model_path
 
         except JobCancelledError:
-            # Cancelled mid-download: drop the partial directory so a later
-            # retry starts clean, then propagate so the worker reports
-            # cancellation rather than a failure.
-            if model_path.exists():
-                import shutil
-
-                logger.info(f"Cleaning up cancelled download at {model_path}")
-                shutil.rmtree(model_path)
+            # The user asked to stop, so throw the download away and let a
+            # later attempt start clean. manifest.json survives: see
+            # _clear_downloaded_files.
+            logger.info(f"Cleaning up cancelled download at {model_path}")
+            _clear_downloaded_files(model_path)
             raise
         except Exception as e:
-            # Clean up partial download
-            if model_path.exists():
-                import shutil
-
-                logger.warning(f"Cleaning up partial download at {model_path}")
-                shutil.rmtree(model_path)
-
+            # No cleanup on failure, on purpose. Every file is streamed to a
+            # `.tmp` sibling and only renamed into place once it is complete
+            # and its size matches, so a file at its final path is whole and
+            # `download_file` skips it next time. Keeping them makes a retry
+            # fetch only what is actually missing.
+            #
+            # This used to rmtree the directory. That was written for the
+            # December 2025 downloader, which streamed straight to the final
+            # path and so could leave truncated files behind; the January
+            # `.tmp` + atomic rename removed that failure mode and left the
+            # wipe doing nothing but harm. On 2026-08-12 one unresolvable
+            # 12 KB inference.py deleted a 1.13 GB weights file that had
+            # downloaded perfectly, so the retry re-fetched the whole model,
+            # and it deleted manifest.json, so the model then did not exist
+            # as far as the rest of the app was concerned.
             raise RuntimeError(
                 f"Failed to download {manifest.model_id} "
                 f"from {hf_repo}: {e}"
