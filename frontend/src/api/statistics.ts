@@ -251,11 +251,15 @@ export const statisticsApi = {
   /**
    * Species distribution (species name + detection count)
    */
-  getSpeciesDistribution: (projectId: string, siteIds?: string, dateFrom?: string, dateTo?: string, taxonomicRank?: string, countMode?: string) => {
+  getSpeciesDistribution: (projectId: string, siteIds?: string, dateFrom?: string, dateTo?: string, taxonomicRank?: string, countMode?: string, wildlifeOnly?: boolean) => {
     const query = buildParams(projectId, { siteIds, dateFrom, dateTo, taxonomicRank });
     const modeParam = countMode ? `&count_mode=${countMode}` : "";
-    // Returns every observed species; the top-taxa bars slice to 10 client-side.
-    return api.get<SpeciesCount[]>(`/api/statistics/species?${query}${modeParam}`);
+    // wildlife_only drops person/vehicle categories and non-wildlife
+    // labels (blank, bait, human, ...); the dashboard bars use it, the
+    // species pickers keep the full list.
+    const wildlifeParam = wildlifeOnly ? "&wildlife_only=true" : "";
+    // Returns every matching species; the dashboard bars slice to 10 client-side.
+    return api.get<SpeciesCount[]>(`/api/statistics/species?${query}${modeParam}${wildlifeParam}`);
   },
 
   /**

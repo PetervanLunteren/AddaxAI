@@ -6,7 +6,17 @@ All queries are scoped to a project via the join chain:
 
 from datetime import date, datetime
 
-from sqlalchemy import Integer, Select, and_, case, distinct, func, literal, select
+from sqlalchemy import (
+    Integer,
+    Select,
+    and_,
+    case,
+    distinct,
+    func,
+    literal,
+    or_,
+    select,
+)
 from sqlalchemy.orm import Session
 
 from app.api.schemas.statistics import (
@@ -25,6 +35,7 @@ from app.api.schemas.statistics import (
     VerificationProgressByLabel,
 )
 from app.ml.detection_visibility import on_visible_frame
+from app.ml.label_exclusion import NON_WILDLIFE_CLASSES
 from app.ml.taxonomic_rank import HIGHER_LEVEL_TAXA, NO_TAXONOMY
 from app.ml.taxonomic_rank import RANK_COLUMNS as _RANK_COLUMNS
 from app.models.deployment import Deployment
@@ -63,11 +74,42 @@ def _apply_filters(
     if site_clause is not None:
         query = query.where(site_clause)
     if date_from:
-        query = query.where(File.captured_at_local >= date_from)
+        query = query.where(
+            File.captured_at_local >= datetime.fromisoformat(date_from)
+        )
     if date_to:
-        query = query.where(File.captured_at_local <= date_to)
+        # Inclusive end day: date_to is a bare date, the column holds
+        # datetimes, so compare against the end of that day. A plain
+        # string comparison silently dropped every file captured after
+        # midnight on the end date.
+        query = query.where(File.captured_at_local <= _end_of_day(date_to))
 
     return query
+
+
+def _end_of_day(date_str: str) -> datetime:
+    """Last moment of the given ISO date, for inclusive date_to bounds."""
+    return datetime.combine(date.fromisoformat(date_str), datetime.max.time())
+
+
+def _event_date_clauses(
+    date_from: str | None, date_to: str | None
+) -> list:
+    """WHERE clauses bounding Event.event_start_local to the inclusive
+    [date_from, date_to] day window.
+
+    Shared by every event-based stat so all charts agree on what a date
+    window means. The strings are validated at the router
+    (routers/statistics._parse_date), so fromisoformat cannot fail here.
+    """
+    clauses = []
+    if date_from:
+        clauses.append(
+            Event.event_start_local >= datetime.fromisoformat(date_from)
+        )
+    if date_to:
+        clauses.append(Event.event_start_local <= _end_of_day(date_to))
+    return clauses
 
 
 def _get_counting_threshold(db: Session, project_id: str) -> float:
@@ -262,7 +304,8 @@ def get_dashboard_overview(
     )
     file_stats = db.execute(file_stats_query).one()
 
-    # Observation count (sum of MaxN across all events)
+    # Observation count (sum of MaxN across events in the window)
+    date_clauses = _event_date_clauses(date_from, date_to)
     obs_count_query = (
         select(func.coalesce(func.sum(EventObservation.effective_count), 0))
         .select_from(EventObservation)
@@ -273,6 +316,8 @@ def get_dashboard_overview(
     site_clause = site_ids_filter(site_ids)
     if site_clause is not None:
         obs_count_query = obs_count_query.where(site_clause)
+    if date_clauses:
+        obs_count_query = obs_count_query.where(*date_clauses)
     total_observations = db.execute(obs_count_query).scalar() or 0
 
     # Events count (Event -> Deployment)
@@ -284,6 +329,8 @@ def get_dashboard_overview(
     )
     if site_clause is not None:
         events_query = events_query.where(site_clause)
+    if date_clauses:
+        events_query = events_query.where(*date_clauses)
     total_events = db.execute(events_query).scalar() or 0
 
     # Deployments count
@@ -340,16 +387,22 @@ def get_species_distribution(
     date_to: str | None = None,
     taxonomic_rank: str | None = None,
     count_mode: str = "events",
+    wildlife_only: bool = False,
 ) -> list[SpeciesCount]:
     """All observed labels, ranked descending by event count or MaxN sum.
 
     count_mode="events": number of independent events per label.
     count_mode="max_n": sum of MaxN across events per label.
 
-    Returns every observed species (no cap). The dashboard top-taxa bars
-    trim to the top 10 client-side; the species selectors on the trend,
-    activity, and overlap charts use the full list so any species can be
-    picked.
+    wildlife_only=True drops non-wildlife rows: the person/vehicle
+    detector categories plus labels in NON_WILDLIFE_CLASSES (blank,
+    bait, false detection, human, vehicle, ...). Used by the dashboard
+    "Wildlife detected" bars. The species selectors on the trend,
+    activity, and overlap charts keep the full list so human or vehicle
+    activity can still be plotted.
+
+    Returns every matching species (no cap). The dashboard bars trim to
+    the top 10 client-side.
 
     Taxonomic rank modes: aggregates by the requested rank using
     the label_taxonomy join on EventObservation.label.
@@ -454,6 +507,21 @@ def get_species_distribution(
     site_clause = site_ids_filter(site_ids)
     if site_clause is not None:
         query = query.where(site_clause)
+
+    date_clauses = _event_date_clauses(date_from, date_to)
+    if date_clauses:
+        query = query.where(*date_clauses)
+
+    if wildlife_only:
+        query = query.where(
+            EventObservation.category.notin_(["person", "vehicle"]),
+            or_(
+                EventObservation.label.is_(None),
+                func.lower(EventObservation.label).notin_(
+                    list(NON_WILDLIFE_CLASSES)
+                ),
+            ),
+        )
 
     rows = db.execute(query).all()
     return [
@@ -752,15 +820,9 @@ def _event_decimal_hours_for_species(
     site_clause = site_ids_filter(site_ids)
     if site_clause is not None:
         query = query.where(site_clause)
-    if date_from:
-        query = query.where(
-            Event.event_start_local >= datetime.fromisoformat(date_from)
-        )
-    if date_to:
-        end_of_day = datetime.combine(
-            date.fromisoformat(date_to), datetime.max.time()
-        )
-        query = query.where(Event.event_start_local <= end_of_day)
+    date_clauses = _event_date_clauses(date_from, date_to)
+    if date_clauses:
+        query = query.where(*date_clauses)
 
     if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
         display_label = case(

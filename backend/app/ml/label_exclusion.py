@@ -30,6 +30,16 @@ NON_LABEL_CLASSES = frozenset({
     "bait", "blank", "empty", "false detection", "none", "vide",
 })
 
+# Non-wildlife classes: real detections that are not wild animals.
+# Superset of NON_LABEL_CLASSES, adding every human and vehicle class
+# name found across the model zoo. Used by wildlife-only statistics
+# (the dashboard "Wildlife detected" chart). Matched case-insensitively
+# against Detection/EventObservation labels. When a new model ships a
+# class like "person" or "car", add it here.
+NON_WILDLIFE_CLASSES = NON_LABEL_CLASSES | frozenset({
+    "human", "homo_sapiens", "vehicle",
+})
+
 
 def filter_classifications(
     classifications: list[list],

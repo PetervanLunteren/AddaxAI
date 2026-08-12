@@ -35,6 +35,17 @@ def _parse_site_ids(site_ids: str | None) -> list[str] | None:
     return [s.strip() for s in site_ids.split(",") if s.strip()]
 
 
+def _valid_date(value: str | None, field: str) -> str | None:
+    """Validate an ISO date query param, keeping its string form.
+
+    The CRUD layer parses these with datetime.fromisoformat, so a
+    malformed value must be rejected here with a 422 rather than
+    surfacing as a 500 mid-query.
+    """
+    _parse_date(value, field)
+    return value
+
+
 @router.get("/overview", response_model=DashboardOverview)
 def overview(
     project_id: str = Query(...),
@@ -44,7 +55,8 @@ def overview(
     db: Session = Depends(get_db),
 ) -> DashboardOverview:
     return stats_crud.get_dashboard_overview(
-        db, project_id, _parse_site_ids(site_ids), date_from, date_to
+        db, project_id, _parse_site_ids(site_ids),
+        _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
     )
 
 
@@ -65,13 +77,15 @@ def species_distribution(
     date_to: str | None = Query(None),
     taxonomic_rank: str | None = Query(None),
     count_mode: str = Query("events"),
+    wildlife_only: bool = Query(False),
     db: Session = Depends(get_db),
 ) -> list[SpeciesCount]:
     # Returns every observed species. The dashboard trims to the top 10
     # client-side; the chart species selectors use the full list.
     return stats_crud.get_species_distribution(
-        db, project_id, _parse_site_ids(site_ids), date_from, date_to,
-        taxonomic_rank, count_mode,
+        db, project_id, _parse_site_ids(site_ids),
+        _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
+        taxonomic_rank, count_mode, wildlife_only,
     )
 
 
@@ -86,7 +100,9 @@ def activity_pattern(
     db: Session = Depends(get_db),
 ) -> ActivityPatternResponse:
     return stats_crud.get_activity_pattern(
-        db, project_id, species, _parse_site_ids(site_ids), date_from, date_to, taxonomic_rank
+        db, project_id, species, _parse_site_ids(site_ids),
+        _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
+        taxonomic_rank,
     )
 
 
@@ -131,8 +147,8 @@ def activity_overlap(
         species_a,
         species_b,
         _parse_site_ids(site_ids),
-        date_from,
-        date_to,
+        _valid_date(date_from, "date_from"),
+        _valid_date(date_to, "date_to"),
         taxonomic_rank,
         time_axis,
     )
@@ -149,7 +165,9 @@ def detection_trend(
     db: Session = Depends(get_db),
 ) -> list[DetectionTrendPoint]:
     return stats_crud.get_detection_trend(
-        db, project_id, species, _parse_site_ids(site_ids), date_from, date_to, taxonomic_rank
+        db, project_id, species, _parse_site_ids(site_ids),
+        _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
+        taxonomic_rank,
     )
 
 
@@ -162,7 +180,8 @@ def categories(
     db: Session = Depends(get_db),
 ) -> DetectionCategories:
     return stats_crud.get_detection_categories(
-        db, project_id, _parse_site_ids(site_ids), date_from, date_to
+        db, project_id, _parse_site_ids(site_ids),
+        _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
     )
 
 
@@ -175,7 +194,8 @@ def verification_progress(
     db: Session = Depends(get_db),
 ) -> VerificationProgress:
     return stats_crud.get_verification_progress(
-        db, project_id, _parse_site_ids(site_ids), date_from, date_to
+        db, project_id, _parse_site_ids(site_ids),
+        _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
     )
 
 
@@ -191,7 +211,8 @@ def verification_progress_by_label(
     db: Session = Depends(get_db),
 ) -> VerificationProgressByLabel:
     return stats_crud.get_verification_progress_by_label(
-        db, project_id, _parse_site_ids(site_ids), date_from, date_to
+        db, project_id, _parse_site_ids(site_ids),
+        _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
     )
 
 
@@ -209,8 +230,8 @@ def observation_rate_map(
         db,
         project_id,
         _parse_site_ids(site_ids),
-        date_from,
-        date_to,
+        _valid_date(date_from, "date_from"),
+        _valid_date(date_to, "date_to"),
         _parse_site_ids(label_taxonomy_ids),
     )
 

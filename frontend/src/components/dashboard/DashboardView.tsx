@@ -184,6 +184,7 @@ export function DashboardView({ projectId }: { projectId: string }) {
     queryKey: [
       "statistics",
       "species",
+      "wildlife",
       projectId,
       siteIdsParam,
       dateRange.startDate,
@@ -199,6 +200,7 @@ export function DashboardView({ projectId }: { projectId: string }) {
         dateRange.endDate ?? undefined,
         taxonomicRank,
         speciesCountMode,
+        true,
       ),
     enabled: !!projectId,
   });
@@ -240,8 +242,8 @@ export function DashboardView({ projectId }: { projectId: string }) {
       ? "Independent events per 100 trap nights"
       : "Observations per 100 trap nights";
 
-  // The endpoint returns every observed species (so the chart selectors can
-  // list them all); the top-taxa bars show only the top 10.
+  // Wildlife-only list (person/vehicle and non-wildlife labels are
+  // filtered server-side); the bars show only the top 10.
   const topSpecies = (species ?? []).slice(0, 10);
   const speciesData = {
     labels: topSpecies.map((s) =>
@@ -416,10 +418,12 @@ export function DashboardView({ projectId }: { projectId: string }) {
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-1.5">
-                  <CardTitle className="text-lg">Top taxa</CardTitle>
+                  <CardTitle className="text-lg">Wildlife detected</CardTitle>
                   <DashboardAboutPopover>
                     <p>
-                      Top 10 taxa. Frequency counts the independent
+                      Top 10 wildlife taxa. People, vehicles, and
+                      non-wildlife labels like blank or false detection
+                      are left out. Frequency counts the independent
                       events containing the taxon (the basis for RAI).
                       Abundance counts individuals, using each event's
                       confirmed count, or the AI's count where not yet
@@ -467,7 +471,7 @@ export function DashboardView({ projectId }: { projectId: string }) {
               ) : (
                 <div className="flex items-center justify-center h-full">
                   <p className="text-muted-foreground">
-                    No species data available
+                    No wildlife detected
                   </p>
                 </div>
               )}
