@@ -104,6 +104,7 @@ alembic/versions/*.pyc
 # stuff for myself
 future-plans/*
 skills/send-draft-model/
+skills/write-release-notes/
 
 # VERSION is deliberately tracked, do not add it here. backend.spec
 # bundles it into the PyInstaller build and backend/app/__init__.py
