@@ -446,24 +446,45 @@ export function DeploymentTimelineChart({
           );
         })}
 
-        {/* Axis labels. Suppress month / year labels that land within
-            ENDPOINT_PADDING_PX of either endpoint label so they don't
-            overlap with the day-precision start / end labels rendered
-            below. Endpoint labels themselves render unconditionally so
-            the user always sees the exact deployment start and end. */}
+        {/* Axis labels. A label only renders when its estimated text box
+            does not collide with anything already placed. The endpoint
+            labels (rendered unconditionally below) claim their space
+            first, then year labels, then plain months left to right.
+            This is what keeps "Feb" from running into "Jan 2014" and a
+            month label from sliding under a wide endpoint date. */}
         {(() => {
           const startX = geometry.dateToX(geometry.xMin);
           const endX = geometry.dateToX(geometry.xMax);
-          const ENDPOINT_PADDING_PX = 60;
-          return geometry.monthTicks.map((tick, i) => {
-            if (!geometry.labelledIdx.has(i)) return null;
+          // 11px system font runs ~6.5px per character.
+          const approxWidth = (s: string) => s.length * 6.5;
+          const GAP = 10;
+          const occupied: Array<[number, number]> = [
+            [startX, startX + approxWidth(formatShortDate(geometry.xMin))],
+            [endX - approxWidth(formatShortDate(geometry.xMax)), endX],
+          ];
+          const fits = (lo: number, hi: number) =>
+            occupied.every(([a, b]) => hi + GAP <= a || lo - GAP >= b);
+          const visible = new Set<number>();
+          const order = [...geometry.monthTicks.keys()].sort(
+            (a, b) =>
+              Number(geometry.monthTicks[b].major) -
+                Number(geometry.monthTicks[a].major) || a - b,
+          );
+          for (const i of order) {
+            if (!geometry.labelledIdx.has(i)) continue;
+            const tick = geometry.monthTicks[i];
+            const half = approxWidth(tick.label) / 2;
             const x = geometry.dateToX(tick.ms);
-            if (Math.abs(x - startX) < ENDPOINT_PADDING_PX) return null;
-            if (Math.abs(x - endX) < ENDPOINT_PADDING_PX) return null;
+            if (!fits(x - half, x + half)) continue;
+            occupied.push([x - half, x + half]);
+            visible.add(i);
+          }
+          return geometry.monthTicks.map((tick, i) => {
+            if (!visible.has(i)) return null;
             return (
               <text
                 key={`label-${i}`}
-                x={x}
+                x={geometry.dateToX(tick.ms)}
                 y={TOP_PADDING + 14}
                 fontSize={11}
                 fill="#64748b"
