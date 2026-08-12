@@ -159,7 +159,7 @@ function Row({ label, ok }: RowProps) {
     <div className="flex items-center justify-between">
       <span>{label}</span>
       <span className={ok ? "text-[#0f6064]" : "text-muted-foreground"}>
-        {ok ? "Ready" : "Missing"}
+        {ok ? "Ready" : "Not ready"}
       </span>
     </div>
   );

@@ -37,6 +37,17 @@ logger = get_logger(__name__)
 # detection compares this to the current bundled YAML hash.
 ENV_YAML_SHA_FILENAME = ".addaxai-yaml-sha256"
 
+# Boot probe run by _validate_env. Imports the stdlib C extension
+# modules, which live as individual .pyd files in the env's DLLs
+# directory on Windows and are what antivirus quarantines file by
+# file. Plain `import sys` boots fine without them, so it misses
+# exactly this corruption. Keep the list to stdlib only: every module
+# here must exist in every env on every platform, or a healthy env
+# reports broken and gets wiped.
+_BOOT_PROBE_SCRIPT = (
+    "import encodings, select, unicodedata, ssl, ctypes, socket, zlib, hashlib"
+)
+
 
 def hash_yaml_file(yaml_path: Path) -> str:
     """
@@ -727,16 +738,28 @@ class EnvironmentManager:
         Validate that an environment exists, has its Python binary on
         disk, AND that interpreter actually boots. The boot probe
         catches envs whose `python.exe` file survived but whose stdlib
-        was pruned — Windows Defender quarantining `Lib/encodings/`,
+        was pruned: Windows Defender quarantining `Lib/encodings/`,
         antivirus / Storage Sense cleanup, partial copy, interrupted
         rename, etc. Without this probe, the env reports "valid" right
         up until a worker subprocess crashes with
         `ModuleNotFoundError: No module named 'encodings'` and the user
         sees only "Classification worker exited with code 1".
 
-        Returns False on any failure (missing binary, non-zero exit,
-        timeout, OSError) so the caller treats the env as broken and
-        triggers a rebuild.
+        The probe imports the stdlib C extension modules (the `.pyd`
+        files in `DLLs\\` on Windows) rather than only `sys`, because
+        antivirus quarantines those individually while interpreter boot
+        stays intact. Seen in the field 2026-08: an env whose
+        `select.pyd` and `unicodedata.pyd` were gone passed the old
+        probe and then failed every analysis on tqdm's
+        `from unicodedata import ...`.
+
+        Returns False when the env is provably broken: missing binary,
+        probe cannot launch, or the probe ran and exited non-zero. A
+        timeout returns True: a genuinely broken env fails in
+        milliseconds, while antivirus scanning makes python.exe on a
+        healthy env take 10+ seconds to start (observed repeatedly on
+        the same field machine). Treating slow as broken is what lets
+        `get_or_create_env` wipe and rebuild a healthy multi-GB env.
         """
         python_path = self._get_python_path(env_path)
         if not python_path.exists():
@@ -744,11 +767,17 @@ class EnvironmentManager:
 
         try:
             result = subprocess.run(
-                [str(python_path), "-c", "import sys; sys.exit(0)"],
+                [str(python_path), "-c", _BOOT_PROBE_SCRIPT],
                 capture_output=True,
                 timeout=10,
             )
-        except (subprocess.TimeoutExpired, OSError) as e:
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                f"Boot probe timed out for env at {env_path}; "
+                f"treating as valid (slow machine, not a broken env)"
+            )
+            return True
+        except OSError as e:
             logger.warning(
                 f"Boot probe failed for env at {env_path}: {e}"
             )
