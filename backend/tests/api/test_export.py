@@ -1587,6 +1587,33 @@ def test_scoped_rows_defer_exif_blob(db):
     assert returned_file.exif_data["Make"] == "RECONYX"
 
 
+def test_build_files_rows_accepts_prefetched_rows(db):
+    """Passing the default-query scoped rows must yield exactly the rows
+    the self-fetching call produces. Pins the reuse path that
+    build_spreadsheet_sheets takes to avoid running the same query twice."""
+    from app.api.crud.export import (
+        build_files_rows,
+        get_scoped_detection_rows,
+    )
+
+    project = make_project(db)
+    site = make_site(db, project_id=project.id)
+    deployment = make_deployment(db, project_id=project.id, site_id=site.id)
+    with_box = make_file(db, deployment_id=deployment.id)
+    make_detection(db, file_id=with_box.id, category="animal", confidence=0.9)
+    make_file(db, deployment_id=deployment.id)  # empty file, blank row
+
+    headers_direct, rows_direct = build_files_rows(db, project)
+    scoped = get_scoped_detection_rows(db, project)
+    headers_reused, rows_reused = build_files_rows(
+        db, project, scoped_rows=scoped
+    )
+
+    assert headers_reused == headers_direct
+    assert rows_reused == rows_direct
+    assert len(rows_reused) == 2
+
+
 def test_serialize_xlsx_multi_write_only_roundtrip():
     """write_only mode still produces a readable multi-sheet workbook.
 
@@ -1612,6 +1639,28 @@ def test_serialize_xlsx_multi_write_only_roundtrip():
     assert list(wb["Beta"].iter_rows(values_only=True)) == [
         ("c",),
         ("only",),
+    ]
+
+
+def test_write_xlsx_multi_writes_same_workbook_to_disk(tmp_path):
+    """The path-writing variant (used by the folder-run save so the
+    zipped workbook never exists as one in-memory blob) must produce
+    the same content as the bytes serializer."""
+    from openpyxl import load_workbook
+
+    sheets = [
+        ("Alpha", ["a", "b"], [[1, "x"], [2, "y"]]),
+        ("Beta", ["c"], [["only"]]),
+    ]
+    target = tmp_path / "out.xlsx"
+    export_formats.write_xlsx_multi(sheets, target)
+
+    wb = load_workbook(target)
+    assert wb.sheetnames == ["Alpha", "Beta"]
+    assert list(wb["Alpha"].iter_rows(values_only=True)) == [
+        ("a", "b"),
+        (1, "x"),
+        (2, "y"),
     ]
 
 

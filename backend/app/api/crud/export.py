@@ -804,15 +804,27 @@ def build_files_rows(
     db: Session,
     project: Project,
     deployment_ids: list[str] | None = None,
+    scoped_rows: Sequence[Row[Any]] | None = None,
 ) -> tuple[list[str], list[list[Any]]]:
     """Build `(headers, rows)` for the Files export: one row per media file,
     including files with no detections (the effort table). `event_id`
-    answers "which files are in this event"."""
+    answers "which files are in this event".
+
+    ``scoped_rows`` lets a caller that already fetched the default
+    (thresholded) scoped rows for the same ``deployment_ids`` reuse them
+    instead of paying the query twice. Only rows from that identical
+    query are valid here: rows fetched with ``apply_threshold=False``
+    are NOT equivalent — the excluded-classes clause deletes whole rows,
+    so a file whose only detections are excluded animals below the
+    threshold exists in the thresholded set (as a blank row) but is
+    missing from the unthresholded one. The folder-run table writers
+    therefore keep the internal fetch."""
     tz_name = project.timezone
 
-    scoped_rows = get_scoped_detection_rows(
-        db, project, deployment_ids=deployment_ids
-    )
+    if scoped_rows is None:
+        scoped_rows = get_scoped_detection_rows(
+            db, project, deployment_ids=deployment_ids
+        )
     grouped = list(_group_rows_by_file(scoped_rows))
     file_ids = [f.id for f, _d, _s, _dets in grouped]
     event_map = _events_by_file(db, file_ids)
@@ -1003,7 +1015,11 @@ def build_spreadsheet_sheets(
     deployments; None exports everything."""
     scoped = get_scoped_detection_rows(db, project, deployment_ids=deployment_ids)
     dep_headers, dep_rows = build_deployments_rows(db, project, deployment_ids)
-    files_headers, files_rows = build_files_rows(db, project, deployment_ids)
+    # Same query, same threshold, same scope as the fetch above — reuse
+    # the rows instead of running it a second time.
+    files_headers, files_rows = build_files_rows(
+        db, project, deployment_ids, scoped_rows=scoped
+    )
     det_headers, det_rows = build_detection_rows(db, project, scoped)
     obs_headers, obs_rows = build_observation_rows(db, project, deployment_ids)
     return [

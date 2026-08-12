@@ -72,10 +72,22 @@ def write_tables_csv(
 
     # Complete record: folder-run data exports are never filtered by the
     # detection threshold. Thresholding is an in-app / media-output
-    # concern only (beta feedback from Dan).
+    # concern only (beta feedback from Dan). Built first and released
+    # before the files table below loads its own row set, so the two
+    # biggest allocations of the save job never coexist.
     scoped = export_crud.get_scoped_detection_rows(
         db, project, apply_threshold=False
     )
+    det_headers, det_rows = folder_run_table(
+        *export_crud.build_detection_rows(db, project, scoped)
+    )
+    del scoped
+    detections_path = target_dir / DETECTIONS_FILENAME
+    with open(detections_path, "wb") as f:
+        f.write(export_formats.serialize_csv(det_headers, det_rows))
+    detection_count = len(det_rows)
+    del det_rows
+
     # The files table is deliberately NOT unthresholded the way the
     # detections table above is. Its observation_type and species columns
     # both describe the file's strongest *passing* detection, so dropping
@@ -87,20 +99,13 @@ def write_tables_csv(
     files_headers, files_rows = folder_run_table(
         *export_crud.build_files_rows(db, project)
     )
-    det_headers, det_rows = folder_run_table(
-        *export_crud.build_detection_rows(db, project, scoped)
-    )
-
     files_path = target_dir / FILES_FILENAME
     with open(files_path, "wb") as f:
         f.write(export_formats.serialize_csv(files_headers, files_rows))
-    detections_path = target_dir / DETECTIONS_FILENAME
-    with open(detections_path, "wb") as f:
-        f.write(export_formats.serialize_csv(det_headers, det_rows))
 
     logger.info(
         f"tables_csv: project={project_id} "
-        f"files={len(files_rows)} detections={len(det_rows)}"
+        f"files={len(files_rows)} detections={detection_count}"
     )
 
     return TablesCsvResult(
@@ -108,5 +113,5 @@ def write_tables_csv(
             str(files_path),
             str(detections_path),
         ],
-        row_count=len(files_rows) + len(det_rows),
+        row_count=len(files_rows) + detection_count,
     )

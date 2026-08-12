@@ -22,7 +22,11 @@ import sqlite3
 import struct
 import tempfile
 import zipfile
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from openpyxl import Workbook
 
 # ---------------------------------------------------------------------------
 # Small helpers
@@ -84,8 +88,29 @@ def serialize_xlsx(
 def serialize_xlsx_multi(
     sheets: list[tuple[str, list[str], list[list[Any]]]],
 ) -> bytes:
-    """One workbook with several sheets. Each entry is
-    ``(sheet_title, headers, rows)``; sheets are added in order.
+    """One workbook with several sheets, as bytes (for HTTP responses)."""
+    buf = io.BytesIO()
+    _build_xlsx_workbook(sheets).save(buf)
+    return buf.getvalue()
+
+
+def write_xlsx_multi(
+    sheets: list[tuple[str, list[str], list[list[Any]]]],
+    path: Path,
+) -> None:
+    """One workbook with several sheets, saved straight to ``path``.
+
+    For disk targets, so the zipped workbook never has to exist as one
+    in-memory bytes blob the way ``serialize_xlsx_multi`` requires.
+    """
+    _build_xlsx_workbook(sheets).save(str(path))
+
+
+def _build_xlsx_workbook(
+    sheets: list[tuple[str, list[str], list[list[Any]]]],
+) -> Workbook:
+    """Each entry is ``(sheet_title, headers, rows)``; sheets are added
+    in order.
 
     Uses openpyxl's ``write_only`` mode: rows are streamed straight into the
     sheet instead of building an in-memory cell graph, so memory stays flat
@@ -101,9 +126,7 @@ def serialize_xlsx_multi(
         ws.append(headers)
         for row in rows:
             ws.append(row)
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
+    return wb
 
 
 # ---------------------------------------------------------------------------
@@ -448,8 +471,6 @@ def generate_thumbnail(
     can't be opened (missing file, unsupported format). Downscales to
     `max_width` preserving aspect ratio; never upscales.
     """
-    from pathlib import Path
-
     from PIL import Image, ImageOps
 
     path = Path(source_path)

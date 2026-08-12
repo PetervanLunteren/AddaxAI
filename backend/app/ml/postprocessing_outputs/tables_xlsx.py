@@ -59,24 +59,30 @@ def write_tables_xlsx(
 
     # Complete record: folder-run data exports are never filtered by the
     # detection threshold (matches tables_csv and the recognition JSON).
+    # Built before the files table and released right after, so this row
+    # set and build_files_rows' own (thresholded — the two are not
+    # interchangeable, see build_files_rows) never sit in memory
+    # together: on a large run each is the biggest allocation in the
+    # whole save job.
     scoped = export_crud.get_scoped_detection_rows(
         db, project, apply_threshold=False
     )
-    files_headers, files_rows = folder_run_table(
-        *export_crud.build_files_rows(db, project)
-    )
     det_headers, det_rows = folder_run_table(
         *export_crud.build_detection_rows(db, project, scoped)
+    )
+    del scoped
+    files_headers, files_rows = folder_run_table(
+        *export_crud.build_files_rows(db, project)
     )
     sheets = [
         ("Files", files_headers, files_rows),
         ("Detections", det_headers, det_rows),
     ]
-    payload = export_formats.serialize_xlsx_multi(sheets)
 
     output_path = target_dir / XLSX_FILENAME
-    with open(output_path, "wb") as f:
-        f.write(payload)
+    # Saved straight to disk; the bytes-returning serializer would hold
+    # the whole zipped workbook in memory first.
+    export_formats.write_xlsx_multi(sheets, output_path)
 
     total_rows = sum(len(rows) for _title, _headers, rows in sheets)
     logger.info(
