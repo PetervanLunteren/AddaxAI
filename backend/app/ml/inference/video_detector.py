@@ -29,6 +29,12 @@ from app.utils.subprocess_env import clean_python_env
 
 logger = get_logger(__name__)
 
+# Windows exit code 0xC0000005 (access violation). OpenCV's FFmpeg
+# backend dies with it on videos whose pixel format changes mid-stream
+# (Bushnell MJPEG AVIs: frame 0 is yuvj422p, the rest yuvj420p). See
+# "Mixed pixel format videos" in DEVELOPERS.md.
+_WINDOWS_ACCESS_VIOLATION = 3221225477
+
 
 def _build_process_video_cmd(
     *,
@@ -166,21 +172,90 @@ class VideoDetectionModel:
             progress_callback("Starting video detection...", 0.0)
 
         try:
-            # Run subprocess with progress streaming in its own process
-            # group so cancel can take the whole tree down.
-            process = popen_group(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                universal_newlines=True,
-                env=clean_python_env(**cuda_guard_overrides(self.env_manager)),
+            base_env = clean_python_env(**cuda_guard_overrides(self.env_manager))
+            return_code = self._stream_process(
+                command, base_env, progress_callback, job_id
             )
 
-            # Stream output and parse progress
-            last_progress = 0.0
-            with track_subprocess(job_id, process):
+            cancelled = is_cancel_requested(job_id) if job_id else False
+            if return_code == _WINDOWS_ACCESS_VIOLATION and not cancelled:
+                # OpenCV's FFmpeg backend takes the whole subprocess down
+                # on a mixed-pixel-format video. Deprioritising FFmpeg
+                # makes cv2 pick MSMF, which decodes those files (with a
+                # slight colour-range shift on the detector's input, the
+                # least sensitive consumer). One retry covers the whole
+                # folder; deployments are single-camera, so a folder that
+                # trips this is all such files anyway.
+                logger.warning(
+                    "Video detection died with an access violation, likely "
+                    "OpenCV's FFmpeg backend on a mixed-pixel-format video "
+                    "(see 'Mixed pixel format videos' in DEVELOPERS.md). "
+                    "Retrying once with OPENCV_VIDEOIO_PRIORITY_FFMPEG=0."
+                )
+                retry_env = dict(base_env)
+                retry_env["OPENCV_VIDEOIO_PRIORITY_FFMPEG"] = "0"
+                return_code = self._stream_process(
+                    command, retry_env, progress_callback, job_id
+                )
+                cancelled = is_cancel_requested(job_id) if job_id else False
+
+            # If we were cancelled mid-stream, the process was killed and
+            # returned non-zero; surface that as a cancel rather than an
+            # opaque RuntimeError.
+            if cancelled:
+                raise JobCancelledError()
+
+            # Send final 100% update
+            if progress_callback:
+                progress_callback("Video detection complete", 1.0)
+
+            if return_code != 0:
+                error_msg = f"Video detection failed with exit code {return_code}"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+
+            if not output_json.exists():
+                raise RuntimeError("Output JSON was not created")
+
+            logger.info(f"Video detection complete: {output_json}")
+
+            return output_json
+
+        except JobCancelledError:
+            raise
+        except subprocess.SubprocessError as e:
+            logger.error(f"Video detection subprocess error: {e}", exc_info=True)
+            raise RuntimeError(f"Video detection failed: {e}") from e
+        except Exception as e:
+            logger.error(f"Video detection error: {e}", exc_info=True)
+            raise RuntimeError(f"Video detection failed: {e}") from e
+
+    def _stream_process(
+        self,
+        command: list[str],
+        env: dict[str, str],
+        progress_callback: Callable[[str, float], None] | None,
+        job_id: str | None,
+    ) -> int:
+        """
+        Spawn `command`, stream its output into the log and the progress
+        callback, and return its exit code.
+        """
+        # Run subprocess with progress streaming in its own process
+        # group so cancel can take the whole tree down.
+        process = popen_group(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True,
+            env=env,
+        )
+
+        # Stream output and parse progress
+        last_progress = 0.0
+        with track_subprocess(job_id, process):
                 for line in process.stdout:
                     line = line.strip()
 
@@ -242,38 +317,7 @@ class VideoDetectionModel:
                             last_progress = phase_progress
 
                 process.stdout.close()
-                return_code = process.wait()
-
-            # If we were cancelled mid-stream, the process was killed and
-            # returned non-zero; surface that as a cancel rather than an
-            # opaque RuntimeError.
-            if is_cancel_requested(job_id) if job_id else False:
-                raise JobCancelledError()
-
-            # Send final 100% update
-            if progress_callback and last_progress < 1.0:
-                progress_callback("Video detection complete", 1.0)
-
-            if return_code != 0:
-                error_msg = f"Video detection failed with exit code {return_code}"
-                logger.error(error_msg)
-                raise RuntimeError(error_msg)
-
-            if not output_json.exists():
-                raise RuntimeError("Output JSON was not created")
-
-            logger.info(f"Video detection complete: {output_json}")
-
-            return output_json
-
-        except JobCancelledError:
-            raise
-        except subprocess.SubprocessError as e:
-            logger.error(f"Video detection subprocess error: {e}", exc_info=True)
-            raise RuntimeError(f"Video detection failed: {e}") from e
-        except Exception as e:
-            logger.error(f"Video detection error: {e}", exc_info=True)
-            raise RuntimeError(f"Video detection failed: {e}") from e
+                return process.wait()
 
     @staticmethod
     def _format_device_name(raw: str) -> str:

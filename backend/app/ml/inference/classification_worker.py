@@ -437,7 +437,7 @@ def _process_video_group(
         chosen_pixels: Image.Image | None = None
         first_pixels: Image.Image | None = None
 
-        for frame_num, pil_image in iter_wanted_frames(cap, wanted):
+        for frame_num, pil_image in iter_wanted_frames(cap, wanted, video_path):
             # Classify every item pinned to this frame.
             for orig_idx, item in items_by_frame.get(frame_num, []):
                 _classify_one(

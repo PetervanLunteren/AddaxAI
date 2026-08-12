@@ -94,7 +94,7 @@ def _fetch_best_frame(
     first_pixels = None
     try:
         for frame_num, pil_image in iter_wanted_frames(
-            cap, {best_frame_number, 0}
+            cap, {best_frame_number, 0}, video_path
         ):
             if frame_num == best_frame_number:
                 chosen_pixels = pil_image

@@ -71,7 +71,7 @@ def build_filmstrip(
             return ()
 
         frames: list[FilmstripFrameData] = []
-        for num, pil in iter_wanted_frames(cap, set(wanted)):
+        for num, pil in iter_wanted_frames(cap, set(wanted), file_path):
             if pil.mode != "RGB":
                 pil = pil.convert("RGB")
             if pil.width > FILMSTRIP_MAX_WIDTH:

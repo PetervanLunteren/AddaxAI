@@ -52,10 +52,14 @@ import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { buildSiteOptions } from "../../lib/site-filter-options";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
 import {
-  getSpeciesColor,
-  getSpeciesColorWithAlpha,
   setSpeciesContext,
 } from "../../utils/species-colors";
+
+// One colour for every bar, matching AddaxAI Connect's species chart:
+// the species name is already on the axis, so per-bar colours read as
+// meaning something when they don't.
+const BAR_FILL = "rgba(15, 96, 100, 0.18)";
+const BAR_BORDER = "#0f6064";
 import { RANK_OPTIONS } from "../../lib/taxonomic-rank";
 import {
   type DateRange,
@@ -250,11 +254,11 @@ export function DashboardView({ projectId }: { projectId: string }) {
       {
         label: speciesAxisLabel,
         data: topSpecies.map((s) => norm(s.count)),
-        backgroundColor: topSpecies.map((s) =>
-          getSpeciesColorWithAlpha(s.species, 0.8),
-        ),
-        borderColor: topSpecies.map((s) => getSpeciesColor(s.species)),
-        borderWidth: 1,
+        backgroundColor: BAR_FILL,
+        borderColor: BAR_BORDER,
+        borderWidth: 1.25,
+        borderRadius: 4,
+        barPercentage: 0.75,
       },
     ],
   };

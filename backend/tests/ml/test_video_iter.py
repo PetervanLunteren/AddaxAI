@@ -49,7 +49,7 @@ def test_iter_wanted_frames_yields_requested_indices_in_order(tiny_video):
     assert cap is not None
     try:
         wanted = {0, 5, 12, 19}
-        yielded = list(iter_wanted_frames(cap, wanted))
+        yielded = list(iter_wanted_frames(cap, wanted, tiny_video))
     finally:
         cap.release()
 
@@ -68,7 +68,7 @@ def test_iter_wanted_frames_empty_set_yields_nothing(tiny_video):
     cap = open_video(tiny_video)
     assert cap is not None
     try:
-        yielded = list(iter_wanted_frames(cap, set()))
+        yielded = list(iter_wanted_frames(cap, set(), tiny_video))
     finally:
         cap.release()
     assert yielded == []
@@ -80,7 +80,7 @@ def test_iter_wanted_frames_stops_at_end_of_stream_even_if_index_unreachable(tin
     assert cap is not None
     try:
         wanted = {0, 9999}
-        yielded = list(iter_wanted_frames(cap, wanted))
+        yielded = list(iter_wanted_frames(cap, wanted, tiny_video))
     finally:
         cap.release()
     assert [fn for fn, _ in yielded] == [0]
@@ -91,7 +91,7 @@ def test_iter_wanted_frames_stops_early_when_last_wanted_reached(tiny_video):
     cap = open_video(tiny_video)
     assert cap is not None
     try:
-        yielded = list(iter_wanted_frames(cap, {2}))
+        yielded = list(iter_wanted_frames(cap, {2}, tiny_video))
     finally:
         cap.release()
     assert [fn for fn, _ in yielded] == [2]
@@ -119,9 +119,9 @@ def test_sample_indices_returns_evenly_spaced_indices():
 CODECS = [("mp4v", ".mp4"), ("MJPG", ".avi")]
 
 
-def _walk_to(cap, frame_number):
+def _walk_to(cap, frame_number, video_path):
     """Ground truth: the frame the sequential path would have produced."""
-    for num, image in iter_wanted_frames(cap, {frame_number}):
+    for num, image in iter_wanted_frames(cap, {frame_number}, video_path):
         if num == frame_number:
             return image
     return None
@@ -141,7 +141,7 @@ def test_read_frame_by_seek_returns_the_frame_the_walk_would_have(
         assert seek_cap is not None and walk_cap is not None
         try:
             seeked = read_frame_by_seek(seek_cap, target, 30)
-            walked = _walk_to(walk_cap, target)
+            walked = _walk_to(walk_cap, target, video)
         finally:
             seek_cap.release()
             walk_cap.release()

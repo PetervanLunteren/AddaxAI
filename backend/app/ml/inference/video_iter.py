@@ -150,8 +150,25 @@ def read_frame_by_seek(
     return Image.fromarray(cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB))
 
 
+def _read_frame_zero(video_path: Path | str) -> Image.Image | None:
+    """
+    Read frame 0 on a capture of its own. See `iter_wanted_frames` for
+    why frame 0 must never share a conversion context with later frames.
+    """
+    cap = open_video(video_path)
+    if cap is None:
+        return None
+    try:
+        success, image_bgr = cap.read()
+        if not success or image_bgr is None:
+            return None
+        return Image.fromarray(cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB))
+    finally:
+        cap.release()
+
+
 def iter_wanted_frames(
-    cap: cv2.VideoCapture, wanted: set[int]
+    cap: cv2.VideoCapture, wanted: set[int], video_path: Path | str
 ) -> Iterator[tuple[int, Image.Image]]:
     """
     Yield `(frame_number, PIL.Image)` for each frame index in `wanted`,
@@ -160,6 +177,20 @@ def iter_wanted_frames(
     higher CAP_PROP_FRAME_COUNT than they can actually decode).
 
     Empty `wanted` yields nothing without touching the capture.
+
+    `video_path` must name the same file `cap` was opened on. It exists
+    because frame 0 is read on a capture of its own, never on the shared
+    walk capture. Some cameras (Bushnell MJPEG AVIs) encode frame 0 in a
+    different pixel format (yuvj422p) than every frame after it
+    (yuvj420p), and OpenCV's FFmpeg wrapper rebuilds its colour
+    conversion context only when the frame *dimensions* change
+    (cap_ffmpeg_impl.hpp), never on a pixel format change. Converting
+    frame 0 and a later frame on one capture therefore reads the later
+    frame with the wrong plane layout: silently corrupted frames on
+    macOS, an access-violation process death on Windows and Linux. A
+    capture that converts only frame 0, or only frames >= 1, never mixes
+    formats. On the shared capture frame 0 is only `grab()`ed, which
+    demuxes and decodes but never converts, so it is safe.
 
     Frames we are skipping past are `grab()`ed rather than `read()`, which
     decodes them (unavoidable, an inter-frame codec needs them to build
@@ -174,6 +205,14 @@ def iter_wanted_frames(
     """
     if not wanted:
         return
+
+    if 0 in wanted and len(wanted) > 1:
+        first = _read_frame_zero(video_path)
+        if first is not None:
+            yield 0, first
+        else:
+            logger.warning(f"Could not read frame 0 of {video_path}")
+        wanted = wanted - {0}
 
     last_wanted = max(wanted)
     frame_number = 0
