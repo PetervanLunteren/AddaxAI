@@ -13,6 +13,10 @@
  */
 
 import { useState } from "react";
+import {
+  InsightsFilterBarShell,
+  type FilterChip,
+} from "../plots/InsightsFilterChips";
 import { useQuery } from "@tanstack/react-query";
 import {
   Circle,
@@ -44,6 +48,9 @@ export interface MapFilters {
 }
 
 interface MapFilterBarProps {
+  /** Active-filter chips, rendered inside the card by the shell. */
+  chips: FilterChip[];
+  onClearAll: () => void;
   projectId: string;
   filters: MapFilters;
   onChange: (next: MapFilters) => void;
@@ -54,6 +61,8 @@ interface MapFilterBarProps {
 }
 
 export function MapFilterBar({
+  chips,
+  onClearAll,
   projectId,
   filters,
   onChange,
@@ -106,7 +115,7 @@ export function MapFilterBar({
     })) ?? [];
 
   return (
-    <div className="rounded-lg border bg-card pt-2 pb-3 px-3 space-y-4">
+    <InsightsFilterBarShell chips={chips} onClearAll={onClearAll}>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         {/* View mode */}
         <div className="space-y-1.5">
@@ -230,7 +239,6 @@ export function MapFilterBar({
           />
         </div>
       </div>
-    </div>
+    </InsightsFilterBarShell>
   );
 }
-

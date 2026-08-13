@@ -382,6 +382,176 @@ def test_parallel_subfolders_in_one_deployment_raise_concurrent_count(db):
     assert response.metrics.total_trap_nights == 50
 
 
+def test_heatmap_counts_files_per_site_and_day(db):
+    """Two deployments at the same site sum onto one point per day."""
+    project = make_project(db)
+    site = make_site(db, project_id=project.id, name="Pooled")
+    for folder in ("/data/pooled/cam_a", "/data/pooled/cam_b"):
+        _make_dep_with_files(
+            db,
+            site_id=site.id,
+            project_id=project.id,
+            folder=folder,
+            dates=[date(2024, 1, 1), date(2024, 1, 2)],
+        )
+
+    response = get_deployment_timeline(db, project.id)
+
+    by_day = {p.date: p for p in response.heatmap}
+    assert set(by_day) == {date(2024, 1, 1), date(2024, 1, 2)}
+    # One file per deployment per day, two deployments at this site.
+    assert by_day[date(2024, 1, 1)].count == 2
+    assert by_day[date(2024, 1, 2)].count == 2
+    assert all(p.site_id == site.id for p in response.heatmap)
+
+
+def test_heatmap_respects_clip_window(db):
+    project = make_project(db)
+    site = make_site(db, project_id=project.id, name="Clip")
+    _make_dep_with_files(
+        db,
+        site_id=site.id,
+        project_id=project.id,
+        folder="/data/clip",
+        dates=[date(2024, 1, 15), date(2024, 2, 15), date(2024, 3, 15)],
+    )
+
+    response = get_deployment_timeline(
+        db,
+        project.id,
+        date_from=date(2024, 2, 1),
+        date_to=date(2024, 2, 29),
+    )
+
+    assert [p.date for p in response.heatmap] == [date(2024, 2, 15)]
+
+
+def test_heatmap_clip_window_keeps_boundary_days(db):
+    """The window is inclusive on both ends, whatever time of day the file
+    carries. A file at 23:59 on the last day must survive."""
+    project = make_project(db)
+    site = make_site(db, project_id=project.id, name="Edges")
+    dep = make_deployment(
+        db,
+        site_id=site.id,
+        project_id=project.id,
+        start_date_local=date(2024, 5, 1),
+        end_date_local=date(2024, 5, 31),
+    )
+    for stamp in (
+        datetime(2024, 5, 10, 0, 0, 0),
+        datetime(2024, 5, 20, 23, 59, 59),
+    ):
+        make_file(
+            db,
+            deployment_id=dep.id,
+            file_path=f"/data/edges/{stamp.isoformat()}.jpg",
+            captured_at_local=stamp,
+        )
+
+    response = get_deployment_timeline(
+        db,
+        project.id,
+        date_from=date(2024, 5, 10),
+        date_to=date(2024, 5, 20),
+    )
+
+    assert [p.date for p in response.heatmap] == [
+        date(2024, 5, 10),
+        date(2024, 5, 20),
+    ]
+
+
+def test_heatmap_skips_files_without_capture_time(db):
+    """Timestamp-less files drop out of every time-based feature, the
+    heatmap included. They still count towards the tooltip's file_count."""
+    project = make_project(db)
+    site = make_site(db, project_id=project.id, name="Undated")
+    dep = _make_dep_with_files(
+        db,
+        site_id=site.id,
+        project_id=project.id,
+        folder="/data/undated",
+        dates=[date(2024, 4, 1)],
+    )
+    # `make_file` falls back to a default timestamp when handed None, so
+    # null it after the fact to get a genuinely undated row.
+    undated = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path="/data/undated/no_exif.jpg",
+    )
+    undated.captured_at_local = None
+    db.flush()
+
+    response = get_deployment_timeline(db, project.id)
+
+    assert [(p.date, p.count) for p in response.heatmap] == [(date(2024, 4, 1), 1)]
+    assert response.sites[0].deployments[0].file_count == 2
+
+
+def test_heatmap_site_less_deployment_keyed_by_null(db):
+    project = make_project(db)
+    _make_dep_with_files(
+        db,
+        site_id=None,
+        project_id=project.id,
+        folder="/data/orphan",
+        dates=[date(2024, 2, 1)],
+    )
+
+    response = get_deployment_timeline(db, project.id)
+
+    assert len(response.heatmap) == 1
+    assert response.heatmap[0].site_id is None
+
+
+def test_heatmap_days_fall_inside_intervals(db):
+    """Guard against the two views of one chart drifting apart: every
+    heatmap cell must sit inside one of that site's rendered bars."""
+    project = make_project(db)
+    site_a = make_site(db, project_id=project.id, name="A")
+    site_b = make_site(db, project_id=project.id, name="B")
+    _make_dep_with_files(
+        db,
+        site_id=site_a.id,
+        project_id=project.id,
+        folder="/data/a/sd1",
+        dates=[date(2024, 1, 1), date(2024, 1, 20)],
+    )
+    _make_dep_with_files(
+        db,
+        site_id=site_a.id,
+        project_id=project.id,
+        folder="/data/a/sd2",
+        dates=[date(2024, 3, 1), date(2024, 3, 31)],
+    )
+    _make_dep_with_files(
+        db,
+        site_id=site_b.id,
+        project_id=project.id,
+        folder="/data/b/sd1",
+        dates=[date(2024, 2, 15), date(2024, 4, 1)],
+    )
+
+    response = get_deployment_timeline(db, project.id)
+
+    spans_by_site: dict[str | None, list[tuple[date, date]]] = {}
+    for site_row in response.sites:
+        spans_by_site[site_row.site_id] = [
+            (iv.start, iv.end)
+            for dep in site_row.deployments
+            for iv in dep.intervals
+        ]
+
+    assert response.heatmap
+    for point in response.heatmap:
+        spans = spans_by_site[point.site_id]
+        assert any(start <= point.date <= end for start, end in spans), (
+            f"{point.date} for site {point.site_id} is outside every interval"
+        )
+
+
 def test_site_ids_filter_supports_no_site_sentinel(db, client):
     """The endpoint honours the NO_SITE_SENTINEL on the URL."""
     project = make_project(db)

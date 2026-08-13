@@ -14,7 +14,6 @@ import { performanceApi } from "../api/performance";
 import { sitesApi } from "../api/sites";
 import { PerClassPerformanceTable } from "../components/plots/PerClassPerformanceTable";
 import {
-  InsightsFilterChips,
   buildSiteNameMap,
   siteChips,
 } from "../components/plots/InsightsFilterChips";
@@ -131,8 +130,9 @@ export function PerClassPerformancePage() {
           projectId={projectId}
           filters={filters}
           onChange={handleFiltersChange}
+          chips={chips}
+          onClearAll={clearAllDataFilters}
         />
-        <InsightsFilterChips chips={chips} onClearAll={clearAllDataFilters} />
 
         <PerClassPerformanceTable
           data={data}

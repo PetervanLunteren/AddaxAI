@@ -33,6 +33,13 @@ export interface ConcurrentPoint {
   count: number;
 }
 
+/** One site's media-file count for one day. `site_id` is null for "(no site)". */
+export interface HeatmapPoint {
+  site_id: string | null;
+  date: string; // YYYY-MM-DD
+  count: number;
+}
+
 export interface TimelineMetrics {
   site_count: number;
   deployment_count: number;
@@ -44,6 +51,7 @@ export interface TimelineMetrics {
 export interface TimelineResponse {
   sites: TimelineSite[];
   concurrent_cameras: ConcurrentPoint[];
+  heatmap: HeatmapPoint[];
   metrics: TimelineMetrics;
   date_range_from: string | null;
   date_range_to: string | null;

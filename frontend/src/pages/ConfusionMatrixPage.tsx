@@ -16,7 +16,6 @@ import { performanceApi } from "../api/performance";
 import { sitesApi } from "../api/sites";
 import { ConfusionMatrix } from "../components/plots/ConfusionMatrix";
 import {
-  InsightsFilterChips,
   buildSiteNameMap,
   siteChips,
 } from "../components/plots/InsightsFilterChips";
@@ -139,8 +138,9 @@ export function ConfusionMatrixPage() {
           filters={filters}
           onChange={handleFiltersChange}
           showModeToggle
+          chips={chips}
+          onClearAll={clearAllDataFilters}
         />
-        <InsightsFilterChips chips={chips} onClearAll={clearAllDataFilters} />
 
         <ConfusionMatrix
           data={data}

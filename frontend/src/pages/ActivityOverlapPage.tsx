@@ -39,7 +39,6 @@ import {
   type PlotReference,
 } from "../components/plots/PlotExplainer";
 import {
-  InsightsFilterChips,
   buildSiteNameMap,
   dateChips,
   siteChips,
@@ -323,6 +322,12 @@ export function ActivityOverlapPage() {
     writeFilters(next);
   };
 
+  const chips = useActivityOverlapChips(
+    projectId,
+    filters,
+    handleFiltersChange,
+  );
+
   // Only trigger the species-distribution API call when at least one
   // slot has no URL value AND no storage decision. A stored "" means
   // "deliberately empty" and blocks auto-pick for that slot.
@@ -495,11 +500,15 @@ export function ActivityOverlapPage() {
           projectId={projectId}
           filters={filters}
           onChange={handleFiltersChange}
-        />
-        <ActivityOverlapChips
-          projectId={projectId}
-          filters={filters}
-          onChange={handleFiltersChange}
+          chips={chips}
+          onClearAll={() =>
+            handleFiltersChange({
+              ...filters,
+              siteIds: [],
+              dateFrom: null,
+              dateTo: null,
+            })
+          }
         />
 
         {!enabled && (
@@ -634,22 +643,20 @@ export default ActivityOverlapPage;
  * or display modes rather than removable filters. "Clear all" resets
  * sites and date range while keeping the species and time axis.
  */
-function ActivityOverlapChips({
-  projectId,
-  filters,
-  onChange,
-}: {
-  projectId: string;
-  filters: ActivityOverlapPageFilters;
-  onChange: (next: ActivityOverlapPageFilters) => void;
-}) {
+/** Chips for the active site / date filters. A hook rather than a
+ *  component because the bar now renders the chip row itself. */
+function useActivityOverlapChips(
+  projectId: string | undefined,
+  filters: ActivityOverlapPageFilters,
+  onChange: (next: ActivityOverlapPageFilters) => void,
+) {
   const { data: sites } = useQuery({
     queryKey: ["sites", projectId],
-    queryFn: () => sitesApi.list(projectId),
+    queryFn: () => sitesApi.list(projectId!),
     enabled: !!projectId,
   });
 
-  const chips = useMemo(() => {
+  return useMemo(() => {
     const siteNames = buildSiteNameMap(sites);
     return [
       ...siteChips(filters.siteIds, siteNames, (next) =>
@@ -663,13 +670,4 @@ function ActivityOverlapChips({
       ),
     ];
   }, [filters, sites, onChange]);
-
-  return (
-    <InsightsFilterChips
-      chips={chips}
-      onClearAll={() =>
-        onChange({ ...filters, siteIds: [], dateFrom: null, dateTo: null })
-      }
-    />
-  );
 }

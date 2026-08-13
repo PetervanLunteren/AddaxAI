@@ -15,6 +15,10 @@
  */
 
 import { useMemo } from "react";
+import {
+  InsightsFilterBarShell,
+  type FilterChip,
+} from "./InsightsFilterChips";
 import { useQuery } from "@tanstack/react-query";
 import { Clock, Sun } from "lucide-react";
 
@@ -39,12 +43,17 @@ export interface ActivityOverlapPageFilters {
 }
 
 interface ActivityOverlapFilterBarProps {
+  /** Active-filter chips, rendered inside the card by the shell. */
+  chips: FilterChip[];
+  onClearAll: () => void;
   projectId: string;
   filters: ActivityOverlapPageFilters;
   onChange: (next: ActivityOverlapPageFilters) => void;
 }
 
 export function ActivityOverlapFilterBar({
+  chips,
+  onClearAll,
   projectId,
   filters,
   onChange,
@@ -65,7 +74,7 @@ export function ActivityOverlapFilterBar({
     onChange({ ...filters, ...patch });
 
   return (
-    <div className="rounded-lg border bg-card pt-2 pb-3 px-3 space-y-4">
+    <InsightsFilterBarShell chips={chips} onClearAll={onClearAll}>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         {/* Label A */}
         <div className="space-y-1.5">
@@ -147,6 +156,6 @@ export function ActivityOverlapFilterBar({
           />
         </div>
       </div>
-    </div>
+    </InsightsFilterBarShell>
   );
 }

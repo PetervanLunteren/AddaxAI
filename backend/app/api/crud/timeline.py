@@ -10,7 +10,7 @@ the same source of truth.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from statistics import median
 
@@ -21,6 +21,7 @@ from app.api.crud.deployment import site_ids_filter
 from app.api.crud.trap_nights import compute_intervals_for_deployments
 from app.api.schemas.timeline import (
     ConcurrentPoint,
+    HeatmapPoint,
     TimelineDeployment,
     TimelineMetrics,
     TimelineResponse,
@@ -103,6 +104,62 @@ def _deployment_label(folder_path: str | None, deployment_id: str) -> str:
     return deployment_id[:8]
 
 
+def _daily_file_counts(
+    db: Session,
+    deployment_ids: list[str],
+    site_by_deployment: dict[str, str | None],
+    clip_start: date | None,
+    clip_end: date | None,
+) -> list[HeatmapPoint]:
+    """Media files captured per site per calendar day, for the heatmap view.
+
+    Counts exactly the population `compute_intervals_for_deployments` uses
+    (image / video files carrying a capture time), so every day that gets a
+    cell is a day inside one of that site's intervals. One rule, no drift
+    between the two views of the same chart.
+
+    Several deployments can share a site, so the per-deployment rows are
+    summed onto `(site_id, day)`. Deployments without a site collapse onto
+    the single `None` key, matching the "(no site)" row.
+    """
+    if not deployment_ids:
+        return []
+
+    # SQLite's date() on the stored ISO datetime. AddaxAI is SQLite-only
+    # (`config.py` derives database_url), so the dialect-specific call is
+    # safe; it returns a "YYYY-MM-DD" string.
+    day = func.date(File.captured_at_local)
+    query = (
+        select(File.deployment_id, day, func.count(File.id))
+        .where(File.deployment_id.in_(deployment_ids))
+        .where(File.file_type.in_(("image", "video")))
+        .where(File.captured_at_local.isnot(None))
+        .group_by(File.deployment_id, day)
+    )
+    # Clip in SQL rather than in Python: the window bounds the payload, and
+    # a zoomed-in range is the common case on a large project.
+    if clip_start is not None:
+        query = query.where(
+            File.captured_at_local >= datetime.combine(clip_start, time.min)
+        )
+    if clip_end is not None:
+        query = query.where(
+            File.captured_at_local <= datetime.combine(clip_end, time.max)
+        )
+
+    totals: dict[tuple[str | None, date], int] = defaultdict(int)
+    for deployment_id, day_str, count in db.execute(query).all():
+        site_id = site_by_deployment.get(deployment_id)
+        totals[(site_id, date.fromisoformat(day_str))] += count
+
+    return [
+        HeatmapPoint(site_id=site_id, date=day_value, count=count)
+        for (site_id, day_value), count in sorted(
+            totals.items(), key=lambda item: (item[0][1], item[0][0] or "")
+        )
+    ]
+
+
 def get_deployment_timeline(
     db: Session,
     project_id: str,
@@ -122,6 +179,7 @@ def get_deployment_timeline(
         return TimelineResponse(
             sites=[],
             concurrent_cameras=[],
+            heatmap=[],
             metrics=TimelineMetrics(
                 site_count=0,
                 deployment_count=0,
@@ -136,6 +194,13 @@ def get_deployment_timeline(
     deployment_ids = [d.id for d in deployments]
     intervals_by_dep = compute_intervals_for_deployments(
         db, deployment_ids, clip_start=date_from, clip_end=date_to
+    )
+    heatmap = _daily_file_counts(
+        db,
+        deployment_ids,
+        {d.id: d.site_id for d in deployments},
+        date_from,
+        date_to,
     )
 
     # One query for file counts per deployment (tooltip metric).
@@ -240,6 +305,7 @@ def get_deployment_timeline(
     return TimelineResponse(
         sites=sites,
         concurrent_cameras=concurrent,
+        heatmap=heatmap,
         metrics=TimelineMetrics(
             site_count=len([s for s in sites if s.site_id is not None]),
             deployment_count=sum(len(s.deployments) for s in sites),

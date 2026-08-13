@@ -60,6 +60,33 @@ export function InsightsFilterChips({
   );
 }
 
+/**
+ * Card every Insights filter bar wears.
+ *
+ * Owns the card styling and, more importantly, where the chip row sits:
+ * inside the card, under the controls, the way the verify tabs already
+ * do it. Left to each page, the chips ended up as a sibling floating
+ * below the bar on five pages and inside it everywhere else.
+ *
+ * Bars pass their controls as `children` and the page's chips through.
+ */
+export function InsightsFilterBarShell({
+  chips,
+  onClearAll,
+  children,
+}: {
+  chips: FilterChip[];
+  onClearAll: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border bg-card pt-2 pb-3 px-3 space-y-4">
+      {children}
+      <InsightsFilterChips chips={chips} onClearAll={onClearAll} />
+    </div>
+  );
+}
+
 /** Build a {site_id -> name} map. The NO_SITE sentinel is always
  *  mapped so chips display "(no site)" the same way the multi-select
  *  does, even if the user is sharing a URL across projects. */

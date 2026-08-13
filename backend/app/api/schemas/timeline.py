@@ -32,6 +32,19 @@ class ConcurrentPoint(BaseModel):
     count: int
 
 
+class HeatmapPoint(BaseModel):
+    """One site's media-file count for one calendar day.
+
+    Only days with at least one file get a point, so the payload is bounded
+    by (sites x days with files). `site_id` is None for the "(no site)" row,
+    matching `TimelineSite.site_id`.
+    """
+
+    site_id: str | None
+    date: date
+    count: int
+
+
 class TimelineMetrics(BaseModel):
     site_count: int
     deployment_count: int
@@ -43,6 +56,7 @@ class TimelineMetrics(BaseModel):
 class TimelineResponse(BaseModel):
     sites: list[TimelineSite]
     concurrent_cameras: list[ConcurrentPoint]
+    heatmap: list[HeatmapPoint]
     metrics: TimelineMetrics
     date_range_from: date | None
     date_range_to: date | None

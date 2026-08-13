@@ -19,12 +19,12 @@ import {
   type TimelineDensity,
   type TimelinePageFilters,
   type TimelineSort,
+  type TimelineViewMode,
 } from "../components/plots/DeploymentTimelineFilterBar";
 import { DeploymentTimelineMetrics } from "../components/plots/DeploymentTimelineMetrics";
 import { NoSiteBanner } from "../components/deployments/NoSiteBanner";
 import { MissingDatesBanner } from "../components/dashboard/MissingDatesWarning";
 import {
-  InsightsFilterChips,
   buildSiteNameMap,
   dateChips,
   siteChips,
@@ -43,6 +43,7 @@ const FILTER_SCHEMA: FilterSchema = {
   date_to: "date",
   sort: "string",
   density: "string",
+  view_mode: "string",
 };
 
 const VALID_SORTS: TimelineSort[] = [
@@ -61,6 +62,10 @@ function parseSort(raw: string | undefined): TimelineSort {
 
 function parseDensity(raw: string | undefined): TimelineDensity {
   return raw === "compact" ? "compact" : "normal";
+}
+
+function parseViewMode(raw: string | undefined): TimelineViewMode {
+  return raw === "heatmap" ? "heatmap" : "bars";
 }
 
 function firstIntervalStart(site: TimelineSite): string {
@@ -139,6 +144,7 @@ export function DeploymentTimelinePage() {
       dateTo: (parsed.date_to as string | undefined) ?? null,
       sort: parseSort(parsed.sort as string | undefined),
       density: parseDensity(parsed.density as string | undefined),
+      viewMode: parseViewMode(parsed.view_mode as string | undefined),
     };
   }, [searchParams]);
 
@@ -151,6 +157,7 @@ export function DeploymentTimelinePage() {
           date_to: next.dateTo ?? undefined,
           sort: next.sort === "alpha" ? undefined : next.sort,
           density: next.density === "normal" ? undefined : next.density,
+          view_mode: next.viewMode === "bars" ? undefined : next.viewMode,
         },
         FILTER_SCHEMA,
       ),
@@ -236,8 +243,9 @@ export function DeploymentTimelinePage() {
           projectId={projectId}
           filters={filters}
           onChange={handleFiltersChange}
+          chips={chips}
+          onClearAll={clearAllDataFilters}
         />
-        <InsightsFilterChips chips={chips} onClearAll={clearAllDataFilters} />
 
         <DeploymentTimelineMetrics
           metrics={sortedData?.metrics}
@@ -250,6 +258,7 @@ export function DeploymentTimelinePage() {
             loading={isLoading || isFetching}
             projectId={projectId}
             density={filters.density}
+            viewMode={filters.viewMode}
             onZoom={(from, to) =>
               handleFiltersChange({ ...filters, dateFrom: from, dateTo: to })
             }
@@ -259,15 +268,28 @@ export function DeploymentTimelinePage() {
         <PlotExplainer
           plotKey="deployment-timeline"
           what={
-            <p>
-              One row per site. Each teal bar is a folder-aware trap-night
-              interval: the camera's first file to its last file in one
-              subfolder. Whitespace between bars on the same row is time
-              the site was not monitored. The area chart at the top shows
-              how many cameras were active on each day across the whole
-              survey. Drag horizontally across the date axis at the top to
-              zoom into a specific range.
-            </p>
+            <>
+              <p>
+                One row per site. The area chart at the top shows how many
+                cameras were active on each day across the whole survey.
+                Drag horizontally across the date axis at the top to zoom
+                into a specific range.
+              </p>
+              <p>
+                Bars view answers when a site was monitored. Each teal bar
+                is a folder-aware trap-night interval: the camera's first
+                file to its last file in one subfolder. Whitespace between
+                bars on the same row is time the site was not monitored.
+              </p>
+              <p>
+                Heatmap view answers how much each site captured. One cell
+                per day, coloured pale yellow for few files through dark
+                teal for many. The faint band behind the cells is the
+                deployment's configured period, so a stretch of band with
+                no cells is a camera that was deployed and recorded
+                nothing, which the bars cannot show.
+              </p>
+            </>
           }
           how={
             <>
@@ -287,6 +309,19 @@ export function DeploymentTimelinePage() {
                 deployments with tall stacks, usually flag uneven sampling
                 effort, worth mentioning in methods or controlling for in
                 downstream analyses.
+              </p>
+              <p>
+                A heatmap cell counts every image and video captured at that
+                site that day, pooling all its cameras onto one row. That is
+                how much the camera fired, not how much wildlife passed: a
+                camera triggering on moving vegetation reads just as dark as
+                a busy game trail. Colour runs from the lightest count up to
+                the upper third of the range, so one exceptional day cannot
+                wash out every other site. Above a year on screen the cells
+                switch to weekly blocks to stay readable. Files with no
+                capture time are left out here, as they are everywhere else
+                on this page, while the bar tooltip's file count still
+                includes them.
               </p>
             </>
           }

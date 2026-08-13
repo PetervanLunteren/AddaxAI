@@ -7,6 +7,10 @@
  */
 
 import { useMemo } from "react";
+import {
+  InsightsFilterBarShell,
+  type FilterChip,
+} from "./InsightsFilterChips";
 import { useQuery } from "@tanstack/react-query";
 
 import { sitesApi } from "../../api/sites";
@@ -28,6 +32,9 @@ export interface PerformancePageFilters {
 }
 
 interface PerformanceFilterBarProps {
+  /** Active-filter chips, rendered inside the card by the shell. */
+  chips: FilterChip[];
+  onClearAll: () => void;
   projectId: string;
   filters: PerformancePageFilters;
   onChange: (next: PerformancePageFilters) => void;
@@ -64,6 +71,8 @@ const MODE_OPTIONS = [
 ];
 
 export function PerformanceFilterBar({
+  chips,
+  onClearAll,
   projectId,
   filters,
   onChange,
@@ -87,7 +96,7 @@ export function PerformanceFilterBar({
   const columns = showModeToggle ? 4 : 3;
 
   return (
-    <div className="rounded-lg border bg-card pt-2 pb-3 px-3 space-y-4">
+    <InsightsFilterBarShell chips={chips} onClearAll={onClearAll}>
       <div
         className="grid grid-cols-1 sm:grid-cols-2 gap-4"
         style={{
@@ -143,6 +152,6 @@ export function PerformanceFilterBar({
           />
         </div>
       </div>
-    </div>
+    </InsightsFilterBarShell>
   );
 }

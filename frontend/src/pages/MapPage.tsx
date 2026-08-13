@@ -29,7 +29,6 @@ import { NoSiteBanner } from "../components/deployments/NoSiteBanner";
 import { MissingDatesBanner } from "../components/dashboard/MissingDatesWarning";
 import { PlotExplainer } from "../components/plots/PlotExplainer";
 import {
-  InsightsFilterChips,
   buildSiteNameMap,
   dateChips,
   labelChips,
@@ -199,8 +198,9 @@ export function MapPage() {
           onViewModeChange={setViewMode}
           baseLayer={baseLayer}
           onBaseLayerChange={setBaseLayer}
+          chips={chips}
+          onClearAll={clearAllDataFilters}
         />
-        <InsightsFilterChips chips={chips} onClearAll={clearAllDataFilters} />
         <ObservationRateMap
           projectId={projectId}
           filters={apiFilters}

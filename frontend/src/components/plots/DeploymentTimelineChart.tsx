@@ -6,8 +6,19 @@
  *   - Below it: step-function area chart of concurrent active cameras.
  *     It sits above the Gantt so the survey-wide summary stays visible
  *     however many site rows follow.
- *   - Bottom: one row per site, outer light-teal bar per deployment,
- *             inner primary-teal bars per trap-night interval.
+ *   - Bottom: one row per site, drawn in one of two view modes.
+ *
+ * Bars mode answers *when* a site was monitored: one bar per trap-night
+ * interval, each on its own track when subfolders ran in parallel, joined
+ * back to the row spine by L-shaped connectors.
+ *
+ * Heatmap mode answers *how much* it captured: the row collapses to a
+ * single strip of coloured cells over a faint band marking the
+ * deployment's configured period. A cell is one day, growing to a week or
+ * four weeks when the range is long or the project has many rows (see
+ * `chooseBinDays`). Tracks carry no information here since the cells
+ * already pool every camera at the site, so the row is one track tall and
+ * the spine and connectors are not drawn.
  *
  * Dates arrive as `YYYY-MM-DD` strings. They are parsed via
  * `Date.UTC(...)` to stay tz-agnostic (same reasoning as frontend/src/lib/datetime.ts).
@@ -18,12 +29,18 @@ import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 
 import type {
+  HeatmapPoint,
   TimelineDeployment,
   TimelineResponse,
   TimelineSite,
   TrapNightInterval,
 } from "../../api/timeline";
 import { NO_SITE_SENTINEL } from "../../lib/filter-url";
+import {
+  calculateRateDomain,
+  getRateColor,
+  type RateScaleDomain,
+} from "../../lib/heat-color-scale";
 
 const BAR_FILL = "#0f6064";
 const CONCURRENT_FILL = "rgba(15, 96, 100, 0.18)";
@@ -32,6 +49,30 @@ const GRID_STROKE = "rgba(0, 0, 0, 0.06)";
 const CONNECTOR_STROKE = "rgba(100, 116, 139, 0.55)";
 
 type Density = "normal" | "compact";
+type ViewMode = "bars" | "heatmap";
+
+/** Faint band behind the heatmap cells marking the configured deployment
+ *  period, so a stretch with no cells reads as "deployed, captured
+ *  nothing" rather than "no camera here". */
+const HEATMAP_WINDOW_FILL = "rgba(15, 96, 100, 0.08)";
+
+/** Cell bin sizes in days, smallest first. */
+const BIN_DAYS = [1, 7, 28];
+
+/** Above this many visible days a single day is sub-pixel on a normal
+ *  screen, so cells bin to whole ISO weeks to stay readable. */
+const WEEKLY_BIN_DAY_THRESHOLD = 365;
+
+/** Cap on cells drawn across every row. Each cell is an SVG rect plus a
+ *  title, so a large project multiplies quickly: 200 sites over four years
+ *  reached 39,600 cells and 80,000 DOM nodes, which took seconds to draw
+ *  and left the page unresponsive. Coarsening the bin keeps the shape of
+ *  the data while bounding the node count. */
+const CELL_BUDGET = 12000;
+
+/** Monday 5 Jan 1970, the anchor every bin is aligned to. Keeps 7-day bins
+ *  on ISO Mondays and larger bins on whole weeks. */
+const BIN_EPOCH = Date.UTC(1970, 0, 5);
 
 interface DensityConfig {
   /** Height per track (one parallel subfolder = one track).
@@ -193,6 +234,153 @@ function assignTracks(
   return { trackByIndex, trackCount: lastEnds.length };
 }
 
+/** Start of the bin containing `ms`, in UTC. Anchored to `BIN_EPOCH`. */
+function binStartUtc(ms: number, binDays: number): number {
+  if (binDays === 1) return ms;
+  const span = binDays * MS_PER_DAY;
+  return BIN_EPOCH + Math.floor((ms - BIN_EPOCH) / span) * span;
+}
+
+/**
+ * Smallest bin that keeps cells wide enough to see and the total cell
+ * count under `CELL_BUDGET`. One rule covers both failure modes: a long
+ * range makes each day sub-pixel, and many rows multiply the cell count.
+ */
+function chooseBinDays(visibleDays: number, rowCount: number): number {
+  for (const days of BIN_DAYS) {
+    const subPixel = days === 1 && visibleDays > WEEKLY_BIN_DAY_THRESHOLD;
+    const cells = rowCount * Math.ceil(visibleDays / days);
+    if (!subPixel && cells <= CELL_BUDGET) return days;
+  }
+  return BIN_DAYS[BIN_DAYS.length - 1];
+}
+
+interface HeatmapIndex {
+  /** site_id ("no-site" for the null row) → cell start ms → file count. */
+  cellsBySite: Map<string, Map<number, number>>;
+  /** Colour normalisation, computed over the binned cells. */
+  domain: RateScaleDomain;
+}
+
+/**
+ * Bucket the flat per-site-per-day rows into a lookup the row render can
+ * hit cheaply, and derive the colour domain from the result.
+ *
+ * The domain has to come from the *binned* counts: a 7-day cell holds up
+ * to seven days of files, so scaling it against daily numbers would paint
+ * every long-range cell the same dark teal.
+ */
+function buildHeatmapIndex(
+  rows: HeatmapPoint[] | undefined,
+  binDays: number,
+): HeatmapIndex {
+  const cellsBySite = new Map<string, Map<number, number>>();
+  // `heatmap` is required by the response schema, so undefined only shows
+  // up in dev, when an HMR reload re-renders against a response cached
+  // before the field existed. Tolerated rather than thrown on: there is no
+  // error boundary in this app, so the throw blanks the entire page.
+  for (const row of rows ?? []) {
+    const cellMs = binStartUtc(parseDate(row.date), binDays);
+    const key = row.site_id ?? "no-site";
+    let cells = cellsBySite.get(key);
+    if (!cells) {
+      cells = new Map<number, number>();
+      cellsBySite.set(key, cells);
+    }
+    cells.set(cellMs, (cells.get(cellMs) ?? 0) + row.count);
+  }
+  const counts: number[] = [];
+  for (const cells of cellsBySite.values()) counts.push(...cells.values());
+  return { cellsBySite, domain: calculateRateDomain(counts) };
+}
+
+const HOVER_LABEL_HEIGHT = 20;
+
+/**
+ * White callout shared by the concurrent-strip and heatmap-cell hovers.
+ *
+ * `x` is the anchor's centre; the box is clamped so it never leaves the
+ * plot. Width is estimated from the text length, which is enough for a
+ * single line at a fixed font size.
+ */
+function HoverLabel({
+  text,
+  x,
+  y,
+  plotLeft,
+  plotRight,
+}: {
+  text: string;
+  x: number;
+  y: number;
+  plotLeft: number;
+  plotRight: number;
+}) {
+  const w = Math.max(120, text.length * 6.5);
+  const boxX = Math.max(plotLeft, Math.min(plotRight - w, x - w / 2));
+  return (
+    <>
+      <rect
+        x={boxX}
+        y={y}
+        width={w}
+        height={HOVER_LABEL_HEIGHT}
+        rx={3}
+        ry={3}
+        fill="white"
+        stroke={CONNECTOR_STROKE}
+      />
+      <text
+        x={boxX + w / 2}
+        y={y + 14}
+        fontSize={11}
+        fill="#0f172a"
+        textAnchor="middle"
+      >
+        {text}
+      </text>
+    </>
+  );
+}
+
+/** What one cell covers, for the legend caption. */
+function binUnitLabel(binDays: number): string {
+  if (binDays === 1) return "day";
+  if (binDays === 7) return "week";
+  return `${binDays} days`;
+}
+
+/**
+ * CSS gradient matching the cell colours.
+ *
+ * The cells interpolate in Lab (chroma-js) while a two-stop CSS gradient
+ * interpolates in sRGB, which drifted noticeably in the middle. Sampling
+ * the real scale at a few points keeps the legend honest.
+ */
+function legendGradient(p66: number): string {
+  const stops = [0, 0.25, 0.5, 0.75, 1].map((f) =>
+    getRateColor(Math.max(1, f * p66), p66),
+  );
+  return `linear-gradient(to right, ${stops.join(", ")})`;
+}
+
+/**
+ * Right edge of a deployment's configured period.
+ *
+ * `configured_end` is nullable (an open deployment). Fall back to the last
+ * day the camera actually captured something, and finally to the start day,
+ * so an open deployment's band stops where the evidence stops instead of
+ * running to the end of the chart.
+ */
+function effectiveEnd(dep: TimelineDeployment): string {
+  if (dep.configured_end) return dep.configured_end;
+  let latest: string | null = null;
+  for (const iv of dep.intervals) {
+    if (latest === null || iv.end > latest) latest = iv.end;
+  }
+  return latest ?? dep.configured_start;
+}
+
 /** Decide which ticks to label given available pixel width. */
 function thinLabels(ticks: MonthTick[], plotWidth: number): Set<number> {
   const MIN_PX = 56;
@@ -215,6 +403,8 @@ interface DeploymentTimelineChartProps {
   loading: boolean;
   projectId: string;
   density?: Density;
+  /** Bars = when a site was monitored, heatmap = how much it captured. */
+  viewMode?: ViewMode;
   /** Called with YYYY-MM-DD strings when the user finishes a
    *  drag-to-zoom on the date axis. Parent page is expected to
    *  write these into the dateFrom / dateTo filter so the timeline
@@ -232,6 +422,7 @@ export function DeploymentTimelineChart({
   loading,
   projectId,
   density = "normal",
+  viewMode = "bars",
   onZoom,
 }: DeploymentTimelineChartProps) {
   const densityConfig = DENSITY[density];
@@ -246,6 +437,13 @@ export function DeploymentTimelineChart({
   const [drag, setDrag] = useState<{ startX: number; currentX: number } | null>(
     null,
   );
+  // Heatmap cell readout. Separate from `hover` above, which belongs to the
+  // concurrent strip and carries a different shape.
+  const [cellHover, setCellHover] = useState<{
+    x: number;
+    y: number;
+    text: string;
+  } | null>(null);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -298,7 +496,10 @@ export function DeploymentTimelineChart({
         depTracks.set(dep.deployment_id, assigned);
         maxDepTrackCount = Math.max(maxDepTrackCount, assigned.trackCount);
       }
-      const trackCount = maxDepTrackCount;
+      // Heatmap cells already pool every camera at the site for a given
+      // day, so tracks carry no information there and the row collapses
+      // to a single strip.
+      const trackCount = viewMode === "heatmap" ? 1 : maxDepTrackCount;
       const rowHeight = trackCount * densityConfig.trackHeight;
       siteGeoms.push({
         trackCount,
@@ -339,7 +540,21 @@ export function DeploymentTimelineChart({
       monthTicks,
       labelledIdx,
     };
-  }, [data, width, density, densityConfig]);
+  }, [data, width, density, densityConfig, viewMode]);
+
+  // Heatmap lookup + colour domain. Hooks have to run before the early
+  // returns below, so this tolerates a null geometry.
+  const visibleDays = geometry
+    ? Math.max(1, Math.round((geometry.xMax - geometry.xMin) / MS_PER_DAY))
+    : 0;
+  const binDays = chooseBinDays(visibleDays, data?.sites.length ?? 0);
+  const heatmap = useMemo(
+    () =>
+      viewMode === "heatmap" && data
+        ? buildHeatmapIndex(data.heatmap, binDays)
+        : null,
+    [data, viewMode, binDays],
+  );
 
   if (loading && !data) {
     return (
@@ -373,6 +588,8 @@ export function DeploymentTimelineChart({
       </div>
     );
   }
+
+  const cellSpanMs = binDays * MS_PER_DAY;
 
   const maxConc = data.metrics.max_concurrent_cameras;
   const concurrentY = (count: number) => {
@@ -638,6 +855,7 @@ export function DeploymentTimelineChart({
                   the "main line" the user referred to. Single-interval
                   deployments sit on it; parallel-interval deployments fan
                   off it via per-interval vertical connectors drawn below. */}
+              {viewMode === "bars" && (
               <line
                 x1={densityConfig.labelWidth - 10}
                 x2={geometry.plotRight}
@@ -647,6 +865,7 @@ export function DeploymentTimelineChart({
                 strokeWidth={1}
                 shapeRendering="crispEdges"
               />
+              )}
 
               {/* Branch connectors: for every interval whose track sits off
                   the spine, draw an L-shape on each side — vertical split
@@ -654,7 +873,7 @@ export function DeploymentTimelineChart({
                   into the bar, then mirror after the bar. This gives the
                   branch a visible offset from the bar instead of sitting
                   flush against it. */}
-              {site.deployments.map((dep) => {
+              {viewMode === "bars" && site.deployments.map((dep) => {
                 const depInfo = depTracks.get(dep.deployment_id);
                 if (!depInfo || depInfo.trackCount <= 1) return null;
                 return (
@@ -720,7 +939,7 @@ export function DeploymentTimelineChart({
 
               {/* Bars. Each interval sits on its assigned track y. Single-
                   interval deployments stay on rowCenterY (spine). */}
-              {site.deployments.map((dep) => {
+              {viewMode === "bars" && site.deployments.map((dep) => {
                 const depInfo = depTracks.get(dep.deployment_id);
                 const cameraLine = dep.camera_model
                   ? `\nCamera: ${dep.camera_model}`
@@ -765,6 +984,74 @@ export function DeploymentTimelineChart({
                   </g>
                 );
               })}
+
+              {/* Heatmap: a faint band per deployment showing its
+                  configured period, so days inside it with no cell read as
+                  "deployed, captured nothing". */}
+              {viewMode === "heatmap" && site.deployments.map((dep) => {
+                const bandY = rowCenterY - densityConfig.barHeight / 2;
+                const start = geometry.yMsToX(parseDate(dep.configured_start));
+                const end = geometry.yMsToX(
+                  parseDate(effectiveEnd(dep)) + MS_PER_DAY,
+                );
+                return (
+                  <rect
+                    key={`window-${dep.deployment_id}`}
+                    x={start}
+                    y={bandY}
+                    width={Math.max(1, end - start)}
+                    height={densityConfig.barHeight}
+                    fill={HEATMAP_WINDOW_FILL}
+                    rx={densityConfig.barRadius}
+                    ry={densityConfig.barRadius}
+                  />
+                );
+              })}
+
+              {/* Heatmap cells, drawn on top of the bands. */}
+              {viewMode === "heatmap" && heatmap &&
+                Array.from(
+                  heatmap.cellsBySite.get(site.site_id ?? "no-site") ?? [],
+                ).map(([cellMs, count]) => {
+                  const cellY = rowCenterY - densityConfig.barHeight / 2;
+                  // Clamped to the plot box, the same way the bars are. An
+                  // unclamped cell overhangs the axis labels, and a bin
+                  // snapped to a Monday before the range start overhangs
+                  // the site labels.
+                  const x = geometry.yMsToX(cellMs);
+                  const w = Math.max(
+                    1,
+                    geometry.yMsToX(cellMs + cellSpanMs) - x,
+                  );
+                  // One readout instead of a native tooltip: cells get down
+                  // to 4px tall in compact mode, where the row is too thin
+                  // to identify by eye and a 1s tooltip delay is too slow
+                  // to scan with.
+                  const when =
+                    binDays === 1
+                      ? formatDateLabel(formatYMD(cellMs))
+                      : `${formatDateLabel(formatYMD(cellMs))} – ${formatDateLabel(
+                          formatYMD(cellMs + (binDays - 1) * MS_PER_DAY),
+                        )}`;
+                  return (
+                    <rect
+                      key={cellMs}
+                      x={x}
+                      y={cellY}
+                      width={w}
+                      height={densityConfig.barHeight}
+                      fill={getRateColor(count, heatmap.domain.p66)}
+                      onMouseEnter={() =>
+                        setCellHover({
+                          x: x + w / 2,
+                          y: cellY,
+                          text: `${site.site_name} · ${when} · ${count.toLocaleString()} file${count === 1 ? "" : "s"}`,
+                        })
+                      }
+                      onMouseLeave={() => setCellHover(null)}
+                    />
+                  );
+                })}
             </g>
           );
         })}
@@ -849,15 +1136,9 @@ export function DeploymentTimelineChart({
         {hover && (() => {
           const y = concurrentY(hover.count);
           const label = `${formatDateLabel(formatYMD(hover.dateMs))}, ${hover.count} camera${hover.count === 1 ? "" : "s"}`;
-          const labelW = Math.max(120, label.length * 6.5);
-          const labelH = 20;
-          const labelY = y - 8 - labelH < geometry.concurrentTop
+          const labelY = y - 8 - HOVER_LABEL_HEIGHT < geometry.concurrentTop
             ? y + 8
-            : y - 8 - labelH;
-          const labelX = Math.max(
-            geometry.plotLeft,
-            Math.min(geometry.plotRight - labelW, hover.x - labelW / 2),
-          );
+            : y - 8 - HOVER_LABEL_HEIGHT;
           return (
             <g pointerEvents="none">
               <line
@@ -875,25 +1156,13 @@ export function DeploymentTimelineChart({
                 r={3}
                 fill={CONCURRENT_STROKE}
               />
-              <rect
-                x={labelX}
+              <HoverLabel
+                text={label}
+                x={hover.x}
                 y={labelY}
-                width={labelW}
-                height={labelH}
-                rx={3}
-                ry={3}
-                fill="white"
-                stroke={CONNECTOR_STROKE}
+                plotLeft={geometry.plotLeft}
+                plotRight={geometry.plotRight}
               />
-              <text
-                x={labelX + labelW / 2}
-                y={labelY + 14}
-                fontSize={11}
-                fill="#0f172a"
-                textAnchor="middle"
-              >
-                {label}
-              </text>
             </g>
           );
         })()}
@@ -910,7 +1179,53 @@ export function DeploymentTimelineChart({
           </text>
         )}
 
+        {/* Heatmap cell readout, drawn last so it sits above the rows.
+            Sits above the hovered cell, or below it when the row is near
+            the top of the plot. */}
+        {cellHover && (
+          <g pointerEvents="none">
+            <HoverLabel
+              text={cellHover.text}
+              x={cellHover.x}
+              y={
+                cellHover.y - 6 - HOVER_LABEL_HEIGHT < geometry.concurrentBottom
+                  ? cellHover.y + densityConfig.barHeight + 6
+                  : cellHover.y - 6 - HOVER_LABEL_HEIGHT
+              }
+              plotLeft={geometry.plotLeft}
+              plotRight={geometry.plotRight}
+            />
+          </g>
+        )}
       </svg>
+
+      {/* Legend. Lives here rather than on the page because the scale is
+          data-dependent: it is recomputed from the visible cells. */}
+      {viewMode === "heatmap" && heatmap && heatmap.domain.max > 0 && (
+        <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+          <span>Files per {binUnitLabel(binDays)}</span>
+          {heatmap.domain.p66 <= 1 ? (
+            // Every cell holds the same count, so there is no scale to
+            // show. A gradient reading "1 … 1+" looks broken.
+            <>
+              <div
+                className="h-2 w-4 rounded-sm"
+                style={{ background: getRateColor(1, 1) }}
+              />
+              <span>1</span>
+            </>
+          ) : (
+            <>
+              <span>1</span>
+              <div
+                className="h-2 w-24 rounded-sm"
+                style={{ background: legendGradient(heatmap.domain.p66) }}
+              />
+              <span>{heatmap.domain.p66.toLocaleString()}+</span>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
