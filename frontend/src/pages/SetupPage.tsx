@@ -131,7 +131,9 @@ export default function SetupPage() {
         {hasError && (
           <div className="mt-6 space-y-3">
             <Callout variant="error" title="Setup failed">
-              <span className="text-xs break-words">{errorText}</span>
+              <span className="text-xs break-words whitespace-pre-line">
+                {errorText}
+              </span>
             </Callout>
             <Button onClick={() => install.mutate()} className="w-full">
               Try again

@@ -671,11 +671,15 @@ class EnvironmentManager:
                 # Surface the captured tail at ERROR so backend.log holds
                 # the pip stack-trace, not just the libmamba summary line.
                 log_subprocess_failure("micromamba create", cmd, result)
-                raise RuntimeError(
-                    f"micromamba create failed:\n"
-                    f"Command: {' '.join(cmd)}\n"
-                    f"Last output: {result.last_line}"
-                )
+                # micromamba's final line on any pip failure is the
+                # constant "critical libmamba pip failed to install
+                # packages", which names no cause. The real error sits a
+                # few lines above it, in pip's own output, so show the
+                # tail instead. The full command is already in
+                # backend.log via log_subprocess_failure, so it is left
+                # out here: it pushed the useful lines off the screen.
+                tail = "\n".join(result.output_tail[-8:]) or result.last_line
+                raise RuntimeError(f"micromamba create failed:\n{tail}")
 
             if progress_callback:
                 progress_callback("Packages installed successfully", 0.95)

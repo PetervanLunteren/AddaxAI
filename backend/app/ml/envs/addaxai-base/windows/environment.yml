@@ -61,6 +61,16 @@ dependencies:
     # nothing (beta report 2026-07-30).
     - yolov9pip==0.0.4
     - ultralytics==8.3.177
+    # albumentations arrives through yolov9pip and pulls albucore, which
+    # requires stringzilla. stringzilla 5.1.2 shipped without a cp311
+    # win_amd64 wheel (every other python and platform combination has
+    # one), so pip fell back to the sdist and every fresh Windows install
+    # died on "Microsoft Visual C++ 14.0 or greater is required" (beta
+    # report 2026-08-12). Their release workflow does list cp311, with
+    # fail-fast disabled, so that one job failed and the release
+    # published without it. 5.1.1 is the last version with the wheel. We
+    # never import this package, so pin it and stop tracking upstream.
+    - stringzilla==5.1.1
 
     # Helps Windows pip use the system certificate store (matches the
     # legacy AddaxAI Windows build workflow). Last so it doesn't hold
