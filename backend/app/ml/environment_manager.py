@@ -623,6 +623,19 @@ class EnvironmentManager:
             env["MAMBA_REMOTE_CONNECT_TIMEOUT_SECS"] = "120"
             env["MAMBA_REMOTE_READ_TIMEOUT_SECS"] = "120"
             env["MAMBA_REMOTE_MAX_RETRIES"] = "5"
+            # Take an older prebuilt wheel over a newer source package.
+            # A source package means compiling on the user's machine,
+            # which needs a C++ compiler a typical Windows user does not
+            # have. stringzilla 5.1.2 shipped without a cp311 win_amd64
+            # wheel on 2026-08-12 and blocked every fresh Windows install
+            # until it was pinned by hand; two users reported it inside
+            # 36 hours, and nothing would have told us otherwise.
+            # This can only move packages we never pinned: everything we
+            # depend on deliberately carries an exact == in the YAMLs.
+            # Set here rather than as `- --prefer-binary` in each pip
+            # section, because one env var covers all five envs on all
+            # three platforms and cannot drift between the 15 files.
+            env["PIP_PREFER_BINARY"] = "1"
             # We read this pipe as UTF-8 (stream_with_tail). micromamba is
             # a native binary and emits UTF-8 whatever the locale, but the
             # pip it runs is Python and would use the system codepage, so

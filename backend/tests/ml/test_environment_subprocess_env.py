@@ -70,6 +70,16 @@ def test_pip_verbosity_and_retries_survive(captured_env: dict[str, str]) -> None
     assert captured_env["MAMBA_REMOTE_MAX_RETRIES"] == "5"
 
 
+def test_prefer_binary_is_set(captured_env: dict[str, str]) -> None:
+    """Falling back to a source package means compiling on the user's
+    machine, which needs a C++ compiler a typical Windows user does not
+    have. stringzilla 5.1.2 shipped without a cp311 win_amd64 wheel on
+    2026-08-12 and blocked every fresh Windows install until it was
+    pinned by hand. Preferring an older wheel covers the whole class,
+    for every env and platform, from this one place."""
+    assert captured_env["PIP_PREFER_BINARY"] == "1"
+
+
 def test_user_site_packages_stay_out(captured_env: dict[str, str]) -> None:
     """`clean_python_env` still applies: the build must not pick up the
     user's own site-packages or a globally exported PYTHONPATH."""
