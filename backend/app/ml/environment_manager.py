@@ -13,6 +13,7 @@ Following DEVELOPERS.md principles:
 import hashlib
 import os
 import platform
+import re
 import shutil
 import subprocess
 import threading
@@ -65,25 +66,47 @@ def hash_yaml_file(yaml_path: Path) -> str:
 ENV_PROGRESS_FLOOR = 0.10
 
 
-def substitute_hf_endpoint(yaml_text: str, endpoint: str | None) -> str:
-    """
-    Point hardcoded huggingface.co URLs in an env YAML at the mirror
-    named by ADDAXAI_HF_ENDPOINT (settings.hf_endpoint, which also
-    falls back to the ecosystem-standard HF_ENDPOINT).
+# Wheels shipped inside the app, next to this module so PyInstaller's
+# ('app', 'app') tree copy carries them and `Path(__file__).parent`
+# finds them from source and frozen alike. See pip-wheels/README.md.
+BUNDLED_WHEELS_DIR = Path(__file__).resolve().parent / "pip-wheels"
 
-    The YAMLs pin one wheel by direct huggingface.co URL, and pip has no
-    index configuration that can redirect a direct-URL requirement. On a
-    network where huggingface.co is blocked (mainland China) that single
-    line fails the whole env build, whatever the user configures. The
-    model downloads go through the same endpoint (hf_downloader); this
-    extends the same opt-in to the env build. The #sha256= fragment is
-    kept, so a mirror serving different bytes still fails the install.
+# The URL the env YAMLs pin the wheel by. Kept in the YAMLs because it
+# records where the file came from; never fetched.
+_WHEEL_URL_PREFIX = (
+    "https://huggingface.co/Addax-Data-Science/pip-wheels/resolve/main/"
+)
+
+_WHEEL_REF_RE = re.compile(re.escape(_WHEEL_URL_PREFIX) + r"([^\s#]+)")
+
+
+def substitute_bundled_wheels(yaml_text: str, wheels_dir: Path) -> str:
     """
-    if not endpoint:
-        return yaml_text
-    return yaml_text.replace(
-        "https://huggingface.co/", endpoint.rstrip("/") + "/"
+    Point the env YAML's pinned wheels at the copies shipped in the app.
+
+    pip has no index configuration that can redirect a direct-URL
+    requirement: --index-url, --extra-index-url and --find-links only
+    affect index resolution, so `name @ https://...` is always fetched
+    literally. On a network that blocks the host, that single line fails
+    the whole env build and nothing the user configures can help. That is
+    what stopped setup in mainland China, where hf-mirror.com answers
+    /resolve/ with a redirect back to the blocked huggingface.co.
+    Shipping the wheel removes the download on every platform.
+
+    The URL stays in the YAML, so the #sha256= fragment survives the
+    rewrite and pip verifies the local copy against it.
+    """
+    missing = sorted(
+        name
+        for name in set(_WHEEL_REF_RE.findall(yaml_text))
+        if not (wheels_dir / name).is_file()
     )
+    if missing:
+        raise FileNotFoundError(
+            f"Bundled wheel(s) missing from {wheels_dir}: "
+            f"{', '.join(missing)}. The build is incomplete."
+        )
+    return yaml_text.replace(_WHEEL_URL_PREFIX, wheels_dir.as_uri() + "/")
 
 
 def parse_micromamba_progress(
@@ -554,9 +577,9 @@ class EnvironmentManager:
             # newline="" so the copy keeps the bundled file's line
             # endings instead of Windows text-mode translation.
             yaml_copy_path.write_text(
-                substitute_hf_endpoint(
+                substitute_bundled_wheels(
                     yaml_path.read_text(encoding="utf-8"),
-                    get_settings().hf_endpoint,
+                    BUNDLED_WHEELS_DIR,
                 ),
                 encoding="utf-8",
                 newline="",

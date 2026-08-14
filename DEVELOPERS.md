@@ -579,6 +579,20 @@ On startup, `ModelCatalogUpdater.sync()` therefore asks HuggingFace for one file
 
 **`~/AddaxAI/models` is a managed cache, not a source tree.** Editing a model's `inference.py` in place now shows up as an available update on every launch, and applying it overwrites your edit with no backup.
 
+## The wheel we ship instead of downloading
+
+`backend/app/ml/pip-wheels/` holds `ultralytics_yolov5-0.1.1-py3-none-any.whl`, the one third-party binary in the repo. `substitute_bundled_wheels` in `environment_manager.py` rewrites the YAML's URL to that local copy when it writes the build copy for micromamba, so the environment build fetches it from disk on every platform.
+
+**Why it cannot be a download.** `megadetector` depends on `ultralytics-yolov5==0.1.1`, whose PyPI release is sdist-only, and that sdist's `setup.py` fetches a README from GitHub at build time, which dies on machines that cannot load the Windows certificate store. So it has to be a wheel, and the only wheel is one we built. Pinning it by URL then created a failure no user could work around: **pip fetches a direct-URL requirement literally**, and `--index-url`, `--extra-index-url` and `--find-links` only steer index resolution. A blocked host therefore kills the whole environment build regardless of configuration. That is what stopped setup in mainland China (2026-08-13): hf-mirror.com answers `/resolve/` with a 308 back to the blocked huggingface.co, so even a correctly configured mirror ended at `WinError 10054`. Every other remote file the app wants goes through `huggingface_hub`, which honours the mirror, which is why this one line was the only casualty.
+
+**The YAMLs still carry the URL and are not edited.** Three reasons, and the first is the load-bearing one: `hash_yaml_file` hashes the *bundled* YAML, so editing those six files would tell every existing user their environment drifted and offer them a rebuild that takes tens of minutes, to install a byte-identical package. The URL also records where the file came from, and the `#sha256=` fragment survives the rewrite, so pip verifies the local copy (confirmed: the installed `direct_url.json` records the hash).
+
+**`Path(__file__).parent` is deliberate**, matching `get_env_yaml_path` and the worker scripts. PyInstaller's `datas = [('app', 'app')]` is a whole-tree copy, so anything under `backend/app/` ships and needs no spec entry, and `electron-builder` copies the entire PyInstaller output through `extraResources`. Nothing else has to be told about a new wheel. Note the directory is `pip-wheels` and not `wheels`, which `.gitignore` would silently swallow.
+
+**A missing wheel raises rather than falling back to the URL.** A fallback would work everywhere except the networks this exists for, so the bug would only ever surface for the users who cannot report it easily.
+
+`tests/ml/test_bundled_wheels.py` keeps the YAML the single source of truth: it reads the filename and sha256 out of every env YAML and checks the shipped file matches, fails if a pinned wheel is absent, and fails if a shipped wheel is pinned by nothing. Change the YAML pin first and the test tells you which file to put in place.
+
 ## What a download leaves behind when it does not finish
 
 Two rules in `download_weights`, and the difference between them is deliberate:
