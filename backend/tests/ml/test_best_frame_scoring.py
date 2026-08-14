@@ -332,3 +332,54 @@ def test_result_is_identical_when_the_seek_is_refused(
     assert with_seek[2] == without_seek[2], (
         "the seek and the walk produced different pixels for the same frame"
     )
+
+
+def test_one_raising_video_does_not_cost_the_others_their_frames(
+    tmp_path, make_video, monkeypatch
+):
+    """A cv2 error on one clip used to end the sweep for the whole folder.
+
+    `_fetch_best_frame` returns None for a video that will not open, and
+    that case was always handled. But cv2 can also raise part-way through
+    a decode, and that escaped the loop: the worker caught it as a
+    non-fatal step, so the run still reported success while every video
+    after the bad one silently had no thumbnail. Nothing errored and
+    nothing in the UI said so, which is what made it worth pinning.
+    """
+    for name in ("a.mp4", "bad.mp4", "z.mp4"):
+        make_video(tmp_path / name, total_frames=20, fps=10)
+
+    out = tmp_path / "detection_video.json"
+    out.write_text(
+        json.dumps(
+            {
+                "detection_categories": {"1": "animal"},
+                "images": [
+                    {"file": "a.mp4", "detections": [_det("1", 0.9, 5)]},
+                    {"file": "bad.mp4", "detections": [_det("1", 0.9, 5)]},
+                    {"file": "z.mp4", "detections": [_det("1", 0.9, 5)]},
+                ],
+            }
+        )
+    )
+
+    real_open_video = best_frame.open_video
+
+    def exploding_open_video(path):
+        if Path(path).name == "bad.mp4":
+            raise RuntimeError("simulated cv2 decode failure")
+        return real_open_video(path)
+
+    monkeypatch.setattr(best_frame, "open_video", exploding_open_video)
+
+    select_best_frames_streaming(out, tmp_path, tmp_path / "frames")
+
+    entries = {e["file"]: e for e in json.loads(out.read_text())["images"]}
+    # The video that came after the bad one still got its frame.
+    assert entries["z.mp4"]["best_frame_number"] == 5
+    assert (tmp_path / "frames" / "z.mp4" / "frame000005.jpg").is_file()
+    # And the one before it, so this is not just "the loop ran backwards".
+    assert entries["a.mp4"]["best_frame_number"] == 5
+    # The bad one is skipped, not invented: no number, no JPEG.
+    assert "best_frame_number" not in entries["bad.mp4"]
+    assert not (tmp_path / "frames" / "bad.mp4").exists()

@@ -241,11 +241,20 @@ function LogTable({ rows }: LogTableProps) {
                   {r.deployment}
                 </td>
                 <td className="px-3 py-2 text-gray-700 font-mono" title={r.detail}>
-                  {/* Truncate from the start so the filename (end of the
-                      path) stays visible, with a leading ellipsis. */}
+                  {/* Which end to keep depends on what the row is about.
+                      A warning names a file, so truncate from the start
+                      and let the filename survive. An error is an
+                      exception message, and its meaning is at the front:
+                      truncating from the start leaves the reader a stray
+                      path fragment or a bare id, which is what a failed
+                      deployment used to show here. */}
                   <span
                     className="block overflow-hidden text-ellipsis whitespace-nowrap"
-                    style={{ direction: "rtl", textAlign: "left" }}
+                    style={
+                      r.severity === "warning"
+                        ? { direction: "rtl", textAlign: "left" }
+                        : undefined
+                    }
                   >
                     {r.detail}
                   </span>
@@ -581,6 +590,13 @@ export function RunQueueModal({
             const pendingCount = runEntries.filter(
               (e) => e.status === "pending",
             ).length;
+            // A deployment that failed before the cancel is neither
+            // completed nor back in the queue, so leaving it out made the
+            // sentence not add up: "2 of 5 completed. 2 returned to the
+            // queue." with a fifth unaccounted for.
+            const failedCount = runEntries.filter(
+              (e) => e.status === "failed",
+            ).length;
             const totalInRun = runEntries.length || queueCount;
 
             const parts: string[] = [];
@@ -594,6 +610,9 @@ export function RunQueueModal({
               parts.push(
                 `${completedCount} of ${totalInRun} deployment${totalInRun === 1 ? '' : 's'} completed`,
               );
+              if (failedCount > 0) {
+                parts.push(`${failedCount} failed`);
+              }
               if (pendingCount > 0) {
                 parts.push(
                   `${pendingCount} returned to the queue`,

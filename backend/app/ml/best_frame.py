@@ -132,11 +132,11 @@ def select_best_frames_streaming(
     video and once per video after it. On a folder of thousands this is
     a phase of its own, long enough that the user needs to see it move.
 
-    Videos that can't be opened or have zero decodable frames are
-    skipped with a warning. The overall sweep is best-effort: a failure
-    on one video never stops the others. A cancel does stop it, by
-    raising `JobCancelledError` before the JSON is rewritten, so a
-    cancelled run leaves no half-updated file behind.
+    Videos that can't be opened, have zero decodable frames, or raise
+    part-way through a decode are skipped with a warning. The overall
+    sweep is best-effort: a failure on one video never stops the others.
+    A cancel does stop it, by raising `JobCancelledError` before the JSON
+    is rewritten, so a cancelled run leaves no half-updated file behind.
     """
     with open(json_path) as f:
         data = json.load(f)
@@ -157,7 +157,22 @@ def select_best_frames_streaming(
         if job_id and is_cancel_requested(job_id):
             raise JobCancelledError()
 
-        result = _fetch_best_frame(absolute, img_entry.get("detections") or [])
+        # `_fetch_best_frame` returns None for a video that will not open,
+        # but cv2 can also raise part-way through a decode. Letting that
+        # escape ends the sweep, so every video after this one silently
+        # loses its thumbnail while the run still reports success. Catch it
+        # here so one bad clip costs only its own frame. The cancel check
+        # above is outside the try, so a cancel still stops the sweep.
+        try:
+            result = _fetch_best_frame(
+                absolute, img_entry.get("detections") or []
+            )
+        except Exception as e:
+            logger.warning(
+                f"select_best_frames_streaming: decoding {absolute} raised "
+                f"{e}, skipping"
+            )
+            result = None
         if result is None:
             logger.warning(
                 f"select_best_frames_streaming: no decodable frames for "
