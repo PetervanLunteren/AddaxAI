@@ -674,12 +674,26 @@ class EnvironmentManager:
                 # micromamba's final line on any pip failure is the
                 # constant "critical libmamba pip failed to install
                 # packages", which names no cause. The real error sits a
-                # few lines above it, in pip's own output, so show the
-                # tail instead. The full command is already in
-                # backend.log via log_subprocess_failure, so it is left
-                # out here: it pushed the useful lines off the screen.
-                tail = "\n".join(result.output_tail[-8:]) or result.last_line
-                raise RuntimeError(f"micromamba create failed:\n{tail}")
+                # few lines above it, in pip's own output, so show those
+                # instead. The full command is already in backend.log via
+                # log_subprocess_failure, so it is left out here: it
+                # pushed the useful lines off the screen.
+                #
+                # Five lines, not more. pip's closing summary block names
+                # the failing package twice and fits in five; at eight it
+                # also dragged in the previous package's wheel hash and
+                # cache path, which read as the cause, and it pushed the
+                # Try again button below the fold at the app's minimum
+                # window size (1024x768).
+                #
+                # A run that produced no output at all still has to say
+                # something, and last_line cannot fill that gap: it is
+                # only ever set together with output_tail, so an empty
+                # tail always means an empty last_line.
+                tail = "\n".join(result.output_tail[-5:]) or "(no output)"
+                raise RuntimeError(
+                    f"micromamba create failed (exit {result.returncode}):\n{tail}"
+                )
 
             if progress_callback:
                 progress_callback("Packages installed successfully", 0.95)

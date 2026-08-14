@@ -169,7 +169,14 @@ export function EnvRebuildButton({ envNames, onDone }: EnvRebuildButtonProps) {
           {phase === "error" && (
             <div className="flex items-start gap-2 text-sm text-destructive">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{error || "Rebuild failed."}</span>
+              {/* Same classes as the other two surfaces that render a
+                  backend install error. min-w-0 is needed here and not
+                  there: this span is a flex child, and without it the
+                  long paths and hashes in pip output push it 350px past
+                  the dialog edge instead of wrapping. */}
+              <span className="min-w-0 break-words whitespace-pre-line">
+                {error || "Rebuild failed."}
+              </span>
             </div>
           )}
 

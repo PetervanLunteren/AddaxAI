@@ -299,7 +299,7 @@ function MissingModelRow({
       )}
       {errorText && (
         <div
-          className="mt-2 text-xs whitespace-pre-line"
+          className="mt-2 text-xs break-words whitespace-pre-line"
           style={{ color: "#882000" }}
         >
           {errorText}
