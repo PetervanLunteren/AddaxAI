@@ -146,7 +146,7 @@ class ModelCatalogUpdater:
             Never raises - logs errors and continues
         """
         taxonomy_url = (
-            f"https://huggingface.co/{resolve_hf_repo(model_id, hf_repo)}"
+            f"{get_settings().hf_base_url}/{resolve_hf_repo(model_id, hf_repo)}"
             f"/resolve/main/taxonomy.csv?download=true"
         )
         taxonomy_path = model_dir / "taxonomy.csv"

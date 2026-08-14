@@ -80,9 +80,7 @@ class HuggingFaceRepoDownloader:
         # Mirror support (mainland China): both the API metadata calls
         # and the direct download URLs must go through the endpoint, or
         # the mirror only covers half the traffic.
-        self.endpoint = (
-            get_settings().hf_endpoint or "https://huggingface.co"
-        ).rstrip("/")
+        self.endpoint = get_settings().hf_base_url
         self.api = HfApi(endpoint=self.endpoint)
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "AddaxAI-HuggingFace-Downloader/1.0"})

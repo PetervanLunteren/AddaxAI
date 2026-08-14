@@ -144,6 +144,15 @@ class Settings(BaseSettings):
             self.hf_endpoint = os.environ.get("HF_ENDPOINT", "").strip() or None
         return self
 
+    @property
+    def hf_base_url(self) -> str:
+        """
+        Base URL for every HuggingFace request: the mirror when one is
+        configured, the real host otherwise. One rule, so the mirror
+        cannot cover part of the traffic and quietly miss the rest.
+        """
+        return (self.hf_endpoint or "https://huggingface.co").rstrip("/")
+
     def __init__(self, **kwargs: object) -> None:
         """
         Initialize settings and validate critical paths exist or can be created.

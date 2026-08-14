@@ -78,6 +78,44 @@ def test_download_taxonomy_uses_explicit_hf_repo(
     assert (model_dir / "taxonomy.csv").read_bytes() == b"csv"
 
 
+def test_download_taxonomy_goes_through_the_mirror(
+    updater: ModelCatalogUpdater, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """
+    This was the one request in the app that hardcoded huggingface.co,
+    so on a network that blocks it every classification model produced a
+    failing request per launch even with a mirror configured.
+    """
+    model_dir = tmp_path / "m"
+    model_dir.mkdir()
+    monkeypatch.setenv("ADDAXAI_USER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("ADDAXAI_HF_ENDPOINT", "https://hf-mirror.com")
+
+    with patch("app.ml.catalog_updater.urllib.request.urlopen") as mock_open:
+        mock_open.return_value.__enter__.return_value.read.return_value = b"csv"
+        updater.download_taxonomy("TEST-v1", model_dir)
+
+    url = mock_open.call_args[0][0]
+    assert url.startswith("https://hf-mirror.com/")
+    assert "huggingface.co" not in url
+
+
+def test_download_taxonomy_uses_the_real_host_without_a_mirror(
+    updater: ModelCatalogUpdater, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    model_dir = tmp_path / "m"
+    model_dir.mkdir()
+    monkeypatch.setenv("ADDAXAI_USER_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("ADDAXAI_HF_ENDPOINT", raising=False)
+    monkeypatch.delenv("HF_ENDPOINT", raising=False)
+
+    with patch("app.ml.catalog_updater.urllib.request.urlopen") as mock_open:
+        mock_open.return_value.__enter__.return_value.read.return_value = b"csv"
+        updater.download_taxonomy("TEST-v1", model_dir)
+
+    assert mock_open.call_args[0][0].startswith("https://huggingface.co/")
+
+
 def test_download_taxonomy_defaults_to_addax_org(
     updater: ModelCatalogUpdater, tmp_path: Path
 ):

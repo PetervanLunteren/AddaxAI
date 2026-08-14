@@ -165,6 +165,24 @@ def test_hf_endpoint_prefixed_var_and_fallback(
     assert Settings().hf_endpoint == "https://mirror.example"
 
 
+def test_hf_base_url_is_the_mirror_or_the_real_host(
+    clean_env: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """
+    Every HuggingFace request reads this one property, so a mirror
+    cannot end up covering part of the traffic and missing the rest.
+    """
+    clean_env.setenv("ADDAXAI_USER_DATA_DIR", str(tmp_path))
+    assert Settings().hf_base_url == "https://huggingface.co"
+
+    clean_env.setenv("ADDAXAI_HF_ENDPOINT", "https://hf-mirror.com")
+    assert Settings().hf_base_url == "https://hf-mirror.com"
+
+    # A trailing slash would double up when a path is appended.
+    clean_env.setenv("ADDAXAI_HF_ENDPOINT", "https://hf-mirror.com/")
+    assert Settings().hf_base_url == "https://hf-mirror.com"
+
+
 def test_unprefixed_vars_are_ignored(
     clean_env: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

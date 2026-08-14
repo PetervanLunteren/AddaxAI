@@ -106,7 +106,7 @@ def find_stale_files(model_dir: Path, hf_repo: str) -> list[str] | None:
         staleness check cannot take down startup.
     """
     try:
-        info = HfApi(endpoint=get_settings().hf_endpoint).model_info(
+        info = HfApi(endpoint=get_settings().hf_base_url).model_info(
             hf_repo, files_metadata=True, timeout=_HF_TIMEOUT
         )
     except RepositoryNotFoundError:
