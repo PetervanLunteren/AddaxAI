@@ -1,7 +1,16 @@
 name: env-addaxai-base
+# conda-forge only, deliberately. `defaults` (repo.anaconda.com) was
+# carried over from the first env YAMLs and never resolved a single
+# package: python, pip and exiftool and all 17 of their dependencies
+# come from conda-forge. It cost us twice. It is a second host that has
+# to pass TLS, and it broke a corporate Windows install on 2026-08-14
+# whose proxy could not reach the CRL endpoint (`pkgs/main`, `pkgs/r`
+# and `pkgs/msys2` failed to load with CRYPT_E_NO_REVOCATION_CHECK).
+# repo.anaconda.com also carries Anaconda's commercial terms, which
+# organisations above 200 staff need a paid licence for, and our
+# installer must not quietly put users in breach of that.
 channels:
   - conda-forge
-  - defaults
 dependencies:
   - python=3.11
   - pip
