@@ -28,7 +28,11 @@ from pydantic import BaseModel
 
 from app.core.config import get_settings
 from app.core.logging_config import get_logger
-from app.ml.environment_manager import EnvironmentManager
+from app.ml.environment_manager import (
+    EnvironmentManager,
+    TlsRevocationCheckError,
+    allow_revocation_skip,
+)
 from app.ml.model_storage import ModelStorage
 from app.ml.schemas.model_manifest import ModelManifest
 from app.services import legacy_install
@@ -73,6 +77,9 @@ class _InstallState:
         self.progress_pct: float = 0.0
         self.message: str = ""
         self.error: str | None = None
+        # Machine-readable cause, set only for failures the UI can offer a
+        # specific remedy for. None for every ordinary failure.
+        self.error_kind: str | None = None
         self._lock = threading.Lock()
 
     def start(self) -> bool:
@@ -84,6 +91,7 @@ class _InstallState:
             self.progress_pct = 0.0
             self.message = "Starting install..."
             self.error = None
+            self.error_kind = None
             return True
 
     def update(self, message: str, progress: float) -> None:
@@ -91,11 +99,14 @@ class _InstallState:
             self.message = message
             self.progress_pct = max(0.0, min(1.0, progress)) * 100.0
 
-    def finish(self, error: str | None = None) -> None:
+    def finish(
+        self, error: str | None = None, error_kind: str | None = None
+    ) -> None:
         with self._lock:
             self.in_progress = False
             self.progress_pct = 100.0 if error is None else self.progress_pct
             self.error = error
+            self.error_kind = error_kind
             self.message = "Install complete" if error is None else self.message
 
 
@@ -138,6 +149,10 @@ class SetupStatus(BaseModel):
     progress_pct: float
     message: str
     error: str | None
+    # "tls_revocation" when the build died because Windows could not check
+    # certificate revocation and the user has not accepted skipping it.
+    # The wizard uses this to offer that choice; None otherwise.
+    error_kind: str | None
     user_data_dir: str
 
 
@@ -157,6 +172,7 @@ def get_setup_status() -> SetupStatus:
         progress_pct=_install_state.progress_pct,
         message=_install_state.message,
         error=_install_state.error,
+        error_kind=_install_state.error_kind,
         user_data_dir=str(settings.user_data_dir),
     )
 
@@ -328,6 +344,12 @@ def _install_env_blocking(force_envs: tuple[str, ...] = ()) -> None:
     try:
         run_setup(_install_state.update, force_envs)
         _install_state.finish(error=None)
+    except TlsRevocationCheckError as e:
+        # Carries wording written for the user plus a remedy the wizard
+        # can offer, so it is tagged rather than reported as a generic
+        # failure.
+        logger.error(f"Setup install failed: {e}", exc_info=True)
+        _install_state.finish(error=str(e), error_kind="tls_revocation")
     except Exception as e:
         logger.error(f"Setup install failed: {e}", exc_info=True)
         _install_state.finish(error=str(e))
@@ -383,6 +405,21 @@ async def install_env(
         asyncio.to_thread(_install_env_blocking, force_envs)
     )
     return {"status": "started"}
+
+
+@router.post("/allow-no-revocation-check")
+def allow_no_revocation_check() -> dict[str, str]:
+    """
+    Record that the user accepts building environments without a
+    certificate revocation check, and return the file that records it.
+
+    Its own endpoint rather than a flag on /install-env because the model
+    preparation flow needs the same choice, and one endpoint keeps the
+    two callers honest about what they are asking for. Writing it does
+    not start anything: the caller retries its own build afterwards.
+    """
+    marker = allow_revocation_skip()
+    return {"status": "allowed", "marker_path": str(marker)}
 
 
 # Required free space at the user-data drive before the install starts.

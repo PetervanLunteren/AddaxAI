@@ -8,18 +8,25 @@
 import { AlertTriangle, RotateCw, ArrowLeft } from "lucide-react";
 import { Button } from "../ui/button";
 import { DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
+import { ContinueWithoutRevocationChecks } from "../setup/ContinueWithoutRevocationChecks";
 
 interface ModelPreparationErrorViewProps {
   errorMessage: string;
   onRetry: () => void;
   onCancel: () => void;
+  /** From the failed task. Only "tls_revocation" today, which unlocks
+   * the extra choice below the common-causes list. */
+  errorKind?: string;
 }
 
 export function ModelPreparationErrorView({
   errorMessage,
   onRetry,
   onCancel,
+  errorKind,
 }: ModelPreparationErrorViewProps) {
+  const isRevocationFailure = errorKind === "tls_revocation";
+
   return (
     <>
       <DialogHeader>
@@ -41,15 +48,22 @@ export function ModelPreparationErrorView({
           </div>
         </div>
 
-        {/* Troubleshooting Tips */}
-        <div className="bg-muted/50 rounded-md p-4 text-sm space-y-2">
-          <p className="font-medium">Common causes:</p>
-          <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-            <li>Network connection interrupted</li>
-            <li>Insufficient disk space</li>
-            <li>Download server temporarily unavailable</li>
-          </ul>
-        </div>
+        {/* Troubleshooting Tips. Suppressed for a cause we can name: a
+            guess list under a precise diagnosis only muddies it. */}
+        {!isRevocationFailure && (
+          <div className="bg-muted/50 rounded-md p-4 text-sm space-y-2">
+            <p className="font-medium">Common causes:</p>
+            <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+              <li>Network connection interrupted</li>
+              <li>Insufficient disk space</li>
+              <li>Download server temporarily unavailable</li>
+            </ul>
+          </div>
+        )}
+
+        {isRevocationFailure && (
+          <ContinueWithoutRevocationChecks onRetry={onRetry} />
+        )}
       </div>
 
       {/* Action Buttons */}

@@ -160,6 +160,11 @@ export default function SettingsPage() {
   const [preparationStage, setPreparationStage] = useState<PreparationStage>("form");
   const [preparingTaskId, setPreparingTaskId] = useState<string | null>(null);
   const [preparationError, setPreparationError] = useState<string | null>(null);
+  // Always set alongside preparationError, so a kind cannot outlive the
+  // failure it described. Undefined for anything but a named cause.
+  const [preparationErrorKind, setPreparationErrorKind] = useState<
+    string | undefined
+  >(undefined);
   const [preparingModelType, setPreparingModelType] = useState<PreparingModelType>(null);
 
   // Unified save flow state
@@ -332,8 +337,9 @@ export default function SettingsPage() {
       setPreparationStage("form");
       setPreparingModelType(null);
     },
-    onError: (error) => {
+    onError: (error, kind) => {
       setPreparationError(error);
+      setPreparationErrorKind(kind);
       setPreparationStage("error");
       setPreparingTaskId(null);
     },
@@ -398,6 +404,7 @@ export default function SettingsPage() {
       setPreparingTaskId(response.task_id);
     } catch (error: any) {
       setPreparationError(error.message || "Failed to start model preparation");
+      setPreparationErrorKind(undefined);
       setPreparationStage("error");
       setPreparingModelType(null);
     }
@@ -414,6 +421,7 @@ export default function SettingsPage() {
       setPreparingTaskId(response.task_id);
     } catch (error: any) {
       setPreparationError(error.message || "Failed to start model preparation");
+      setPreparationErrorKind(undefined);
       setPreparationStage("error");
       setPreparingModelType(null);
     }
@@ -430,6 +438,7 @@ export default function SettingsPage() {
       setPreparingTaskId(response.task_id);
     } catch (error: any) {
       setPreparationError(error.message || "Failed to start model preparation");
+      setPreparationErrorKind(undefined);
       setPreparationStage("error");
       setPreparingModelType(null);
     }
@@ -1446,6 +1455,7 @@ export default function SettingsPage() {
           <DialogContent className="max-w-xl">
             <ModelPreparationErrorView
               errorMessage={preparationError || "Unknown error occurred"}
+              errorKind={preparationErrorKind}
               onRetry={handleRetryPreparation}
               onCancel={() => setPreparationStage("form")}
             />

@@ -27,7 +27,10 @@ from app.ml.batch_size import (
     EMBEDDING_DEFAULT_CPU,
     EMBEDDING_DEFAULT_GPU,
 )
-from app.ml.environment_manager import EnvironmentManager
+from app.ml.environment_manager import (
+    EnvironmentManager,
+    TlsRevocationCheckError,
+)
 from app.ml.manifest_manager import ManifestManager
 from app.ml.model_storage import ModelStorage
 
@@ -555,6 +558,13 @@ async def _prepare_model_task(model_id: str, manifest, task_id: str) -> None:
     except JobCancelledError:
         logger.info(f"Model preparation for {model_id} cancelled")
         await ws_manager.send_cancelled(task_id, "Model preparation cancelled")
+    except TlsRevocationCheckError as e:
+        # Already worded for the user and has a remedy the UI can offer,
+        # so it goes out tagged and without the generic prefix.
+        logger.error(f"Failed to prepare model {model_id}: {e}", exc_info=True)
+        await ws_manager.send_error(
+            task_id, str(e), error_kind="tls_revocation"
+        )
     except Exception as e:
         logger.error(f"Failed to prepare model {model_id}: {e}", exc_info=True)
         await ws_manager.send_error(task_id, f"Preparation failed: {e}")

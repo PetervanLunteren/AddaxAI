@@ -1,47 +1,52 @@
 ---
 sidebar_position: 7
-title: Install on locked-down computers
+title: Install on locked-down computers and networks
+hide_table_of_contents: true
 ---
 
 import Tabs from "@theme/Tabs";
 import TabItem from "@theme/TabItem";
+import { FaqItem } from "@site/src/components/Faq";
 
-# Install on locked-down computers
+# Install on locked-down computers and networks
 
-Some organizations only allow programs to run from specific folders. Government and university computers often work this way. The app then installs fine, but setup fails with an error like "This program is blocked by group policy". The fix is to put both the app and its data folder in allowed locations.
+Work and university computers are often managed. A rule about where programs may run, or a network that inspects secure traffic, can stop the first-time setup. Pick the error you see.
+
+<FaqItem
+  id="the-app-is-blocked-by-group-policy"
+  q="The app is blocked by group policy"
+  summary='"This program is blocked by group policy". Needs AddaxAI 7.0.9 or newer.'
+>
+
+Some organizations only allow programs to run from certain folders. Setup then fails with an error like "This program is blocked by group policy".
 
 You need AddaxAI 7.0.9 or newer.
 
-## Why it fails
+#### Why it fails
 
-There are two parts:
+The app installs where you pick. The AI runs from a separate data folder, by default `C:\Users\<your user name>\AddaxAI` (macOS and Linux: `~/AddaxAI`). That folder holds your database, the models, and the software they run in. When the policy blocks programs in user folders, that folder is what fails, even though the app opens fine.
 
-- The app itself. It installs to the location you pick in the installer.
-- The data folder. It holds your database, the AI models, and the software the models run in. By default it is `C:\Users\<your user name>\AddaxAI` (on macOS and Linux: `~/AddaxAI`).
+#### The fix
 
-The AI runs from the data folder. When the policy blocks programs in user folders, that is the part that fails, even when the app opens fine.
+Easiest: ask IT to allow programs under that folder. If they cannot, move both.
 
-The easiest solution is to ask your IT department to allow programs under the default data folder, `C:\Users\<your user name>\AddaxAI`. If they do, you are done and can skip the rest of this page. If they don't, follow the fix below.
-
-## The fix
-
-1. Install the app into an allowed folder. The installer lets you pick the location. To install with a script, see [silent install](silent-install.mdx).
-2. Set the environment variable `ADDAXAI_USER_DATA_DIR` to an absolute path in an allowed location, for example `C:\Apps\AddaxAI-data`. The data folder then lives there instead of in the user folder.
+1. Install the app in an allowed folder. The installer lets you pick. For a script, see [silent install](silent-install.mdx).
+2. Set `ADDAXAI_USER_DATA_DIR` to a path in an allowed location, for example `C:\Apps\AddaxAI-data`.
 
 <Tabs groupId="os" queryString="os">
   <TabItem value="windows" label="Windows" default>
 
-Set the variable machine wide so it applies to every user:
+Set it machine wide, so it applies to every user:
 
 1. Open Start and search for "environment variables".
 2. Choose "Edit the system environment variables", then "Environment variables".
-3. Under "System variables", add `ADDAXAI_USER_DATA_DIR` with the path as the value.
+3. Under "System variables", add `ADDAXAI_USER_DATA_DIR` with the path as its value.
 4. Start the app and run the setup.
 
   </TabItem>
   <TabItem value="macos" label="macOS">
 
-A plain `export` in the shell does not reach apps started from the Dock, so set the variable with a login agent. Paste this in Terminal, with your folder on the `<string>` line:
+A plain `export` does not reach apps started from the Dock, so use a login agent. Paste this in Terminal, with your folder on the `<string>` line:
 
 ```bash
 cat > ~/Library/LaunchAgents/com.addaxai.data-folder.plist << 'EOF'
@@ -64,29 +69,97 @@ EOF
 launchctl load ~/Library/LaunchAgents/com.addaxai.data-folder.plist
 ```
 
-This survives restarts. Then start the app and run the setup.
+This survives restarts. Then run the setup.
 
   </TabItem>
   <TabItem value="linux" label="Linux">
 
-A plain `export` in the shell does not reach apps started from a desktop icon, so set the variable for the whole session. Paste this in a terminal, then log out and in:
+A plain `export` does not reach apps started from a desktop icon, so set it for the whole session. Paste this in a terminal, then log out and in:
 
 ```bash
 mkdir -p ~/.config/environment.d
 echo 'ADDAXAI_USER_DATA_DIR=/path/to/folder' > ~/.config/environment.d/addaxai.conf
 ```
 
-This survives restarts. Then start the app and run the setup.
+This survives restarts. Then run the setup.
 
   </TabItem>
 </Tabs>
 
-## Things to know
+#### Things to know
 
-- The folder must be writable by the user account that runs the app. If it is not, the app shows an error at startup that names the folder.
-- The variable does not move anything. The app starts fresh in the new folder: an empty database, and setup downloads the models again. To keep earlier work, close the app and move the old folder's contents into the new folder first.
-- Setup needs to reach `huggingface.co` and `github.com`. On networks that block those, ask IT to allow them, or see [install in mainland China](install-in-china.mdx) for mirrors.
+- The folder must be writable by the user who runs the app. If it is not, startup shows an error naming the folder.
+- The variable moves nothing. You start with an empty database, and setup downloads the models again. To keep earlier work, close the app and move the old folder's contents across first.
+- Setup needs the addresses under [which addresses setup needs](#which-addresses-setup-needs). If they are blocked, ask IT, or see [install in mainland China](install-in-china.mdx) for mirrors.
+
+</FaqItem>
+
+<FaqItem
+  id="certificate-errors-during-setup"
+  q="Certificate errors during setup"
+  summary="CRYPT_E_NO_REVOCATION_CHECK (0x80092012). Windows only. Needs AddaxAI 7.0.12 or newer."
+>
+
+Setup stops while it downloads the analysis environment:
+
+```
+schannel: next InitializeSecurityContext failed: CRYPT_E_NO_REVOCATION_CHECK
+(0x80092012) - The revocation function was unable to check revocation for the
+certificate.
+```
+
+You may also see `CRYPT_E_REVOCATION_OFFLINE (0x80092013)`. Same cause, same fix. Windows only.
+
+You need AddaxAI 7.0.12 or newer.
+
+#### Why it fails
+
+Windows checks whether a certificate has been withdrawn since it was issued. A network that inspects secure traffic re-signs every connection with its own certificate. Those carry no address to check against, so Windows gives up and stops the download.
+
+This is not your computer, and turning off your antivirus does not help. The inspection happens on a network device.
+
+#### Best fix: ask IT
+
+Ask them to exempt the addresses under [which addresses setup needs](#which-addresses-setup-needs) from traffic inspection. Allowing the withdrawal lists through the firewall does not help, because the replacement certificates name no list to reach.
+
+#### If that is not possible
+
+Setup offers a button, **Continue without revocation checks**, under the error next to Try again.
+
+<img src="https://github.com/user-attachments/assets/2e8ceee4-00eb-4727-81d9-ef8a3459ec16" alt="The setup screen showing the error and the Continue without revocation checks button" style={{maxWidth: '620px', width: '100%', display: 'block'}} />
+
+- It stops one check: whether the download servers' certificates have been withdrawn.
+- Still checked: who issued them, that they match the address, and that they have not expired.
+- Nothing outside the environment download changes.
+
+Your choice is remembered, so later downloads do not ask again.
+
+#### How to undo it
+
+AddaxAI writes the choice to one file:
+
+```
+C:\Users\<your user name>\AddaxAI\.allow-no-revocation-check
+```
+
+The file explains itself. Delete it and the check comes back.
+
+Administrators can set this per machine instead, with a system variable `MAMBA_SSL_NO_REVOKE` set to `true`. Use `true`, not `1`. A [silent install](silent-install.mdx) shows no screen, so set it before you deploy.
+
+</FaqItem>
+
+## Which addresses setup needs
+
+Setup downloads from these. IT needs them reachable, and not inspected:
+
+| Address | What it is used for |
+|---|---|
+| `micro.mamba.pm` | the program that builds the analysis environment |
+| `conda.anaconda.org` | the packages that environment is built from |
+| `pypi.org` and `files.pythonhosted.org` | more packages |
+| `download.pytorch.org` | the parts that use your graphics card |
+| `huggingface.co` | the AI models themselves |
 
 ## Blocked in a different way?
 
-This page covers the cases I have seen so far, but computers can be locked down in other ways too. If the app is blocked differently on your machines, email [peter@addaxdatascience.com](mailto:peter@addaxdatascience.com) with a [diagnostic report](troubleshooting.md). I will help you through it and add your case to this page.
+This page covers the cases I have seen so far. If AddaxAI is blocked differently on your machines, email [peter@addaxdatascience.com](mailto:peter@addaxdatascience.com) with a [diagnostic report](troubleshooting.md). Say which security software or proxy you use, if you know it. I will help you through it and add your case to this page.

@@ -14,6 +14,7 @@ import { setupApi } from "../api/setup";
 import { Button } from "../components/ui/button";
 import { Progress } from "../components/ui/progress";
 import { Callout } from "../components/ui/callout";
+import { ContinueWithoutRevocationChecks } from "../components/setup/ContinueWithoutRevocationChecks";
 
 const POLL_INTERVAL_MS = 1500;
 
@@ -55,8 +56,19 @@ export default function SetupPage() {
   // disk-space pre-flight 507) is only on the mutation itself; the
   // status endpoint never learns about it.
   const statusError = !inProgress ? status.error : null;
-  const errorText = statusError ?? install.error?.message ?? null;
+  // The mutation error is suppressed while an install runs. Two buttons
+  // start one, neither disables on click, and the status takes up to a
+  // poll to catch up, so an impatient second click lands a 409 here.
+  // Without this the page shouts "Setup failed" over a live progress bar
+  // and a user who believes it quits a perfectly healthy install.
+  const errorText =
+    statusError ?? (inProgress ? null : install.error?.message) ?? null;
   const hasError = errorText !== null;
+  // Tagged by the backend, never guessed from the message text. Tied to
+  // statusError so a pre-flight refusal (which carries no kind) cannot
+  // leave a stale offer on screen from an earlier attempt.
+  const showRevocationOptOut =
+    statusError !== null && status.error_kind === "tls_revocation";
   // The button must surface whenever something is still missing, not just
   // when env is missing. Otherwise a half-complete state (env installed but
   // bundled models missing, common in dev mode) leaves the user with no
@@ -138,6 +150,14 @@ export default function SetupPage() {
             <Button onClick={() => install.mutate()} className="w-full">
               Try again
             </Button>
+            {/* Only for the one failure plain retrying cannot fix. The
+                backend stops sending this kind once the choice has been
+                made, so the offer never repeats uselessly. */}
+            {showRevocationOptOut && (
+              <ContinueWithoutRevocationChecks
+                onRetry={() => install.mutate()}
+              />
+            )}
           </div>
         )}
 

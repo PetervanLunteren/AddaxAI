@@ -17,6 +17,13 @@ export interface SetupStatus {
   progress_pct: number;
   message: string;
   error: string | null;
+  /**
+   * Names a failure the UI can offer a specific remedy for. Only
+   * "tls_revocation" today, set when the environment build died because
+   * Windows could not check certificate revocation and the user has not
+   * already accepted skipping it. Null for every ordinary failure.
+   */
+  error_kind: string | null;
   user_data_dir: string;
 }
 
@@ -45,6 +52,19 @@ export const setupApi = {
     api.post<{ status: string }>("/api/setup/install-env", {
       force_envs: forceEnvs,
     }),
+
+  /**
+   * Record that the user accepts building environments without a
+   * certificate revocation check. Writes a marker file the backend reads
+   * on every build, so one click covers the wizard, the drift rebuild
+   * and model preparation alike. Starts nothing: the caller retries its
+   * own build afterwards.
+   */
+  allowNoRevocationCheck: () =>
+    api.post<{ status: string; marker_path: string }>(
+      "/api/setup/allow-no-revocation-check",
+      {},
+    ),
 
   getLegacyInstall: () =>
     api.get<LegacyInstallStatus>("/api/setup/legacy-install"),

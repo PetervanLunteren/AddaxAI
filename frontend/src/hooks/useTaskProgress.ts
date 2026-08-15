@@ -41,6 +41,9 @@ export interface ProgressMessage {
   phase?: AnalysisPhase;
   phase_progress?: number; // 0.0-1.0 (progress within current phase)
   success?: boolean;
+  /** Only on "error". Names a cause the UI can offer a specific remedy
+   * for ("tls_revocation"); absent for every ordinary failure. */
+  error_kind?: string;
   data?: {
     deployment_index?: number;
     total_deployments?: number;
@@ -65,7 +68,9 @@ export interface DeploymentContext {
 interface UseTaskProgressOptions {
   taskId: string | null;
   onComplete?: (data?: Record<string, unknown>) => void;
-  onError?: (message: string) => void;
+  /** `errorKind` is set only for failures with a specific remedy; see
+   * ProgressMessage.error_kind. */
+  onError?: (message: string, errorKind?: string) => void;
   onCancelled?: (message: string) => void;
   /** Fired for every progress event with the raw message. Use this
    * when a worker emits custom fields under ``data`` that the hook
@@ -257,7 +262,7 @@ export function useTaskProgress({
               setMessage(data.message);
             });
             if (onError) {
-              onError(data.message);
+              onError(data.message, data.error_kind);
             }
           } else if (data.type === "cancelled") {
             console.debug(`[useTaskProgress] CANCELLED received for job_id=${data.job_id}`);

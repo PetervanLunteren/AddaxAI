@@ -20,6 +20,7 @@ import threading
 import urllib.request
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar
 
@@ -48,6 +49,86 @@ ENV_YAML_SHA_FILENAME = ".addaxai-yaml-sha256"
 _BOOT_PROBE_SCRIPT = (
     "import encodings, select, unicodedata, ssl, ctypes, socket, zlib, hashlib"
 )
+
+
+class TlsRevocationCheckError(RuntimeError):
+    """Windows could not check certificate revocation for a download server.
+
+    Raised instead of the generic build failure so the API can offer the
+    user the one thing that helps, rather than showing them a wall of
+    micromamba output they cannot act on.
+    """
+
+
+# schannel's two "I could not check revocation" verdicts. 0x80092012 is
+# what a network that inspects TLS produces: it re-signs traffic with its
+# own certificate authority, and those certificates carry no CRL or OCSP
+# pointer, so there is nothing to check. 0x80092013 is a real revocation
+# server that could not be reached. Same cause from the user's side and
+# the same fix, so one rule covers both.
+_REVOCATION_MARKERS = (
+    "CRYPT_E_NO_REVOCATION_CHECK",
+    "CRYPT_E_REVOCATION_OFFLINE",
+)
+
+# Written by the user from the setup screen to accept environment builds
+# without a revocation check. A file rather than a parameter because all
+# four build sites then honour it (setup wizard, drift rebuild,
+# prepare-env and the headless --setup CLI) with nothing threaded
+# through. Lives next to the other markers in the user data dir.
+REVOCATION_MARKER_FILENAME = ".allow-no-revocation-check"
+
+_REVOCATION_MARKER_NOTE = """\
+AddaxAI skips the certificate revocation check when it builds analysis
+environments, because this network blocks that check.
+
+Certificates are still verified: the issuing authority, the host name and
+the expiry date are all checked as usual. Only the question "has this
+certificate been revoked?" is skipped.
+
+Created {created} from the AddaxAI setup screen.
+Delete this file to restore the default.
+"""
+
+
+def revocation_marker_path() -> Path:
+    """Absolute path of the opt-out marker, whether or not it exists."""
+    return get_settings().user_data_dir / REVOCATION_MARKER_FILENAME
+
+
+def revocation_skip_allowed() -> bool:
+    """True when the user has accepted builds without a revocation check."""
+    return revocation_marker_path().is_file()
+
+
+def allow_revocation_skip() -> Path:
+    """Record the user's opt-out. Idempotent, rewritten on every call.
+
+    The file explains itself so an administrator who finds it needs no
+    other source to understand what it does and how to undo it.
+    """
+    marker = revocation_marker_path()
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(
+        _REVOCATION_MARKER_NOTE.format(
+            created=datetime.now(UTC).strftime("%Y-%m-%d")
+        ),
+        encoding="utf-8",
+    )
+    logger.warning(
+        f"Certificate revocation checks disabled for environment builds "
+        f"by user request; marker written to {marker}"
+    )
+    return marker
+
+
+def is_revocation_failure(output_lines: list[str]) -> bool:
+    """True when micromamba failed because revocation could not be checked."""
+    return any(
+        marker in line
+        for line in output_lines
+        for marker in _REVOCATION_MARKERS
+    )
 
 
 def hash_yaml_file(yaml_path: Path) -> str:
@@ -623,6 +704,24 @@ class EnvironmentManager:
             env["MAMBA_REMOTE_CONNECT_TIMEOUT_SECS"] = "120"
             env["MAMBA_REMOTE_READ_TIMEOUT_SECS"] = "120"
             env["MAMBA_REMOTE_MAX_RETRIES"] = "5"
+            # Windows schannel refuses a certificate whose revocation it
+            # cannot check, and a network that inspects TLS re-signs with
+            # certificates carrying no CRL or OCSP pointer, so every
+            # environment build dies before the first package is read.
+            # This is the user's explicit opt-out, written from the setup
+            # screen. Read here on every build rather than passed in, so
+            # all four build sites honour it, including the headless
+            # --setup CLI. Only the revocation lookup is skipped; the
+            # certificate chain, host name and expiry are still verified.
+            # The value must be "true": micromamba parses it as YAML and
+            # "1" dies with a bad-conversion backtrace (mamba issue #2751,
+            # still present in the 2.8.1 we ship).
+            if revocation_skip_allowed():
+                env["MAMBA_SSL_NO_REVOKE"] = "true"
+                logger.warning(
+                    f"Building {env_name} without certificate revocation "
+                    f"checks ({revocation_marker_path()} is present)"
+                )
             # Take an older prebuilt wheel over a newer source package.
             # A source package means compiling on the user's machine,
             # which needs a C++ compiler a typical Windows user does not
@@ -707,6 +806,23 @@ class EnvironmentManager:
                 # Surface the captured tail at ERROR so backend.log holds
                 # the pip stack-trace, not just the libmamba summary line.
                 log_subprocess_failure("micromamba create", cmd, result)
+                # Windows could not check whether the download server's
+                # certificate was revoked. Scan the whole captured output,
+                # not the five lines shown below: the schannel line sits
+                # above the summary and gets trimmed out of the tail.
+                #
+                # Only raised while the opt-out is absent. If it is already
+                # set and this still happens, skipping the check was not
+                # the cure, so the user gets the ordinary error instead of
+                # a button that would change nothing.
+                if is_revocation_failure(result.output_tail) and not revocation_skip_allowed():
+                    raise TlsRevocationCheckError(
+                        "Windows could not check whether the security "
+                        "certificate of the download server has been "
+                        "revoked, so the analysis environment could not "
+                        "be downloaded. This is common on a company "
+                        "network that inspects secure traffic."
+                    )
                 # micromamba's final line on any pip failure is the
                 # constant "critical libmamba pip failed to install
                 # packages", which names no cause. The real error sits a
@@ -768,6 +884,12 @@ class EnvironmentManager:
             # Cancelled mid-build. The temp env was already removed at the
             # cancel checkpoint above; propagate cleanly so the worker
             # reports cancellation rather than a build failure.
+            raise
+        except TlsRevocationCheckError:
+            # Same reason as the cancel above: the failure branch already
+            # removed the temp env, and the message is written for the
+            # user. Re-wrapping it would bury both the wording and the
+            # type the API needs to offer the opt-out.
             raise
         except Exception as e:
             # Clean up failed environment - only if rename hasn't happened yet

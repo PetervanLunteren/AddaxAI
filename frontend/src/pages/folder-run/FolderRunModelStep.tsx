@@ -192,6 +192,9 @@ export function FolderRunModelStep() {
   const [preparingModelId, setPreparingModelId] = useState<string | null>(null);
   const [preparingTaskId, setPreparingTaskId] = useState<string | null>(null);
   const [preparationError, setPreparationError] = useState<string | null>(null);
+  const [preparationErrorKind, setPreparationErrorKind] = useState<
+    string | undefined
+  >(undefined);
 
   const [showDetInfo, setShowDetInfo] = useState(false);
   const [showClsInfo, setShowClsInfo] = useState(false);
@@ -459,8 +462,9 @@ export function FolderRunModelStep() {
       setPreparingModelId(null);
       setPrepStage("form");
     },
-    onError: (msg) => {
+    onError: (msg, kind) => {
       setPreparationError(msg);
+      setPreparationErrorKind(kind);
       setPrepStage("error");
       setPreparingTaskId(null);
     },
@@ -483,6 +487,9 @@ export function FolderRunModelStep() {
       setPreparationError(
         err instanceof Error ? err.message : String(err),
       );
+      // The request never reached a build, so there is no kind. Always
+      // set alongside the message, so a kind cannot outlive it.
+      setPreparationErrorKind(undefined);
       setPrepStage("error");
     }
   };
@@ -1491,6 +1498,7 @@ export function FolderRunModelStep() {
           {prepStage === "error" && (
             <ModelPreparationErrorView
               errorMessage={preparationError ?? "Unknown error"}
+              errorKind={preparationErrorKind}
               onRetry={retryPrepare}
               onCancel={() => {
                 setPreparationError(null);

@@ -254,18 +254,26 @@ class ConnectionManager:
         # Clean up state after 60s (client has long since received it)
         self._schedule_cleanup(self._cleanup_state(job_id, delay=60))
 
-    async def send_error(self, job_id: str, error: str) -> None:
+    async def send_error(
+        self, job_id: str, error: str, error_kind: str | None = None
+    ) -> None:
         """
         Send error message to all clients subscribed to a job.
         Stores in current state and schedules cleanup.
+
+        `error_kind` names a cause the UI can offer a specific remedy for
+        (currently only "tls_revocation"). Left out of the payload when
+        absent so an ordinary failure carries no extra field.
         """
         logger.info(f"send_error() called for job {job_id}: error={error[:50]}")
 
-        error_data = {
+        error_data: dict[str, Any] = {
             "type": "error",
             "job_id": job_id,
             "message": error,
         }
+        if error_kind is not None:
+            error_data["error_kind"] = error_kind
 
         # Store state and snapshot connections atomically
         async with self._lock:

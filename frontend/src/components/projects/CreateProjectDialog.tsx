@@ -98,6 +98,11 @@ export function CreateProjectDialog({
   const [stage, setStage] = useState<DialogStage>("form");
   const [preparingTaskId, setPreparingTaskId] = useState<string | null>(null);
   const [preparationError, setPreparationError] = useState<string | null>(null);
+  // Always set alongside preparationError, so a kind cannot outlive the
+  // failure it described. Undefined for anything but a named cause.
+  const [preparationErrorKind, setPreparationErrorKind] = useState<
+    string | undefined
+  >(undefined);
 
   // Fetch available classification models (already sorted alphabetically by backend)
   const { data: classificationModels = [] } = useQuery({
@@ -205,8 +210,9 @@ export function CreateProjectDialog({
       setPreparingTaskId(null);
       setStage("form");
     },
-    onError: (error) => {
+    onError: (error, kind) => {
       setPreparationError(error);
+      setPreparationErrorKind(kind);
       setStage("error");
       setPreparingTaskId(null);
     },
@@ -279,6 +285,7 @@ export function CreateProjectDialog({
       setPreparingTaskId(response.task_id);
     } catch (error: any) {
       setPreparationError(error.message || "Failed to start model preparation");
+      setPreparationErrorKind(undefined);
       setStage("error");
     }
   };
@@ -524,6 +531,7 @@ export function CreateProjectDialog({
         {stage === "error" && (
           <ModelPreparationErrorView
             errorMessage={preparationError || "Unknown error occurred"}
+            errorKind={preparationErrorKind}
             onRetry={handleRetryPreparation}
             onCancel={() => setStage("form")}
           />

@@ -133,7 +133,7 @@ sudo apt remove -y addaxai
 
 ## What the install does not cover
 
-The installer only places the app. On first launch AddaxAI downloads its AI models and runtime environment, about 5 GB, into the user's own home folder at `~/AddaxAI`, and it needs at least 7 GB free on that drive. If group policy blocks programs in user folders on your machines, see [install on locked-down computers](locked-down-computers.mdx). This happens once per user account, not once per machine, so on shared computers every user goes through that first-time download. It needs an internet connection that can reach huggingface.co and github.com. To spare your users the wait, run that setup from a script too, as described below.
+The installer only places the app. On first launch AddaxAI downloads its AI models and runtime environment, about 5 GB, into the user's own home folder at `~/AddaxAI`, and it needs at least 7 GB free on that drive. If group policy blocks programs in user folders on your machines, see [install on locked-down computers and networks](locked-down-computers.mdx). This happens once per user account, not once per machine, so on shared computers every user goes through that first-time download. The addresses it downloads from are listed under [which addresses setup needs](locked-down-computers.mdx#which-addresses-setup-needs). To spare your users the wait, run that setup from a script too, as described below.
 
 ## Pre-install the models and environments
 

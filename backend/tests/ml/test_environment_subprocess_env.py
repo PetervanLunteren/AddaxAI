@@ -28,8 +28,9 @@ dependencies:
 """
 
 
-@pytest.fixture
-def captured_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+def capture_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> dict[str, str]:
     """Run `_create_env` far enough to capture the env it hands micromamba."""
     yaml_path = tmp_path / "environment.yml"
     yaml_path.write_text(YAML)
@@ -56,6 +57,11 @@ def captured_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, s
     return seen["env"]
 
 
+@pytest.fixture
+def captured_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    return capture_env(tmp_path, monkeypatch)
+
+
 def test_nested_pip_is_forced_to_utf8(captured_env: dict[str, str]) -> None:
     """Without this, pip's non-ASCII output arrives as U+FFFD on a
     cp932 / cp936 / cp949 machine, losing the traceback at the exact
@@ -78,6 +84,32 @@ def test_prefer_binary_is_set(captured_env: dict[str, str]) -> None:
     pinned by hand. Preferring an older wheel covers the whole class,
     for every env and platform, from this one place."""
     assert captured_env["PIP_PREFER_BINARY"] == "1"
+
+
+def test_revocation_check_stays_on_by_default(
+    captured_env: dict[str, str],
+) -> None:
+    """Nothing weakens TLS unless the user has asked for it.
+
+    The variable must be absent, not "false": its presence at all is what
+    an audit of a machine would look for."""
+    assert "MAMBA_SSL_NO_REVOKE" not in captured_env
+
+
+def test_marker_disables_the_revocation_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The marker file is the only thing that turns the check off.
+
+    The value has to be exactly "true". micromamba parses it as YAML and
+    "1" dies with a bad-conversion backtrace (mamba issue #2751), which
+    would break every build instead of fixing one."""
+    monkeypatch.setenv("ADDAXAI_USER_DATA_DIR", str(tmp_path))
+    (tmp_path / environment_manager.REVOCATION_MARKER_FILENAME).write_text("x")
+
+    env = capture_env(tmp_path, monkeypatch)
+
+    assert env["MAMBA_SSL_NO_REVOKE"] == "true"
 
 
 def test_user_site_packages_stay_out(captured_env: dict[str, str]) -> None:
