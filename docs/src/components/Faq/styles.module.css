@@ -35,9 +35,27 @@
   transform: rotate(90deg);
 }
 
-.question {
+/* Column so an optional teaser can sit under the question. With no
+   teaser this renders exactly as the single question line did. */
+.text {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.question {
   font-weight: 600;
+}
+
+.teaser {
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.9rem;
+}
+
+/* The open row repeats it in full, so the preview steps aside. */
+.item[open] .teaser {
+  display: none;
 }
 
 /* Same idea as Docusaurus heading anchors: out of the way until wanted. */

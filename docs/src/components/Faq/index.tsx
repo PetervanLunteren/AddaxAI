@@ -20,10 +20,17 @@ interface FaqItemProps {
   id: string;
   /** The question, shown on the closed row. */
   q: string;
+  /**
+   * Optional line under the question while the row is closed, hidden
+   * once it opens. For lists of problems, put the error the reader is
+   * looking at here: that, not the title, is what they match against.
+   * Leave it out where the question already says everything.
+   */
+  summary?: string;
   children: ReactNode;
 }
 
-export function FaqItem({ id, q, children }: FaqItemProps): ReactNode {
+export function FaqItem({ id, q, summary, children }: FaqItemProps): ReactNode {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDetailsElement>(null);
 
@@ -61,7 +68,10 @@ export function FaqItem({ id, q, children }: FaqItemProps): ReactNode {
         <span className={open ? styles.caretOpen : styles.caret} aria-hidden="true">
           ›
         </span>
-        <span className={styles.question}>{q}</span>
+        <span className={styles.text}>
+          <span className={styles.question}>{q}</span>
+          {summary && <span className={styles.teaser}>{summary}</span>}
+        </span>
         <a
           className={styles.hash}
           href={`#${id}`}

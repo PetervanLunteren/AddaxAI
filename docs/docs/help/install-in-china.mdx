@@ -6,6 +6,7 @@ hide_table_of_contents: true
 
 import Tabs from "@theme/Tabs";
 import TabItem from "@theme/TabItem";
+import { FaqItem } from "@site/src/components/Faq";
 
 # Install in mainland China
 
@@ -126,8 +127,10 @@ The mirrors are free services from universities and volunteers. They can move or
 
 The steps above are enough for most people. Only if setup still fails, open the part below that matches your problem.
 
-<details>
-<summary>The big download still stalls (Only for Windows users)</summary>
+<FaqItem
+  id="the-big-download-still-stalls"
+  q="The big download still stalls (Only for Windows users)"
+>
 
 One file is about 3.4 GB, and setup sometimes still fetches it from the slow official server. Download it yourself instead:
 
@@ -137,10 +140,9 @@ One file is about 3.4 GB, and setup sometimes still fetches it from the slow off
 
 This file only exists on Windows. Macs use a much smaller file that rarely stalls.
 
-</details>
+</FaqItem>
 
-<details>
-<summary>A model download keeps failing</summary>
+<FaqItem id="a-model-download-keeps-failing" q="A model download keeps failing">
 
 You can fetch the model files yourself. Open the model's page on the mirror, download every file, and put them in the model's folder under `C:\Users\<your user name>\AddaxAI\models` (on macOS and Linux: `~/AddaxAI/models`). Keep the file names as they are.
 
@@ -152,7 +154,7 @@ You can fetch the model files yourself. Open the model's page on the mirror, dow
 
 Other species models work the same way. Their folder is `models\cls\<model id>`, with the id as shown in the [model zoo](../reference/model-zoo.mdx).
 
-</details>
+</FaqItem>
 
 ## Still stuck
 
