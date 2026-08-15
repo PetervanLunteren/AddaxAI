@@ -781,8 +781,17 @@ class EnvironmentManager:
                 logger.debug(f"micromamba: {line}")
 
             try:
+                # Keep more than the default 300 lines. The failure we
+                # translate into an actionable error is a schannel line
+                # that micromamba prints while fetching the package
+                # index, and anything printed after it pushes it out of
+                # the window. Costs a few kilobytes of memory.
                 result = stream_with_tail(
-                    cmd, env=env, on_line=on_micromamba_line, job_id=job_id
+                    cmd,
+                    env=env,
+                    on_line=on_micromamba_line,
+                    job_id=job_id,
+                    max_tail=1000,
                 )
             finally:
                 yaml_copy_path.unlink(missing_ok=True)

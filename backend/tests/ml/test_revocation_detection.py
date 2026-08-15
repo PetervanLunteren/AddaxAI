@@ -90,6 +90,35 @@ def _build(
     mgr._create_env("probe", tmp_path / "envs" / "env-probe", yaml_path)
 
 
+def test_enough_output_is_kept_to_find_the_schannel_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The line we key on is printed while fetching the package index.
+
+    Everything micromamba prints afterwards pushes it towards the edge
+    of the captured window, and once it falls out the failure reads as
+    an ordinary one and the user is offered nothing."""
+    monkeypatch.setenv("ADDAXAI_USER_DATA_DIR", str(tmp_path))
+    seen: dict[str, Any] = {}
+
+    def fake_stream(cmd: list[str], **kwargs: Any) -> StreamedResult:
+        seen.update(kwargs)
+        return StreamedResult(returncode=1, last_line="x", output_tail=["x"])
+
+    monkeypatch.setattr(environment_manager, "stream_with_tail", fake_stream)
+    yaml_path = tmp_path / "environment.yml"
+    yaml_path.write_text(YAML)
+    micromamba = tmp_path / "micromamba"
+    micromamba.write_text("")
+    mgr = EnvironmentManager(
+        envs_dir=tmp_path / "envs", micromamba_path=micromamba
+    )
+    with pytest.raises(RuntimeError):
+        mgr._create_env("probe", tmp_path / "envs" / "env-probe", yaml_path)
+
+    assert seen["max_tail"] >= 1000
+
+
 @pytest.mark.parametrize(
     "lines", [REAL_FAILURE, OFFLINE_FAILURE], ids=["no-check", "offline"]
 )

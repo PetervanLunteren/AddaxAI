@@ -63,7 +63,10 @@ export function ContinueWithoutRevocationChecks({
           <ExternalLink className="h-3 w-3" />
         </a>
       </p>
+      {/* type="button" like its siblings: a bare button inside a form
+          submits it, and this renders next to forms. */}
       <Button
+        type="button"
         variant="outline"
         className="w-full gap-2"
         disabled={saving}
