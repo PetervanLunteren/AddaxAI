@@ -120,7 +120,7 @@ export function SiteSelector({
             <span className="ml-1 font-normal text-muted-foreground">optional</span>
           </label>
         }
-        caption="Link this camera to a location to plot it on the map and compare activity across sites."
+        caption="Puts this camera on the map and in site comparisons."
       />
 
       {/* Select + Add button */}
