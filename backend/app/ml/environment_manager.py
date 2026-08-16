@@ -190,6 +190,32 @@ def substitute_bundled_wheels(yaml_text: str, wheels_dir: Path) -> str:
     return yaml_text.replace(_WHEEL_URL_PREFIX, wheels_dir.as_uri() + "/")
 
 
+# The PyTorch wheel index the env YAMLs pin, minus the CUDA suffix, so
+# one replacement covers both the cu128 and cu118 lines.
+_PYTORCH_INDEX_PREFIX = "https://download.pytorch.org/whl/"
+
+
+def substitute_pytorch_index(yaml_text: str, index_url: str | None) -> str:
+    """
+    Point the YAML's PyTorch index at a mirror.
+
+    pip treats every index equally and picks whichever candidate it
+    likes, so a mirror added through pip.ini competes with the
+    download.pytorch.org entry in the YAML rather than replacing it. A
+    user in mainland China can configure a fast mirror correctly and
+    still be served the 3.4 GB torch wheel from the slow origin, and
+    nothing on their side can remove our entry. Replacing it here is the
+    only way to take the origin out of the running.
+
+    No mirror configured leaves the text untouched.
+    """
+    if not index_url:
+        return yaml_text
+    return yaml_text.replace(
+        _PYTORCH_INDEX_PREFIX, index_url.rstrip("/") + "/"
+    )
+
+
 def parse_micromamba_progress(
     line: str,
     current_progress: float,
@@ -259,6 +285,26 @@ def parse_micromamba_progress(
         )
     if line.startswith("Successfully installed"):
         return max(current_progress, 0.95), "Python packages installed"
+
+    # pip's raw progress bar: "Progress <done> of <total>", in bytes.
+    # The bar itself does not move here, because these numbers describe
+    # one file out of many and there is no total to scale against. The
+    # caption is what matters: a number that changes every few seconds
+    # is the difference between "slow" and "frozen" for the one file
+    # that takes an hour.
+    if line.startswith("Progress ") and " of " in line:
+        done_text, _, total_text = line[len("Progress "):].partition(" of ")
+        try:
+            done, total = int(done_text), int(total_text)
+        except ValueError:
+            return current_progress, line[:80]
+        if total >= 1_048_576:
+            return (
+                current_progress,
+                f"Downloading Python packages "
+                f"({done // 1_048_576} MB of {total // 1_048_576} MB)",
+            )
+        return current_progress, "Downloading Python packages..."
 
     # Byte-compiling installed packages: the last conda link step. It goes
     # silent for a stretch with no per-file output, so without this the bar
@@ -657,13 +703,14 @@ class EnvironmentManager:
             yaml_copy_path = env_path.parent / f".{env_name}.environment.yml"
             # newline="" so the copy keeps the bundled file's line
             # endings instead of Windows text-mode translation.
+            yaml_text = substitute_bundled_wheels(
+                yaml_path.read_text(encoding="utf-8"), BUNDLED_WHEELS_DIR
+            )
+            yaml_text = substitute_pytorch_index(
+                yaml_text, get_settings().pytorch_index_url
+            )
             yaml_copy_path.write_text(
-                substitute_bundled_wheels(
-                    yaml_path.read_text(encoding="utf-8"),
-                    BUNDLED_WHEELS_DIR,
-                ),
-                encoding="utf-8",
-                newline="",
+                yaml_text, encoding="utf-8", newline=""
             )
 
             logger.info(f"Running micromamba create for {env_name} (temp: {temp_env_path})...")
@@ -701,6 +748,14 @@ class EnvironmentManager:
             env["PIP_VERBOSE"] = "1"
             env["PIP_DEFAULT_TIMEOUT"] = "120"
             env["PIP_RETRIES"] = "5"
+            # pip draws no progress bar at all when its output is a pipe,
+            # so the 3.4 GB torch wheel used to arrive in silence: the
+            # caption froze for an hour and users restarted setup,
+            # discarding the partial download (beta report 2026-08-15).
+            # `raw` is the machine-readable bar, one throttled
+            # "Progress <done> of <total>" line per few MB. Added in pip
+            # 22.1; our oldest env resolves pip 24.3.
+            env["PIP_PROGRESS_BAR"] = "raw"
             env["MAMBA_REMOTE_CONNECT_TIMEOUT_SECS"] = "120"
             env["MAMBA_REMOTE_READ_TIMEOUT_SECS"] = "120"
             env["MAMBA_REMOTE_MAX_RETRIES"] = "5"

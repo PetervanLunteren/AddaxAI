@@ -183,6 +183,24 @@ def test_hf_base_url_is_the_mirror_or_the_real_host(
     assert Settings().hf_base_url == "https://hf-mirror.com"
 
 
+def test_pytorch_index_url_is_off_unless_set(
+    clean_env: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    clean_env.setenv("ADDAXAI_USER_DATA_DIR", str(tmp_path))
+    assert Settings().pytorch_index_url is None
+
+    clean_env.setenv(
+        "ADDAXAI_PYTORCH_INDEX_URL", "https://mirror.nju.edu.cn/pytorch/whl"
+    )
+    assert (
+        Settings().pytorch_index_url == "https://mirror.nju.edu.cn/pytorch/whl"
+    )
+
+    # Blank behaves as unset, like every other setting.
+    clean_env.setenv("ADDAXAI_PYTORCH_INDEX_URL", "  ")
+    assert Settings().pytorch_index_url is None
+
+
 def test_unprefixed_vars_are_ignored(
     clean_env: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

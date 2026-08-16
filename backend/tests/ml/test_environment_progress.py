@@ -182,3 +182,29 @@ def test_unknown_line_does_not_lift_progress() -> None:
     before = 0.07
     after, _ = _parse("some random libmamba chatter", current=before)
     assert after == before
+
+
+def test_raw_download_progress_becomes_a_moving_caption() -> None:
+    """
+    pip prints no progress bar into a pipe, so PIP_PROGRESS_BAR=raw is
+    the only sign of life during the 3.4 GB torch download. The bar
+    cannot move (these bytes describe one file of many), but the
+    caption must, or users conclude setup has frozen and restart it.
+    """
+    progress, caption = _parse("Progress 1258291200 of 3630000000", current=0.5)
+
+    assert progress == 0.5
+    assert caption == "Downloading Python packages (1200 MB of 3461 MB)"
+
+
+def test_small_downloads_do_not_show_a_zero_megabyte_caption() -> None:
+    """Most packages are tiny; "0 MB of 0 MB" would be noise."""
+    _, caption = _parse("Progress 4096 of 28000")
+
+    assert caption == "Downloading Python packages..."
+
+
+def test_malformed_progress_line_falls_back_to_the_raw_text() -> None:
+    _, caption = _parse("Progress lots of bytes")
+
+    assert caption == "Progress lots of bytes"

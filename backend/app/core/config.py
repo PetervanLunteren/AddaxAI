@@ -99,6 +99,18 @@ class Settings(BaseSettings):
         description="Base URL of a HuggingFace mirror, e.g. https://hf-mirror.com"
     )
 
+    # PyTorch wheel index mirror (mainland China). pip has no index
+    # priority, so a mirror added through pip.ini competes with the
+    # download.pytorch.org entry baked into the env YAMLs and can lose.
+    # Only we can take that entry out, so this replaces it.
+    pytorch_index_url: str | None = Field(
+        default=None,
+        description=(
+            "Base URL of a PyTorch wheel index mirror, without the CUDA "
+            "suffix, e.g. https://mirror.nju.edu.cn/pytorch/whl"
+        ),
+    )
+
     @model_validator(mode="before")
     @classmethod
     def _drop_blank_values(cls, data: dict) -> dict:

@@ -613,6 +613,16 @@ On startup, `ModelCatalogUpdater.sync()` therefore asks HuggingFace for one file
 
 `tests/ml/test_bundled_wheels.py` keeps the YAML the single source of truth: it reads the filename and sha256 out of every env YAML and checks the shipped file matches, fails if a pinned wheel is absent, and fails if a shipped wheel is pinned by nothing. Change the YAML pin first and the test tells you which file to put in place.
 
+## Why the PyTorch index is ours to replace
+
+`ADDAXAI_PYTORCH_INDEX_URL` swaps `https://download.pytorch.org/whl/` in the YAML copy for a mirror, keeping whatever CUDA suffix follows so one replacement covers the cu128 and cu118 lines.
+
+**pip has no index priority**, and that is the whole reason this exists. Every index in the set is equal and pip picks whichever candidate it likes, so a mirror added through `pip.ini` competes with our `--extra-index-url` rather than replacing it. A user in mainland China can configure a fast mirror correctly and still be served the 3.4 GB torch wheel from the slow origin. Our entry is the one thing they cannot remove, so removing it is the only lever that works.
+
+**`--find-links` is not that lever, and the docs used to say it was.** Verified with pip 26: an identical, correctly named wheel in a `--find-links` directory is ignored whenever an index also offers that version (`Downloading ...` from the network), and only used with `--no-index` (`Processing /path/...`). Telling users to drop a pre-downloaded wheel into a folder does nothing. That advice cost a beta tester in China an hour of stalled setup on 2026-08-15 before it was removed.
+
+Unset, the substitution is a no-op, so nothing changes outside China. `tests/ml/test_pytorch_index.py` fails if a shipped YAML ever spells the index differently, since a plain prefix swap would silently miss it.
+
 ## What a download leaves behind when it does not finish
 
 Two rules in `download_weights`, and the difference between them is deliberate:

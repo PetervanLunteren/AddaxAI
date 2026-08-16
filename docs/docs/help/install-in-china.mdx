@@ -12,7 +12,7 @@ import { FaqItem } from "@site/src/components/Faq";
 
 The first launch downloads the AI models and the software they run in. In mainland China those downloads fail or stall, because the servers they come from are blocked or very slow. The fix is to use mirrors: copies of the same files on Chinese servers.
 
-You need AddaxAI 7.0.12 or newer.
+You need AddaxAI 7.0.13 or newer.
 
 <Tabs groupId="os" queryString="os">
   <TabItem value="windows" label="Windows" default>
@@ -21,9 +21,15 @@ You need AddaxAI 7.0.12 or newer.
 
 1. Open the Start menu and search for "environment variables".
 2. Open Edit the system environment variables, then click Environment Variables.
-3. Under User variables, click New and add name `ADDAXAI_HF_ENDPOINT` with value `https://hf-mirror.com`.
-4. Click New again and add name `ADDAXAI_HF_HUB_DISABLE_XET` with value `1`.
-5. Click OK to close the windows.
+3. Under User variables, click New and add these three, one by one:
+
+   | Name | Value |
+   |---|---|
+   | `ADDAXAI_HF_ENDPOINT` | `https://hf-mirror.com` |
+   | `ADDAXAI_HF_HUB_DISABLE_XET` | `1` |
+   | `ADDAXAI_PYTORCH_INDEX_URL` | `https://mirror.nju.edu.cn/pytorch/whl` |
+
+4. Click OK to close the windows.
 
 ## Point the installer to the mirrors
 
@@ -32,10 +38,6 @@ You need AddaxAI 7.0.12 or newer.
    ```ini
    [global]
    index-url = https://mirrors.aliyun.com/pypi/simple/
-   extra-index-url =
-       https://mirror.nju.edu.cn/pytorch/whl/cu128
-       https://mirror.nju.edu.cn/pytorch/whl/cu118
-   find-links = C:\wheels
    ```
 
 2. Save it as `pip.ini` in the folder `C:\Users\<your user name>\AppData\Roaming\pip`. Create the `pip` folder if it is not there.
@@ -62,7 +64,7 @@ cat > ~/Library/LaunchAgents/com.addaxai.mirrors.plist << 'EOF'
   <array>
     <string>/bin/sh</string>
     <string>-c</string>
-    <string>launchctl setenv ADDAXAI_HF_ENDPOINT https://hf-mirror.com; launchctl setenv ADDAXAI_HF_HUB_DISABLE_XET 1</string>
+    <string>launchctl setenv ADDAXAI_HF_ENDPOINT https://hf-mirror.com; launchctl setenv ADDAXAI_HF_HUB_DISABLE_XET 1; launchctl setenv ADDAXAI_PYTORCH_INDEX_URL https://mirror.nju.edu.cn/pytorch/whl</string>
   </array>
   <key>RunAtLoad</key><true/>
 </dict>
@@ -113,6 +115,7 @@ mkdir -p ~/.config/environment.d
 cat > ~/.config/environment.d/addaxai-mirrors.conf << 'EOF'
 ADDAXAI_HF_ENDPOINT=https://hf-mirror.com
 ADDAXAI_HF_HUB_DISABLE_XET=1
+ADDAXAI_PYTORCH_INDEX_URL=https://mirror.nju.edu.cn/pytorch/whl
 EOF
 ```
 
@@ -128,17 +131,13 @@ The mirrors are free services from universities and volunteers. They can move or
 The steps above are enough for most people. Only if setup still fails, open the part below that matches your problem.
 
 <FaqItem
-  id="the-big-download-still-stalls"
-  q="The big download still stalls (Only for Windows users)"
+  id="setup-sits-at-the-same-percentage"
+  q="Setup sits at the same percentage for a long time"
 >
 
-One file is about 3.4 GB, and setup sometimes still fetches it from the slow official server. Download it yourself instead:
+On Windows one file is about 3.4 GB. The percentage stays the same while it arrives, but the megabytes below it keep counting up. As long as that number grows, setup is working. On a slow line this one file can take an hour or more.
 
-1. Download [torch-2.8.0+cu128-cp311-cp311-win_amd64.whl](https://mirror.nju.edu.cn/pytorch/whl/cu128/torch-2.8.0%2Bcu128-cp311-cp311-win_amd64.whl). If the download keeps stopping halfway, use a download manager: a program that can continue a broken download instead of starting over. For example [Free Download Manager](https://www.freedownloadmanager.org), or [Xunlei](https://www.xunlei.com) (迅雷), which is common in China.
-2. Create the folder `C:\wheels` and save the file there. Some programs save the file with `%2B` in the name instead of `+`, like `torch-2.8.0%2Bcu128-cp311-cp311-win_amd64.whl`. Rename it to `torch-2.8.0+cu128-cp311-cp311-win_amd64.whl`, otherwise setup does not recognise the file.
-3. Run the setup again.
-
-This file only exists on Windows. Macs use a much smaller file that rarely stalls.
+Do not close and restart the setup. A part-finished file is not kept, so every restart begins that 3.4 GB again.
 
 </FaqItem>
 
