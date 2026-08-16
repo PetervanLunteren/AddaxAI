@@ -5,18 +5,55 @@
  * is gated (see SetupGate in App.tsx). The wizard is re-entrant: closing
  * and reopening mid-install leaves the user back here with a Resume
  * button, since the backend's env_manager is idempotent.
+ *
+ * Visual: the same treatment as the home screen, a blurred forest photo
+ * behind a scrim, so the first screen a new user meets looks like the
+ * app rather than like a blank page. The card itself is deliberately
+ * unchanged: everything inside it (progress bar, error callout, buttons)
+ * is a shared component built for a light surface, so putting it on
+ * glass would mean a second, darker version of each one. Only the
+ * shadow is deepened, because `shadow-sm` disappears over a photo.
  */
 
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { setupApi } from "../api/setup";
 import { Button } from "../components/ui/button";
 import { Progress } from "../components/ui/progress";
 import { Callout } from "../components/ui/callout";
+import { LogoPlate } from "../components/layout/LogoPlate";
 import { ContinueWithoutRevocationChecks } from "../components/setup/ContinueWithoutRevocationChecks";
 
 const POLL_INTERVAL_MS = 1500;
+
+/**
+ * Photo frame shared by both returns below. The loading state uses it too,
+ * so a slow backend does not show a white page that flips to a photo once
+ * the first poll lands.
+ */
+function SetupFrame({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative min-h-screen overflow-hidden">
+      {/* Background photo + scrim. Decorative, so no alt text. */}
+      <div
+        className="absolute inset-0 scale-105 bg-cover bg-center"
+        style={{ backgroundImage: "url('/setup-background.webp')" }}
+      />
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(120% 90% at 50% 0%, rgba(10,30,28,0.25), transparent 60%)," +
+            "linear-gradient(180deg, rgba(8,22,20,0.55) 0%, rgba(8,22,20,0.30) 35%, rgba(8,22,20,0.66) 100%)",
+        }}
+      />
+      <div className="relative z-10 flex min-h-screen flex-col items-center justify-center px-4 py-8">
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export default function SetupPage() {
   const navigate = useNavigate();
@@ -44,9 +81,9 @@ export default function SetupPage() {
 
   if (!status) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">
-        Checking setup state...
-      </div>
+      <SetupFrame>
+        <p className="text-sm text-white/85 drop-shadow">Checking setup state...</p>
+      </SetupFrame>
     );
   }
 
@@ -81,13 +118,12 @@ export default function SetupPage() {
     (status.env_installed || status.models_installed) && !status.ready;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8">
-      <img
-        src="/branding/logo-wordmark.png"
-        alt="AddaxAI"
-        className="mb-6 h-28 w-auto"
-      />
-      <div className="w-full max-w-xl rounded-lg border bg-card-background p-8 shadow-sm">
+    <SetupFrame>
+      <LogoPlate className="mb-6" logoClassName="h-28" />
+      <div
+        className="w-full max-w-xl rounded-lg border bg-card p-8
+          shadow-[0_20px_50px_-20px_rgba(0,0,0,0.55)]"
+      >
         <h1 className="text-2xl font-bold tracking-tight">Initial setup</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           The AI models and their environment need to be installed before
@@ -167,7 +203,7 @@ export default function SetupPage() {
           </div>
         )}
       </div>
-    </div>
+    </SetupFrame>
   );
 }
 

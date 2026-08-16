@@ -25,7 +25,7 @@ We use a HSL-based color system defined in `src/index.css`:
 --foreground: 222.2 84% 4.9%
 --primary: #0f6064              /* Teal - Main brand color */
 --secondary: #ebf0f2            /* Light teal - Supporting elements */
---card-background: #f5f7fb      /* Grey - Card/container backgrounds */
+--card: 0 0% 100%               /* Cards, containers, panels */
 --accent: 210 40% 96.1%
 --destructive: 0 84.2% 60.2%
 --muted: 210 40% 96.1%
@@ -35,7 +35,11 @@ We use a HSL-based color system defined in `src/index.css`:
 **Color Usage:**
 - **Primary (#0f6064)**: Main actions, buttons, important elements, checkboxes, brand elements
 - **Secondary (#e4ecee)**: Supporting actions, subtle backgrounds, hover states
-- **Card Background (#f5f7fb)**: Cards, containers, panels, background sections
+- **Card (`bg-card`, white)**: Cards, containers, panels, background sections. There
+  is no `bg-card-background` class. It was documented here for a long time but never
+  defined in `tailwind.config.js`, so it silently rendered as transparent. That was
+  invisible while every page behind it was white, and only showed up when the setup
+  page got a photo behind its card.
 - **Destructive**: Delete, danger actions
 - **Muted**: Disabled states, subtle text
 

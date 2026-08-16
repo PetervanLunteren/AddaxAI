@@ -28,6 +28,7 @@
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, LayoutDashboard, FolderOpen } from "lucide-react";
 import { buttonVariants } from "../components/ui/button";
+import { LogoPlate } from "../components/layout/LogoPlate";
 import { cn } from "../lib/utils";
 
 // Frosted-glass surface. backdrop-filter is set inline so the look does
@@ -63,21 +64,7 @@ export function HomePage() {
             bottom on short screens. */}
         <main className="flex flex-1 flex-col items-center justify-start pt-1 sm:pt-3">
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 text-center">
-            <div
-              style={{
-                backgroundColor: "rgba(255, 255, 255, 0.72)",
-                backdropFilter: "blur(22px) saturate(150%)",
-                WebkitBackdropFilter: "blur(22px) saturate(150%)",
-              }}
-              className="mx-auto mb-7 inline-flex items-center rounded-2xl border border-white/50 px-6 py-4
-                shadow-[0_20px_50px_-20px_rgba(0,0,0,0.55)]"
-            >
-              <img
-                src="/branding/logo-wordmark.png"
-                alt="AddaxAI"
-                className="h-14 w-auto"
-              />
-            </div>
+            <LogoPlate className="mx-auto mb-7" logoClassName="h-14" />
             <h1 className="text-4xl font-extrabold tracking-tight drop-shadow-md sm:text-5xl">
               What do you want to do?
             </h1>
