@@ -242,7 +242,7 @@ The junction branch cannot be tested on the Linux and macOS CI runners, so it is
 
 ## Background photos
 
-Two screens sit on a full-bleed photo: the home screen (`home-background.webp`) and the setup screen (`setup-background.webp`), both in `frontend/public/`. Both are heavily blurred, which is what keeps them cheap: there is no fine detail left for the encoder to spend bits on, and because the result is soft, the browser stretching the image across a much wider window is invisible. That is why a background is 23 KB while the phone photo it came from is 300 KB.
+Two screens sit on a full-bleed photo: the home screen (`home-background.webp`) and the setup screen (`setup-background.webp`), both in `frontend/public/`. Both are heavily blurred, which is what keeps them cheap: there is no fine detail left for the encoder to spend bits on, and because the result is soft, the browser stretching the image across a much wider window is invisible. That is why these land in the tens of KB while the phone photos they came from are several hundred.
 
 Recipe, from a source photo that never enters the repo:
 
