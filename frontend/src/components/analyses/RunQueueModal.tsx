@@ -660,9 +660,10 @@ export function RunQueueModal({
                   </Button>
                 }
               >
-                This is usually not something you can fix from here. The
-                diagnostic report bundles the logs needed to work out why,
-                and saves them to your Downloads folder.
+                If the message above mentions a drive, a folder or a
+                permission, reconnect the drive and run again. Otherwise
+                the diagnostic report bundles the logs needed to work out
+                why, and saves them to your Downloads folder.
               </Callout>
             )}
 

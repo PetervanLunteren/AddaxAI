@@ -15,10 +15,7 @@ reprocessed.
 from PIL import Image
 
 from app.services.folder_scanner import OUTPUT_DIR_MARKER, scan_folder
-from app.workers.detection_worker import (
-    scan_folder_for_images,
-    scan_folder_for_videos,
-)
+from app.workers.detection_worker import scan_folder_for_media
 
 
 def _write_jpeg(path) -> None:
@@ -40,7 +37,7 @@ def _make_tree(tmp_path):
 
 def test_worker_image_scan_skips_output_folder(tmp_path):
     _make_tree(tmp_path)
-    found = scan_folder_for_images(tmp_path)
+    found, _ = scan_folder_for_media(tmp_path)
     names = {p.name for p in found}
     assert "IMG_0001.jpg" in names
     assert "REC0028.jpg" not in names  # the separated output copy is excluded
@@ -50,7 +47,7 @@ def test_worker_video_scan_skips_output_folder(tmp_path):
     _make_tree(tmp_path)
     # Put a (bare) video inside the output folder too.
     (tmp_path / "AddaxAI-output" / "VID_OUT.mp4").write_bytes(b"\x00")
-    found = scan_folder_for_videos(tmp_path)
+    _, found = scan_folder_for_media(tmp_path)
     names = {p.name for p in found}
     assert "VID_OUT.mp4" not in names
 
@@ -75,13 +72,13 @@ def _make_tree_with_hidden_files(tmp_path):
 
 def test_worker_image_scan_skips_hidden_files(tmp_path):
     _make_tree_with_hidden_files(tmp_path)
-    names = {p.name for p in scan_folder_for_images(tmp_path)}
+    names = {p.name for p in scan_folder_for_media(tmp_path)[0]}
     assert names == {"IMG_0001.jpg"}
 
 
 def test_worker_video_scan_skips_hidden_files(tmp_path):
     _make_tree_with_hidden_files(tmp_path)
-    names = {p.name for p in scan_folder_for_videos(tmp_path)}
+    names = {p.name for p in scan_folder_for_media(tmp_path)[1]}
     assert names == {"VID_0001.mp4"}
 
 

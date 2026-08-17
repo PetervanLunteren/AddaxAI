@@ -13,7 +13,6 @@ Created by Claude Code on 2026-01-04
 
 import asyncio
 import json
-import os
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -28,7 +27,6 @@ from app.api.crud import job as job_crud
 from app.api.crud import project as project_crud
 from app.core.job_cancellation import JobCancelledError, clear_cancel
 from app.core.logging_config import get_logger
-from app.core.media_types import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.ml.detection import MD_OUTPUT_CONFIDENCE_THRESHOLD
@@ -39,7 +37,7 @@ from app.ml.json_pipeline import merge_json_files, run_classification_on_json
 from app.ml.manifest_manager import ManifestManager
 from app.ml.model_storage import ModelStorage
 from app.models import Deployment
-from app.services.folder_scanner import prune_hidden_files, prune_unscannable_dirs
+from app.services.folder_scanner import walk_media_files
 from app.utils.fs_hidden import mkdir_hidden_addaxai
 
 logger = get_logger(__name__)
@@ -194,13 +192,11 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     logger.info("Initial progress sent, now scanning for file paths")
 
                     # Now scan folder for actual file paths (needed for processing)
-                    video_files = scan_folder_for_videos(folder_path)
-                    image_files = scan_folder_for_images(folder_path)
+                    image_files, video_files = scan_folder_for_media(folder_path)
                 else:
                     # Legacy path: no counts in database, scan first
                     logger.info("No counts in database, scanning folder (legacy entry)")
-                    video_files = scan_folder_for_videos(folder_path)
-                    image_files = scan_folder_for_images(folder_path)
+                    image_files, video_files = scan_folder_for_media(folder_path)
                     logger.info("Folder scan complete")
 
                     # Update database with scanned counts. These are what is on
@@ -1468,60 +1464,25 @@ def _announced_media_counts(
     )
 
 
-def scan_folder_for_images(folder_path: Path) -> list[Path]:
+def scan_folder_for_media(folder_path: Path) -> tuple[list[Path], list[Path]]:
+    """The run's input files under ``folder_path``, as ``(images, videos)``.
+
+    A thin sorting wrapper over ``walk_media_files``. This used to be two
+    functions, each with its own copy of the walk, so the tree was read
+    twice per deployment and the two copies could drift from the preview
+    scan's. One walk, one place where an unreadable directory raises.
+
+    Sorted by path so processing order is stable across runs.
+
+    Raises:
+        OSError: if any directory cannot be listed. Deliberately not
+            caught here: a short file list would mean analysing part of a
+            deployment and reporting success.
     """
-    Scan folder for image files.
-
-    Args:
-        folder_path: Path to folder
-
-    Returns:
-        List of absolute paths to image files
-    """
-    image_files: list[Path] = []
-
-    for root, dirs, files in os.walk(folder_path):
-        # Skip dot-folders AND AddaxAI output folders, so a previous run's
-        # separated / visualised copies are never re-ingested as input.
-        # Dot-files (macOS `._*` sidecars) are skipped too.
-        dirs[:] = prune_unscannable_dirs(root, dirs)
-        for filename in prune_hidden_files(files):
-            file_path = Path(root) / filename
-            if file_path.suffix.lower() in IMAGE_EXTENSIONS:
-                image_files.append(file_path)
-
-    # Sort by filename for consistent processing
-    image_files.sort()
-
-    return image_files
-
-
-def scan_folder_for_videos(folder_path: Path) -> list[Path]:
-    """
-    Scan folder for video files.
-
-    Args:
-        folder_path: Path to folder
-
-    Returns:
-        List of absolute paths to video files
-    """
-    video_files: list[Path] = []
-
-    for root, dirs, files in os.walk(folder_path):
-        # Skip dot-folders AND AddaxAI output folders, so a previous run's
-        # separated / visualised copies are never re-ingested as input.
-        # Dot-files (macOS `._*` sidecars) are skipped too.
-        dirs[:] = prune_unscannable_dirs(root, dirs)
-        for filename in prune_hidden_files(files):
-            file_path = Path(root) / filename
-            if file_path.suffix.lower() in VIDEO_EXTENSIONS:
-                video_files.append(file_path)
-
-    # Sort by filename for consistent processing
-    video_files.sort()
-
-    return video_files
+    images, videos = walk_media_files(folder_path)
+    images.sort()
+    videos.sort()
+    return images, videos
 
 
 def create_deployment(

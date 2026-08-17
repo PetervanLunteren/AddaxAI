@@ -21,7 +21,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Folder, FolderSearch } from "lucide-react";
 import { toast } from "sonner";
 import { deploymentsApi } from "../../api/deployments";
-import type { DeploymentResponse, GroupBrokenGroup } from "../../api/types";
+import type {
+  BulkRelinkResponse,
+  DeploymentResponse,
+  GroupBrokenGroup,
+} from "../../api/types";
 import {
   diffPaths,
   leafName,
@@ -50,6 +54,17 @@ export function RelinkGroupBanner({
 }: RelinkGroupBannerProps) {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
+  // The refused attempt from the one-click confirm, handed to the dialog so
+  // its per-file reasons survive. Cleared whenever the user opens the dialog
+  // themselves, so a stale refusal never greets a fresh attempt.
+  const [failedAttempt, setFailedAttempt] = useState<BulkRelinkResponse | null>(
+    null
+  );
+
+  const openDialogFresh = () => {
+    setFailedAttempt(null);
+    setDialogOpen(true);
+  };
 
   const missingLeaf = leafName(group.prefix);
   const missingPath = group.prefix.replace(/\/+$/, "");
@@ -90,7 +105,14 @@ export function RelinkGroupBanner({
           `Reconnected ${successes} deployment${successes === 1 ? "" : "s"}`
         );
       } else if (successes === 0) {
-        toast.error("Those files don't match. Try a different folder.");
+        // Hand the refusal to the dialog rather than dropping it. The
+        // response already names every file and says whether it was
+        // missing or a different size, which is the only way to tell a
+        // wrong folder from a folder whose contents changed. Without
+        // this the user got one generic sentence and the same banner
+        // back, with no way to work out what to do next.
+        setFailedAttempt(response);
+        toast.error("Those files don't match. See what didn't match.");
         setDialogOpen(true);
       } else {
         toast.warning(
@@ -124,12 +146,12 @@ export function RelinkGroupBanner({
               suggestedPath={suggestedPath}
               busy={relinkMutation.isPending}
               onConfirm={() => relinkMutation.mutate(suggestedPath)}
-              onReject={() => setDialogOpen(true)}
+              onReject={openDialogFresh}
             />
           ) : (
             <ManualPrompt
               missingPath={missingPath}
-              onChoose={() => setDialogOpen(true)}
+              onChoose={openDialogFresh}
             />
           )}
         </div>
@@ -141,6 +163,7 @@ export function RelinkGroupBanner({
         onOpenChange={setDialogOpen}
         group={dialogGroup}
         initialNewParentPath={suggestedPath}
+        initialResult={failedAttempt}
         deploymentsById={deploymentsById}
         siteNames={siteNames}
       />

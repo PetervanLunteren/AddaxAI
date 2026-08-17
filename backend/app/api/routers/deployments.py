@@ -52,6 +52,15 @@ from app.services.folder_scanner import scan_folder
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/deployments", tags=["Deployments"])
 
+# Shown when a folder exists but cannot be listed. Kept as one string
+# because both scan endpoints raise it and the wording is the whole
+# point: the old behaviour was to report such a folder as empty, which
+# sent users looking for a problem in their data instead of their drive.
+FOLDER_UNREADABLE_DETAIL = (
+    "Could not read this folder. The drive may have disconnected or be "
+    "failing. Check the connection and try again."
+)
+
 
 @router.get("", response_model=list[DeploymentResponse])
 def list_deployments(
@@ -141,6 +150,17 @@ def preview_folder_path(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Permission denied: {str(e)}",
+        ) from e
+    except OSError as e:
+        # The folder exists but could not be listed. Reported separately
+        # because the answer for the user is "check the drive", not "pick
+        # another folder", and because the alternative used to be silently
+        # calling it empty. 503 rather than 500: nothing is wrong with the
+        # request, the storage is unavailable and retrying may work.
+        logger.error(f"Could not read folder {path}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"{FOLDER_UNREADABLE_DETAIL} ({e})",
         ) from e
     except Exception as e:
         logger.error(f"Error scanning folder: {type(e).__name__}: {e}", exc_info=True)
@@ -414,7 +434,17 @@ def _walk_to_surviving_parent(missing: Path) -> tuple[Path | None, Path | None]:
     """
     chain = [missing, *missing.parents]
     for i, candidate in enumerate(chain):
-        if candidate.exists() and candidate.is_dir():
+        # An unreadable ancestor raises here rather than answering False
+        # (`Path.exists()` only swallows ENOENT and friends), which used to
+        # 500 the whole endpoint, so the Deployments page showed broken
+        # deployments with no banner at all. Treat it as "not the surviving
+        # parent" and keep walking up: the worst case is no suggestion, and
+        # the user still gets the Choose folder button.
+        try:
+            survives = candidate.exists() and candidate.is_dir()
+        except OSError:
+            continue
+        if survives:
             if i == 0:
                 return candidate, None
             return candidate, chain[i - 1]
@@ -424,6 +454,7 @@ def _walk_to_surviving_parent(missing: Path) -> tuple[Path | None, Path | None]:
 @router.post("/group-broken", response_model=GroupBrokenResponse)
 def group_broken_deployments(
     request: GroupBrokenRequest,
+    db: Session = Depends(get_db),
 ) -> GroupBrokenResponse:
     """
     Group a list of broken deployments by the *deepest missing ancestor*
@@ -439,8 +470,11 @@ def group_broken_deployments(
     deepest-missing-ancestor. Items that share the same
     (surviving_parent, deepest_missing) pair go in the same group. For
     each group, rank siblings of the surviving parent by name similarity
-    to the deepest-missing-ancestor and return the best match (verified
-    to exist on disk) as `suggested_path`.
+    to the deepest-missing-ancestor and return the best match as
+    `suggested_path`. A candidate is only offered once
+    `verify_deployment_folder` says it really holds the deployment's
+    files, so the banner can never suggest a folder the relink will then
+    refuse.
     """
     # Bucket items by (surviving_parent, deepest_missing) pair.
     buckets: dict[tuple[str, str], list[GroupBrokenItem]] = {}
@@ -497,8 +531,19 @@ def group_broken_deployments(
             reverse=True,
         )
 
-        # Pick the best sibling whose reconstructed path actually exists
-        # for at least one sample item — avoids dead-end suggestions.
+        # Pick the best sibling that actually holds the sample deployment's
+        # files, using the same check that will gate the relink.
+        #
+        # Checking only that the directory exists is what produced the
+        # loop a beta tester got stuck in: a folder one character off the
+        # old name scored high, existed, and was offered as "it looks like
+        # it is now at ...". Clicking it ran the real identity check in
+        # `relink_deployment`, all ten sampled files came back missing,
+        # and the banner reappeared with the same suggestion. Five
+        # attempts over two days, every one refused.
+        #
+        # Offering nothing is the honest answer when nothing verifies: the
+        # user gets "Choose folder" and can point at the real location.
         suggested: str | None = None
         sample = items[0]
         sample_tail: Path
@@ -507,13 +552,27 @@ def group_broken_deployments(
         except ValueError:
             sample_tail = Path("")
 
+        # Namespaced: this module has its own `get_deployment` route
+        # handler, which is not the CRUD function wanted here.
+        sample_deployment = crud_deployment.get_deployment(db, sample.id)
+
         for score, sibling in scored:
             if score < _SUGGEST_SIMILARITY_THRESHOLD:
                 break
             reconstructed = sibling / sample_tail if str(sample_tail) else sibling
-            if reconstructed.exists() and reconstructed.is_dir():
-                suggested = str(sibling)
-                break
+            if not (reconstructed.exists() and reconstructed.is_dir()):
+                continue
+            # No deployment row (deleted between the page load and this
+            # call) means nothing to verify against, so fall back to the
+            # existence check rather than suppressing every suggestion.
+            if sample_deployment is not None:
+                verdict = crud_deployment.verify_deployment_folder(
+                    sample_deployment, str(reconstructed)
+                )
+                if verdict.status != "valid":
+                    continue
+            suggested = str(sibling)
+            break
 
         groups.append(
             GroupBrokenGroup(
@@ -851,84 +910,3 @@ def check_deployment_folder(
     return DeploymentResponse.model_validate(db_deployment)
 
 
-@router.post("/{deployment_id}/preview-folder", response_model=FolderPreviewResponse)
-def preview_deployment_folder(
-    deployment_id: str, db: Session = Depends(get_db)
-) -> FolderPreviewResponse:
-    """
-    Preview a deployment folder before running analysis.
-
-    Scans the folder to count images/videos and check for GPS coordinates.
-    Does NOT create File records - that happens after MegaDetector runs.
-
-    Returns 404 if deployment doesn't exist.
-    Returns 400 if deployment has no folder_path set.
-    Returns 400 if folder doesn't exist or isn't accessible.
-    """
-    # Get deployment
-    db_deployment = crud_deployment.get_deployment(db, deployment_id)
-    if db_deployment is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Deployment with id '{deployment_id}' not found",
-        )
-
-    # Check folder_path is set
-    if not db_deployment.folder_path:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Deployment has no folder_path set. Please set folder_path first.",
-        )
-
-    # Scan folder
-    try:
-        logger.info(f"Scanning folder for deployment {deployment_id}: {db_deployment.folder_path}")
-        preview = scan_folder(db_deployment.folder_path)
-        logger.info(
-            f"Folder scan complete for {deployment_id}: "
-            f"{preview['image_count']} images, {preview['video_count']} videos"
-        )
-    except FileNotFoundError as e:
-        logger.error(
-            f"Folder not found for deployment {deployment_id}: {db_deployment.folder_path}"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Folder not found: {str(e)}",
-        ) from e
-    except PermissionError as e:
-        logger.error(
-            f"Permission denied for deployment {deployment_id}: {db_deployment.folder_path}"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Permission denied: {str(e)}",
-        ) from e
-    except Exception as e:
-        logger.error(
-            f"Error scanning folder for deployment {deployment_id}: {type(e).__name__}: {e}",
-            exc_info=True,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error scanning folder: {str(e)}",
-        ) from e
-
-    # TODO: Site matching based on GPS (for later)
-    suggested_site_id = None
-
-    # Convert to response schema
-    return FolderPreviewResponse(
-        image_count=preview["image_count"],
-        video_count=preview["video_count"],
-        total_count=preview["total_count"],
-        gps_location=GPSCoordinates(**preview["gps_location"]) if preview["gps_location"] else None,
-        suggested_site_id=suggested_site_id,
-        sample_files=preview["sample_files"],
-        start_date=preview["start_date"],
-        end_date=preview["end_date"],
-        missing_datetime=preview["missing_datetime"],
-        datetime_validation_log=preview["datetime_validation_log"],
-        mtime_start_date=preview["mtime_start_date"],
-        mtime_end_date=preview["mtime_end_date"],
-    )

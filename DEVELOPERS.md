@@ -391,6 +391,30 @@ User species exclusion is a separate path: `apply_label_exclusion_to_results` in
 | `backend/app/ml/label_exclusion.py` | `NON_LABEL_CLASSES` set, `is_non_label_detection()` helper |
 | `backend/app/ml/json_pipeline.py` | Skip logic in `load_json_to_database()` and `_load_to_database()` |
 
+## Scanning a folder for media
+
+Every scan goes through `walk_media_files` in `backend/app/services/folder_scanner.py`: the preview (`scan_folder`), the CSV import's per-row counts (`count_media_files`), and the analysis worker's input enumeration (`detection_worker.scan_folder_for_media`). One walk, one set of rules, so the input the user is shown and the input the detector reads cannot disagree. That drift is what once let a previous run's output folders get reprocessed.
+
+**An unreadable folder must never be reported as an empty one.** `os.walk` defaults to `onerror=None`, which *discards* every error `os.scandir` raises and simply yields nothing for that directory. A folder we cannot list is then indistinguishable from a folder with nothing in it, and every caller says "0 images". `walk_media_files` passes an `onerror` that re-raises, so the failure comes out.
+
+This is not hypothetical. A beta tester's external USB drive answered `0 images, 0 videos` for a path and then `8969 images` for the same path sixteen seconds later, with `[Errno 5] Input/output error` on that drive elsewhere in the same log. The scan spent five seconds failing (a real empty folder answers instantly) and reported the failure as an empty folder, so the user went looking for a problem in their data instead of their hardware.
+
+**The worker is the reason this matters more than it looks.** A preview that under-reports is a confusing screen. A short list in `scan_folder_for_media` means MegaDetector runs over part of a folder, and the deployment is written to the database as complete, with no way to tell afterwards. Never catch the `OSError` there to "keep the run going".
+
+**The cost, accepted deliberately:** one unreadable subdirectory now fails the whole scan instead of being skipped. That is the right side to be wrong on. The alternative is a partial ingest reported as a success, which "crash early and loudly" exists to prevent.
+
+Where the error surfaces:
+
+| Caller | What the user gets |
+|---|---|
+| `preview-folder`, `deployments/{id}/scan` | 403 with the permission wording for a denied listing, 503 with `FOLDER_UNREADABLE_DETAIL` ("the drive may have disconnected") for anything else |
+| CSV import | The row is flagged `FOLDER_UNREADABLE`, never `FOLDER_HAS_NO_MEDIA`. Per row on purpose: one flaky folder must not throw away a CSV the user just filled in |
+| Analysis worker | The job fails |
+
+`FolderSelector.tsx` reads `error` off the scan query. Without that it falls through to its "No images found in this folder" branch and blames the user's data for a drive that did not answer, which defeats the whole fix.
+
+Pinned by `backend/tests/services/test_folder_scanner_errors.py`, which makes a subdirectory unreadable with `chmod 000` and skips itself when that is not enforced (running as root), so it can never pass vacuously.
+
 ## What a file is about
 
 One rule, everywhere:

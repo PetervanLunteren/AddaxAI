@@ -19,9 +19,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.schemas.csv_import import CsvImportProblem, DeploymentImportRow
+from app.core.logging_config import get_logger
 from app.models import Deployment, DeploymentQueue, Site
 from app.services.csv_import import RawCsvRow, blank_to_none, read_csv_rows
 from app.services.folder_scanner import count_media_files
+
+logger = get_logger(__name__)
 
 DEPLOYMENT_REQUIRED_COLUMNS = ("folder",)
 DEPLOYMENT_OPTIONAL_COLUMNS = ("site", "notes")
@@ -58,6 +61,10 @@ FOLDER_ALREADY_DEPLOYED = (
 )
 FOLDER_HAS_NO_MEDIA = (
     "This folder contains no images or videos. Check the path, or remove this row."
+)
+FOLDER_UNREADABLE = (
+    "This folder could not be read. The drive may have disconnected or be failing. "
+    "Check the connection and import again."
 )
 FOLDER_CONTAINS_ANOTHER_ROW = (
     "This folder contains another folder listed in this file. The images inside "
@@ -180,9 +187,19 @@ def validate_deployment_rows(
 
         folder_problem = _check_folder(folder, repeated, queued, deployed, row_folders)
         if folder_problem is None:
-            images, videos = count_media_files(Path(folder))
-            if images == 0 and videos == 0:
-                folder_problem = (FOLDER_HAS_NO_MEDIA, None)
+            # An unreadable folder is a problem with this row, not with the
+            # import: one flaky drive must not throw away a 30-row CSV the
+            # user just filled in. It must also never fall through to
+            # FOLDER_HAS_NO_MEDIA, which would send them looking for the
+            # wrong thing.
+            try:
+                images, videos = count_media_files(Path(folder))
+            except OSError as e:
+                logger.warning(f"Could not read folder {folder}: {e}")
+                folder_problem = (FOLDER_UNREADABLE, None)
+            else:
+                if images == 0 and videos == 0:
+                    folder_problem = (FOLDER_HAS_NO_MEDIA, None)
 
         if folder_problem is not None:
             message, collides_with = folder_problem

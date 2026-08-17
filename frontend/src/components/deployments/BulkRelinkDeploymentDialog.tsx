@@ -44,6 +44,13 @@ interface BulkRelinkDeploymentDialogProps {
   group: PrefixGroup<DeploymentPathItem> | null;
   /** Optional pre-filled "new folder" — usually the backend's auto-suggestion. */
   initialNewParentPath?: string | null;
+  /**
+   * A relink attempt that already failed elsewhere (the banner's one-click
+   * confirm). Shown straight away so the user arrives here with the per-file
+   * reasons instead of just "those files don't match", which named neither
+   * the file nor whether it was missing or a different size.
+   */
+  initialResult?: BulkRelinkResponse | null;
   /** Full deployment records keyed by id, for displaying site/date in the preview. */
   deploymentsById: Map<string, DeploymentResponse>;
   /** Site name lookup for display in the preview list. */
@@ -56,6 +63,7 @@ export function BulkRelinkDeploymentDialog({
   onOpenChange,
   group,
   initialNewParentPath,
+  initialResult,
   deploymentsById,
   siteNames,
 }: BulkRelinkDeploymentDialogProps) {
@@ -70,9 +78,9 @@ export function BulkRelinkDeploymentDialog({
     if (open) {
       setNewParentPath(initialNewParentPath ?? null);
       setExcluded(new Set());
-      setResult(null);
+      setResult(initialResult ?? null);
     }
-  }, [open, initialNewParentPath]);
+  }, [open, initialNewParentPath, initialResult]);
 
   const missingLeaf = group ? leafName(group.prefix) : "";
 
@@ -238,9 +246,25 @@ export function BulkRelinkDeploymentDialog({
 
         <DialogFooter>
           {result ? (
-            <Button type="button" onClick={() => onOpenChange(false)}>
-              Done
-            </Button>
+            <>
+              {/* Without this the result panel is a dead end: it says
+                  "try choosing a different folder" and offers only Done,
+                  which closes the dialog. Clearing the result brings the
+                  picker back with the rejected path still filled in, so
+                  the user can edit it instead of starting over. */}
+              {result.results.some((r) => !r.success) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setResult(null)}
+                >
+                  Choose another folder
+                </Button>
+              )}
+              <Button type="button" onClick={() => onOpenChange(false)}>
+                Done
+              </Button>
+            </>
           ) : (
             <>
               <Button
@@ -318,9 +342,17 @@ function ResultPanel({ results, deploymentsById, siteNames }: ResultPanelProps) 
                     </div>
                     {r.mismatches.length > 0 && (
                       <>
+                        {/* "N sample files didn't match" is wrong when the
+                            folder itself was not there: zero files were
+                            checked, and the backend logs that case as
+                            "1 of 0 sampled file(s)". Name what actually
+                            happened instead of counting non-checks. */}
                         <div className="opacity-80">
-                          {r.mismatches.length} sample file
-                          {r.mismatches.length === 1 ? "" : "s"} didn't match
+                          {r.mismatches[0].startsWith("Folder not found")
+                            ? "That folder wasn't there"
+                            : `${r.mismatches.length} sample file${
+                                r.mismatches.length === 1 ? "" : "s"
+                              } didn't match`}
                         </div>
                         {/* The reasons, not just the count. Each one names
                             the file and says whether it was missing or a

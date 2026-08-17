@@ -722,7 +722,18 @@ def verify_deployment_folder(
 
     mismatches: list[str] = []
     for file_record, expected_path in samples:
-        if not expected_path.exists():
+        # `Path.exists()` swallows only ENOENT / ENOTDIR / EBADF / ELOOP.
+        # EACCES and EIO propagate, so on an unreadable folder or a failing
+        # drive this used to throw all the way out of the request: a 500 on
+        # /check-folder, and at startup one bad folder aborted the whole
+        # loop so NO deployment's status was refreshed. Report it the same
+        # way the size check below reports a failed stat.
+        try:
+            present = expected_path.exists()
+        except OSError as e:
+            mismatches.append(f"Cannot check {expected_path}: {e}")
+            continue
+        if not present:
             mismatches.append(f"Missing: {expected_path}")
             continue
         if file_record.size_bytes is not None:
@@ -791,9 +802,22 @@ def check_all_deployment_folders(db: Session) -> dict[str, int]:
             skipped += 1
             continue
 
-        result = verify_deployment_folder(dep, dep.folder_path)
-        if dep.folder_status != result.status:
-            dep.folder_status = result.status
+        # One unreadable folder must never cost the other deployments
+        # their check. `verify_deployment_folder` handles the errors it can
+        # attribute to a file; anything else (an unreadable folder_path
+        # itself, a drive that vanished mid-loop) lands here, marks that
+        # one deployment as needing a relink, and the loop carries on.
+        try:
+            result = verify_deployment_folder(dep, dep.folder_path)
+            new_status = result.status
+        except OSError as e:
+            logger.warning(
+                f"Could not check folder for deployment {dep.id} "
+                f"({dep.folder_path}): {e}"
+            )
+            new_status = "needs_relink"
+        if dep.folder_status != new_status:
+            dep.folder_status = new_status
             changed += 1
         dep.last_validated_at_utc = now
         checked += 1

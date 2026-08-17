@@ -552,3 +552,112 @@ def test_relink_succeeds_when_the_folder_really_holds_the_files(db, tmp_path):
     assert result.files_rewritten == 1
     assert deployment.folder_path == str(moved)
     assert deployment.folder_status == "valid"
+
+
+# ---------------------------------------------------------------------------
+# The banner must not suggest a folder the relink will then refuse.
+#
+# `group-broken` used to offer any similarly-named sibling that merely
+# existed. A beta tester renamed a folder AND reorganised inside it, so the
+# lookalike scored high, existed, and was offered as "it looks like it is
+# now at ...". Clicking it ran the real identity check, all ten sampled
+# files came back missing, and the same banner reappeared with the same
+# suggestion. Five attempts over two days, every one refused.
+
+
+def _broken(deployment):
+    return {"items": [{"id": deployment.id, "folder_path": deployment.folder_path}]}
+
+
+def test_group_broken_does_not_suggest_a_lookalike_that_lacks_the_files(
+    client, db, tmp_path
+):
+    """A sibling with the right name but the wrong contents is not offered."""
+    old = tmp_path / "S5 - Ridge camp waterhole"
+    deployment = _deployment_with_files_on_disk(db, old, [("a.jpg", 100)])
+    # The folder moves away, and a near-identical name appears beside it
+    # holding something else entirely.
+    old.rename(tmp_path / "moved-away")
+    lookalike = tmp_path / "S5 - Ridge camp waterhole -"
+    lookalike.mkdir()
+    (lookalike / "something-else.jpg").write_bytes(b"x" * 100)
+
+    body = client.post("/api/deployments/group-broken", json=_broken(deployment)).json()
+
+    assert body["groups"][0]["suggested_path"] is None
+
+
+def test_group_broken_still_suggests_a_plain_rename(client, db, tmp_path):
+    """The case the feature exists for, so the test above cannot pass by
+    suppressing every suggestion."""
+    old = tmp_path / "S5 - Ridge camp waterhole"
+    deployment = _deployment_with_files_on_disk(db, old, [("a.jpg", 100)])
+    renamed = tmp_path / "S5 - Ridge camp waterhole 2025"
+    old.rename(renamed)
+
+    body = client.post("/api/deployments/group-broken", json=_broken(deployment)).json()
+
+    assert body["groups"][0]["suggested_path"] == str(renamed)
+
+
+# ---------------------------------------------------------------------------
+# An unreadable folder must degrade, never crash.
+#
+# `Path.exists()` swallows only ENOENT and friends; EACCES and EIO
+# propagate. That threw straight out of three request paths on a failing
+# drive: /check-folder 500'd, /group-broken 500'd (so the Deployments page
+# showed broken deployments with no banner at all), and the startup sweep
+# aborted on the first bad folder, leaving EVERY deployment's status stale.
+
+
+def test_check_folder_reports_an_unreadable_folder_instead_of_crashing(
+    client, db, tmp_path, make_unreadable
+):
+    folder = tmp_path / "cam"
+    deployment = _deployment_with_files_on_disk(db, folder, [("a.jpg", 100)])
+    make_unreadable(folder)
+
+    response = client.post(f"/api/deployments/{deployment.id}/check-folder")
+
+    assert response.status_code == 200
+    assert response.json()["folder_status"] == "needs_relink"
+
+
+def test_startup_sweep_survives_one_unreadable_folder(
+    db, tmp_path, make_unreadable
+):
+    """The other deployments must still get checked."""
+    from app.api.crud.deployment import check_all_deployment_folders
+
+    bad = tmp_path / "bad"
+    good = tmp_path / "good"
+    bad_dep = _deployment_with_files_on_disk(db, bad, [("a.jpg", 100)])
+    good_dep = _deployment_with_files_on_disk(db, good, [("b.jpg", 100)])
+    # Start both from a wrong status so a skipped check is visible.
+    bad_dep.folder_status = "valid"
+    good_dep.folder_status = "needs_relink"
+    db.commit()
+    make_unreadable(bad)
+
+    result = check_all_deployment_folders(db)
+
+    assert result["checked"] == 2
+    db.refresh(bad_dep)
+    db.refresh(good_dep)
+    assert bad_dep.folder_status == "needs_relink"
+    assert good_dep.folder_status == "valid"  # the readable one still ran
+
+
+def test_group_broken_survives_an_unreadable_ancestor(
+    client, db, tmp_path, make_unreadable
+):
+    """No suggestion is fine. A 500 is not: the banner never renders."""
+    parent = tmp_path / "parent"
+    folder = parent / "cam"
+    deployment = _deployment_with_files_on_disk(db, folder, [("a.jpg", 100)])
+    make_unreadable(parent)
+
+    response = client.post("/api/deployments/group-broken", json=_broken(deployment))
+
+    assert response.status_code == 200
+    assert response.json()["groups"][0]["suggested_path"] is None

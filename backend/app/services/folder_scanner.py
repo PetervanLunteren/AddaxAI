@@ -41,10 +41,11 @@ def prune_unscannable_dirs(root: str, dirnames: list[str]) -> list[str]:
 
     Drops dot-folders (``.addaxai`` etc.) and AddaxAI output folders (those
     carrying ``OUTPUT_DIR_MARKER``), so a previous run's separated /
-    visualised copies are never re-ingested as input media. Shared by the
-    preview scan here and the worker's input enumeration
-    (``detection_worker.scan_folder_for_*``) so the two cannot drift —
-    that drift is what let output folders get reprocessed.
+    visualised copies are never re-ingested as input media. Used by
+    ``walk_media_files``, which both the preview scan and the worker's input
+    enumeration (``detection_worker.scan_folder_for_media``) go through, so
+    the two cannot drift — that drift is what let output folders get
+    reprocessed.
     """
     return [
         d
@@ -67,17 +68,44 @@ def prune_hidden_files(filenames: list[str]) -> list[str]:
     return [f for f in filenames if not f.startswith(".")]
 
 
+def _reraise(error: OSError) -> None:
+    """``os.walk`` error handler that lets the failure out.
+
+    ``os.walk`` defaults to ``onerror=None``, which **discards** every error
+    ``os.scandir`` raises and simply yields nothing for that directory. A
+    folder we cannot list is then indistinguishable from an empty one, and
+    the caller reports "0 images" for a folder holding thousands.
+
+    That is not hypothetical. A beta tester on an external USB drive had the
+    same path answer "0 images, 0 videos" and then "8969 images" sixteen
+    seconds later, with `[Errno 5] Input/output error` on that drive
+    elsewhere in the same logs. The scan spent five seconds failing and
+    reported the failure as an empty folder.
+
+    Raising is the whole point (see "Crash early and loudly" in
+    CONVENTIONS.md). The cost is that one unreadable subdirectory now fails
+    the entire scan rather than being skipped silently, which is the right
+    side to be wrong on: the alternative is an analysis that ingests part of
+    a deployment and reports success.
+    """
+    raise error
+
+
 def walk_media_files(folder: Path) -> tuple[list[Path], list[Path]]:
     """Every image and video under ``folder``, as ``(images, videos)``.
 
     Filenames only: nothing is opened and no metadata is read. Dot-folders
     and AddaxAI output folders are skipped via ``prune_unscannable_dirs``,
     dot-files via ``prune_hidden_files``.
+
+    Raises:
+        OSError: if any directory under ``folder`` cannot be listed. Never
+            returns a short list for an unreadable tree, see ``_reraise``.
     """
     images: list[Path] = []
     videos: list[Path] = []
 
-    for root, dirs, files in os.walk(folder):
+    for root, dirs, files in os.walk(folder, onerror=_reraise):
         dirs[:] = prune_unscannable_dirs(root, dirs)
         for filename in prune_hidden_files(files):
             file_path = Path(root) / filename
@@ -96,6 +124,10 @@ def count_media_files(folder: Path) -> tuple[int, int]:
     The cheap counterpart to ``scan_folder``, which additionally reads EXIF
     and GPS from a sample of the files. The CSV import needs the counts for
     every folder in one request, so it cannot pay for the metadata reads.
+
+    Raises:
+        OSError: if the folder cannot be listed. Callers checking for "no
+            media here" must not treat that as a zero count.
     """
     images, videos = walk_media_files(folder)
     return len(images), len(videos)
@@ -148,6 +180,9 @@ def scan_folder(folder_path: str, gps_sample_size: int = 10) -> FolderPreview:
     Raises:
         FileNotFoundError: If folder doesn't exist
         PermissionError: If folder isn't readable
+        OSError: If any directory under it cannot be listed (a drive that
+            disconnected mid-scan, an I/O error). Never reported as an
+            empty folder.
     """
     folder = Path(folder_path)
 

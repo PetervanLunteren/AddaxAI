@@ -4,6 +4,8 @@ What these create is a DeploymentQueue entry, not a Deployment. The queue has
 no date columns, which is why the CSV has none either.
 """
 
+from pathlib import Path
+
 from app.models import DeploymentQueue
 from app.services.csv_import_deployments import SITE_NOT_FOUND
 from app.services.folder_scanner import OUTPUT_DIR_MARKER
@@ -165,6 +167,28 @@ def test_preview_reports_a_folder_with_no_media(client, db, tmp_path):
     folder = _folder(tmp_path, "cam01", images=0)
     body = _preview(client, p.id, f"{HEADER}\n{folder},,\n").json()
     assert "no images or videos" in body["problems"][0]["message"]
+
+
+def test_preview_reports_an_unreadable_folder_as_unreadable(
+    client, db, tmp_path, make_unreadable
+):
+    """An unlistable folder must not be reported as "no images or videos".
+
+    That message sends the user to check their paths and their camera. The
+    real cause is the drive, and one flaky folder must not throw away the
+    rest of a CSV the user just filled in either, so it is flagged per row.
+    """
+    p = make_project(db)
+    good = _folder(tmp_path, "cam01", images=2)
+    bad = _folder(tmp_path, "cam02", images=2)
+    make_unreadable(Path(bad))
+
+    body = _preview(client, p.id, f"{HEADER}\n{good},,\n{bad},,\n").json()
+
+    problems = {p_["row"]: p_["message"] for p_ in body["problems"]}
+    assert "could not be read" in problems[3]  # row 1 is the header
+    assert "no images or videos" not in problems[3]
+    assert 2 not in problems  # the readable row still imports
 
 
 def test_preview_accepts_a_trailing_slash(client, db, tmp_path):

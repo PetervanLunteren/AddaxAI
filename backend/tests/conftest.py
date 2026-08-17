@@ -10,6 +10,7 @@ Provides:
 """
 
 import os
+import stat
 import tempfile
 import uuid
 from datetime import date, datetime
@@ -118,6 +119,36 @@ def client(db):
 
         with TestClient(app, raise_server_exceptions=False) as c:
             yield c
+
+
+@pytest.fixture()
+def make_unreadable():
+    """Make a directory unlistable for the duration of one test.
+
+    Used by every test that exercises "the drive said no": an unreadable
+    directory is the portable stand-in for the `[Errno 5] Input/output
+    error` a failing USB drive returns, which cannot be provoked directly.
+
+    Skips the test when chmod is not enforced (running as root, or a
+    filesystem without POSIX permissions) rather than passing on nothing,
+    and always restores the mode so pytest can clean up its tmp dir.
+    """
+    restored: list[Path] = []
+
+    def _lock(path: Path) -> Path:
+        os.chmod(path, 0o000)
+        try:
+            os.listdir(path)
+        except OSError:
+            restored.append(path)
+            return path
+        os.chmod(path, stat.S_IRWXU)
+        pytest.skip("chmod 000 is not enforced here (running as root?)")
+
+    yield _lock
+
+    for path in restored:
+        os.chmod(path, stat.S_IRWXU)
 
 
 # ---------------------------------------------------------------------------

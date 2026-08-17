@@ -114,9 +114,15 @@ export function FolderSelector({
   useFileMtimeFallback = false,
   onUseFileMtimeFallbackChange,
 }: FolderSelectorProps) {
-  const { data: scanResult, isLoading: isScanning } = useFolderScan(
-    noScan ? null : value,
-  );
+  // `scanError` is not decoration. Without it a failed scan leaves
+  // `scanResult` undefined, which falls through to the "No images found in
+  // this folder" branch below and blames the user's data for a drive that
+  // did not answer.
+  const {
+    data: scanResult,
+    isLoading: isScanning,
+    error: scanError,
+  } = useFolderScan(noScan ? null : value);
   const [isDragOver, setIsDragOver] = useState(false);
   const inElectron = isElectron();
 
@@ -285,6 +291,12 @@ export function FolderSelector({
                 <span>Scanning folder...</span>
               </div>
             )
+          ) : scanError ? (
+            <Callout variant="error" size="compact">
+              {scanError instanceof Error
+                ? scanError.message
+                : "Could not read this folder. Check the drive and try again."}
+            </Callout>
           ) : hasFiles ? (
             <>
               <CompactScanLine
@@ -347,11 +359,17 @@ export function FolderSelector({
                 </Callout>
               )}
             </>
-          ) : (
+          ) : /* Only claim the folder is empty when a scan actually came
+                back saying so. This used to be the final `else`, so it
+                also fired for "no data and no error" states — a query
+                paused because the window is hidden, or one disabled via
+                `noScan` — telling the user a folder they never scanned
+                holds no images. */
+          scanResult ? (
             <Callout variant="error" size="compact">
               No images found in this folder
             </Callout>
-          )
+          ) : null
         ) : null}
         </div>
     </div>
