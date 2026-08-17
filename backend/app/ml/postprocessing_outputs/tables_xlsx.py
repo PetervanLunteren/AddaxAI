@@ -78,12 +78,33 @@ def write_tables_xlsx(
         ("Detections", det_headers, det_rows),
     ]
 
+    total_rows = sum(len(rows) for _title, _headers, rows in sheets)
+
     output_path = target_dir / XLSX_FILENAME
     # Saved straight to disk; the bytes-returning serializer would hold
     # the whole zipped workbook in memory first.
-    export_formats.write_xlsx_multi(sheets, output_path)
+    #
+    # A run too big for the XLSX format reports the reason and writes
+    # nothing, rather than raising. Raising would fail the whole save
+    # job, and by the time this module runs the expensive work
+    # (separating folders, annotated copies) is already finished and on
+    # disk, so the user would be told everything failed when only this
+    # one output could not exist. The error travels back on the result
+    # and the completion screen lists it (`collectIssues` in
+    # `SaveShared.tsx`).
+    #
+    # Note the Save step's Format is one dropdown, CSV *or* Excel, never
+    # both, so this run then writes no tables at all. That is why the
+    # message has to name CSV as the way out: choosing it and saving
+    # again is the user's only route to the data.
+    try:
+        export_formats.write_xlsx_multi(sheets, output_path)
+    except export_formats.XlsxRowLimitError as e:
+        logger.warning(
+            f"tables_xlsx: project={project_id} rows={total_rows} skipped: {e}"
+        )
+        return TablesXlsxResult(row_count=total_rows, errors=[str(e)])
 
-    total_rows = sum(len(rows) for _title, _headers, rows in sheets)
     logger.info(
         f"tables_xlsx: project={project_id} rows={total_rows} path={output_path}"
     )

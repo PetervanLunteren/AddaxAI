@@ -1108,8 +1108,13 @@ def test_export_observations_project_not_found(client):
 
 
 def test_export_spreadsheet_is_multi_sheet_workbook(client, db):
-    """The combined Spreadsheet export is one XLSX with Deployments, Files,
-    Detections and Counts sheets."""
+    """The combined Spreadsheet export is one XLSX with Counts, Detections,
+    Files and Deployments sheets.
+
+    Order is asserted, not just membership: a workbook opens on its first
+    sheet, so that sheet is what a user takes the file to contain. Counts
+    leads because it is the analysis-ready table the docs send people to
+    first."""
     from openpyxl import load_workbook
 
     from app.api.crud.event_observation import calculate_max_n_for_event
@@ -1129,7 +1134,7 @@ def test_export_spreadsheet_is_multi_sheet_workbook(client, db):
     assert "spreadsheetml" in resp.headers["content-type"]
 
     wb = load_workbook(io.BytesIO(resp.content))
-    assert wb.sheetnames == ["Deployments", "Files", "Detections", "Counts"]
+    assert wb.sheetnames == ["Counts", "Detections", "Files", "Deployments"]
     deployments = list(wb["Deployments"].iter_rows(values_only=True))
     files = list(wb["Files"].iter_rows(values_only=True))
     det = list(wb["Detections"].iter_rows(values_only=True))
@@ -1141,6 +1146,62 @@ def test_export_spreadsheet_is_multi_sheet_workbook(client, db):
     # The deer appears as a detection row and an event-level count row.
     assert any("deer" in str(v) for row in det[1:] for v in row)
     assert any("deer" in str(v) for row in counts[1:] for v in row)
+
+
+# ---------------------------------------------------------------------------
+# XLSX row limit
+# ---------------------------------------------------------------------------
+
+
+def test_xlsx_accepts_a_sheet_filled_to_the_row_limit():
+    """The header counts as a row, so the last accepted workbook holds
+    XLSX_MAX_ROWS - 1 data rows. Pinning the boundary from below is what
+    stops a future off-by-one from refusing exports that fit."""
+    rows = [[i] for i in range(export_formats.XLSX_MAX_ROWS - 1)]
+    # Only the counting is under test; building the real workbook here
+    # would cost a gigabyte of XML for one assertion.
+    export_formats._check_xlsx_row_limit([("Detections", ["n"], rows)])
+
+
+def test_xlsx_refuses_one_row_past_the_limit():
+    """openpyxl does not check this itself: in write-only mode it accepts
+    any number of rows and saves a file whose row indexes run past the
+    cap, which Excel then refuses to open. Without this guard the user
+    gets a corrupt download and no explanation."""
+    rows = [[i] for i in range(export_formats.XLSX_MAX_ROWS)]
+    with pytest.raises(export_formats.XlsxRowLimitError) as excinfo:
+        export_formats._check_xlsx_row_limit([("Detections", ["n"], rows)])
+
+    message = str(excinfo.value)
+    # The message is shown to the user verbatim, as the 422 detail and as
+    # a folder-run module error, so it has to name the table, its size
+    # and the way out.
+    assert "detections table" in message
+    assert f"{export_formats.XLSX_MAX_ROWS:,}" in message
+    assert "CSV" in message
+
+
+def test_xlsx_row_limit_is_reported_as_422_not_a_corrupt_download(client, db):
+    """The export endpoints turn the refusal into a 422 whose detail is
+    the message itself; the frontend surfaces a string detail verbatim."""
+    project, _site, deployment = _build_simple_project(db)
+    file = make_file(db, deployment_id=deployment.id)
+    make_detection(db, file_id=file.id, category="animal", confidence=0.9, label="deer")
+    db.commit()
+
+    # One real detection, and a limit low enough that it exceeds it. Far
+    # cheaper than materialising a million rows, and it exercises the
+    # same path the real overflow takes.
+    with patch.object(export_formats, "XLSX_MAX_ROWS", 1):
+        resp = client.get(
+            f"/api/projects/{project.id}/export/detections?format=xlsx"
+        )
+    assert resp.status_code == 422
+    assert "CSV" in resp.json()["detail"]
+
+    # CSV has no such limit, so the same data still comes out.
+    resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
+    assert resp.status_code == 200
 
 
 # ---------------------------------------------------------------------------

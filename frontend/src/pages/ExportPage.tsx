@@ -68,15 +68,23 @@ function DownloadDropdown({
   options,
   onSelect,
   isLoading,
+  disabled = false,
 }: {
   options: DownloadOption[];
   onSelect: (value: string) => void;
   isLoading: boolean;
+  /** Nothing to export. Separate from isLoading so the button keeps its
+   *  normal label instead of claiming an export is in flight. */
+  disabled?: boolean;
 }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" disabled={isLoading} className="gap-2">
+        <Button
+          type="button"
+          disabled={isLoading || disabled}
+          className="gap-2"
+        >
           {isLoading ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -110,6 +118,7 @@ function ExportRow({
   isLoading,
   onSelect,
   error,
+  disabled = false,
 }: {
   title: string;
   description: React.ReactNode;
@@ -118,6 +127,7 @@ function ExportRow({
   isLoading: boolean;
   onSelect: (value: string) => void;
   error: string | null;
+  disabled?: boolean;
 }) {
   return (
     <div>
@@ -132,6 +142,7 @@ function ExportRow({
             options={options}
             onSelect={onSelect}
             isLoading={isLoading}
+            disabled={disabled}
           />
         </div>
       </div>
@@ -180,6 +191,16 @@ export default function ExportPage() {
 
   const noSiteCount = noSite?.count ?? 0;
 
+  // The picker reports an empty deployment list when the user unchecks
+  // everything. That cannot be sent as a filter: `withScope` omits an
+  // empty array, and the backend reads a missing (or blank) scope as
+  // "whole project", so asking for nothing would hand back everything.
+  // Rather than teach both layers to carry an empty scope for a result
+  // nobody wants, don't offer the download. The picker sitting next to
+  // the button already reads "Nothing selected", so the disabled state
+  // needs no wording of its own.
+  const nothingSelected = tableScope?.deploymentIds?.length === 0;
+
   // One "Spreadsheet" download covering four tables. XLSX is a single
   // workbook; CSV / TSV save one file per table (browsers may show a
   // one-time "allow multiple downloads" prompt outside Electron).
@@ -193,14 +214,16 @@ export default function ExportPage() {
         const blob = await exportApi.downloadSpreadsheetXlsx(projectId, tableScope);
         downloadBlob(blob, "addaxai-spreadsheet.xlsx");
       } else {
-        const deployments = await exportApi.downloadDeployments(projectId, format, tableScope);
-        downloadBlob(deployments, `addaxai-deployments.${format}`);
-        const files = await exportApi.downloadFiles(projectId, format, tableScope);
-        downloadBlob(files, `addaxai-files.${format}`);
-        const detections = await exportApi.downloadDetections(projectId, format, tableScope);
-        downloadBlob(detections, `addaxai-detections.${format}`);
+        // Same order as the XLSX sheets (build_spreadsheet_sheets) and as
+        // the docs: broadest question first. Keep the three in step.
         const counts = await exportApi.downloadObservations(projectId, format, tableScope);
         downloadBlob(counts, `addaxai-counts.${format}`);
+        const detections = await exportApi.downloadDetections(projectId, format, tableScope);
+        downloadBlob(detections, `addaxai-detections.${format}`);
+        const files = await exportApi.downloadFiles(projectId, format, tableScope);
+        downloadBlob(files, `addaxai-files.${format}`);
+        const deployments = await exportApi.downloadDeployments(projectId, format, tableScope);
+        downloadBlob(deployments, `addaxai-deployments.${format}`);
       }
     } catch (err) {
       setTableError(errorMessage(err));
@@ -304,7 +327,7 @@ export default function ExportPage() {
           <CardContent className="pt-6">
             <ExportRow
               title="Spreadsheet"
-              description="Tables for deployments, files, detections, and counts."
+              description="Counts, detections, files and deployments, including species labels and your corrections."
               filters={
                 projectId ? (
                   <ExportScopeSelect
@@ -317,6 +340,7 @@ export default function ExportPage() {
               isLoading={tableLoading}
               onSelect={handleDownloadSpreadsheet}
               error={tableError}
+              disabled={nothingSelected}
             />
 
             <div className="my-6 border-t" />

@@ -11,8 +11,9 @@ Streaming endpoints, one per export type:
   CSV / TSV / XLSX.
 - ``/observations``: event-level one-row-per-species-per-event with the
   effective count (the Counts grain) in CSV / TSV / XLSX.
-- ``/spreadsheet``: combined XLSX with Deployments, Files, Detections and
-  Counts sheets for the one format that holds several tables in one file.
+- ``/spreadsheet``: combined XLSX with Counts, Detections, Files and
+  Deployments sheets for the one format that holds several tables in one
+  file.
 - ``/spatial``: GIS layers in GeoJSON / Shapefile (ZIP) / GeoPackage.
 - ``/camtrap-dp``: Camera Trap Data Package v1.0 (GBIF-compatible) as a ZIP.
 
@@ -82,9 +83,15 @@ def _tabular_response(
 ) -> StreamingResponse:
     """Serialize (headers, rows) to CSV / TSV / XLSX as a download."""
     if format == "xlsx":
-        payload = export_formats.serialize_xlsx(
-            headers, rows, sheet_title=sheet_title
-        )
+        try:
+            payload = export_formats.serialize_xlsx(
+                headers, rows, sheet_title=sheet_title
+            )
+        except export_formats.XlsxRowLimitError as e:
+            # The message names the table, its size and the CSV way out,
+            # and `fetchBlob` in the frontend surfaces a string `detail`
+            # verbatim in the Export page's error box.
+            raise HTTPException(status_code=422, detail=str(e)) from e
         return StreamingResponse(
             BytesIO(payload),
             media_type=(
@@ -199,17 +206,21 @@ async def export_spreadsheet(
     ),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Combined workbook: a Detections sheet and a Counts sheet.
+    """Combined workbook: Counts, Detections, Files and Deployments sheets.
 
-    XLSX only — the one format that holds two tables in a single file. For
-    CSV / TSV the client downloads the two single-table endpoints instead.
+    XLSX only, the one format that holds several tables in a single file.
+    For CSV / TSV the client downloads the four single-table endpoints
+    instead, in the same order.
     """
     project = _resolve_project(project_id, db)
     scope = export_crud.resolve_scope_deployment_ids(
         db, project, _parse_ids(site_ids), _parse_ids(deployment_ids)
     )
     sheets = export_crud.build_spreadsheet_sheets(db, project, scope)
-    payload = export_formats.serialize_xlsx_multi(sheets)
+    try:
+        payload = export_formats.serialize_xlsx_multi(sheets)
+    except export_formats.XlsxRowLimitError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
     base = _filename_base(project, "spreadsheet")
     return StreamingResponse(
         BytesIO(payload),

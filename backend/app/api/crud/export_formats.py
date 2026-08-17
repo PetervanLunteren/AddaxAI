@@ -62,6 +62,47 @@ def slugify(text: str) -> str:
 # Text serializers (CSV / TSV / XLSX)
 # ---------------------------------------------------------------------------
 
+# Excel's hard cap on rows in one sheet, header row included. This is a
+# limit of the file format, not of openpyxl, and there is no way to write
+# more of them into a valid workbook.
+XLSX_MAX_ROWS = 1_048_576
+
+
+class XlsxRowLimitError(ValueError):
+    """A sheet holds more rows than the XLSX format can carry.
+
+    Raised before anything is written. openpyxl does not check this
+    itself: in write-only mode it accepts any number of rows and saves a
+    file whose row indexes run past the cap (verified against openpyxl
+    3.1.5, which happily wrote index 1048600), and Excel then refuses to
+    open it. So without this guard the user gets a corrupt download and
+    no explanation, which is the silent failure the export is supposed
+    to be incapable of.
+
+    The message is written for the end user: every caller surfaces it
+    verbatim, the export endpoints as the 422 detail and the folder-run
+    Save step as a module error.
+    """
+
+
+def _check_xlsx_row_limit(
+    sheets: list[tuple[str, list[str], list[list[Any]]]],
+) -> None:
+    """Refuse a workbook that cannot be written as valid XLSX.
+
+    Checked up front for every sheet: the rows are already in memory by
+    this point, so counting them is free and nothing is written before we
+    know the whole workbook fits.
+    """
+    for title, _headers, rows in sheets:
+        total = len(rows) + 1  # the header occupies a row too
+        if total > XLSX_MAX_ROWS:
+            raise XlsxRowLimitError(
+                f"The {title.lower()} table has {len(rows):,} rows. An Excel "
+                f"file can hold {XLSX_MAX_ROWS:,}, so this export cannot be "
+                f"saved as XLSX. Export as CSV instead, it has no row limit."
+            )
+
 
 def serialize_csv(headers: list[str], rows: list[list[Any]]) -> bytes:
     output = io.StringIO()
@@ -117,8 +158,15 @@ def _build_xlsx_workbook(
     for large exports (the whole point of the Detections / Files grains).
     A write-only workbook has no default sheet, so every sheet is created
     explicitly.
+
+    Raises ``XlsxRowLimitError`` when any sheet is too tall for the
+    format. Every XLSX writer in the app funnels through here, so the
+    single-table endpoints, the combined project spreadsheet and the
+    folder-run workbook all inherit the guard.
     """
     from openpyxl import Workbook
+
+    _check_xlsx_row_limit(sheets)
 
     wb = Workbook(write_only=True)
     for title, headers, rows in sheets:

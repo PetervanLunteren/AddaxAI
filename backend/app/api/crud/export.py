@@ -1023,9 +1023,20 @@ def build_spreadsheet_sheets(
     deployment_ids: list[str] | None = None,
 ) -> list[tuple[str, list[str], list[list[Any]]]]:
     """The tables that make up the project Export page's combined
-    spreadsheet: Deployments, Files, Detections, and Counts. The
+    spreadsheet: Counts, Detections, Files, and Deployments. The
     folder-run Save step writes its own two-sheet workbook (Files +
     Detections) from the same row builders.
+
+    **Sheet order is the docs order, broadest question first.** A
+    workbook opens on its first sheet, so that sheet is what a user
+    takes the file to contain. Deployments used to lead, which is one
+    row per camera of locations and effort, and reading no further is
+    how a beta tester concluded the export held nothing but deployment
+    metadata. Counts leads instead because it is the analysis-ready
+    table `docs/docs/reference/exports.md` already tells people to start
+    with. Keep the two in step, and note the CSV / TSV path downloads
+    the same four tables one file at a time from `ExportPage.tsx`, in an
+    order written out there separately.
 
     ``deployment_ids`` narrows every sheet to a subset of the project's
     deployments; None exports everything."""
@@ -1039,10 +1050,10 @@ def build_spreadsheet_sheets(
     det_headers, det_rows = build_detection_rows(db, project, scoped)
     obs_headers, obs_rows = build_observation_rows(db, project, deployment_ids)
     return [
-        ("Deployments", dep_headers, dep_rows),
-        ("Files", files_headers, files_rows),
-        ("Detections", det_headers, det_rows),
         ("Counts", obs_headers, obs_rows),
+        ("Detections", det_headers, det_rows),
+        ("Files", files_headers, files_rows),
+        ("Deployments", dep_headers, dep_rows),
     ]
 
 
