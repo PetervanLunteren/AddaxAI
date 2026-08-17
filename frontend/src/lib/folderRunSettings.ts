@@ -93,8 +93,14 @@ const SAVE_OUTPUTS_KEY = "addaxai.folderRun.lastSaveOutputs";
 
 export interface PersistedSaveOutputsSettings {
   exportEnabled: boolean;
-  csv: boolean;
-  xlsx: boolean;
+  /** The spreadsheet output and its format. Written since the two
+   * separate CSV / XLSX checkboxes became one row with a picker. */
+  spreadsheet?: boolean;
+  format?: "csv" | "xlsx";
+  /** Written by versions before that change. Still read so an existing
+   * user's choice survives the upgrade; never written any more. */
+  csv?: boolean;
+  xlsx?: boolean;
   recognitionJson: boolean;
   /** Absent in objects stored by older versions; readers default to on. */
   summary?: boolean;

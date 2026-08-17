@@ -300,8 +300,7 @@ export function AnalysisSettingsButton({
                   Detection confidence threshold
                 </span>
                 <p className="text-sm text-muted-foreground">
-                  {SETTING_CAPTIONS.detectionThreshold} Applies to the grid,
-                  the counts and the spreadsheet you save.
+                  {SETTING_CAPTIONS.detectionThreshold}
                 </p>
               </div>
               <div className="space-y-2">

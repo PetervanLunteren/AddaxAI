@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   folderRunsApi,
   type SaveOutputsRequest,
@@ -24,6 +24,7 @@ import {
   type SeparateGroupBy,
 } from "../../../api/folder-runs";
 import { eventsApi } from "../../../api/events";
+import { projectsApi } from "../../../api/projects";
 import type { LabelTreeResponse } from "../../../api/types";
 import { DEFAULT_COUNTING_THRESHOLD } from "../../../lib/confidence";
 import { isElectron } from "../../../lib/platform";
@@ -62,10 +63,17 @@ export interface AnonymiseState {
   enabled: boolean;
 }
 
+export type SpreadsheetFormat = "csv" | "xlsx";
+
 export interface ExportState {
   enabled: boolean;
-  csv: boolean;
-  xlsx: boolean;
+  /** The files + detections tables. One output with a format, not two
+   * outputs: CSV and XLSX hold the same tables, so two checkboxes read
+   * as two datasets. The format and the threshold hang off this row as
+   * its children, which is what makes clear they govern the tables and
+   * not the recognition JSON beside them. */
+  spreadsheet: boolean;
+  format: SpreadsheetFormat;
   recognitionJson: boolean;
   /** The addaxai-run-info.txt run manifest (models, settings, results).
    * Default on: it's the provenance record, but now opt-out like the rest. */
@@ -95,8 +103,16 @@ function buildRequest(
     excluded_label_ids: separate.enabled
       ? excludedLabelIds(separate, allLabelIds)
       : [],
-    csv: exportOpts.enabled && exportOpts.csv,
-    xlsx: exportOpts.enabled && exportOpts.xlsx,
+    // The backend still takes one flag per format, so the picker maps
+    // onto the two booleans here and no worker code has to change.
+    csv:
+      exportOpts.enabled &&
+      exportOpts.spreadsheet &&
+      exportOpts.format === "csv",
+    xlsx:
+      exportOpts.enabled &&
+      exportOpts.spreadsheet &&
+      exportOpts.format === "xlsx",
     recognition_json: exportOpts.enabled && exportOpts.recognitionJson,
     run_readme: exportOpts.enabled && exportOpts.summary,
     // Burn the user's current name preference into the visualised images
@@ -126,6 +142,9 @@ export function excludedLabelIds(
 export interface UseSaveOutputsFormParams {
   runId: string;
   sourceFolder: string | undefined;
+  /** The run's current counting threshold, straight off the project row.
+   * Undefined until the run query resolves. */
+  projectThreshold: number | undefined;
 }
 
 export interface UseSaveOutputsFormResult {
@@ -146,6 +165,17 @@ export interface UseSaveOutputsFormResult {
   setAnonymise: (s: AnonymiseState) => void;
   exportOpts: ExportState;
   setExportOpts: (s: ExportState) => void;
+
+  /** The run's counting threshold, shown on the Export results card so
+   * the number governing the spreadsheet is visible where it lands. This
+   * is the project setting itself, not an export-only override, so the
+   * grid, the counts and the tables can never disagree. */
+  countingThreshold: number;
+  /** Drag feedback: moves the handle and the label, saves nothing. */
+  setCountingThreshold: (v: number) => void;
+  /** Release: persist it and refresh the preview. */
+  commitCountingThreshold: (v: number) => void;
+  thresholdSaving: boolean;
 
   promoteOpen: boolean;
   setPromoteOpen: (v: boolean) => void;
@@ -179,9 +209,110 @@ export interface UseSaveOutputsFormResult {
 export function useSaveOutputsForm({
   runId,
   sourceFolder,
+  projectThreshold,
 }: UseSaveOutputsFormParams): UseSaveOutputsFormResult {
+  const queryClient = useQueryClient();
   const [outputDir, setOutputDir] = useState("");
   const effectiveOutputDir = outputDir;
+
+  // The counting threshold is the project's own, mirrored here only so
+  // the handle can move smoothly while dragging. `draggedThreshold` is
+  // that local echo; null means "no drag in flight, trust the server".
+  // Seeding from the prop each render would fight the drag, and holding
+  // it in state permanently would go stale after a reprocess elsewhere.
+  const [draggedThreshold, setDraggedThreshold] = useState<number | null>(
+    null,
+  );
+  const countingThreshold =
+    draggedThreshold ?? projectThreshold ?? DEFAULT_COUNTING_THRESHOLD;
+
+  const thresholdMutation = useMutation({
+    mutationFn: (value: number) =>
+      projectsApi.update(runId, { counting_threshold: value }),
+    // Settled, not success: a failed save must also drop the local echo,
+    // so the handle springs back to what the server actually holds
+    // instead of showing a value nothing was written for.
+    onSettled: () => {
+      setDraggedThreshold(null);
+      queryClient.invalidateQueries({ queryKey: ["folder-run", runId] });
+      queryClient.invalidateQueries({
+        queryKey: ["folder-run-output-preview"],
+      });
+    },
+  });
+
+  // Debounced, because a commit is not always one gesture. A mouse drag
+  // commits once on release, but Radix has no release for the keyboard,
+  // so it commits on every arrow press: five taps meant five PATCHes and
+  // five MaxN recomputes, which is seconds of backend work per keystroke
+  // on a large run. Stepping with the arrows now settles into one save.
+  //
+  // A debounced write can be outrun, so the pending value lives in a ref
+  // beside the timer and there are two ways to force it out: `flush`
+  // before the save job is spawned, and the unmount cleanup below.
+  // Without those, the two natural things to do straight after moving the
+  // slider both lost the change: hitting Save spawned the job before the
+  // PATCH landed, so the worker read the old threshold, and stepping Back
+  // dropped the timer on the floor.
+  const thresholdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingThreshold = useRef<number | null>(null);
+
+  /** Take the pending value off the queue, cancelling its timer. */
+  const takePending = (): number | null => {
+    if (thresholdTimer.current) {
+      clearTimeout(thresholdTimer.current);
+      thresholdTimer.current = null;
+    }
+    const value = pendingThreshold.current;
+    pendingThreshold.current = null;
+    return value;
+  };
+
+  /** Write a debounced value now and wait for it. */
+  const flushCountingThreshold = async (): Promise<void> => {
+    const value = takePending();
+    if (value === null) return;
+    try {
+      await thresholdMutation.mutateAsync(value);
+    } catch {
+      // Already surfaced by the handle springing back to the server's
+      // value; the save carries on with whatever is actually stored.
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      const value = takePending();
+      if (value === null) return;
+      // The component is going away, so this cannot go through the
+      // mutation: its onSettled sets state. Write it directly and refresh
+      // the caches the rest of the app reads.
+      projectsApi
+        .update(runId, { counting_threshold: value })
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: ["folder-run", runId] });
+          queryClient.invalidateQueries({
+            queryKey: ["folder-run-output-preview"],
+          });
+        })
+        .catch(() => {});
+    };
+  }, [runId, queryClient]);
+
+  const commitCountingThreshold = (value: number) => {
+    takePending();
+    // Stepped back to where it started: nothing to save, and the local
+    // echo has to go or the handle would sit on a value we never wrote.
+    if (Math.abs(value - (projectThreshold ?? -1)) < 1e-9) {
+      setDraggedThreshold(null);
+      return;
+    }
+    pendingThreshold.current = value;
+    thresholdTimer.current = setTimeout(() => {
+      const pending = takePending();
+      if (pending !== null) thresholdMutation.mutate(pending);
+    }, 400);
+  };
 
   // Seed a sensible default once the source folder is known: the
   // source folder itself. The recognition JSON only resolves its
@@ -222,8 +353,17 @@ export function useSaveOutputsForm({
   }));
   const [exportOpts, setExportOpts] = useState<ExportState>(() => ({
     enabled: persisted?.exportEnabled ?? true,
-    csv: persisted?.csv ?? true,
-    xlsx: persisted?.xlsx ?? false,
+    // `spreadsheet` / `format` replaced an older `csv` / `xlsx` pair, so
+    // fall back to those when a stored setting predates the change. A
+    // user who had only XLSX ticked keeps XLSX; anyone else lands on CSV.
+    spreadsheet:
+      // `||`, not `??`: a stored `csv: false` is a real value, so `??`
+      // returned it and never looked at `xlsx`. Anyone upgrading with
+      // XLSX ticked and CSV unticked lost the spreadsheet entirely.
+      persisted?.spreadsheet ?? (persisted?.csv || persisted?.xlsx) ?? true,
+    format:
+      persisted?.format ??
+      (persisted?.xlsx && !persisted?.csv ? "xlsx" : "csv"),
     recognitionJson: persisted?.recognitionJson ?? true,
     summary: persisted?.summary ?? true,
   }));
@@ -250,13 +390,17 @@ export function useSaveOutputsForm({
       setSaveError(e instanceof Error ? e : new Error("unknown")),
   });
 
-  const runSpawn = () => {
+  const runSpawn = async () => {
+    // Write any debounced threshold first and wait for it. The worker
+    // reads the project row when it runs, so spawning the job before the
+    // PATCH lands is a race the user always loses silently.
+    await flushCountingThreshold();
     // Remember these choices for the next run's Save step (not the
     // output folder, which is derived per run from the source).
     saveLastUsedSaveOutputs({
       exportEnabled: exportOpts.enabled,
-      csv: exportOpts.csv,
-      xlsx: exportOpts.xlsx,
+      spreadsheet: exportOpts.spreadsheet,
+      format: exportOpts.format,
       recognitionJson: exportOpts.recognitionJson,
       summary: exportOpts.summary,
       mediaEnabled: separate.enabled,
@@ -283,7 +427,7 @@ export function useSaveOutputsForm({
   const saveAll = () => {
     setSaveError(null);
     setResult(null);
-    runSpawn();
+    void runSpawn();
   };
 
   const onJobComplete = (data: SaveOutputsResult) => {
@@ -315,8 +459,7 @@ export function useSaveOutputsForm({
 
   const exportPicked =
     exportOpts.enabled &&
-    (exportOpts.csv ||
-      exportOpts.xlsx ||
+    (exportOpts.spreadsheet ||
       exportOpts.recognitionJson ||
       exportOpts.summary);
   const canSave =
@@ -338,6 +481,10 @@ export function useSaveOutputsForm({
     setAnonymise,
     exportOpts,
     setExportOpts,
+    countingThreshold,
+    setCountingThreshold: setDraggedThreshold,
+    commitCountingThreshold,
+    thresholdSaving: thresholdMutation.isPending,
     promoteOpen,
     setPromoteOpen,
     jobId,

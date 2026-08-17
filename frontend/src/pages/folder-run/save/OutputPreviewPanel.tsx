@@ -61,8 +61,7 @@ export function OutputPreviewPanel({
     visualise.enabled ||
     anonymise.enabled ||
     (exportOpts.enabled &&
-      (exportOpts.csv ||
-        exportOpts.xlsx ||
+      (exportOpts.spreadsheet ||
         exportOpts.recognitionJson ||
         exportOpts.summary));
 
@@ -182,11 +181,14 @@ function buildTree({
   }
 
   if (exportOpts.enabled) {
-    if (exportOpts.csv) {
-      files.push({ name: "addaxai-files.csv" });
-      files.push({ name: "addaxai-detections.csv" });
+    if (exportOpts.spreadsheet) {
+      if (exportOpts.format === "csv") {
+        files.push({ name: "addaxai-files.csv" });
+        files.push({ name: "addaxai-detections.csv" });
+      } else {
+        files.push({ name: "addaxai-spreadsheet.xlsx" });
+      }
     }
-    if (exportOpts.xlsx) files.push({ name: "addaxai-spreadsheet.xlsx" });
     if (exportOpts.recognitionJson)
       files.push({ name: "addaxai-recognitions.json" });
     if (exportOpts.summary) files.push({ name: "addaxai-run-info.txt" });

@@ -54,6 +54,7 @@ export function FolderRunSaveStep() {
   const form = useSaveOutputsForm({
     runId: runId ?? "",
     sourceFolder: run?.queue_entry?.folder_path ?? undefined,
+    projectThreshold: run?.project?.counting_threshold,
   });
 
   // Job-progress state driven by the worker's WebSocket events.

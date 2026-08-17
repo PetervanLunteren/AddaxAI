@@ -89,6 +89,28 @@ function CaptionedCheckbox({
   );
 }
 
+/** Rows that exist only because of the row above them, and that govern
+ * only that row's output.
+ *
+ * Flat, a format picker and a threshold read as siblings of the
+ * checkboxes around them, so the threshold looked like it governed the
+ * recognition JSON too (it does not) and the format looked like a
+ * separate output. Nesting says which parent owns them without a word of
+ * explanation.
+ *
+ * Shared by both bodies below: the spreadsheet's format and threshold,
+ * and the folder-structure options the media card only shows once
+ * subfolders are on. Keep new nesting going through here so the two
+ * cards cannot drift into two different visual languages. */
+function ChildRows({ children }: { children: React.ReactNode }) {
+  // The indent is the whole signal, and the dividers between children
+  // fall inside it, so they start at the child's text and stop short of
+  // the full-width rules above and below the group. That difference in
+  // length is what the eye reads, and it needs no rule, elbow or dot
+  // drawn on top of it: those repeat something already said once.
+  return <div className="pl-6 [&>*+*]:border-t">{children}</div>;
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Output folder field
 // ─────────────────────────────────────────────────────────────────
@@ -176,42 +198,46 @@ export function MediaBody({
         </Select>
       </div>
 
+      {/* Both only exist once there are species subfolders, so they are
+          children of the row above rather than siblings of it. */}
       {showGrouping && (
-        <CaptionedCheckbox
-          checked={separate.groupEvents}
-          onChange={(v) => setSeparate({ ...separate, groupEvents: v })}
-          label="Keep events together"
-          caption="Every file in a burst goes to one folder: the species you confirmed most often, or else the strongest detection"
-        />
-      )}
-
-      {showGrouping && (
-        <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
-          <span>
-            Folder order
-            <span className="mt-0.5 block text-xs text-muted-foreground">
-              Whether species or your original folders sit on top
+        <ChildRows>
+          <CaptionedCheckbox
+            checked={separate.groupEvents}
+            onChange={(v) => setSeparate({ ...separate, groupEvents: v })}
+            label="Keep events together"
+            caption="Every file in a burst goes to one folder: the species you confirmed most often, or else the strongest detection"
+          />
+          <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
+            <span>
+              Folder order
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Whether species or your original folders sit on top
+              </span>
             </span>
-          </span>
-          <Select
-            value={separate.speciesLast ? "species-last" : "species-first"}
-            onValueChange={(v) =>
-              setSeparate({ ...separate, speciesLast: v === "species-last" })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="species-first">
-                Species folder first
-              </SelectItem>
-              <SelectItem value="species-last">
-                Species folder last
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+            <Select
+              value={separate.speciesLast ? "species-last" : "species-first"}
+              onValueChange={(v) =>
+                setSeparate({
+                  ...separate,
+                  speciesLast: v === "species-last",
+                })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="species-first">
+                  Species folder first
+                </SelectItem>
+                <SelectItem value="species-last">
+                  Species folder last
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </ChildRows>
       )}
 
       {labelTree && labelTree.tree.length > 0 && (
@@ -219,11 +245,14 @@ export function MediaBody({
       )}
 
       <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
+        {/* Named for the media on purpose: the Export results card above
+            carries the run's own threshold, and two rows both called
+            "Confidence" on one screen is how you get the wrong one. */}
         <span>
-          Confidence
+          Media confidence
           <span className="mt-0.5 block text-xs text-muted-foreground">
-            Detections below this score are left out, except ones you
-            verified
+            Detections below this score are left out of the copies, except
+            ones you verified. Only the copies, not the tables
           </span>
         </span>
         <ConfidenceSlider
@@ -336,17 +365,82 @@ export function ExportBody({
   return (
     <div className="divide-y [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
       <CaptionedCheckbox
-        checked={exportOpts.csv}
-        onChange={(v) => setExportOpts({ ...exportOpts, csv: v })}
-        label="CSV"
+        checked={exportOpts.spreadsheet}
+        onChange={(v) => setExportOpts({ ...exportOpts, spreadsheet: v })}
+        label="Spreadsheet"
         caption="Tables for files and detections"
       />
-      <CaptionedCheckbox
-        checked={exportOpts.xlsx}
-        onChange={(v) => setExportOpts({ ...exportOpts, xlsx: v })}
-        label="XLSX"
-        caption="The same tables in one Excel workbook"
-      />
+      {exportOpts.spreadsheet && (
+        <ChildRows>
+          <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
+            <span>
+              Format
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                The same tables either way
+              </span>
+            </span>
+            <Select
+              value={exportOpts.format}
+              onValueChange={(v) =>
+                setExportOpts({
+                  ...exportOpts,
+                  format: v as typeof exportOpts.format,
+                })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="csv">CSV, one file per table</SelectItem>
+                <SelectItem value="xlsx">
+                  Excel, one sheet per table
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {/* Nested because it governs these tables and not the
+              recognition file below, which is unfiltered by design. The
+              caption carries the other half: this is the run's own
+              threshold, so moving it here moves the labels grid and the
+              counts with it. It is one number, not an export-only copy,
+              which is what keeps the tables from ever disagreeing with
+              what the user signed off in step 2. */}
+          <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
+            <span>
+              Detections included
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Everything at this detection confidence or above, plus
+                everything you verified.
+              </span>
+            </span>
+            <ConfidenceSlider
+              value={form.countingThreshold}
+              onChange={(vals) => form.setCountingThreshold(vals[0])}
+              onCommit={(vals) => form.commitCountingThreshold(vals[0])}
+              valueLabel={
+                <span className="min-w-[3rem] shrink-0 text-right text-sm font-medium">
+                  {formatConfidencePct(form.countingThreshold)}
+                </span>
+              }
+              // Move the handle first, then save. Committing alone left it
+              // sitting on the old value for as long as the write took,
+              // which on a large run is a second or more of the button
+              // looking dead. A drag never had this, because dragging
+              // moves the handle through onChange on the way.
+              onReset={() => {
+                form.setCountingThreshold(DEFAULT_COUNTING_THRESHOLD);
+                form.commitCountingThreshold(DEFAULT_COUNTING_THRESHOLD);
+              }}
+              resetDisabled={
+                Math.abs(
+                  form.countingThreshold - DEFAULT_COUNTING_THRESHOLD,
+                ) < 1e-6
+              }
+            />
+          </div>
+        </ChildRows>
+      )}
       <CaptionedCheckbox
         checked={exportOpts.recognitionJson}
         onChange={(v) => setExportOpts({ ...exportOpts, recognitionJson: v })}

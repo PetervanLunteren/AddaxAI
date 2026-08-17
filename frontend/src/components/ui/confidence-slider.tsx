@@ -36,6 +36,11 @@ interface ConfidenceSliderProps {
   /** One value (single handle) or [low, high] (range). */
   value: number | [number, number];
   onChange: (value: number[]) => void;
+  /** Fires once when the handle is released, not on every step. Use it
+   * for work too expensive to run per tick, such as a request. Radix
+   * gives us this for free; ``onChange`` still fires while dragging so
+   * the handle and the label keep up. */
+  onCommit?: (value: number[]) => void;
   /** Lowest value the (low) handle may take. Default: the scale min.
    * The track always renders the full scale regardless. */
   effectiveMin?: number;
@@ -61,6 +66,7 @@ interface ConfidenceSliderProps {
 export function ConfidenceSlider({
   value,
   onChange,
+  onCommit,
   effectiveMin = CONFIDENCE_SCALE_MIN,
   clampReason,
   adviseBelow,
@@ -94,6 +100,16 @@ export function ConfidenceSlider({
             );
             onChange(clamped);
           }}
+          onValueCommit={
+            onCommit
+              ? (next) =>
+                  onCommit(
+                    next.map((v, i) =>
+                      i === 0 ? Math.max(v, effectiveMin) : v,
+                    ),
+                  )
+              : undefined
+          }
           className={className ?? "flex-1"}
         />
         {valueLabel}
