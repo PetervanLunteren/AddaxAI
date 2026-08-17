@@ -15,7 +15,9 @@ Some models can answer "nothing here", with classes like blank, empty or false d
 
 When the model cannot name one species with enough confidence, it labels the animal with a broader group instead: genus, family, order or class.
 
-It works by adding up. A model that is unsure between two deer species might give each one 40%, which is weak on its own. Added together the genus reaches 80%, which clears the 65% that AddaxAI asks for. It walks up the tree like this and stops at the most specific level that clears the bar, so you get "deer" rather than a coin flip between two species. If nothing clears it, even at class level, the label stays as the model's best guess.
+It works by adding up. A model that is unsure between two deer species might give each one 40%, which is weak on its own. Added together the genus reaches 80%, which clears the 65% that AddaxAI asks for. It walks up the tree like this and stops at the most specific level that clears the bar, so you get "deer" rather than a coin flip between two species.
+
+If nothing clears it, not even at class level, there is one last step. Everything the model recognised as some kind of animal is added up, and if that total clears the bar the label becomes the kingdom: "Animal" in common names, "Animalia" in scientific names. That says only that an animal was there. If even the kingdom does not clear it, the label stays as the model's best guess.
 
 That 65% is fixed. It is the same for every model and every project, and you cannot change it.
 

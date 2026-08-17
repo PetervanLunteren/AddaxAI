@@ -193,9 +193,7 @@ def test_projects_mode_builders_keep_every_column(db, tmp_path):
     )
 
     files_headers, _rows = export_crud.build_files_rows(db, project)
-    scoped = export_crud.get_scoped_detection_rows(
-        db, project, apply_threshold=False
-    )
+    scoped = export_crud.get_scoped_detection_rows(db, project)
     det_headers, _det_rows = export_crud.build_detection_rows(
         db, project, scoped
     )
@@ -352,11 +350,20 @@ def test_unknown_project_raises(db, tmp_path):
         write_tables_csv(db, "no-such-id", tmp_path / "out")
 
 
-def test_detections_export_ignores_project_threshold(db, tmp_path):
-    """The folder-run data exports are the complete record: a detection
-    below the project's counting_threshold still appears in
-    addaxai-detections.csv (Dan's must-fix). Thresholding is an in-app /
-    media-output concern only."""
+def test_detections_export_honours_project_threshold(db, tmp_path):
+    """The folder-run tables honour the counting threshold, the same rule
+    projects mode uses, so the spreadsheet holds what the Labels step
+    showed and the user could correct.
+
+    This reverses an earlier decision (the tables used to be the complete
+    record and ignored the threshold). It was reversed because the two
+    sheets disagreed with each other and with the app: addaxai-files.csv
+    was thresholded while addaxai-detections.csv beside it was not, and
+    users read the extra rows as species the app had hidden from them.
+    addaxai-recognitions.json is the complete record now.
+
+    The verified override still applies: a human decision outranks the
+    score, so a box someone checked survives however low it scored."""
     project = make_project(db, name="csv-complete", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     file = make_file(
@@ -370,10 +377,17 @@ def test_detections_export_ignores_project_threshold(db, tmp_path):
         label="cat", verified=False,
         bbox_x=0.1, bbox_y=0.1, bbox_width=0.2, bbox_height=0.2,
     )
+    make_detection(
+        db, file_id=file.id, category="animal", confidence=0.11,
+        label="badger", verified=True,
+        bbox_x=0.5, bbox_y=0.5, bbox_width=0.2, bbox_height=0.2,
+    )
 
     target = tmp_path / "out"
     write_tables_csv(db, project.id, target)
 
-    csv = (target / DETECTIONS_FILENAME).read_text()
-    assert "cat" in csv
-    assert "0.12" in csv
+    # Parse the label column rather than searching the raw text: "cat" is
+    # a substring of the "classification_label" header.
+    with open(target / DETECTIONS_FILENAME, newline="") as f:
+        labels = {r["classification_label"] for r in csv.DictReader(f)}
+    assert labels == {"badger"}

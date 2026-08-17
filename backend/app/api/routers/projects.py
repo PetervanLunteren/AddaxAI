@@ -36,6 +36,7 @@ from app.api.schemas.project import (
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
+from app.ml.detection_visibility import on_visible_frame
 from app.models import Deployment, Detection, Event, File, Job, Project
 from app.models.detection_embedding import DetectionEmbedding
 from app.models.event_observation import EventObservation
@@ -781,6 +782,12 @@ def get_detection_count(
     Get count of detections at or above a confidence threshold.
 
     Used by the frontend to show the impact of threshold changes.
+
+    Counts only detections the user can actually reach, so this agrees
+    with the Labels grid, the label tree and the exports. Without the
+    frame gate a video project reported every sampled frame: 220 where
+    the grid held 32, and the reprocess summary built on it promised
+    changes to boxes nobody can open.
     """
     count = (
         db.query(func.count(Detection.id))
@@ -788,6 +795,7 @@ def get_detection_count(
         .join(Deployment)
         .filter(Deployment.project_id == project_id)
         .filter(or_(Detection.confidence >= threshold, Detection.verified == True))  # noqa: E712
+        .filter(on_visible_frame())
         .scalar()
     ) or 0
     return {"count": count}
@@ -805,6 +813,11 @@ def get_label_stats(
     Returns list of {label, count} sorted by count descending.
     Only includes detections with a label classification.
     Optionally filters by confidence threshold.
+
+    Frame-gated like every other user-facing count (see
+    ``get_detection_count``): these numbers drive the "Effect on
+    statistics" summary, so they have to describe labels the user can
+    open and correct.
     """
     query = (
         db.query(Detection.label, func.count(Detection.id).label("count"))
@@ -812,6 +825,7 @@ def get_label_stats(
         .join(Deployment)
         .filter(Deployment.project_id == project_id)
         .filter(Detection.label.isnot(None))
+        .filter(on_visible_frame())
     )
     if threshold > 0:
         query = query.filter(
@@ -1012,9 +1026,18 @@ def create_custom_label(
     model_id = db_project.classification_model_id
 
     from app.ml.taxonomic_rollup import format_common_name
+    from app.ml.taxonomy_db import BUILTIN_MODEL_ID
 
-    # Check if already exists (case-insensitive) in current model taxonomy
-    # or among this project's custom labels
+    # Check if already exists (case-insensitive) in the current model
+    # taxonomy, among this project's custom labels, or among the builtin
+    # rows (animal / person / vehicle).
+    #
+    # The builtin arm is not decoration. Without it, "vehicle" here made a
+    # third row of that name beside the builtin one and the model's own,
+    # all rank-less and all displaying "Vehicle". The label filter shows
+    # one leaf per taxonomy row, so those render as identical entries the
+    # user cannot tell apart, and relabelling resolves to whichever the
+    # priority order picks. One name, one row.
     existing = (
         db.query(LabelTaxonomy)
         .filter(
@@ -1022,6 +1045,7 @@ def create_custom_label(
             (
                 (LabelTaxonomy.classification_model_id == model_id)
                 | (LabelTaxonomy.project_id == project_id)
+                | (LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID)
             ),
         )
         .first()

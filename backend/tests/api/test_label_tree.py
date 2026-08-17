@@ -520,3 +520,94 @@ def test_image_detections_are_never_gated(db):
 
     result = build_label_filter_tree(p.id, db, count_by="detection")
     assert result["label_event_counts"]["fox"] == 3
+
+
+# ---------------------------------------------------------------------------
+# The "No taxonomy" branch
+# ---------------------------------------------------------------------------
+
+
+def _unranked_taxonomy(db, name, scientific_name, model_id):
+    """A taxonomy row with no rank columns at all, so it lands under
+    "No taxonomy" rather than in the class > order > family chain."""
+    row = LabelTaxonomy(
+        classification_model_id=model_id,
+        name=name,
+        level="none",
+        scientific_name=scientific_name,
+        common_name=name.capitalize(),
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def test_unranked_branch_is_named_no_taxonomy(db):
+    """The bucket for rank-less labels is called "No taxonomy", the same
+    name the insights pages use for it, not the older bare "Other"."""
+    from app.ml.taxonomic_rank import NO_TAXONOMY
+
+    p = make_project(db, classification_model_id=MODEL_ID)
+    site = make_site(db, project_id=p.id)
+    dep = make_deployment(db, site_id=site.id)
+    f = make_file(db, deployment_id=dep.id, file_type="image")
+    tax = _unranked_taxonomy(db, "unknown", "Unknown", MODEL_ID)
+    make_detection(
+        db, file_id=f.id, confidence=0.9, label="unknown",
+        label_taxonomy_id=tax.id,
+    )
+    db.flush()
+
+    result = build_label_filter_tree(p.id, db, count_by="detection")
+    names = [n["name"] for n in result["tree"]]
+    assert NO_TAXONOMY in names
+    assert "Other" not in names
+
+
+def test_two_rank_less_rows_sharing_a_name_stay_separate(db):
+    """Two taxonomy rows can share a name: the builtin "animal" that
+    stands for an unclassified detector box, and a model's kingdom-level
+    rollup row, also called "animal". Grouping the branch by name
+    collapsed them into one leaf that carried the summed count but only
+    one of the two ids, so selecting it filtered on half the detections
+    the count promised. One leaf per row, each with its own count."""
+    from app.ml.taxonomy_db import BUILTIN_MODEL_ID
+
+    p = make_project(db, classification_model_id=MODEL_ID)
+    site = make_site(db, project_id=p.id)
+    dep = make_deployment(db, site_id=site.id)
+    f = make_file(db, deployment_id=dep.id, file_type="image")
+
+    builtin = _unranked_taxonomy(db, "animal", "Animal", BUILTIN_MODEL_ID)
+    rollup = _unranked_taxonomy(db, "animal", "Animalia", MODEL_ID)
+
+    # 3 unclassified boxes, 1 rolled up to kingdom.
+    for _ in range(3):
+        make_detection(
+            db, file_id=f.id, confidence=0.9, label_taxonomy_id=builtin.id,
+        )
+    make_detection(
+        db, file_id=f.id, confidence=0.9, label="animal",
+        label_taxonomy_id=rollup.id,
+    )
+    db.flush()
+
+    result = build_label_filter_tree(p.id, db, count_by="detection")
+
+    # Both rows are reachable as their own filter value.
+    assert builtin.id in result["all_leaf_ids"]
+    assert rollup.id in result["all_leaf_ids"]
+
+    leaves = {
+        leaf["id"]: leaf
+        for node in result["tree"]
+        for leaf in node["children"]
+    }
+    # Each leaf carries its own count, not the sum of both (which would
+    # be 4 on either leaf).
+    assert leaves[builtin.id]["count"] == 3
+    assert leaves[rollup.id]["count"] == 1
+    # And they are tellable apart, because the leaf is named for its own
+    # scientific name rather than the name the two rows share.
+    assert leaves[builtin.id]["name"] == "Animal"
+    assert leaves[rollup.id]["name"] == "Animalia"

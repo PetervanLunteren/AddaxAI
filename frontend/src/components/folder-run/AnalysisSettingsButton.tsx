@@ -41,6 +41,9 @@ import {
   fetchStats,
   type ProjectStats,
 } from "../../lib/reprocessStats";
+import { formatConfidencePct } from "../../lib/confidence";
+import { SETTING_CAPTIONS } from "../../lib/settingCaptions";
+import { ConfidenceSlider } from "../ui/confidence-slider";
 import { RegroupConfirmDialog } from "../settings/RegroupConfirmDialog";
 import {
   AnalysisSettingsRows,
@@ -61,7 +64,16 @@ import {
 // Labels diff. Counts are a Counts-step concern and stay in projects mode.
 const FOLDER_RUN_METRICS: SaveMetric[] = ["labels"];
 
-function valuesFromProject(project: ProjectResponse): AnalysisSettingsValues {
+/** The slideout's own form state: the shared retroactive rows plus the
+ *  counting threshold, which has no row in ``AnalysisSettingsRows``
+ *  because the Settings page renders its own (with the changed-from-
+ *  default highlight its form tracks). The caption is shared through
+ *  SETTING_CAPTIONS, which is where wording would otherwise drift. */
+type FolderRunSettingsValues = AnalysisSettingsValues & {
+  counting_threshold: number;
+};
+
+function valuesFromProject(project: ProjectResponse): FolderRunSettingsValues {
   return {
     event_smoothing: project.event_smoothing,
     smoothing_strength: (project.smoothing_strength ?? "normal") as
@@ -70,6 +82,7 @@ function valuesFromProject(project: ProjectResponse): AnalysisSettingsValues {
       | "aggressive",
     taxonomic_rollup: project.taxonomic_rollup,
     independence_interval: project.independence_interval,
+    counting_threshold: project.counting_threshold,
   };
 }
 
@@ -86,7 +99,7 @@ export function AnalysisSettingsButton({
 }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [values, setValues] = useState<AnalysisSettingsValues>(() =>
+  const [values, setValues] = useState<FolderRunSettingsValues>(() =>
     valuesFromProject(project),
   );
   // isApplying covers the PATCH + job kick-off roundtrip before a job
@@ -105,10 +118,17 @@ export function AnalysisSettingsButton({
     FOLDER_RUN_METRICS,
   );
 
-  const dirty = hasReprocessChanges(
+  // The threshold is deliberately not a REPROCESS_TRIGGER_FIELD: it needs
+  // no reprocess job, because the backend recalculates the materialised
+  // MaxN and observation_type on the PATCH itself. It still has to enable
+  // Apply, so it is checked separately here rather than added to that list.
+  const thresholdChanged =
+    values.counting_threshold !== project.counting_threshold;
+  const reprocessNeeded = hasReprocessChanges(
     valuesFromProject(project) as unknown as Record<string, unknown>,
     values as unknown as Record<string, unknown>,
   );
+  const dirty = thresholdChanged || reprocessNeeded;
 
   // Invalidate queries and re-sort the grid onto the reprocessed labels.
   // The caller shows the toast (summary or plain), so this stays quiet.
@@ -133,11 +153,13 @@ export function AnalysisSettingsButton({
         toast.success("Changes applied");
         return;
       }
-      // Threshold is unchanged (this slideout has no threshold control).
-      // The reprocess has already rewritten the materialized observations
-      // that the after-stats read from.
+      // Read the after-stats at the threshold that was just applied, not
+      // the one the project carried when the slideout opened: when the
+      // user moved the slider those are different, and the whole point of
+      // the summary is to show what the new value did. The reprocess has
+      // already rewritten the materialized observations it reads from.
       try {
-        const after = await fetchStats(runId, project.counting_threshold);
+        const after = await fetchStats(runId, values.counting_threshold);
         showSummary(buildSaveResults(before, after));
       } catch {
         toast.success("Changes applied");
@@ -174,18 +196,46 @@ export function AnalysisSettingsButton({
         runId, project.counting_threshold,
       );
       await projectsApi.update(runId, values);
-      // Sticky settings: the next run's analysis seeds from these.
-      saveLastUsedSettings(values);
-      const newJobId = await startReprocessIfNeeded(runId);
+      // Sticky settings: the next run's analysis seeds from these. The
+      // threshold is left out on purpose. The Setup step deliberately
+      // does not send counting_threshold on create (it takes the server
+      // default), so a stored value would never be read back and would
+      // sit in localStorage pretending to be a preference. This run keeps
+      // its own value on its project row, which is what resuming reads.
+      saveLastUsedSettings({
+        event_smoothing: values.event_smoothing,
+        smoothing_strength: values.smoothing_strength,
+        taxonomic_rollup: values.taxonomic_rollup,
+        independence_interval: values.independence_interval,
+      });
+      // Only the reprocess-triggering settings need the job. A
+      // threshold-only change is already applied by the PATCH above (the
+      // backend recalculates the materialised MaxN and observation_type),
+      // so starting a reprocess for it would re-read every results.json
+      // for nothing. Same rule the project Settings page applies.
+      const newJobId = reprocessNeeded
+        ? await startReprocessIfNeeded(runId)
+        : null;
       if (newJobId) {
         setJobId(newJobId);
         return; // modal takes over; summary shown in onComplete
       }
-      // No classifications to reprocess: the DB is unchanged, so there is
-      // nothing to diff.
+      // No job ran. The numbers can still have moved, because a threshold
+      // change lands in the PATCH itself, so diff here rather than
+      // claiming nothing happened.
+      const before = pendingBeforeStats.current;
       pendingBeforeStats.current = null;
       setIsApplying(false);
       finish();
+      try {
+        const after = await fetchStats(runId, values.counting_threshold);
+        if (before) {
+          showSummary(buildSaveResults(before, after));
+          return;
+        }
+      } catch {
+        // Fall through to the plain toast.
+      }
       toast.success("Changes applied");
     } catch (err) {
       pendingBeforeStats.current = null;
@@ -244,6 +294,30 @@ export function AnalysisSettingsButton({
               }
               showClassifierFields={hasClassifier}
             />
+            <div className="grid grid-cols-2 items-center gap-8 py-6">
+              <div className="space-y-1">
+                <span className="block text-sm font-medium">
+                  Detection confidence threshold
+                </span>
+                <p className="text-sm text-muted-foreground">
+                  {SETTING_CAPTIONS.detectionThreshold} Applies to the grid,
+                  the counts and the spreadsheet you save.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <ConfidenceSlider
+                  value={values.counting_threshold}
+                  onChange={(vals) =>
+                    setValues((v) => ({ ...v, counting_threshold: vals[0] }))
+                  }
+                  valueLabel={
+                    <span className="min-w-[3rem] shrink-0 text-right text-sm font-medium">
+                      {formatConfidencePct(values.counting_threshold)}
+                    </span>
+                  }
+                />
+              </div>
+            </div>
           </div>
           <div className="mt-4 flex justify-end">
             <Button

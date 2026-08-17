@@ -707,15 +707,14 @@ def test_files_export_follows_the_verified_box(client, db):
     assert _species(headers, by_id[f.id]) == ["red fox", "Vulpes vulpes", "Red fox"]
 
 
-def test_files_export_reads_every_frame_of_a_video(client, db):
-    """Data exports are the complete record of a run, so the best-frame rule
-    that governs the media outputs does not apply here (see
-    ml/detection_visibility.py). A file-grain row is the other case: one row
-    stands for one video, so it describes the one frame that stands for that
-    video. Here the strongest box overall is a deer on frame 7, which was
-    never written to disk; the frame the user can open holds a person. The
-    row reports the person, and the deer is still in the detections table
-    under the same file_id."""
+def test_video_exports_describe_only_the_visible_frame(client, db):
+    """One row stands for one video, so it describes the one frame that
+    stands for that video. Here the strongest box overall is a deer on
+    frame 7, which was never written to disk; the frame the user can open
+    holds a person. The row reports the person, and the deer is absent
+    from the detections table too, because a box on a frame nobody can
+    open cannot be seen, filtered to or relabelled. It survives in
+    addaxai-recognitions.json, which is the complete record."""
     project, _site, deployment = _build_simple_project(db)
     f = make_file(
         db,
@@ -753,16 +752,24 @@ def test_files_export_reads_every_frame_of_a_video(client, db):
     # box overall. Empty label score: a person carries no species.
     assert _confidences(headers, by_id[f.id]) == ["0.6", ""]
 
-    # The off-frame deer is not lost: the per-box grain still carries it.
+    # The per-box grain agrees: the off-frame deer is not offered as a
+    # species the user could go and correct, because there is no picture
+    # of it anywhere in the app. Only the person on the saved frame is.
     resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
     det_rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     det_headers = det_rows[0]
+    frames = {
+        r[det_headers.index("frame_number")]
+        for r in det_rows[1:]
+        if r[det_headers.index("file_id")] == f.id
+    }
+    assert frames == {"3"}
     labels = {
         r[det_headers.index("classification_label")]
         for r in det_rows[1:]
         if r[det_headers.index("file_id")] == f.id
     }
-    assert "deer" in labels
+    assert "deer" not in labels
 
 
 def test_files_export_video_with_empty_best_frame_reads_blank(client, db):
@@ -1746,3 +1753,33 @@ def test_camtrap_observation_type_translates_raw_categories():
         "animal", "person", "vehicle", "blank", "shark", "fish", "",
     ):
         assert _obs_type_from_category(category) in CAMTRAP_OBSERVATION_TYPES
+
+
+def test_spatial_detection_count_ignores_off_best_frame_boxes(client, db):
+    """A map bubble must count what the Labels grid holds. Only one frame
+    per video is written to disk, so boxes on the other frames have no
+    picture to open; counting them made the deployments layer report 220
+    where detections.csv listed 32."""
+    project, _site, deployment = _build_simple_project(db)
+    video = make_file(
+        db,
+        deployment_id=deployment.id,
+        file_type="video",
+        file_format="mp4",
+        best_frame_number=3,
+    )
+    for frame in (3, 7, 11):
+        make_detection(
+            db, file_id=video.id, category="animal", confidence=0.9,
+            label="fox", frame_number=frame,
+        )
+    db.commit()
+
+    resp = client.get(f"/api/projects/{project.id}/export/spatial?format=geojson")
+    assert resp.status_code == 200
+    payload = json.loads(resp.content)
+    dep_feature = next(
+        feat for feat in payload["features"]
+        if feat["properties"]["layer"] == "deployments"
+    )
+    assert dep_feature["properties"]["detection_count"] == 1

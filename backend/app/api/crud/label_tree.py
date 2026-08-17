@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
 from app.ml.detection_visibility import on_visible_frame
+from app.ml.taxonomic_rank import NO_TAXONOMY
 from app.ml.taxonomic_rollup import format_leaf_annotation
 from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
@@ -155,27 +156,29 @@ def build_label_filter_tree(
                 label_event_counts.get(name, 0) + count
             )
 
-    detected_labels = set(label_event_counts.keys())
-    taxonomy_rows = taxonomy_rows_raw
-
-    # Rows with no taxonomy fields go to "Other" instead of root
+    # Rows with no taxonomy fields go under "No taxonomy" instead of root.
+    #
+    # Both lists hold taxonomy *rows*, never names. Two rows can share a
+    # name (the builtin "animal" that stands for an unclassified detector
+    # box, and a model's kingdom-level rollup row also called "animal"),
+    # and grouping by name collapsed them into one leaf whose count was
+    # the sum of both but whose id was whichever row the dict happened to
+    # write last. Selecting that leaf then filtered on one of the two ids
+    # while the count promised both. One leaf per row, keyed by id, is the
+    # only shape that cannot drift from the counts it was built from.
     has_taxonomy = []
-    no_taxonomy_names: set[str] = set()
-    for row in taxonomy_rows:
+    unranked_rows = []
+    for row in taxonomy_rows_raw:
         if any([
             row.taxon_class, row.taxon_order,
             row.taxon_family, row.taxon_genus,
         ]):
             has_taxonomy.append(row)
         else:
-            no_taxonomy_names.add(row.name)
+            unranked_rows.append(row)
     taxonomy_rows = has_taxonomy
 
-    # Build sets for matched vs unmatched labels
-    matched_labels = {row.name for row in taxonomy_rows}
-    unmatched_labels = (detected_labels - matched_labels) | no_taxonomy_names
-
-    if not taxonomy_rows and not unmatched_labels:
+    if not taxonomy_rows and not unranked_rows:
         return None
 
     # Build hierarchical tree
@@ -217,8 +220,10 @@ def build_label_filter_tree(
             if row.level == level_name:
                 break
 
-        # Add leaf node
-        count = label_event_counts.get(row.name, 0)
+        # Add leaf node. Counted by taxonomy id, which is what the leaf
+        # is and what the count query grouped on; going via the name
+        # sums rows that share one (see the unranked note above).
+        count = taxonomy_id_counts.get(row.id, 0)
 
         # One rule for every rank, shared with the model taxonomy tree in
         # ml.taxonomy_parser: the leaf is named for the taxon and annotated
@@ -241,20 +246,24 @@ def build_label_filter_tree(
         if leaf_id not in current:
             current[leaf_id] = leaf_node
 
-    # Add unmatched labels to "other" group
-    if unmatched_labels:
+    # Add the rank-less rows to the "No taxonomy" group. One leaf per row,
+    # named the same way the ranked leaves are, so two rows sharing a name
+    # stay tellable apart ("Animal" for the detector's own category,
+    # "Animalia" for a kingdom-level rollup).
+    #
+    # The node id stays "other": only leaf ids reach `all_leaf_ids` and the
+    # filter, so this one is never user-visible, and changing it would
+    # break saved filter URLs for no gain.
+    if unranked_rows:
         other_children: dict = {}
-        # Resolve unmatched names to taxonomy IDs for leaf IDs.
-        # Include all taxonomy rows (with and without taxonomy fields).
-        name_to_tid: dict[str, str] = {
-            r.name: r.id for r in taxonomy_rows_raw
-        }
-        for label_name in sorted(unmatched_labels):
-            count = label_event_counts.get(label_name, 0)
-            leaf_id = name_to_tid.get(label_name, label_name)
-            other_children[leaf_id] = {
-                "id": leaf_id,
-                "name": label_name.replace("_", " ").capitalize(),
+        for row in unranked_rows:
+            count = taxonomy_id_counts.get(row.id, 0)
+            display = (
+                row.scientific_name or row.name.replace("_", " ").capitalize()
+            )
+            other_children[row.id] = {
+                "id": row.id,
+                "name": display,
                 "count": count,
                 "children": {},
                 "is_leaf": True,
@@ -262,7 +271,7 @@ def build_label_filter_tree(
             }
         root[other_key] = {
             "id": "other",
-            "name": "Other",
+            "name": NO_TAXONOMY,
             "children": other_children,
             "is_leaf": False,
         }

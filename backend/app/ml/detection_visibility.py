@@ -28,15 +28,23 @@ written to disk as its best-frame JPEG, so deciding its folder, or
 whether to drop it, from a detection on some other frame files a picture
 under a label that picture does not show.
 
-**In the data exports the rule follows the grain, not the file format.**
-`addaxai-detections.csv`, the XLSX detections sheet and the recognition
-JSON are per *box*: they carry every detection on every frame by design,
-because they are the complete record of the run and the user filters them
-downstream in their own tools. The per *file* row of `addaxai-files.csv`
-is the other grain: one row standing for one video, so it describes the
-one frame that stands for that video, which is what keeps its
-`observation_type` and species columns describing a box the user can
-actually open.
+**The spreadsheet exports apply it; the archival ones do not.**
+`addaxai-detections.csv` and the XLSX detections sheet used to carry
+every box on every frame, on the argument that they are the complete
+record and the user filters them downstream. In practice the file gave
+them nothing to filter *on*: it carries `frame_number` but not the
+video's best frame, so the comparison cannot be made from the file at
+all. What users saw was a species list holding animals they could not
+find, select or relabel anywhere in the app. So these tables now hold
+what the Labels grid holds, in both projects mode and folder runs, which
+also makes them agree with `addaxai-files.csv` and `counts.csv` beside
+them.
+
+The complete record is `addaxai-recognitions.json`, which keeps every
+stored detection with its frame number, and the CamTrap DP export, whose
+per-box rows must not drop a video whose best frame happens to be empty.
+Both are read by other software rather than by a person, which is why
+they keep the boxes with no picture.
 
 **Two lanes, one rule.** Have a query? Use a predicate. Have the
 detections already in memory? Use `visible_detections`. A parity test

@@ -499,3 +499,95 @@ def test_re_embed_accepts_min_confidence_override(client, db):
     job_id = resp.json()["job_id"]
     job = db.get(Job, job_id)
     assert job.payload["min_confidence"] == 0.02
+
+
+# ---------------------------------------------------------------------------
+# Counts are gated to what the user can reach
+# ---------------------------------------------------------------------------
+
+
+def _video_with_off_frame_boxes(db):
+    """A project holding one video whose best frame is 3, with one box on
+    that frame and two on frames nobody can open."""
+    from tests.conftest import make_deployment, make_detection, make_file, make_site
+
+    p = make_project(db)
+    site = make_site(db, project_id=p.id)
+    dep = make_deployment(db, site_id=site.id, project_id=p.id)
+    f = make_file(
+        db,
+        deployment_id=dep.id,
+        file_type="video",
+        file_format="mp4",
+        best_frame_number=3,
+    )
+    for frame in (3, 7, 11):
+        make_detection(
+            db, file_id=f.id, confidence=0.9, label="deer", frame_number=frame,
+        )
+    db.flush()
+    return p
+
+
+def test_detection_count_ignores_off_best_frame_boxes(client, db):
+    """A video stores boxes on every sampled frame, but only the best frame
+    is written to disk, so the other boxes have no picture to open. Counting
+    them made this endpoint report 220 where the Labels grid held 32, and the
+    reprocess summary built on it promised changes to unreachable boxes."""
+    p = _video_with_off_frame_boxes(db)
+    resp = client.get(f"/api/projects/{p.id}/detection-count?threshold=0.2")
+    assert resp.status_code == 200
+    assert resp.json()["count"] == 1
+
+
+def test_label_stats_ignores_off_best_frame_boxes(client, db):
+    """Same gate, because these counts drive the "Effect on statistics"
+    summary shown after a settings change."""
+    p = _video_with_off_frame_boxes(db)
+    resp = client.get(f"/api/projects/{p.id}/label-stats?threshold=0.2")
+    assert resp.status_code == 200
+    assert resp.json() == [{"label": "deer", "count": 1}]
+
+
+def test_verified_off_frame_box_still_counts(client, db):
+    """The verified override outranks the frame gate: a human decision must
+    never drop out of the numbers, even on a frame with no picture."""
+    from app.models import Detection
+
+    p = _video_with_off_frame_boxes(db)
+    off = (
+        db.query(Detection)
+        .filter(Detection.frame_number == 7)
+        .one()
+    )
+    off.verified = True
+    db.flush()
+
+    resp = client.get(f"/api/projects/{p.id}/detection-count?threshold=0.2")
+    assert resp.json()["count"] == 2
+
+
+def test_custom_label_reuses_the_builtin_row(client, db):
+    """"animal", "person" and "vehicle" already exist as builtin taxonomy
+    rows. Creating a custom label of the same name used to add a second,
+    rank-less row displaying the identical name, which the label filter then
+    showed as two entries nobody could tell apart."""
+    from app.ml.taxonomy_db import BUILTIN_MODEL_ID, ensure_builtin_labels
+    from app.models.label_taxonomy import LabelTaxonomy
+
+    builtin = ensure_builtin_labels(db)
+    p = make_project(db)
+
+    resp = client.post(
+        f"/api/projects/{p.id}/custom-labels", json={"name": "vehicle"}
+    )
+    assert resp.status_code in (200, 201)
+    assert resp.json()["id"] == builtin["vehicle"]
+
+    rows = (
+        db.query(LabelTaxonomy)
+        .filter(LabelTaxonomy.name == "vehicle")
+        .all()
+    )
+    assert len(rows) == 1
+    assert rows[0].classification_model_id == BUILTIN_MODEL_ID

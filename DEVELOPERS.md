@@ -335,11 +335,13 @@ Note that `npm run build` only typechecks `src/`; Playwright transpiles the spec
 
 Three confidence values exist and must not be confused:
 
-1. **MD output** — MegaDetector always runs untresholded (`MD_OUTPUT_CONFIDENCE_THRESHOLD = 0.005`, MD's own internal default). Everything above it is stored: raw results.json, database, and the folder-run data exports (which bypass all thresholds by design).
+1. **MD output**: MegaDetector always runs untresholded (`MD_OUTPUT_CONFIDENCE_THRESHOLD = 0.005`, MD's own internal default). Everything above it is stored: raw results.json, the database, and `addaxai-recognitions.json`, which is the one export that still carries every stored box on every frame.
 
-All confidence defaults live in `backend/app/core/confidence.py`, mirrored by `frontend/src/lib/confidence.ts` — change them there, never as literals at call sites.
-2. **`Project.classification_gate`** (default 0.1) — detection confidence above which animal crops are classified and embedded. Inference-time; changing it applies to new analyses. Gating both per-crop model passes is what keeps the untresholded MD output from multiplying compute.
-3. **`Project.counting_threshold`** (default 0.2) — the counting/visualization filter described below. Folder runs pin it to the classification gate.
+All confidence defaults live in `backend/app/core/confidence.py`, mirrored by `frontend/src/lib/confidence.ts`. Change them there, never as literals at call sites.
+2. **`Project.classification_gate`** (default 0.1): detection confidence above which animal crops are classified and embedded. Inference-time; changing it applies to new analyses. Gating both per-crop model passes is what keeps the untresholded MD output from multiplying compute.
+3. **`Project.counting_threshold`** (default 0.2): the counting/visualization filter described below. A folder run gets the same default and the same meaning; it is not pinned to the classification gate (that pinning was removed, see the comment in `routers/folder_runs.py`).
+
+**One scope for every table, in both modes.** `get_scoped_detection_rows` always applies the threshold plus the verified override, and `build_detection_rows` additionally drops boxes off a video's visible frame. So `addaxai-detections.csv`, the XLSX detections sheet, `addaxai-files.csv` and `counts.csv` all describe the same population, and that population is what the Labels grid shows. There used to be an `apply_threshold=False` escape hatch that the two folder-run table writers passed; it produced a workbook whose own sheets disagreed, and users read the surplus rows as species the app was hiding from them. Deleted. The complete record is `addaxai-recognitions.json`.
 
 Detections below `counting_threshold` are hidden from the UI. However, verified detections always pass, regardless of confidence. A human verification is a stronger signal than a model score.
 

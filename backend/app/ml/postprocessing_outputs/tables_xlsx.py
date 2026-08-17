@@ -57,16 +57,15 @@ def write_tables_xlsx(
 
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    # Complete record: folder-run data exports are never filtered by the
-    # detection threshold (matches tables_csv and the recognition JSON).
-    # Built before the files table and released right after, so this row
-    # set and build_files_rows' own (thresholded — the two are not
-    # interchangeable, see build_files_rows) never sit in memory
-    # together: on a large run each is the biggest allocation in the
-    # whole save job.
-    scoped = export_crud.get_scoped_detection_rows(
-        db, project, apply_threshold=False
-    )
+    # One scope for both sheets and for both modes: the threshold plus the
+    # verified override, and only boxes on a video's visible frame, so the
+    # workbook holds what the Labels step showed (matches tables_csv).
+    # ``addaxai-recognitions.json`` stays the complete record of the run.
+    #
+    # Built before the files sheet and released right after, so this row
+    # set and build_files_rows' own never sit in memory together: on a
+    # large run each is the biggest allocation in the whole save job.
+    scoped = export_crud.get_scoped_detection_rows(db, project)
     det_headers, det_rows = folder_run_table(
         *export_crud.build_detection_rows(db, project, scoped)
     )

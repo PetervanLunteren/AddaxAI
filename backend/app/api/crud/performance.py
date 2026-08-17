@@ -21,6 +21,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.api.schemas.performance import ClassMetrics, PerformanceResponse
+from app.ml.detection_visibility import on_visible_frame
 from app.ml.taxonomic_rank import (
     HIGHER_LEVEL_TAXA,
     MOST_SPECIFIC,
@@ -274,6 +275,12 @@ def get_classification_performance(
     # cannot be verified by the user because they never surface in the
     # UI, so counting them as "unverified" is misleading.
     # See DEVELOPERS.md section "Detection threshold and verified override".
+    #
+    # A video's off-best-frame boxes are that same case and need the same
+    # gate: only one frame per video is written to disk, so a box on any
+    # other frame has no picture to open and can never be verified. The
+    # footer used to read "1 verified detection of 220 ... 218 not yet
+    # verified" over a grid holding 32.
     q = (
         db.query(Detection)
         .join(File, File.id == Detection.file_id)
@@ -285,6 +292,7 @@ def get_classification_performance(
                 Detection.verified == True,  # noqa: E712
             )
         )
+        .filter(on_visible_frame())
     )
     if site_ids:
         q = q.filter(Deployment.site_id.in_(site_ids))

@@ -16,6 +16,16 @@ AddaxAI exports four tables. Which one you want depends on the question you are 
 | Files | one photo or video | one label per file, file lists, finding blanks | Both |
 | Deployments | one camera period | effort, trap nights, locations | Projects |
 
+## What the tables contain
+
+All four tables hold the same set of detections, and it is the same set the app shows you. Two rules decide it, and they work the same way in a project and in a folder run.
+
+Anything below your [counting threshold](../understanding/confidence-and-verification.md) is left out, unless you checked it yourself. A detection you verified always stays in, whatever it scored, because your decision outranks the score.
+
+For videos, only the frame AddaxAI saved is included. A video is analysed frame by frame, but only one frame is kept as a picture, so a box on any other frame has no image you could ever look at. Those boxes are left out of the tables rather than listed as animals you cannot find.
+
+If you do want every box on every frame, use the recognition file described at the end of this page. That one is complete on purpose.
+
 ## Counts
 
 One row per species per event, with the count. Each row is one [observation](../understanding/detections-events-observations.mdx), so an animal is counted once per event instead of once per photo. This is the analysis-ready table.

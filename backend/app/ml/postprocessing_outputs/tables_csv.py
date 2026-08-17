@@ -70,14 +70,15 @@ def write_tables_csv(
 
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    # Complete record: folder-run data exports are never filtered by the
-    # detection threshold. Thresholding is an in-app / media-output
-    # concern only (beta feedback from Dan). Built first and released
-    # before the files table below loads its own row set, so the two
-    # biggest allocations of the save job never coexist.
-    scoped = export_crud.get_scoped_detection_rows(
-        db, project, apply_threshold=False
-    )
+    # One scope for both tables and for both modes: the threshold plus
+    # the verified override, and only boxes on a video's visible frame.
+    # So these tables hold what the Labels step showed, which is what the
+    # user could actually check and correct. ``addaxai-recognitions.json``
+    # stays the complete record of the run.
+    #
+    # Fetched and released before the files table below loads its own row
+    # set, so the two biggest allocations of the save job never coexist.
+    scoped = export_crud.get_scoped_detection_rows(db, project)
     det_headers, det_rows = folder_run_table(
         *export_crud.build_detection_rows(db, project, scoped)
     )
@@ -88,14 +89,10 @@ def write_tables_csv(
     detection_count = len(det_rows)
     del det_rows
 
-    # The files table is deliberately NOT unthresholded the way the
-    # detections table above is. Its observation_type and species columns
-    # both describe the file's strongest *passing* detection, so dropping
-    # the threshold here would make a file read as an animal that the app
-    # itself calls blank. The visible effect is that a file whose every box
-    # sits below the threshold has empty species columns while
-    # addaxai-detections.csv still lists those boxes. That is the two grains
-    # answering two different questions, not a bug to fix.
+    # Same scope as the detections table above, so the two agree: a file
+    # whose species columns are empty has no rows in addaxai-detections.csv
+    # either. Its own fetch, because the detections row set was released
+    # above to keep peak memory down.
     files_headers, files_rows = folder_run_table(
         *export_crud.build_files_rows(db, project)
     )

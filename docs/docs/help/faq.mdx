@@ -132,6 +132,18 @@ AddaxAI never invents a date by itself, but you can supply one, either in the fi
 
 </FaqItem>
 
+<FaqItem id="what-is-the-difference-between-animal-and-animalia" q="What is the difference between Animal and Animalia?">
+
+Both mean "an animal we could not name", but they come from different steps, so they are counted separately.
+
+"Animal" means the species model never put a name on the box. That happens when your project runs without a species model, or when the box scored too low for the species model to look at it at all.
+
+"Animalia" means the species model did look, and was sure enough that something living was there, but not sure enough at any level from species up to class. So the label rolled all the way up to the kingdom. See [how labels get cleaned up](../understanding/label-cleanup.md).
+
+You only see the two names apart when you display scientific names. With common names both read "Animal". In an export the `common_name` column reads "Animal" for both and the `scientific_name` column separates them, so pick the column that matches how you want to group. If you just want one bucket of unidentified animals, add them up. If you can tell the species yourself, relabel them on the Labels page.
+
+</FaqItem>
+
 <FaqItem id="what-does-each-column-in-the-csv-mean" q="What does each column in the CSV mean?">
 
 Every column of every table is described in [exports](../reference/exports.md).

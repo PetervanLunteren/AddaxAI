@@ -30,7 +30,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Row, and_, func, or_, select, true
+from sqlalchemy import Row, and_, func, or_, select
 from sqlalchemy.orm import Session, defer
 
 from app.api.crud.export_formats import slugify
@@ -271,7 +271,6 @@ def get_scoped_detection_rows(
     *,
     extra_excluded: list[str] | None = None,
     deployment_ids: list[str] | None = None,
-    apply_threshold: bool = True,
 ) -> list[Row[Any]]:
     """
     Return every (File, Detection, Deployment, Site, LabelTaxonomy) row
@@ -286,20 +285,22 @@ def get_scoped_detection_rows(
     page applies to exports without mutating the project's persistent
     exclusion list.
 
-    ``apply_threshold=False`` drops the detection-threshold filter so
-    every stored detection is in scope. The folder-run save step uses
-    this: its data exports are the complete record of the run
-    (detections are only thresholded in-app and in media outputs).
-    Projects-mode export endpoints keep the default threshold +
-    verified-override rule (DEVELOPERS.md).
+    **One scope, both modes.** The threshold + verified-override rule
+    (DEVELOPERS.md) always applies. There used to be an
+    ``apply_threshold=False`` escape hatch that the folder-run table
+    writers passed, on the argument that their data exports are the
+    complete record of the run. It produced a spreadsheet whose sheets
+    disagreed with each other and with the app: ``addaxai-files.csv``
+    was thresholded while ``addaxai-detections.csv`` beside it was not,
+    and both sat next to a Labels step that shows neither the
+    sub-threshold boxes nor the off-best-frame ones. Users read that as
+    the export inventing species they could not find or fix. The
+    complete record is ``addaxai-recognitions.json``, which still
+    carries every stored detection on every frame.
     """
-    threshold_clause = (
-        or_(
-            Detection.confidence >= project.counting_threshold,
-            Detection.verified.is_(True),
-        )
-        if apply_threshold
-        else true()
+    threshold_clause = or_(
+        Detection.confidence >= project.counting_threshold,
+        Detection.verified.is_(True),
     )
 
     # Outer join on Site so deployments without an assigned site still
@@ -536,6 +537,16 @@ def build_detection_rows(
 
     `event_id` is blank when the file has no event, so every non-empty
     value resolves in the events table. See the note on `_FILES_HEADERS`.
+
+    **Only boxes the user can reach.** A video stores detections on every
+    sampled frame, but the app writes and shows exactly one frame per
+    video, so a box on any other frame has no picture anywhere: it cannot
+    be seen in the Labels grid, filtered to, or relabelled. Emitting them
+    here handed users a species list they could not act on, which is what
+    ``visible_detections`` exists to prevent everywhere else. The per-frame
+    boxes are not lost: ``addaxai-recognitions.json`` carries all of them,
+    with their frame numbers, which is the file built to be the complete
+    record. Verified boxes pass on any frame, per the usual exception.
     """
     grouped = list(_group_rows_by_file(scoped_rows))
     event_map = _events_by_file(db, [f.id for f, _d, _s, _dets in grouped])
@@ -545,7 +556,15 @@ def build_detection_rows(
         deployment_id = deployment.id if deployment is not None else ""
         event = event_map.get(file_obj.id)
         event_id = event.id if event else ""
+        shown = {
+            d.id
+            for d in visible_detections(
+                file_obj, [det for det, _tax in detections]
+            )
+        }
         for detection, taxonomy in detections:
+            if detection.id not in shown:
+                continue
             rows.append(
                 [detection.id, file_obj.id, deployment_id, event_id]
                 + _detection_cells(detection, taxonomy)
@@ -810,15 +829,11 @@ def build_files_rows(
     including files with no detections (the effort table). `event_id`
     answers "which files are in this event".
 
-    ``scoped_rows`` lets a caller that already fetched the default
-    (thresholded) scoped rows for the same ``deployment_ids`` reuse them
-    instead of paying the query twice. Only rows from that identical
-    query are valid here: rows fetched with ``apply_threshold=False``
-    are NOT equivalent — the excluded-classes clause deletes whole rows,
-    so a file whose only detections are excluded animals below the
-    threshold exists in the thresholded set (as a blank row) but is
-    missing from the unthresholded one. The folder-run table writers
-    therefore keep the internal fetch."""
+    ``scoped_rows`` lets a caller that already fetched the scoped rows for
+    the same ``deployment_ids`` reuse them instead of paying the query
+    twice. There is only one scope now, so any rows from
+    ``get_scoped_detection_rows`` for the same deployments are valid
+    here."""
     tz_name = project.timezone
 
     if scoped_rows is None:
@@ -875,14 +890,15 @@ def _strongest_species_cells(
     frame. That is the same rule ``observation_type`` beside it now uses,
     which is what keeps the whole block describing one box, and a box the
     user can actually open. The gate runs in Python rather than in
-    ``get_scoped_detection_rows`` because that query is shared with the
-    Detections export, which is per box and keeps every frame by design.
+    ``get_scoped_detection_rows`` because that query is also shared with
+    the CamTrap DP builder, which keeps every frame by design (an
+    archival export must not lose a video whose best frame is empty).
 
     The threshold is passed explicitly even though ``get_scoped_detection_rows``
     already applied the same predicate in SQL. Re-applying it costs one pass
     over a handful of already-loaded objects and keeps these columns tied to
     the same threshold ``observation_type`` uses, so a later change to that
-    query's ``apply_threshold`` cannot silently desynchronise the two.
+    query cannot silently desynchronise the two.
 
     Names come off the detection, not off the joined ``LabelTaxonomy``. That is
     the convention ``_detection_cells`` uses, so a Files row and its
@@ -1059,7 +1075,12 @@ def build_spatial_layers(
         file_obj, detection, deployment, site, _taxonomy = row
         deployments_seen[deployment.id] = deployment
         site_by_deployment[deployment.id] = site
-        if detection is not None:
+        # Count only what the user can reach, so a map bubble agrees with
+        # the Labels grid and detections.csv. The shared query keeps every
+        # frame for the CamTrap builder, so the gate belongs here rather
+        # than in the SQL. One box at a time is the honest reuse of the
+        # list helper: it cannot drift from the rule the rest applies.
+        if detection is not None and visible_detections(file_obj, [detection]):
             det_count_by_dep[deployment.id] += 1
 
     # Include project deployments that had no in-scope files (so the
