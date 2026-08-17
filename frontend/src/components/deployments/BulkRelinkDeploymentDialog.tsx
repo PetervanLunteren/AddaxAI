@@ -374,8 +374,16 @@ function ResultPanel({ results, deploymentsById, siteNames }: ResultPanelProps) 
               })}
             </div>
           </ScrollArea>
+          {/* The second sentence is the one people need. Reconnecting
+              matches each photo by its path *relative to* the deployment
+              folder, so a folder that moved is fine and a folder whose
+              insides were rearranged can never match. Without saying so,
+              the reasons above just read as "wrong folder" and the user
+              keeps trying folders that cannot work. */}
           <p className="text-xs text-destructive/90">
-            Try choosing a different folder.
+            Try choosing a different folder. If photos have been moved
+            around inside the folder, reconnecting cannot work, and it is
+            easier to add the folder again as a new deployment.
           </p>
         </div>
       )}

@@ -46,6 +46,8 @@ The app copies the database into `backups/` by itself, and you can make one at a
 
 If you move, rename or unplug a folder of photos, the app can no longer find those files. It checks every folder at start and tells you how many are missing. Open the Deployments page and you get a message for each missing folder, with a guess at where it went. One click reconnects every deployment in that folder at once. If there is no guess, or the guess is wrong, pick the folder yourself. AddaxAI compares the files before it accepts a folder, so you cannot point a deployment at the wrong photos by mistake.
 
+The folder itself can move, but what is inside it has to stay the same. AddaxAI looks for each photo at its old place inside the folder, so renaming subfolders or shuffling photos between them means it can no longer match them up. If that has happened, delete the deployment and add the folder again.
+
 <img src="/img/reconnect-folders.webp" alt="Two messages about missing folders. The first suggests a renamed folder and asks you to confirm, the second offers a button to choose the folder yourself" style={{maxWidth: '620px', width: '100%', display: 'block'}} />
 
 ## Moving to another computer
