@@ -1041,6 +1041,39 @@
           }
         ]
       ]
+    },
+    "SAC-DMO-v1": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "bird",
+          "confidence": 0.8250916004180908
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird",
+            "confidence": 0.8250916004180908
+          },
+          {
+            "label": "other_invert",
+            "confidence": 0.020816843956708908
+          },
+          {
+            "label": "mammal_other",
+            "confidence": 0.014812245965003967
+          },
+          {
+            "label": "pocket_gopher",
+            "confidence": 0.013129600323736668
+          },
+          {
+            "label": "opossum",
+            "confidence": 0.012852041982114315
+          }
+        ]
+      ]
     }
   }
 }
