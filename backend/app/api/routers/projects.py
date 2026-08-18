@@ -7,7 +7,6 @@ Following DEVELOPERS.md principles:
 - Crash on unexpected errors (let FastAPI handle them)
 """
 
-import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -20,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.crud import project as crud_project
+from app.api.crud.deployment import _delete_deployment_artifacts
 from app.api.schemas.project import (
     CustomLabelCreate,
     CustomLabelResponse,
@@ -531,15 +531,19 @@ def delete_project(project_id: str, db: Session = Depends(get_db)) -> None:
     Cascades deletion to all sites, deployments, files, etc.
     Also cleans up project-scoped artifacts from deployment folders.
     """
-    # Collect deployment folder paths before cascade deletes them
-    deployments = (
-        db.query(Deployment)
-        .filter(Deployment.project_id == project_id)
-        .all()
-    )
+    # Collect deployment folder paths before cascade deletes them.
+    # Only the column, never the entity: loading the rows would put every
+    # deployment in the session, and `db.delete(project)` then cascades to
+    # them in Python, one DELETE each, instead of leaving it to SQLite.
     # folder_path is nullable (a deployment can exist before its folder is
     # linked), and Path(None) raises. Same guard as crud/deployment.py.
-    folder_paths = [Path(d.folder_path) for d in deployments if d.folder_path]
+    folder_paths = [
+        Path(path)
+        for (path,) in db.query(Deployment.folder_path)
+        .filter(Deployment.project_id == project_id)
+        .all()
+        if path
+    ]
 
     # Delete project from DB (cascades to sites, deployments, files, detections)
     deleted = crud_project.delete_project(db, project_id)
@@ -572,22 +576,30 @@ def delete_project(project_id: str, db: Session = Depends(get_db)) -> None:
         db.commit()
         logger.info(f"Deleted {job_count} jobs for project {project_id}")
 
-    # Clean up project artifacts from each deployment folder
+    # Clean up project artifacts from each deployment folder.
+    #
+    # Through the shared helper, which swallows OS errors, because the rows
+    # are already committed by now: a folder we cannot remove must not turn
+    # a delete that succeeded into a 500 that says it failed. This used to
+    # be an inline `shutil.rmtree`, and a `.addaxai` folder on a
+    # disconnected external drive (the normal place for camera trap files)
+    # returned "Internal Server Error" for a project that was already gone,
+    # and skipped the cleanup for every remaining deployment as well.
     for folder_path in folder_paths:
-        project_artifacts = folder_path / ".addaxai" / "projects" / project_id
-        if project_artifacts.exists():
-            shutil.rmtree(project_artifacts)
-            logger.info(f"Cleaned up artifacts: {project_artifacts}")
+        _delete_deployment_artifacts(str(folder_path), project_id)
 
-    # Clean up thumbnail files
+    # Clean up thumbnail files. Best-effort for the same reason.
     from app.core.config import get_settings
 
     settings = get_settings()
     for subdir in ("project-images", "thumbnails"):
         thumb = settings.user_data_dir / subdir / f"{project_id}.jpg"
-        if thumb.exists():
-            thumb.unlink()
-            logger.info(f"Deleted thumbnail: {thumb}")
+        try:
+            if thumb.exists():
+                thumb.unlink()
+                logger.info(f"Deleted thumbnail: {thumb}")
+        except OSError as e:
+            logger.warning(f"Could not delete thumbnail {thumb}: {e}")
 
     logger.info(f"Deleted project: {project_id} (cascaded to all related data)")
 

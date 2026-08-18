@@ -10,13 +10,11 @@ import asyncio
 import json as _json
 from pathlib import Path
 
-from sqlalchemy import text
-
 from app.api.crud import job as job_crud
 from app.api.crud import project as project_crud
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
-from app.db.base import get_db
+from app.db.base import get_db, refresh_query_statistics
 from app.ml.embedding_utils import build_embedding_input, save_embeddings_to_db
 from app.models import Deployment, Detection, File
 from app.models.detection_embedding import DetectionEmbedding
@@ -234,7 +232,7 @@ async def process_re_embedding_job(job_id: str) -> None:
         if total_errors:
             message += f" ({total_errors} errors)"
 
-        db.execute(text("ANALYZE"))
+        refresh_query_statistics(db)
         db.commit()
 
         job_crud.update_job_status(db, job_id, "completed")

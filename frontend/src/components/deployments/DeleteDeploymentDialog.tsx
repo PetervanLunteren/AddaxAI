@@ -59,6 +59,7 @@ export function DeleteDeploymentDialog({
       pendingLabel="Deleting..."
       onConfirm={() => deleteMutation.mutate()}
       isPending={deleteMutation.isPending}
+      error={deleteMutation.error?.message ?? null}
       variant="destructive"
     >
       <div className="text-sm">
@@ -72,7 +73,7 @@ export function DeleteDeploymentDialog({
         <p className="text-sm font-medium text-destructive mb-2">
           Warning - This will permanently delete
         </p>
-        <ul className="text-sm text-destructive/90 list-disc list-inside space-y-1">
+        <ul className="text-sm text-destructive/90 list-disc list-outside pl-5 space-y-1">
           <li>The deployment and all its metadata</li>
           <li>All file records, observations, and events</li>
           <li>All human verifications on those observations</li>

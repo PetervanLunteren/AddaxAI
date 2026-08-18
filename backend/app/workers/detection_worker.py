@@ -18,8 +18,6 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import text
-
 from app.api.crud import deployment as deployment_crud
 from app.api.crud import deployment_queue as queue_crud
 from app.api.crud import event as event_crud
@@ -28,7 +26,7 @@ from app.api.crud import project as project_crud
 from app.core.job_cancellation import JobCancelledError, clear_cancel
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
-from app.db.base import get_db
+from app.db.base import get_db, refresh_query_statistics
 from app.ml.detection import MD_OUTPUT_CONFIDENCE_THRESHOLD
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.inference.custom_classification_model import CustomClassificationModel
@@ -1142,7 +1140,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
         logger.info(f"Batch job {job_id}: Auto-generated {event_count} events")
 
         # Refresh SQLite query planner statistics after bulk inserts
-        db.execute(text("ANALYZE"))
+        refresh_query_statistics(db)
         db.commit()
 
         # Mark job as completed

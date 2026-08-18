@@ -145,6 +145,12 @@ export function RestoreBackupDialog({
       pendingLabel="Restoring…"
       onConfirm={() => restore.mutate()}
       isPending={restore.isPending}
+      error={
+        restore.isError
+          ? ((restore.error as Error)?.message ??
+            "Restore failed. The backup file may be corrupt.")
+          : null
+      }
       disabled={sourcePath === null}
       variant="destructive"
     >
@@ -253,13 +259,6 @@ export function RestoreBackupDialog({
         </button>
         {pickError && <p className="text-sm text-destructive">{pickError}</p>}
       </div>
-
-      {restore.isError && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-          {(restore.error as Error)?.message ??
-            "Restore failed. The backup file may be corrupt."}
-        </div>
-      )}
     </TypeToConfirmDialog>
   );
 }

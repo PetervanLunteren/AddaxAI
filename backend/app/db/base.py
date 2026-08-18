@@ -51,13 +51,21 @@ def set_sqlite_pragma(dbapi_conn: Any, connection_record: Any) -> None:
     NORMAL synchronous: Safe with WAL, faster than FULL
     64MB cache: Better performance for large queries
     seeded_hash UDF: deterministic shuffle for the verify-tab Random sort.
+
+    **No `PRAGMA optimize` here.** There was one, and it did nothing except
+    harm. It only analyses tables the connection has already queried, and
+    this runs before the connection has issued a single statement, so on
+    SQLite 3.45 it was a no-op every time. On 3.50 and later it does run,
+    and then it rewrites the one statistic `refresh_query_statistics` exists
+    to delete, undoing that fix on the very next connection. Statistics are
+    refreshed at startup and after every analysis, embedding and
+    postprocessing job, which covers every bulk change to the data.
     """
     cursor = dbapi_conn.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")  # CRITICAL: Enable FK constraints
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA synchronous=NORMAL")
     cursor.execute("PRAGMA cache_size=-64000")  # 64MB cache
-    cursor.execute("PRAGMA optimize")  # Auto-ANALYZE when planner stats are stale
     cursor.close()
     dbapi_conn.create_function("seeded_hash", 2, _seeded_hash, deterministic=True)
 
@@ -92,6 +100,50 @@ def get_session_factory() -> sessionmaker[Session]:
         autoflush=False,
         bind=engine,
         class_=Session,
+    )
+
+
+# The one index whose ANALYZE statistic has to be thrown away again.
+#
+# `files.source_video_id` is the only self-referencing foreign key in the
+# schema (frame rows point at the video they came from) and it declares
+# ON DELETE CASCADE, so SQLite consults `idx_files_source_video` once for
+# every `files` row it deletes.
+#
+# ANALYZE writes one row per index whether anything uses it or not. For
+# this one it writes "<n> <n>", because the column is NULL on every file
+# that is not a video frame, so a lookup "matches" the whole table. SQLite
+# 3.45, which the packaged build carries, reads that and stops using the
+# index: the per-row cascade lookup becomes a full scan of all 380k index
+# entries, once per deleted row. Deleting a project of 369,298 files went
+# from 4 seconds to an estimated 6.5 hours that way, and deleting a
+# deployment, deleting a folder run and re-running one all pay the same.
+#
+# Dropping the statistic costs nothing. No query searches by
+# `source_video_id`: the two places that read it either project it
+# (`crud/label_tree.py`) or join by `files.id` (`joinedload(File.source_video)`),
+# and EXPLAIN QUERY PLAN gives both the same plan with the row and without
+# it. A query that did search by it is *helped*: with the row present the
+# planner answers `SCAN files`, without it `SEARCH files USING INDEX
+# idx_files_source_video`.
+_UNUSABLE_STAT_INDEX = "idx_files_source_video"
+
+
+def refresh_query_statistics(conn: Any) -> None:
+    """
+    Re-run ANALYZE, then drop the one statistic that must not exist.
+
+    Accepts a `Connection` or a `Session`. The caller commits, because
+    every call site is already inside a transaction it owns.
+
+    Never call bare `ANALYZE` instead of this, and never add a
+    `PRAGMA optimize` anywhere: both write the row straight back. See
+    `_UNUSABLE_STAT_INDEX` above for what that costs.
+    """
+    conn.execute(text("ANALYZE"))
+    conn.execute(
+        text("DELETE FROM sqlite_stat1 WHERE idx = :idx"),
+        {"idx": _UNUSABLE_STAT_INDEX},
     )
 
 
@@ -170,7 +222,7 @@ def init_db() -> None:
 
         _seed_builtin_labels()
         with engine.connect() as conn:
-            conn.execute(text("ANALYZE"))
+            refresh_query_statistics(conn)
             conn.commit()
         logger.info("Database initialized")
     except SchemaError:

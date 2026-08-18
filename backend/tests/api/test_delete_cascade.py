@@ -16,6 +16,8 @@ import uuid
 
 import numpy as np
 from sqlalchemy import event as sa_event
+from sqlalchemy import select as sa_select
+from sqlalchemy import text as sa_text
 
 from app.models import (
     Deployment,
@@ -24,6 +26,7 @@ from app.models import (
     Event,
     EventObservation,
     File,
+    Project,
 )
 from app.models.event import event_files
 from tests.conftest import (
@@ -230,3 +233,114 @@ def test_deleting_a_deployment_costs_the_same_at_any_size(db):
         f"delete cost scales with size: {counts[0]} statements for 2 files "
         f"vs {counts[1]} for 20"
     )
+
+
+def test_purging_a_project_removes_the_whole_chain(db):
+    """The staged teardown must leave exactly what the plain cascade left.
+
+    `delete_project` empties the leaf tables in bulk before deleting the
+    project, because SQLite runs a foreign key action program per row per
+    level and emptying the leaves first means those find nothing to do
+    (124 s down to 39 s on a 400k-file project). That is a speed change
+    only: this pins that it is not also a behaviour change.
+    """
+    from app.api.crud import project as crud_project
+
+    doomed, doomed_dep, _, _ = _make_run(db, files=3)
+    keeper, keeper_dep, _, _ = _make_run(db, files=3)
+    # Read the ids now: touching an attribute of a deleted instance later
+    # re-queries the row and raises ObjectDeletedError.
+    doomed_id, doomed_dep_id = doomed.id, doomed_dep.id
+    keeper_id, keeper_dep_id = keeper.id, keeper_dep.id
+
+    before = _counts(db, keeper_dep_id)
+    assert all(v > 0 for v in before.values())
+
+    assert crud_project.delete_project(db, doomed_id) is True
+
+    assert _counts(db, doomed_dep_id) == {k: 0 for k in before}
+    assert _counts(db, keeper_dep_id) == before
+    assert db.query(Deployment).filter(Deployment.id == doomed_dep_id).count() == 0
+    assert db.query(Project).filter(Project.id == keeper_id).count() == 1
+    assert db.query(Project).filter(Project.id == doomed_id).count() == 0
+
+    orphans = db.execute(sa_text("PRAGMA foreign_key_check")).fetchall()
+    assert orphans == []
+
+
+def test_purge_reports_what_it_removed(db):
+    """The per-stage row counts are what the delete log line carries.
+
+    They are also the only numbers a progress display could ever show:
+    the plain cascade happens inside one statement and reports nothing.
+    """
+    from app.api.crud.deployment import purge_deployment_data
+
+    project, dep, _, _ = _make_run(db, files=3)
+    removed = dict(
+        purge_deployment_data(
+            db, sa_select(Deployment.id).where(Deployment.project_id == project.id)
+        )
+    )
+    db.commit()
+
+    assert removed["files"] == 3
+    assert removed["detections"] == 3
+    assert removed["detection_embeddings"] == 3
+    assert removed["events"] == 1
+    assert removed["event_files"] == 3
+    assert removed["event_observations"] == 1
+
+
+def test_purge_empties_the_leaves_before_their_parents(db):
+    """The order is the whole point, so pin it.
+
+    Run it the other way round and every parent delete pays the foreign
+    key action for children that are still there, which is the slow case
+    this exists to avoid. Nothing else would catch a reordering: the end
+    state is identical either way.
+    """
+    from app.api.crud.deployment import purge_deployment_data
+
+    project, _, _, _ = _make_run(db, files=2)
+    order = [
+        table
+        for table, _ in purge_deployment_data(
+            db, sa_select(Deployment.id).where(Deployment.project_id == project.id)
+        )
+    ]
+    db.commit()
+
+    assert order.index("detection_embeddings") < order.index("detections")
+    assert order.index("detections") < order.index("files")
+    assert order.index("event_observations") < order.index("events")
+    assert order.index("event_files") < order.index("events")
+    assert order.index("events") < order.index("files")
+
+
+def test_a_folder_that_cannot_be_cleaned_does_not_fail_the_delete(
+    client, db, tmp_path, make_unreadable
+):
+    """A disconnected drive must not turn a finished delete into a 500.
+
+    The rows are already committed by the time the on-disk `.addaxai`
+    cleanup runs, so an OS error there used to report "Internal Server
+    Error" for a project that was in fact gone, and skip the cleanup for
+    every remaining deployment too. Camera trap folders live on external
+    drives, so this is the ordinary case, not an exotic one.
+    """
+    folder = tmp_path / "deployment"
+    project = make_project(db)
+    make_deployment(db, project_id=project.id, folder_path=str(folder))
+    db.commit()
+    project_id = project.id
+
+    artifacts = folder / ".addaxai" / "projects" / project_id
+    artifacts.mkdir(parents=True)
+    (artifacts / "results.json").write_text("{}")
+    make_unreadable(artifacts)
+
+    resp = client.delete(f"/api/projects/{project_id}")
+
+    assert resp.status_code == 204
+    assert db.query(Project).filter(Project.id == project_id).count() == 0

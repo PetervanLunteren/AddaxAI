@@ -54,13 +54,14 @@ export function ResetAppDialog({ open, onOpenChange }: ResetAppDialogProps) {
       pendingLabel="Resetting..."
       onConfirm={() => reset.mutate()}
       isPending={reset.isPending}
+      error={reset.error?.message ?? null}
       variant="destructive"
     >
       <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
         <p className="text-sm font-medium text-destructive mb-2">
           Warning - This will permanently delete
         </p>
-        <ul className="text-sm text-destructive/90 list-disc list-inside space-y-1">
+        <ul className="text-sm text-destructive/90 list-disc list-outside pl-5 space-y-1">
           <li>Installed analysis environments</li>
           <li>Installed model weights</li>
           <li>All log files and crash dumps</li>

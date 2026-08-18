@@ -114,13 +114,14 @@ export function DeleteSiteDialog({
       pendingLabel="Deleting..."
       onConfirm={() => deleteMutation.mutate()}
       isPending={deleteMutation.isPending}
+      error={deleteMutation.error?.message ?? null}
       variant="destructive"
     >
       <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
         <p className="text-sm font-medium text-destructive mb-2">
           Warning - This will permanently delete
         </p>
-        <ul className="text-sm text-destructive/90 list-disc list-inside space-y-1">
+        <ul className="text-sm text-destructive/90 list-disc list-outside pl-5 space-y-1">
           <li>The site and all its metadata</li>
           <li>Any tags and custom fields</li>
         </ul>

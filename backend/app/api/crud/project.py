@@ -7,6 +7,7 @@ Following DEVELOPERS.md principles:
 - No silent failures
 """
 
+import time
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select
@@ -19,9 +20,12 @@ from app.api.schemas.project import (
     ProjectMode,
     ProjectUpdate,
 )
+from app.core.logging_config import get_logger
 from app.models import Deployment, Event, File, Project, Site
 from app.models.deployment_queue import DeploymentQueue
 from app.models.event_observation import EventObservation
+
+logger = get_logger(__name__)
 
 # Processing settings carried over wholesale when copy_settings is on. The
 # user-chosen fields (name, description, classification model, label selection)
@@ -204,6 +208,21 @@ def update_project(db: Session, project_id: str, project: ProjectUpdate) -> Proj
     return db_project
 
 
+def _purge_project_data(db: Session, project_id: str) -> list[tuple[str, int]]:
+    """Empty everything under a project's deployments, leaves first.
+
+    See `purge_deployment_data` for why this runs ahead of the cascade
+    rather than instead of it. What is left afterwards (deployments,
+    sites, the queue) is small enough that `db.delete(project)` handles
+    it in one step.
+    """
+    from app.api.crud.deployment import purge_deployment_data
+
+    return purge_deployment_data(
+        db, select(Deployment.id).where(Deployment.project_id == project_id)
+    )
+
+
 def delete_project(db: Session, project_id: str) -> bool:
     """
     Delete a project.
@@ -215,8 +234,14 @@ def delete_project(db: Session, project_id: str) -> bool:
     if db_project is None:
         return False
 
+    started = time.time()
+    removed = _purge_project_data(db, project_id)
     db.delete(db_project)
     db.commit()
+    logger.info(
+        f"Deleted project {project_id} in {time.time() - started:.1f}s: "
+        + ", ".join(f"{rows} {table}" for table, rows in removed if rows)
+    )
     return True
 
 
@@ -258,6 +283,7 @@ def delete_folder_run(db: Session, project_id: str) -> bool:
         q.folder_path for q in db_project.deployment_queue if q.folder_path
     )
 
+    _purge_project_data(db, project_id)
     db.delete(db_project)
     db.commit()
 
@@ -297,6 +323,7 @@ def reset_folder_run_data(db: Session, project_id: str) -> bool:
         q.folder_path for q in db_project.deployment_queue if q.folder_path
     )
 
+    _purge_project_data(db, project_id)
     for deployment in list(db_project.deployments):
         db.delete(deployment)
 

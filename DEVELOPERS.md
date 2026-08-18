@@ -133,7 +133,7 @@ One line of DDL, no reflection gymnastics, no batch-mode failure mode, idempoten
 
 ## Deleting analysis data
 
-Deleting a project, deleting a folder run, re-running a folder run and deleting a deployment all end in the same place: one `db.delete(<parent>)` that has to remove every file, detection, embedding, event and observation underneath it. On a large run that is millions of rows, so how it is done matters.
+Deleting a project, deleting a folder run, re-running a folder run and deleting a deployment all end in the same place: `purge_deployment_data()` followed by one `db.delete(<parent>)`, which together have to remove every file, detection, embedding, event and observation underneath it. On a large run that is millions of rows, so how it is done matters.
 
 **The database owns the cascade, not the ORM.** Every parent/child foreign key declares `ON DELETE CASCADE`, `PRAGMA foreign_keys=ON` is set on every connection (`db/base.py`), and every `cascade="all, delete-orphan"` relationship sets `passive_deletes=True`. SQLAlchemy therefore emits one `DELETE` for the parent and lets SQLite do the rest in C.
 
@@ -160,6 +160,73 @@ Also index the columns a hot query filters on, not only foreign keys. `files.fil
 - A missing `ON DELETE CASCADE` fails loudly with `FOREIGN KEY constraint failed`, not silently with orphan rows, because the child foreign keys are `NOT NULL`.
 
 **Timing.** `POST /api/folder-runs/{id}/rerun` and `_delete_deployment_artifacts` both log elapsed seconds. The on-disk `.addaxai` cleanup stays inside the request and is unbounded on a slow external drive, so when a delete is reported as slow, those two lines are what tell you whether it was the database or the disk.
+
+### Empty the leaves first
+
+`purge_deployment_data()` in `crud/deployment.py` deletes the child tables in bulk, bottom up, before anything deletes the parent. It runs **ahead of** the cascade, never instead of it: every foreign key still declares `ON DELETE CASCADE` and still enforces it, so a child table missing from its list is removed anyway when its parent goes. Forgetting to add one costs a slower delete, never a wrong one.
+
+The reason is the same one that makes the missing-index case above so expensive. SQLite runs a foreign key action program for every row it deletes, at every level. Emptying `detection_embeddings` first means the 800,000 `detections` deletes that follow find nothing to cascade to, and so on up the chain. Measured on a project of 400,000 files, 800,000 detections and 400,000 embeddings, against the SQLite the packaged build carries:
+
+| | |
+|---|---|
+| 124 s | one `DELETE FROM projects`, cascade does everything (two runs: 124 s, 119 s) |
+| 39 s | leaves first, then the parent |
+| 41 s | end to end through `DELETE /api/projects/{id}`, including the on-disk cleanup |
+
+Same end state, checked table by table against a plain cascade of the same data, with `PRAGMA foreign_key_check` clean.
+
+Three things this must keep doing, all pinned in `tests/api/test_delete_cascade.py`:
+
+- **Bulk statements, never per-row ORM deletes.** That is what the 1.5 GB incident above was.
+- **A SELECT of ids, not a list of ids.** `purge_deployment_data` takes `select(Deployment.id).where(...)` so the whole teardown stays in the database and nothing lands in the session.
+- **The order.** Reverse it and every parent delete pays the foreign key action for children that are still there, which is the slow case this exists to avoid. Nothing else would catch a reordering, because the end state is identical either way, so `test_purge_empties_the_leaves_before_their_parents` asserts it directly.
+
+**The endpoint reads `Deployment.folder_path`, not `Deployment`.** It needs the paths for the on-disk cleanup, and loading the entities instead would put every deployment in the session, at which point `db.delete(project)` cascades to them in Python, one `DELETE` each, which is the thing `passive_deletes=True` exists to prevent.
+
+**The on-disk cleanup is best-effort, in every path.** By the time it runs the rows are committed, so an OS error there cannot be reported as a failed delete without lying. Every caller goes through `_delete_deployment_artifacts`, which logs and swallows. The project endpoint used to have its own inline `shutil.rmtree` instead, and a `.addaxai` folder on a disconnected external drive answered `500 Internal Server Error` for a project that was already gone, then skipped the cleanup for every remaining deployment. Camera trap folders live on external drives, so that is the ordinary case. Pinned by `test_a_folder_that_cannot_be_cleaned_does_not_fail_the_delete`.
+
+**A percentage is not available, and that is a design consequence.** The teardown is one transaction and nothing is visible outside it until it commits, so no polling can watch it progress. The per-stage row counts `purge_deployment_data` returns are the only real numbers there are; they go to the log today. If a progress display is ever wanted, those are what it would have to show, over a websocket from inside the transaction. The dialog instead shows the scale up front and a running clock, which answers "is it stuck" without inventing a number.
+
+### Never run a bare `ANALYZE`
+
+Call `refresh_query_statistics()` from `db/base.py` instead. It runs `ANALYZE` and then deletes one row from `sqlite_stat1`, the one for `idx_files_source_video`. Without that deletion a project delete does not finish.
+
+`files.source_video_id` is the schema's only self-referencing foreign key: a frame row points at the video it was extracted from, `ON DELETE CASCADE`. So SQLite consults `idx_files_source_video` once for every `files` row it deletes. `ANALYZE` writes a statistic for that index like every other, and because the column is NULL on every file that is not a video frame, the statistic reads `"382293 382293"`: any value matches the whole table. SQLite 3.45 believes it and stops using the index. The per-row cascade lookup becomes `Rewind`, a full scan of all 380,000 index entries, once per deleted row.
+
+That is what the VDBE program shows, on the same database, for `DELETE FROM files WHERE id = ?`:
+
+```
+3.45.1   OpenRead idx_files_source_video ; Rewind   <- full scan
+3.50.4   OpenRead idx_files_source_video ; SeekGE   <- one seek
+```
+
+Measured on a 294 MB database holding 382,293 files, deleting a project of 369,298 of them:
+
+| | |
+|---|---|
+| 5.73 ms per file | with 52,230 files in the table |
+| ~65 ms per file | with 382,293 files in the table |
+| ~6.5 hours | extrapolated for the whole project |
+| **4.1 s** | same SQLite, same database, statistic dropped |
+
+Three things have to line up and all three are true in a shipped build, so removing any one of them fixes it. Verified with a 200,000-row synthetic:
+
+| SQLite | self-referencing FK | `ANALYZE` run | delete 400 rows |
+|---|---|---|---|
+| 3.45.1 | yes | yes | **4.07 s** |
+| 3.45.1 | yes | no | 0.02 s |
+| 3.45.1 | no | yes | 0.01 s |
+| 3.50.4 | yes | yes | 0.02 s |
+
+**Dropping the statistic costs nothing, and buys back the index.** Nothing searches by `source_video_id`: `crud/label_tree.py` projects it inside a `count(DISTINCT …)`, and `joinedload(File.source_video)` joins by `files.id`. `EXPLAIN QUERY PLAN` gives both the same plan with the row and without it. A query that did search by it is helped rather than harmed: with the row present the planner answers `SCAN files`, without it `SEARCH files USING INDEX idx_files_source_video`.
+
+**Why the version alone is not the fix.** The packaged build carries whatever SQLite its frozen Python was built with, `_sqlite3.cpython-311-darwin.so` from Python 3.11.9 is 3.45.1, and that differs per platform and per build. Bumping it is worth doing but it does nothing for anyone already installed, and it is not something a test can hold in place. Dropping the row is correct on every version.
+
+**`PRAGMA optimize` puts the row back, so there is none.** `set_sqlite_pragma` used to run one at connect. It analyses only tables the connection has already queried and ran before that connection's first statement, so it did nothing at all on 3.45 and rewrote this row on 3.50 and later, undoing the deletion on the very next connection. Measured on a 1 GB database: after startup the row was already back, because the first request opened a new connection. That was harmless in practice, since the versions that act on it are the versions without the planner bug, but it made the fix depend on a coincidence rather than on the code, and a future bundle could land on the wrong side of it. It is gone. Do not add one back, anywhere.
+
+`test_a_fresh_connection_does_not_put_the_statistic_back` is the guard, and it builds its own engine on purpose: the pooled engine the other tests share never re-fires the `connect` event, so it cannot see this.
+
+`tests/db/test_query_statistics.py` holds this. It asserts the row is absent and the others are present, plus a grep guard that fails when a new `ANALYZE` appears in `app/` outside the helper. It deliberately does **not** assert the query plan: the development and CI SQLite is 3.53, which uses the index either way, so a plan assertion would be green while the shipped app was broken.
 
 ## Database backups
 
