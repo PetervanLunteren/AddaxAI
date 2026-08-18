@@ -12,6 +12,7 @@
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { eventsApi } from "../api/events";
+import { BrokenFolderBanner } from "../components/deployments/BrokenFolderBanner";
 import { VerifyView } from "../components/verify/VerifyView";
 import { WideModeContext, useWideMode } from "../components/verify/wide-mode";
 import { cn } from "../lib/utils";
@@ -56,6 +57,7 @@ export default function CountsPage() {
       </header>
 
       <main className={shell("py-8")}>
+        <BrokenFolderBanner projectId={projectId!} />
         <WideModeContext.Provider value={wideMode}>
           <VerifyView projectId={projectId!} />
         </WideModeContext.Provider>

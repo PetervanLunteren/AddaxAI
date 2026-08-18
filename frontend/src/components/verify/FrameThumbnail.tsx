@@ -10,8 +10,11 @@
  * the object-cover image at any tile aspect, with no manual fitting math.
  */
 
+import { useState } from "react";
+import { ImageOff } from "lucide-react";
 import { API_BASE_URL } from "../../lib/api-client";
 import { getDetectionColor, shouldDrawBbox } from "../../lib/detection-utils";
+import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
 import { SpotlightDim } from "./SpotlightDim";
 import type { FileWithDetections } from "../../api/types";
 
@@ -36,8 +39,14 @@ export function FrameThumbnail({
   imageFilter,
   className,
 }: FrameThumbnailProps) {
+  // A thumbnail that 404s leaves the neutral grey behind, and boxes drawn
+  // on that grey read as a very dark photo with animals in it rather than
+  // as an absent one. Say the picture is gone instead of decorating a
+  // tile that has nothing under it.
+  const [imageFailed, setImageFailed] = useState(false);
+
   const dets =
-    file && showBoxes
+    file && showBoxes && !imageFailed
       ? file.detections.filter((d) =>
           shouldDrawBbox(d, file, detectionThreshold),
         )
@@ -53,21 +62,29 @@ export function FrameThumbnail({
     <div
       // Neutral grey fallback, not bg-muted: the muted token is hue 210 (a
       // blue-grey), which shows through as a blue "cast" on tiles whose
-      // thumbnail image hasn't painted yet (slow load or onError-hidden img).
+      // thumbnail image hasn't painted yet (a slow load, or a file whose
+      // image is gone and shows the ImageOff tile below).
       className={`relative overflow-hidden bg-neutral-200 dark:bg-neutral-800 h-full w-full ${className ?? ""}`}
     >
-      <img
-        src={`${API_BASE_URL}/api/files/${fileId}/image?size=thumb`}
-        alt=""
-        className="w-full h-full object-cover"
-        style={imageFilter ? { filter: imageFilter } : undefined}
-        onError={(e) => {
-          (e.target as HTMLImageElement).style.display = "none";
-        }}
-      />
+      {imageFailed ? (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <ImageOff className="h-6 w-6 text-neutral-400 dark:text-neutral-500" />
+        </div>
+      ) : (
+        <img
+          src={`${API_BASE_URL}/api/files/${fileId}/image?size=thumb`}
+          alt=""
+          className="w-full h-full object-cover"
+          style={imageFilter ? { filter: imageFilter } : undefined}
+          onError={() => {
+            setImageFailed(true);
+            reportMissingMedia(file?.deployment_id);
+          }}
+        />
+      )}
       {/* Spotlight + outlines. Rendered once `file` has loaded (and boxes
           are on) so empty frames dim uniformly. */}
-      {file && showBoxes && (
+      {file && showBoxes && !imageFailed && (
         <svg
           className="absolute inset-0 w-full h-full pointer-events-none"
           viewBox={`0 0 ${imgW} ${imgH}`}

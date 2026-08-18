@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Ban, Check, CircleHelp, Tag, ChevronLeft, ChevronRight, ChevronsRight, Play, X } from "lucide-react";
+import { Ban, Check, CircleHelp, ImageOff, Tag, ChevronLeft, ChevronRight, ChevronsRight, Play, X } from "lucide-react";
 import { basename } from "../../lib/path-utils";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
@@ -21,6 +21,7 @@ import { projectsApi } from "../../api/projects";
 import { API_BASE_URL } from "../../lib/api-client";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import { getDetectionDisplayName } from "../../lib/detection-utils";
+import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
 import { FrameThumbnail } from "./FrameThumbnail";
 import { ContextCard } from "./ContextCard";
 import {
@@ -88,6 +89,7 @@ export function DetectionDetailModal({
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
   const imagePanelRef = useRef<HTMLDivElement | null>(null);
   const panStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const wheelTeardownRef = useRef<(() => void) | null>(null);
@@ -134,9 +136,12 @@ export function DetectionDetailModal({
   }, []);
 
   // Reset zoom/pan when the detection changes or the modal closes.
+  // `imageFailed` rides along: stepping from a missing file to a present
+  // one must not keep showing the placeholder.
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
+    setImageFailed(false);
   }, [detection?.detection_id, open]);
 
   // Drag to pan while zoomed in. Global listeners so the drag survives
@@ -418,13 +423,30 @@ export function DetectionDetailModal({
                 transformOrigin: "center center",
               }}
             >
-              <img
-                src={`${API_BASE_URL}/api/files/${detection.file_id}/image`}
-                alt="Source image"
-                draggable={false}
-                className="max-w-full max-h-full object-contain"
-              />
-              {fullDetection && fullDetection.bbox_x !== null && (() => {
+              {imageFailed ? (
+                // The file is gone from disk (a moved / disconnected
+                // deployment folder). Without this the browser drew its
+                // own broken-image glyph with the alt text on black, and
+                // the box overlay below drew against a zero-sized image.
+                <div className="flex flex-col items-center justify-center gap-3 px-16 py-24">
+                  <ImageOff className="h-10 w-10 text-neutral-400" />
+                  <p className="text-sm text-neutral-400">
+                    This picture can't be found on disk
+                  </p>
+                </div>
+              ) : (
+                <img
+                  src={`${API_BASE_URL}/api/files/${detection.file_id}/image`}
+                  alt="Source image"
+                  draggable={false}
+                  className="max-w-full max-h-full object-contain"
+                  onError={() => {
+                    setImageFailed(true);
+                    reportMissingMedia(detection.deployment_id);
+                  }}
+                />
+              )}
+              {!imageFailed && fullDetection && fullDetection.bbox_x !== null && (() => {
                 // Event-level observations carry no bbox and never reach
                 // this modal (the Observations grid excludes them), but
                 // the type system can't see that — the guard above keeps

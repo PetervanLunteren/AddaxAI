@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.api.schemas.deployment import DeploymentCreate, DeploymentUpdate
 from app.core.logging_config import get_logger
@@ -658,18 +658,48 @@ def _sample_files_for_verification(
     Returns a list of (file_record, expected_path) tuples. Files whose
     file_path is not under the current deployment folder are skipped
     (defensive).
+
+    The sample is taken in SQL, never off `deployment.files`. That
+    relationship is a plain lazy select, so reading it pulls every File
+    row of the deployment into memory to hand back ten of them. The
+    startup check walks every deployment, which made it load the whole
+    files table before the first stat() call: seconds to minutes on a
+    large project, during which the API still serves the previous
+    session's folder_status. Do not "simplify" this back into a list
+    comprehension over the relationship.
+
+    Deliberately not fixed by making the relationship `lazy="dynamic"`:
+    it carries `passive_deletes=True` and the cascade rules described in
+    DEVELOPERS.md under "Deleting analysis data". Taking the session off
+    the instance leaves the delete path untouched.
     """
     if not deployment.folder_path:
         return []
 
-    old_folder = Path(deployment.folder_path)
-    candidates = [f for f in deployment.files if f.size_bytes is not None]
-    if len(candidates) < _VERIFY_SAMPLE_SIZE:
-        # Fall back to any files if we don't have enough with sizes
-        seen_ids = {f.id for f in candidates}
-        candidates.extend(f for f in deployment.files if f.id not in seen_ids)
+    db = object_session(deployment)
+    if db is None:
+        raise RuntimeError(
+            f"Deployment {deployment.id} is detached from its session; "
+            f"cannot sample files for verification"
+        )
 
-    sample = candidates[:_VERIFY_SAMPLE_SIZE]
+    old_folder = Path(deployment.folder_path)
+    # Files with a size come first: the identity check needs one to tell
+    # the real folder from a lookalike. Rows without a size still make
+    # the sample when there are not enough with one, which is what the
+    # old two-pass list comprehension did. `id` keeps the sample stable
+    # between the verify and the relink of the same folder.
+    sample = (
+        db.execute(
+            select(File)
+            .where(File.deployment_id == deployment.id)
+            .order_by(File.size_bytes.is_(None), File.id)
+            .limit(_VERIFY_SAMPLE_SIZE)
+        )
+        .scalars()
+        .all()
+    )
+
     pairs: list[tuple[File, Path]] = []
     for f in sample:
         try:
@@ -775,17 +805,32 @@ def check_deployment_folder(db: Session, deployment_id: str) -> Deployment | Non
     return db_deployment
 
 
-def check_all_deployment_folders(db: Session) -> dict[str, int]:
+def check_all_deployment_folders(
+    db: Session, project_id: str | None = None
+) -> dict[str, int]:
     """
     Re-verify every deployment's folder and update statuses in bulk.
 
-    Used at app startup so the folder_status column reflects the current
-    filesystem state. Skips deployments with folder_path=None. Also
+    Used at app startup (no `project_id`) so the folder_status column
+    reflects the current filesystem state, and per project when the
+    Deployments page opens. Skips deployments with folder_path=None. Also
     migrates any legacy "missing" status values to "needs_relink".
+
+    The per-project call is what keeps the recovery page honest in both
+    directions. Nothing else re-checks a deployment already marked
+    needs_relink, so a folder the user reconnected outside the app (an
+    external drive plugged back in) kept being reported as missing while
+    its pictures were plainly on screen. It also corrects the count:
+    detection is driven by images failing to load, and a browser-cached
+    thumbnail never fails, so deployments the user browsed recently could
+    be broken without anything noticing.
 
     Returns counts of checked/changed/skipped for logging.
     """
-    deployments = db.execute(select(Deployment)).scalars().all()
+    query = select(Deployment)
+    if project_id is not None:
+        query = query.where(Deployment.project_id == project_id)
+    deployments = db.execute(query).scalars().all()
     checked = 0
     changed = 0
     skipped = 0

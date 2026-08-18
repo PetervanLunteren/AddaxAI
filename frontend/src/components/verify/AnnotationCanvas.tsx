@@ -8,7 +8,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Stage, Layer, Rect, Text, Image as KonvaImage, Transformer, Shape, Group } from "react-konva";
 import { useMutation } from "@tanstack/react-query";
+import { ImageOff } from "lucide-react";
 import { detectionsApi } from "../../api/detections";
+import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
 import { getDetectionColor, shouldDrawBbox } from "../../lib/detection-utils";
 import { basename } from "../../lib/path-utils";
 import {
@@ -92,6 +94,11 @@ export function AnnotationCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [loading, setLoading] = useState(true);
+  // The picture is gone from disk (a moved / disconnected deployment
+  // folder). Without this the stage stayed black and the boxes drew on
+  // top of nothing, so the file read as an all-black photo the AI had
+  // somehow found animals in.
+  const [imageFailed, setImageFailed] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [drawingBox, setDrawingBox] = useState<DrawingBox | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -140,17 +147,24 @@ export function AnnotationCanvas({
   // C has started) are ignored via `cancelled`.
   useEffect(() => {
     let cancelled = false;
+    // Clear the previous file's verdict up front, so stepping from a
+    // missing file to a present one does not keep the placeholder.
+    setImageFailed(false);
     const img = new window.Image();
     img.crossOrigin = "anonymous";
     const settle = () => {
       if (cancelled) return;
       setImage(img);
       updateStageSize(img.naturalWidth, img.naturalHeight);
+      setImageFailed(false);
       setLoading(false);
     };
     img.onload = settle;
     img.onerror = () => {
-      if (!cancelled) setLoading(false);
+      if (cancelled) return;
+      setLoading(false);
+      setImageFailed(true);
+      reportMissingMedia(file.deployment_id);
     };
     img.src = imageUrl;
     // Auto-play prefetches the next frame, so by the time we get here the
@@ -168,7 +182,7 @@ export function AnnotationCanvas({
     return () => {
       cancelled = true;
     };
-  }, [imageUrl, updateStageSize]);
+  }, [imageUrl, updateStageSize, file.deployment_id]);
 
   // Resize observer
   useEffect(() => {
@@ -547,6 +561,24 @@ export function AnnotationCanvas({
       height: newHeight,
     });
   };
+
+  // Nothing to annotate when the picture is gone, so the whole stage is
+  // replaced rather than left black with boxes floating on it. The banner
+  // on Labels / Counts carries the "why" and the way to fix it; this only
+  // has to stop the file reading as a corrupted photo.
+  if (imageFailed) {
+    return (
+      <div
+        ref={containerRef}
+        className="relative w-full h-full flex flex-col items-center justify-center gap-3 bg-neutral-200 dark:bg-neutral-800"
+      >
+        <ImageOff className="h-10 w-10 text-neutral-400 dark:text-neutral-500" />
+        <p className="text-sm text-neutral-500 dark:text-neutral-400">
+          This picture can't be found on disk
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div

@@ -98,6 +98,17 @@ export const deploymentsApi = {
     api.post<DeploymentResponse>(`/api/deployments/${id}/check-folder`, {}),
 
   /**
+   * Re-stat every folder in a project. The Deployments page runs this on
+   * open so the recovery page reads the disk rather than a status left
+   * behind by the last startup sweep or a failed image.
+   */
+  checkAllFolders: (projectId: string) =>
+    api.post<Record<string, number>>(
+      `/api/deployments/check-all?project_id=${projectId}`,
+      {}
+    ),
+
+  /**
    * Relink multiple deployments at once. Returns per-item success / failure.
    */
   bulkRelink: (data: BulkRelinkRequest) =>

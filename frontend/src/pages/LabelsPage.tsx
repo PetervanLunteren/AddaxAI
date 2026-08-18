@@ -9,6 +9,7 @@
  */
 
 import { useParams } from "react-router-dom";
+import { BrokenFolderBanner } from "../components/deployments/BrokenFolderBanner";
 import { LabelsView } from "../components/verify/LabelsView";
 import { WideModeContext, useWideMode } from "../components/verify/wide-mode";
 import { cn } from "../lib/utils";
@@ -41,6 +42,7 @@ export default function LabelsPage() {
       </header>
 
       <main className={shell("py-8")}>
+        <BrokenFolderBanner projectId={projectId!} />
         <WideModeContext.Provider value={wideMode}>
           <LabelsView projectId={projectId!} />
         </WideModeContext.Provider>

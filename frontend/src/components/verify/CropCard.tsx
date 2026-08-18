@@ -10,8 +10,8 @@
  * CropGrid, rather than passively decorating the tile.
  */
 
-import { memo } from "react";
-import { Check } from "lucide-react";
+import { memo, useState } from "react";
+import { Check, ImageOff } from "lucide-react";
 import { API_BASE_URL } from "../../lib/api-client";
 import { getDetectionColor, getDetectionDisplayName } from "../../lib/detection-utils";
 import { getContrastTextColor } from "../../utils/species-colors";
@@ -22,6 +22,7 @@ import {
   svgRoundedRectPath,
 } from "../../lib/detection-overlay";
 import { cn } from "../../lib/utils";
+import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
 import { Badge } from "../ui/badge";
 import type { DetectionSummary } from "../../api/types";
 
@@ -39,6 +40,7 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
   const isFalseDetection =
     detection.label === "false detection" && detection.verified;
 
+  const [imageFailed, setImageFailed] = useState(false);
   const isSmall = tileSize === "S";
   const pillSize = isSmall
     ? "text-[7px] px-0.5 py-0 rounded-sm"
@@ -56,47 +58,67 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
     >
       {/* Crop image */}
       <div className="aspect-square bg-muted relative overflow-hidden rounded-t-lg">
-        <img
-          src={`${API_BASE_URL}${detection.crop_url}`}
-          alt={getDetectionDisplayName(detection)}
-          loading="lazy"
-          className="w-full h-full object-cover"
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = "none";
-          }}
-        />
-        {/* Bbox overlay */}
-        {detection.crop_bbox && (
-          <svg
-            className="absolute inset-0 w-full h-full pointer-events-none"
-            viewBox="0 0 200 200"
-          >
-            <path
-              fillRule="evenodd"
-              d={`M0,0H200V200H0Z` + svgRoundedRectPath(
-                detection.crop_bbox.x * 200,
-                detection.crop_bbox.y * 200,
-                detection.crop_bbox.w * 200,
-                detection.crop_bbox.h * 200,
-                BBOX_CORNER_RADIUS
+        {imageFailed ? (
+          // The shimmer below is a *loading* signal and it used to survive a
+          // failed image, so a tile whose photo had gone missing pulsed for
+          // ever and read as "still loading". Users waited instead of
+          // reconnecting the folder. Say it is not coming instead. The bbox
+          // overlay goes too: its dark mask over an empty tile looks like a
+          // very dark photo rather than an absent one.
+          <div className="absolute inset-0 flex items-center justify-center bg-neutral-200 dark:bg-neutral-800">
+            <ImageOff
+              className={cn(
+                "text-neutral-400 dark:text-neutral-500",
+                isSmall ? "h-4 w-4" : "h-6 w-6",
               )}
-              fill="rgba(0, 0, 0, 0.6)"
             />
-            <rect
-              x={detection.crop_bbox.x * 200}
-              y={detection.crop_bbox.y * 200}
-              width={detection.crop_bbox.w * 200}
-              height={detection.crop_bbox.h * 200}
-              rx={BBOX_CORNER_RADIUS}
-              fill="none"
-              stroke={getDetectionColor(detection)}
-              strokeWidth={BBOX_STROKE_WIDTH}
-              opacity={BBOX_OPACITY}
+          </div>
+        ) : (
+          <>
+            <img
+              src={`${API_BASE_URL}${detection.crop_url}`}
+              alt={getDetectionDisplayName(detection)}
+              loading="lazy"
+              className="w-full h-full object-cover"
+              onError={() => {
+                setImageFailed(true);
+                reportMissingMedia(detection.deployment_id);
+              }}
             />
-          </svg>
+            {/* Bbox overlay */}
+            {detection.crop_bbox && (
+              <svg
+                className="absolute inset-0 w-full h-full pointer-events-none"
+                viewBox="0 0 200 200"
+              >
+                <path
+                  fillRule="evenodd"
+                  d={`M0,0H200V200H0Z` + svgRoundedRectPath(
+                    detection.crop_bbox.x * 200,
+                    detection.crop_bbox.y * 200,
+                    detection.crop_bbox.w * 200,
+                    detection.crop_bbox.h * 200,
+                    BBOX_CORNER_RADIUS
+                  )}
+                  fill="rgba(0, 0, 0, 0.6)"
+                />
+                <rect
+                  x={detection.crop_bbox.x * 200}
+                  y={detection.crop_bbox.y * 200}
+                  width={detection.crop_bbox.w * 200}
+                  height={detection.crop_bbox.h * 200}
+                  rx={BBOX_CORNER_RADIUS}
+                  fill="none"
+                  stroke={getDetectionColor(detection)}
+                  strokeWidth={BBOX_STROKE_WIDTH}
+                  opacity={BBOX_OPACITY}
+                />
+              </svg>
+            )}
+            {/* Loading shimmer placeholder */}
+            <div className="absolute inset-0 bg-gradient-to-r from-muted via-muted-foreground/5 to-muted animate-pulse -z-10" />
+          </>
         )}
-        {/* Loading shimmer placeholder */}
-        <div className="absolute inset-0 bg-gradient-to-r from-muted via-muted-foreground/5 to-muted animate-pulse -z-10" />
       </div>
 
       {/* Verified badge — overflows top-right corner */}

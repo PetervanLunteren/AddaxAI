@@ -469,6 +469,64 @@ def _deployment_with_files_on_disk(db, folder, names_and_sizes):
     return deployment
 
 
+# ---------------------------------------------------------------------------
+# The Deployments page must read the disk, not a status recorded earlier.
+#
+# Nothing else re-checks a deployment already marked needs_relink, so a
+# folder the user reconnected outside the app (an external drive plugged
+# back in) kept being reported as missing while its pictures were plainly
+# on screen, and the only escape was restarting or re-picking the folder
+# it was already pointing at.
+
+
+def test_check_all_clears_a_status_whose_folder_came_back(client, db, tmp_path):
+    """A stale needs_relink is corrected once the files are readable again."""
+    folder = tmp_path / "cam"
+    deployment = _deployment_with_files_on_disk(db, folder, [("a.jpg", 100)])
+    deployment.folder_status = "needs_relink"
+    db.commit()
+
+    body = client.post(
+        f"/api/deployments/check-all?project_id={deployment.project_id}"
+    ).json()
+
+    db.refresh(deployment)
+    assert deployment.folder_status == "valid"
+    assert body["checked"] == 1
+
+
+def test_check_all_still_reports_a_folder_that_is_really_gone(
+    client, db, tmp_path
+):
+    """The test above must not pass by marking everything valid."""
+    folder = tmp_path / "cam"
+    deployment = _deployment_with_files_on_disk(db, folder, [("a.jpg", 100)])
+    folder.rename(tmp_path / "cam-moved")
+
+    client.post(f"/api/deployments/check-all?project_id={deployment.project_id}")
+
+    db.refresh(deployment)
+    assert deployment.folder_status == "needs_relink"
+
+
+def test_check_all_leaves_other_projects_alone(client, db, tmp_path):
+    """Opening one project's page must not re-stat every drive on the machine."""
+    mine = _deployment_with_files_on_disk(db, tmp_path / "mine", [("a.jpg", 100)])
+    theirs = _deployment_with_files_on_disk(
+        db, tmp_path / "theirs", [("a.jpg", 100)]
+    )
+    theirs.folder_status = "needs_relink"
+    db.commit()
+
+    body = client.post(
+        f"/api/deployments/check-all?project_id={mine.project_id}"
+    ).json()
+
+    db.refresh(theirs)
+    assert body["checked"] == 1
+    assert theirs.folder_status == "needs_relink"
+
+
 def test_relink_refusal_reports_the_reason_per_file(db, tmp_path, caplog):
     """A wrong folder is refused, and says which file and why."""
     from app.api.crud.deployment import relink_deployment
@@ -552,6 +610,67 @@ def test_relink_succeeds_when_the_folder_really_holds_the_files(db, tmp_path):
     assert result.files_rewritten == 1
     assert deployment.folder_path == str(moved)
     assert deployment.folder_status == "valid"
+
+
+# ---------------------------------------------------------------------------
+# Sampling ten files must not cost the whole files table.
+#
+# `deployment.files` is a plain lazy select, so reading it loads every File
+# row of the deployment to hand back ten. The startup sweep walks every
+# deployment, so that was the whole files table before the first stat()
+# call, and the API served the previous session's folder_status for as long
+# as it took.
+
+
+def test_sampling_does_not_load_the_deployments_files(db, tmp_path):
+    """The sample comes out of SQL, so the relationship stays unloaded."""
+    from sqlalchemy import inspect as sa_inspect
+
+    from app.api.crud.deployment import _sample_files_for_verification
+
+    folder = tmp_path / "run"
+    deployment = _deployment_with_files_on_disk(
+        db, folder, [(f"{i}.jpg", 100) for i in range(25)]
+    )
+    db.expire(deployment)
+
+    samples = _sample_files_for_verification(deployment, folder)
+
+    assert len(samples) == 10
+    assert "files" in sa_inspect(deployment).unloaded
+
+
+def test_sampling_prefers_files_that_carry_a_size(db, tmp_path):
+    """A size is what tells the real folder from a lookalike, so rows that
+    have one must win the sample even when they were added last."""
+    from app.api.crud.deployment import _sample_files_for_verification
+
+    folder = tmp_path / "run"
+    folder.mkdir(parents=True)
+    project = make_project(db)
+    deployment = make_deployment(
+        db, project_id=project.id, folder_path=str(folder)
+    )
+    for i in range(12):
+        make_file(
+            db,
+            deployment_id=deployment.id,
+            file_path=str(folder / f"nosize{i}.jpg"),
+            size_bytes=None,
+        )
+    for i in range(3):
+        make_file(
+            db,
+            deployment_id=deployment.id,
+            file_path=str(folder / f"sized{i}.jpg"),
+            size_bytes=100,
+        )
+    db.commit()
+
+    sampled = [f for f, _ in _sample_files_for_verification(deployment, folder)]
+
+    assert len(sampled) == 10
+    assert sum(1 for f in sampled if f.size_bytes is not None) == 3
 
 
 # ---------------------------------------------------------------------------

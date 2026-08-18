@@ -5,7 +5,7 @@
  */
 
 import { useState, useMemo, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { Search, MoreVertical, Pencil, Trash2, ArrowUp, ArrowDown, Tent, AlertTriangle, Plus, Info, Scissors } from "lucide-react";
 import { deploymentsApi } from "../api/deployments";
@@ -135,6 +135,7 @@ export function DeploymentsPage() {
   const [deletingDeployment, setDeletingDeployment] = useState<DeleteDeploymentTarget | null>(null);
   const [splittingDeployment, setSplittingDeployment] = useState<SplitDeploymentTarget | null>(null);
   const [infoDeploymentId, setInfoDeploymentId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   // Deep link support: `?info=<id>` auto-opens the info sheet for a
   // specific deployment (used by the queue's "already a deployment"
@@ -295,6 +296,36 @@ export function DeploymentsPage() {
 
     return result;
   }, [rows, siteIds, dateFrom, dateTo, search, tagKeysFilter, sortField, sortDir]);
+
+  // Re-stat every folder when this page opens, then refresh the list.
+  //
+  // This is the page that fixes a missing folder, so it has to read the
+  // disk rather than trust a status recorded earlier. Nothing else
+  // re-checks a deployment already marked needs_relink, so a drive
+  // plugged back in outside the app kept being reported as missing; and
+  // the failed-image detection can only notice deployments whose images
+  // actually tried to load, so a browser-cached thumbnail hid a broken
+  // folder from the count.
+  //
+  // Runs once per mount. `useEffect` rather than a query because it
+  // mutates server state and the result is read through the deployments
+  // list, not through this call.
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    void deploymentsApi
+      .checkAllFolders(projectId)
+      .then(() => {
+        if (cancelled) return;
+        queryClient.invalidateQueries({ queryKey: ["deployments", projectId] });
+      })
+      .catch(() => {
+        /* the list still renders from the statuses already stored */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, queryClient]);
 
   // Broken deployments grouped by their deepest missing ancestor.
   // Grouping happens on the backend because only the filesystem knows
