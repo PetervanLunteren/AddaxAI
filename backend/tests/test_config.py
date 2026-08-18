@@ -25,6 +25,8 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
         "ADDAXAI_MODELS_DIR",
         "ADDAXAI_HF_ENDPOINT",
         "HF_ENDPOINT",
+        "ADDAXAI_HF_TOKEN",
+        "HF_TOKEN",
     ):
         monkeypatch.delenv(name, raising=False)
     return monkeypatch
@@ -163,6 +165,27 @@ def test_hf_endpoint_prefixed_var_and_fallback(
     # The prefixed name is the documented one and wins.
     clean_env.setenv("ADDAXAI_HF_ENDPOINT", "https://mirror.example")
     assert Settings().hf_endpoint == "https://mirror.example"
+
+
+def test_hf_token_prefixed_var_and_fallback(
+    clean_env: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """
+    Only an endpoint that refuses anonymous reads needs this, so unset is
+    the normal case and must stay unset.
+    """
+    clean_env.setenv("ADDAXAI_USER_DATA_DIR", str(tmp_path))
+    assert Settings().hf_token is None
+    # The ecosystem-standard name works, so an existing HF login is honoured.
+    clean_env.setenv("HF_TOKEN", "ecosystem-token")
+    assert Settings().hf_token == "ecosystem-token"
+    # The prefixed name is the documented one and wins.
+    clean_env.setenv("ADDAXAI_HF_TOKEN", "prefixed-token")
+    assert Settings().hf_token == "prefixed-token"
+    # Blank behaves as unset, like every other setting.
+    clean_env.setenv("ADDAXAI_HF_TOKEN", "  ")
+    clean_env.setenv("HF_TOKEN", "  ")
+    assert Settings().hf_token is None
 
 
 def test_hf_base_url_is_the_mirror_or_the_real_host(

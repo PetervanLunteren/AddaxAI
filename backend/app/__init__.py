@@ -4,13 +4,13 @@ import os
 import sys
 from pathlib import Path
 
-# All AddaxAI env vars carry the ADDAXAI_ prefix, including the two
-# HuggingFace mirror settings documented for mainland China. But
-# huggingface_hub reads its own unprefixed names (HF_ENDPOINT,
-# HF_HUB_DISABLE_XET) at import time, so the prefixed values are copied
-# over here, before any submodule can import huggingface_hub. The
-# prefixed name wins when both are set, same as in Settings.
-for _hf_name in ("HF_ENDPOINT", "HF_HUB_DISABLE_XET"):
+# All AddaxAI env vars carry the ADDAXAI_ prefix, including the three
+# HuggingFace endpoint settings. But huggingface_hub reads its own
+# unprefixed names (HF_ENDPOINT, HF_HUB_DISABLE_XET, HF_TOKEN), the
+# first of them at import time, so the prefixed values are copied over
+# here, before any submodule can import huggingface_hub. The prefixed
+# name wins when both are set, same as in Settings.
+for _hf_name in ("HF_ENDPOINT", "HF_HUB_DISABLE_XET", "HF_TOKEN"):
     _value = os.environ.get(f"ADDAXAI_{_hf_name}", "").strip()
     if _value:
         os.environ[_hf_name] = _value

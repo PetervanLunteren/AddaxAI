@@ -625,6 +625,20 @@ On startup, `ModelCatalogUpdater.sync()` therefore asks HuggingFace for one file
 
 **`~/AddaxAI/models` is a managed cache, not a source tree.** Editing a model's `inference.py` in place now shows up as an available update on every launch, and applying it overwrites your edit with no backup.
 
+## Reaching HuggingFace through something that is not HuggingFace
+
+`Settings.hf_base_url` is the single source for every HuggingFace request, so a mirror or a company repository manager (Artifactory, Nexus) covers all of them or none. `ADDAXAI_HF_TOKEN` rides along for an endpoint that will not serve anonymously; our own repos are public, so it is unset for everyone else.
+
+**The token has to be attached twice, because two clients do the work.** `huggingface_hub` handles the metadata calls and reads the token itself, but the file downloads are plain `requests`, so a token set only on the first client lists a repo perfectly and 401s every file in it. `hf_auth_headers()` in `hf_downloader.py` is the one helper both raw-HTTP sites use (the downloader session and the taxonomy fetch), and `HfApi(token=...)` is passed explicitly so the value comes from `Settings` rather than from whatever `HF_TOKEN` happens to be. requests drops the header again on a redirect to another host (`Session.rebuild_auth`), which is what keeps a corporate token off `us.aws.cdn.hf.co` when the endpoint is the real HuggingFace.
+
+**Only two of the four calls are fatal on the far end.** `GET /api/models/{repo}/tree/{rev}` (the file listing; huggingface_hub 1.x resolves `list_repo_files` through `list_repo_tree`, not through the older model-info route) and `GET /{repo}/resolve/{rev}/{path}`. `paths-info` only sizes the progress bar, `model_info(files_metadata=True)` only feeds the staleness check, and both are caught and degrade. So a proxy answering those two is enough, which is worth knowing before promising a user their repository manager will work.
+
+## The catalog we ship as a fallback
+
+`models.json` is bundled by `backend.spec` and read by `_bundled_catalog_path()` when the remote catalog cannot be fetched. **It is a fallback, not a cache: never write the fetched catalog over it.** That would turn the one file describing what this build shipped with into a copy of whatever upstream said last, and the guarantee it exists to give (an install can always name its own models) with it.
+
+Without it, a first launch on a network that blocks `raw.githubusercontent.com` downloaded every weight file successfully and then showed no models at all, because `manifest.json` is written from the catalog and from nowhere else, and `ManifestManager` skips any model directory without one. The symptom lands far from the cause, as **"Classification model '<id>' not found"** from `POST /api/projects`.
+
 ## The wheel we ship instead of downloading
 
 `backend/app/ml/pip-wheels/` holds `ultralytics_yolov5-0.1.1-py3-none-any.whl`, the one third-party binary in the repo. `substitute_bundled_wheels` in `environment_manager.py` rewrites the YAML's URL to that local copy when it writes the build copy for micromamba, so the environment build fetches it from disk on every platform.

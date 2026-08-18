@@ -32,6 +32,10 @@ datas = [
     # Single source of truth for the app version. Read at runtime by
     # backend/app/__init__.py via sys._MEIPASS / 'VERSION'.
     ('../VERSION', '.'),
+    # Fallback model catalog, read by catalog_updater when the remote one
+    # cannot be reached. Without it a firewalled first launch ends with no
+    # manifests, and a model with no manifest is invisible to the app.
+    ('../models.json', '.'),
 ]
 
 # Collect data files from packages

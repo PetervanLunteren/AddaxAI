@@ -106,9 +106,10 @@ def find_stale_files(model_dir: Path, hf_repo: str) -> list[str] | None:
         staleness check cannot take down startup.
     """
     try:
-        info = HfApi(endpoint=get_settings().hf_base_url).model_info(
-            hf_repo, files_metadata=True, timeout=_HF_TIMEOUT
-        )
+        settings = get_settings()
+        info = HfApi(
+            endpoint=settings.hf_base_url, token=settings.hf_token
+        ).model_info(hf_repo, files_metadata=True, timeout=_HF_TIMEOUT)
     except RepositoryNotFoundError:
         # Private or renamed repo. Permanent on this machine, so logging it
         # at warning would repeat the same line on every single launch.

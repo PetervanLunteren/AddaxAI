@@ -99,6 +99,16 @@ class Settings(BaseSettings):
         description="Base URL of a HuggingFace mirror, e.g. https://hf-mirror.com"
     )
 
+    # Bearer token for an endpoint that will not serve anonymously. Our
+    # repos on huggingface.co are public, so this is only ever needed for
+    # a company repository manager (Artifactory, Nexus) proxying them.
+    # HF_TOKEN is the ecosystem name and works as a fallback, like
+    # HF_ENDPOINT above.
+    hf_token: str | None = Field(
+        default=None,
+        description="Bearer token for a HuggingFace endpoint that requires auth"
+    )
+
     # PyTorch wheel index mirror (mainland China). pip has no index
     # priority, so a mirror added through pip.ini competes with the
     # download.pytorch.org entry baked into the env YAMLs and can lose.
@@ -154,6 +164,8 @@ class Settings(BaseSettings):
             self.models_dir = self.user_data_dir / "models"
         if self.hf_endpoint is None:
             self.hf_endpoint = os.environ.get("HF_ENDPOINT", "").strip() or None
+        if self.hf_token is None:
+            self.hf_token = os.environ.get("HF_TOKEN", "").strip() or None
         return self
 
     @property

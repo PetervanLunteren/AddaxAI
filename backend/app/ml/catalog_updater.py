@@ -9,6 +9,7 @@ Following DEVELOPERS.md principles:
 
 import asyncio
 import json
+import sys
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,10 +17,40 @@ from typing import Any
 
 from app.core.config import get_settings
 from app.core.logging_config import get_logger
+from app.ml.hf_downloader import hf_auth_headers
 from app.ml.model_storage import find_stale_files
 from app.ml.schemas.model_manifest import resolve_hf_repo
 
 logger = get_logger(__name__)
+
+
+def _bundled_catalog_path() -> Path | None:
+    """
+    The models.json shipped inside the app, or None if it is not there.
+
+    Two locations, the same two `app/__init__.py` reads VERSION from: the
+    PyInstaller bundle root when frozen, the repo root when running from
+    source.
+    """
+    candidates: list[Path] = []
+    if hasattr(sys, "_MEIPASS"):
+        candidates.append(Path(sys._MEIPASS) / "models.json")
+    candidates.append(Path(__file__).resolve().parents[3] / "models.json")
+    for path in candidates:
+        if path.is_file():
+            return path
+    return None
+
+
+def _validate_catalog(catalog: Any) -> dict[str, Any] | None:
+    """The catalog, or None when it is not shaped like one."""
+    if not isinstance(catalog, dict) or "models" not in catalog:
+        logger.error("Invalid catalog structure: missing 'models'")
+        return None
+    if "det" not in catalog["models"] or "cls" not in catalog["models"]:
+        logger.error("Invalid catalog structure: missing 'det' or 'cls' in models")
+        return None
+    return catalog
 
 # Names of envs whose drift we surface in the toast. Kept here rather
 # than in EnvironmentManager because env_manager treats env_name as an
@@ -58,13 +89,21 @@ class ModelCatalogUpdater:
 
     def fetch_catalog(self, timeout: int = 2) -> dict[str, Any] | None:
         """
-        Fetch model catalog from remote URL.
+        Fetch the model catalog, falling back to the copy shipped in the app.
+
+        The bundled copy is not a cache, it is what keeps a blocked
+        catalog host from emptying the app: manifest.json is written from
+        this catalog and nothing else writes it, and ManifestManager
+        skips any model directory without one. So a first launch behind a
+        firewall used to download the weights and then show no models at
+        all. The bundled file lists what this app version shipped with,
+        which is the honest answer when upstream cannot be reached.
 
         Args:
             timeout: Request timeout in seconds (default: 2)
 
         Returns:
-            Catalog dict if successful, None if failed
+            Catalog dict, or None when neither source yields a valid one
 
         Raises:
             Never raises - logs errors and returns None
@@ -75,35 +114,40 @@ class ModelCatalogUpdater:
             with urllib.request.urlopen(self.catalog_url, timeout=timeout) as response:
                 data = response.read()
 
-            catalog = json.loads(data)
-
-            # Validate basic structure
-            if "models" not in catalog:
-                logger.error("Invalid catalog structure: missing 'models'")
-                return None
-
-            if "det" not in catalog["models"] or "cls" not in catalog["models"]:
-                logger.error("Invalid catalog structure: missing 'det' or 'cls' in models")
-                return None
-
-            det_count = len(catalog['models']['det'])
-            cls_count = len(catalog['models']['cls'])
-            emb_count = len(catalog["models"].get("emb", []))
-            logger.info(
-                f"Fetched catalog: {det_count} det, "
-                f"{cls_count} cls, {emb_count} emb models"
-            )
-            return catalog
+            catalog = _validate_catalog(json.loads(data))
+            if catalog is not None:
+                det_count = len(catalog['models']['det'])
+                cls_count = len(catalog['models']['cls'])
+                emb_count = len(catalog["models"].get("emb", []))
+                logger.info(
+                    f"Fetched catalog: {det_count} det, "
+                    f"{cls_count} cls, {emb_count} emb models"
+                )
+                return catalog
 
         except urllib.error.URLError as e:
             logger.warning(f"Failed to fetch model catalog (offline or unreachable): {e}")
-            return None
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse model catalog JSON: {e}")
-            return None
         except Exception as e:
             logger.error(f"Unexpected error fetching model catalog: {e}", exc_info=True)
+
+        return self._bundled_catalog()
+
+    def _bundled_catalog(self) -> dict[str, Any] | None:
+        """The catalog shipped with the app, or None if it cannot be read."""
+        path = _bundled_catalog_path()
+        if path is None:
+            logger.error("No bundled models.json to fall back on")
             return None
+        try:
+            catalog = _validate_catalog(json.loads(path.read_text(encoding="utf-8")))
+        except Exception as e:
+            logger.error(f"Failed to read bundled catalog {path}: {e}", exc_info=True)
+            return None
+        if catalog is not None:
+            logger.warning(f"Using the model catalog shipped with the app: {path}")
+        return catalog
 
     def get_local_models(self) -> dict[str, set[str]]:
         """
@@ -154,7 +198,8 @@ class ModelCatalogUpdater:
         try:
             logger.info(f"Downloading taxonomy.csv from {taxonomy_url}")
 
-            with urllib.request.urlopen(taxonomy_url, timeout=5) as response:
+            request = urllib.request.Request(taxonomy_url, headers=hf_auth_headers())
+            with urllib.request.urlopen(request, timeout=5) as response:
                 data = response.read()
 
             with open(taxonomy_path, "wb") as f:

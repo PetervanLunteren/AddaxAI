@@ -72,7 +72,7 @@ def test_download_taxonomy_uses_explicit_hf_repo(
         mock_open.return_value.__enter__.return_value.read.return_value = b"csv"
         updater.download_taxonomy("AHDRIFT-v1", model_dir, "other-org/AHDRIFT-v1")
 
-    url = mock_open.call_args[0][0]
+    url = mock_open.call_args[0][0].full_url
     assert "other-org/AHDRIFT-v1" in url
     assert "Addax-Data-Science" not in url
     assert (model_dir / "taxonomy.csv").read_bytes() == b"csv"
@@ -95,7 +95,7 @@ def test_download_taxonomy_goes_through_the_mirror(
         mock_open.return_value.__enter__.return_value.read.return_value = b"csv"
         updater.download_taxonomy("TEST-v1", model_dir)
 
-    url = mock_open.call_args[0][0]
+    url = mock_open.call_args[0][0].full_url
     assert url.startswith("https://hf-mirror.com/")
     assert "huggingface.co" not in url
 
@@ -113,7 +113,7 @@ def test_download_taxonomy_uses_the_real_host_without_a_mirror(
         mock_open.return_value.__enter__.return_value.read.return_value = b"csv"
         updater.download_taxonomy("TEST-v1", model_dir)
 
-    assert mock_open.call_args[0][0].startswith("https://huggingface.co/")
+    assert mock_open.call_args[0][0].full_url.startswith("https://huggingface.co/")
 
 
 def test_download_taxonomy_defaults_to_addax_org(
@@ -126,7 +126,7 @@ def test_download_taxonomy_defaults_to_addax_org(
         mock_open.return_value.__enter__.return_value.read.return_value = b"csv"
         updater.download_taxonomy("NAM-ADS-v1", model_dir, None)
 
-    assert "Addax-Data-Science/NAM-ADS-v1" in mock_open.call_args[0][0]
+    assert "Addax-Data-Science/NAM-ADS-v1" in mock_open.call_args[0][0].full_url
 
 
 # --------------------------------------------------------------------
@@ -227,3 +227,24 @@ def test_missing_taxonomy_is_not_fatal(updater: ModelCatalogUpdater):
     with patch("app.ml.catalog_updater.urllib.request.urlopen") as mock_open:
         mock_open.side_effect = OSError("network down")
         assert updater.write_manifest("cls", _entry()) == "created"
+
+
+def test_taxonomy_download_carries_the_token(
+    updater: ModelCatalogUpdater, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """
+    An endpoint that needs a token needs it here too. Without it the
+    weights arrive and taxonomy.csv 401s, which costs the species tree
+    with nothing failing loudly.
+    """
+    model_dir = tmp_path / "m"
+    model_dir.mkdir()
+    monkeypatch.setenv("ADDAXAI_USER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("ADDAXAI_HF_TOKEN", "secret")
+
+    with patch("app.ml.catalog_updater.urllib.request.urlopen") as mock_open:
+        mock_open.return_value.__enter__.return_value.read.return_value = b"csv"
+        updater.download_taxonomy("TEST-v1", model_dir)
+
+    request = mock_open.call_args[0][0]
+    assert request.get_header("Authorization") == "Bearer secret"

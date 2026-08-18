@@ -234,3 +234,26 @@ def test_cancelling_during_the_backoff_stops_the_retries(
 
     assert calls["n"] == 1
     mock_sleep.assert_not_called()
+
+
+def test_no_authorization_header_without_a_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """huggingface.co serves our repos anonymously, so nothing is sent."""
+    monkeypatch.delenv("ADDAXAI_HF_TOKEN", raising=False)
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    assert "Authorization" not in HuggingFaceRepoDownloader().session.headers
+
+
+def test_token_travels_on_the_file_downloads_too(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    The metadata calls go through huggingface_hub, which reads the token
+    itself; the file downloads are plain requests and have to be told.
+    A private endpoint would otherwise list a repo and 401 every file.
+    """
+    monkeypatch.setenv("ADDAXAI_HF_TOKEN", "secret")
+    downloader = HuggingFaceRepoDownloader()
+    assert downloader.session.headers["Authorization"] == "Bearer secret"
+    assert downloader.api.token == "secret"

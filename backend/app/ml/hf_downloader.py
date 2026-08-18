@@ -53,6 +53,19 @@ _PARALLEL_CONNECTIONS = 4
 _FILE_ATTEMPTS = 3
 
 
+def hf_auth_headers() -> dict[str, str]:
+    """
+    Authorization header for an endpoint that needs one, empty otherwise.
+
+    Only a HuggingFace-compatible endpoint that refuses anonymous reads
+    needs this, which in practice means a company repository manager
+    proxying our repos. One helper so the two raw-HTTP call sites cannot
+    drift from the huggingface_hub ones, which read the token themselves.
+    """
+    token = get_settings().hf_token
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
 class HuggingFaceRepoDownloader:
     """Multi-threaded HuggingFace repository downloader with adaptive scaling."""
 
@@ -80,10 +93,18 @@ class HuggingFaceRepoDownloader:
         # Mirror support (mainland China): both the API metadata calls
         # and the direct download URLs must go through the endpoint, or
         # the mirror only covers half the traffic.
-        self.endpoint = get_settings().hf_base_url
-        self.api = HfApi(endpoint=self.endpoint)
+        settings = get_settings()
+        self.endpoint = settings.hf_base_url
+        self.api = HfApi(endpoint=self.endpoint, token=settings.hf_token)
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "AddaxAI-HuggingFace-Downloader/1.0"})
+        # The token has to travel on the file downloads too, not only on
+        # the metadata calls huggingface_hub makes for us: a private
+        # endpoint would otherwise list a repo fine and 401 every file in
+        # it. requests strips the header again when a response redirects
+        # to another host (Session.rebuild_auth), so a /resolve/ hop off
+        # to a CDN cannot carry the credential with it.
+        self.session.headers.update(hf_auth_headers())
 
         # Adaptive scaling parameters
         self.min_workers = 1
