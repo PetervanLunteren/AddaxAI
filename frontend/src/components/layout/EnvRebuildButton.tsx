@@ -16,9 +16,10 @@
  * backend rejects a concurrent install with 409), so it does not
  * reintroduce the old toast-vs-Settings rebuild race.
  *
- * Note: the drift list itself is computed once at app launch, so the
- * rebuild updates the env's YAML-hash sentinel (it won't reappear next
- * launch) but the notice only disappears after the parent dismisses it.
+ * The rebuild rewrites the env's YAML-hash sentinel, and
+ * GET /api/ml/updates re-reads that sentinel on every request, so the
+ * notice is gone for good once this finishes. Dismissing it here is
+ * only about closing the toast the user is looking at.
  */
 
 import { useEffect, useRef, useState } from "react";

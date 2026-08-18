@@ -692,6 +692,18 @@ On startup, `ModelCatalogUpdater.sync()` therefore asks HuggingFace for one file
 
 **`~/AddaxAI/models` is a managed cache, not a source tree.** Editing a model's `inference.py` in place now shows up as an available update on every launch, and applying it overwrites your edit with no backup.
 
+### Environment drift is answered per request, model drift is not
+
+`GET /api/ml/updates` returns two lists and they are computed at different times, on purpose.
+
+`drifted_models` is the startup snapshot in `app.state.model_updates`. Answering it needs HuggingFace, so it cannot be recomputed per request, and `POST /api/ml/models/{id}/update` patches the model it just fixed out of the stored list.
+
+`drifted_envs` is recomputed by `find_drifted_envs()` on every request. It reads a 64-byte sentinel and hashes a 2.7 KB YAML per env, all local, so the cost does not justify a cache, and a cache here is wrong rather than merely stale: rebuilding a drifted env rewrites `.addaxai-yaml-sha256`, but the snapshot kept saying "drifted" until the next launch. The frontend caches the response with `staleTime: Infinity`, so nothing refetched inside a session, but a window reload builds a new query client, asked again, and got the same stale answer. The user was told to rebuild the environment they had just spent a minute rebuilding, over and over, and `EnvRebuildButton` could only hide it with React state that the next reload threw away.
+
+The recomputed list is returned, never written back into `app.state`: the stored snapshot is what the startup log line `N env(s) drifted` described, and it stays that.
+
+`ADDAXAI_DISABLE_MODEL_UPDATES` still covers both. It turns off the whole notice, so env drift must not slip past it on its own.
+
 ## Reaching HuggingFace through something that is not HuggingFace
 
 `Settings.hf_base_url` is the single source for every HuggingFace request, so a mirror or a company repository manager (Artifactory, Nexus) covers all of them or none. `ADDAXAI_HF_TOKEN` rides along for an endpoint that will not serve anonymously; our own repos are public, so it is unset for everyone else.

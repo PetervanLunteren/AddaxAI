@@ -27,6 +27,7 @@ from app.ml.batch_size import (
     EMBEDDING_DEFAULT_CPU,
     EMBEDDING_DEFAULT_GPU,
 )
+from app.ml.catalog_updater import find_drifted_envs
 from app.ml.environment_manager import (
     EnvironmentManager,
     TlsRevocationCheckError,
@@ -704,11 +705,28 @@ def get_model_updates(request: Request) -> dict:
     """
     Get new models discovered during last startup check.
 
+    The model half is a snapshot taken at startup: answering it needs
+    HuggingFace, so it cannot be recomputed per request.
+
+    The env half is recomputed here every time. It only reads a sentinel
+    and hashes a small local YAML per env, and a snapshot is wrong the
+    moment a user acts on it: rebuilding a drifted env fixes the sentinel
+    but left the startup snapshot saying "drifted", so the notice came
+    back on the next window reload and kept telling the user to rebuild
+    what they had just rebuilt.
+
     Returns:
         Dict with new_models list and checked_at timestamp
     """
     # Access app.state from request
     updates = getattr(request.app.state, "model_updates", {"new_models": [], "checked_at": None})
+
+    # `disabled` is the switch for ADDAXAI_DISABLE_MODEL_UPDATES, which
+    # turns off the whole update notice. Honour it here too rather than
+    # letting env drift slip past it.
+    if not updates.get("disabled"):
+        updates = {**updates, "drifted_envs": find_drifted_envs()}
+
     return updates
 
 

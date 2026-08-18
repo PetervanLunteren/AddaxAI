@@ -64,6 +64,34 @@ _DRIFT_CHECKED_ENVS: tuple[str, ...] = (
 )
 
 
+def find_drifted_envs() -> list[dict[str, str]]:
+    """
+    Which shipped envs no longer match the YAML this app version carries.
+
+    Reads a 64-byte sentinel and hashes a small YAML per env, all local,
+    so this is cheap enough to call per request. `GET /api/ml/updates`
+    does exactly that rather than serving the startup snapshot: rebuilding
+    an env fixes the sentinel, and a user who then reloads the window must
+    not be told again to rebuild what they just rebuilt.
+
+    An env that is not installed, or predates the sentinel, reports
+    nothing (`check_yaml_drift` returns None) and is skipped.
+    """
+    from app.ml.environment_manager import EnvironmentManager
+
+    env_manager = EnvironmentManager()
+    drifted: list[dict[str, str]] = []
+    for env_name in _DRIFT_CHECKED_ENVS:
+        try:
+            has_drifted = env_manager.check_yaml_drift(env_name)
+        except Exception as e:
+            logger.warning(f"Env drift check for {env_name} raised: {e}")
+            continue
+        if has_drifted:
+            drifted.append({"env_name": env_name})
+    return drifted
+
+
 class ModelCatalogUpdater:
     """
     Fetches central model catalog and creates local directory stubs for new models.
@@ -406,20 +434,11 @@ class ModelCatalogUpdater:
             # Env drift: hash each shipped env's bundled YAML and
             # compare to the sentinel written when the env was built.
             # Done outside the catalog loop because envs are shipped
-            # by the app, not by the central models.json.
+            # by the app, not by the central models.json. Recorded here
+            # only so the count reaches the log; the endpoint recomputes
+            # it per request so a rebuild takes effect immediately.
             if not is_fresh_install:
-                from app.ml.environment_manager import EnvironmentManager
-                env_manager = EnvironmentManager()
-                for env_name in _DRIFT_CHECKED_ENVS:
-                    try:
-                        drifted = env_manager.check_yaml_drift(env_name)
-                    except Exception as e:
-                        logger.warning(
-                            f"Env drift check for {env_name} raised: {e}"
-                        )
-                        drifted = None
-                    if drifted:
-                        result["drifted_envs"].append({"env_name": env_name})
+                result["drifted_envs"] = find_drifted_envs()
 
             if is_fresh_install:
                 # On first launch every entry is "created"; no point

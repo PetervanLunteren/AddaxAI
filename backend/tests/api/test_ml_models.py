@@ -241,3 +241,90 @@ def test_redownload_endpoint_is_gone(client, mock_managers):
 
     resp = client.post("/api/ml/models/test-model/redownload")
     assert resp.status_code in (404, 405)
+
+
+def test_updates_recomputes_env_drift(client):
+    """
+    A rebuilt environment must stop being reported straight away.
+
+    The startup snapshot said "drifted". Rebuilding the env rewrites the
+    YAML-hash sentinel, but the snapshot kept saying "drifted" until the
+    next launch, so reloading the window told the user to rebuild what
+    they had just rebuilt.
+    """
+    client.app.state.model_updates = {
+        "new_models": [],
+        "drifted_models": [],
+        "drifted_envs": [{"env_name": "addaxai-base"}],
+        "checked_at": "2026-08-18T12:00:00+00:00",
+    }
+
+    with patch(
+        "app.api.routers.ml_models.find_drifted_envs", return_value=[]
+    ):
+        body = client.get("/api/ml/updates").json()
+
+    assert body["drifted_envs"] == []
+    assert body["checked_at"] == "2026-08-18T12:00:00+00:00"
+
+
+def test_updates_reports_an_env_that_drifted_after_startup(client):
+    """The other direction: the snapshot is not a ceiling either."""
+    client.app.state.model_updates = {
+        "new_models": [],
+        "drifted_models": [],
+        "drifted_envs": [],
+        "checked_at": "2026-08-18T12:00:00+00:00",
+    }
+
+    with patch(
+        "app.api.routers.ml_models.find_drifted_envs",
+        return_value=[{"env_name": "pytorch"}],
+    ):
+        body = client.get("/api/ml/updates").json()
+
+    assert body["drifted_envs"] == [{"env_name": "pytorch"}]
+
+
+def test_updates_honours_the_disable_switch(client):
+    """
+    ADDAXAI_DISABLE_MODEL_UPDATES turns off the whole notice, so env
+    drift must not sneak past it on its own.
+    """
+    client.app.state.model_updates = {
+        "new_models": [],
+        "drifted_envs": [],
+        "checked_at": None,
+        "disabled": True,
+    }
+
+    with patch(
+        "app.api.routers.ml_models.find_drifted_envs",
+        return_value=[{"env_name": "pytorch"}],
+    ) as spy:
+        body = client.get("/api/ml/updates").json()
+
+    spy.assert_not_called()
+    assert body["drifted_envs"] == []
+
+
+def test_updates_does_not_mutate_the_startup_snapshot(client):
+    """
+    The recomputed list is returned, not written back: the snapshot is
+    what the startup log line described, and the model half of it must
+    keep meaning "as of launch".
+    """
+    state = {
+        "new_models": [],
+        "drifted_models": [],
+        "drifted_envs": [{"env_name": "addaxai-base"}],
+        "checked_at": None,
+    }
+    client.app.state.model_updates = state
+
+    with patch(
+        "app.api.routers.ml_models.find_drifted_envs", return_value=[]
+    ):
+        client.get("/api/ml/updates")
+
+    assert state["drifted_envs"] == [{"env_name": "addaxai-base"}]
