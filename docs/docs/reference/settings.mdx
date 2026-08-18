@@ -1,0 +1,81 @@
+---
+sidebar_position: 4
+title: Settings
+hide_table_of_contents: true
+---
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+# Settings
+
+AddaxAI reads these environment variables. All of them are optional. You need them to move the data folder, or to send the downloads somewhere else on a restricted network.
+
+| Variable | What it does |
+|---|---|
+| `ADDAXAI_USER_DATA_DIR` | Where the database, the models and the analysis environment live. Default `~/AddaxAI`, on Windows `C:\Users\<your user name>\AddaxAI`. |
+| `ADDAXAI_HF_ENDPOINT` | Base address for the model downloads, instead of `https://huggingface.co`. A mirror, or your own repository manager. |
+| `ADDAXAI_HF_TOKEN` | Token for that address, when it does not serve downloads anonymously. Needs AddaxAI 7.0.14 or newer. |
+| `ADDAXAI_HF_HUB_DISABLE_XET` | Set to `1` to download models the plain way. Some mirrors need this. |
+| `ADDAXAI_PYTORCH_INDEX_URL` | Replaces `https://download.pytorch.org/whl` while the analysis environment is built. Leave the CUDA part off, AddaxAI adds it. |
+| `ADDAXAI_MODEL_CATALOG_URL` | Where the list of available models comes from. |
+| `ADDAXAI_DISABLE_MODEL_UPDATES` | Set to `true` to skip the model list check at start. |
+| `MAMBA_CHANNEL_ALIAS` | Replaces `https://conda.anaconda.org` while the analysis environment is built. This one belongs to micromamba, not to AddaxAI. AddaxAI ignores `.condarc`, so it has to be set as a variable. |
+| `MAMBA_SSL_NO_REVOKE` | Set to `true` to build the analysis environment without a certificate revocation check. See [locked-down computers and networks](../help/locked-down-computers.mdx). |
+
+A variable that is empty counts as not set.
+
+## How to set them
+
+<Tabs groupId="os" queryString="os">
+  <TabItem value="windows" label="Windows" default>
+
+1. Open Start and search for "environment variables".
+2. Choose "Edit the system environment variables", then "Environment variables".
+3. Add each one under "User variables", or under "System variables" to cover every user on the machine.
+4. Restart the computer, then start AddaxAI.
+
+  </TabItem>
+  <TabItem value="macos" label="macOS">
+
+A plain `export` does not reach apps started from the Dock, so use a login agent. Put your own variables on the `launchctl setenv` line, separated by `;`:
+
+```bash
+cat > ~/Library/LaunchAgents/com.addaxai.settings.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.addaxai.settings</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>launchctl setenv NAME value; launchctl setenv OTHER_NAME value</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+</dict>
+</plist>
+EOF
+launchctl load ~/Library/LaunchAgents/com.addaxai.settings.plist
+```
+
+This survives a restart. Delete the file and restart to undo it.
+
+  </TabItem>
+  <TabItem value="linux" label="Linux">
+
+A plain `export` does not reach apps started from a desktop icon, so set it for the whole session. One `NAME=value` per line:
+
+```bash
+mkdir -p ~/.config/environment.d
+cat > ~/.config/environment.d/addaxai.conf << 'EOF'
+NAME=value
+OTHER_NAME=value
+EOF
+```
+
+Log out and in. This survives a restart. Delete the file and log out and in to undo it.
+
+  </TabItem>
+</Tabs>

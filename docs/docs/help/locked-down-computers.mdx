@@ -4,13 +4,32 @@ title: Install on locked-down computers and networks
 hide_table_of_contents: true
 ---
 
-import Tabs from "@theme/Tabs";
-import TabItem from "@theme/TabItem";
 import { FaqItem } from "@site/src/components/Faq";
 
 # Install on locked-down computers and networks
 
-Work and university computers are often managed. A rule about where programs may run, or a network that inspects secure traffic, can stop the first-time setup. Pick the error you see.
+Work and university computers are often managed. A rule about where programs may run, or a network that inspects secure traffic, can stop the first-time setup.
+
+Planning a rollout? Start with the addresses below. Setup already failed? Pick the error you see.
+
+## Which addresses setup needs
+
+Setup downloads from these. They need to be reachable, and not inspected.
+
+| Address | What it is used for | If it is blocked |
+|---|---|---|
+| `micro.mamba.pm` | the program that builds the analysis environment | setup cannot start |
+| `conda.anaconda.org` | the packages that environment is built from | setup fails |
+| `pypi.org` and `files.pythonhosted.org` | more packages | setup fails |
+| `download.pytorch.org` | the parts that use your graphics card | setup fails |
+| `huggingface.co` and `*.hf.co` | the AI models themselves | no model can be downloaded |
+| `raw.githubusercontent.com` | the list of available models | only the models that shipped with your version are listed |
+
+The model files are large, so they are served from `*.hf.co` and not from `huggingface.co` itself. Allowing only the second one is not enough.
+
+After setup, analysis runs offline. AddaxAI still checks the model list and looks for a new version at start, and both fail quietly.
+
+## Problems
 
 <FaqItem
   id="the-app-is-blocked-by-group-policy"
@@ -31,66 +50,12 @@ The app installs where you pick. The AI runs from a separate data folder, by def
 Easiest: ask IT to allow programs under that folder. If they cannot, move both.
 
 1. Install the app in an allowed folder. The installer lets you pick. For a script, see [silent install](silent-install.mdx).
-2. Set `ADDAXAI_USER_DATA_DIR` to a path in an allowed location, for example `C:\Apps\AddaxAI-data`.
-
-<Tabs groupId="os" queryString="os">
-  <TabItem value="windows" label="Windows" default>
-
-Set it machine wide, so it applies to every user:
-
-1. Open Start and search for "environment variables".
-2. Choose "Edit the system environment variables", then "Environment variables".
-3. Under "System variables", add `ADDAXAI_USER_DATA_DIR` with the path as its value.
-4. Start the app and run the setup.
-
-  </TabItem>
-  <TabItem value="macos" label="macOS">
-
-A plain `export` does not reach apps started from the Dock, so use a login agent. Paste this in Terminal, with your folder on the `<string>` line:
-
-```bash
-cat > ~/Library/LaunchAgents/com.addaxai.data-folder.plist << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.addaxai.data-folder</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/bin/launchctl</string>
-    <string>setenv</string>
-    <string>ADDAXAI_USER_DATA_DIR</string>
-    <string>/path/to/folder</string>
-  </array>
-  <key>RunAtLoad</key><true/>
-</dict>
-</plist>
-EOF
-launchctl load ~/Library/LaunchAgents/com.addaxai.data-folder.plist
-```
-
-This survives restarts. Then run the setup.
-
-  </TabItem>
-  <TabItem value="linux" label="Linux">
-
-A plain `export` does not reach apps started from a desktop icon, so set it for the whole session. Paste this in a terminal, then log out and in:
-
-```bash
-mkdir -p ~/.config/environment.d
-echo 'ADDAXAI_USER_DATA_DIR=/path/to/folder' > ~/.config/environment.d/addaxai.conf
-```
-
-This survives restarts. Then run the setup.
-
-  </TabItem>
-</Tabs>
+2. Set `ADDAXAI_USER_DATA_DIR` to a path in an allowed location, for example `C:\Apps\AddaxAI-data`. See [settings](../reference/settings.mdx) for how to set it. On Windows, set it machine wide so it applies to every user.
 
 #### Things to know
 
 - The folder must be writable by the user who runs the app. If it is not, startup shows an error naming the folder.
 - The variable moves nothing. You start with an empty database, and setup downloads the models again. To keep earlier work, close the app and move the old folder's contents across first.
-- Setup needs the addresses under [which addresses setup needs](#which-addresses-setup-needs). If they are blocked, ask IT, or see [install in mainland China](install-in-china.mdx) for mirrors.
 
 </FaqItem>
 
@@ -144,21 +109,62 @@ C:\Users\<your user name>\AddaxAI\.allow-no-revocation-check
 
 The file explains itself. Delete it and the check comes back.
 
-Administrators can set this per machine instead, with a system variable `MAMBA_SSL_NO_REVOKE` set to `true`. Use `true`, not `1`. A [silent install](silent-install.mdx) shows no screen, so set it before you deploy.
+Administrators can set this per machine instead, with `MAMBA_SSL_NO_REVOKE` set to `true`. Use `true`, not `1`. A [silent install](silent-install.mdx) shows no screen, so set it before you deploy.
 
 </FaqItem>
 
-## Which addresses setup needs
+<FaqItem
+  id="we-can-only-download-through-our-own-mirror"
+  q="We can only download through our own mirror"
+  summary="Artifactory, Nexus or another repository manager instead of the public addresses."
+>
 
-Setup downloads from these. IT needs them reachable, and not inspected:
+Some organizations do not open the firewall, but do run their own copy of the public repositories. AddaxAI can be pointed at those. Set the ones you need, see [settings](../reference/settings.mdx).
 
-| Address | What it is used for |
-|---|---|
-| `micro.mamba.pm` | the program that builds the analysis environment |
-| `conda.anaconda.org` | the packages that environment is built from |
-| `pypi.org` and `files.pythonhosted.org` | more packages |
-| `download.pytorch.org` | the parts that use your graphics card |
-| `huggingface.co` | the AI models themselves |
+| What | Setting | Example value |
+|---|---|---|
+| AI models | `ADDAXAI_HF_ENDPOINT` | `https://artifactory.example.com/artifactory/api/huggingfaceml/hf-remote` |
+| Model list | `ADDAXAI_MODEL_CATALOG_URL` | your own copy of `models.json` |
+| pip packages | `PIP_INDEX_URL`, or a `pip.conf` / `pip.ini` | your PyPI mirror |
+| PyTorch | `ADDAXAI_PYTORCH_INDEX_URL` | your copy of `https://download.pytorch.org/whl` |
+| conda packages | `MAMBA_CHANNEL_ALIAS` | your conda-forge mirror |
+
+Two things have no mirror setting. `micro.mamba.pm` is fetched from a fixed address, and the model files that `huggingface.co` redirects to have to come through the same endpoint you set. If neither can be reached, use the section below instead.
+
+#### Before you deploy it
+
+Repository managers differ in how much of the HuggingFace interface they answer. Two requests decide it, so check them from a managed computer first:
+
+```bash
+curl -i "<your endpoint>/api/models/Addax-Data-Science/MD5A-0-0/tree/main?recursive=true"
+curl -L -o test.pt "<your endpoint>/Addax-Data-Science/MD5A-0-0/resolve/main/md_v5a.0.0.pt"
+```
+
+The first must answer with a list of files, the second with a 280 MB file. If both work, AddaxAI works. If either does not, [email me](mailto:peter@addaxdatascience.com) with what came back.
+
+#### If the endpoint needs a login
+
+Set `ADDAXAI_HF_TOKEN` to the token. Needs AddaxAI 7.0.14 or newer. It is sent to whatever address `ADDAXAI_HF_ENDPOINT` points at, and to nothing else.
+
+</FaqItem>
+
+<FaqItem
+  id="we-cannot-download-anything-at-all"
+  q="We cannot download anything at all"
+  summary="Prepare one computer, then copy the result to the rest."
+>
+
+Set up one computer that does have access, then copy what it produced onto the others. Nothing on those computers needs to reach the internet.
+
+1. Pick a folder that exists on every machine, for example `C:\Apps\AddaxAI-data`, and set `ADDAXAI_USER_DATA_DIR` to it everywhere. See [settings](../reference/settings.mdx). The folder has to be the same path on every machine.
+2. On the prepared computer, install AddaxAI and run the setup, or run it from a script as described under [pre-install the models and environments](silent-install.mdx#pre-install-the-models-and-environments).
+3. Delete `addaxai.db` and the `backups` folder from that folder, or every machine starts with the first one's projects.
+4. Copy the folder to the other machines, along with the app itself.
+5. Set `ADDAXAI_DISABLE_MODEL_UPDATES` to `true` so AddaxAI stops looking for a newer model list at start.
+
+Repeat this whenever you deploy a new version of AddaxAI.
+
+</FaqItem>
 
 ## Blocked in a different way?
 

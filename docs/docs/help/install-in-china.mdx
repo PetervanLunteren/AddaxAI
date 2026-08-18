@@ -14,24 +14,20 @@ The first launch downloads the AI models and the software they run in. In mainla
 
 You need AddaxAI 7.0.13 or newer.
 
-<Tabs groupId="os" queryString="os">
-  <TabItem value="windows" label="Windows" default>
-
 ## Point the app to the mirrors
 
-1. Open the Start menu and search for "environment variables".
-2. Open Edit the system environment variables, then click Environment Variables.
-3. Under User variables, click New and add these three, one by one:
+Set these three, see [settings](../reference/settings.mdx) for how to do that on your system:
 
-   | Name | Value |
-   |---|---|
-   | `ADDAXAI_HF_ENDPOINT` | `https://hf-mirror.com` |
-   | `ADDAXAI_HF_HUB_DISABLE_XET` | `1` |
-   | `ADDAXAI_PYTORCH_INDEX_URL` | `https://mirror.nju.edu.cn/pytorch/whl` |
-
-4. Click OK to close the windows.
+| Variable | Value |
+|---|---|
+| `ADDAXAI_HF_ENDPOINT` | `https://hf-mirror.com` |
+| `ADDAXAI_HF_HUB_DISABLE_XET` | `1` |
+| `ADDAXAI_PYTORCH_INDEX_URL` | `https://mirror.nju.edu.cn/pytorch/whl` |
 
 ## Point the installer to the mirrors
+
+<Tabs groupId="os" queryString="os">
+  <TabItem value="windows" label="Windows" default>
 
 1. Open Notepad and paste this:
 
@@ -42,42 +38,10 @@ You need AddaxAI 7.0.13 or newer.
 
 2. Save it as `pip.ini` in the folder `C:\Users\<your user name>\AppData\Roaming\pip`. Create the `pip` folder if it is not there.
 
-## Restart
-
-Restart your computer, open AddaxAI, and run the setup again. It continues where it stopped.
-
   </TabItem>
   <TabItem value="macos" label="macOS">
 
-## Point the app to the mirrors
-
-Paste this in Terminal. It sets the mirror at every login, so it keeps working after a restart and for models you install later:
-
-```bash
-cat > ~/Library/LaunchAgents/com.addaxai.mirrors.plist << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.addaxai.mirrors</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/bin/sh</string>
-    <string>-c</string>
-    <string>launchctl setenv ADDAXAI_HF_ENDPOINT https://hf-mirror.com; launchctl setenv ADDAXAI_HF_HUB_DISABLE_XET 1; launchctl setenv ADDAXAI_PYTORCH_INDEX_URL https://mirror.nju.edu.cn/pytorch/whl</string>
-  </array>
-  <key>RunAtLoad</key><true/>
-</dict>
-</plist>
-EOF
-launchctl load ~/Library/LaunchAgents/com.addaxai.mirrors.plist
-```
-
-To stop using the mirror later, delete that file and restart your Mac.
-
-## Point the installer to the mirrors
-
-Run these lines in the same Terminal:
+Run this in Terminal:
 
 ```bash
 mkdir -p ~/.config/pip
@@ -86,17 +50,11 @@ cat > ~/.config/pip/pip.conf << 'EOF'
 index-url = https://mirrors.aliyun.com/pypi/simple/
 EOF
 ```
-
-## Run the setup
-
-Open AddaxAI and run the setup again. It continues where it stopped.
 
   </TabItem>
   <TabItem value="linux" label="Linux">
 
-## Point the installer to the mirrors
-
-Open a terminal and run:
+Run this in a terminal:
 
 ```bash
 mkdir -p ~/.config/pip
@@ -106,23 +64,12 @@ index-url = https://mirrors.aliyun.com/pypi/simple/
 EOF
 ```
 
-## Point the app to the mirrors
-
-Paste this in the same terminal, then log out and in. It sets the mirror for every session, so it keeps working after a restart and for models you install later:
-
-```bash
-mkdir -p ~/.config/environment.d
-cat > ~/.config/environment.d/addaxai-mirrors.conf << 'EOF'
-ADDAXAI_HF_ENDPOINT=https://hf-mirror.com
-ADDAXAI_HF_HUB_DISABLE_XET=1
-ADDAXAI_PYTORCH_INDEX_URL=https://mirror.nju.edu.cn/pytorch/whl
-EOF
-```
-
-To stop using the mirror later, delete that file and log out and in.
-
   </TabItem>
 </Tabs>
+
+## Restart
+
+Restart your computer, open AddaxAI, and run the setup again. It continues where it stopped.
 
 The mirrors are free services from universities and volunteers. They can move or go offline. If one stops working, [let me know](mailto:peter@addaxdatascience.com).
 
