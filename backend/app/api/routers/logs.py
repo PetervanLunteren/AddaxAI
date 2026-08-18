@@ -115,6 +115,16 @@ def _collect_system_info() -> dict[str, object]:
         "user_data_dir": str(settings.user_data_dir),
         "collected_at_utc": datetime.now(UTC).isoformat(),
     }
+    # Card name and VRAM, because "it ran out of memory" is unanswerable
+    # without them and asking the user costs a round trip. Best effort by
+    # design: an empty list means no driver answered, which is itself the
+    # answer when someone reports that a model ran on the CPU.
+    try:
+        from app.utils.gpu_info import collect_gpu_info
+
+        info["gpu"] = collect_gpu_info()
+    except Exception as e:
+        info["gpu_error"] = str(e)
     # Disk free where the user data lives. Not all platforms expose this
     # via os.statvfs (Windows in particular), so be defensive.
     try:
@@ -296,7 +306,7 @@ def _build_diagnostic_zip() -> bytes:
                 "=========================\n\n"
                 "This bundle contains:\n"
                 "  - logs/                 application log files (rotating, last ~7 days)\n"
-                "  - system.json           OS, Python, disk usage\n"
+                "  - system.json           OS, Python, disk usage, graphics card\n"
                 "  - env-status.json       installed conda envs and their validity\n"
                 "  - models.json           installed model directories and manifests\n"
                 "  - db-info.json          schema version, schema check, per-table row counts\n"
