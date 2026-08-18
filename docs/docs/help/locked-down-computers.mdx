@@ -50,7 +50,7 @@ The app installs where you pick. The AI runs from a separate data folder, by def
 Easiest: ask IT to allow programs under that folder. If they cannot, move both.
 
 1. Install the app in an allowed folder. The installer lets you pick. For a script, see [silent install](silent-install.mdx).
-2. Set `ADDAXAI_USER_DATA_DIR` to a path in an allowed location, for example `C:\Apps\AddaxAI-data`. See [settings](../reference/settings.mdx) for how to set it. On Windows, set it machine wide so it applies to every user.
+2. Set `ADDAXAI_USER_DATA_DIR` to a path in an allowed location, for example `C:\Apps\AddaxAI-data`. See [environment variables](../reference/environment-variables.mdx) for how to set it. On Windows, set it machine wide so it applies to every user.
 
 #### Things to know
 
@@ -119,7 +119,7 @@ Administrators can set this per machine instead, with `MAMBA_SSL_NO_REVOKE` set 
   summary="Artifactory, Nexus or another repository manager instead of the public addresses."
 >
 
-Some organizations do not open the firewall, but do run their own copy of the public repositories. AddaxAI can be pointed at those. Set the ones you need, see [settings](../reference/settings.mdx).
+Some organizations do not open the firewall, but do run their own copy of the public repositories. AddaxAI can be pointed at those. Set the ones you need, see [environment variables](../reference/environment-variables.mdx).
 
 | What | Setting | Example value |
 |---|---|---|
@@ -156,7 +156,7 @@ Set `ADDAXAI_HF_TOKEN` to the token. Needs AddaxAI 7.0.14 or newer. It is sent t
 
 Set up one computer that does have access, then copy what it produced onto the others. Nothing on those computers needs to reach the internet.
 
-1. Pick a folder that exists on every machine, for example `C:\Apps\AddaxAI-data`, and set `ADDAXAI_USER_DATA_DIR` to it everywhere. See [settings](../reference/settings.mdx). The folder has to be the same path on every machine.
+1. Pick a folder that exists on every machine, for example `C:\Apps\AddaxAI-data`, and set `ADDAXAI_USER_DATA_DIR` to it everywhere. See [environment variables](../reference/environment-variables.mdx). The folder has to be the same path on every machine.
 2. On the prepared computer, install AddaxAI and run the setup, or run it from a script as described under [pre-install the models and environments](silent-install.mdx#pre-install-the-models-and-environments).
 3. Delete `addaxai.db` and the `backups` folder from that folder, or every machine starts with the first one's projects.
 4. Copy the folder to the other machines, along with the app itself.
