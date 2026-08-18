@@ -1,4 +1,11 @@
-import { useMemo, useState, type ReactElement } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+} from "react";
 import modelsData from "@site/src/data/models.json";
 import speciesData from "@site/src/data/species.json";
 import styles from "./styles.module.css";
@@ -13,6 +20,12 @@ import styles from "./styles.module.css";
 // citation. The table itself stays narrow enough to read without sideways
 // scrolling; anything long or rarely needed lives in the expanded panel.
 // This mirrors the app's own model info sheet, so docs and app agree.
+//
+// A model is linkable: `…/reference/model-zoo#SAC-DMO-v1` opens that row,
+// scrolls to it and marks it, so a URL can point at one model rather than
+// at the table. Opening a row rewrites the hash too, so the address bar is
+// always the link to share. Model ids are unique across all three types and
+// need no URL escaping, so the bare id is the whole anchor.
 
 type ModelType = "det" | "cls" | "emb";
 
@@ -70,6 +83,15 @@ function prettySpecies(name: string): string {
   return name.replace(/_/g, " ");
 }
 
+/** The model a `#hash` points at, or null when it names something else. */
+function rowForHash(hash: string): Row | null {
+  const id = decodeURIComponent(hash.replace(/^#/, "")).toLowerCase();
+  if (!id) return null;
+  // A miss is normal: the same hash space carries the page's own heading
+  // anchors, so anything we do not recognise is left to Docusaurus.
+  return ALL_ROWS.find((r) => r.model_id.toLowerCase() === id) ?? null;
+}
+
 // The catalogue stores regions lowercase ("europe"). They are proper nouns,
 // so display them capitalised while filtering on the stored value.
 function prettyRegion(region: string): string {
@@ -102,6 +124,12 @@ export default function ModelZoo(): ReactElement {
   const [typeFilter, setTypeFilter] = useState<ModelType | "all">("all");
   const [regionFilter, setRegionFilter] = useState<string>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // The model the URL currently points at. Marked in the table so a shared
+  // link says which row it meant, even once other rows are open too.
+  const [pinned, setPinned] = useState<string | null>(null);
+  // Set only when a hash brought us to a row, so clicking a row you can
+  // already see never yanks the page around.
+  const pendingScroll = useRef<string | null>(null);
 
   // Only classification models carry a region, so the control and the column
   // are pointless while the other two types are selected.
@@ -128,13 +156,59 @@ export default function ModelZoo(): ReactElement {
 
   const columnCount = regionApplies ? 5 : 4;
 
-  function toggle(key: string): void {
+  // Hash -> state. Runs on mount for a shared link, and on hashchange for
+  // the anchor buttons and the back button.
+  const applyHash = useCallback((): void => {
+    const row = rowForHash(window.location.hash);
+    if (!row) {
+      setPinned(null);
+      return;
+    }
+    setPinned(row.model_id);
+    setExpanded((prev) => new Set(prev).add(`${row.type}-${row.model_id}`));
+    pendingScroll.current = row.model_id;
+  }, []);
+
+  useEffect(() => {
+    applyHash();
+    window.addEventListener("hashchange", applyHash);
+    return () => window.removeEventListener("hashchange", applyHash);
+  }, [applyHash]);
+
+  // Deliberately runs after every render and leaves immediately unless a
+  // hash asked for a scroll. The row only exists in the DOM once the state
+  // above has painted, so this cannot be folded into the effect that sets it.
+  useEffect(() => {
+    const id = pendingScroll.current;
+    if (!id) return;
+    pendingScroll.current = null;
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ block: "center" });
+    // Focus follows the link, so a keyboard reader lands on the model
+    // rather than back at the top of the page. preventScroll because the
+    // line above already put it where we want it.
+    el.querySelector("button")?.focus({ preventScroll: true });
+  });
+
+  /** Keep the address bar on the open model, without stacking history entries. */
+  function writeHash(modelId: string | null): void {
+    const url = new URL(window.location.href);
+    url.hash = modelId ?? "";
+    window.history.replaceState(null, "", url.toString());
+  }
+
+  function toggle(row: Row): void {
+    const key = `${row.type}-${row.model_id}`;
+    const opening = !expanded.has(key);
     setExpanded((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (opening) next.add(key);
+      else next.delete(key);
       return next;
     });
+    setPinned(opening ? row.model_id : null);
+    writeHash(opening ? row.model_id : null);
   }
 
   return (
@@ -208,13 +282,22 @@ export default function ModelZoo(): ReactElement {
             {rows.map((row) => {
               const key = `${row.type}-${row.model_id}`;
               const isOpen = expanded.has(key);
+              const isPinned = pinned === row.model_id;
               return [
-                <tr key={key} className={isOpen ? styles.rowOpen : undefined}>
+                <tr
+                  key={key}
+                  id={row.model_id}
+                  className={
+                    [isOpen ? styles.rowOpen : "", isPinned ? styles.rowPinned : ""]
+                      .filter(Boolean)
+                      .join(" ") || undefined
+                  }
+                >
                   <td>
                     <button
                       type="button"
                       className={styles.nameButton}
-                      onClick={() => toggle(key)}
+                      onClick={() => toggle(row)}
                       aria-expanded={isOpen}
                     >
                       <span
@@ -228,7 +311,19 @@ export default function ModelZoo(): ReactElement {
                         <span>{row.friendly_name}</span>
                       </span>
                     </button>
-                    <code className={styles.modelId}>{row.model_id}</code>
+                    <span className={styles.idLine}>
+                      <code className={styles.modelId}>{row.model_id}</code>
+                      {/* A real href, so right-click and copy gives the
+                          shareable URL without any clipboard scripting. */}
+                      <a
+                        className={styles.anchor}
+                        href={`#${row.model_id}`}
+                        title={`Link to ${row.friendly_name}`}
+                        aria-label={`Link to ${row.friendly_name}`}
+                      >
+                        #
+                      </a>
+                    </span>
                   </td>
                   <td>
                     <span className={styles.badge}>{TYPE_LABEL[row.type]}</span>

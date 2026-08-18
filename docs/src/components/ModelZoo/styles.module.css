@@ -230,3 +230,38 @@
   color: var(--ifm-color-emphasis-600);
   padding: 1.5rem;
 }
+
+/* A linked row keeps a marker after the scroll, so a shared URL says which
+   model it meant even once the reader opens others. Left border rather than
+   a background tint: the open row already uses a tint, and stacking two
+   would read as a third state. */
+.rowPinned td:first-child {
+  box-shadow: inset 3px 0 0 0 var(--ifm-color-primary);
+}
+
+.idLine {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: baseline;
+}
+
+/* Hidden until the row is hovered or the link itself is focused, the same
+   trick Docusaurus uses on heading anchors: discoverable on the row you are
+   reading, silent everywhere else. Never hidden from screen readers. */
+.anchor {
+  color: var(--ifm-color-emphasis-500);
+  font-size: 0.72rem;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.table tbody tr:hover .anchor,
+.anchor:focus,
+.rowPinned .anchor {
+  opacity: 1;
+}
+
+.anchor:hover {
+  color: var(--ifm-color-primary);
+}
