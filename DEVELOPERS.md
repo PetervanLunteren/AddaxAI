@@ -327,6 +327,26 @@ The scrim over the photo is a CSS gradient, not baked into the image, so darkeni
 
 Both screens put the teal wordmark on a frosted plate (`components/layout/LogoPlate.tsx`), because the wordmark is teal on transparent and disappears straight into a forest without one.
 
+### The macOS installer window
+
+The drag-to-Applications window gets the same treatment, from `electron/build/background.png` plus `background@2x.png`. No configuration points at them: `dmg-builder` looks in the build resources folder for `background.tiff`, then `background.png`, and only falls back to its own grey template if neither is there. Drop the files in and they are used. Two rules decide everything about them.
+
+**The size sets the window.** With no `dmg.window` in `package.json`, electron-builder takes `windowWidth` / `windowHeight` straight off the background image, and the icon coordinates already in `dmg.contents` (`130,220` and `410,220`, which are icon *centres*) are placed for the 540x380 default. So the image is exactly 540x380 and the retina copy exactly 1080x760. Change the size and the icons land wrong. `tiffutil` merges the pair at build time; it lives in `/usr/bin` on stock macOS, so the runner has it.
+
+**The wash is not decoration.** With a background *picture*, Finder stops adapting the filename colour to dark mode and draws `AddaxAI` and `Applications` in black in both modes. There is no light/dark trade-off to solve, only one rule: the photo has to be light where those two labels sit. Raw, this photo puts them at 3:1. The 55% white blend takes them to 7.7:1. Measure before changing the photo; the two labels sit in the bands `x 75..185` and `x 355..465`, `y 258..280`.
+
+```python
+im = ImageOps.exif_transpose(Image.open(src)).convert("RGB")
+im = ImageOps.fit(im, (540 * s, 380 * s), Image.LANCZOS)          # s = 1, then 2
+im = im.filter(ImageFilter.GaussianBlur(3.0 * 540 * s / 1600))    # same scaling as above
+im = Image.blend(im, Image.new("RGB", im.size, "white"), 0.55)
+# then the arrow, on top of the blur, never under it:
+#   line (215,220)->(320,220) width 5, head (340,220),(318,208),(318,232), fill #0f6064 at alpha 170
+im.save(out, "PNG", optimize=True)                                # PNG or TIFF only
+```
+
+The arrow is drawn in because the default template had one and it is the only thing telling a first-time user what to do. Keep it above the blur or it smears.
+
 ## Linting (CI enforcement)
 
 GitHub Actions runs **ruff** on every push and PR (`ruff check app tests`). The build fails if there are any errors, so check locally before pushing:
