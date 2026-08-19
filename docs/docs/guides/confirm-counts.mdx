@@ -4,10 +4,17 @@ title: Confirm the counts
 ---
 
 import AppShot from "@site/src/components/AppShot";
+import TutorialVideo from "@site/src/components/TutorialVideo";
 
 # Confirm the counts
 
 The AI already counted how many animals it saw in each event. On the Counts page you check those numbers and sign them off. This step is optional. The AI miscounts, so it is recommended to review the suggested counts for the species of interest. Counts are separate from labels, and tracked separately. See [check the labels](./check-labels.mdx).
+
+## Video tutorial
+
+Prefer to watch? This video shows how to check the AI's counts and sign them off.
+
+<TutorialVideo id="wl82KMO9t0w" title="Video: confirm the counts" />
 
 ## How counting works
 
@@ -20,3 +27,9 @@ Each card is one event. It opens on the frame where the most animals are visible
 When you play a video, the labels change from frame to frame. That is normal, and only one frame per video decides the species and the count. See [videos](../understanding/detections-events-observations.mdx#videos).
 
 <AppShot name="countsEvent" />
+
+## Look at the empty ones
+
+Events where the AI found nothing are hidden. Open More and set Empty to "Show only empty" to page through them. Only events where every photo is empty show up, so an empty photo in an event that also holds an animal stays hidden.
+
+You can look here, not correct. If you find an animal the AI missed, go to the Labels page and lower the detection confidence: often there is a weak box on the photo that you can label after all. See [check the labels](./check-labels.mdx).
