@@ -1212,7 +1212,11 @@ function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
         label: 'Documentation',
         click: () => shell.openExternal('https://docs.addaxai.com'),
       },
-      { label: 'Video tutorials (coming soon)', enabled: false },
+      {
+        label: 'Video tutorials',
+        click: () =>
+          shell.openExternal('https://docs.addaxai.com/docs/category/guides/'),
+      },
       { type: 'separator' },
       {
         label: 'Troubleshooting',

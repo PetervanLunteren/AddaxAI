@@ -3,8 +3,10 @@
  * Introduces the verification workflow and mentions keyboard shortcuts.
  */
 
-import { CircleHelp } from "lucide-react";
+import { CircleHelp, ExternalLink } from "lucide-react";
 import { Button } from "../ui/button";
+
+const GUIDE_URL = "https://docs.addaxai.com/docs/guides/confirm-counts/";
 
 interface WelcomePopoverProps {
   open: boolean;
@@ -27,16 +29,24 @@ export function WelcomePopover({ open, onDismiss }: WelcomePopoverProps) {
           </p>
           <p>
             An event groups files captured close together in time, treated as
-            one observation. Each card opens to the MaxN frame: the moment the
-            most animals are visible, so you can check the species and count in
-            one look. The strip below is the rest of the event; for a video it
+            one observation. Each card opens to the moment the most animals are
+            visible, so you can check the species and count in one look. The strip below is the rest of the event; for a video it
             shows frames across the clip. Click any to inspect.
           </p>
           <p>
-            Press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> to confirm and jump to the next unconfirmed event. Click <CircleHelp className="inline h-3.5 w-3.5 align-text-bottom" /> in the toolbar any time for the full guide and keyboard shortcuts.
+            Press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> to confirm and jump to the next unconfirmed event. Click <CircleHelp className="inline h-3.5 w-3.5 align-text-bottom" /> in the toolbar any time to open the full guide.
           </p>
         </div>
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between">
+          <a
+            href={GUIDE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-primary underline hover:opacity-80 inline-flex items-center gap-1"
+          >
+            Watch the video tutorial
+            <ExternalLink className="h-3 w-3" />
+          </a>
           <Button onClick={onDismiss}>Got it</Button>
         </div>
       </div>

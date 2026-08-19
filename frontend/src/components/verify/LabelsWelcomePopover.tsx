@@ -3,8 +3,10 @@
  * Introduces the labels workflow and mentions the help button.
  */
 
-import { CircleHelp } from "lucide-react";
+import { CircleHelp, ExternalLink } from "lucide-react";
 import { Button } from "../ui/button";
+
+const GUIDE_URL = "https://docs.addaxai.com/docs/guides/check-labels/";
 
 interface LabelsWelcomePopoverProps {
   open: boolean;
@@ -33,11 +35,19 @@ export function LabelsWelcomePopover({ open, onDismiss }: LabelsWelcomePopoverPr
           </p>
           <p>
             Click <CircleHelp className="inline h-3.5 w-3.5 align-text-bottom" /> in
-            the toolbar any time for the full guide and keyboard
-            shortcuts.
+            the toolbar any time to open the full guide.
           </p>
         </div>
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between">
+          <a
+            href={GUIDE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-primary underline hover:opacity-80 inline-flex items-center gap-1"
+          >
+            Watch the video tutorial
+            <ExternalLink className="h-3 w-3" />
+          </a>
           <Button onClick={onDismiss}>Got it</Button>
         </div>
       </div>
