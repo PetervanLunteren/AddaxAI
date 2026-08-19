@@ -29,6 +29,7 @@ import {
   hasReprocessChanges,
   type RegroupImpact,
   startReprocessIfNeeded,
+  warnIfDeploymentsSkipped,
 } from "../lib/reprocessSettings";
 import { RegroupConfirmDialog } from "../components/settings/RegroupConfirmDialog";
 import {
@@ -473,9 +474,10 @@ export default function SettingsPage() {
   // Save-triggered reprocess progress
   const saveProgress = useTaskProgress({
     taskId: saveJobId,
-    onComplete: async () => {
+    onComplete: async (data) => {
       setSaveJobId(null);
       setIsSaving(false);
+      const nothingApplied = warnIfDeploymentsSkipped(data);
       // Blanket invalidate so every page (images, dashboard, review,
       // insights) picks up the reprocessed labels/annotations
       // immediately.
@@ -483,6 +485,14 @@ export default function SettingsPage() {
         invalidateProjectData(queryClient, projectId);
       }
       queryClient.invalidateQueries({ queryKey: ["postprocessing-status", projectId] });
+
+      // Not one folder was reprocessed: there is no "what changed" to show
+      // and no save to celebrate. The warning above is the whole message,
+      // and a "Settings saved!" beside it would only contradict it.
+      if (nothingApplied) {
+        pendingBeforeStats.current = null;
+        return;
+      }
 
       // Fetch after-stats now that reprocessing is done
       const pending = pendingBeforeStats.current;

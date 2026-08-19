@@ -141,12 +141,24 @@ async def process_postprocessing_job(job_id: str) -> None:
 
         total_updated = 0
         total_errors = 0
+        # Deployments the reprocess cannot touch. Their labels keep the
+        # settings from the run that wrote them, so the job has to own up to
+        # it rather than report a clean success over every deployment.
+        #
+        # Split by cause, because each needs a different fix: a folder that
+        # is gone needs reconnecting, a folder that lost its hidden .addaxai
+        # artifacts needs analysing again, an unreadable one needs unlocking.
+        # One example path per cause is all the message shows, which also
+        # keeps this payload flat on a project holding hundreds of folders.
+        skipped: dict[str, dict] = {}
+
+        def _skip(cause: str, path: str) -> None:
+            entry = skipped.setdefault(cause, {"count": 0, "path": path})
+            entry["count"] += 1
+
         loop = asyncio.get_event_loop()
 
         for idx, deployment in enumerate(deployments_with_cls, start=1):
-            folder_path = Path(deployment.folder_path)
-            json_path = folder_path / ".addaxai" / "projects" / project_id / "results.json"
-
             # Emit progress BEFORE the heavy work for this deployment and
             # include metrics so the modal can render a real counter.
             progress = (idx - 1) / total
@@ -165,9 +177,37 @@ async def process_postprocessing_job(job_id: str) -> None:
                 },
             )
 
-            if not json_path.exists():
+            # A deployment can legitimately carry no folder (imported or
+            # hand-made rows); crud/deployment.py handles that everywhere
+            # else. Path(None) here would take the whole job down with a
+            # TypeError, taking every other deployment with it.
+            if not deployment.folder_path:
+                logger.warning(f"Deployment {deployment.id} has no folder path")
+                _skip("no_folder", str(deployment.id))
+                continue
+
+            folder_path = Path(deployment.folder_path)
+            json_path = folder_path / ".addaxai" / "projects" / project_id / "results.json"
+
+            # Path.exists() re-raises EACCES (only ENOENT and its family are
+            # swallowed), so one unreadable folder — a locked share, a disk
+            # owned by another user — used to abort the whole project's
+            # reprocess from here. Report it as one skipped folder instead.
+            try:
+                results_missing = not json_path.exists()
+                folder_gone = not folder_path.exists()
+            except OSError as e:
+                logger.warning(f"Cannot read {folder_path}: {e}")
+                _skip("unreadable", str(folder_path))
+                continue
+
+            if results_missing:
                 logger.warning(
                     f"JSON file not found for deployment {deployment.id}: {json_path}"
+                )
+                _skip(
+                    "folder_missing" if folder_gone else "no_results",
+                    str(folder_path),
                 )
                 continue
 
@@ -292,6 +332,11 @@ async def process_postprocessing_job(job_id: str) -> None:
                     exc_info=True,
                 )
                 total_errors += 1
+                # The settings did not reach this folder either, so it counts
+                # as skipped. Reported as unreadable because the first thing
+                # this block does is open and parse results.json, which is
+                # what a damaged or locked file fails on.
+                _skip("unreadable", str(folder_path))
 
         # Ensure base taxonomy is populated (handles reprocessing with new model)
         if project.classification_model_id:
@@ -317,10 +362,15 @@ async def process_postprocessing_job(job_id: str) -> None:
         except Exception as e:
             logger.warning(f"Failed to link detections to taxonomy: {e}")
 
-        # Update project hash
-        project.postprocessing_settings_hash = compute_postprocessing_settings_hash(
-            project
-        )
+        # Update project hash, but only when the settings really did reach
+        # every deployment. The hash is what /postprocessing-status compares
+        # to decide whether the project still needs a reprocess; stamping it
+        # after a skip makes the app claim the labels match settings they
+        # were never built with.
+        if not skipped:
+            project.postprocessing_settings_hash = compute_postprocessing_settings_hash(
+                project
+            )
         db.commit()
 
         # Expire cached state so the count query hits the DB fresh
@@ -331,8 +381,22 @@ async def process_postprocessing_job(job_id: str) -> None:
         label_diff = _build_label_diff(before_counts, after_counts)
 
         # Report completion
-        action = "Smoothing applied" if smoothing_enabled else "Raw predictions restored"
-        message = f"{action} across {total} deployments ({total_updated} detections updated)"
+        # "folders", not "deployments": the same modal renders this line for
+        # the folder-run flow, which has no deployments. And "Settings
+        # applied" rather than naming smoothing: `smoothing_enabled` is true
+        # whenever rollup is on, so the old line claimed smoothing on
+        # projects that have it switched off.
+        n_skipped = sum(entry["count"] for entry in skipped.values())
+        done = total - n_skipped
+        if done == 0:
+            message = "Could not apply settings to any folder"
+        else:
+            message = (
+                f"Settings applied to {done} of {total} folders "
+                f"({total_updated} detections updated)"
+            )
+            if n_skipped:
+                message += f", {n_skipped} skipped"
 
         # Auto-regenerate events (independence_interval may have changed)
         event_count = event_crud.generate_events_for_project(db, project_id)
@@ -349,6 +413,7 @@ async def process_postprocessing_job(job_id: str) -> None:
             message=message,
             data={
                 "deployments_processed": total,
+                "skipped": skipped,
                 "detections_updated": total_updated,
                 "errors": total_errors,
                 "label_diff": label_diff,

@@ -35,6 +35,7 @@ import {
   hasReprocessChanges,
   type RegroupImpact,
   startReprocessIfNeeded,
+  warnIfDeploymentsSkipped,
 } from "../../lib/reprocessSettings";
 import {
   buildSaveResults,
@@ -143,12 +144,16 @@ export function AnalysisSettingsButton({
 
   const progress = useTaskProgress({
     taskId: jobId,
-    onComplete: async () => {
+    onComplete: async (data) => {
       setJobId(null);
       setIsApplying(false);
+      const nothingApplied = warnIfDeploymentsSkipped(data);
       finish();
       const before = pendingBeforeStats.current;
       pendingBeforeStats.current = null;
+      // Nothing was reprocessed, so the warning is the whole message. A
+      // "Changes applied" summary next to it would contradict it.
+      if (nothingApplied) return;
       if (!before) {
         toast.success("Changes applied");
         return;
