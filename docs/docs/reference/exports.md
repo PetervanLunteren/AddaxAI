@@ -9,7 +9,7 @@ What is in the files AddaxAI writes. Most of this page covers the columns in the
 
 One limit to know if your project is large: an Excel sheet holds at most 1,048,576 rows, so a table bigger than that cannot be saved as XLSX. AddaxAI tells you when this happens instead of writing a file Excel cannot open. Pick CSV for those projects, it has no row limit.
 
-AddaxAI exports four tables. Which one you want depends on the question you are asking. A folder run has no sites, no deployments and no confirmed counts, so two of them are projects only.
+AddaxAI exports four tables. Which one you want depends on the question you are asking. A folder run has no [sites, no deployments](../understanding/how-a-project-is-organised.mdx) and no confirmed counts, so two of them are projects only.
 
 | Table | One row is | Use it for | Available in |
 |---|---|---|---|

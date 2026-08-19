@@ -1,5 +1,5 @@
 ---
-sidebar_position: 4
+sidebar_position: 5
 title: How labels get cleaned up
 ---
 
@@ -9,7 +9,7 @@ The label you see is not always what the model said. Between the model and your 
 
 ## 1. Empty results are dropped
 
-Some models can answer "nothing here", with classes like blank, empty or false detection. When that is the model's top answer, the detection is dropped. So a box that would have read "Animal 68%, false detection 80%" never reaches your results at all. If every detection in a file is dropped, the file is marked blank.
+Some models can answer "nothing here", with labels like blank, empty or false detection. When that is the model's top answer, the detection is dropped. So a box that would have read "Animal 68%, false detection 80%" never reaches your results at all. If every detection in a file is dropped, the file is marked blank.
 
 ## 2. Taxonomic rollup
 

@@ -19,23 +19,7 @@ Prefer to watch? This video walks through building a project, from adding deploy
 
 ## Structure
 
-A project organises data in a hierarchy:
-
-```mermaid
-flowchart LR
-  P[Project] --> S[Sites]
-  S --> D[Deployments]
-  D --> F[Files]
-  F --> Det[Detections]
-  classDef box fill:#0f6064,stroke:#0a4345,color:#ffffff;
-  class P,S,D,F,Det box;
-```
-
-- **Project**: the whole study, holding all its sites and their data.
-- **Site**: a physical camera location, with coordinates.
-- **Deployment**: one period a camera was recording at a site, backed by a folder of files.
-- **File**: an image or video, with its capture time.
-- **Detection**: an animal, person, or vehicle found in a file, with a species label once classified.
+A project organises data in a hierarchy: project, site, deployment, file, detection. See [how a project is organised](../understanding/how-a-project-is-organised.mdx) for what each word means, and how many deployments one camera should become.
 
 ## Add deployments
 

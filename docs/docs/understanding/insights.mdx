@@ -1,5 +1,5 @@
 ---
-sidebar_position: 7
+sidebar_position: 8
 title: The charts explained
 ---
 
@@ -19,13 +19,13 @@ The Dashboard is the quick overview: how many sites, deployments, trap nights, a
 
 ## Map
 
-Each camera site on a map, coloured by its observation rate per 100 trap nights. You can switch how the sites are drawn: one marker per site, nearby sites merged into a hex grid, or nearby sites grouped into clusters. Sites without coordinates do not appear. Map style changes the background: Light, Satellite, or OpenStreetMap. Satellite is the useful one when you want to see the habitat around a camera, like where the forest gives way to open ground.
+Each camera site on a map, coloured by its observation rate per 100 trap nights. You can switch how the sites are drawn: one marker per site, nearby sites merged into a hex grid, or nearby sites grouped into clusters. Deployments with no site do not appear. Map style changes the background: Light, Satellite, or OpenStreetMap. Satellite is the useful one when you want to see the habitat around a camera, like where the forest gives way to open ground.
 
 <AppShot name="mapSatellite" />
 
 ## Activity overlap
 
-Compare the daily activity of one or two species. With two species selected, the chart also shows the overlap coefficient and labels each species as diurnal, nocturnal, crepuscular, or cathemeral. In the demo, the opossum comes out nocturnal and the chipmunk diurnal.
+Compare the daily activity of one or two species. With two species selected, the chart also shows the overlap coefficient: 0 means the two are never active at the same hours, 1 means their patterns are identical. Each species is also labelled diurnal (day), nocturnal (night), crepuscular (dawn and dusk) or cathemeral (no clear preference, active day and night). In the demo, the opossum comes out nocturnal and the chipmunk diurnal.
 
 You can read the day on two different clocks. Clock time is the plain 24 hour day. Sun time stretches each day so that sunrise and sunset line up across the whole survey. Use it when your data spans seasons or sites: 06:00 in December and 06:00 in June are not the same moment relative to dawn, and clock time would blur that difference away. It needs site coordinates to work out the sun.
 

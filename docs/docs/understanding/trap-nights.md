@@ -1,5 +1,5 @@
 ---
-sidebar_position: 2
+sidebar_position: 3
 title: How trap nights are counted
 ---
 
@@ -11,7 +11,7 @@ A trap night is one camera working for one day. It is how you turn raw counts in
 
 ## The short version
 
-Trap nights come from the capture times in your files, both images and videos. For each deployment, AddaxAI takes the first and last file, and counts the days between them, including both ends.
+Trap nights come from the capture times in your files, both images and videos. For each [deployment](./how-a-project-is-organised.mdx), AddaxAI takes the first and last file, and counts the days between them, including both ends.
 
 ```
 trap nights = (date of last file) - (date of first file) + 1
