@@ -80,8 +80,14 @@ async def process_postprocessing_job(job_id: str) -> None:
 
         payload = job.payload or {}
         project_id = payload.get("project_id")
-        if not project_id:
-            raise ValueError("Missing project_id in job payload")
+        # isinstance, not a falsy check: the payload is untyped JSON, so
+        # `project_id` is `object` everywhere below and a plain truthiness
+        # test does not narrow it. That left seven type errors in this
+        # file, starting with the path join two dozen lines down. It also
+        # catches a non-string id at the door rather than inside that
+        # join.
+        if not isinstance(project_id, str) or not project_id:
+            raise ValueError("Missing or invalid project_id in job payload")
 
         project = project_crud.get_project(db, project_id)
         if not project:
@@ -193,6 +199,14 @@ async def process_postprocessing_job(job_id: str) -> None:
             # swallowed), so one unreadable folder — a locked share, a disk
             # owned by another user — used to abort the whole project's
             # reprocess from here. Report it as one skipped folder instead.
+            # Assigned up front only to satisfy the possibly-undefined
+            # gate. Neither default is ever read: the handler below
+            # always `continue`s, so reaching the checks means both calls
+            # returned. mypy cannot see that, because this loop sits
+            # inside the function's `try ... finally` and there it treats
+            # every statement as interruptible, so the `continue` leaves
+            # it unable to prove the assignments happened.
+            results_missing = folder_gone = False
             try:
                 results_missing = not json_path.exists()
                 folder_gone = not folder_path.exists()
