@@ -21,7 +21,6 @@ import {
   useDebouncedValue,
 } from "../../hooks/useDebouncedValue";
 import {
-  CircleHelp,
   Image as ImageIcon,
   Layers,
   Loader2,
@@ -53,10 +52,10 @@ import { EventCollage } from "./EventCollage";
 import { EventDetailModal } from "./EventDetailModal";
 import { VerifyFilterBar } from "./VerifyFilterBar";
 import { hasAnyActiveFilter } from "./FilterChips";
-import { VerifyHelpSheet } from "./VerifyHelpSheet";
 import { WelcomePopover } from "./WelcomePopover";
 import { SortSelector } from "./SortSelector";
 import {
+  VerifyGuideLink,
   VerifyProgressPill,
   VerifyToolbar,
   VerifyToolbarIcon,
@@ -161,7 +160,6 @@ export function VerifyView({ projectId }: VerifyViewProps) {
   }, [wide, gridNode]);
   const [page, setPage] = useState(0);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-  const [helpOpen, setHelpOpen] = useState(false);
   const [showEventsWelcome, setShowEventsWelcome] = useState(
     () => !localStorage.getItem("addaxai:verifyWelcomeDismissed"),
   );
@@ -313,11 +311,7 @@ export function VerifyView({ projectId }: VerifyViewProps) {
               onClick={toggleWide}
               active={wide}
             />
-            <VerifyToolbarIcon
-              icon={CircleHelp}
-              title="Help"
-              onClick={() => setHelpOpen(true)}
-            />
+            <VerifyGuideLink step="counts" />
             <div className="ml-2">
               <VerifyProgressPill
                 pct={
@@ -426,8 +420,6 @@ export function VerifyView({ projectId }: VerifyViewProps) {
         onClose={() => setSelectedEventId(null)}
         filters={debouncedFilters}
       />
-
-      <VerifyHelpSheet open={helpOpen} onOpenChange={setHelpOpen} step="counts" />
 
       <WelcomePopover
         open={showEventsWelcome && totalEvents > 0}

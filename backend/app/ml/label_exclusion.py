@@ -17,7 +17,11 @@ These two steps are independent. JSON files on disk remain untouched
 as raw ground truth.
 """
 
+from sqlalchemy import func, or_
+from sqlalchemy.sql.elements import ColumnElement
+
 from app.core.logging_config import get_logger
+from app.models import Detection
 
 logger = get_logger(__name__)
 
@@ -29,6 +33,31 @@ logger = get_logger(__name__)
 NON_LABEL_CLASSES = frozenset({
     "bait", "blank", "empty", "false detection", "none", "vide",
 })
+
+def is_a_real_detection() -> ColumnElement[bool]:
+    """Predicate: this detection is not one of the "nothing here" labels.
+
+    The ingest skip keeps the AI's own such calls out of the database, so
+    the only way one gets in is a person applying it later, by pressing X
+    on the Labels page. That verdict has to reach every surface that asks
+    "what is on this file", and three of them ask in three different
+    ways, so the rule lives here once rather than in each.
+
+    Two lanes, the same shape as ``ml/detection_visibility.py``: this one
+    for a query, ``is_non_label`` below for a label already in memory. A
+    parity test pins that the two agree.
+    """
+    return or_(
+        Detection.label.is_(None),
+        func.lower(Detection.label).notin_(sorted(NON_LABEL_CLASSES)),
+    )
+
+
+def is_non_label(label: str | None) -> bool:
+    """The same rule for a label already in hand. ``None`` is a real
+    detection the classifier simply never named, not a rejection."""
+    return bool(label) and label.lower() in NON_LABEL_CLASSES
+
 
 # Non-wildlife classes: real detections that are not wild animals.
 # Superset of NON_LABEL_CLASSES, adding every human and vehicle class

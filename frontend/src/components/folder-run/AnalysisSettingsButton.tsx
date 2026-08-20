@@ -91,15 +91,28 @@ export function AnalysisSettingsButton({
   runId,
   project,
   onApplied,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   runId: string;
   project: ProjectResponse;
   /** Fired after settings are applied (and any reprocess finished), so
    *  the host can re-run the grid's sort onto the new labels. */
   onApplied?: () => void;
+  /** Drive the sheet from outside. Both must be passed together, and
+   *  then the host owns the state; the Labels step does this so a link
+   *  in the empties note can open the threshold from inside the grid.
+   *  Left out, the button owns its own state as before. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : uncontrolledOpen;
+  const setOpen = isControlled
+    ? (next: boolean) => onOpenChange?.(next)
+    : setUncontrolledOpen;
   const [values, setValues] = useState<FolderRunSettingsValues>(() =>
     valuesFromProject(project),
   );
@@ -302,7 +315,7 @@ export function AnalysisSettingsButton({
             <div className="grid grid-cols-2 items-center gap-8 py-6">
               <div className="space-y-1">
                 <span className="block text-sm font-medium">
-                  Detection confidence threshold
+                  Count detections above
                 </span>
                 <p className="text-sm text-muted-foreground">
                   {SETTING_CAPTIONS.detectionThreshold}

@@ -613,7 +613,10 @@ export type VerifySort =
   | "oldest"
   | "random"
   | "similarity"
-  | "events";
+  | "events"
+  // Empties only. Orders by file path, which groups one camera's
+  // photos together because the path starts with its folder.
+  | "path";
 
 export interface EventFilterParams {
   site_ids?: string[];
@@ -986,6 +989,48 @@ export interface CohortItem {
 
 export interface CohortsResponse {
   cohorts: CohortItem[];
+}
+
+/** One empty photo: a file where nothing passed the current floor. */
+export interface EmptyFileItem {
+  id: string;
+  deployment_id: string;
+  file_path: string;
+  file_type: string;
+  captured_at_local: string | null;
+  verified: boolean;
+}
+
+export interface EmptiesResponse {
+  /** Uncapped count of matching photos, not just this page. */
+  total: number;
+  /** The confidence these photos were judged empty at. */
+  floor: number;
+  items: EmptyFileItem[];
+}
+
+export interface EmptiesParams {
+  site_ids?: string[];
+  date_from?: string;
+  date_to?: string;
+  verification?: VerificationFilter;
+  min_confidence?: number;
+  sort?: "path" | "newest" | "oldest" | "random";
+  seed?: number | null;
+  skip?: number;
+  limit?: number;
+}
+
+export interface LabelsProgress {
+  /** Passing detections plus one per empty file: the number of cards
+   *  across both tabs of the Labels page. */
+  total_labels: number;
+  verified_labels: number;
+  /** The two halves, so each tab can say what is waiting in the other. */
+  crop_labels: number;
+  crop_labels_verified: number;
+  empty_labels: number;
+  empty_labels_verified: number;
 }
 
 export interface LabelStatsResponse {

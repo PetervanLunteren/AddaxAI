@@ -24,7 +24,6 @@ import {
 import {
   AlertTriangle,
   Check,
-  CircleHelp,
   Layers,
   Loader2,
   Maximize2,
@@ -36,7 +35,6 @@ import {
   type LabelsProgressEvent,
 } from "../../api/labels";
 import { detectionsApi } from "../../api/detections";
-import { eventsApi } from "../../api/events";
 import { projectsApi } from "../../api/projects";
 import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
@@ -45,12 +43,21 @@ import { Progress } from "../ui/progress";
 import {
   DEFAULT_CLASSIFICATION_GATE,
   MD_OUTPUT_CONFIDENCE_THRESHOLD,
-  formatConfidencePct,
 } from "../../lib/confidence";
 import { invalidateProjectData } from "../../lib/invalidate-project";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
+import {
+  fromFilterBarFilters,
+  lblFiltersFromSearchParams,
+  lblFiltersToSearchParams,
+  toFilterBarFilters,
+  type LabelsFilterState,
+  type LabelsVerification,
+} from "./labels-filters";
+import { nextAfterActed, selectOnClick } from "./grid-selection";
+import { GridEmptyState } from "./GridEmptyState";
 import { CropGrid } from "./CropGrid";
-import type { CropGridHandle, TileSize } from "./CropGrid";
+import type { CropGridHandle } from "./CropGrid";
 import { BulkActionBar } from "./BulkActionBar";
 import { DetectionDetailModal } from "./DetectionDetailModal";
 import { SuggestionsToolbarPill } from "./SuggestionsToolbarPill";
@@ -58,15 +65,22 @@ import { VerifyFilterBar } from "./VerifyFilterBar";
 import { SortSelector } from "./SortSelector";
 import { useWideModeControls } from "./wide-mode";
 import {
+  VerifyGuideLink,
   VerifyProgressPill,
   VerifyToolbar,
   VerifyToolbarIcon,
 } from "./VerifyToolbar";
 import { LabelsSettings } from "./LabelsSettings";
 import { LabelsKeyboardPopover } from "./LabelsKeyboardPopover";
-import { VerifyHelpSheet } from "./VerifyHelpSheet";
+import { MOD, type Shortcut } from "./shortcuts";
+import {
+  persistLabelsSetting,
+  readLabelsSettings,
+  useTileSize,
+} from "./labels-settings";
 import { LabelsWelcomePopover } from "./LabelsWelcomePopover";
 import { ReEmbedModal } from "../projects/ReEmbedModal";
+import { useLabelsProgress } from "./useLabelsProgress";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
 import type {
   CohortItem,
@@ -82,6 +96,23 @@ import type {
 // review by event. Low-confidence triage is the confidence slider's
 // job, not a sort mode. Suggestions is a third mode reached via the
 // toolbar pill, not this list.
+const CROPS_SHORTCUTS: readonly Shortcut[] = [
+  ["Click", "Select"],
+  [`${MOD} + Click`, "Toggle select"],
+  ["Shift + Click", "Extend range"],
+  ["Double-click", "Open detail"],
+  ["Click outside", "Deselect all"],
+  ["Enter", "Verify selected"],
+  ["X", "Mark false detection"],
+  ["U", "Mark unknown (unidentifiable)"],
+  ["R", "Relabel selected"],
+  ["M", "Relabel to most common in selection"],
+  [`${MOD} + A`, "Select all"],
+  ["E", "Select next event to check (event sort)"],
+  [`${MOD} + Z`, "Undo last action"],
+  ["Esc", "Deselect / close"],
+];
+
 const LABELS_SORT_MODES: readonly VerifySort[] = [
   "similarity",
   "events",
@@ -126,81 +157,19 @@ interface LabelsTabProps {
   /** Bumping this re-runs the sort even when filters are unchanged.
    *  Used to refresh the grid after a reprocess rewrites labels. */
   refreshSignal?: number;
+  /** Labels not yet checked in the Empties tab, for the pointer shown
+   *  when this grid runs out. */
+  otherTabLeft?: number;
+  /** Unverified labels in this tab, and every label in scope. Both feed
+   *  the empty state so it can tell "you finished" from "your filters
+   *  are hiding the rest". */
+  thisTabLeft?: number;
+  totalLabels?: number;
+  onSwitchTab?: () => void;
 }
 
 // ── Labels filter state (independent from Events / Files filters) ──
 
-type LabelsVerification = "all" | "unverified" | "verified";
-
-interface LabelsFilterState {
-  site_ids?: string[];
-  date_from?: string;
-  date_to?: string;
-  labels?: string[];
-  min_confidence?: number;
-  max_confidence?: number;
-  min_label_confidence?: number;
-  max_label_confidence?: number;
-  /** Default "unverified" when omitted — verified detections are usually
-   *  not what the user is looking at on this tab. */
-  verification?: LabelsVerification;
-}
-
-/** Parse lbl_* params from URL. */
-function lblFiltersFromSearchParams(sp: URLSearchParams): LabelsFilterState {
-  const f: LabelsFilterState = {};
-  const sites = sp.get("lbl_sites");
-  if (sites) f.site_ids = sites.split(",");
-  const from = sp.get("lbl_from");
-  if (from) f.date_from = from;
-  const to = sp.get("lbl_to");
-  if (to) f.date_to = to;
-  const labels = sp.get("lbl_labels");
-  if (labels) f.labels = labels.split(",");
-  const minC = sp.get("lbl_min_confidence");
-  if (minC !== null) f.min_confidence = parseFloat(minC);
-  const maxC = sp.get("lbl_max_confidence");
-  if (maxC !== null) f.max_confidence = parseFloat(maxC);
-  const minLC = sp.get("lbl_min_label_confidence");
-  if (minLC !== null) f.min_label_confidence = parseFloat(minLC);
-  const maxLC = sp.get("lbl_max_label_confidence");
-  if (maxLC !== null) f.max_label_confidence = parseFloat(maxLC);
-  const ver = sp.get("lbl_verification");
-  if (ver === "all" || ver === "unverified" || ver === "verified") {
-    f.verification = ver;
-  }
-  return f;
-}
-
-/** Write lbl_* params to URL, preserving non-lbl params. */
-function lblFiltersToSearchParams(
-  filters: LabelsFilterState,
-  current: URLSearchParams,
-): URLSearchParams {
-  const sp = new URLSearchParams(current);
-  for (const key of [...sp.keys()]) {
-    if (key.startsWith("lbl_")) sp.delete(key);
-  }
-  if (filters.site_ids?.length) sp.set("lbl_sites", filters.site_ids.join(","));
-  if (filters.date_from) sp.set("lbl_from", filters.date_from);
-  if (filters.date_to) sp.set("lbl_to", filters.date_to);
-  if (filters.labels?.length) sp.set("lbl_labels", filters.labels.join(","));
-  if (filters.min_confidence !== undefined)
-    sp.set("lbl_min_confidence", String(filters.min_confidence));
-  if (filters.max_confidence !== undefined)
-    sp.set("lbl_max_confidence", String(filters.max_confidence));
-  if (filters.min_label_confidence !== undefined)
-    sp.set("lbl_min_label_confidence", String(filters.min_label_confidence));
-  if (filters.max_label_confidence !== undefined)
-    sp.set("lbl_max_label_confidence", String(filters.max_label_confidence));
-  // "unverified" is the implicit default — no URL param when set to that.
-  if (filters.verification && filters.verification !== "unverified") {
-    sp.set("lbl_verification", filters.verification);
-  }
-  return sp;
-}
-
-/** Convert LabelsFilterState → LabelFilters for API calls. */
 function toLabelFilters(f: LabelsFilterState): LabelFilters {
   // The Verified filter scopes the sort server-side so the cap counts the
   // pool the user is actually looking at. "unverified" is the default;
@@ -259,25 +228,6 @@ function selectionMajority(
     if (!mode || entry.count > mode.count) mode = entry;
   }
   return mode;
-}
-
-/** Adapt LabelsFilterState to the EventFilterParams shape that
- *  VerifyFilterBar reads. The verified select lives on the bar and
- *  emits its value into `filters.verification`. */
-function toFilterBarFilters(f: LabelsFilterState): EventFilterParams {
-  return {
-    site_ids: f.site_ids,
-    date_from: f.date_from,
-    date_to: f.date_to,
-    labels: f.labels,
-    min_confidence: f.min_confidence,
-    max_confidence: f.max_confidence,
-    min_label_confidence: f.min_label_confidence,
-    max_label_confidence: f.max_label_confidence,
-    // Raw, no default materialized: the bar resolves the resting
-    // value itself and the chips must only see explicit filters.
-    verification: f.verification,
-  };
 }
 
 // Only suggest narrowing once the dataset is big enough that the wait
@@ -370,6 +320,10 @@ export function LabelsTab({
   onSelectionChange,
   toolbarExtra,
   refreshSignal,
+  otherTabLeft = 0,
+  thisTabLeft = 0,
+  totalLabels = 0,
+  onSwitchTab,
 }: LabelsTabProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -398,38 +352,14 @@ export function LabelsTab({
    *  Straight passthrough. */
   const handleFilterBarChange = useCallback(
     (fp: EventFilterParams) => {
-      const verification = fp.verification as
-        | LabelsVerification
-        | undefined;
-      setLblFilters({
-        ...lblFilters,
-        site_ids: fp.site_ids,
-        date_from: fp.date_from,
-        date_to: fp.date_to,
-        labels: fp.labels,
-        min_confidence: fp.min_confidence,
-        max_confidence: fp.max_confidence,
-        min_label_confidence: fp.min_label_confidence,
-        max_label_confidence: fp.max_label_confidence,
-        verification,
-      });
+      setLblFilters(fromFilterBarFilters(fp, lblFilters));
     },
     [lblFilters, setLblFilters],
   );
 
   // ── Local settings state (persisted to localStorage) ────────────────
-  const LS_KEY = "addaxai:labelsSettings";
-  const savedSettings = useMemo(() => {
-    try { return JSON.parse(localStorage.getItem(LS_KEY) || "{}"); }
-    catch { return {}; }
-  }, []);
-  const persistSetting = useCallback((key: string, value: unknown) => {
-    try {
-      const cur = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
-      cur[key] = value;
-      localStorage.setItem(LS_KEY, JSON.stringify(cur));
-    } catch { /* ignore */ }
-  }, []);
+  // Shared with the Empties tab; see `labels-settings.ts`.
+  const savedSettings = useMemo(() => readLabelsSettings(), []);
 
   const isLabelSort = (v: unknown): v is LabelSort =>
     v === "similarity" ||
@@ -449,13 +379,12 @@ export function LabelsTab({
   const setLblSort = useCallback(
     (v: LabelSort) => {
       _setLblSort(v);
-      persistSetting("sort", v);
+      persistLabelsSetting("sort", v);
     },
-    [persistSetting],
+    [],
   );
 
-  const [tileSize, _setTileSize] = useState<TileSize>(savedSettings.tileSize ?? "M");
-  const setTileSize = useCallback((v: TileSize) => { _setTileSize(v); persistSetting("tileSize", v); }, [persistSetting]);
+  const [tileSize, setTileSize] = useTileSize();
   const { wide, toggle: toggleWide } = useWideModeControls();
 
   // Verification filter is the bar's "Verified" select; default unverified.
@@ -466,7 +395,6 @@ export function LabelsTab({
   // Toolbar sheet/popover state (welcome popover only; keyboard and
   // settings are self-contained popovers anchored to their toolbar
   // icons, so they own their own open state).
-  const [helpOpen, setHelpOpen] = useState(false);
   const [relabelOpen, setRelabelOpen] = useState(false);
   const [showWelcome, setShowWelcome] = useState(
     () => !localStorage.getItem("addaxai:labelsWelcomeDismissed")
@@ -585,17 +513,6 @@ export function LabelsTab({
     enabled: !!projectId,
   });
 
-  // Separate stats query for the progress pill, so it reports the same
-  // "percent labels verified" number as the Events and Media
-  // pills (both read from this endpoint too). Sourced from the events
-  // stats endpoint, which counts all reviewable detections, not only
-  // the embedded ones, so the pill matches across views.
-  const { data: verificationStats } = useQuery({
-    queryKey: ["events", "verification-stats", projectId],
-    queryFn: () => eventsApi.verificationStats(projectId),
-    enabled: !!projectId,
-  });
-
   // Streaming progress reported by the subprocess (load → sort → neighbors).
   // Cleared whenever a new sort starts and when results land.
   const [progress, setProgress] = useState<LabelsProgressEvent | null>(
@@ -676,14 +593,12 @@ export function LabelsTab({
     return dets;
   }, [sortResult, verificationFilter]);
 
-  // Pre-computed index lookup for O(1) range selection
-  const idIndexMap = useMemo(() => {
-    const map = new Map<string, number>();
-    for (let i = 0; i < allDetections.length; i++) {
-      map.set(allDetections[i].detection_id, i);
-    }
-    return map;
-  }, [allDetections]);
+  // The grid's visual order, which is what a shift-click range is read
+  // from. Also the input to `nextAfterActed`.
+  const orderedDetectionIds = useMemo(
+    () => allDetections.map((d) => d.detection_id),
+    [allDetections],
+  );
 
   // Unfiltered count to detect "all hidden by filters" vs "genuinely empty"
   const totalCount = useMemo(
@@ -730,38 +645,19 @@ export function LabelsTab({
   // tail falls back to the card just before the acted block.
   const advanceSelectionAfter = useCallback(
     (actedIds: string[]) => {
-      const order = allDetectionsRef.current;
-      const acted = new Set(actedIds);
-      let firstIdx = -1;
-      let lastIdx = -1;
-      for (let i = 0; i < order.length; i++) {
-        if (acted.has(order[i].detection_id)) {
-          if (firstIdx === -1) firstIdx = i;
-          lastIdx = i;
-        }
-      }
-      if (lastIdx === -1) {
+      const order = allDetectionsRef.current.map((d) => d.detection_id);
+      const next = nextAfterActed(order, actedIds);
+      if (next === null) {
         clearSelection();
         return;
       }
-      const pick = (id: string) => {
-        selectionAnchorRef.current = id;
-        setSelectedIds(new Set([id]));
-        // Keep the advanced card in view so a keyboard-only pass never
-        // needs the mouse. Deferred to the post-render effect because the
-        // acted cards are being removed this same tick; "auto" then only
-        // scrolls when it would otherwise be off-screen.
-        pendingScrollRef.current = id;
-      };
-      for (let i = lastIdx + 1; i < order.length; i++) {
-        const id = order[i].detection_id;
-        if (!acted.has(id)) return pick(id);
-      }
-      for (let i = firstIdx - 1; i >= 0; i--) {
-        const id = order[i].detection_id;
-        if (!acted.has(id)) return pick(id);
-      }
-      clearSelection();
+      selectionAnchorRef.current = next;
+      setSelectedIds(new Set([next]));
+      // Keep the advanced card in view so a keyboard-only pass never
+      // needs the mouse. Deferred to the post-render effect because the
+      // acted cards are being removed this same tick; "auto" then only
+      // scrolls when it would otherwise be off-screen.
+      pendingScrollRef.current = next;
     },
     [clearSelection],
   );
@@ -776,42 +672,23 @@ export function LabelsTab({
     cropGridRef.current?.scrollToDetection(id, "auto");
   });
 
+  // Click / shift-range / cmd-toggle live in `grid-selection.ts`, shared
+  // with the Empties grid so the two feel identical.
   const handleSelect = useCallback(
     (detectionId: string, e: React.MouseEvent) => {
-      if (e.shiftKey && selectionAnchorRef.current) {
-        // Shift+Click: select range from anchor to target
-        setSelectedIds((prev) => {
-          const startIdx = idIndexMap.get(selectionAnchorRef.current!);
-          const endIdx = idIndexMap.get(detectionId);
-          if (startIdx != null && endIdx != null) {
-            const [lo, hi] = startIdx < endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
-            const next = new Set(prev);
-            for (let i = lo; i <= hi; i++) next.add(allDetections[i].detection_id);
-            return next;
-          }
-          return prev;
-        });
-        // anchor stays — allows repeated Shift+Click to adjust range
-      } else if (e.ctrlKey || e.metaKey) {
-        // Ctrl/Cmd+Click: toggle individual card
-        setSelectedIds((prev) => {
-          const next = new Set(prev);
-          if (next.has(detectionId)) {
-            next.delete(detectionId);
-          } else {
-            next.add(detectionId);
-          }
-          return next;
-        });
-        // Move anchor to this card so Shift+Click extends from here
-        selectionAnchorRef.current = detectionId;
-      } else {
-        // Plain click: select only this card, deselect all others
-        selectionAnchorRef.current = detectionId;
-        setSelectedIds(new Set([detectionId]));
-      }
+      setSelectedIds((prev) => {
+        const result = selectOnClick(
+          orderedDetectionIds,
+          selectionAnchorRef.current,
+          detectionId,
+          e,
+          prev,
+        );
+        selectionAnchorRef.current = result.anchor;
+        return result.ids;
+      });
     },
-    [allDetections, idIndexMap]
+    [orderedDetectionIds]
   );
 
   const handleCardClick = useCallback((detection: DetectionSummary) => {
@@ -902,6 +779,13 @@ export function LabelsTab({
         );
       }
       queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
+      // The page's progress bar counts photos, and verifying the last
+      // box on one flips File.verified server-side. Its key does not
+      // start with "event", so the predicate below never reaches it: it
+      // needs saying explicitly, or the bar only moves on a reload.
+      queryClient.invalidateQueries({
+        queryKey: ["labels-progress", projectId],
+      });
       // Relabelling rebuilds the event's observations server-side (and
       // cascades up to File.verified / event verification). Refresh every
       // event-family query so the Counts page reflects it: the event list
@@ -1400,10 +1284,10 @@ export function LabelsTab({
   // currently-loaded / filtered detections, so a narrowed view does
   // not read as 100% verified. Same source as the Events and Media
   // pills, so all three views report the same number.
-  const verifiedPct = useMemo(() => {
-    if (!verificationStats || verificationStats.total_detections === 0) return 0;
-    return (verificationStats.verified_detections / verificationStats.total_detections) * 100;
-  }, [verificationStats]);
+  // Counted in photos, shared with the Empties tab. The two tabs show
+  // different units but are one job, and a bar that jumped when you
+  // switched tabs would suggest otherwise.
+  const pageProgress = useLabelsProgress(projectId, lblFilters);
 
   // Majority label of the current selection, shown on the Match-majority
   // button so the action is previewable ("Set to Corvus") instead
@@ -1550,17 +1434,17 @@ export function LabelsTab({
             onClick={toggleWide}
             active={wide}
           />
-          <VerifyToolbarIcon
-            icon={CircleHelp}
-            title="Help"
-            onClick={() => setHelpOpen(true)}
-          />
+          <VerifyGuideLink step="labels" />
           <LabelsKeyboardPopover
-            shortcutLabels={shortcutLabels}
-            onShortcutLabelsChange={updateShortcutLabels}
-            labelOptions={labelOptions}
-            labelOptionsLoading={labelOptionsLoading}
-            projectId={projectId}
+            shortcuts={CROPS_SHORTCUTS}
+            footer="After an action the next detection is selected, so you can keep going."
+            labelSlots={{
+              shortcutLabels,
+              onShortcutLabelsChange: updateShortcutLabels,
+              labelOptions,
+              labelOptionsLoading,
+              projectId,
+            }}
           />
           <LabelsSettings
             tileSize={tileSize}
@@ -1569,11 +1453,9 @@ export function LabelsTab({
           {sortResult && (
             <div className="ml-2">
               <VerifyProgressPill
-                pct={verifiedPct}
+                pct={pageProgress.pct}
                 label="verified"
-                title={`Verified share of detections at or above ${formatConfidencePct(
-                  project?.counting_threshold ?? 0,
-                )} detection threshold. Detections you view below it aren't counted here.`}
+                title={pageProgress.title}
               />
             </div>
           )}
@@ -1600,7 +1482,11 @@ export function LabelsTab({
             </Button>
           }
         >
-          Sort by similarity only shows detections that have an embedding. Embeddings can be missing when embedding was switched off in settings, or an error occurred during analysis. Switch to Sort by event to see all of them, or click 'Embed now' to embed them.
+          Sort by similarity only shows detections that have an embedding. A
+          box you draw yourself does not come with one, and neither does
+          anything analysed while embedding was switched off in settings.
+          Switch to Sort by event to see all of them, or click "Embed now" to
+          embed them.
         </Callout>
       )}
 
@@ -1710,51 +1596,38 @@ export function LabelsTab({
             </Button>
           </CardContent>
         </Card>
-      ) : allDetections.length === 0 && totalCount > 0 ? (
+      ) : allDetections.length === 0 && totalCount > 0 && isCapped ? (
+        // Its own case: the grid is empty because the result was
+        // truncated, not because the work is done, and the fix is a
+        // reload rather than a filter change.
         <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
           <Check className="h-8 w-8 mb-3 text-muted-foreground/60" />
-          {isCapped ? (
-            <>
-              <p className="text-sm">
-                You&apos;ve verified all {loadedCount.toLocaleString()} loaded
-                labels.
-              </p>
-              <p className="text-xs mt-1">
-                {(totalMatching - loadedCount).toLocaleString()} more aren&apos;t
-                loaded yet.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-4"
-                onClick={reload}
-              >
-                Reload
-              </Button>
-            </>
-          ) : (
-            <>
-              <p className="text-sm">
-                All {totalCount} labels in this view are verified.
-              </p>
-              <p className="text-xs mt-1">
-                Switch the Verified filter to &quot;All&quot; to see them.
-              </p>
-            </>
-          )}
+          <p className="text-sm">
+            You&apos;ve verified all {loadedCount.toLocaleString()} loaded
+            labels.
+          </p>
+          <p className="text-xs mt-1">
+            {(totalMatching - loadedCount).toLocaleString()} more aren&apos;t
+            loaded yet.
+          </p>
+          <Button variant="outline" size="sm" className="mt-4" onClick={reload}>
+            Reload
+          </Button>
         </div>
       ) : allDetections.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <Layers className="h-12 w-12 text-muted-foreground/50 mb-4" />
-            <p className="text-lg font-medium text-muted-foreground">
-              No labels match your filters
-            </p>
-            <p className="text-sm text-muted-foreground mt-1 max-w-md">
-              Try adjusting or clearing your filters to see more labels.
-            </p>
-          </CardContent>
-        </Card>
+        <GridEmptyState
+          thisTabLeft={thisTabLeft}
+          otherTabLeft={otherTabLeft}
+          totalLabels={totalLabels}
+          viewFinished={totalCount > 0}
+          viewCount={totalCount}
+          tabHasNothing={totalLabels > 0 && thisTabLeft === 0 && totalCount === 0}
+          noun="detections"
+          otherNoun="empty files"
+          otherTabName="Empties"
+          onClearFilters={() => setLblFilters({})}
+          onSwitchTab={onSwitchTab}
+        />
       ) : (
         <div style={{ paddingBottom: selectedIds.size > 0 ? 80 : 0 }}>
           {isCapped && (
@@ -1838,8 +1711,6 @@ export function LabelsTab({
       />
 
       <LabelsWelcomePopover open={showWelcome} onDismiss={handleDismissWelcome} />
-      <VerifyHelpSheet open={helpOpen} onOpenChange={setHelpOpen} step="labels" />
-
       <DetectionDetailModal
         detection={detailDetection}
         open={!!detailDetection}

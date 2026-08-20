@@ -8,8 +8,14 @@
  */
 
 import type { ComponentType, ReactNode, SVGProps } from "react";
+import { CircleHelp } from "lucide-react";
 
 import { cn } from "../../lib/utils";
+
+const GUIDE_URLS = {
+  labels: "https://docs.addaxai.com/docs/guides/check-labels/",
+  counts: "https://docs.addaxai.com/docs/guides/confirm-counts/",
+} as const;
 
 interface VerifyToolbarProps {
   children: ReactNode;
@@ -37,6 +43,25 @@ export const VERIFY_TOOLBAR_ICON_CLASS =
   "inline-flex h-8 w-8 items-center justify-center rounded-md " +
   "text-muted-foreground transition-colors hover:bg-muted " +
   "hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed";
+
+/** The (?) icon: opens the step's guide on docs.addaxai.com, where the
+ * workflow explanation and the video tutorial live. Same chrome as the
+ * icon buttons so it sits on the same line. The keys stay in the app,
+ * in the keyboard popover next to it. */
+export function VerifyGuideLink({ step }: { step: keyof typeof GUIDE_URLS }) {
+  return (
+    <a
+      href={GUIDE_URLS[step]}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Open the guide"
+      aria-label="Open the guide"
+      className={VERIFY_TOOLBAR_ICON_CLASS}
+    >
+      <CircleHelp className="h-4 w-4" />
+    </a>
+  );
+}
 
 interface VerifyToolbarIconProps {
   icon: ComponentType<SVGProps<SVGSVGElement>>;

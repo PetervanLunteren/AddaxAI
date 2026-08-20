@@ -8,6 +8,8 @@ Following DEVELOPERS.md principles:
 """
 
 
+from datetime import UTC, datetime
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -183,7 +185,16 @@ def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection
     Resolves label_taxonomy_id + scientific_name so the new detection
     shares the same taxonomy row (and therefore the same display color)
     as other detections with the same label / builtin category.
+
+    Created **verified**. A box someone drew by hand is the strongest
+    signal there is, stronger than any model output, so it gets the same
+    protection as a box they confirmed: postprocessing, rollup and
+    smoothing all skip verified detections, and only verified rows keep
+    their `original_label` out of the machine-final mirror at the end of
+    `update_database_from_smoothed_results`. Left unverified it was the
+    one human decision the pipeline was free to overwrite.
     """
+    now = datetime.now(UTC)
     db_detection = Detection(
         file_id=data.file_id,
         job_id=None,
@@ -197,6 +208,8 @@ def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection
         label_confidence=1.0 if data.label else None,
         classification_method="human",
         frame_number=data.frame_number,
+        verified=True,
+        verified_at_utc=now,
     )
     db.add(db_detection)
     db.flush()  # populate id so _resolve_detection_taxonomy can find the project

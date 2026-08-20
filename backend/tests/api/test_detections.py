@@ -354,3 +354,55 @@ def test_bulk_revert_404_for_unknown(client):
         json={"detection_ids": ["nope"]},
     )
     assert resp.status_code == 404
+
+
+def test_a_hand_drawn_box_is_created_verified(client, db):
+    """A box someone drew by hand is the strongest signal there is, so
+    it gets the same protection as a box they confirmed.
+
+    Without the flag it was the one human decision the pipeline could
+    overwrite: postprocessing skips only verified rows, and the
+    machine-final mirror at the end of
+    `update_database_from_smoothed_results` rewrites `original_label`
+    for everything else, so "revert to AI" would have reverted to the
+    human's own label.
+    """
+    from app.models import Detection
+
+    f = _setup_file(db)
+    resp = client.post("/api/detections", json={
+        "file_id": f.id,
+        "category": "animal",
+        "bbox_x": 0.1,
+        "bbox_y": 0.1,
+        "bbox_width": 0.3,
+        "bbox_height": 0.3,
+    })
+    assert resp.status_code == 201
+
+    det = db.query(Detection).filter(Detection.id == resp.json()["id"]).one()
+    assert det.verified is True
+    assert det.verified_at_utc is not None
+
+
+def test_drawing_a_box_takes_the_photo_out_of_the_empties(client, db):
+    """The loop the Empties tab promises: find the animal the detector
+    missed, draw it, and the photo leaves the list. It works because a
+    hand-drawn box is stored at confidence 1.0, so it passes any floor."""
+    f = _setup_file(db)
+    project_id = f.deployment.project_id
+
+    before = client.get(f"/api/projects/{project_id}/labels/empties").json()
+    assert before["total"] == 1
+
+    client.post("/api/detections", json={
+        "file_id": f.id,
+        "category": "animal",
+        "bbox_x": 0.1,
+        "bbox_y": 0.1,
+        "bbox_width": 0.3,
+        "bbox_height": 0.3,
+    })
+
+    after = client.get(f"/api/projects/{project_id}/labels/empties").json()
+    assert after["total"] == 0

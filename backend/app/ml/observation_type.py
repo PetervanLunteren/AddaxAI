@@ -32,6 +32,23 @@ resolve to whichever single box scored highest, not to the fox.
 is many noisy looks at one animal where a file is a single look. See
 DEVELOPERS.md "What a file is about" before unifying the two.
 
+**A detection labelled as a non-label class cannot be the subject.**
+``bait``, ``blank``, ``empty``, ``false detection``, ``none``, ``vide``:
+these say "there is nothing here", so a file holding only those is
+``blank``. The AI's own such calls never reach the database, dropped by
+the ingest skip (see DEVELOPERS.md "Non-label detection skip"). This is
+the same rule applied at read time, for the case the ingest skip cannot
+reach: a human pressing X on the Labels page reaches the identical
+verdict later, and until this existed the file stayed ``animal``, because
+"Mark false" writes the label and deliberately leaves the detector's
+category alone. Measured: such a file exported ``observation_type=animal``
+with ``classification_label=false detection`` beside it.
+
+The row is kept on purpose rather than deleted: a human looked at that
+box and judged it, which is worth recording, keeps Ctrl+Z working, and
+keeps ``detections.csv`` an honest record of what the detector found and
+what was rejected.
+
 **The category is passed through, never translated.** Whatever the
 detector called it is what lands here: ``animal`` / ``person`` /
 ``vehicle`` from MegaDetector, and ``shark`` / ``fish`` / ``turtle``
@@ -60,6 +77,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Protocol, TypeVar
 
+from app.ml.label_exclusion import is_non_label
+
 # A file with no trusted content. Not a detector category, so it can
 # never collide with one.
 BLANK = "blank"
@@ -69,6 +88,7 @@ class _DetectionLike(Protocol):
     category: str
     confidence: float
     verified: bool
+    label: str | None
 
 
 # Generic in, generic out: the caller gets back one of the objects it
@@ -103,6 +123,8 @@ def strongest_passing_detection(
     best_key: tuple[bool, float, str] | None = None
     for det in detections:
         if not (det.confidence >= threshold or det.verified):
+            continue
+        if is_non_label(det.label):
             continue
         key = (bool(det.verified), float(det.confidence), det.category)
         if best_key is None or key > best_key:

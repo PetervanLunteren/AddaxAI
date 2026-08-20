@@ -1,10 +1,15 @@
 /**
- * Keyboard shortcuts popover for the Labels tab.
+ * Keyboard shortcuts popover for the Labels page, both tabs.
  *
  * Renders its own toolbar icon trigger (Keyboard) so it sits inline
- * with the other utility icons in the verify toolbar. Lists the grid
- * shortcuts on the left and the user-configurable label slots (1-5)
- * on the right.
+ * with the other utility icons in the verify toolbar. Takes the list of
+ * shortcuts to show, because Detections and Empties have different ones, and
+ * renders the user-configurable label slots (1-5) alongside only when a
+ * tab has them. Empties does not: there is nothing to label there.
+ *
+ * Only grid shortcuts are listed, in both tabs. The detail views label
+ * their own keys on the buttons that use them, so repeating them here
+ * would be a second place to keep in step for no gain.
  */
 
 import { Keyboard } from "lucide-react";
@@ -13,8 +18,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { VERIFY_TOOLBAR_ICON_CLASS } from "./VerifyToolbar";
 import { LabelPicker } from "./LabelPicker";
 import type { LabelOption } from "../../hooks/useLabelOptions";
+import type { Shortcut } from "./shortcuts";
 
-interface LabelsKeyboardPopoverProps {
+interface LabelSlots {
   shortcutLabels: Record<number, LabelOption>;
   onShortcutLabelsChange: (
     updater: (prev: Record<number, LabelOption>) => Record<number, LabelOption>,
@@ -24,25 +30,13 @@ interface LabelsKeyboardPopoverProps {
   projectId: string;
 }
 
-const GRID_SHORTCUTS: ReadonlyArray<readonly [string, string]> = [
-  ["Click", "Select"],
-  [navigator.platform.includes("Mac") ? "Cmd + Click" : "Ctrl + Click", "Toggle select"],
-  ["Shift + Click", "Extend range"],
-  ["Double-click", "Open detail"],
-  ["Click outside", "Deselect all"],
-  ["Enter", "Verify selected"],
-  ["X", "Mark false detection"],
-  ["U", "Mark unknown (unidentifiable)"],
-  ["R", "Relabel selected"],
-  ["M", "Relabel to most common in selection"],
-  [navigator.platform.includes("Mac") ? "Cmd + A" : "Ctrl + A", "Select all"],
-  ["E", "Select next event to check (event sort)"],
-  [
-    navigator.platform.includes("Mac") ? "Cmd + Z" : "Ctrl + Z",
-    "Undo last action",
-  ],
-  ["Esc", "Deselect / close"],
-];
+interface LabelsKeyboardPopoverProps {
+  shortcuts: readonly Shortcut[];
+  /** Closing line, e.g. what happens to the selection after an action. */
+  footer: string;
+  /** The configurable 1-5 label slots. Omitted by tabs without labels. */
+  labelSlots?: LabelSlots;
+}
 
 function ShortcutKey({ keys }: { keys: string }) {
   const parts = keys.split("+").map((p) => p.trim());
@@ -59,11 +53,9 @@ function ShortcutKey({ keys }: { keys: string }) {
 }
 
 export function LabelsKeyboardPopover({
-  shortcutLabels,
-  onShortcutLabelsChange,
-  labelOptions,
-  labelOptionsLoading,
-  projectId,
+  shortcuts,
+  footer,
+  labelSlots,
 }: LabelsKeyboardPopoverProps) {
   return (
     <Popover>
@@ -80,34 +72,37 @@ export function LabelsKeyboardPopover({
       <PopoverContent align="end" className="w-auto px-4 py-3">
         <div className="flex gap-8">
           <div>
-            {GRID_SHORTCUTS.map(([key, action]) => (
+            {shortcuts.map(([key, action]) => (
               <div key={key} className="flex items-center text-xs gap-3 h-7">
                 <ShortcutKey keys={key} />
                 <span>{action}</span>
               </div>
             ))}
           </div>
-          <div>
-            {[1, 2, 3, 4, 5].map((n) => (
-              <div key={n} className="flex items-center text-xs gap-3 h-7">
-                <ShortcutKey keys={String(n)} />
-                <span>Change selected to</span>
-                <LabelPicker
-                  value={shortcutLabels[n]?.value ?? null}
-                  onSelect={(option) =>
-                    onShortcutLabelsChange((prev) => ({ ...prev, [n]: option }))
-                  }
-                  options={labelOptions}
-                  isLoading={labelOptionsLoading}
-                  projectId={projectId}
-                />
-              </div>
-            ))}
-          </div>
+          {labelSlots && (
+            <div>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <div key={n} className="flex items-center text-xs gap-3 h-7">
+                  <ShortcutKey keys={String(n)} />
+                  <span>Change selected to</span>
+                  <LabelPicker
+                    value={labelSlots.shortcutLabels[n]?.value ?? null}
+                    onSelect={(option) =>
+                      labelSlots.onShortcutLabelsChange((prev) => ({
+                        ...prev,
+                        [n]: option,
+                      }))
+                    }
+                    options={labelSlots.labelOptions}
+                    isLoading={labelSlots.labelOptionsLoading}
+                    projectId={labelSlots.projectId}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-        <p className="mt-3 text-[11px] text-muted-foreground">
-          After an action the next crop is selected, so you can keep going.
-        </p>
+        <p className="mt-3 text-[11px] text-muted-foreground">{footer}</p>
       </PopoverContent>
     </Popover>
   );

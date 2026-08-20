@@ -80,11 +80,6 @@ class DetectionCategories(BaseModel):
     empty_count: int
 
 
-class VerificationProgress(BaseModel):
-    total_files: int
-    verified_files: int
-
-
 class LabelProgressRow(BaseModel):
     """Per-class verification progress for the dashboard's scrollable list.
 

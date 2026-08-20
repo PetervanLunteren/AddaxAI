@@ -42,6 +42,7 @@ from app.api.schemas.label import (
     SortRequest,
     SortResponse,
 )
+from app.core.confidence import effective_floor
 from app.core.config import get_settings
 from app.core.logging_config import get_logger
 from app.ml.environment_manager import EnvironmentManager
@@ -249,12 +250,15 @@ def _apply_project_threshold(
     Detections in that tail that were never embedded still cannot
     appear — the banner above the grid reports them and offers the
     backfill.
+
+    The floor itself comes from `effective_floor`, shared with the
+    empties query, so the two tabs cannot disagree about what passes.
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if project:
-        floor = project.counting_threshold
-        if filters.min_confidence is not None:
-            floor = min(floor, filters.min_confidence)
+        floor = effective_floor(
+            project.counting_threshold, filters.min_confidence
+        )
         filters = filters.model_copy(update={"project_floor": floor})
     return filters
 

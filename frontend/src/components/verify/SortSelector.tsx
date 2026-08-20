@@ -29,6 +29,7 @@ const SORT_LABELS: Record<VerifySort, string> = {
   oldest: "Sort by oldest first",
   random: "Sort in random order",
   events: "Sort by event",
+  path: "Sort by folder",
 };
 
 function newSeed(): number {

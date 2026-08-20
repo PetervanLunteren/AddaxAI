@@ -8,17 +8,25 @@ The "similarity" name on internal modules reflects the underlying technique;
 user-facing surfaces are named after the unit of work, the label.
 """
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.api.crud import file as file_crud
 from app.api.schemas.label import (
+    EmptiesResponse,
+    EmptiesSort,
+    EmptiesVerification,
+    EmptyFileItem,
+    LabelsProgress,
     LabelStatsResponse,
     SearchRequest,
     SortRequest,
 )
-from app.core.confidence import DEFAULT_CLASSIFICATION_GATE
+from app.core.confidence import DEFAULT_CLASSIFICATION_GATE, effective_floor
 from app.db.base import get_db
 from app.models import Deployment, Detection, DetectionEmbedding, File, Project
 from app.services.label_service import (
@@ -29,6 +37,25 @@ from app.services.label_service import (
 from app.utils.datetime_serialization import set_active_project_timezone
 
 router = APIRouter(prefix="/api/projects", tags=["labels"])
+
+
+def _parse_dt(value: str | None, field: str) -> datetime | None:
+    """Parse an ISO date query param, or raise 422.
+
+    ``datetime.fromisoformat`` raises ``ValueError``, which reaches the
+    user as a 500 on a query they can fix themselves. The statistics
+    router solves this the same way; the two stay separate rather than
+    shared because that one parses to ``date`` and these endpoints need
+    ``datetime``, and one helper serving both would need a flag.
+    """
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError as err:
+        raise HTTPException(
+            status_code=422, detail=f"Invalid ISO date for {field}: {value}"
+        ) from err
 
 
 def _set_project_tz(db: Session, project_id: str) -> None:
@@ -166,6 +193,112 @@ def get_unprocessed_count(
     ) or 0
 
     return {"count": int(count)}
+
+
+@router.get(
+    "/{project_id}/labels/empties",
+    response_model=EmptiesResponse,
+)
+async def get_empties(
+    project_id: str,
+    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
+    date_from: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
+    verification: EmptiesVerification | None = Query(None),
+    min_confidence: float | None = Query(None, ge=0.0, le=1.0),
+    sort: EmptiesSort = Query("path"),
+    seed: int | None = Query(None, description="Required for sort=random"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(48, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """The project's empty photos: one per file where nothing passed.
+
+    The other half of the Labels page. The crop grid shows every
+    detection above the floor; this shows every file with none, so a
+    photo the detector dismissed is still reachable and can be checked
+    by a human. Both sides take the floor from `effective_floor`, so
+    every photo in the project lands in exactly one of the two.
+
+    `async def` because `captured_at_local` is an observational datetime
+    and its serializer reads the project timezone from a ContextVar set
+    here; a sync endpoint would set it in a threadpool where the
+    serializer cannot see it (DEVELOPERS.md "Datetime conventions").
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if sort == "random" and seed is None:
+        raise HTTPException(
+            status_code=400, detail="sort=random requires a seed"
+        )
+    _set_project_tz(db, project_id)
+
+    floor = effective_floor(project.counting_threshold, min_confidence)
+    total, files = file_crud.get_empty_files(
+        db,
+        project_id,
+        floor=floor,
+        site_ids=site_ids.split(",") if site_ids else None,
+        date_from=_parse_dt(date_from, "date_from"),
+        date_to=_parse_dt(date_to, "date_to"),
+        verification=verification,
+        sort=sort,
+        seed=seed,
+        skip=skip,
+        limit=limit,
+    )
+    return EmptiesResponse(
+        total=total,
+        floor=floor,
+        items=[EmptyFileItem.model_validate(f) for f in files],
+    )
+
+
+@router.get(
+    "/{project_id}/labels/progress",
+    response_model=LabelsProgress,
+)
+async def get_labels_progress(
+    project_id: str,
+    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
+    date_from: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
+    min_confidence: float | None = Query(None, ge=0.0, le=1.0),
+    db: Session = Depends(get_db),
+):
+    """Progress for the Labels page, counted in labels.
+
+    One number for the whole page rather than one per tab: a detection
+    above the threshold is a label to check, and a file with nothing
+    above it is a label too, "nothing here". The total is the number of
+    cards across both tabs, so 100% means every one has been looked at.
+
+    The dashboard reads this same endpoint, so its bar and the page's
+    pill can never disagree.
+
+    `async def` for consistency with the other endpoints here; it returns
+    no observational datetimes of its own.
+    """
+    if not db.query(Project.id).filter(Project.id == project_id).first():
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    counts = file_crud.get_label_progress(
+        db,
+        project_id,
+        site_ids=site_ids.split(",") if site_ids else None,
+        date_from=_parse_dt(date_from, "date_from"),
+        date_to=_parse_dt(date_to, "date_to"),
+        min_confidence=min_confidence,
+    )
+    return LabelsProgress(
+        total_labels=counts.total,
+        verified_labels=counts.verified,
+        crop_labels=counts.crop_labels,
+        crop_labels_verified=counts.crop_labels_verified,
+        empty_labels=counts.empty_labels,
+        empty_labels_verified=counts.empty_labels_verified,
+    )
 
 
 @router.get(

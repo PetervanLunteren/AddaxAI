@@ -41,6 +41,27 @@ DEFAULT_COUNTING_THRESHOLD = 0.2
 ROLLUP_THRESHOLD = 0.65
 
 
+def effective_floor(
+    counting_threshold: float, min_confidence: float | None
+) -> float:
+    """The floor the Labels page is currently showing at.
+
+    Never above ``counting_threshold``: the confidence slider digs *down*
+    into the low-confidence tail, it does not raise the bar. A user
+    narrowing to a range above the threshold is filtering what they see,
+    which callers apply separately and literally; it does not change what
+    counts as passing.
+
+    One helper because two surfaces depend on agreeing exactly. The crop
+    grid shows the detections above this floor; the empties grid shows
+    the files with none. If the two computed it differently, a photo
+    could appear in both tabs or in neither.
+    """
+    if min_confidence is None:
+        return counting_threshold
+    return min(counting_threshold, min_confidence)
+
+
 def format_confidence_pct(value: float) -> str:
     """Render a 0-1 confidence as a whole-percent string for humans
     (sliders, captions, the run README, drawn boxes). Data files keep

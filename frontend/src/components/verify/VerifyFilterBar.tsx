@@ -90,6 +90,9 @@ interface VerifyFilterBarProps {
    *  and it never renders a chip. Counts defaults to "all"; the
    *  Labels page passes "unverified". */
   verificationDefault?: VerificationFilter;
+  /** Whether to render the label filter. False in Empties, where every
+   *  photo is empty by definition and so has no label to filter on. */
+  showLabels?: boolean;
 }
 
 export function VerifyFilterBar({
@@ -103,6 +106,7 @@ export function VerifyFilterBar({
   showLikedFlaggedEmpty = true,
   confidenceFloorMode = "clamp",
   verificationDefault = "all",
+  showLabels = true,
 }: VerifyFilterBarProps) {
   const [labelModalOpen, setLabelModalOpen] = useState(false);
 
@@ -207,6 +211,7 @@ export function VerifyFilterBar({
           />
         </div>
 
+        {showLabels && (
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">Labels</label>
           {hasTaxonomy ? (
@@ -255,6 +260,7 @@ export function VerifyFilterBar({
             />
           )}
         </div>
+        )}
 
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">{isEventScope ? "Confirmed" : "Verified"}</label>

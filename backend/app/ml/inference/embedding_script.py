@@ -30,9 +30,15 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from PIL import Image
+from PIL import Image, ImageFile
 from torchvision import transforms
 from tqdm import tqdm
+
+# Decode truncated JPEGs instead of refusing them. Camera traps write
+# them routinely (dead battery, pulled card, interrupted copy) and this
+# script runs in its own subprocess, so it cannot inherit the setting
+# from `app/__init__.py`. See the comment there for the full reasoning.
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 def parse_args() -> argparse.Namespace:

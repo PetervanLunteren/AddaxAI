@@ -42,6 +42,10 @@ export const shots: Record<string, Shot> = {
     src: "/img/project-labels-similarity-mixed-selected.webp",
     alt: "The two odd labels selected, ready to be corrected in one action",
   },
+  verifyEmpties: {
+    src: "/img/project-labels-empties.webp",
+    alt: "The Empties tab: one tile per file where the AI found nothing, with three selected and ready to verify",
+  },
   counts: {
     src: "/img/project-counts.webp",
     alt: "Counts page: how many animals of each species were seen per event",

@@ -26,9 +26,20 @@ const batchSizeCaption = (subject: string): string =>
   "Leave it unless you know what you are doing.";
 
 export const SETTING_CAPTIONS = {
+  // Two things this wording has to do at once. It must say how far the
+  // setting reaches, because the Detection confidence filter under More
+  // filters looks almost identical and reaches nowhere. And it must stay
+  // true in a folder run, which has no dashboard, no charts and no
+  // counts.csv: there it reaches the grid, the two saved tables and the
+  // separated / annotated media. "The results the app shows and saves"
+  // covers both modes without a branch. The empty sentence is the one
+  // consequence people meet first, and it is worded like the note on the
+  // Empties tab so the two read as one idea rather than two rules.
   detectionThreshold:
-    "Hide detections below this confidence score from counts and views. " +
-    "Verified observations are always included. " +
+    "Detections below this score are treated as noise: hidden from the " +
+    "grids, and left out of the results the app shows and saves. " +
+    "A file with no detection above this score counts as empty. " +
+    "Verified ones always count. " +
     `The default is ${formatConfidencePct(DEFAULT_COUNTING_THRESHOLD)}.`,
   classificationGate:
     "Detections below this confidence are not identified to species and " +

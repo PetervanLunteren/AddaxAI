@@ -177,6 +177,79 @@ class CohortsResponse(BaseModel):
     cohorts: list[CohortItem]
 
 
+#: The Labels page's verification filter. A Literal so a typo is a 422
+#: rather than a silently unfiltered 200, which is what a bare ``str``
+#: gave: every other parameter on that endpoint already validates.
+EmptiesVerification = Literal["all", "verified", "unverified"]
+
+EmptiesSort = Literal[
+    # Default. Groups one camera's photos together, because file_path is
+    # absolute and starts with the deployment folder. Reviewing empties
+    # means scanning the same scene repeatedly, and capture-time order
+    # interleaves cameras.
+    "path",
+    "newest",
+    "oldest",
+    "random",
+]
+
+
+class EmptyFileItem(BaseModel):
+    """One empty photo: enough to draw a tile, nothing more.
+
+    No detections are carried. The tiles are plain thumbnails, and the
+    weak boxes are fetched only when a photo is opened full size, where
+    they are worth looking at.
+    """
+
+    id: str
+    deployment_id: str
+    file_path: str
+    file_type: str
+    captured_at_local: datetime | None
+    verified: bool
+
+    @field_serializer("captured_at_local")
+    def _serialize_local_datetimes(self, value: datetime | None) -> str | None:
+        return serialize_local_datetime(value)
+
+    class Config:
+        from_attributes = True
+
+
+class EmptiesResponse(BaseModel):
+    """Response for the empties endpoint.
+
+    `floor` is the confidence these files were judged empty at, echoed
+    so the page can name the number the user is actually looking at
+    rather than re-deriving it in the frontend.
+    """
+
+    total: int
+    floor: float
+    items: list[EmptyFileItem]
+
+
+class LabelsProgress(BaseModel):
+    """How far through the Labels page the user is, counted in labels.
+
+    A label is one call a person has to make: a detection above the
+    threshold (one card in Crops), or a file where nothing passes (one
+    card in Empties, carrying the label "nothing here"). The two do not
+    overlap and together they cover the project, so the total is exactly
+    the number of cards across both tabs.
+    """
+
+    total_labels: int
+    verified_labels: int
+    # The two halves, so each tab can say how much is waiting in the
+    # other one without a second request.
+    crop_labels: int
+    crop_labels_verified: int
+    empty_labels: int
+    empty_labels_verified: int
+
+
 class LabelStatsResponse(BaseModel):
     """Embedding coverage stats."""
 

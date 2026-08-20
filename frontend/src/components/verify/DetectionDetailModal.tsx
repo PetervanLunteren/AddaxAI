@@ -8,10 +8,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Ban, Check, CircleHelp, ImageOff, Tag, ChevronLeft, ChevronRight, ChevronsRight, Play, X } from "lucide-react";
+import { Ban, Check, CircleHelp, ImageOff, Tag, Play } from "lucide-react";
 import { basename } from "../../lib/path-utils";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
@@ -35,6 +34,7 @@ import {
 import type { DetectionSummary } from "../../api/types";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 import { LabelPicker } from "./LabelPicker";
+import { DetailCard, VerifyDetailShell } from "./VerifyDetailShell";
 
 interface DetectionDetailModalProps {
   detection: DetectionSummary | null;
@@ -372,50 +372,41 @@ export function DetectionDetailModal({
   const imgH = fileData?.height_px || 1;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="flex flex-col p-3 pr-0 gap-0 overflow-hidden [&>button.absolute]:hidden"
-        style={{
-          width: modalStyle.width,
-          height: modalStyle.height,
-          maxWidth: "95vw",
-          maxHeight: "95vh",
-        }}
-        onOpenAutoFocus={(e) => e.preventDefault()}
-        aria-describedby={undefined}
-      >
-        <DialogTitle className="sr-only">
-          {getDetectionDisplayName(detection)} detection detail
-        </DialogTitle>
-
-        <div className="flex flex-1 min-h-0 overflow-hidden">
-          {/* Left panel — source image with bbox. Scroll to zoom, drag
-              to pan when zoomed, double-click to reset. */}
-          <div
-            ref={attachImagePanel}
-            className="flex-1 flex select-none items-center justify-center overflow-hidden bg-black/95 min-h-0 p-2 rounded-lg"
-            style={{
-              cursor: zoom > 1 ? (isPanning ? "grabbing" : "grab") : "default",
-            }}
-            onPointerDown={(e) => {
-              if (zoom <= 1) return;
-              // Stop the browser's native image drag-and-drop, which
-              // otherwise swallows the pointerup and leaves the pan
-              // stuck "held" after release.
-              e.preventDefault();
-              panStartRef.current = {
-                x: e.clientX,
-                y: e.clientY,
-                panX: pan.x,
-                panY: pan.y,
-              };
-              setIsPanning(true);
-            }}
-            onDoubleClick={() => {
-              setZoom(1);
-              setPan({ x: 0, y: 0 });
-            }}
-          >
+    <VerifyDetailShell
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`${getDetectionDisplayName(detection)} detection detail`}
+      width={modalStyle.width}
+      height={modalStyle.height}
+      position={position}
+      onNavigate={onNavigate}
+      // Scroll to zoom, drag to pan when zoomed, double-click to reset.
+      // The shell owns the panel's classes; the behaviour stays here.
+      imagePanelProps={{
+        ref: attachImagePanel,
+        style: {
+          cursor: zoom > 1 ? (isPanning ? "grabbing" : "grab") : "default",
+        },
+        onPointerDown: (e) => {
+          if (zoom <= 1) return;
+          // Stop the browser's native image drag-and-drop, which
+          // otherwise swallows the pointerup and leaves the pan
+          // stuck "held" after release.
+          e.preventDefault();
+          panStartRef.current = {
+            x: e.clientX,
+            y: e.clientY,
+            panX: pan.x,
+            panY: pan.y,
+          };
+          setIsPanning(true);
+        },
+        onDoubleClick: () => {
+          setZoom(1);
+          setPan({ x: 0, y: 0 });
+        },
+      }}
+      image={
             <div
               className="relative inline-flex"
               style={{
@@ -515,68 +506,16 @@ export function DetectionDetailModal({
                 );
               })()}
             </div>
-          </div>
-
-          {/* Right panel — sidebar */}
-          <div className="w-80 bg-white flex flex-col shrink-0">
-            {/* Navigation header — pinned */}
-            <div className="flex items-center justify-between px-3 py-1.5 shrink-0">
-              <div className="flex items-center gap-0.5">
-                {position && (
-                  <span className="text-xs text-muted-foreground mr-1">
-                    {position}
-                  </span>
-                )}
-                {onNavigate && (
-                  <>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => onNavigate("prev")}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => onNavigate("next")}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => onNavigate("nextUnverified")}
-                      title="Next unverified"
-                    >
-                      <ChevronsRight className="h-4 w-4" />
-                    </Button>
-                  </>
-                )}
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => onOpenChange(false)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {/* Scrollable area for all cards */}
-            <div className="flex-1 min-h-0 overflow-y-auto">
+      }
+      details={
+        <>
 
             {/* Card: Image metadata */}
               {fileData && (
-                <div className="mx-3 mt-3 rounded-lg border bg-muted/40">
-                  <h3 className="px-3 pt-3 pb-2 text-sm font-semibold">
-                    {fileData.file_type === "video" ? "Video" : "Image"}
-                  </h3>
-                  <div className="px-3 pb-3 space-y-0.5 text-xs text-muted-foreground">
+                <DetailCard
+                  title={fileData.file_type === "video" ? "Video" : "Image"}
+                >
+                  <div className="space-y-0.5 text-xs text-muted-foreground">
                     <div className="truncate">
                       {basename(fileData.file_path)}
                       {fileData.file_type === "video" && detection.frame_number != null && (
@@ -596,7 +535,7 @@ export function DetectionDetailModal({
                         <div>Distance: {detection.distance_to_centroid.toFixed(3)}</div>
                       )}
                   </div>
-                </div>
+                </DetailCard>
               )}
 
               {/* Event context: the event's other frames, so a close-up
@@ -725,14 +664,13 @@ export function DetectionDetailModal({
                   />
                 );
               })()}
-            </div> {/* end scrollable area */}
-
-            {/* Bottom pinned: action buttons.
-                Mirrors the floating BulkActionBar's vocabulary, icons,
-                and shortcuts so the muscle memory carries over from the
-                grid into the modal. Each action operates on this single
-                detection. */}
-            <div className="px-3 py-3 space-y-2 shrink-0">
+        </>
+      }
+      // Mirrors the floating BulkActionBar's vocabulary, icons and
+      // shortcuts so the muscle memory carries over from the grid into
+      // the modal. Each action operates on this single detection.
+      actions={
+        <>
               {detection.neighbor_top_label &&
                 detection.neighbor_top_label !== detection.label && (
                   <Button
@@ -848,10 +786,8 @@ export function DetectionDetailModal({
                   </kbd>
                 )}
               </Button>
-            </div>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    />
   );
 }

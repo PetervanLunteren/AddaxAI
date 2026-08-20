@@ -27,7 +27,7 @@ It is a trade-off: a broader label tells you less, but it is more likely to be r
 
 It runs twice: first within a single image, across the boxes in it, then across all the files in an event. Inside one event the same animal usually triggers many photos. If the model labels 11 of them deer and 1 of them elk, smoothing treats the odd one out as a mistake and makes all 12 deer.
 
-Smoothing works the other way too. If most of an event is confidently "lion" and one crop only made it to "felidae" in step 2, smoothing can turn that group back into the species. Vague labels give way easily: "animal" or "unknown" needs far less support to be overwritten than a real species does. This removes a lot of noise and it is usually right, but it can also hide a real second species in a busy event. So if you work with mixed herds, or with two similar species at the same site, check those events yourself. See [detections, events and observations](./detections-events-observations.mdx) for how events are formed.
+Smoothing works the other way too. If most of an event is confidently "lion" and one detection only made it to "felidae" in step 2, smoothing can turn that group back into the species. Vague labels give way easily: "animal" or "unknown" needs far less support to be overwritten than a real species does. This removes a lot of noise and it is usually right, but it can also hide a real second species in a busy event. So if you work with mixed herds, or with two similar species at the same site, check those events yourself. See [detections, events and observations](./detections-events-observations.mdx) for how events are formed.
 
 ## What this means for you
 

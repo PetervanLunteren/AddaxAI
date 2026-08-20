@@ -33,6 +33,7 @@ export function FolderRunLabelsStep() {
   // selection is live, the sticky Back / Continue bar is hidden so the
   // floating BulkActionBar has the bottom of the viewport to itself.
   const [selectionCount, setSelectionCount] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const advance = useMutation({
     mutationFn: () => folderRunsApi.updateStep(runId!, "save"),
@@ -72,11 +73,17 @@ export function FolderRunLabelsStep() {
         // the threshold-or-verified floor), so the grid, counts, and
         // verification pill all measure the same population.
         refreshSignal={reprocessNonce}
+        // The empties note names the threshold and offers to open it.
+        // Here that is the Refine results slideout, so this step holds
+        // its open state and hands the grid a way in.
+        onEditThreshold={() => setSettingsOpen(true)}
         toolbarExtra={
           <AnalysisSettingsButton
             runId={runId}
             project={run.project}
             onApplied={() => setReprocessNonce((n) => n + 1)}
+            open={settingsOpen}
+            onOpenChange={setSettingsOpen}
           />
         }
       />

@@ -206,7 +206,7 @@ export function MediaBody({
             checked={separate.groupEvents}
             onChange={(v) => setSeparate({ ...separate, groupEvents: v })}
             label="Keep events together"
-            caption="Every file in a burst goes to one folder: the species you confirmed most often, or else the strongest detection"
+            caption="Every file in a burst goes to one folder: the species you verified most often, or else the strongest detection"
           />
           <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
             <span>

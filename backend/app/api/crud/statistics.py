@@ -31,7 +31,6 @@ from app.api.schemas.statistics import (
     SpeciesCount,
     SpeciesObservationCount,
     SunBands,
-    VerificationProgress,
     VerificationProgressByLabel,
 )
 from app.ml.detection_visibility import on_visible_frame
@@ -1251,31 +1250,6 @@ def get_detection_categories(
 # ---------------------------------------------------------------------------
 # 6. Verification progress
 # ---------------------------------------------------------------------------
-
-
-def get_verification_progress(
-    db: Session,
-    project_id: str,
-    site_ids: list[str] | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
-) -> VerificationProgress:
-    """Total vs verified file counts."""
-    query = (
-        select(
-            func.count(File.id).label("total_files"),
-            func.sum(case((File.verified == True, 1), else_=0)).label("verified_files"),  # noqa: E712
-        )
-        .select_from(File)
-        .join(Deployment, File.deployment_id == Deployment.id)
-    )
-    query = _apply_filters(query, project_id, site_ids, date_from, date_to)
-    row = db.execute(query).one()
-
-    return VerificationProgress(
-        total_files=row.total_files or 0,
-        verified_files=row.verified_files or 0,
-    )
 
 
 def get_verification_progress_by_label(

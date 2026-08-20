@@ -44,6 +44,11 @@ interface AnnotationCanvasProps {
    * grid lists). The canvas itself does not know which keys to touch.
    */
   onMutated?: () => void;
+  /** Fired with the new detection's id right after a box is drawn, on
+   *  top of `onMutated`. Separate because the owner may want to follow
+   *  a fresh box up (asking which species it is), which is not true of
+   *  a move, a resize or a delete. */
+  onCreated?: (detectionId: string) => void;
   /** Shift+wheel steps to the previous/next frame instead of zooming.
    *  `delta` is the wheel deltaY (negative = up/previous). */
   onScrubFrame?: (delta: number) => void;
@@ -80,6 +85,7 @@ export function AnnotationCanvas({
   drawMode,
   onDrawModeChange,
   onMutated,
+  onCreated,
   onScrubFrame,
   readOnly,
   imageFilter,
@@ -362,7 +368,10 @@ export function AnnotationCanvas({
           file.file_type === "video" ? file.best_frame_number ?? null : null,
       });
     },
-    onSuccess: () => onMutated?.(),
+    onSuccess: (created) => {
+      onMutated?.();
+      onCreated?.(created.id);
+    },
   });
 
   // Update detection mutation (for move/resize)

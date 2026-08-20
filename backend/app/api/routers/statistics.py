@@ -19,7 +19,6 @@ from app.api.schemas.statistics import (
     DetectionTrendPoint,
     ObservationRateMapResponse,
     SpeciesCount,
-    VerificationProgress,
     VerificationProgressByLabel,
 )
 from app.api.schemas.timeline import TimelineResponse
@@ -180,20 +179,6 @@ def categories(
     db: Session = Depends(get_db),
 ) -> DetectionCategories:
     return stats_crud.get_detection_categories(
-        db, project_id, _parse_site_ids(site_ids),
-        _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
-    )
-
-
-@router.get("/verification-progress", response_model=VerificationProgress)
-def verification_progress(
-    project_id: str = Query(...),
-    site_ids: str | None = Query(None),
-    date_from: str | None = Query(None),
-    date_to: str | None = Query(None),
-    db: Session = Depends(get_db),
-) -> VerificationProgress:
-    return stats_crud.get_verification_progress(
         db, project_id, _parse_site_ids(site_ids),
         _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
     )

@@ -22,6 +22,18 @@ Prefer to watch? This video shows how to find and fix wrong labels quickly.
 
 The Labels page shows one card per detection: the cropped animal and the species the AI chose. A progress bar shows how much of the project you have checked.
 
+## Detections and empties
+
+The page has two tabs. Detections shows one card per box the AI found above your detection threshold. Empties shows one card per file, photo or video, where it found nothing at all. Every file is in one of the two, and your threshold decides which one.
+
+Use Empties to check that the AI did not miss anything. It opens sorted by folder, so one camera's files sit together and you can scan them quickly.
+
+<AppShot name="verifyEmpties" />
+
+Select the ones that really are empty and click Verify to sign them off in one go. Double-click a file to see it full size, where Enter verifies it and takes you to the next one you have not checked. If you do see an animal, click "Draw a box" and drag around it. The species search opens so you can name it right away, and the file moves over to Detections.
+
+Most empty files do have a box, the AI just scored it too low to show you. Lower the detection confidence in More filters and those files move to Detections, where a cropped card is faster to judge than a whole frame. Do this before you check them, because saying a file is empty removes those low-scoring boxes for good. You have said there is nothing there, so the app takes you at your word and the file stays empty whatever you set the threshold to later.
+
 ## Same in folder runs and projects
 
 It is the same grid in both modes: step 2 of a folder run, and the Labels page of a project. The one difference is where you change the refine settings, like thresholds and the event interval. In a folder run, use the Refine results button. In a project, they are on the Settings page.
@@ -46,7 +58,7 @@ Verified cards are hidden by default, so every group you clear leaves the grid.
 
 ## Suggestions
 
-The app can point out likely mistakes for you. It pairs the AI's labels with the embedding model: for each animal it looks at its closest look-alikes, and if they mostly carry a different label, it flags that as a suggestion. A crop labelled "canis" whose look-alikes are all "domestic dog" is the classic case.
+The app can point out likely mistakes for you. It pairs the AI's labels with the embedding model: for each animal it looks at its closest look-alikes, and if they mostly carry a different label, it flags that as a suggestion. A detection labelled "canis" whose look-alikes are all "domestic dog" is the classic case.
 
 When the toolbar shows a suggestions badge, click Review. The suggestions come grouped into cohorts, one fix each. Accept relabels and verifies the whole cohort in one click. Dismiss hides it and changes nothing.
 

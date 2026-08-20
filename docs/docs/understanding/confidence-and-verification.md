@@ -19,13 +19,13 @@ Photo from the <a href="https://lila.science/datasets/ena24detection">ENA24-dete
 
 They do different jobs, and it is worth knowing which is which.
 
-### 1. Which boxes get a species (classification gate, default 0.1)
+### 1. Which boxes get a species (Classify detections above, default 0.1)
 
 Every animal the detector finds is stored, but not every one is sent to the species model. Only boxes above this score get a species, so weaker ones stay as plain "animal". The same score decides which boxes get an embedding, so a box below the gate also stays out of the similarity sort and never gets a suggestion. Raise it to save time on a big folder, or lower it if you think real animals are being missed. This one applies while the AI runs, so changing it only affects new analyses.
 
-### 2. What you see and what gets counted (counting threshold, default 0.2)
+### 2. What you see and what gets counted (Count detections above, default 0.2)
 
-This is the one most people are looking for. Detections below it are hidden from the grid, the charts and the counts. Change it any time: nothing is deleted, the app just shows more or less, so you can always lower it later and see more without running the AI again. Leave it at the default while you check labels.
+This is the one most people are looking for. Detections below it are hidden from the grid, the charts and the counts. Change it any time: the app just shows more or less, so you can lower it later and see more without running the AI again. Files you already verified as empty are the exception, because verifying them throws their weak boxes away for good. Leave it at the default while you check labels.
 
 ## So what does species confidence do?
 
@@ -35,7 +35,7 @@ You can still filter on it while you work. Under More filters on the Labels page
 
 ## Verified detections always count
 
-Anything you verified always counts, whatever its score. If you confirm a bobcat at 0.04 confidence, it stays in your counts and charts even though the counting threshold is 0.2. Your judgement beats the model's score, and this is why your numbers do not drop when you raise the threshold after checking things.
+Anything you verified always counts, whatever its score. If you confirm a bobcat at 0.04 confidence, it stays in your counts and charts even though your threshold is 0.2. Your judgement beats the model's score, and this is why your numbers do not drop when you raise the threshold after checking things.
 
 ## What happens when you correct a label
 

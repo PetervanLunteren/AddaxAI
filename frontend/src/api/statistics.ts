@@ -76,11 +76,6 @@ export interface DetectionCategories {
   empty_count: number;
 }
 
-export interface VerificationProgress {
-  total_files: number;
-  verified_files: number;
-}
-
 export interface LabelProgressRow {
   label_taxonomy_id: string | null;
   common_name: string;
@@ -293,13 +288,6 @@ export const statisticsApi = {
   },
 
   /**
-   * Verification progress (total vs verified file counts)
-   */
-  getVerificationProgress: (projectId: string, siteIds?: string, dateFrom?: string, dateTo?: string) => {
-    const query = buildParams(projectId, { siteIds, dateFrom, dateTo });
-    return api.get<VerificationProgress>(`/api/statistics/verification-progress?${query}`);
-  },
-
   /**
    * Per-class verification progress. Each row is one label; counts are
    * verified / total detections that pass the project floor (with the

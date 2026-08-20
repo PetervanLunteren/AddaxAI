@@ -457,6 +457,60 @@ This must be applied consistently across every module that counts, lists, filter
 
 **Common mistake:** writing `Detection.confidence >= threshold` without `OR Detection.verified == True`. This silently drops verified low-confidence detections from counts, filters, and charts. The result is that users see different numbers on different pages.
 
+## Verifying an empty file deletes its detections
+
+A person looking at a whole frame and calling it empty is making a claim
+about the photograph: there is no animal in it. Every box the detector
+left on that file is therefore a false positive, so `update_file`
+(`crud/file.py`) removes them rather than keeping them below the
+threshold. It branches on the same "reviewable" rule the rollup uses
+(threshold-or-verified, visible frame): nothing reviewable means empty,
+and empty means the boxes go.
+
+**Why not keep them.** Keeping them made "empty" true only at the
+threshold it was checked at. Drop the confidence slider and the file came
+back carrying a 3% smudge while still flagged verified; raise
+`counting_threshold` afterwards and it exported `is_verified = TRUE`
+beside a species nobody had confirmed. Deleting collapses all of that
+into one sentence a user can hold: you said there is nothing there, so
+there is nothing there.
+
+**Considered and rejected: marking the boxes "false" instead.** That
+asserts a human judgement about each box that nobody made, and it would
+freeze roughly 1,500 unlooked-at vegetation boxes as verified decisions
+per 500 photos checked, permanently, since verified detections are never
+reprocessed. Deleting asserts nothing.
+
+**This is only defensible while the empties viewer draws no boxes.** The
+person is judging the picture, not a threshold. If the sub-threshold
+boxes are ever drawn there again, the verdict becomes threshold-dependent
+and deleting on it does not follow. Revisit this if that changes.
+
+**Boxes the user drew are never deleted**, and that path is unreachable
+rather than merely guarded: `on_visible_frame_of` passes verified
+detections on *any* frame, so a drawn box keeps its file reviewable even
+on a video where it sits off the best frame. Pinned by
+`test_a_file_holding_a_drawn_box_is_never_treated_as_empty`.
+
+**The reprocess must know.** `update_database_from_smoothed_results`
+matches JSON detections to rows by `file_path` + bbox + `frame_number`
+and counts an unmatched one as an error. A deleted box is exactly that,
+so without an exemption the next reprocess of a checked project reports
+one error per removed box: measured at 3.2 per empty file, a few hundred
+failures that are not failures, shown to the user in the reprocess
+summary. `postprocessing.py` skips them for files that are verified and
+blank. That same matcher is why the deletion survives a reprocess: it
+updates in place and never re-inserts.
+
+**Nothing is truly lost.** `results.json` on disk is never modified and
+still holds every box, which is what a re-analysis reads back. A
+re-analysis also discards the verification itself, as it does for crop
+verifications.
+
+Tests: `tests/api/test_empty_verify_discards.py` and
+`test_a_discarded_box_is_not_reported_as_a_reprocess_error` in
+`tests/integration/test_postprocessing_pipeline.py`.
+
 ## Non-label detection skip
 
 MegaDetector sometimes produces false positive bounding boxes. When a classification model (SpeciesNet or custom) classifies a detection as one of the non-label classes, the detection is not loaded to the database at all. This keeps false positives out of counts, filters, and the verification UI.
@@ -469,9 +523,20 @@ Do not confuse it with `is_non_label_detection` in the same module, which skips 
 
 User species exclusion is a separate path: `apply_label_exclusion_to_results` in postprocessing, which builds its excluded set from the non-label classes plus the project's `excluded_classes`.
 
-**Observation type:** files where all detections were skipped get `observation_type="blank"`. They will not appear in the verification grid and will be counted as blank images on the dashboard.
+**Observation type:** files where all detections were skipped get `observation_type="blank"`. They are counted as blank images on the dashboard, and they are reachable in the Labels page's Empties tab (see "Verifying an empty file"). They have no card in the Detections tab, which is per-detection.
 
 **Raw JSON preservation:** the JSON on disk (`results.json`) is never modified. It contains all original detections including those classified as blank. The skip only applies during the in-memory DB load step.
+
+**The same rule is applied a second time, at read time.** The ingest skip cannot reach a human who presses X on the Labels page later: "Mark false" writes `label = "false detection"` and deliberately leaves the detector's `category` alone (the category is the detector's and is never translated), while also setting `verified = True`, and a verified box always passes the threshold. So the rejected box became the file's subject. Measured: the file exported `observation_type = animal` with `classification_label = false detection` beside it, and the Counts page grew an observation called "false detection" with a MaxN of 1.
+
+Two places apply it, because they are two different queries:
+
+- `strongest_passing_detection` (`ml/observation_type.py`) skips them, which fixes `observation_type` and therefore `files.csv`, folder placement and annotated copies in one move.
+- `_is_a_real_observation` in `crud/event_observation.py` skips them in the MaxN query, which groups by `COALESCE(label, category)` in its own SQL and never goes through the function above.
+
+**The row is kept, not deleted.** A human looked at that box and judged it. Keeping it preserves the undo stack on the Labels page, and keeps `addaxai-detections.csv` an honest record of what the detector found and what was rejected. This is deliberately the opposite call from the empties one above, and the difference is what was looked at: an empty file's leftover boxes were never examined individually, a falsed box was.
+
+`tests/api/test_mark_false.py` pins it, including that a real animal beside a falsed box still names the file, and that all six non-label classes behave alike.
 
 **Key files:**
 

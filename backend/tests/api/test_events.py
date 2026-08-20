@@ -793,3 +793,73 @@ def test_progress_by_label_counts_only_the_best_frame(client, db):
     rows = {r["scientific_name"]: r for r in resp.json()["rows"]}
     assert rows[tax.scientific_name]["total"] == 1
     assert rows[tax.scientific_name]["verified"] == 1
+
+
+def _blank_event(db, project, when=datetime(2024, 1, 2, 12, 0)):
+    """One event whose only file is blank: no detections, and the
+    observation type the ingest writes when nothing passed."""
+    from app.models.event import Event
+    from app.models.event import event_files as event_files_table
+    from tests.conftest import make_file
+
+    s = make_site(db, project_id=project.id)
+    d = make_deployment(db, site_id=s.id)
+    f = make_file(db, deployment_id=d.id, observation_type="blank")
+
+    ev = Event(
+        id=f"ev-blank-{uuid.uuid4().hex[:8]}",
+        deployment_id=d.id,
+        event_start_local=when,
+        event_end_local=when,
+        file_count=1,
+    )
+    db.add(ev)
+    db.flush()
+    db.execute(
+        event_files_table.insert().values(
+            event_id=ev.id, file_id=f.id, sequence_number=0
+        )
+    )
+    db.flush()
+    return ev
+
+
+def test_verification_stats_leave_out_the_blank_events(client, db):
+    """The Counts grid hides all-blank events, so the pill's denominator
+    must not hold them either: counting them would offer the user work
+    they are never shown and can never confirm, and an 80%-blank project
+    could never pass 20% "counts confirmed".
+
+    What delivers this is the project threshold clause, not the `empty`
+    filter: `_apply_event_filters` keeps only events holding at least one
+    detection over the floor, and a blank event has none. So the property
+    is pinned here rather than in the filter, because a change to that
+    clause is what would silently break it."""
+    p = make_project(db, classification_model_id="EUR-DF-v1-3")
+    _video_event(db, p, frames=[10])
+    _blank_event(db, p)
+
+    data = client.get(
+        f"/api/events/verification-stats?project_id={p.id}"
+    ).json()
+    assert data["events_total"] == 1
+
+
+def test_verification_stats_reach_100_percent_with_blanks_around(client, db):
+    """Confirming every event the grid shows must read as fully done,
+    however many blank events sit beside them."""
+    from app.models.event import Event
+
+    p = make_project(db, classification_model_id="EUR-DF-v1-3")
+    _video_event(db, p, frames=[10])
+    _blank_event(db, p)
+    db.query(Event).filter(
+        Event.id.notlike("ev-blank-%")
+    ).update({"confirmed": True}, synchronize_session=False)
+    db.flush()
+
+    data = client.get(
+        f"/api/events/verification-stats?project_id={p.id}"
+    ).json()
+    assert data["events_confirmed"] == 1
+    assert data["events_total"] == 1

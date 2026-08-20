@@ -213,7 +213,13 @@ def get_file_filmstrip(
     )
 
 
-_THUMB_MAX_WIDTH = 512
+# Wide enough for the largest tile the Empties grid offers (about 600px
+# at a typical window), so a tile is never upscaled and soft. The decode
+# of the 2048px source dominates the cost, so a wider target is free in
+# CPU terms (measured: 58ms at 512px, 45ms at 768px on a real file) and
+# roughly doubles the bytes, 72 KB to 148 KB, which is nothing over
+# localhost. Raise this before offering a bigger tile than that.
+_THUMB_MAX_WIDTH = 768
 _THUMB_JPEG_QUALITY = 85
 # Browser cache lifetime for image responses. File IDs are stable per
 # deployment, so a long max-age is safe and means subsequent verifies

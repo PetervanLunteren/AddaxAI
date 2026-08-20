@@ -4,8 +4,18 @@ from app.ml.label_exclusion import (
     NON_LABEL_CLASSES,
     build_excluded_class_ids,
     build_non_label_class_ids,
+    is_a_real_detection,
+    is_non_label,
     is_non_label_detection,
     should_skip_detection,
+)
+from app.models import Detection
+from tests.conftest import (
+    make_deployment,
+    make_detection,
+    make_file,
+    make_project,
+    make_site,
 )
 
 # ---------- NON_LABEL_CLASSES ----------
@@ -193,3 +203,32 @@ def test_strip_non_label_from_results():
     cls = md_results["images"][0]["detections"][0]["classifications"]
     assert len(cls) == 1
     assert cls[0][0] == "1"
+
+
+# ---------- the two lanes of the read-time rule ----------
+
+
+def test_the_sql_and_python_lanes_agree(db):
+    """`is_a_real_detection` answers for a query, `is_non_label` for a
+    label already in hand. Having both is only safe while they cannot
+    disagree, which is what this pins, the same way
+    `tests/ml/test_detection_visibility.py` pins its own pair."""
+    project = make_project(db)
+    site = make_site(db, project_id=project.id)
+    deployment = make_deployment(db, site_id=site.id)
+    f = make_file(db, deployment_id=deployment.id)
+
+    labels = [*sorted(NON_LABEL_CLASSES), "FALSE DETECTION", "deer", None, ""]
+    for label in labels:
+        make_detection(db, file_id=f.id, label=label, confidence=0.9)
+    db.commit()
+
+    kept = {
+        d.label
+        for d in db.query(Detection)
+        .filter(Detection.file_id == f.id)
+        .filter(is_a_real_detection())
+        .all()
+    }
+    for label in labels:
+        assert (label in kept) == (not is_non_label(label)), repr(label)

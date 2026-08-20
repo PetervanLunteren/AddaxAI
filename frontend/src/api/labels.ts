@@ -14,6 +14,9 @@
 import { api } from "../lib/api-client";
 import type {
   CohortsResponse,
+  EmptiesParams,
+  EmptiesResponse,
+  LabelsProgress,
   LabelStatsResponse,
   SearchRequest,
   SearchResponse,
@@ -186,6 +189,58 @@ export const labelsApi = {
     return api.get<{ count: number }>(
       `/api/projects/${projectId}/labels/unprocessed-count` +
         `?min_confidence=${minConfidence}&max_confidence=${maxConfidence}`,
+    );
+  },
+
+  /**
+   * The project's empty photos: files where nothing passed the current
+   * floor. The other half of the Labels page, one item per photo
+   * rather than one per box.
+   */
+  empties: async (
+    projectId: string,
+    params: EmptiesParams = {},
+  ): Promise<EmptiesResponse> => {
+    const sp = new URLSearchParams();
+    if (params.site_ids?.length) sp.set("site_ids", params.site_ids.join(","));
+    if (params.date_from) sp.set("date_from", params.date_from);
+    if (params.date_to) sp.set("date_to", params.date_to);
+    if (params.verification) sp.set("verification", params.verification);
+    if (params.min_confidence !== undefined) {
+      sp.set("min_confidence", String(params.min_confidence));
+    }
+    if (params.sort) sp.set("sort", params.sort);
+    if (params.seed !== undefined && params.seed !== null) {
+      sp.set("seed", String(params.seed));
+    }
+    if (params.skip) sp.set("skip", String(params.skip));
+    if (params.limit) sp.set("limit", String(params.limit));
+    return api.get<EmptiesResponse>(
+      `/api/projects/${projectId}/labels/empties?${sp.toString()}`,
+    );
+  },
+
+  /**
+   * Progress for the Labels page, counted in photos so both tabs can
+   * show the same number.
+   */
+  progress: async (
+    projectId: string,
+    params: {
+      site_ids?: string[];
+      date_from?: string;
+      date_to?: string;
+      min_confidence?: number;
+    } = {},
+  ): Promise<LabelsProgress> => {
+    const sp = new URLSearchParams();
+    if (params.site_ids?.length) sp.set("site_ids", params.site_ids.join(","));
+    if (params.date_from) sp.set("date_from", params.date_from);
+    if (params.date_to) sp.set("date_to", params.date_to);
+    if (params.min_confidence !== undefined)
+      sp.set("min_confidence", String(params.min_confidence));
+    return api.get<LabelsProgress>(
+      `/api/projects/${projectId}/labels/progress?${sp.toString()}`,
     );
   },
 

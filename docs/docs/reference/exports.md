@@ -22,7 +22,7 @@ AddaxAI exports four tables. Which one you want depends on the question you are 
 
 All four tables hold the same set of detections, and it is the same set the app shows you. Two rules decide it, and they work the same way in a project and in a folder run.
 
-Anything below your [counting threshold](../understanding/confidence-and-verification.md) is left out, unless you checked it yourself. A detection you verified always stays in, whatever it scored, because your decision outranks the score.
+Anything below your [counting threshold](../understanding/confidence-and-verification.md) is left out, unless you verified it yourself. A detection you verified always stays in, whatever it scored, because your decision outranks the score.
 
 For videos, only the frame AddaxAI saved is included. A video is analysed frame by frame, but only one frame is kept as a picture, so a box on any other frame has no image you could ever look at. Those boxes are left out of the tables rather than listed as animals you cannot find.
 
@@ -67,7 +67,7 @@ One row per box. Use it when you care about individual boxes. Blank files do not
 | `ai_classification_label` | The label the app showed before you touched it, kept even after you relabel |
 | `ai_classification_confidence` | Score for that label |
 | `classification_method` | machine or human, who set the current label |
-| `is_verified` | TRUE if you checked this detection |
+| `is_verified` | TRUE if you verified this detection |
 | `taxon_class` to `taxon_species` | Taxonomy, broad to specific |
 | `scientific_name` | Scientific name |
 | `common_name` | Common name |
@@ -98,14 +98,14 @@ One row per photo or video, whether or not anything was found.
 | `camera_model` | Camera model, from EXIF `Model`, read once during analysis |
 | `ambient_temperature` | Temperature at capture, from EXIF `AmbientTemperature`, read once during analysis. The standard says degrees Celsius, but camera trap thermometers are rough, so treat it as indicative |
 | `camera_serial` | The camera's serial number, from EXIF `BodySerialNumber`, read once during analysis. Useful to confirm which physical camera took the file |
-| `observation_type` | What the file holds, taken from its strongest box: the one you checked yourself, or else the one the detector scored highest. For a video, only boxes on the one frame AddaxAI saved count. The value is whatever the detector called it, so animal, person or vehicle for MegaDetector, or blank when no box passed |
+| `observation_type` | What the file holds, taken from its strongest box: the one you verified yourself, or else the one the detector scored highest. For a video, only boxes on the one frame AddaxAI saved count. The value is whatever the detector called it, so animal, person or vehicle for MegaDetector, or blank when no box passed |
 | `detection_confidence` | How sure the detector was there is something there, for that same box. A verified box counts whatever its score, so this can sit below your [counting threshold](../understanding/confidence-and-verification.md) |
 | `classification_label` | The species of that same strongest box, not the most confident species on the file. Empty for a person, a vehicle, or an animal that was never classified |
 | `classification_confidence` | Score for that species. Always 1.0 when a human set the label. Empty when there is no species |
 | `taxon_class` to `taxon_species` | Taxonomy of that species, broad to specific. Only a species label fills all five, so check these before you group by `classification_label` |
 | `scientific_name` | Scientific name of that same box |
 | `common_name` | Common name of that same box. Never empty on a file that holds something: it reads `Person`, `Vehicle` or `Animal` when there is no species |
-| `is_verified` | TRUE if every box on the file was checked |
+| `is_verified` | TRUE if you verified this file: every box on it was verified, or, for a file with nothing on it, you verified that it is empty |
 | `notes` | Your own notes |
 
 `observation_type` is the only place "blank" appears. Use it to count empty files.

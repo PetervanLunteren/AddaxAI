@@ -1195,7 +1195,7 @@ export default function SettingsPage() {
                   name="counting_threshold"
                   render={({ field }) => (
                     <SettingRow
-                      label="Detection confidence threshold"
+                      label="Count detections above"
                       isCustom={changedAdvanced.includes("counting_threshold")}
                       description={
                         <>

@@ -11,6 +11,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
 import { Separator } from "../ui/separator";
 import { DashboardAboutPopover } from "./DashboardAboutPopover";
 import { eventsApi } from "../../api/events";
+import { labelsApi } from "../../api/labels";
 import { statisticsApi } from "../../api/statistics";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
 
@@ -55,10 +56,8 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
   dateFrom,
   dateTo,
 }) => {
-  // One source of truth: the events stats endpoint provides the
-  // `verified_detections / total_detections` counts that every Verify
-  // pill reads. Filter args narrow the population to the user's
-  // current site / date scope on the dashboard.
+  // Filter args narrow both queries to the user's current site / date
+  // scope on the dashboard.
   const filterArgs = {
     site_ids: siteIds ? siteIds.split(",") : undefined,
     date_from: dateFrom,
@@ -69,21 +68,38 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
     queryKey: ["statistics", "verification-progress", "events", projectId, siteIds, dateFrom, dateTo],
     queryFn: () => eventsApi.verificationStats(projectId, filterArgs),
   });
+  // The Labels bar counts files, from the same endpoint the Labels page
+  // pill reads, so the two surfaces can never disagree. Deliberately not
+  // the events stats' own file counts: those queries apply the project
+  // threshold, which drops events with nothing passing, and that is
+  // exactly where the empty files live. On a real project it was 41
+  // files short.
+  const { data: labelsProgress } = useQuery({
+    queryKey: ["labels-progress", projectId, filterArgs],
+    queryFn: () => labelsApi.progress(projectId, filterArgs),
+  });
   const { data: labelStats } = useQuery({
     queryKey: ["statistics", "verification-progress", "by-label", projectId, siteIds, dateFrom, dateTo],
     queryFn: () =>
       statisticsApi.getVerificationProgressByLabel(projectId, siteIds, dateFrom, dateTo),
   });
 
-  // Two jobs, two bars: Labels (per-detection label cleanup, detection-
-  // level) and Counts (event species + count sign-off, event-level). They
-  // are separate pages and complete independently, so one number can't
-  // represent both. The per-label breakdown below belongs to Labels.
-  const labelsRow: BarRow | null = eventStats
+  // Two jobs, two bars: Labels (checking what the AI found and what it
+  // missed, file-level) and Counts (event species + count sign-off,
+  // event-level). They are separate pages and complete independently, so
+  // one number can't represent both.
+  //
+  // A label is one call to make: a box above the threshold, or a file
+  // the AI found nothing in, which carries the label "nothing here".
+  // That covers both halves of the Labels page, so this cannot read
+  // 100% while every empty file is untouched. The per-taxon list below
+  // is per-detection only, because one file can hold two species, so it
+  // is headed separately rather than as this bar's breakdown.
+  const labelsRow: BarRow | null = labelsProgress
     ? {
         label: "Labels verified",
-        verified: eventStats.verified_detections,
-        total: eventStats.total_detections,
+        verified: labelsProgress.verified_labels,
+        total: labelsProgress.total_labels,
       }
     : null;
   const countsRow: BarRow | null = eventStats
@@ -102,10 +118,13 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
             <CardTitle className="text-lg">Verification</CardTitle>
             <DashboardAboutPopover>
               <p>
-                Two jobs. "Labels verified" is the percent of detections
-                checked on the Labels page. "Counts confirmed" is the
-                percent of events signed off on the Counts page. The list
-                below is label verification per taxon.
+                Two jobs. "Labels verified" is the percent of labels you
+                have checked on the Labels page: every box above your
+                detection threshold, plus one for each file the AI found
+                nothing in. "Counts confirmed" is the percent of events
+                signed off on the Counts page. The list below covers the
+                boxes only, because a file the AI found nothing in has no
+                species to break down.
               </p>
             </DashboardAboutPopover>
           </div>
@@ -127,10 +146,11 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
               {labelStats && labelStats.rows.length > 0 && (
                 <>
                   <Separator className="my-1" />
-                  {/* These break down "Labels verified" (detection-level),
-                      not "Counts confirmed", so label the group. */}
+                  {/* Per-detection, unlike the file-level bar above, so
+                      the heading names its unit rather than reading as
+                      that bar's breakdown. */}
                   <div className="text-xs font-medium text-muted-foreground">
-                    Labels verified per taxon
+                    Verified detections per taxon
                   </div>
                   {labelStats.rows.map((row) => (
                     <SlimProgressRow

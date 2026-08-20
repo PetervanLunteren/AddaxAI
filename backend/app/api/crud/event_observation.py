@@ -14,6 +14,7 @@ from sqlalchemy import delete, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
+from app.ml.label_exclusion import is_a_real_detection
 from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
 from app.models.event_observation import EventObservation
@@ -108,6 +109,7 @@ def calculate_max_n_for_event(
         .join(event_files, event_files.c.file_id == File.id)
         .filter(event_files.c.event_id == event_id)
         .filter(_threshold_clause(counting_threshold))
+        .filter(is_a_real_detection())
         .group_by(
             Detection.file_id,
             Detection.frame_number,

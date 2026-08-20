@@ -66,7 +66,13 @@ from pathlib import Path
 
 import cv2  # frame count for the blank-video fallback
 import numpy as np  # batch tensor stacking
-from PIL import Image
+from PIL import Image, ImageFile
+
+# Decode truncated JPEGs instead of refusing them. Camera traps write
+# them routinely (dead battery, pulled card, interrupted copy) and this
+# script runs in its own subprocess, so it cannot inherit the setting
+# from `app/__init__.py`. See the comment there for the full reasoning.
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 # `video_iter` and `scoring` live next to this script. Python adds the
 # script's directory to sys.path automatically, so a flat import works
