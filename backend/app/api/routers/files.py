@@ -276,7 +276,22 @@ def get_file_image(
         raise HTTPException(status_code=404, detail="File not found")
 
     # For videos, serve the best frame JPEG instead of the video file
-    if file.file_type == "video" and file.best_frame_path:
+    if file.file_type == "video":
+        # No best frame means the clip never decoded (`best_frame.py`
+        # skips a video it cannot open, so `best_frame_number` and this
+        # path both stay NULL). Falling through would hand the container
+        # itself to the caller: PIL cannot open an AVI, so `size=thumb`
+        # died with an unhandled `UnidentifiedImageError` and answered
+        # 500, and the full-size branch served the video bytes labelled
+        # `image/avi`. Say what is actually wrong instead. Such a clip
+        # always reaches this endpoint, because a video with no visible
+        # surface has no passing detection and so sits in the Empties
+        # tab, one tile per clip.
+        if not file.best_frame_path:
+            raise HTTPException(
+                status_code=404,
+                detail="This video could not be decoded, so it has no frame to show.",
+            )
         source_path = Path(file.best_frame_path)
         source_media_type = "image/jpeg"
     else:

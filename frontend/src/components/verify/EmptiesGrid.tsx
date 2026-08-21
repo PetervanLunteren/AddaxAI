@@ -16,7 +16,7 @@
  */
 
 import { memo, useLayoutEffect, useRef, useState } from "react";
-import { Check, ImageOff } from "lucide-react";
+import { Check, ImageOff, Play } from "lucide-react";
 
 import { API_BASE_URL } from "../../lib/api-client";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
@@ -178,6 +178,21 @@ const EmptyTile = memo(function EmptyTile({
               reportMissingMedia(item.deployment_id);
             }}
           />
+        )}
+        {/* A video reads as a photo here, because the tile is the best
+            frame. Without this the person scanning a wall of tiles has
+            no way to tell which of them are clips they are seeing one
+            frame of. Same pill as the event-context tiles in the
+            Detections viewer, so it is not a new thing to learn. It is
+            a marker, not a play button: the viewer shows the frame, and
+            the note there says so. */}
+        {item.file_type === "video" && (
+          <span
+            className="pointer-events-none absolute bottom-1 left-1 flex items-center justify-center rounded-full bg-black/60 p-1"
+            title="Video, shown as one frame"
+          >
+            <Play className="h-3 w-3 fill-white text-white" />
+          </span>
         )}
         {item.verified && (
           <div

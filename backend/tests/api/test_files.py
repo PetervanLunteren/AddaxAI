@@ -95,6 +95,48 @@ def test_get_file_image_not_in_db(client):
     assert resp.status_code == 404
 
 
+def test_a_video_that_never_decoded_says_so_instead_of_serving_the_container(
+    client, db
+):
+    """A video with no best frame must not fall through to its own bytes.
+
+    `best_frame.py` skips a clip it cannot open, so `best_frame_number`
+    and `best_frame_path` both stay NULL, and such a clip always lands in
+    the Empties tab (no visible surface means no passing detection). Its
+    tile then asks this endpoint for a picture. Serving the container
+    answered `image/avi` for the full size and, for `size=thumb`, handed
+    the file to PIL, which cannot open an AVI: an unhandled
+    `UnidentifiedImageError` and a 500 per tile.
+
+    The file exists on disk here on purpose. The existing missing-file
+    test would pass against the old code too, since that path never got
+    as far as opening anything.
+    """
+    d, _ = _setup_deployment(db)
+    with tempfile.NamedTemporaryFile(suffix=".avi", delete=False) as tmp:
+        tmp.write(b"RIFF\x00\x00\x00\x00AVI ")
+        tmp_path = tmp.name
+    f = make_file(
+        db,
+        deployment_id=d.id,
+        file_path=tmp_path,
+        file_type="video",
+        file_format="avi",
+        best_frame_number=None,
+        best_frame_path=None,
+    )
+    try:
+        for url in (
+            f"/api/files/{f.id}/image",
+            f"/api/files/{f.id}/image?size=thumb",
+        ):
+            resp = client.get(url)
+            assert resp.status_code == 404, url
+            assert "could not be decoded" in resp.json()["detail"]
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
 def test_label_tree_count_by_file(client, db):
     p = make_project(db, counting_threshold=0.5)
     s = make_site(db, project_id=p.id)

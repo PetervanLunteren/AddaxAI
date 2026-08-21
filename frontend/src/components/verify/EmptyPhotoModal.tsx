@@ -358,6 +358,31 @@ export function EmptyPhotoModal({
                   "No capture time"
                 )}
               </div>
+              {/* Say what is on screen, because it is not the whole clip
+                  and nothing else here admits that.
+
+                  It leads with the detector on purpose. Saying only that
+                  one frame is kept reads as "the AI looked at one frame
+                  and missed the rest", which is the opposite of the
+                  truth: MegaDetector runs over every sampled frame and
+                  the single frame is chosen afterwards, purely because
+                  it is the only one written to disk as a JPEG.
+
+                  Deliberately not an offer to watch the video: a box can
+                  only be saved on the frame the app kept
+                  (`AnnotationCanvas` stamps `best_frame_number` on every
+                  box it creates), so an animal spotted on any other
+                  second is something the person could see and never
+                  record. Worded to hold in every case, including a clip
+                  where nothing was found at all and the kept frame is
+                  simply the middle one. */}
+              {item.file_type === "video" && (
+                <div className="pt-1 text-muted-foreground/80">
+                  The AI checked the whole clip. This is the one frame
+                  AddaxAI kept, so you are judging this frame, and a box
+                  you draw is saved on it.
+                </div>
+              )}
             </div>
           </DetailCard>
 
