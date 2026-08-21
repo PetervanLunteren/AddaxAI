@@ -13,7 +13,11 @@
 import { memo, useState } from "react";
 import { Check, ImageOff } from "lucide-react";
 import { API_BASE_URL } from "../../lib/api-client";
-import { getDetectionColor, getDetectionDisplayName } from "../../lib/detection-utils";
+import {
+  getDetectionColor,
+  getDetectionDisplayName,
+  isNonLabel,
+} from "../../lib/detection-utils";
 import { getContrastTextColor } from "../../utils/species-colors";
 import {
   BBOX_STROKE_WIDTH,
@@ -37,8 +41,10 @@ interface CropCardProps {
 }
 
 export const CropCard = memo(function CropCard({ detection, selected, onSelect, onDoubleClick, tileSize = "M" }: CropCardProps) {
-  const isFalseDetection =
-    detection.label === "false detection" && detection.verified;
+  // The shared rule, not the one string: pressing X writes
+  // "false detection", but the same tile should read the same way for
+  // any of the six "nothing here" labels a person can apply.
+  const isFalseDetection = isNonLabel(detection.label) && detection.verified;
 
   const [imageFailed, setImageFailed] = useState(false);
   const isSmall = tileSize === "S";

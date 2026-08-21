@@ -90,7 +90,7 @@ def test_extract_animal_detections_ignores_non_animal_categories() -> None:
 
 def test_extract_animal_detections_applies_classification_gate() -> None:
     """Animal detections below the gate are not sent to the classifier.
-    MD runs untresholded (0.005), so the JSON carries a near-noise tail
+    MD runs at its 0.01 output cap, so the JSON carries a near-noise tail
     that must be gated here."""
     md = {
         "images": [

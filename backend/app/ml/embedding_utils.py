@@ -31,7 +31,7 @@ def build_embedding_input(
 
     ``min_confidence`` is the project's classification gate: detections
     below it are neither classified nor embedded, so the near-noise
-    tail MegaDetector emits at its untresholded 0.005 output never
+    tail MegaDetector emits at its 0.01 output cap never
     multiplies the per-crop model work. Verified detections always
     embed — a human said the box is real.
 

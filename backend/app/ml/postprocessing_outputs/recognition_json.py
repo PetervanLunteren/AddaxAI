@@ -412,7 +412,7 @@ def write_recognition_json(
             # floor, nothing was filtered out.
             "settings": {
                 # Detection confidence above which crops were classified
-                # and embedded. MD itself ran untresholded (0.005).
+                # and embedded. MD itself ran at its output cap (0.01).
                 "classification_gate": project.classification_gate,
                 "country_code": project.country_code,
                 "state_code": project.state_code,

@@ -93,7 +93,7 @@ class Project(Base):
     # counting_threshold is the counting / visualization filter (what
     # the app shows and counts); classification_gate is the detection
     # confidence above which animal crops are classified and embedded.
-    # MegaDetector itself always runs untresholded (0.005, see
+    # MegaDetector itself always runs at its output cap (0.01, see
     # app/ml/detection); neither setting affects what is stored.
     counting_threshold: Mapped[float] = mapped_column(
         Float, nullable=False, default=DEFAULT_COUNTING_THRESHOLD

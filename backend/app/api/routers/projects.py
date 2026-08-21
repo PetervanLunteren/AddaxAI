@@ -33,6 +33,7 @@ from app.api.schemas.project import (
     ProjectUpdate,
     ProjectWithStats,
 )
+from app.core.confidence import MD_OUTPUT_CONFIDENCE_THRESHOLD
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
@@ -1288,7 +1289,9 @@ class ReEmbedRequest(BaseModel):
     missing tail.
     """
 
-    min_confidence: float | None = Field(None, ge=0.005, le=1.0)
+    min_confidence: float | None = Field(
+        None, ge=MD_OUTPUT_CONFIDENCE_THRESHOLD, le=1.0
+    )
 
 
 @router.post(

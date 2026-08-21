@@ -48,6 +48,7 @@ import { toast } from "sonner";
 import { filesApi } from "../../api/files";
 import { projectsApi } from "../../api/projects";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
+import { isHumanDrawnBox, isNonLabel } from "../../lib/detection-utils";
 import { basename } from "../../lib/path-utils";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
 import { Button } from "../ui/button";
@@ -230,8 +231,17 @@ export function EmptyPhotoModal({
   );
 
   const captured = item?.captured_at_local;
+  // A box the user drew that still claims something is in the picture.
+  //
+  // Both halves matter. `isHumanDrawnBox` replaces
+  // `classification_method === "human"`, which a *relabelled* machine
+  // box also carries and which therefore fired on boxes the user never
+  // drew. The `!isNonLabel` half excludes a drawn box the user has
+  // since marked as "nothing here": that box still renders on the
+  // canvas, deliberately, so it can be deleted, but it does not stop
+  // the file being empty and must not claim otherwise.
   const hasHumanBox = (file?.detections ?? []).some(
-    (d) => d.bbox_x !== null && d.classification_method === "human",
+    (d) => isHumanDrawnBox(d) && !isNonLabel(d.label),
   );
 
   // Same verbs as the Detections modal, so nothing new to learn.
@@ -307,11 +317,18 @@ export function EmptyPhotoModal({
         file ? (
           <AnnotationCanvas
             file={file}
-            // Show only human-drawn boxes (they carry confidence 1.0).
-            // The detector's sub-threshold boxes stay hidden: this page
-            // says "empty", so drawing machine boxes here contradicts
-            // it. If there is an animal, the user draws it.
-            detectionThreshold={1}
+            // Show only the boxes the user drew. The detector's
+            // sub-threshold boxes stay hidden: this page says "empty",
+            // so drawing machine boxes here contradicts it. If there
+            // is an animal, the user draws it.
+            //
+            // Said with a flag rather than by passing a threshold of 1
+            // and leaning on human boxes carrying confidence 1.0. That
+            // worked, but it stated none of the intent, and it stopped
+            // being enough once `shouldDrawBbox` learned to let
+            // verified boxes through at any confidence.
+            detectionThreshold={project?.counting_threshold ?? 0}
+            humanDrawnOnly
             selectedDetectionId={selectedDetectionId}
             onSelectDetection={setSelectedDetectionId}
             onRequestRelabel={setRelabelDetectionId}
@@ -388,9 +405,9 @@ export function EmptyPhotoModal({
               is not there until you have drawn one. */}
           {hasHumanBox && (
             <Callout variant="info" size="compact" className="mx-3 mt-3">
-              Your box means this file is not empty after all. Verify to
-              sign it off, and the file moves from Empties to Detections,
-              where it counts like any other detection.
+              Your box means this file is not empty any more. It has
+              moved to Detections, where it counts like any other
+              detection.
             </Callout>
           )}
         </>

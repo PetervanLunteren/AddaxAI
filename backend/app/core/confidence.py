@@ -1,16 +1,31 @@
 """Single source of truth for the app's confidence defaults.
 
 The design follows Dan Morris's three-threshold scheme (beta feedback
-2026-07): MegaDetector runs untresholded, the expensive per-crop model
+2026-07): MegaDetector runs effectively untresholded, the expensive per-crop model
 passes are gated explicitly, and counting / visualization has its own
 read-time filter. One constant per concept; every default in models,
 schemas, and workers references these. The frontend mirrors them in
 ``frontend/src/lib/confidence.ts`` — keep the two files in sync.
 
 MD_OUTPUT_CONFIDENCE_THRESHOLD — what MegaDetector writes to
-results.json. MD's own internal default (its documentation advises
-never going below it). Everything above it is preserved end to end:
-raw JSON, database, and the folder-run data exports.
+results.json. Everything at or above it is preserved end to end: raw
+JSON, database, and the folder-run data exports.
+
+This is our cap, not MegaDetector's. MD's own floor is 0.005 and its
+documentation advises never going below that, so 0.01 sits safely
+above it. The reason to cap higher is that 0.005 stored a tail no
+part of the app could ever address: every confidence slider bottoms
+out at 0.01 (``CONFIDENCE_SCALE_MIN`` in the shared slider), the
+classification gate starts at 0.1, counting at 0.2, and best-frame
+scoring at 0.3. Measured on a real database, 19% of all detection
+rows sat between 0.005 and 0.01, none of them ever verified, ever
+classified, ever counted or ever visible. They only cost disk, delete
+time and query time.
+
+Raising it changes nothing downstream, because every consumer already
+sits far above 0.01. It applies to new analyses only; rows already
+stored below it stay, harmless and unreachable, until a re-analysis
+replaces them.
 
 DEFAULT_CLASSIFICATION_GATE — default detection confidence above which
 an animal detection is classified AND embedded. Configurable per
@@ -28,7 +43,7 @@ is designed; it interacts with taxonomic rollup and is deliberately
 not implemented yet.
 """
 
-MD_OUTPUT_CONFIDENCE_THRESHOLD = 0.005
+MD_OUTPUT_CONFIDENCE_THRESHOLD = 0.01
 DEFAULT_CLASSIFICATION_GATE = 0.1
 DEFAULT_COUNTING_THRESHOLD = 0.2
 

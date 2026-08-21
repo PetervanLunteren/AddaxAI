@@ -5,9 +5,12 @@
  * sync. One constant per concept; every form default, filter seed,
  * and advisory line references these.
  *
- * MD_OUTPUT_CONFIDENCE_THRESHOLD — what MegaDetector writes (its own
- * internal default). Everything above it exists in the database and
- * the data exports.
+ * MD_OUTPUT_CONFIDENCE_THRESHOLD — what MegaDetector writes.
+ * Everything at or above it exists in the database and the data
+ * exports. This is our cap, not MegaDetector's own floor (0.005): it
+ * matches the slider scale minimum, so nothing is stored that no
+ * slider in the app can reach. See the backend file for the full
+ * reasoning.
  *
  * DEFAULT_CLASSIFICATION_GATE — default detection confidence above
  * which animal crops are classified and embedded.
@@ -31,7 +34,7 @@ export function formatConfidencePct(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
-export const MD_OUTPUT_CONFIDENCE_THRESHOLD = 0.005;
+export const MD_OUTPUT_CONFIDENCE_THRESHOLD = 0.01;
 export const DEFAULT_CLASSIFICATION_GATE = 0.1;
 export const DEFAULT_COUNTING_THRESHOLD = 0.2;
 

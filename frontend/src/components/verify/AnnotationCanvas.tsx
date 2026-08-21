@@ -30,6 +30,11 @@ import type { FileWithDetections, DetectionResponse } from "../../api/types";
 interface AnnotationCanvasProps {
   file: FileWithDetections;
   detectionThreshold: number;
+  /** Draw only the boxes a person put there, ignoring `detectionThreshold`
+   *  and every box the detector found. The empties viewer sets it: that
+   *  page says the picture is empty, so a machine box on it argues with
+   *  the page. See `shouldDrawBbox`. */
+  humanDrawnOnly?: boolean;
   selectedDetectionId: string | null;
   onSelectDetection: (id: string | null) => void;
   /** Fired when the user clicks a box's label pill — opens the relabel
@@ -79,6 +84,7 @@ interface DrawingBox {
 export function AnnotationCanvas({
   file,
   detectionThreshold,
+  humanDrawnOnly,
   selectedDetectionId,
   onSelectDetection,
   onRequestRelabel,
@@ -122,7 +128,7 @@ export function AnnotationCanvas({
   // observations (no bbox) never draw. `shouldDrawBbox` centralises
   // both gates.
   const filteredDetections = file.detections.filter((d) =>
-    shouldDrawBbox(d, file, detectionThreshold),
+    shouldDrawBbox(d, file, detectionThreshold, { humanDrawnOnly }),
   );
 
   // Update stage size based on container. Defined before the image-load

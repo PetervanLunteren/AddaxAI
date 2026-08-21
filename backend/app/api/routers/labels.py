@@ -26,7 +26,11 @@ from app.api.schemas.label import (
     SearchRequest,
     SortRequest,
 )
-from app.core.confidence import DEFAULT_CLASSIFICATION_GATE, effective_floor
+from app.core.confidence import (
+    DEFAULT_CLASSIFICATION_GATE,
+    MD_OUTPUT_CONFIDENCE_THRESHOLD,
+    effective_floor,
+)
 from app.db.base import get_db
 from app.models import Deployment, Detection, DetectionEmbedding, File, Project
 from app.services.label_service import (
@@ -141,7 +145,7 @@ async def cohorts(
 @router.get("/{project_id}/labels/unprocessed-count")
 def get_unprocessed_count(
     project_id: str,
-    min_confidence: float = 0.005,
+    min_confidence: float = MD_OUTPUT_CONFIDENCE_THRESHOLD,
     max_confidence: float = 1.0,
     db: Session = Depends(get_db),
 ) -> dict:

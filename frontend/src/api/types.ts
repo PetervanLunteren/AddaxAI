@@ -530,6 +530,10 @@ export interface DetectionResponse {
   id: string;
   category: string;
   confidence: number;
+  /** The analysis run that produced this box, or `null` when a person
+   * drew it by hand. That null is the only exact marker of a
+   * human-drawn box; see `isHumanDrawnBox` in lib/detection-utils.ts. */
+  job_id: string | null;
   /** All four bbox fields are null together for event-level observations
    * (a species seen in a video clip without a frame-anchored ROI). For
    * AI-produced and user-drawn detections they are all set. */

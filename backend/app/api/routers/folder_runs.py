@@ -561,7 +561,7 @@ def create_folder_run(
     # as projects mode: every read path (labels grid default, label
     # tree, lookup summary) and every verification pill measures over
     # it, so they always agree. Storage is unaffected (MegaDetector runs
-    # untresholded, everything >= 0.005 is stored) and the data exports
+    # at its 0.01 output cap, everything >= 0.01 is stored) and the exports
     # stay complete (they bypass the threshold). The classification gate
     # is a separate inference knob and no longer pinned to this.
     project_create = ProjectCreate(

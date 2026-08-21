@@ -716,7 +716,7 @@ def update_database_from_smoothed_results(
     # Refuse rather than fall back. `0.0` used to be the default here,
     # and it is the threshold at which every detection passes, so a
     # broken lookup would have quietly re-derived every file's
-    # observation_type against MegaDetector's raw 0.005 output floor.
+    # observation_type against MegaDetector's raw 0.01 output floor.
     # Both foreign keys are NOT NULL with ON DELETE CASCADE, so neither
     # of these can be missing unless the database is corrupt.
     _dep = db.get(Deployment, deployment_id)

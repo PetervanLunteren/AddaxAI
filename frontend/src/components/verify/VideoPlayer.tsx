@@ -12,6 +12,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE_URL } from "../../lib/api-client";
 import { splitPath } from "../../lib/path-utils";
+import { passesDrawFilter } from "../../lib/detection-utils";
 import {
   computePillLayout,
   roundedRectPath,
@@ -204,14 +205,21 @@ export function VideoPlayer({
 
   const detections = allDetections ?? file.detections;
 
-  // Group detections by frame_number, filtered by threshold. Event-
-  // level observations (null bbox) never paint onto the canvas — they
-  // surface only in the verification list.
+  // Group detections by frame_number, through the same filter every
+  // other drawing surface uses. `passesDrawFilter` rather than
+  // `shouldDrawBbox` because this player draws EVERY frame's boxes over
+  // the real video on purpose, so the best-frame gate must not apply
+  // here — that is the one rule this surface legitimately differs on.
+  //
+  // It used to inline `d.confidence < detectionThreshold` instead, and
+  // so missed both the verified override and the rejected-box rule.
+  // The result was one event modal disagreeing with itself: a box a
+  // human confirmed below the threshold drew on the still and vanished
+  // on play, and a box they rejected did the opposite.
   const detectionsByFrame = useMemo(() => {
     const map = new Map<number, BboxedDetection[]>();
     for (const d of detections) {
-      if (d.confidence < detectionThreshold) continue;
-      if (d.bbox_x === null) continue;
+      if (!passesDrawFilter(d, detectionThreshold)) continue;
       if (d.frame_number == null) continue;
       const bb = d as BboxedDetection;
       const existing = map.get(d.frame_number);

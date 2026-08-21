@@ -42,7 +42,7 @@ def extract_animal_detections(
     Extract animal detections with their indices for classification.
 
     ``min_confidence`` is the project's classification gate: MegaDetector
-    runs untresholded (0.005 output floor), so the JSON carries a long
+    runs at its 0.01 output cap, so the JSON carries a long
     near-noise tail that must not be classified. Detections below the
     gate stay in the JSON and the database as raw animal boxes; they
     are just not sent to the classifier.

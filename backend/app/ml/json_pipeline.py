@@ -212,7 +212,7 @@ def load_json_to_database(
         #
         # Refused rather than defaulted. `0.0` used to stand in here, and
         # it is the threshold at which every detection passes, including
-        # MegaDetector's raw 0.005 output floor, so a broken lookup would
+        # MegaDetector's raw 0.01 output floor, so a broken lookup would
         # have ingested a whole deployment with every near-noise box
         # counted as trusted content. Both foreign keys are NOT NULL with
         # ON DELETE CASCADE, so neither row can be missing unless the

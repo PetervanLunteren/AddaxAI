@@ -29,9 +29,9 @@ def _project_threshold_for_file(db: Session, file: File) -> float:
     connection, so a file without a project means a corrupt database.
     This used to return ``0.0``, which is not a neutral fallback: it is
     the value at which *every* detection passes, including MegaDetector's
-    near-noise tail down to 0.005. A broken lookup silently reclassified
-    files and recomputed counts against the wrong floor instead of
-    saying anything.
+    near-noise tail down to its 0.01 output cap. A broken lookup silently
+    reclassified files and recomputed counts against the wrong floor
+    instead of saying anything.
     """
     row = (
         db.query(Project.counting_threshold)
@@ -557,13 +557,22 @@ def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:
             file.verified_at_utc = now
             threshold = _project_threshold_for_file(db, file)
             # Is there anything here a person could have been judging?
-            # The same "reviewable" rule the rollup uses, visible frame
-            # and all, so the two can never disagree about what counts
-            # as empty.
+            # The same "reviewable" rule the Empties tab uses, visible
+            # frame and all, so the two cannot disagree about what
+            # counts as empty.
+            #
+            # `is_a_real_detection()` is load-bearing and was missing:
+            # `get_empty_files` applies it, this did not, so a file
+            # whose only box had been marked false sat in the Empties
+            # tab and then took the *not empty* branch when the user
+            # pressed Verify on it. The rejected box counts for nothing
+            # everywhere else, so it must not be the thing that makes a
+            # file look occupied here either.
             reviewable = (
                 db.query(Detection.id)
                 .filter(Detection.file_id == file_id)
                 .filter(on_visible_frame_of(file))
+                .filter(is_a_real_detection())
                 .filter(
                     or_(
                         Detection.confidence >= threshold,

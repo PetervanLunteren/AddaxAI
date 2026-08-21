@@ -632,8 +632,8 @@ def get_project_threshold_for_detections(
     Requires at least one id, and requires it to resolve. Both used to
     fall back to ``0.0``, which is not a neutral value: it is the
     threshold at which every detection passes, including MegaDetector's
-    near-noise tail down to 0.005. A failed lookup therefore rebuilt an
-    event's counts against the wrong floor and said nothing.
+    near-noise tail down to its 0.01 output cap. A failed lookup therefore
+    rebuilt an event's counts against the wrong floor and said nothing.
 
     Callers must capture the threshold *before* deleting detections; the
     join runs through the detection rows themselves, so afterwards there

@@ -120,7 +120,7 @@ class MegaDetectorV1000(DetectionModel):
         --output_relative_filenames \\
         --include_image_size \\
         --include_exif_tags "datetimeoriginal,gpsinfo,make,model,..." \\
-        --threshold 0.005 \\
+        --threshold 0.01 \\
         model.pt folder/ output.json
     """
 

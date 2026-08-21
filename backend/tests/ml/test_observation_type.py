@@ -158,7 +158,7 @@ def test_exact_tie_takes_the_first_in_iteration_order():
 # ── Threshold lookups refuse to guess ────────────────────────────────
 #
 # 0.0 is not a neutral fallback. It is the threshold at which every
-# detection passes, including MegaDetector's raw 0.005 output floor, so a
+# detection passes, including MegaDetector's raw 0.01 output floor, so a
 # broken lookup used to silently reclassify files and rebuild counts
 # against the wrong floor. These pin the refusals.
 

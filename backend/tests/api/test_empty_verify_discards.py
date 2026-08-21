@@ -155,3 +155,52 @@ def test_a_file_holding_a_drawn_box_is_never_treated_as_empty(client, db):
 
     surviving = {d.id for d in _boxes(db, f.id)}
     assert surviving == {drawn_id, noise_id}
+
+
+def test_a_rejected_box_does_not_make_a_file_look_occupied(client, db):
+    """One rule decides "empty", on both sides of the tab switch.
+
+    `get_empty_files` applies `is_a_real_detection()`, so a file whose
+    only real box was marked false shows up in the Empties tab. The
+    verify path did not apply it, so pressing Verify on that very file
+    took the *not empty* branch: the rejected box counted as something a
+    person could have been judging, purely because marking it false had
+    also verified it. The weak boxes beside it then survived a verdict
+    of "there is nothing here".
+
+    A rejected box counts for nothing in every export, count and filter.
+    It must not be the one thing that makes a file look occupied here.
+
+    The unverify step in the middle is not padding. Marking a box false
+    verifies it, which rolls up and leaves `File.verified` true, and
+    `update_file` only runs this branch on a change. So the reachable
+    route to the empty verdict is a user who unticks the file to look at
+    it again and then calls it empty, which is exactly what the Empties
+    tab invites.
+    """
+    f = _file_in_project(db)
+    rejected_id = make_detection(db, file_id=f.id, confidence=0.85).id
+    noise_id = make_detection(db, file_id=f.id, confidence=0.05).id
+    db.commit()
+
+    resp = client.post(
+        "/api/detections/bulk-relabel",
+        json={"detection_ids": [rejected_id], "label": "false detection"},
+    )
+    assert resp.status_code == 200, resp.text
+
+    project_id = f.deployment.project_id
+    empties = client.get(f"/api/projects/{project_id}/labels/empties").json()
+    assert empties["total"] == 1, "the file belongs in the Empties tab"
+
+    _verify(client, f.id, verified=False)
+    _verify(client, f.id)
+
+    surviving = {d.id for d in _boxes(db, f.id)}
+    assert noise_id not in surviving, (
+        "the weak box survived a verdict of 'nothing here'"
+    )
+    # The rejected box itself is kept: a person looked at it and judged
+    # it, and `_discard_detector_boxes` only removes what the detector
+    # left untouched.
+    assert surviving == {rejected_id}

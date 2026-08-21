@@ -16,6 +16,17 @@ class DetectionResponse(BaseModel):
     seen in a video clip without a frame-anchored ROI) have no spatial
     annotation. All four fields are null-together for those rows; AI
     and user-drawn detections set all four.
+
+    ``verified`` and ``job_id`` are what the drawing rule needs, and
+    both are required rather than defaulted so a source row missing
+    either fails loudly here instead of arriving as a plausible value.
+    ``verified`` carries the threshold override (a box a human
+    confirmed draws at any confidence); ``job_id`` is null exactly for
+    a box a person drew, which is the only exact marker of one. The
+    frontend has declared both on this payload for a long time while
+    this schema dropped them, so the type checker could not see the
+    hole: reading either gave ``undefined``, which reads as "not
+    verified" and as "not human-drawn".
     """
 
     id: str
@@ -32,6 +43,8 @@ class DetectionResponse(BaseModel):
     label_taxonomy_id: str | None = None
     classification_method: str | None = None
     frame_number: int | None = None
+    verified: bool
+    job_id: str | None
 
     class Config:
         from_attributes = True
