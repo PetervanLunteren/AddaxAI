@@ -1080,6 +1080,9 @@ def test_export_observations_event_level(client, db):
     make_detection(db, file_id=ev.files[0].id, category="animal", confidence=0.9, label="deer")
     make_detection(db, file_id=ev.files[0].id, category="animal", confidence=0.8, label="deer")
     obs = calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    # The rows above are still pending; `set_human_count` looks its row up
+    # by id in SQL and silently returns None when it is not there yet.
+    db.flush()
     # Human bumps the deer count above the per-frame max.
     set_human_count(db, obs[0].id, 5)
     db.commit()
@@ -1554,6 +1557,10 @@ def test_export_camtrap_dp_emits_media_and_event_rows(client, db):
     db.add(tax)
     db.flush()
     det.label_taxonomy_id = tax.id
+    # The MaxN rebuild groups by label_taxonomy_id in SQL, so the link has
+    # to reach the database first (the session runs autoflush=False, like
+    # the app's; every production caller has committed by this point).
+    db.flush()
     obs = calculate_max_n_for_event(db, ev.id, project.counting_threshold)
     db.flush()
     # Human bumps the deer count to 3 (more than any single frame showed).

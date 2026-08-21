@@ -6,7 +6,6 @@ import { api } from "../lib/api-client";
 import type {
   DetectionResponse,
   DetectionCreate,
-  DetectionCreateObservation,
   DetectionUpdate,
 } from "./types";
 
@@ -35,15 +34,6 @@ export const detectionsApi = {
   /** Create a human-drawn detection. */
   create: async (data: DetectionCreate): Promise<DetectionResponse> => {
     return api.post<DetectionResponse>("/api/detections", data);
-  },
-
-  /** Create an event-level observation (no bbox). Used when the user
-   * spots an animal the AI missed or only visible in a non-best video
-   * frame; the data shape is Camtrap-DP observationLevel="event". */
-  createObservation: async (
-    data: DetectionCreateObservation
-  ): Promise<DetectionResponse> => {
-    return api.post<DetectionResponse>("/api/detections/observation", data);
   },
 
   /** Update a detection's category, bbox, or label. */

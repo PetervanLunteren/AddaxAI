@@ -385,6 +385,118 @@ def test_a_hand_drawn_box_is_created_verified(client, db):
     assert det.verified_at_utc is not None
 
 
+def test_drawing_a_box_on_a_file_that_is_gone_is_a_404(client, db):
+    """A stale file id is the client's mistake, not a server fault.
+
+    The grid holds ids fetched earlier, so a deployment deleted in another
+    window is the ordinary way to arrive with one. Left to the foreign key
+    it surfaced as `500 Internal Server Error`, which tells the user
+    nothing and reads as a crash.
+    """
+    resp = client.post("/api/detections", json={
+        "file_id": "00000000-0000-0000-0000-000000000000",
+        "category": "animal",
+        "bbox_x": 0.1,
+        "bbox_y": 0.1,
+        "bbox_width": 0.3,
+        "bbox_height": 0.3,
+    })
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "File not found"
+
+
+def test_a_label_only_edit_recomputes_what_the_file_is_about(client, db):
+    """The label feeds `observation_type`, not just the category.
+
+    Marking the only box a false detection takes it out of the running for
+    what the file is about, so the file becomes blank. Bulk relabel always
+    did this; the PATCH path recomputed only on a category change and left
+    the value stale.
+    """
+    from app.models import Detection, File
+
+    f = _setup_file(db)
+    f.observation_type = "animal"
+    det = make_detection(db, file_id=f.id, category="animal", confidence=0.9)
+    db.commit()
+
+    resp = client.patch(
+        f"/api/detections/{det.id}", json={"label": "false detection"}
+    )
+    assert resp.status_code == 200
+
+    db.expire_all()
+    assert db.get(Detection, det.id).label == "false detection"
+    assert db.get(File, f.id).observation_type == "blank"
+
+
+def test_an_empty_bulk_request_is_zero_rows_not_a_missing_row(client, db):
+    """All three bulk endpoints answer the same way to an empty list.
+
+    Relabel and revert used to 404 with "No detections found" while
+    bulk-verify answered 200 with a count of zero. Nothing asked for is
+    nothing done.
+    """
+    assert client.post(
+        "/api/detections/bulk-verify",
+        json={"detection_ids": [], "verified": True},
+    ).json() == {"updated_count": 0}
+    assert client.post(
+        "/api/detections/bulk-relabel",
+        json={"detection_ids": [], "label": "chital"},
+    ).json() == {"updated_count": 0}
+    assert client.post(
+        "/api/detections/bulk-revert-to-original", json={"detection_ids": []}
+    ).json() == {"reverted": []}
+
+
+def test_an_unknown_id_in_a_bulk_request_is_still_a_404(client, db):
+    """The empty-list shortcut must not swallow a genuinely missing row."""
+    for path, body in (
+        ("/api/detections/bulk-relabel",
+         {"detection_ids": ["ghost"], "label": "chital"}),
+        ("/api/detections/bulk-revert-to-original",
+         {"detection_ids": ["ghost"]}),
+    ):
+        assert client.post(path, json=body).status_code == 404
+
+
+def test_drawing_a_box_marks_the_file_verified_past_the_request(client, db):
+    """The rollup has to survive the end of the request, not just reach it.
+
+    `get_db` yields a session and then only closes it, so anything a route
+    leaves pending is discarded. `recompute_file_verified` does not commit
+    (its caller owns the transaction) and the commit after it used to sit
+    behind "did this file belong to an event", which a file only fails when
+    event generation never reached it. So the box was saved, the rollup was
+    not, and the photo exported `is_verified = FALSE` right after a person
+    had drawn on it.
+
+    `db.rollback()` here is the request boundary: it throws away exactly what
+    `close()` throws away, and leaves everything already committed. Without it
+    the assertion reads the live transaction and passes either way, which is
+    what let this sit unnoticed.
+    """
+    from app.models import Event, File
+
+    f = _setup_file(db)
+    db.commit()
+    assert not db.query(Event).filter(Event.deployment_id == f.deployment_id).all()
+
+    resp = client.post("/api/detections", json={
+        "file_id": f.id,
+        "category": "animal",
+        "bbox_x": 0.1,
+        "bbox_y": 0.1,
+        "bbox_width": 0.3,
+        "bbox_height": 0.3,
+    })
+    assert resp.status_code == 201
+
+    db.rollback()
+    assert db.get(File, f.id).verified is True
+
+
 def test_drawing_a_box_takes_the_photo_out_of_the_empties(client, db):
     """The loop the Empties tab promises: find the animal the detector
     missed, draw it, and the photo leaves the list. It works because a

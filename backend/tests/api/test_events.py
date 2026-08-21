@@ -482,6 +482,11 @@ def test_event_verify_and_count_endpoints(client, db):
     db.add(tax)
     db.flush()
     det.label_taxonomy_id = tax.id
+    # The session runs autoflush=False, like the app's. The MaxN rebuild
+    # groups detections by label_taxonomy_id in SQL, so the link above has
+    # to reach the database before it runs. Every production caller has
+    # committed by this point.
+    db.flush()
     calculate_max_n_for_event(db, ev.id, 0.5)
     db.commit()
 

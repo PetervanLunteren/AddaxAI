@@ -84,7 +84,15 @@ import app.models  # noqa: F401, E402
 
 Base.metadata.create_all(bind=_engine)
 
-_TestSessionLocal = sessionmaker(bind=_engine)
+# `autoflush=False` mirrors the app's session factory (`db/base.py`).
+# It is not a preference: with autoflush on, every query silently writes
+# pending ORM changes first, so a test reads values production never sees.
+# Code that queries after setting an attribute is then correct in the
+# suite and stale in the app. That is how the `File.verified` rollup bug
+# reached exported data (`addaxai-files.csv` said `is_verified = FALSE`
+# for files the user had judged). Pinned by
+# `tests/api/test_verified_rollup_flush.py`.
+_TestSessionLocal = sessionmaker(bind=_engine, autoflush=False)
 
 
 @pytest.fixture()

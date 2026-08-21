@@ -764,15 +764,6 @@ export interface DetectionCreate {
   frame_number?: number | null;
 }
 
-/** Event-level observation: user spots an animal in a clip (or anywhere
- * else without a bbox). File-level fact; no bbox, no frame_number —
- * matches Camtrap-DP observationLevel="event". */
-export interface DetectionCreateObservation {
-  file_id: string;
-  category: string;
-  label?: string | null;
-}
-
 export interface DetectionUpdate {
   category?: string;
   bbox_x?: number;

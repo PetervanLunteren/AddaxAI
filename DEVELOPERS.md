@@ -397,6 +397,22 @@ Coverage is collected automatically (`--cov=app` in `pyproject.toml`).
 
 **Writing tests:** Use the factory helpers in `tests/conftest.py` (`make_project`, `make_site`, `make_deployment`, `make_file`, `make_detection`, `make_event_with_files`) to build test data. Use the `client` fixture for API tests and the `db` fixture for direct DB tests.
 
+### The test session reads the way the app reads
+
+`tests/conftest.py` builds its session with `autoflush=False`, matching `get_session_factory()` in `db/base.py`. That is not a style choice: it is the one setting that decides whether the suite can see a whole class of bug.
+
+SQLAlchemy's default is `autoflush=True`, where every query writes the session's pending changes before running. Code that sets an attribute and then asks the database about it therefore reads the new value in a test and the old row in the app. Anything shaped "set it, then query it" is correct in the suite and stale in production, and nothing points at the difference.
+
+That is how the `File.verified` rollup shipped broken. `recompute_file_verified` counts a file's unverified detections in SQL, and its callers set `det.verified = True` in Python first. Relabelling a detection left the file unverified, so `addaxai-files.csv` exported `is_verified = FALSE` for files the user had judged; relabelling the same detection a second time corrected it, because by then the first write had landed. The fix is one `db.flush()` at the top of `recompute_file_verified`, put there rather than at each call site so no caller can forget.
+
+Aligning conftest surfaced three further failures of the same family (`test_events.py`, `test_export.py`). All three were test setup rather than app code, and all three are fixed by flushing at the point the test stops being able to lean on autoflush. Resist the other repair: adding a defensive flush inside the production function makes the tests pass and hides that they were building state the app never builds.
+
+`test_the_test_session_keeps_the_apps_flush_semantics` asserts both halves, so the app turning autoflush on and the test session drifting back to the default each go red. A suite that reads differently from the app is not testing the app.
+
+**The matching rule on the write side: `get_db` never commits.** It yields a session and closes it, so whatever a route leaves pending when it returns is discarded, silently. A helper that deliberately does not commit needs a caller that does, and that commit must not be conditional. `_recalculate_max_n` in `routers/detections.py` returned early when the detection's file belonged to no event, which threw away the `recompute_file_verified` write sitting behind it: drawing a box saved the box and lost the rollup. A file has no event only where event generation never reached it, e.g. an analysis run that failed part way, which is why it went unnoticed.
+
+`test_drawing_a_box_marks_the_file_verified_past_the_request` pins it, and the shape of that test is the point: it calls `db.rollback()` after the request, which discards exactly what `close()` discards and keeps everything already committed. Without that line the assertion reads the still-open transaction and passes whether or not the commit happened. A test that asserts a write survived has to cross the request boundary somehow, or it is asserting nothing.
+
 ### Electron end-to-end tests
 
 `electron/tests/` holds Playwright tests that launch the real app, which spawns the real backend against a real database.

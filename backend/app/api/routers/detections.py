@@ -25,19 +25,34 @@ from app.api.schemas.detection import (
     DetectionUpdate,
 )
 from app.db.base import get_db
-from app.models import Detection
+from app.models import Detection, File
 from app.services.crop_service import get_or_create_crop, invalidate_crop_cache
 
 router = APIRouter(prefix="/api/detections", tags=["detections"])
 
 
 def _recalculate_max_n(db: Session, detection_ids: list[str]) -> None:
-    """Recalculate MaxN for events affected by the given detections."""
+    """Recalculate MaxN for events affected by the given detections, and commit.
+
+    **The commit is unconditional, and that is load-bearing.** `get_db` only
+    closes the session, it never commits, so whatever is still pending when
+    the endpoint returns is thrown away. This helper is the last call in every
+    route that uses it, and `recompute_file_verified` runs before it without
+    committing on purpose ("the caller owns the transaction").
+
+    While the commit sat behind an early `return` for "no events", drawing a
+    box on a file that belongs to no event saved the detection and dropped the
+    rollup beside it: `File.verified` stayed FALSE for a photo the person had
+    just judged, and `addaxai-files.csv` exported it that way. A file has no
+    event only when event generation never reached it, e.g. an analysis run
+    that failed part way.
+
+    Pinned by `test_drawing_a_box_marks_the_file_verified_past_the_request`.
+    """
     event_ids = get_event_ids_for_detections(db, detection_ids)
-    if not event_ids:
-        return
-    threshold = get_project_threshold_for_detections(db, detection_ids)
-    recalculate_max_n_for_events(db, event_ids, threshold)
+    if event_ids:
+        threshold = get_project_threshold_for_detections(db, detection_ids)
+        recalculate_max_n_for_events(db, event_ids, threshold)
     db.commit()
 
 
@@ -50,7 +65,15 @@ def create_detection(
     Create a human-drawn detection.
 
     Sets classification_method="human", confidence=1.0, job_id=None.
+
+    A file id that no longer exists is refused here rather than left to the
+    foreign key, which surfaces as a 500 the user cannot act on. The grid
+    holds ids fetched earlier, so a deployment deleted in the meantime is
+    the ordinary way to arrive with a stale one.
     """
+    if db.get(File, data.file_id) is None:
+        raise HTTPException(status_code=404, detail="File not found")
+
     detection = detection_crud.create_human_detection(db, data)
     file_crud.recalculate_observation_type(db, data.file_id)
     file_crud.recompute_file_verified(db, [data.file_id])
@@ -74,8 +97,12 @@ def update_detection(
     if not detection:
         raise HTTPException(status_code=404, detail="Detection not found")
 
-    # Recalculate observation type if category changed
-    if update.category is not None:
+    # Recalculate observation type when the category *or* the label changed.
+    # Both feed it: a "false detection" label takes the box out of the running
+    # for what the file is about, so a label-only edit that leaves the category
+    # alone still moves the file to "blank". Bulk relabel already covers this;
+    # this path used to skip it and leave observation_type stale.
+    if update.category is not None or "label" in update.model_fields_set:
         file_crud.recalculate_observation_type(db, detection.file_id)
 
     # Invalidate crop cache if bbox changed
@@ -116,7 +143,10 @@ def delete_detections_by_file(
     file_crud.recalculate_observation_type(db, file_id)
     if affected_event_ids:
         recalculate_max_n_for_events(db, affected_event_ids, threshold)
-        db.commit()
+    # Outside the branch, for the reason spelled out in `_recalculate_max_n`:
+    # the rollup above does not commit, and a request that returns with it
+    # pending loses it.
+    db.commit()
     return {"deleted_count": count}
 
 
@@ -140,7 +170,7 @@ def delete_detection(
     file_crud.recalculate_observation_type(db, file_id)
     if affected_event_ids:
         recalculate_max_n_for_events(db, affected_event_ids, threshold)
-        db.commit()
+    db.commit()
 
 
 # --- Crop endpoint ---
@@ -281,6 +311,12 @@ def bulk_relabel_detections(
     db: Session = Depends(get_db),
 ):
     """Bulk relabel detections (max 500). Sets classification_method='human'."""
+    # Nothing asked for is nothing done, not a missing row. Answered before
+    # the query so the code below can assume a non-empty list (it reads
+    # `detections[0]` to resolve the taxonomy). Matches bulk-verify.
+    if not body.detection_ids:
+        return {"updated_count": 0}
+
     detections = (
         db.query(Detection)
         .filter(Detection.id.in_(body.detection_ids))
@@ -387,6 +423,9 @@ def bulk_revert_to_original(
     from app.api.crud.detection import _resolve_detection_taxonomy
     from app.ml.taxonomic_rollup import resolve_label_names
     from app.models.label_taxonomy import LabelTaxonomy
+
+    if not body.detection_ids:
+        return {"reverted": []}
 
     detections = (
         db.query(Detection)
