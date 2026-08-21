@@ -62,10 +62,11 @@ import {
   loadLastUsedSettings,
   saveLastUsedSettings,
 } from "../../lib/folderRunSettings";
+import { projectDescriptionField } from "./project-form";
 
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(100, "Name too long"),
-  description: z.string().max(500, "Description too long").optional(),
+  description: projectDescriptionField,
   detection_model_id: z.literal("MD5A-0-0"),
   classification_model_id: z.string().nullable().optional(),
   embedding_model_id: z.string().nullable(),

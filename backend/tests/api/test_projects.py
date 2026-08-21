@@ -145,6 +145,36 @@ def test_update_project_not_found(client):
     assert resp.status_code == 404
 
 
+def test_an_explicit_null_clears_the_description_and_an_omitted_one_does_not(
+    client, db
+):
+    """The contract the Edit project dialog relies on to clear a description.
+
+    Both halves matter and they are the whole bug. `update_project` uses
+    `model_dump(exclude_unset=True)`, so a key the client did not send
+    means "leave this alone", which is correct PATCH behaviour and is
+    what kept the description alive. The dialog's zod schema turned an
+    emptied box into `undefined`, `JSON.stringify` drops undefined keys,
+    and the field therefore never reached this endpoint at all: the
+    request was literally `{"name": "ENA24"}`. Sending null is how the
+    client says "clear it" out loud.
+
+    The frontend has no test framework, so the line that was actually
+    broken cannot be covered. This pins the server side of the contract
+    instead, so the value the dialog now sends cannot stop working
+    without a red test.
+    """
+    p = make_project(db, description="Test project for the tutorial")
+
+    resp = client.patch(f"/api/projects/{p.id}", json={"name": "renamed"})
+    assert resp.status_code == 200
+    assert resp.json()["description"] == "Test project for the tutorial"
+
+    resp = client.patch(f"/api/projects/{p.id}", json={"description": None})
+    assert resp.status_code == 200
+    assert resp.json()["description"] is None
+
+
 def test_delete_project(client, db):
     p = make_project(db)
     resp = client.delete(f"/api/projects/{p.id}")

@@ -10,6 +10,7 @@ import * as z from "zod";
 import { projectsApi, type ProjectUpdate, type ProjectResponse } from "../../api/projects";
 import { API_BASE_URL } from "../../lib/api-client";
 import { ImageDropZone } from "./ImageDropZone";
+import { projectDescriptionField } from "./project-form";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -32,11 +33,7 @@ import { Textarea } from "../ui/textarea";
 
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(100, "Name too long"),
-  description: z
-    .string()
-    .max(500, "Description too long")
-    .optional()
-    .transform((val) => (val === "" ? undefined : val)),
+  description: projectDescriptionField,
 });
 
 interface EditProjectDialogProps {
