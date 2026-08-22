@@ -252,7 +252,7 @@ export function MediaBody({
           Media confidence
           <span className="mt-0.5 block text-xs text-muted-foreground">
             Detections below this score are left out of the copies, except
-            ones you verified. Only the copies, not the tables
+            ones you verified.
           </span>
         </span>
         <ConfidenceSlider
