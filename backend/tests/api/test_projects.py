@@ -175,6 +175,32 @@ def test_an_explicit_null_clears_the_description_and_an_omitted_one_does_not(
     assert resp.json()["description"] is None
 
 
+def test_a_description_over_500_characters_is_refused(client, db):
+    """The cap the dialogs enforce, enforced where it cannot be skipped.
+
+    Every dialog caps at 500 twice, in its zod schema and as `maxLength`
+    on the textarea, so nothing reachable through the UI changes here.
+    Before this the API took any length at all, which left those two
+    client-side caps as the only thing between a script and an unbounded
+    column. Both entry points are checked because `ProjectCreate`,
+    `ProjectUpdate` and `ProjectDuplicate` each declare the field
+    separately, and capping only the base class would have missed two of
+    the three.
+    """
+    p = make_project(db)
+
+    resp = client.patch(
+        f"/api/projects/{p.id}", json={"description": "a" * 501}
+    )
+    assert resp.status_code == 422
+
+    resp = client.patch(
+        f"/api/projects/{p.id}", json={"description": "a" * 500}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["description"] == "a" * 500
+
+
 def test_delete_project(client, db):
     p = make_project(db)
     resp = client.delete(f"/api/projects/{p.id}")

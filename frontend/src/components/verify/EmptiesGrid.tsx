@@ -16,7 +16,7 @@
  */
 
 import { memo, useLayoutEffect, useRef, useState } from "react";
-import { Check, ImageOff, Play } from "lucide-react";
+import { Check, ImageOff } from "lucide-react";
 
 import { API_BASE_URL } from "../../lib/api-client";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
@@ -180,18 +180,29 @@ const EmptyTile = memo(function EmptyTile({
           />
         )}
         {/* A video reads as a photo here, because the tile is the best
-            frame. Without this the person scanning a wall of tiles has
-            no way to tell which of them are clips they are seeing one
-            frame of. Same pill as the event-context tiles in the
-            Detections viewer, so it is not a new thing to learn. It is
-            a marker, not a play button: the viewer shows the frame, and
-            the note there says so. */}
+            frame. Without this, someone scanning a wall of tiles has no
+            way to tell which of them are clips they are seeing one frame
+            of.
+
+            Words rather than a play triangle, and that is the whole
+            point. A filled triangle in a circle means "press me to
+            watch" everywhere else on the internet, and this page
+            deliberately offers no playback, so the glyph invited a click
+            that did nothing (the badge is click-through, so it selected
+            the tile instead). It also said the wrong thing about the
+            feature: the frame is all there is.
+
+            Top left, not bottom left. Tiles are 4:3 with
+            `object-contain` and camera videos are 16:9, so the picture
+            letterboxes and anything pinned to the bottom floats on the
+            background strip below it, reading as a control under the
+            photo rather than a mark on it. The top edge has no such gap,
+            and `Check` already owns the top right. */}
         {item.file_type === "video" && (
           <span
-            className="pointer-events-none absolute bottom-1 left-1 flex items-center justify-center rounded-full bg-black/60 p-1"
-            title="Video, shown as one frame"
+            className="pointer-events-none absolute top-1 left-1 rounded bg-black/60 px-1 py-0.5 text-[10px] leading-none text-white"
           >
-            <Play className="h-3 w-3 fill-white text-white" />
+            Video · one frame
           </span>
         )}
         {item.verified && (

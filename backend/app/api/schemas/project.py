@@ -39,7 +39,14 @@ class ProjectBase(BaseModel):
     """Base schema with common project fields."""
 
     name: str = Field(..., min_length=1, max_length=255, description="Project name")
-    description: str | None = Field(None, description="Optional project description")
+    # 500 matches the cap every dialog already enforces twice over, in its
+    # zod schema and as `maxLength` on the textarea, so nothing reachable
+    # through the UI changes. It is here because the API accepted any
+    # length at all, which made those two client-side caps the only thing
+    # standing between a script and an unbounded column.
+    description: str | None = Field(
+        None, max_length=500, description="Optional project description"
+    )
     detection_model_id: str = Field(default="MD5A-0-0", description="Detection model ID")
     classification_model_id: str | None = Field(
         None, description="Classification model ID or null for detection-only"
@@ -203,7 +210,8 @@ class ProjectDuplicate(BaseModel):
     """
 
     name: str = Field(..., min_length=1, max_length=255)
-    description: str | None = None
+    # Same 500 cap as ProjectBase; see the note there.
+    description: str | None = Field(None, max_length=500)
     classification_model_id: str | None = None
     excluded_classes: list[str] = Field(default_factory=list)
     country_code: str | None = None
@@ -221,7 +229,8 @@ class ProjectUpdate(BaseModel):
     """
 
     name: str | None = Field(None, min_length=1, max_length=255)
-    description: str | None = None
+    # Same 500 cap as ProjectBase; see the note there.
+    description: str | None = Field(None, max_length=500)
     detection_model_id: str | None = None
     classification_model_id: str | None = None
     embedding_model_id: str | None = None
