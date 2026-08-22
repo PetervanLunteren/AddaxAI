@@ -864,6 +864,91 @@ def test_save_outputs_data_only_creates_no_media_dir(client, tmp_path):
     assert not (source / ".addaxai-output").exists()
 
 
+def test_unticking_run_details_does_not_write_the_run_info_file(
+    client, db, tmp_path, monkeypatch
+):
+    """The Save step's "Run details" checkbox, through the real path.
+
+    This has to go through the endpoint. The bug lived entirely between
+    the request and the job payload: `SaveOutputsRequest` did not declare
+    `run_readme`, pydantic drops fields a model does not declare, and the
+    router then hand-copied fourteen named fields into the job, so the
+    flag was gone twice over before the worker could read it. The worker
+    itself was always correct, which is why
+    `tests/test_save_outputs_worker.py` passes `"run_readme": False` and
+    is green: it hand-builds the payload and never crosses the boundary
+    where the value was lost. A second worker-level test would have been
+    green against the broken code too.
+
+    Peter's report is the case in the first half: tick JSON only, and get
+    the JSON plus a run-info file nobody asked for.
+    """
+    source = tmp_path / "src"
+    source.mkdir()
+    run_id = _create_run(client, str(source))
+
+    resp = client.post(
+        f"/api/folder-runs/{run_id}/save-outputs",
+        json={
+            "output_dir": str(source),
+            "recognition_json": True,
+            "run_readme": False,
+        },
+    )
+    assert resp.status_code == 200
+    _run_save_worker(db, monkeypatch, resp.json()["job_id"])
+
+    assert (source / "addaxai-recognitions.json").is_file()
+    assert not (source / "addaxai-run-info.txt").exists()
+
+
+def test_ticking_run_details_still_writes_the_run_info_file(
+    client, db, tmp_path, monkeypatch
+):
+    """The other half, so the fix cannot be "never write it"."""
+    source = tmp_path / "src"
+    source.mkdir()
+    run_id = _create_run(client, str(source))
+
+    resp = client.post(
+        f"/api/folder-runs/{run_id}/save-outputs",
+        json={"output_dir": str(source), "run_readme": True},
+    )
+    assert resp.status_code == 200
+    _run_save_worker(db, monkeypatch, resp.json()["job_id"])
+
+    assert (source / "addaxai-run-info.txt").is_file()
+
+
+def test_save_outputs_job_payload_carries_the_whole_request(
+    client, db, tmp_path
+):
+    """Every field of the request reaches the job, none renamed or lost.
+
+    The guard on the spread that replaced the hand-copied dict. Without
+    it, going back to naming fields one by one reintroduces exactly the
+    omission this pair of tests exists for, and only for whichever flag
+    the next person forgets.
+    """
+    from app.api.routers.folder_runs import SaveOutputsRequest
+    from app.models import Job
+
+    source = tmp_path / "src"
+    source.mkdir()
+    run_id = _create_run(client, str(source))
+
+    resp = client.post(
+        f"/api/folder-runs/{run_id}/save-outputs",
+        json={"output_dir": str(source)},
+    )
+    assert resp.status_code == 200
+
+    job = db.query(Job).filter(Job.id == resp.json()["job_id"]).one()
+    expected = set(SaveOutputsRequest.model_fields) | {"run_id"}
+    stored = set(job.payload)
+    assert stored == expected
+
+
 def test_create_sets_counting_threshold_to_counting_default(client):
     """Folder runs use the same single interpretation floor as projects
     mode: counting_threshold defaults to DEFAULT_COUNTING_THRESHOLD,

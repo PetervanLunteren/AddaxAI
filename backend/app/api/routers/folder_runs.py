@@ -245,6 +245,17 @@ class SaveOutputsRequest(BaseModel):
     recognition_json: bool = False
     csv: bool = False
     xlsx: bool = False
+    # Write the ``addaxai-run-info.txt`` manifest. The Save step's "Run
+    # details" checkbox. Defaults to True for a client that omits it,
+    # which is what the write used to be unconditionally.
+    #
+    # This field was missing until 2026-08-21, and its absence is the
+    # whole of the bug it fixes: the frontend has sent ``run_readme``
+    # since 2026-07-14, pydantic ignores fields a model does not declare,
+    # so ``false`` was dropped here without a word and the worker's
+    # ``payload.get("run_readme", True)`` fell back to writing it. The
+    # checkbox never did anything from the day it shipped.
+    run_readme: bool = True
     # Which species name to burn into the visualised images: the common
     # name or the scientific name. Mirrors the UI display preference so
     # the saved images match what the user sees. EXIF metadata always
@@ -974,22 +985,30 @@ async def save_outputs(
         db,
         JobCreate(
             type="folder_run_save_outputs",
+            # The whole request, not a hand-copied selection of it. This
+            # used to transcribe all fourteen fields one by one, and a
+            # transcription is a list somebody has to remember to extend:
+            # `run_readme` was added to the schema's frontend twin and to
+            # the worker, and never here, so the Save step's "Run details"
+            # checkbox wrote the file whatever it was set to. Spreading
+            # the model means a new flag reaches the worker by existing.
+            #
+            # `mode="json"` because `Job.payload` is a JSON column and the
+            # spread copies whatever the model holds. Every field today is
+            # a primitive, a list of strings or a Literal, so it changes
+            # nothing; it is here so that the first field with a real type
+            # (a datetime, a Path, an Enum) serialises instead of failing
+            # at commit, far from the line that added it. Paying one word
+            # for that is the point of spreading rather than transcribing.
+            #
+            # Both overrides are real differences rather than tidying:
+            # run_id is not part of the request at all, and output_dir
+            # goes through `Path` above, which is what created the folder
+            # and what normalises a trailing slash.
             payload={
+                **payload.model_dump(mode="json"),
                 "run_id": run_id,
                 "output_dir": str(output_root),
-                "media_threshold": payload.media_threshold,
-                "separate_folders": payload.separate_folders,
-                "separate_group_by": payload.separate_group_by,
-                "group_events": payload.group_events,
-                "separate_species_last": payload.separate_species_last,
-                "include_empty": payload.include_empty,
-                "draw_bboxes": payload.draw_bboxes,
-                "anonymise": payload.anonymise,
-                "recognition_json": payload.recognition_json,
-                "csv": payload.csv,
-                "xlsx": payload.xlsx,
-                "excluded_label_ids": list(payload.excluded_label_ids),
-                "name_mode": payload.name_mode,
             },
         ),
     )

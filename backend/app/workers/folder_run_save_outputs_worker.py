@@ -208,8 +208,16 @@ async def process_save_outputs_job(job_id: str) -> None:
         if payload.get("xlsx"):
             active_modules.append("xlsx")
         # Run-info manifest (addaxai-run-info.txt). Controlled by the Save
-        # step's "Run details" checkbox; defaults to on for older frontends
-        # that don't send the flag (it used to be unconditional).
+        # step's "Run details" checkbox.
+        #
+        # The default is for a job queued by a build from before
+        # 2026-08-21, whose payload carries no such key. Until then it was
+        # the only branch that ever ran: the router dropped the flag, so
+        # every run took the default and the checkbox did nothing. Read
+        # `SaveOutputsRequest.run_readme` for the rest of that story. The
+        # default stays because it is still the honest answer for a
+        # payload that predates the field, not because anything current
+        # relies on it.
         if payload.get("run_readme", True):
             active_modules.append("run_readme")
 
