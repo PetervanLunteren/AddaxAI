@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 import urllib.request
 import uuid
 from collections.abc import Callable
@@ -89,6 +90,47 @@ certificate been revoked?" is skipped.
 Created {created} from the AddaxAI setup screen.
 Delete this file to restore the default.
 """
+
+
+# Waits between attempts to move a finished environment into place. On
+# Windows the rename fails with WinError 5 while another process holds a
+# handle on any file inside, and right after a build writes thousands of
+# fresh binaries that is almost always the antivirus still scanning them.
+# Those handles release within seconds, so a short wait rescues the whole
+# 10-30 minute build. ~30 s total; a lock that survives that is a real
+# configuration problem no amount of waiting fixes.
+_RENAME_WAITS = (1, 2, 4, 8, 15)
+
+
+def _rename_with_retries(src: Path, dst: Path) -> None:
+    """Rename src to dst, waiting out transient Windows file locks.
+
+    Retries PermissionError only: that is what an antivirus-held handle
+    raises. Any other error (target exists, source gone) is a different
+    bug and fails immediately.
+    """
+    attempts = len(_RENAME_WAITS) + 1
+    for attempt, wait in enumerate(_RENAME_WAITS, start=1):
+        try:
+            src.rename(dst)
+            return
+        except PermissionError as e:
+            logger.warning(
+                f"Attempt {attempt}/{attempts} to move {src} into place "
+                f"was refused ({e}); retrying in {wait}s"
+            )
+            time.sleep(wait)
+    try:
+        src.rename(dst)
+    except PermissionError as e:
+        raise RuntimeError(
+            f"Windows refused to move the finished environment into place, "
+            f"even after {attempts} attempts over "
+            f"{sum(_RENAME_WAITS)} seconds ({e}). Another program is "
+            f"holding files in that folder, usually the antivirus. Ask "
+            f"your IT department to add an antivirus exclusion for the "
+            f"AddaxAI folder in your user profile, then try again."
+        ) from e
 
 
 def revocation_marker_path() -> Path:
@@ -921,7 +963,7 @@ class EnvironmentManager:
                 progress_callback("Finalizing environment...", 0.98)
 
             logger.info(f"Moving environment from {temp_env_path} to {env_path}")
-            temp_env_path.rename(env_path)
+            _rename_with_retries(temp_env_path, env_path)
 
             logger.info(f"Environment {env_name} created successfully at {env_path}")
 

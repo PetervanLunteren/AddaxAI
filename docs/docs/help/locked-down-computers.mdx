@@ -60,6 +60,37 @@ Easiest: ask IT to allow programs under that folder. If they cannot, move both.
 </FaqItem>
 
 <FaqItem
+  id="access-denied-at-the-last-step-of-setup"
+  q="Access denied at the last step of setup"
+  summary='"[WinError 5] Access denied" while the finished environment is moved into place. Windows only.'
+>
+
+Setup runs for a long while, reaches "Finalizing environment", and then fails:
+
+```
+Failed to create environment env-addaxai-base: [WinError 5] Access denied:
+'C:\Users\<your user name>\AddaxAI\envs\.env-addaxai-base.tmp' ->
+'C:\Users\<your user name>\AddaxAI\envs\env-addaxai-base'
+```
+
+Windows only. The "Access denied" part shows in the language of your Windows, for example "Accès refusé".
+
+#### Why it fails
+
+The environment is built in a temporary folder and moved into place once it is complete. Windows refuses that move while another program holds any file inside it open. Right after setup writes thousands of fresh files, that is usually the antivirus still scanning them. Installing as administrator makes no difference: this is a lock, not a missing permission.
+
+#### The fix
+
+Press Try again first. The lock is often gone by the time the build finishes again. If it keeps failing at the same point, ask IT to add an antivirus exclusion for the AddaxAI data folder, by default `C:\Users\<your user name>\AddaxAI`, and press Try again once more.
+
+#### Things to know
+
+- AddaxAI 7.0.15 and newer retry the move for about 30 seconds before reporting this error. If you still see it there, the lock is holding on longer than a routine scan, and the exclusion is the way out.
+- The unfinished folder is removed after the error, so Try again rebuilds the environment from the start.
+
+</FaqItem>
+
+<FaqItem
   id="certificate-errors-during-setup"
   q="Certificate errors during setup"
   summary="CRYPT_E_NO_REVOCATION_CHECK (0x80092012). Windows only. Needs AddaxAI 7.0.12 or newer."
