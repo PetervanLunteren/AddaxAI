@@ -185,6 +185,16 @@ def build_label_filter_tree(
     root: dict = {}
     other_key = "__other__"
 
+    # Chains that get a species parent node because a variant sits below
+    # the species. Species-level rows on such a chain (a rollup row like
+    # "vulpes vulpes", or a custom label) nest inside that node instead
+    # of sitting next to it as a same-named sibling.
+    variant_chains = {
+        (row.taxon_genus, row.taxon_species)
+        for row in taxonomy_rows
+        if row.level == "variant" and row.taxon_species
+    }
+
     def _ensure_parent(
         current: dict, level_name: str, taxon_value: str, path_parts: list[str],
         display: str,
@@ -206,8 +216,9 @@ def build_label_filter_tree(
         current = root
 
         # Walk through taxonomy levels to build parent chain: the ranks
-        # above the row's leaf tier. Species becomes a parent only when
-        # something sits below it (a variant row), so trees without
+        # above the row's leaf tier. Species becomes a parent only on
+        # chains where a variant exists (variant leaves below it, and
+        # species-level rows of that chain inside it), so trees without
         # variants are unchanged.
         levels = [
             ("class", row.taxon_class),
@@ -215,7 +226,10 @@ def build_label_filter_tree(
             ("family", row.taxon_family),
             ("genus", row.taxon_genus),
         ]
-        if row.level == "variant":
+        if row.level == "variant" or (
+            row.level == "species"
+            and (row.taxon_genus, row.taxon_species) in variant_chains
+        ):
             levels.append(("species", row.taxon_species))
 
         for level_name, taxon_value in levels:

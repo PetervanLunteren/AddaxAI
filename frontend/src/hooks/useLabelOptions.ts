@@ -55,6 +55,7 @@ function buildTaxonomyCaption(
     taxon_family: string | null;
     taxon_genus: string | null;
     taxon_species: string | null;
+    taxon_variant?: string | null;
   } | undefined,
 ): string | null {
   if (!entry) return null;
@@ -65,6 +66,7 @@ function buildTaxonomyCaption(
     entry.taxon_family,
     entry.taxon_genus,
     entry.taxon_species,
+    entry.taxon_variant,
   ].filter(Boolean).map((s) => capitalize(s as string));
   return parts.length > 0 ? parts.join(" \u203A ") : null;
 }

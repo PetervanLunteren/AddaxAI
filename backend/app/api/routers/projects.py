@@ -986,6 +986,7 @@ def get_label_taxonomy_map(
             "taxon_family": row.taxon_family,
             "taxon_genus": row.taxon_genus,
             "taxon_species": row.taxon_species,
+            "taxon_variant": row.taxon_variant,
             "common_name": row.common_name,
             "scientific_name": row.scientific_name,
         }

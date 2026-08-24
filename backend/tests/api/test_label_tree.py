@@ -704,3 +704,43 @@ def test_variant_tree_counts_by_detection(db):
     species_node = _find_child(vulpes["children"], "V. vulpes")
     assert species_node["count"] == 3
     assert _find_child(species_node["children"], "Adult")["count"] == 2
+
+
+def test_species_level_row_nests_inside_its_variant_species_node(db):
+    """A species-level row on a chain that has variants (a rollup row
+    like "vulpes vulpes") nests inside the species parent node instead
+    of sitting next to it as a same-named sibling."""
+    adult, juvenile, _wolf = _variant_taxonomy(db)
+    rollup = _add_taxonomy(
+        db, "vulpes vulpes", "species",
+        taxon_class="mammalia", taxon_order="carnivora",
+        taxon_family="canidae", taxon_genus="vulpes", taxon_species="vulpes",
+    )
+    p = _setup_project_with_detections(
+        db, ["red fox adult", "red fox juvenile", "vulpes vulpes", "wolf"]
+    )
+    link_detections_to_taxonomy(p.id, db)
+
+    result = build_label_filter_tree(p.id, db)
+    assert result is not None
+    mammalia = _find_child(result["tree"], "Mammalia")
+    carnivora = _find_child(mammalia["children"], "Carnivora")
+    canidae = _find_child(carnivora["children"], "Canidae")
+    vulpes = _find_child(canidae["children"], "Vulpes")
+
+    # Exactly one "V. vulpes" row under the genus: the species node.
+    named = [n for n in vulpes["children"] if n["name"] == "V. vulpes"]
+    assert len(named) == 1
+    species_node = named[0]
+
+    # It holds the two variant leaves plus the species-level leaf.
+    child_ids = {c["id"] for c in species_node["children"]}
+    assert child_ids == {adult.id, juvenile.id, rollup.id}
+    rollup_leaf = next(
+        c for c in species_node["children"] if c["id"] == rollup.id
+    )
+    assert rollup_leaf["annotation"] == "vulpes vulpes"
+
+    # A plain species on a chain without variants keeps its flat leaf.
+    canis = _find_child(canidae["children"], "Canis")
+    assert _find_child(canis["children"], "C. lupus")["children"] == []
