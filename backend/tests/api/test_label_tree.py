@@ -30,6 +30,7 @@ def _add_taxonomy(db, name, level, **kw):
             kw.get("taxon_family"),
             kw.get("taxon_order"),
             kw.get("taxon_class"),
+            kw.get("taxon_variant"),
         )
     row = LabelTaxonomy(
         classification_model_id=MODEL_ID,
@@ -611,3 +612,95 @@ def test_two_rank_less_rows_sharing_a_name_stay_separate(db):
     # scientific name rather than the name the two rows share.
     assert leaves[builtin.id]["name"] == "Animal"
     assert leaves[rollup.id]["name"] == "Animalia"
+
+
+# --- variant rank ---
+
+
+def _find_child(nodes, name):
+    for node in nodes:
+        if node["name"] == name:
+            return node
+    raise AssertionError(
+        f"no node named {name!r} in {[n['name'] for n in nodes]}"
+    )
+
+
+def _variant_taxonomy(db):
+    canidae = dict(
+        taxon_class="mammalia", taxon_order="carnivora", taxon_family="canidae"
+    )
+    adult = _add_taxonomy(
+        db, "red fox adult", "variant",
+        taxon_genus="vulpes", taxon_species="vulpes", taxon_variant="adult",
+        **canidae,
+    )
+    juvenile = _add_taxonomy(
+        db, "red fox juvenile", "variant",
+        taxon_genus="vulpes", taxon_species="vulpes", taxon_variant="juvenile",
+        **canidae,
+    )
+    wolf = _add_taxonomy(
+        db, "wolf", "species",
+        taxon_genus="canis", taxon_species="lupus",
+        **canidae,
+    )
+    return adult, juvenile, wolf
+
+
+def test_variants_nest_under_a_species_node(db):
+    """Variant leaves sit under a species node named for the binomial;
+    a plain species class keeps its leaf directly under the genus."""
+    adult, juvenile, wolf = _variant_taxonomy(db)
+    p = _setup_project_with_detections(
+        db, ["red fox adult", "red fox juvenile", "wolf"]
+    )
+    link_detections_to_taxonomy(p.id, db)
+
+    result = build_label_filter_tree(p.id, db)
+    assert result is not None
+
+    mammalia = _find_child(result["tree"], "Mammalia")
+    carnivora = _find_child(mammalia["children"], "Carnivora")
+    canidae = _find_child(carnivora["children"], "Canidae")
+
+    # Plain species: leaf directly under its genus, unchanged shape.
+    canis = _find_child(canidae["children"], "Canis")
+    wolf_leaf = _find_child(canis["children"], "C. lupus")
+    assert wolf_leaf["children"] == []
+
+    # Variants: species node "V. vulpes" holding the two variant leaves.
+    vulpes = _find_child(canidae["children"], "Vulpes")
+    species_node = _find_child(vulpes["children"], "V. vulpes")
+    assert species_node["children"]
+    assert species_node["child_count"] == 2
+    assert species_node["count"] == 2
+
+    adult_leaf = _find_child(species_node["children"], "Adult")
+    assert adult_leaf["id"] == adult.id
+    assert adult_leaf["annotation"] == "red fox adult"
+    assert adult_leaf["count"] == 1
+    juvenile_leaf = _find_child(species_node["children"], "Juvenile")
+    assert juvenile_leaf["id"] == juvenile.id
+
+    # Only real leaves are selectable; the species node is not one.
+    assert set(result["all_leaf_ids"]) == {adult.id, juvenile.id, wolf.id}
+
+
+def test_variant_tree_counts_by_detection(db):
+    """Detection count mode carries through the deeper tree."""
+    adult, juvenile, _wolf = _variant_taxonomy(db)
+    p = _setup_project_with_detections(
+        db, ["red fox adult", "red fox adult", "red fox juvenile"]
+    )
+    link_detections_to_taxonomy(p.id, db)
+
+    result = build_label_filter_tree(p.id, db, count_by="detection")
+    assert result is not None
+    mammalia = _find_child(result["tree"], "Mammalia")
+    carnivora = _find_child(mammalia["children"], "Carnivora")
+    canidae = _find_child(carnivora["children"], "Canidae")
+    vulpes = _find_child(canidae["children"], "Vulpes")
+    species_node = _find_child(vulpes["children"], "V. vulpes")
+    assert species_node["count"] == 3
+    assert _find_child(species_node["children"], "Adult")["count"] == 2

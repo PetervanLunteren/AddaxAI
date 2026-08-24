@@ -38,6 +38,7 @@ from app.core.logging_config import get_logger
 from app.db.sql_params import iter_id_chunks
 from app.ml.detection_visibility import visible_detections
 from app.ml.observation_type import strongest_passing_detection
+from app.ml.taxonomic_rank import species_binomial
 from app.models import (
     Deployment,
     Detection,
@@ -140,6 +141,7 @@ _FLAT_DETECTION_HEADERS = [
     "taxon_family",
     "taxon_genus",
     "taxon_species",
+    "taxon_variant",
     "scientific_name",
     "common_name",
     # Geometry: video frame index, then the normalized [0,1] box.
@@ -406,15 +408,16 @@ def _species_label(detection: Detection, taxonomy: LabelTaxonomy | None) -> str:
 
 
 def _taxon_ranks(taxonomy: LabelTaxonomy | None) -> list[str]:
-    """The five formal ranks, empty string where unknown."""
+    """The six formal ranks (variant included), empty string where unknown."""
     if taxonomy is None:
-        return ["", "", "", "", ""]
+        return ["", "", "", "", "", ""]
     return [
         taxonomy.taxon_class or "",
         taxonomy.taxon_order or "",
         taxonomy.taxon_family or "",
         taxonomy.taxon_genus or "",
         taxonomy.taxon_species or "",
+        taxonomy.taxon_variant or "",
     ]
 
 
@@ -430,6 +433,46 @@ def _scientific_name(
     if taxonomy and taxonomy.scientific_name:
         return taxonomy.scientific_name
     return ""
+
+
+def _camtrap_taxonomy_name(taxonomy: LabelTaxonomy | None) -> str | None:
+    """The taxonomy row's name for Camtrap DP's ``scientificName``.
+
+    A variant row answers the plain binomial: the standard wants a real
+    scientific name there, and the variant travels in lifeStage / sex /
+    observationComments instead (see ``_camtrap_variant_fields``).
+    """
+    if taxonomy is None:
+        return None
+    if taxonomy.taxon_variant:
+        return species_binomial(taxonomy.taxon_genus, taxonomy.taxon_species)
+    return taxonomy.scientific_name
+
+
+# Camtrap DP's enums for the two observation columns a variant can fill.
+# External standard (https://camtrap-dp.tdwg.org/data/); values outside
+# them fail validation, so anything else goes to observationComments.
+_CAMTRAP_LIFE_STAGES = frozenset({"adult", "subadult", "juvenile"})
+_CAMTRAP_SEXES = frozenset({"female", "male"})
+
+
+def _camtrap_variant_fields(
+    taxonomy: LabelTaxonomy | None,
+) -> tuple[str, str, str]:
+    """Map a taxonomy row's variant onto Camtrap DP's observation columns.
+
+    Returns ``(life_stage, sex, comment)``: the variant fills lifeStage
+    or sex when it fits their vocabulary, else it rides along as a
+    comment so it is never lost and never fails validation.
+    """
+    variant = (taxonomy.taxon_variant or "") if taxonomy else ""
+    if not variant:
+        return "", "", ""
+    if variant in _CAMTRAP_LIFE_STAGES:
+        return variant, "", ""
+    if variant in _CAMTRAP_SEXES:
+        return "", variant, ""
+    return "", "", f"variant: {variant}"
 
 
 def _file_event(
@@ -775,6 +818,7 @@ _FILES_HEADERS = [
     "taxon_family",
     "taxon_genus",
     "taxon_species",
+    "taxon_variant",
     "scientific_name",
     "common_name",
     "is_verified",
@@ -955,6 +999,7 @@ _OBSERVATIONS_HEADERS = [
     "taxon_family",
     "taxon_genus",
     "taxon_species",
+    "taxon_variant",
     "scientific_name",
     "common_name",
     # The human-confirmed count, falling back to the AI's count when the
@@ -1200,6 +1245,7 @@ def build_spatial_layers(
                     "taxon_family": ranks[2],
                     "taxon_genus": ranks[3],
                     "taxon_species": ranks[4],
+                    "taxon_variant": ranks[5],
                     "total_count": data["total_count"],
                     "detection_rate_per_100": round(rate, 2),
                 },
@@ -1395,7 +1441,11 @@ def build_camtrap_dp_tables(
             if detection.bbox_x is None:
                 continue
             obs_type = _obs_type_from_category(detection.category)
-            sci_name = _scientific_name(detection, taxonomy)
+            sci_name = (
+                (_camtrap_taxonomy_name(taxonomy) or "")
+                if detection.category == "animal"
+                else ""
+            )
             species_name = _species_label(detection, taxonomy)
             if detection.category == "animal" and species_name:
                 observed_taxa.setdefault(species_name, (taxonomy, species_name))
@@ -1403,6 +1453,13 @@ def build_camtrap_dp_tables(
             obs_id_prefix = "obs-human" if detection.verified else "obs-ai"
             method = "human" if detection.verified else "machine"
             comments = "Human identification" if detection.verified else not_reviewed
+            life_stage, sex, variant_comment = _camtrap_variant_fields(taxonomy)
+            if variant_comment:
+                comments = (
+                    f"{comments}; {variant_comment}"
+                    if comments
+                    else variant_comment
+                )
             prob = (
                 round(detection.label_confidence, 6)
                 if detection.category == "animal" and detection.label_confidence is not None
@@ -1424,8 +1481,8 @@ def build_camtrap_dp_tables(
                     "",                                    # cameraSetupType
                     sci_name,                              # scientificName
                     1,                                     # count
-                    "",                                    # lifeStage (enum)
-                    "",                                    # sex (enum)
+                    life_stage,                            # lifeStage (enum)
+                    sex,                                   # sex (enum)
                     "",                                    # behavior
                     "",                                    # individualID
                     "",                                    # individualPositionRadius
@@ -1464,14 +1521,14 @@ def build_camtrap_dp_tables(
             if count <= 0:
                 continue
             ctx = events_in_scope[obs.event_id]
-            sci_name = (
-                taxonomy.scientific_name if taxonomy else None
-            ) or (obs.label or "")
+            sci_name = _camtrap_taxonomy_name(taxonomy) or (obs.label or "")
             species_name = (taxonomy.name if taxonomy else None) or obs.label
             if obs.category == "animal" and species_name:
                 observed_taxa.setdefault(species_name, (taxonomy, species_name))
             observations_rows.append(
-                _camtrap_event_row(obs, ctx, count, sci_name, classified_by)
+                _camtrap_event_row(
+                    obs, ctx, count, sci_name, classified_by, taxonomy
+                )
             )
 
     if files_without_date:
@@ -1503,6 +1560,7 @@ def _camtrap_event_row(
     count: int,
     sci_name: str,
     classified_by: str,
+    taxonomy: LabelTaxonomy | None,
 ) -> list[Any]:
     """Event-level observation row (per species per event, no bbox).
 
@@ -1510,6 +1568,7 @@ def _camtrap_event_row(
     "human" when the count was set by a person, else "machine" (MaxN).
     """
     method = "human" if obs.human_count is not None else "machine"
+    life_stage, sex, variant_comment = _camtrap_variant_fields(taxonomy)
     return [
         f"obs-event-{obs.id}",            # observationID
         ctx["deployment_id"],             # deploymentID
@@ -1522,8 +1581,8 @@ def _camtrap_event_row(
         "",                               # cameraSetupType
         sci_name,                         # scientificName
         count,                            # count
-        "",                               # lifeStage
-        "",                               # sex
+        life_stage,                       # lifeStage
+        sex,                              # sex
         "",                               # behavior
         "",                               # individualID
         "",                               # individualPositionRadius
@@ -1538,7 +1597,7 @@ def _camtrap_event_row(
         "",                               # classificationTimestamp
         "",                               # classificationProbability
         "",                               # observationTags
-        "",                               # observationComments
+        variant_comment,                  # observationComments
     ]
 
 
@@ -1653,16 +1712,22 @@ def _build_datapackage(
     if last_captured is not None:
         temporal["end"] = last_captured.date().isoformat()
 
+    # Variant rows contribute their plain binomial at species rank, so
+    # adult and juvenile of one species produce a single taxon entry
+    # (deduplicated by scientificName; first vernacular name wins).
     taxonomic: list[dict[str, Any]] = []
+    seen_scientific: set[str] = set()
     for species_name in sorted(observed_taxa):
         taxonomy, _ = observed_taxa[species_name]
-        entry: dict[str, Any] = {}
-        if taxonomy and taxonomy.scientific_name:
-            entry["scientificName"] = taxonomy.scientific_name
-        else:
-            entry["scientificName"] = species_name
+        sci = _camtrap_taxonomy_name(taxonomy) or species_name
+        if sci in seen_scientific:
+            continue
+        seen_scientific.add(sci)
+        entry: dict[str, Any] = {"scientificName": sci}
         if taxonomy and taxonomy.level:
-            entry["taxonRank"] = taxonomy.level
+            entry["taxonRank"] = (
+                "species" if taxonomy.level == "variant" else taxonomy.level
+            )
         entry["vernacularNames"] = {"en": species_name.replace("_", " ")}
         taxonomic.append(entry)
 

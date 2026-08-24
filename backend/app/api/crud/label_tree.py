@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
 from app.ml.detection_visibility import on_visible_frame
-from app.ml.taxonomic_rank import NO_TAXONOMY
+from app.ml.taxonomic_rank import NO_TAXONOMY, species_binomial, to_display_case
 from app.ml.taxonomic_rollup import format_leaf_annotation
 from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
@@ -187,12 +187,12 @@ def build_label_filter_tree(
 
     def _ensure_parent(
         current: dict, level_name: str, taxon_value: str, path_parts: list[str],
+        display: str,
     ) -> dict:
         """Ensure a parent node exists and return its children dict."""
         path_parts.append(f"{level_name}:{taxon_value.lower()}")
         node_id = "|".join(path_parts)
         if node_id not in current:
-            display = taxon_value if level_name == "species" else taxon_value.title()
             current[node_id] = {
                 "id": node_id,
                 "name": display,
@@ -205,18 +205,34 @@ def build_label_filter_tree(
         path_parts: list[str] = []
         current = root
 
-        # Walk through taxonomy levels to build parent chain
+        # Walk through taxonomy levels to build parent chain: the ranks
+        # above the row's leaf tier. Species becomes a parent only when
+        # something sits below it (a variant row), so trees without
+        # variants are unchanged.
         levels = [
             ("class", row.taxon_class),
             ("order", row.taxon_order),
             ("family", row.taxon_family),
             ("genus", row.taxon_genus),
         ]
+        if row.level == "variant":
+            levels.append(("species", row.taxon_species))
 
         for level_name, taxon_value in levels:
             if not taxon_value:
                 continue
-            current = _ensure_parent(current, level_name, taxon_value, path_parts)
+            if level_name == "species":
+                # The species parent shows the binomial, matching how
+                # species leaves read elsewhere in the tree.
+                parent_display = (
+                    species_binomial(row.taxon_genus, taxon_value)
+                    or taxon_value.title()
+                )
+            else:
+                parent_display = taxon_value.title()
+            current = _ensure_parent(
+                current, level_name, taxon_value, path_parts, parent_display
+            )
             if row.level == level_name:
                 break
 
@@ -231,8 +247,13 @@ def build_label_filter_tree(
         # itself the taxon name. That last case covers rollup rows
         # ("Numididae (family)") and model classes named after their taxon
         # ("Gorilla (genus)"), which the old literal "unspecified" conflated.
+        # A variant leaf sits under its species node and shows only the
+        # variant ("Adult"), with the model's own label as annotation.
         leaf_id = row.id
-        display = row.scientific_name or row.name.replace("_", " ").capitalize()
+        if row.level == "variant" and row.taxon_variant:
+            display = to_display_case(row.taxon_variant)
+        else:
+            display = row.scientific_name or row.name.replace("_", " ").capitalize()
         leaf_node = {
             "id": leaf_id,
             "name": display,

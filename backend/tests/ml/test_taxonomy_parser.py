@@ -188,3 +188,74 @@ def test_leaves_sorted(tmp_path):
     tree = parse_taxonomy_csv(csv_path)
     leaves = get_all_leaf_classes(tree)
     assert leaves == sorted(leaves)
+
+
+# --- variant column ---
+
+
+def _write_variant_csv(tmp_path, rows):
+    """Write taxonomy CSV including the optional variant column."""
+    csv_path = tmp_path / "taxonomy.csv"
+    header = "model_class,class,order,family,genus,species,variant\n"
+    csv_path.write_text(header + "\n".join(rows))
+    return csv_path
+
+
+def _find(nodes, name):
+    for node in nodes:
+        if node["name"] == name:
+            return node
+    raise AssertionError(
+        f"no node named {name!r} in {[n['name'] for n in nodes]}"
+    )
+
+
+def test_variant_rows_nest_under_a_species_node(tmp_path):
+    """Variants of one species share a species parent node showing the
+    binomial; the leaves show only the variant with the model class as
+    annotation. A plain species row keeps its leaf under the genus."""
+    csv_path = _write_variant_csv(tmp_path, [
+        "red fox adult,mammalia,carnivora,canidae,vulpes,vulpes,adult",
+        "red fox juvenile,mammalia,carnivora,canidae,vulpes,vulpes,juvenile",
+        "wolf,mammalia,carnivora,canidae,canis,lupus,",
+    ])
+    tree = parse_taxonomy_csv(csv_path)
+
+    canidae = _find(
+        _find(_find(tree, "Mammalia")["children"], "Carnivora")["children"],
+        "Canidae",
+    )
+    # Plain species: unchanged leaf under genus.
+    canis = _find(canidae["children"], "Canis")
+    wolf_leaf = _find(canis["children"], "C. lupus")
+    assert wolf_leaf["annotation"] == "wolf"
+    assert not wolf_leaf["children"]
+
+    # Variants: species parent with suffix-only leaves.
+    vulpes = _find(canidae["children"], "Vulpes")
+    species_node = _find(vulpes["children"], "V. vulpes")
+    adult_leaf = _find(species_node["children"], "Adult")
+    assert adult_leaf["id"] == "red fox adult"
+    assert adult_leaf["annotation"] == "red fox adult"
+    juvenile_leaf = _find(species_node["children"], "Juvenile")
+    assert juvenile_leaf["id"] == "red fox juvenile"
+
+    # Selectable classes are still exactly the model classes.
+    assert set(get_all_leaf_classes(tree)) == {
+        "red fox adult", "red fox juvenile", "wolf",
+    }
+
+
+def test_variant_column_absent_changes_nothing(tmp_path):
+    """A CSV without the variant column parses exactly as before."""
+    csv_path = _write_csv(tmp_path, [
+        "leopard,mammalia,carnivora,felidae,panthera,pardus",
+    ])
+    tree = parse_taxonomy_csv(csv_path)
+    felidae = _find(
+        _find(_find(tree, "Mammalia")["children"], "Carnivora")["children"],
+        "Felidae",
+    )
+    panthera = _find(felidae["children"], "Panthera")
+    leaf = _find(panthera["children"], "P. pardus")
+    assert not leaf["children"]

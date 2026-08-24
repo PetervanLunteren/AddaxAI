@@ -17,6 +17,7 @@ import csv
 from pathlib import Path
 from typing import TypedDict
 
+from app.ml.taxonomic_rank import species_binomial, to_display_case
 from app.ml.taxonomic_rollup import (
     format_leaf_annotation,
     format_scientific_name_from_taxonomy_row,
@@ -28,7 +29,7 @@ class TaxonomyNode(TypedDict, total=False):
 
     id: str  # e.g., "mammalia", "carnivora", "felidae", "leopard"
     name: str  # Clean display label, no markup
-    level: int  # 1-6 (class, order, family, genus, species, model_class)
+    level: int  # 1-7 (class, order, family, genus, species, variant, model_class)
     children: list["TaxonomyNode"]
     selected: bool  # Default selection state
     annotation: str  # Optional: the model class, or the rank a class stops at
@@ -98,6 +99,7 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
         family_name = row.get("family", "").strip()
         genus_name = row.get("genus", "").strip()
         species_name = row.get("species", "").strip()
+        variant_name = row.get("variant", "").strip()
 
         # No taxonomy at all -> group under "other"
         if not any([class_name, order_name, family_name, genus_name, species_name]):
@@ -125,13 +127,15 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
                 }
             continue
 
-        # Build path through hierarchy
+        # Build path through hierarchy. Variant is one more rank below
+        # species; with it present, species becomes a parent node.
         levels = [
             ("class", class_name),
             ("order", order_name),
             ("family", family_name),
             ("genus", genus_name),
             ("species", species_name),
+            ("variant", variant_name),
         ]
 
         current_level = root
@@ -148,10 +152,21 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
                 len(set(remaining_names)) == 1 if remaining_names else False
             )
 
-            display_taxon = taxon_name if level_name == "species" else taxon_name.title()
+            if level_name == "species":
+                # As a parent (a variant sits below it) the species node
+                # shows the binomial; as a leaf the formatter below wins.
+                display_taxon = (
+                    species_binomial(genus_name, taxon_name) or taxon_name
+                )
+            else:
+                display_taxon = taxon_name.title()
 
             # Handle unspecified branch
-            if unspecified_branch and level_name != "species" and not species_available:
+            if (
+                unspecified_branch
+                and level_name not in ("species", "variant")
+                and not species_available
+            ):
                 path_components.append(f"{level_name}:{taxon_name}")
                 node_value = "|".join(path_components)
 
@@ -191,11 +206,15 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
             if is_last_level:
                 # Leaf node. One rule for every rank: named for the taxon,
                 # annotated with the model's own label (or the rank when the
-                # label is the taxon name).
-                leaf_label = format_scientific_name_from_taxonomy_row(
-                    model_class, genus_name, species_name,
-                    family_name, order_name, class_name,
-                )
+                # label is the taxon name). A variant leaf sits under its
+                # species node and shows only the variant ("Adult").
+                if level_name == "variant":
+                    leaf_label = to_display_case(taxon_name) or taxon_name
+                else:
+                    leaf_label = format_scientific_name_from_taxonomy_row(
+                        model_class, genus_name, species_name,
+                        family_name, order_name, class_name,
+                    )
                 leaf_annotation = format_leaf_annotation(
                     model_class, leaf_label, level_name
                 )

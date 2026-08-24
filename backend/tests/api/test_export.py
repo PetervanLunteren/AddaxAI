@@ -135,7 +135,7 @@ def test_export_detections_csv_happy_path(client, db):
         "ai_classification_label", "ai_classification_confidence",
         "classification_method", "is_verified",
         "taxon_class", "taxon_order", "taxon_family", "taxon_genus",
-        "taxon_species", "scientific_name", "common_name",
+        "taxon_species", "taxon_variant", "scientific_name", "common_name",
         "frame_number", "bbox_x", "bbox_y", "bbox_width", "bbox_height",
     ]
     cls_i = headers.index("classification_label")
@@ -482,7 +482,7 @@ def test_files_export_names_the_strongest_detections_species(client, db):
     # a bare confidence eight columns from its subject is unreadable, and
     # two of them side by side are indistinguishable.
     obs_i = headers.index("observation_type")
-    assert headers[obs_i : obs_i + 11] == [
+    assert headers[obs_i : obs_i + 12] == [
         "observation_type",
         "detection_confidence",
         "classification_label",
@@ -492,6 +492,7 @@ def test_files_export_names_the_strongest_detections_species(client, db):
         "taxon_family",
         "taxon_genus",
         "taxon_species",
+        "taxon_variant",
         "scientific_name",
         "common_name",
     ]
@@ -1851,3 +1852,86 @@ def test_spatial_detection_count_ignores_off_best_frame_boxes(client, db):
         if feat["properties"]["layer"] == "deployments"
     )
     assert dep_feature["properties"]["detection_count"] == 1
+
+
+def test_export_camtrap_dp_variant_rows(client, db):
+    """A variant class exports the plain binomial as scientificName; the
+    variant itself fills lifeStage or sex when it fits the standard's
+    vocabulary and rides in observationComments otherwise. The taxonomic
+    scope deduplicates variants into one species entry."""
+    project, _site, deployment = _build_simple_project(
+        db, timezone="Europe/Amsterdam"
+    )
+
+    def _variant_row(variant: str) -> LabelTaxonomy:
+        row = LabelTaxonomy(
+            id=str(uuid.uuid4()),
+            classification_model_id="TEST-MODEL",
+            name=f"red fox {variant}",
+            level="variant",
+            taxon_class="mammalia",
+            taxon_order="carnivora",
+            taxon_family="canidae",
+            taxon_genus="vulpes",
+            taxon_species="vulpes",
+            taxon_variant=variant,
+            common_name=f"Red fox {variant}",
+            scientific_name=f"V. vulpes ({variant})",
+        )
+        db.add(row)
+        db.flush()
+        return row
+
+    for variant in ("adult", "male", "melanistic"):
+        taxonomy = _variant_row(variant)
+        f = make_file(
+            db,
+            deployment_id=deployment.id,
+            captured_at_local=datetime(2024, 6, 15, 9, 0, 0),
+        )
+        make_detection(
+            db,
+            file_id=f.id,
+            category="animal",
+            confidence=0.9,
+            label=taxonomy.name,
+            scientific_name=taxonomy.scientific_name,
+            label_confidence=0.88,
+            label_taxonomy_id=taxonomy.id,
+        )
+    db.commit()
+
+    resp = _run_camtrap_dp_export(client, db, project.id)
+    assert resp.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        dp = json.loads(zf.read("datapackage.json"))
+        obs_rows = list(
+            csv.reader(io.StringIO(zf.read("observations.csv").decode()))
+        )
+
+    header = obs_rows[0]
+    i_sci = header.index("scientificName")
+    i_life = header.index("lifeStage")
+    i_sex = header.index("sex")
+    i_comments = header.index("observationComments")
+
+    data = obs_rows[1:]
+    assert len(data) == 3
+    # Every row carries the real binomial, never the qualified leaf name.
+    assert {r[i_sci] for r in data} == {"V. vulpes"}
+
+    by_life = {r[i_life] for r in data}
+    by_sex = {r[i_sex] for r in data}
+    assert "adult" in by_life
+    assert "male" in by_sex
+    # The non-enum variant survives in the comments instead.
+    assert any("variant: melanistic" in r[i_comments] for r in data)
+    # An enum-mapped variant does not leak into the comments.
+    assert not any("variant: adult" in r[i_comments] for r in data)
+
+    # One species entry in the taxonomic scope, at species rank.
+    fox_entries = [
+        e for e in dp["taxonomic"] if e["scientificName"] == "V. vulpes"
+    ]
+    assert len(fox_entries) == 1
+    assert fox_entries[0]["taxonRank"] == "species"

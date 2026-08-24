@@ -45,6 +45,7 @@ One row per species per event, with the count. Each row is one [observation](../
 | `taxon_family` | Family, for example canidae |
 | `taxon_genus` | Genus, for example vulpes |
 | `taxon_species` | Species |
+| `taxon_variant` | One level below species, when the model predicts it, for example adult or juvenile. Empty for most models |
 | `scientific_name` | Scientific name for display |
 | `common_name` | Common name for display |
 | `count` | Number of individuals. Your confirmed number if you set one, otherwise the AI's highest number seen in a single photo |
@@ -68,7 +69,7 @@ One row per box. Use it when you care about individual boxes. Blank files do not
 | `ai_classification_confidence` | Score for that label |
 | `classification_method` | machine or human, who set the current label |
 | `is_verified` | TRUE if you verified this detection |
-| `taxon_class` to `taxon_species` | Taxonomy, broad to specific |
+| `taxon_class` to `taxon_variant` | Taxonomy, broad to specific. `taxon_variant` sits below species (adult, juvenile) and is empty for most models |
 | `scientific_name` | Scientific name |
 | `common_name` | Common name |
 | `frame_number` | Frame index for videos, empty for photos |
@@ -102,7 +103,7 @@ One row per photo or video, whether or not anything was found.
 | `detection_confidence` | How sure the detector was there is something there, for that same box. A verified box counts whatever its score, so this can sit below your [counting threshold](../understanding/confidence-and-verification.md) |
 | `classification_label` | The species of that same strongest box, not the most confident species on the file. Empty for a person, a vehicle, or an animal that was never classified |
 | `classification_confidence` | Score for that species. Always 1.0 when a human set the label. Empty when there is no species |
-| `taxon_class` to `taxon_species` | Taxonomy of that species, broad to specific. Only a species label fills all five, so check these before you group by `classification_label` |
+| `taxon_class` to `taxon_variant` | Taxonomy of that species, broad to specific. `taxon_variant` sits below species and is empty for most models. Only a species label fills the five ranks above it, so check these before you group by `classification_label` |
 | `scientific_name` | Scientific name of that same box |
 | `common_name` | Common name of that same box. Never empty on a file that holds something: it reads `Person`, `Vehicle` or `Animal` when there is no species |
 | `is_verified` | TRUE if you verified this file: every box on it was verified, or, for a file with nothing on it, you verified that it is empty |
@@ -154,3 +155,5 @@ Projects can also export point layers for GIS tools such as QGIS and ArcGIS, as 
 ## Camtrap DP
 
 Projects can also export Camtrap DP, a standard format for camera trap data. It uses its own column names and a fixed structure, so other tools and archives can read your data without knowing anything about AddaxAI. Use it when you share data or deposit it in a repository.
+
+For models that predict below species level (adult or juvenile fox, for example), `scientificName` always carries the real species name. The variant goes into `lifeStage` (adult, subadult, juvenile) or `sex` (female, male) when it fits those fields, and into `observationComments` otherwise.
