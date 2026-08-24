@@ -252,7 +252,10 @@ def rollup_single_detection(
 
     **Path A (geofence rollup)**: top-1 is excluded. Roll up to the
     nearest allowed ancestor using top-1 confidence as the threshold.
-    Walks family, order, class (skips species and genus).
+    Walks species, family, order, class (skips genus); the species
+    level counts only when an included class backs that exact chain,
+    which is what lets an excluded variant stop at its species while a
+    banned whole species still falls to family.
 
     **Path B (confidence rollup)**: top-1 is allowed but confidence
     < ``threshold``. Roll up to the nearest level above ``threshold``.
@@ -348,9 +351,21 @@ def rollup_single_detection(
                     level_entries[level][key] = entry
 
     if top_is_excluded:
-        # Path A: geofence rollup
+        # Path A: excluded-class rollup. The walk still skips genus
+        # (official SpeciesNet geofence semantics), but it does consider
+        # the species level: a species candidate counts only when at
+        # least one *included* class maps to its exact chain. A banned
+        # whole species has no included class on its chain, so it falls
+        # to family exactly as before; an excluded variant lands on the
+        # species its included sibling still backs ("red fox juvenile"
+        # excluded gives "vulpes vulpes", not "canidae").
         walk_threshold = top_conf
-        walk_levels = ["family", "order", "class"]
+        walk_levels = ["species", "family", "order", "class"]
+        included_species_keys = {
+            _build_taxonomy_key_for_level(entry, "species")
+            for name, entry in taxonomy_lookup.items()
+            if "species" in entry and name not in excluded_names
+        }
     else:
         # Path B: confidence rollup. Species sits at the front so models
         # with multiple classes per species (e.g. age or sex variants of
@@ -358,6 +373,7 @@ def rollup_single_detection(
         # species before falling back to genus.
         walk_threshold = threshold
         walk_levels = ["species", "genus", "family", "order", "class"]
+        included_species_keys = None
 
     # Walk from most specific to broadest. At each level, find the
     # max-scoring taxon that crosses the threshold and is allowed
@@ -369,6 +385,12 @@ def rollup_single_detection(
         for key in sorted(sums, key=sums.get, reverse=True):
             if sums[key] < walk_threshold:
                 break  # remaining taxa have even lower scores
+            if (
+                included_species_keys is not None
+                and level == "species"
+                and key not in included_species_keys
+            ):
+                continue  # excluded path: species not backed by an included class
             if (
                 allowed_taxonomy_keys is not None
                 and key not in allowed_taxonomy_keys

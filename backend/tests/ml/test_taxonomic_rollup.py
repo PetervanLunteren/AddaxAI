@@ -663,3 +663,51 @@ def test_both_trees_use_this_helper():
 
     assert taxonomy_parser.format_leaf_annotation is format_leaf_annotation
     assert label_tree.format_leaf_annotation is format_leaf_annotation
+
+
+def test_excluded_variant_rolls_to_its_backed_species():
+    """Excluding one variant must not skip past the species its included
+    sibling still backs: "red fox juvenile" excluded lands on
+    "vulpes vulpes", not on "canidae"."""
+    lookup = {
+        "red fox adult": {
+            "class": "mammalia", "order": "carnivora",
+            "family": "canidae", "genus": "vulpes", "species": "vulpes",
+        },
+        "red fox juvenile": {
+            "class": "mammalia", "order": "carnivora",
+            "family": "canidae", "genus": "vulpes", "species": "vulpes",
+        },
+    }
+    ids = {"0": "red fox juvenile", "1": "red fox adult"}
+    result = rollup_single_detection(
+        [[0, 0.90], [1, 0.05]], ids, lookup,
+        excluded_names=frozenset({"red fox juvenile"}),
+    )
+    assert result is not None
+    assert result["level"] == "species"
+    assert result["label"] == "vulpes vulpes"
+    assert result["confidence"] == pytest.approx(0.95, abs=0.01)
+
+
+def test_excluding_every_variant_of_a_species_falls_to_family():
+    """With no included class left on the species chain, the excluded
+    path keeps today's behaviour and falls through to family."""
+    lookup = {
+        "red fox adult": {
+            "class": "mammalia", "order": "carnivora",
+            "family": "canidae", "genus": "vulpes", "species": "vulpes",
+        },
+        "red fox juvenile": {
+            "class": "mammalia", "order": "carnivora",
+            "family": "canidae", "genus": "vulpes", "species": "vulpes",
+        },
+    }
+    ids = {"0": "red fox juvenile", "1": "red fox adult"}
+    result = rollup_single_detection(
+        [[0, 0.90], [1, 0.05]], ids, lookup,
+        excluded_names=frozenset({"red fox juvenile", "red fox adult"}),
+    )
+    assert result is not None
+    assert result["level"] == "family"
+    assert result["label"] == "canidae"
