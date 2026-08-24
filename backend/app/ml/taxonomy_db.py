@@ -21,7 +21,7 @@ from app.models.label_taxonomy import LabelTaxonomy
 
 logger = get_logger(__name__)
 
-TAXONOMY_LEVELS = ["class", "order", "family", "genus", "species"]
+TAXONOMY_LEVELS = ["class", "order", "family", "genus", "species", "variant"]
 
 
 def _determine_level(taxon: dict[str, str]) -> str:
@@ -83,6 +83,7 @@ def populate_taxonomy_from_csv(
             taxon_family=taxon.get("family"),
             taxon_genus=taxon.get("genus"),
             taxon_species=taxon.get("species"),
+            taxon_variant=taxon.get("variant"),
             level=_determine_level(taxon),
             common_name=format_common_name(name),
             scientific_name=format_scientific_name_from_taxonomy_row(
@@ -92,6 +93,7 @@ def populate_taxonomy_from_csv(
                 taxon.get("family"),
                 taxon.get("order"),
                 taxon.get("class"),
+                taxon.get("variant"),
             ),
             is_custom=False,
         )
@@ -112,13 +114,17 @@ def add_rollup_taxonomy_entry(
     model_id: str,
     name: str,
     level: str,
-    taxonomy_lookup: dict[str, dict[str, str]],
+    ancestors: dict[str, str],
     db: Session,
 ) -> bool:
     """
     Insert a single rolled-up taxonomy entry (e.g. name="bovidae", level="family").
 
-    Fills ancestor columns from taxonomy_lookup (any entry sharing that taxon value).
+    ``ancestors`` is the representative taxonomy entry the rollup summed
+    on ({level: value}, empty for the kingdom fallback). It travels from
+    ``rollup_single_detection`` so ancestors are never re-derived by
+    value search, which mislabelled taxa whose value repeats across
+    chains (species epithets shared between genera).
     Idempotent: returns False if (model_id, name) already exists.
 
     Returns:
@@ -135,18 +141,11 @@ def add_rollup_taxonomy_entry(
     if exists:
         return False
 
-    # For species-level rollup the formatted name is "{genus} {species}",
-    # but taxonomy_lookup is keyed by the species token alone.
+    # For species-level rollup the formatted name is "{genus} {species}";
+    # the column value is the species token alone.
     lookup_value = (
         name.split()[-1] if level == "species" and " " in name else name
     )
-
-    # Find ancestor columns from any taxonomy entry that has this taxon value
-    ancestors: dict[str, str] = {}
-    for entry in taxonomy_lookup.values():
-        if entry.get(level) == lookup_value:
-            ancestors = entry
-            break
 
     # Only ranks at or above the rollup level apply. The matched source
     # entry carries the full chain down to species (e.g. for a class

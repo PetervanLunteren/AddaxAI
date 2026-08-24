@@ -446,14 +446,15 @@ def _load_vectors_by_id(
 
 
 # Ordering of Linnaean ranks used by the descendant filter. A row with
-# `level == "class"` sits at index 0 (broadest); `species` at 4.
-# label_taxonomy currently stores levels exactly as these keys.
+# `level == "class"` sits at index 0 (broadest); `variant` (one rank
+# below species) at 5. label_taxonomy stores levels exactly as these keys.
 _TAXON_RANK_INDEX: dict[str, int] = {
     "class": 0,
     "order": 1,
     "family": 2,
     "genus": 3,
     "species": 4,
+    "variant": 5,
 }
 
 

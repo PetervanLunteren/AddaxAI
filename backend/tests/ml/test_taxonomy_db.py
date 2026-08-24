@@ -48,26 +48,47 @@ def taxonomy_csv(tmp_path):
 
 
 @pytest.fixture
-def taxonomy_lookup():
-    """Simple lookup dict matching the CSV data."""
+def leopard_entry():
+    """Representative taxonomy entry, as the rollup hands it over."""
     return {
-        "leopard": {
-            "class": "mammalia", "order": "carnivora",
-            "family": "felidae", "genus": "panthera",
-            "species": "pardus",
-        },
-        "lion": {
-            "class": "mammalia", "order": "carnivora",
-            "family": "felidae", "genus": "panthera",
-            "species": "leo",
-        },
-        "buffalo": {
-            "class": "mammalia", "order": "artiodactyla",
-            "family": "bovidae", "genus": "syncerus",
-            "species": "caffer",
-        },
-        "bird": {"class": "aves"},
+        "class": "mammalia", "order": "carnivora",
+        "family": "felidae", "genus": "panthera",
+        "species": "pardus",
     }
+
+
+VARIANT_TAXONOMY_ROWS = [
+    {
+        "model_class": "red fox adult", "class": "mammalia",
+        "order": "carnivora", "family": "canidae",
+        "genus": "vulpes", "species": "vulpes", "variant": "adult",
+    },
+    {
+        "model_class": "red fox juvenile", "class": "mammalia",
+        "order": "carnivora", "family": "canidae",
+        "genus": "vulpes", "species": "vulpes", "variant": "juvenile",
+    },
+    {
+        "model_class": "wolf", "class": "mammalia",
+        "order": "carnivora", "family": "canidae",
+        "genus": "canis", "species": "lupus", "variant": "",
+    },
+]
+
+
+@pytest.fixture
+def variant_taxonomy_csv(tmp_path):
+    """Taxonomy CSV carrying the optional variant column."""
+    csv_path = tmp_path / "taxonomy.csv"
+    fieldnames = [
+        "model_class", "class", "order", "family",
+        "genus", "species", "variant",
+    ]
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(VARIANT_TAXONOMY_ROWS)
+    return csv_path
 
 
 def test_populate_from_csv(db, taxonomy_csv):
@@ -112,9 +133,9 @@ def test_populate_sets_both_names(db, taxonomy_csv):
     assert leopard.scientific_name == "P. pardus"
 
 
-def test_rollup_genus_common_equals_scientific(db, taxonomy_lookup):
+def test_rollup_genus_common_equals_scientific(db, leopard_entry):
     """A genus rollup has no common name, so both names are the Latin taxon."""
-    add_rollup_taxonomy_entry(MODEL_ID, "panthera", "genus", taxonomy_lookup, db)
+    add_rollup_taxonomy_entry(MODEL_ID, "panthera", "genus", leopard_entry, db)
     row = (
         db.query(LabelTaxonomy)
         .filter(
@@ -160,10 +181,10 @@ def test_populate_missing_csv(db, tmp_path):
     assert count == 0
 
 
-def test_add_rollup_entry(db, taxonomy_lookup):
+def test_add_rollup_entry(db, leopard_entry):
     """Creates rolled-up entry with correct ancestors."""
     result = add_rollup_taxonomy_entry(
-        MODEL_ID, "felidae", "family", taxonomy_lookup, db
+        MODEL_ID, "felidae", "family", leopard_entry, db
     )
     assert result is True
 
@@ -181,13 +202,13 @@ def test_add_rollup_entry(db, taxonomy_lookup):
     assert row.is_custom is False
 
 
-def test_add_rollup_class_level_only_sets_class(db, taxonomy_lookup):
+def test_add_rollup_class_level_only_sets_class(db, leopard_entry):
     """A class-level rollup must NOT inherit lower ranks from the matched
     source row. The lookup pairs class=mammalia with concrete order/family/
     genus/species; copying those would falsely claim the rolled-up taxon
     belongs to a specific descendant chain."""
     result = add_rollup_taxonomy_entry(
-        MODEL_ID, "mammalia", "class", taxonomy_lookup, db
+        MODEL_ID, "mammalia", "class", leopard_entry, db
     )
     assert result is True
 
@@ -204,10 +225,10 @@ def test_add_rollup_class_level_only_sets_class(db, taxonomy_lookup):
     assert row.taxon_species is None
 
 
-def test_add_rollup_order_level_only_sets_class_and_order(db, taxonomy_lookup):
+def test_add_rollup_order_level_only_sets_class_and_order(db, leopard_entry):
     """An order-level rollup must inherit class and order, but not lower."""
     result = add_rollup_taxonomy_entry(
-        MODEL_ID, "carnivora", "order", taxonomy_lookup, db
+        MODEL_ID, "carnivora", "order", leopard_entry, db
     )
     assert result is True
 
@@ -224,10 +245,10 @@ def test_add_rollup_order_level_only_sets_class_and_order(db, taxonomy_lookup):
     assert row.taxon_species is None
 
 
-def test_add_rollup_genus_level_inherits_through_genus(db, taxonomy_lookup):
+def test_add_rollup_genus_level_inherits_through_genus(db, leopard_entry):
     """A genus-level rollup keeps class/order/family/genus, not species."""
     result = add_rollup_taxonomy_entry(
-        MODEL_ID, "panthera", "genus", taxonomy_lookup, db
+        MODEL_ID, "panthera", "genus", leopard_entry, db
     )
     assert result is True
 
@@ -244,10 +265,10 @@ def test_add_rollup_genus_level_inherits_through_genus(db, taxonomy_lookup):
     assert row.taxon_species is None
 
 
-def test_add_rollup_idempotent(db, taxonomy_lookup):
+def test_add_rollup_idempotent(db, leopard_entry):
     """Skip if entry already exists."""
-    r1 = add_rollup_taxonomy_entry(MODEL_ID, "felidae", "family", taxonomy_lookup, db)
-    r2 = add_rollup_taxonomy_entry(MODEL_ID, "felidae", "family", taxonomy_lookup, db)
+    r1 = add_rollup_taxonomy_entry(MODEL_ID, "felidae", "family", leopard_entry, db)
+    r2 = add_rollup_taxonomy_entry(MODEL_ID, "felidae", "family", leopard_entry, db)
     assert r1 is True
     assert r2 is False
 
@@ -266,5 +287,59 @@ def test_different_models_no_collision(db, taxonomy_csv):
 
     total = db.query(LabelTaxonomy).count()
     assert total == 8
+
+
+# --- variant column ---
+
+
+def test_populate_variant_rows(db, variant_taxonomy_csv):
+    """A non-empty variant cell fills the column, the level and both names."""
+    count = populate_taxonomy_from_csv(MODEL_ID, variant_taxonomy_csv, db)
+    assert count == 3
+
+    by_name = {
+        r.name: r
+        for r in db.query(LabelTaxonomy)
+        .filter(LabelTaxonomy.classification_model_id == MODEL_ID)
+        .all()
+    }
+
+    adult = by_name["red fox adult"]
+    assert adult.level == "variant"
+    assert adult.taxon_variant == "adult"
+    assert adult.taxon_species == "vulpes"
+    assert adult.common_name == "Red fox adult"
+    # The variant makes the scientific name unique per class.
+    assert adult.scientific_name == "V. vulpes (adult)"
+
+    juvenile = by_name["red fox juvenile"]
+    assert juvenile.scientific_name == "V. vulpes (juvenile)"
+    assert juvenile.scientific_name != adult.scientific_name
+
+
+def test_populate_variant_empty_cell_is_plain_species_row(
+    db, variant_taxonomy_csv
+):
+    """An empty variant cell behaves exactly like a CSV without the column."""
+    populate_taxonomy_from_csv(MODEL_ID, variant_taxonomy_csv, db)
+    wolf = (
+        db.query(LabelTaxonomy)
+        .filter(
+            LabelTaxonomy.classification_model_id == MODEL_ID,
+            LabelTaxonomy.name == "wolf",
+        )
+        .one()
+    )
+    assert wolf.level == "species"
+    assert wolf.taxon_variant is None
+    assert wolf.scientific_name == "C. lupus"
+
+
+def test_populate_variant_idempotent(db, variant_taxonomy_csv):
+    """Re-population of a variant CSV inserts nothing the second time."""
+    count1 = populate_taxonomy_from_csv(MODEL_ID, variant_taxonomy_csv, db)
+    count2 = populate_taxonomy_from_csv(MODEL_ID, variant_taxonomy_csv, db)
+    assert count1 == 3
+    assert count2 == 0
 
 

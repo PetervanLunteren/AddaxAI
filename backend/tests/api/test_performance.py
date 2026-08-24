@@ -119,10 +119,12 @@ def test_species_matrix_counts_verified_pairs(db: Session) -> None:
         db, project.id, taxonomic_rank="species", top_n=None,
     )
     assert resp.has_classifier is True
-    # Species rank uses scientific_name when present.
-    assert set(resp.classes) == {"P. pardus", "Lynx lynx"}
+    # Species rank shows the binomial built from the rank columns, not
+    # the row's own scientific_name (which names the leaf and can sit
+    # below species on a variant row).
+    assert set(resp.classes) == {"P. pardus", "L. lynx"}
     i_leo = resp.classes.index("P. pardus")
-    i_lynx = resp.classes.index("Lynx lynx")
+    i_lynx = resp.classes.index("L. lynx")
     assert resp.matrix[i_leo][i_leo] == 2
     assert resp.matrix[i_leo][i_lynx] == 1
     assert resp.matrix[i_lynx][i_lynx] == 1
@@ -333,7 +335,7 @@ def test_precision_recall_f1_on_tiny_fixture(db: Session) -> None:
     )
     by_name = {m.class_name: m for m in resp.per_class}
     leo = by_name["P. pardus"]
-    lynx = by_name["Lynx lynx"]
+    lynx = by_name["L. lynx"]
 
     assert leo.support == 3
     assert leo.precision == 1.0
@@ -365,7 +367,7 @@ def test_top_n_collapses_tail_into_other(db: Session) -> None:
     assert "other" in resp.classes
     assert resp.grand_total == 10
     assert "P. pardus" in resp.classes
-    assert "Lynx lynx" in resp.classes
+    assert "L. lynx" in resp.classes
     assert "C. capreolus" not in resp.classes
 
 

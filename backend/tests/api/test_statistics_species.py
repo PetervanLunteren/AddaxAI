@@ -182,3 +182,90 @@ def test_date_range_filters_events(db):
         "vehicle": 1,
         "false detection": 1,
     }
+
+
+def _add_variant_taxonomy(db, model_id: str):
+    """Two variant rows of one species, as populate_taxonomy_from_csv
+    writes them for a variant model."""
+    from app.models.label_taxonomy import LabelTaxonomy
+
+    rows = {}
+    for variant in ("adult", "juvenile"):
+        row = LabelTaxonomy(
+            classification_model_id=model_id,
+            name=f"red fox {variant}",
+            taxon_class="mammalia",
+            taxon_order="carnivora",
+            taxon_family="canidae",
+            taxon_genus="vulpes",
+            taxon_species="vulpes",
+            taxon_variant=variant,
+            level="variant",
+            common_name=f"Red fox {variant}",
+            scientific_name=f"V. vulpes ({variant})",
+        )
+        db.add(row)
+        db.flush()
+        rows[variant] = row
+    return rows
+
+
+def test_variants_stay_separate_at_most_specific(db):
+    """Adult and juvenile fox are distinct classes; the qualified
+    scientific name keeps them apart in "Most specific" views."""
+    project = make_project(db)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    taxonomy = _add_variant_taxonomy(db, "ARC-v1")
+
+    ev1 = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 2, 8, 0)
+    )
+    ev2 = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 3, 9, 0)
+    )
+    for ev, variant in ((ev1, "adult"), (ev2, "juvenile")):
+        obs = _add_observation(db, event_id=ev.id, label=f"red fox {variant}")
+        obs.label_taxonomy_id = taxonomy[variant].id
+    db.flush()
+
+    rows = stats_crud.get_species_distribution(db, project.id)
+    by_species = {r.species: r for r in rows}
+    assert set(by_species) == {"V. vulpes (adult)", "V. vulpes (juvenile)"}
+    assert by_species["V. vulpes (adult)"].common_name == "Red fox adult"
+
+
+def test_variants_merge_into_the_binomial_at_species_rank(db):
+    """At species rank both variants land in one "V. vulpes" bucket.
+
+    The bucket's common name is the binomial too: a variant row has no
+    species-level common name, so the bucket falls back to Latin, the
+    same way genus and family buckets do."""
+    project = make_project(db)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    taxonomy = _add_variant_taxonomy(db, "ARC-v1")
+
+    ev1 = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 2, 8, 0)
+    )
+    ev2 = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 3, 9, 0)
+    )
+    for ev, variant in ((ev1, "adult"), (ev2, "juvenile")):
+        obs = _add_observation(db, event_id=ev.id, label=f"red fox {variant}")
+        obs.label_taxonomy_id = taxonomy[variant].id
+    db.flush()
+
+    rows = stats_crud.get_species_distribution(
+        db, project.id, taxonomic_rank="species"
+    )
+    assert len(rows) == 1
+    bucket = rows[0]
+    assert bucket.species == "V. vulpes"
+    assert bucket.common_name == "V. vulpes"
+    assert bucket.count == 2
+    assert set(bucket.label_taxonomy_ids) == {
+        taxonomy["adult"].id,
+        taxonomy["juvenile"].id,
+    }

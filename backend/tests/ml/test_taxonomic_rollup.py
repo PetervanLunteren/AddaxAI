@@ -224,6 +224,70 @@ def test_empty_classifications(taxonomy_lookup, class_id_to_name):
     assert result is None
 
 
+def test_rollup_result_carries_the_matched_ancestors(
+    taxonomy_lookup, class_id_to_name
+):
+    """The result names the chain it summed on, so consumers never have
+    to find ancestors again by value search."""
+    # leopard 0.35 + lion 0.35 → genus panthera 0.70
+    classifications = [[0, 0.35], [1, 0.35]]
+    result = rollup_single_detection(
+        classifications, class_id_to_name, taxonomy_lookup
+    )
+    assert result is not None
+    assert result["level"] == "genus"
+    assert result["ancestors"]["genus"] == "panthera"
+    assert result["ancestors"]["family"] == "felidae"
+
+
+def test_variant_siblings_sum_to_their_shared_species():
+    """Two classes of one species (age variants) roll up to the species
+    when neither is confident alone. This is what makes variant models
+    degrade gracefully instead of stalling at genus."""
+    lookup = {
+        "red fox adult": {
+            "class": "mammalia", "order": "carnivora",
+            "family": "canidae", "genus": "vulpes", "species": "vulpes",
+        },
+        "red fox juvenile": {
+            "class": "mammalia", "order": "carnivora",
+            "family": "canidae", "genus": "vulpes", "species": "vulpes",
+        },
+    }
+    ids = {"0": "red fox adult", "1": "red fox juvenile"}
+    # 0.40 + 0.30 = species 0.70 >= 0.65; neither top-1 is confident
+    result = rollup_single_detection([[0, 0.40], [1, 0.30]], ids, lookup)
+    assert result is not None
+    assert result["level"] == "species"
+    assert result["label"] == "vulpes vulpes"
+    assert result["confidence"] == pytest.approx(0.70, abs=0.01)
+
+
+def test_shared_epithet_species_never_sum_together():
+    """Species epithets repeat across genera ("canadensis"). Summing by
+    the bare value merged a goose with a crane and labelled the result
+    from whichever entry matched first. Keys are full ancestor chains."""
+    lookup = {
+        "canada goose": {
+            "class": "aves", "order": "anseriformes",
+            "family": "anatidae", "genus": "branta", "species": "canadensis",
+        },
+        "crane": {
+            "class": "aves", "order": "gruiformes",
+            "family": "gruidae", "genus": "antigone", "species": "canadensis",
+        },
+    }
+    ids = {"0": "canada goose", "1": "crane"}
+    # Bare-epithet keying summed 0.40 + 0.35 = 0.75 at "species
+    # canadensis" and returned a species-level mislabel. Correct keying
+    # leaves every species and genus below 0.65; only class aves (0.75)
+    # crosses.
+    result = rollup_single_detection([[0, 0.40], [1, 0.35]], ids, lookup)
+    assert result is not None
+    assert result["level"] == "class"
+    assert result["label"] == "aves"
+
+
 # --- apply_taxonomic_rollup_to_results ---
 
 def test_apply_adds_new_category(taxonomy_csv):

@@ -133,6 +133,7 @@ _TAXONOMIC_RANK_ORDER: tuple[str, ...] = (
     "family",
     "genus",
     "species",
+    "variant",
 )
 
 

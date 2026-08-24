@@ -10,6 +10,9 @@ in one place; a future plot can pick whichever side fits its query shape.
 from typing import Literal, Protocol
 
 RANK_COLUMNS = {
+    # taxon_variant is deliberately absent: variant is one rank below
+    # species but is never offered as a grouping rank ("Most specific"
+    # already shows variants separately).
     "class": "taxon_class",
     "order": "taxon_order",
     "family": "taxon_family",
@@ -33,6 +36,66 @@ RANK_OPTIONS: list[tuple[TaxonomicRank, str]] = [
     ("order", "Order"),
     ("class", "Class"),
 ]
+
+
+def species_binomial(genus: str | None, species: str | None) -> str | None:
+    """
+    The abbreviated binomial ("V. vulpes"), or None without both parts.
+
+    This is the species rank's own display name, as opposed to a row's
+    `scientific_name`, which names the row's leaf and can sit below
+    species ("V. vulpes (adult)" for a variant row). Grouping at species
+    rank must use this so variants of one species merge.
+    `species_binomial_sql` below is the SQL twin; keep them identical.
+    """
+    if not genus or not species:
+        return None
+    return f"{genus[0].upper()}. {species}"
+
+
+def species_binomial_sql():
+    """SQL twin of `species_binomial`, built from the rank columns."""
+    from sqlalchemy import func
+
+    from app.models.label_taxonomy import LabelTaxonomy
+
+    # NULL genus or species propagates to NULL, matching the Python side.
+    return (
+        func.upper(func.substr(LabelTaxonomy.taxon_genus, 1, 1))
+        .concat(". ")
+        .concat(LabelTaxonomy.taxon_species)
+    )
+
+
+def species_rank_scientific_sql():
+    """Species-rank display name (scientific): the binomial or NULL."""
+    from sqlalchemy import case
+
+    from app.models.label_taxonomy import LabelTaxonomy
+
+    return case(
+        (LabelTaxonomy.taxon_species.isnot(None), species_binomial_sql()),
+        else_=None,
+    )
+
+
+def species_rank_common_sql():
+    """
+    Species-rank display name (common mode).
+
+    A variant row has no species-level common name (its common_name names
+    the leaf, "Red fox adult"), so it falls back to the binomial, the
+    same way genus and family buckets show Latin names in both modes.
+    """
+    from sqlalchemy import case, null
+
+    from app.models.label_taxonomy import LabelTaxonomy
+
+    return case(
+        (LabelTaxonomy.taxon_species.is_(None), null()),
+        (LabelTaxonomy.taxon_variant.isnot(None), species_binomial_sql()),
+        else_=LabelTaxonomy.common_name,
+    )
 
 
 class _TaxonRow(Protocol):
@@ -83,11 +146,14 @@ def resolve_rank(
 
 def _rank_value(taxonomy_row: _TaxonRow, rank: TaxonomicRank) -> str | None:
     if rank == "species":
-        # Species rank uses scientific_name to avoid species-epithet
-        # collisions across genera (e.g. two "pardus" species).
-        if taxonomy_row.taxon_species is None:
-            return None
-        return taxonomy_row.scientific_name or taxonomy_row.name
+        # Species rank shows the binomial built from the rank columns,
+        # never the row's own scientific_name: that names the leaf and
+        # can sit below species ("V. vulpes (adult)" on a variant row),
+        # which would keep variants from merging at this rank. The
+        # binomial also avoids epithet collisions across genera.
+        return species_binomial(
+            taxonomy_row.taxon_genus, taxonomy_row.taxon_species
+        )
     raw = getattr(taxonomy_row, RANK_COLUMNS[rank], None)
     return to_display_case(raw)
 

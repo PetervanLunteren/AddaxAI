@@ -332,7 +332,6 @@ def run_postprocessing_for_deployment(
             if taxonomy_csv.exists():
                 from app.ml.taxonomic_rollup import (
                     apply_taxonomic_rollup_to_results,
-                    load_taxonomy_lookup,
                 )
 
                 rollup_result = apply_taxonomic_rollup_to_results(
@@ -348,13 +347,12 @@ def run_postprocessing_for_deployment(
                     try:
                         from app.ml.taxonomy_db import add_rollup_taxonomy_entry
 
-                        taxonomy_lookup = load_taxonomy_lookup(taxonomy_csv)
                         for entry in rollup_result.new_entries:
                             add_rollup_taxonomy_entry(
                                 project.classification_model_id,
                                 entry["name"],
                                 entry["level"],
-                                taxonomy_lookup,
+                                entry["ancestors"],
                                 db,
                             )
                     except Exception as e:

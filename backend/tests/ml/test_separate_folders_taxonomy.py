@@ -47,6 +47,7 @@ def _add_taxonomy(
     taxon_family: str | None = None,
     taxon_genus: str | None = None,
     taxon_species: str | None = None,
+    taxon_variant: str | None = None,
 ) -> LabelTaxonomy:
     row = LabelTaxonomy(
         classification_model_id=model_id,
@@ -58,6 +59,7 @@ def _add_taxonomy(
         taxon_family=taxon_family,
         taxon_genus=taxon_genus,
         taxon_species=taxon_species,
+        taxon_variant=taxon_variant,
     )
     db.add(row)
     db.flush()
@@ -150,6 +152,54 @@ def test_scientific_mode_uses_scientific_name_leaf(db, tmp_path):
     assert not (
         target / "mammalia" / "carnivora" / "canidae" / "canis" / "grey_wolf"
     ).exists()
+
+
+def test_variant_label_gets_a_species_segment(db, tmp_path):
+    """A variant label sits one rank below species, so its path gains a
+    species segment: Class/Order/Family/Genus/species/leaf."""
+    project = make_project(
+        db,
+        name="sep-tree-variant",
+        counting_threshold=0.5,
+        classification_model_id="test-model",
+    )
+    _add_taxonomy(
+        db,
+        model_id="test-model",
+        name="red fox adult",
+        level="variant",
+        scientific_name="V. vulpes (adult)",
+        taxon_class="mammalia",
+        taxon_order="carnivora",
+        taxon_family="canidae",
+        taxon_genus="vulpes",
+        taxon_species="vulpes",
+        taxon_variant="adult",
+    )
+    dep = make_deployment(db, project_id=project.id)
+    src = _make_source(tmp_path, "IMG_001.jpg")
+    f = make_file(
+        db, deployment_id=dep.id, file_path=src, observation_type="animal"
+    )
+    make_detection(db, file_id=f.id, confidence=0.9, label="red fox adult")
+
+    target = tmp_path / "out"
+    result = separate_into_folders(
+        db, project.id, _ctx(target), media_threshold=0.5
+    )
+
+    assert result.copied_count == 1
+    expected = (
+        target
+        / "mammalia"
+        / "carnivora"
+        / "canidae"
+        / "vulpes"
+        / "vulpes"
+        / "red_fox_adult"
+        / "IMG_001.jpg"
+    )
+    assert expected.is_file()
 
 
 def test_scientific_mode_falls_back_to_label_without_scientific_name(db, tmp_path):

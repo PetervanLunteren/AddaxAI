@@ -41,6 +41,9 @@ class LabelTaxonomy(Base):
     taxon_family: Mapped[str | None] = mapped_column(String(100), nullable=True)
     taxon_genus: Mapped[str | None] = mapped_column(String(100), nullable=True)
     taxon_species: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # One optional rank below species (free-form: "adult", "juvenile",
+    # "male", ...). Rows with a variant carry level="variant".
+    taxon_variant: Mapped[str | None] = mapped_column(String(100), nullable=True)
     level: Mapped[str] = mapped_column(
         String(20), nullable=False
     )

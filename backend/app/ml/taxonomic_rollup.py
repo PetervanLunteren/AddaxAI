@@ -33,24 +33,33 @@ def format_scientific_name_from_taxonomy_row(
     taxon_family: str | None = None,
     taxon_order: str | None = None,
     taxon_class: str | None = None,
+    taxon_variant: str | None = None,
 ) -> str:
     """
     Format a Latin display name from individual taxonomy fields.
 
     Useful when you have a LabelTaxonomy row or individual fields
     rather than a full taxonomy_lookup dict.
+
+    A variant is appended in parentheses ("V. vulpes (adult)") so two
+    variant classes of one species never share a scientific name; the
+    parentheses make clear it is not part of the Latin name.
     """
     if taxon_species and taxon_genus:
-        return f"{taxon_genus[0].upper()}. {taxon_species}"
-    if taxon_genus:
-        return taxon_genus.capitalize()
-    if taxon_family:
-        return taxon_family.capitalize()
-    if taxon_order:
-        return taxon_order.capitalize()
-    if taxon_class:
-        return taxon_class.capitalize()
-    return label[0].upper() + label[1:] if label else label
+        base = f"{taxon_genus[0].upper()}. {taxon_species}"
+    elif taxon_genus:
+        base = taxon_genus.capitalize()
+    elif taxon_family:
+        base = taxon_family.capitalize()
+    elif taxon_order:
+        base = taxon_order.capitalize()
+    elif taxon_class:
+        base = taxon_class.capitalize()
+    else:
+        base = label[0].upper() + label[1:] if label else label
+    if taxon_variant:
+        return f"{base} ({taxon_variant})"
+    return base
 
 
 def format_common_name(label: str) -> str:
@@ -161,46 +170,39 @@ def load_taxonomy_lookup(csv_path: Path) -> dict[str, dict[str, str]]:
     return lookup
 
 
-def _format_rollup_label(
-    level: str, taxon_value: str, taxonomy_lookup: dict[str, dict[str, str]],
-) -> str:
-    """Format the display label for a rolled-up detection."""
-    if level == "species":
-        # Find genus from any taxonomy entry with that species value
-        for entry in taxonomy_lookup.values():
-            if entry.get("species") == taxon_value and "genus" in entry:
-                return f"{entry['genus']} {taxon_value}"
-        return taxon_value
+def _format_rollup_label(level: str, entry: dict[str, str]) -> str:
+    """Format the display label for a rolled-up detection.
+
+    ``entry`` is the representative taxonomy entry the rollup summed on,
+    so the genus is read from the same chain the taxon came from, never
+    looked up by value (two genera can share a species epithet).
+    """
+    taxon_value = entry[level]
+    if level == "species" and "genus" in entry:
+        return f"{entry['genus']} {taxon_value}"
     return taxon_value
 
 
 def _build_rollup_description(
-    level: str, taxon_value: str, taxonomy_lookup: dict[str, dict[str, str]],
+    level: str, taxon_value: str, ancestors: dict[str, str],
 ) -> str:
     """
     Build a 7-token classification_category_description for a rolled-up label.
 
     Format: name;class;order;family;genus;species;name
-    Fills in ancestor levels from any taxonomy entry that has this taxon value.
+    ``ancestors`` is the representative taxonomy entry the rollup summed
+    on (empty for the kingdom fallback, which has no taxonomy fields).
     """
-    # Kingdom level (animal) has no taxonomy fields
     if level == "kingdom":
         return f"{taxon_value};;;;;;{taxon_value}"
 
-    # Find a taxonomy entry with this taxon to get ancestor levels
-    ancestors: dict[str, str] = {}
-    for entry in taxonomy_lookup.values():
-        if entry.get(level) == taxon_value:
-            ancestors = entry
-            break
-
-    label = _format_rollup_label(level, taxon_value, taxonomy_lookup)
+    label = _format_rollup_label(level, ancestors)
     tokens = [label]
     for lvl in TAXONOMY_LEVELS:
         if lvl == level:
             tokens.append(taxon_value)
         elif TAXONOMY_LEVELS.index(lvl) < TAXONOMY_LEVELS.index(level):
-            # Ancestor level — fill from taxonomy entry
+            # Ancestor level — fill from the representative entry
             tokens.append(ancestors.get(lvl, ""))
         else:
             # More specific than rollup level — leave empty
@@ -317,9 +319,13 @@ def rollup_single_detection(
     # which only returns top-5 from its classifier)
     top5 = classifications[:5]
 
-    # Sum top-5 scores at each taxonomy level.
-    # Also track a representative entry per (level, taxon) for the
-    # allowed check.
+    # Sum top-5 scores at each taxonomy level, keyed by the full
+    # ancestor-chain key ("class;order;family;genus;species" trimmed to
+    # the level), never by the bare taxon value: species epithets repeat
+    # across genera (four "canadensis" classes in one real model), and a
+    # bare-value key summed them together and labelled the result from
+    # whichever entry matched first. Also track a representative entry
+    # per key for the allowed check and label formatting.
     level_sums: dict[str, dict[str, float]] = {
         level: {} for level in TAXONOMY_LEVELS
     }
@@ -334,12 +340,12 @@ def rollup_single_detection(
         entry = taxonomy_lookup[name]
         for level in TAXONOMY_LEVELS:
             if level in entry:
-                taxon = entry[level]
-                level_sums[level][taxon] = (
-                    level_sums[level].get(taxon, 0.0) + conf
+                key = _build_taxonomy_key_for_level(entry, level)
+                level_sums[level][key] = (
+                    level_sums[level].get(key, 0.0) + conf
                 )
-                if taxon not in level_entries[level]:
-                    level_entries[level][taxon] = entry
+                if key not in level_entries[level]:
+                    level_entries[level][key] = entry
 
     if top_is_excluded:
         # Path A: geofence rollup
@@ -360,22 +366,21 @@ def rollup_single_detection(
         sums = level_sums.get(level, {})
         if not sums:
             continue
-        for taxon in sorted(sums, key=sums.get, reverse=True):
-            if sums[taxon] < walk_threshold:
+        for key in sorted(sums, key=sums.get, reverse=True):
+            if sums[key] < walk_threshold:
                 break  # remaining taxa have even lower scores
-            if allowed_taxonomy_keys is not None:
-                entry = level_entries[level][taxon]
-                key = _build_taxonomy_key_for_level(entry, level)
-                if key not in allowed_taxonomy_keys:
-                    continue  # geofence: ancestor not allowed
-            label = _format_rollup_label(
-                level, taxon, taxonomy_lookup
-            )
+            if (
+                allowed_taxonomy_keys is not None
+                and key not in allowed_taxonomy_keys
+            ):
+                continue  # geofence: ancestor not allowed
+            entry = level_entries[level][key]
             return {
-                "label": label,
-                "confidence": sums[taxon],
+                "label": _format_rollup_label(level, entry),
+                "confidence": sums[key],
                 "level": level,
-                "taxon": taxon,
+                "taxon": entry[level],
+                "ancestors": entry,
             }
 
     # No level crossed the threshold with an allowed result.
@@ -392,6 +397,7 @@ def rollup_single_detection(
             "confidence": kingdom_sum,
             "level": "kingdom",
             "taxon": "animal",
+            "ancestors": {},
         }
 
     # Nothing crossed any threshold. Return None to keep the raw top-1
@@ -481,15 +487,18 @@ def apply_taxonomic_rollup_to_results(
                 class_id_to_name[new_id] = label
                 existing_names[label.lower()] = new_id
                 descriptions[new_id] = _build_rollup_description(
-                    result["level"], result["taxon"], taxonomy_lookup,
+                    result["level"], result["taxon"], result["ancestors"],
                 )
 
-            # Track new rolled-up entries (deduplicate by label)
+            # Track new rolled-up entries (deduplicate by label). The
+            # ancestors ride along so the DB entry never has to find
+            # them again by value search.
             if label.lower() not in seen_rollup_labels:
                 seen_rollup_labels.add(label.lower())
                 new_entries.append({
                     "name": label.lower(),
                     "level": result["level"],
+                    "ancestors": result["ancestors"],
                 })
 
             det["classifications"] = [

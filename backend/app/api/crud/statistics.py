@@ -35,7 +35,12 @@ from app.api.schemas.statistics import (
 )
 from app.ml.detection_visibility import on_visible_frame
 from app.ml.label_exclusion import NON_WILDLIFE_CLASSES
-from app.ml.taxonomic_rank import HIGHER_LEVEL_TAXA, NO_TAXONOMY
+from app.ml.taxonomic_rank import (
+    HIGHER_LEVEL_TAXA,
+    NO_TAXONOMY,
+    species_rank_common_sql,
+    species_rank_scientific_sql,
+)
 from app.ml.taxonomic_rank import RANK_COLUMNS as _RANK_COLUMNS
 from app.models.deployment import Deployment
 from app.models.detection import Detection
@@ -169,17 +174,12 @@ def _rank_display_label(taxonomic_rank: str | None):
     # are treated as having no taxonomy.
     has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
 
-    # For species rank, use the pre-computed scientific_name from
-    # label_taxonomy (e.g. "G. camelopardalis") instead of building
-    # the binomial in SQL.
+    # For species rank, build the binomial from the rank columns; the
+    # row's own scientific_name names the leaf and can sit below
+    # species ("V. vulpes (adult)" on a variant row), which would keep
+    # variants of one species from merging at this rank.
     if taxonomic_rank == "species":
-        rank_display = case(
-            (
-                LabelTaxonomy.taxon_species.isnot(None),
-                LabelTaxonomy.scientific_name,
-            ),
-            else_=None,
-        )
+        rank_display = species_rank_scientific_sql()
     else:
         # The taxon_* columns are stored lowercase (CSV convention).
         # Family / genus / order / class names are conventionally
@@ -436,22 +436,11 @@ def get_species_distribution(
             rank_col = getattr(LabelTaxonomy, col_name)
             has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
 
-            # For species rank, use pre-computed names
+            # For species rank, build both names from the rank columns
+            # (see species_rank_scientific_sql / species_rank_common_sql)
             if taxonomic_rank == "species":
-                rank_display = case(
-                    (
-                        LabelTaxonomy.taxon_species.isnot(None),
-                        LabelTaxonomy.scientific_name,
-                    ),
-                    else_=None,
-                )
-                rank_common = case(
-                    (
-                        LabelTaxonomy.taxon_species.isnot(None),
-                        LabelTaxonomy.common_name,
-                    ),
-                    else_=None,
-                )
+                rank_display = species_rank_scientific_sql()
+                rank_common = species_rank_common_sql()
             else:
                 rank_display = rank_col
                 rank_common = rank_col
@@ -702,16 +691,9 @@ def get_activity_pattern(
             if col_name:
                 rank_col = getattr(LabelTaxonomy, col_name)
                 has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
-                # For species rank, use scientific_name to match
-                # the abbreviated binomial shown in the dropdown
+                # Species rank matches the binomial shown in the dropdown
                 if taxonomic_rank == "species":
-                    rank_display = case(
-                        (
-                            LabelTaxonomy.taxon_species.isnot(None),
-                            LabelTaxonomy.scientific_name,
-                        ),
-                        else_=None,
-                    )
+                    rank_display = species_rank_scientific_sql()
                 else:
                     rank_display = rank_col
                 label_expr = case(
@@ -840,13 +822,7 @@ def _event_decimal_hours_for_species(
             rank_col = getattr(LabelTaxonomy, col_name)
             has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
             if taxonomic_rank == "species":
-                rank_display = case(
-                    (
-                        LabelTaxonomy.taxon_species.isnot(None),
-                        LabelTaxonomy.scientific_name,
-                    ),
-                    else_=None,
-                )
+                rank_display = species_rank_scientific_sql()
             else:
                 rank_display = rank_col
             label_expr = case(
@@ -1155,16 +1131,9 @@ def get_detection_trend(
             if col_name:
                 rank_col = getattr(LabelTaxonomy, col_name)
                 has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
-                # For species rank, use scientific_name to match
-                # the abbreviated binomial shown in the dropdown
+                # Species rank matches the binomial shown in the dropdown
                 if taxonomic_rank == "species":
-                    rank_display = case(
-                        (
-                            LabelTaxonomy.taxon_species.isnot(None),
-                            LabelTaxonomy.scientific_name,
-                        ),
-                        else_=None,
-                    )
+                    rank_display = species_rank_scientific_sql()
                 else:
                     rank_display = rank_col
                 label_expr = case(

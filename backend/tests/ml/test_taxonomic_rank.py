@@ -103,12 +103,52 @@ def test_species_rank_uses_scientific_name():
     ) == "P. pardus"
 
 
-def test_species_rank_falls_back_to_name_when_no_scientific_name():
+def test_species_rank_needs_genus_to_form_the_binomial():
+    """A species value without a genus cannot name the species bucket.
+
+    Such a row buckets like any other row that has nothing at the
+    requested rank (here: no taxon_class either, so "No taxonomy").
+    """
     row = Row(name="leopard", taxon_species="pardus")
     assert resolve_rank(
         category="animal", label="leopard", scientific_name=None,
         taxonomy_row=row, rank="species",
-    ) == "leopard"
+    ) == NO_TAXONOMY
+
+
+def test_species_rank_merges_variants_of_one_species():
+    """Variant rows show the plain binomial at species rank, never their
+    own leaf name, so adult and juvenile land in one bucket."""
+    adult = Row(
+        name="red fox adult",
+        scientific_name="V. vulpes (adult)",
+        taxon_class="mammalia",
+        taxon_order="carnivora",
+        taxon_family="canidae",
+        taxon_genus="vulpes",
+        taxon_species="vulpes",
+    )
+    juvenile = Row(
+        name="red fox juvenile",
+        scientific_name="V. vulpes (juvenile)",
+        taxon_class="mammalia",
+        taxon_order="carnivora",
+        taxon_family="canidae",
+        taxon_genus="vulpes",
+        taxon_species="vulpes",
+    )
+    for row in (adult, juvenile):
+        assert resolve_rank(
+            category="animal", label=row.name,
+            scientific_name=row.scientific_name,
+            taxonomy_row=row, rank="species",
+        ) == "V. vulpes"
+    # Most specific keeps them apart via the qualified name.
+    assert resolve_rank(
+        category="animal", label=adult.name,
+        scientific_name=adult.scientific_name,
+        taxonomy_row=adult, rank="all",
+    ) == "V. vulpes (adult)"
 
 
 def test_family_rank_returns_capitalised_taxon_family():
