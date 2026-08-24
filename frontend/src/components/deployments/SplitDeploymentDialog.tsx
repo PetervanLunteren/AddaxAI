@@ -173,6 +173,17 @@ export function SplitDeploymentDialog({
             </p>
           )}
 
+          {preview &&
+            !blocked &&
+            preview.targets.length === 1 &&
+            !canIncrease && (
+              <p className="text-sm text-muted-foreground">
+                Only one folder holds files here, so there is nothing to
+                split. Splitting needs at least two subfolders that each hold
+                files.
+              </p>
+            )}
+
           {preview && !blocked && preview.targets.length > 0 && (
             <div>
               <p className="text-sm mb-2">

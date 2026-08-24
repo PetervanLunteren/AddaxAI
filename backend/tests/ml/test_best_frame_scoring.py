@@ -132,7 +132,7 @@ def test_scoring_population_includes_every_category(tmp_path, make_video):
 
     assert [it["frame_number"] for it in stub.items] == [0]
 
-    scored = stub.scoring[str(video.resolve())]
+    scored = stub.scoring[str(video)]
     assert sorted(d["frame_number"] for d in scored) == [0, 4, 8]
     assert sorted(d["conf"] for d in scored) == [0.80, 0.90, 0.95]
 

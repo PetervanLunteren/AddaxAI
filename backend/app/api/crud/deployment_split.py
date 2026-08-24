@@ -111,12 +111,14 @@ def _bucket_files_by_child(
     """
     buckets: dict[Path, list[File]] = {c: [] for c in children}
     unmatched: list[File] = []
-    # Pre-compute child prefixes to keep the inner loop tight.
-    prefixes = [(c, str(c) + "/") for c in children]
     for f in files:
+        # Path arithmetic, not string prefixes: a string test needs the
+        # platform separator appended, and a hardcoded "/" matched nothing
+        # against the backslash paths Windows stores.
+        file_path = Path(f.file_path)
         matched: Path | None = None
-        for c, pref in prefixes:
-            if f.file_path.startswith(pref) or f.file_path == str(c):
+        for c in children:
+            if file_path.is_relative_to(c):
                 matched = c
                 break
         if matched is None:
@@ -372,7 +374,7 @@ def _slice_results_json(
         rel = img.get("file")
         if not rel:
             continue
-        abs_path = (parent_folder / rel).resolve()
+        abs_path = parent_folder / rel
         if str(abs_path) not in child_file_paths:
             continue
         new_img = dict(img)

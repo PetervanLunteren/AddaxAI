@@ -92,7 +92,9 @@ export function PromoteDialog({
       // projects list. Invalidate that plus the folder-run + project
       // detail queries the dashboard route will hit on mount.
       queryClient.invalidateQueries({ queryKey: ["projects", "research"] });
-      queryClient.invalidateQueries({ queryKey: ["folder-run", runId] });
+      // The run row is gone once it is a project, so a refetch would only
+      // log a 404; drop the cached entry instead.
+      queryClient.removeQueries({ queryKey: ["folder-run", runId] });
       queryClient.invalidateQueries({ queryKey: ["projects", runId] });
       // ...and out of the step-1 "recent runs" list, which only carries
       // mode='folder_run' rows. This is a different key from the

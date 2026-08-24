@@ -658,6 +658,24 @@ The two never meet today: the event label is used only by `separate_folders` and
 
 `observation_type` is denormalised, so it is recomputed at ingest, after postprocessing, on any detection edit, and on a project threshold change. A rule change therefore needs a data migration; `5e6f7a8b9c0d` is the worked example, with its data test in `tests/db/test_migration_data.py`.
 
+## Paths to user media are never resolved
+
+One rule:
+
+> A user media path is `deployment_folder / <the JSON's relative "file" entry>`, in the form the user picked. Never call `resolve()` on it, and never `relative_to(deployment_folder)` to get the relative part back: the JSON entry already is it.
+
+`Deployment.folder_path` is stored exactly as picked (the folder picker, the CSV import's `normalize_folder`, the worker's `Path(entry.folder_path)` all leave it alone), and `File.file_path` is built from it by `load_json_to_database`. Every place that later compares the two therefore holds by construction: `startswith`, `relative_to`, the postprocessing lookup key, the split-into-children rewrite.
+
+**Why `resolve()` is the enemy here.** On Windows, `Path.resolve()` expands a mapped network drive or a `subst` drive to its UNC target (CPython bpo-37993, since 3.8): `U:\cameras\...` becomes `\\192.168.2.245\Imagery Storage\cameras\...`. The deployment folder is never resolved, so a resolved file path is not under it any more. Measured on a beta tester's Windows machine (2026-08-20): every deployment holding a video failed in classification with `ValueError: '\\192.168.2.245\...\04270001.AVI' is not in the subpath of 'U:\...'`, while photos on the same drive worked. Only video paths reach a `relative_to`, so the user read it as an AVI problem and found a forum thread about an unrelated, already fixed AVI crash. Three sites had that exact shape (`json_pipeline.py` in the classifier path and at DB load, `best_frame.py` in the no-classifier path).
+
+**The crash was the visible half.** Because `File.file_path` was written from the resolved form, on such a machine no file row started with `Deployment.folder_path`, and eight `relative_to` consumers catch the `ValueError` and degrade silently: folder verification (`crud/deployment.py`) skipped every sample and reported the folder valid, relink rewrote the folder pointer and left every file row stale, species folders (`separate_folders.py`) flattened the user's subfolders, and the Files export fell back to bare filenames, which collide across cameras. Removing the `resolve()` fixes all of it at once, which is why this is a rule and not a patch on three lines.
+
+**Sites that resolve both sides are fine and are left alone**: `recognition_json.py` and the preview endpoints in `routers/deployments.py` resolve the file and the folder together, so they can never disagree. App-internal paths (models dir, backups, environments) are not user media and are unaffected.
+
+**On macOS and Linux this changes one thing**: a deployment folder reached through a symlink now stores the symlink form, not the target. That is the same rule and matches what `normalize_folder` already promised.
+
+`tests/ml/test_media_paths_never_resolved.py` and its integration sibling pin it with a symlinked deployment folder, which diverges under `resolve()` exactly like a mapped drive, and a guard that fails when `.resolve()` reappears in the four files that produce or compare the stored form. The real thing is checked by hand on Windows: `subst U: C:\some\folder`, pick `U:\...` in the app, analyse a few videos.
+
 ## Datetime conventions
 
 There are two kinds of datetimes in this codebase and they must never be mixed in arithmetic or comparison:

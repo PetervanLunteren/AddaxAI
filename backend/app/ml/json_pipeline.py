@@ -268,7 +268,7 @@ def load_json_to_database(
             entry_count += 1
             if img.get("failure"):
                 continue
-            abs_path = (deployment_folder / img["file"]).resolve()
+            abs_path = deployment_folder / img["file"]
             fmt = abs_path.suffix.lstrip(".").lower() if abs_path.exists() else ""
             if fmt in video_extensions:
                 video_paths.append(abs_path)
@@ -297,7 +297,10 @@ def load_json_to_database(
                 )
                 continue
             relative_file = img["file"]
-            absolute_path = (deployment_folder / relative_file).resolve()
+            # Never resolve(): on Windows that rewrites a mapped drive to
+            # its UNC form, and this is the path every File row stores.
+            # See DEVELOPERS.md "Paths to user media are never resolved".
+            absolute_path = deployment_folder / relative_file
 
             # Files with no extractable capture timestamp are still
             # ingested (data-agnostic): they get a File row with
@@ -348,7 +351,7 @@ def load_json_to_database(
             best_frame_path = None
             if best_frame_number is not None:
                 # MegaDetector's extract_frames preserves relative dir structure
-                relative_video_path = absolute_path.relative_to(deployment_folder)
+                relative_video_path = Path(relative_file)
                 best_frame_path = str(
                     _af
                     / "video_frames"
@@ -756,11 +759,10 @@ async def run_classification_on_json(
     for img_info in md_results.get("images", []) or []:
         if img_info.get("failure"):
             continue
-        file_path = (deployment_folder / img_info["file"]).resolve()
+        file_path = deployment_folder / img_info["file"]
         if file_path.suffix.lower() not in VIDEO_EXTENSIONS:
             continue
-        relative_video_path = file_path.relative_to(deployment_folder)
-        dest_dir = _bf_base / relative_video_path
+        dest_dir = _bf_base / img_info["file"]
         best_frame_outputs[str(file_path)] = str(dest_dir)
         video_path_by_abs[str(file_path)] = file_path
         scoring_detections[str(file_path)] = [
@@ -779,7 +781,7 @@ async def run_classification_on_json(
     for img_idx, det_idx, detection in animal_detections:
         img_info = md_results["images"][img_idx]
         relative_file = img_info["file"]
-        file_path = (deployment_folder / relative_file).resolve()
+        file_path = deployment_folder / relative_file
 
         is_video = file_path.suffix.lower() in VIDEO_EXTENSIONS
 
@@ -903,7 +905,7 @@ async def run_classification_on_json(
             for img_idx, img_info in enumerate(md_results.get("images", []) or []):
                 if img_info.get("failure"):
                     continue
-                abs_path = str((deployment_folder / img_info["file"]).resolve())
+                abs_path = str(deployment_folder / img_info["file"])
                 abs_to_img_idx[abs_path] = img_idx
             for video_path, best_fn in best_frames.items():
                 idx = abs_to_img_idx.get(video_path)

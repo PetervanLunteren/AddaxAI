@@ -578,7 +578,8 @@ def update_database_from_smoothed_results(
         if img.get("failure"):
             continue
         relative_file = img["file"]
-        absolute_path = str((deployment_folder / relative_file).resolve())
+        # Must build the path exactly as json_pipeline stores File.file_path.
+        absolute_path = str(deployment_folder / relative_file)
 
         for det in img.get("detections") or []:
             try:

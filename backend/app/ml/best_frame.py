@@ -145,7 +145,7 @@ def select_best_frames_streaming(
     for img_entry in data.get("images") or []:
         if img_entry.get("failure"):
             continue
-        absolute = (deployment_folder / img_entry["file"]).resolve()
+        absolute = deployment_folder / img_entry["file"]
         if absolute.suffix.lower() in VIDEO_EXTENSIONS:
             videos.append((img_entry, absolute))
 
@@ -184,10 +184,9 @@ def select_best_frames_streaming(
 
             # Write the chosen JPEG using the same filename scheme legacy
             # data uses, so `best_frame_path` math stays unchanged.
-            relative_video_path = absolute.relative_to(deployment_folder)
             dest = (
                 output_base
-                / relative_video_path
+                / img_entry["file"]
                 / f"frame{best_frame_number:06d}.jpg"
             )
             try:

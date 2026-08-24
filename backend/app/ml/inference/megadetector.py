@@ -457,13 +457,20 @@ class MegaDetectorV1000(DetectionModel):
                 with open(temp_output) as f:
                     md_results = json.load(f)
 
+                # Every consumer treats "file" as relative to the deployment
+                # folder (see DEVELOPERS.md "Paths to user media are never
+                # resolved"), so an entry that cannot be made relative must
+                # stop the run here rather than be kept absolute and land
+                # best frames beside the user's own files.
                 for img in md_results.get("images", []):
                     abs_path = Path(img["file"])
                     try:
                         img["file"] = str(abs_path.relative_to(deployment_folder))
-                    except ValueError:
-                        # Path not relative to deployment folder — keep as-is
-                        pass
+                    except ValueError as e:
+                        raise RuntimeError(
+                            f"MegaDetector reported {abs_path}, which is not "
+                            f"under the deployment folder {deployment_folder}"
+                        ) from e
 
                 with open(output_file, "w") as f:
                     json.dump(md_results, f, indent=2)

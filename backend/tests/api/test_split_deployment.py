@@ -974,3 +974,28 @@ def test_crud_split_not_found(db):
         assert exc.status_code == 404
     else:
         raise AssertionError("expected SplitError")
+
+
+def test_bucketing_matches_by_path_not_by_string_prefix(tmp_path):
+    """Files are assigned to a child by path arithmetic. The old string
+    test appended a hardcoded "/" to the child, which never matched the
+    backslash paths Windows stores, so every file went unmatched and a
+    split on Windows produced children with nothing in them."""
+    from types import SimpleNamespace
+
+    from app.api.crud.deployment_split import _bucket_files_by_child
+
+    root = tmp_path / "parent"
+    cam_b = root / "camB"
+    cam_b2 = root / "camB2"
+    inside = SimpleNamespace(file_path=str(cam_b / "a.jpg"))
+    nested = SimpleNamespace(file_path=str(cam_b / "deeper" / "b.jpg"))
+    lookalike = SimpleNamespace(file_path=str(cam_b2 / "c.jpg"))
+    at_root = SimpleNamespace(file_path=str(root / "d.jpg"))
+
+    buckets, unmatched = _bucket_files_by_child(
+        root, [inside, nested, lookalike, at_root], [cam_b]
+    )
+
+    assert buckets[cam_b] == [inside, nested]
+    assert unmatched == [lookalike, at_root]
