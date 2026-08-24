@@ -8,9 +8,11 @@ one. It is the same GBIF-resolve job each time, with a few traps.
 The producer is `backend/scripts/resolve_taxonomy_gbif.py`. It runs at staging
 time on a dev machine only; the GBIF calls are never an app dependency.
 
-Output columns (`WEBUI_HEADER`): `model_class,class,order,family,genus,species`.
+Output columns (`WEBUI_HEADER`): `model_class,class,order,family,genus,species,variant`.
 All values lowercase, empty when unknown, `species` is the epithet only
-(`Panthera pardus` gives `pardus`).
+(`Panthera pardus` gives `pardus`). `variant` is one optional rank below species
+for models whose classes sit deeper than a species ("adult", "juvenile", "male");
+empty for everything else.
 
 ## Steps
 
@@ -30,6 +32,10 @@ All values lowercase, empty when unknown, `species` is the epithet only
      GBIF fills the hierarchy down from there.
    - reuse a sibling model's resolved rows for overlapping classes rather than
      re-resolving.
+   - a variant class (age, sex, morph of one species): the species binomial in
+     `scientific_name` plus the variant in a `variant` column, e.g.
+     `red fox adult,Vulpes vulpes,adult`. The variant passes through verbatim;
+     GBIF resolves only the species part.
    ```
    model_class,scientific_name
    eastern chipmunk,Tamias striatus
@@ -69,6 +75,10 @@ All values lowercase, empty when unknown, `species` is the epithet only
   loaded to the DB, so an empty row for them is correct.
 - **The species column is the epithet only**, not the full binomial. The script
   handles this; do not "fix" it to a binomial.
+- **`variant` is never sent to GBIF** and never marks a row hand-written. It is
+  a free-form passthrough, lowercase. A model whose CSV uses it needs
+  `min_app_version` set to the first release with variant support, or older
+  apps show two classes with the same scientific name.
 - **Peter reviews before upload.** Taxonomy is an ecologist's call; surface the
   flagged rows and the group mappings you chose.
 

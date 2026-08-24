@@ -83,6 +83,10 @@ models are out of scope.
    `check_weights_ready` gates on `hubconf.py` being present.
    `min_app_version` is a real gate: set it to the release that ships the env
    this model needs, or old clients will offer a model their env cannot run.
+   A model whose `taxonomy.csv` uses the `variant` column (classes below
+   species, e.g. adult / juvenile) needs `min_app_version` at the first release
+   with variant support: older apps ignore the column and show two classes
+   with the same scientific name.
 
 7. **Validate (the part that catches a botched port).**
    - Fidelity: run the author's own code and your `inference.py` on the same

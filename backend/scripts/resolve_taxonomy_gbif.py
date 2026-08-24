@@ -145,7 +145,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.ml.label_exclusion import NON_LABEL_CLASSES  # noqa: E402
 
-WEBUI_HEADER = ["model_class", "class", "order", "family", "genus", "species"]
+WEBUI_HEADER = [
+    "model_class", "class", "order", "family", "genus", "species", "variant",
+]
 RANKS = ["class", "order", "family", "genus", "species"]
 
 GBIF_API = "https://api.gbif.org/v1"
@@ -195,6 +197,10 @@ class Entry:
     # whatever GBIF says, for the columns they cover. Use where GBIF's
     # backbone lags the literature.
     overrides: dict[str, str] = field(default_factory=dict)
+    # One optional rank below species ("adult", "juvenile", "male").
+    # A verbatim passthrough to the output: it is not a taxon, so GBIF
+    # is never consulted for it and it never marks a row hand-written.
+    variant: str = ""
 
 
 def _gbif_get(path: str, **params: str) -> dict | None:
@@ -323,6 +329,7 @@ def resolve_entry(entry: Entry) -> tuple[dict[str, str], str | None]:
     """
     row = {col: "" for col in WEBUI_HEADER}
     row["model_class"] = entry.model_class
+    row["variant"] = entry.variant
 
     # Non-label classes carry no taxonomy by design.
     if entry.model_class in NON_LABEL_CLASSES:
@@ -511,14 +518,16 @@ def _read_entries(path: Path, use_keys: bool) -> list[Entry]:
                 name = _finest_legacy_name(row)
 
             # Any rank column present in the input is a hand-written
-            # correction and outranks GBIF for that column.
+            # correction and outranks GBIF for that column. `variant` is
+            # not one of them: it is a passthrough, never a correction.
             overrides = {
                 rank: (row.get(rank) or "").strip().lower()
                 for rank in RANKS
                 if (row.get(rank) or "").strip()
             }
+            variant = (row.get("variant") or "").strip().lower()
 
-            entries.append(Entry(model_class, key, name, overrides))
+            entries.append(Entry(model_class, key, name, overrides, variant))
     return entries
 
 

@@ -320,6 +320,7 @@ def test_non_label_classes_get_an_empty_row_without_asking_gbif(monkeypatch):
         "family": "",
         "genus": "",
         "species": "",
+        "variant": "",
     }
     assert warning is None
 
@@ -422,6 +423,7 @@ def test_hand_written_row_skips_gbif_entirely(monkeypatch):
         "family": "mustelidae",
         "genus": "neogale",
         "species": "vison",
+        "variant": "",
     }
     assert "hand-written" in warning
 
@@ -581,3 +583,19 @@ def test_dead_key_and_no_name_is_reported(monkeypatch):
     row, warning = resolve_entry(Entry("ghost", "999999999", None))
     assert row["class"] == ""
     assert "nothing resolved" in warning
+
+
+def test_variant_passes_through_without_touching_gbif(monkeypatch):
+    """The variant column is a verbatim passthrough: not a taxon, never
+    sent to GBIF, and it must not mark a row as hand-written (the rank
+    columns still come from GBIF)."""
+    monkeypatch.setattr(
+        "resolve_taxonomy_gbif.resolve_by_name", lambda n: _record()
+    )
+    row, warning = resolve_entry(
+        Entry("red fox adult", None, "Vulpes vulpes", variant="adult")
+    )
+    assert row["variant"] == "adult"
+    # GBIF was consulted (the record fixture filled the ranks).
+    assert row["class"] == "mammalia"
+    assert warning is None or "hand-written" not in warning

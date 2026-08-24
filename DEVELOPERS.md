@@ -1022,6 +1022,30 @@ The detection worker runs this once per deployment. The postprocessing worker ru
 
 Exposed via `GET /api/events/label-tree?project_id=<id>&count_by=<event|detection>`.
 
+### The variant rank
+
+Some models predict one level below species (adult vs juvenile fox). Two rules cover the whole feature:
+
+1. **Variant is one more optional rank below species.** One nullable column `label_taxonomy.taxon_variant`, one `level` value `"variant"`, and one extra rung appended to every list that walks ranks: `TAXONOMY_LEVELS` in `taxonomy_db.py`, `_TAXONOMIC_RANK_ORDER` in `separate_folders.py`, `_TAXON_RANK_INDEX` in `similarity_script.py`, the two tree builders, `_taxon_ranks` in `crud/export.py`. If you add a new rank walker, it gets the rung too.
+2. **Both display names must be unique per class within a model.** The common name already is (from the label: "Red fox adult"). The variant makes the scientific one unique: `V. vulpes (adult)`, formatted only in `format_scientific_name_from_taxonomy_row`.
+
+The CSV contract: an optional `variant` column in `taxonomy.csv`, lowercase free-form ("adult", "juvenile", "male"), empty means no variant. `species` stays the epithet only. `resolve_taxonomy_gbif.py` passes it through verbatim and never sends it to GBIF.
+
+Consequences that follow from rule 2 and are easy to get wrong:
+
+- **Grouping at species rank must use the binomial built from the rank columns** (`species_binomial` / `species_rank_scientific_sql` in `taxonomic_rank.py`), never the row's own `scientific_name`, which names the leaf and can sit below species. That is what merges adult and juvenile into one species bucket. A merged bucket's common-mode name falls back to the binomial: a variant row has no species-level common name, the same way genus and family buckets read Latin in both modes.
+- **"Most specific" needs no change anywhere**: the qualified scientific name is unique, so variants show separately by construction.
+- **Camtrap DP never sees a qualified name.** `scientificName` gets the plain binomial; the variant fills `lifeStage` (adult / subadult / juvenile) or `sex` (female / male), else rides in `observationComments` (`_camtrap_variant_fields` in `crud/export.py`).
+
+Two deliberate non-rungs:
+
+- **The rollup does not walk a variant tier** (`TAXONOMY_LEVELS` in `taxonomic_rollup.py` stays at five). Variant values are not taxa; summing "adult" across species would be wrong. Variant siblings share genus and species, so the species-first Path B walk already merges them. Related: rollup sums are keyed by the full ancestor chain, never the bare taxon value, because species epithets repeat across genera (four `canadensis` classes in one real model) and bare-value keys merged them.
+- **Rank pickers have no "Variant" entry.** "Most specific" already shows variants; a variant rank would duplicate it.
+
+Caveat: event smoothing (megadetector upstream) compares classes by their cleaned taxonomy strings, which are identical for variants of one species, so smoothing can reassign labels between variants within an event. Measured on a real 16-image run of the first variant model: the "normal" preset changed nothing, the "aggressive" preset rewrote 4 of 16 labels (variants flipped in both directions, and species-level rollup rows propagated down to a variant). That is the same trade smoothing already makes between species, so it is documented, not patched.
+
+Trees stay unchanged for models without variants: species becomes a parent node only when a variant sits below it. `tests/api/test_label_tree.py` and `tests/ml/test_taxonomy_parser.py` pin both shapes.
+
 ### The `is_custom` flag
 
 All model-sourced entries (CSV, JSON, rollup) set `is_custom=False`. The flag exists for UI-driven taxonomy creation where users can add custom labels with taxonomy info. Custom entries work identically in the tree builder: it queries all `label_taxonomy` rows for the model regardless of `is_custom`.
