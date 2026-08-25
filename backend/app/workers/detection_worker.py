@@ -191,6 +191,17 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                     # Now scan folder for actual file paths (needed for processing)
                     image_files, video_files = scan_folder_for_media(folder_path)
+                    # A re-run keeps the entry's counts from the first run, so
+                    # a folder that gained files since then was announced
+                    # short. Store what is on disk; the phase messages that
+                    # follow carry these real counts.
+                    if (len(video_files), len(image_files)) != (
+                        entry.video_count, entry.image_count
+                    ):
+                        queue_crud.update_queue_counts(
+                            db, entry_id,
+                            video_count=len(video_files), image_count=len(image_files),
+                        )
                 else:
                     # Legacy path: no counts in database, scan first
                     logger.info("No counts in database, scanning folder (legacy entry)")

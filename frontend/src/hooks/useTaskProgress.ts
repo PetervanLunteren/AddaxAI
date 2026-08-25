@@ -98,6 +98,7 @@ export function useTaskProgress({
   const updateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasSetDeploymentContextRef = useRef<boolean>(false);
   const deploymentIndexRef = useRef<number | undefined>(undefined);
+  const announcedCountsRef = useRef<{ videoCount: number; imageCount: number } | null>(null);
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const taskCompletedRef = useRef(false);
@@ -179,11 +180,25 @@ export function useTaskProgress({
                 hasEmbedding: data.data.has_embedding ?? false,
               };
 
-              // Update context only on first receipt or when deployment_index actually changes
+              // Update context on first receipt, when deployment_index
+              // changes, or when the media counts change. The worker's
+              // first message carries the counts stored with the queue
+              // entry, which are stale after a re-run of a folder that
+              // gained files; the real counts arrive with the first phase
+              // message, and taking only the first receipt hid the video
+              // rows for the whole run.
+              const countsChanged =
+                announcedCountsRef.current?.videoCount !== newContext.videoCount ||
+                announcedCountsRef.current?.imageCount !== newContext.imageCount;
               if (!hasSetDeploymentContextRef.current ||
-                  deploymentIndexRef.current !== newContext.deploymentIndex) {
+                  deploymentIndexRef.current !== newContext.deploymentIndex ||
+                  countsChanged) {
                 hasSetDeploymentContextRef.current = true;
                 deploymentIndexRef.current = newContext.deploymentIndex;
+                announcedCountsRef.current = {
+                  videoCount: newContext.videoCount,
+                  imageCount: newContext.imageCount,
+                };
                 setDeploymentContext(newContext);
               }
             }
