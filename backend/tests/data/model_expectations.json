@@ -1074,6 +1074,39 @@
           }
         ]
       ]
+    },
+    "WUSA-SDZWA-v1": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "corvid",
+          "confidence": 0.9741308689117432
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "corvid",
+            "confidence": 0.9741308689117432
+          },
+          {
+            "label": "bird",
+            "confidence": 0.019889291375875473
+          },
+          {
+            "label": "scrubjay",
+            "confidence": 0.0007769187795929611
+          },
+          {
+            "label": "otter",
+            "confidence": 0.0007000089390203357
+          },
+          {
+            "label": "boar",
+            "confidence": 0.0006718373624607921
+          }
+        ]
+      ]
     }
   }
 }
