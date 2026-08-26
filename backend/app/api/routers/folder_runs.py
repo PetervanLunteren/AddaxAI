@@ -158,6 +158,12 @@ class FolderRunSummary(BaseModel):
     ``folder_exists`` is false when the source folder has moved, been
     deleted, or lives on a drive that isn't plugged in: the UI greys those
     out rather than letting the user resume into missing files.
+
+    ``queue_status`` is the run's queue entry status, so the row can say
+    "previous run did not finish" for a ``failed`` run instead of "not
+    analysed yet". Both have zero files, but they are different facts: a
+    run killed by a crash or a power cut needs to be run again, and the
+    setup step already says so; the list must not contradict it.
     """
 
     id: str
@@ -167,6 +173,7 @@ class FolderRunSummary(BaseModel):
     detection_count: int
     verified_detection_count: int
     folder_exists: bool
+    queue_status: str
 
 
 class FolderRunResponse(BaseModel):
@@ -648,24 +655,24 @@ def list_folder_runs(db: Session = Depends(get_db)) -> list[FolderRunSummary]:
     # A folder run has at most one queue entry, so this join yields one row
     # per run. Sorted newest-first, which makes the dedupe below "keep newest".
     rows = db.execute(
-        select(Project, DeploymentQueue.folder_path)
+        select(Project, DeploymentQueue.folder_path, DeploymentQueue.status)
         .join(DeploymentQueue, DeploymentQueue.project_id == Project.id)
         .where(Project.mode == "folder_run")
         .order_by(Project.updated_at_utc.desc())
     ).all()
 
-    picked: list[tuple[Project, str]] = []
+    picked: list[tuple[Project, str, str]] = []
     seen_folders: set[str] = set()
-    for project, folder_path in rows:
+    for project, folder_path, queue_status in rows:
         if not folder_path or folder_path in seen_folders:
             continue
         seen_folders.add(folder_path)
-        picked.append((project, folder_path))
+        picked.append((project, folder_path, queue_status))
 
     if not picked:
         return []
 
-    project_ids = [p.id for p, _ in picked]
+    project_ids = [p.id for p, _, _ in picked]
 
     # One grouped count for the whole page rather than a query per row.
     file_counts = dict(
@@ -708,7 +715,7 @@ def list_folder_runs(db: Session = Depends(get_db)) -> list[FolderRunSummary]:
     }
 
     summaries: list[FolderRunSummary] = []
-    for project, folder_path in picked:
+    for project, folder_path, queue_status in picked:
         detection_count, verified_detection_count = label_counts.get(
             project.id, (0, 0)
         )
@@ -721,6 +728,7 @@ def list_folder_runs(db: Session = Depends(get_db)) -> list[FolderRunSummary]:
                 detection_count=detection_count,
                 verified_detection_count=verified_detection_count,
                 folder_exists=Path(folder_path).is_dir(),
+                queue_status=queue_status,
             )
         )
     return summaries

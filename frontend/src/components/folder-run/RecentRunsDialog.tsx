@@ -60,10 +60,17 @@ import {
  * describe the database, not the folder the user picked, which is full of
  * images. The folder's own size isn't known here, so the row stays quiet
  * about it rather than guessing.
+ *
+ * A failed run (killed by a crash or a power cut) also has zero files, but
+ * it is not "not analysed yet": it has to be run again, and the setup step
+ * says exactly that. The row uses the same words so the two never disagree.
  */
 function formatRunFacts(run: FolderRunSummary, when: string): string {
   // Date first: it is the one fact every row has, so the column reads down
   // cleanly whether or not a run has been analysed.
+  if (run.queue_status === "failed") {
+    return `${when} · previous run did not finish`;
+  }
   if (run.file_count === 0) return `${when} · not analysed yet`;
   const files = `${run.file_count.toLocaleString()} files`;
   return `${when} · ${files} · ${formatReview(run)}`;

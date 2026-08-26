@@ -6,6 +6,13 @@
  * models, counts, verification progress) so the user can see exactly
  * what they're about to discard, then spells out the destructive
  * effect with the verified count called out specifically.
+ *
+ * A failed run (killed by a crash or a power cut) gets a different
+ * dialog: there is nothing to weigh, because nothing of it survived and
+ * there is no resume. The summary box and the backups Callout are
+ * dropped for it. "Analysed 21 Aug · 0 files" is nonsense for a run that
+ * never finished, and the backups line sent a user into a loop of
+ * restores looking for results that were never saved anywhere.
  */
 
 import { Button } from "../ui/button";
@@ -25,6 +32,9 @@ interface RerunConfirmDialogProps {
   /** The run being re-run (the current run, or a previous run matched
    * on this folder). Null while the lookup is still resolving. */
   run: FolderRunLookup | null;
+  /** True when the run's queue entry is "failed": the previous run was
+   * interrupted and has no results to discard. */
+  failed: boolean;
   isBusy: boolean;
   onCancel: () => void;
   onConfirm: () => void;
@@ -33,13 +43,15 @@ interface RerunConfirmDialogProps {
 export function RerunConfirmDialog({
   open,
   run,
+  failed,
   isBusy,
   onCancel,
   onConfirm,
 }: RerunConfirmDialogProps) {
   const hasProgress =
-    (run?.verified_detection_count ?? 0) > 0 ||
-    (run?.confirmed_event_count ?? 0) > 0;
+    !failed &&
+    ((run?.verified_detection_count ?? 0) > 0 ||
+      (run?.confirmed_event_count ?? 0) > 0);
 
   return (
     // The dialog stays up while the wipe runs (see `confirmRerun`), so it
@@ -53,17 +65,20 @@ export function RerunConfirmDialog({
     >
       <DialogContent nonDismissable={isBusy}>
         <DialogHeader>
-          <DialogTitle>Re-run analysis?</DialogTitle>
+          <DialogTitle>
+            {failed ? "Run the analysis again?" : "Re-run analysis?"}
+          </DialogTitle>
           <DialogDescription>
-            Re-running deletes the existing analysis output and starts
-            fresh.
+            {failed
+              ? "The previous run was interrupted. Its results cannot be recovered, so the analysis starts from the beginning."
+              : "Re-running deletes the existing analysis output and starts fresh."}
           </DialogDescription>
         </DialogHeader>
 
         {/* Neutral summary of what the run holds, so the user can weigh
             the cost. Not a Callout: Callout is for advisories, not a
             status readout (see its docstring). */}
-        {run && (
+        {run && !failed && (
           <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
             <p>{formatRunSummary(run)}</p>
             <p className="mt-1">{formatRunCounts(run)}</p>
@@ -78,23 +93,31 @@ export function RerunConfirmDialog({
 
         {/* Consequence + reassurance follow the app's destructive-confirm
             shape (see DeleteSiteDialog): a warning Callout for what's
-            lost, an info Callout for the safety net. */}
+            lost, an info Callout for the safety net. Both only when there
+            is progress to lose: with nothing to go back to, pointing at
+            the backups folder only invites a restore hunt. */}
         {hasProgress && (
-          <Callout variant="warning">
-            Your verification and count progress will be lost.
-          </Callout>
+          <>
+            <Callout variant="warning">
+              Your verification and count progress will be lost.
+            </Callout>
+            <Callout variant="info">
+              A database snapshot from earlier today is in your backups
+              folder if you change your mind.
+            </Callout>
+          </>
         )}
-        <Callout variant="info">
-          A database snapshot from earlier today is in your backups folder
-          if you change your mind.
-        </Callout>
 
         <DialogFooter>
           <Button variant="outline" onClick={onCancel} disabled={isBusy}>
             Cancel
           </Button>
           <Button onClick={onConfirm} disabled={isBusy}>
-            {isBusy ? "Clearing previous results…" : "Re-run analysis"}
+            {isBusy
+              ? "Clearing previous results…"
+              : failed
+                ? "Run analysis"
+                : "Re-run analysis"}
           </Button>
         </DialogFooter>
       </DialogContent>

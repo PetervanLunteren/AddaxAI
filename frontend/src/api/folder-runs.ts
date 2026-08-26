@@ -294,6 +294,10 @@ export interface FolderRunSummary {
   detection_count: number;
   verified_detection_count: number;
   folder_exists: boolean;
+  /** Queue entry status. "failed" means the run was interrupted (crash,
+   * power cut) and has to be run again; the row says so instead of
+   * "not analysed yet". */
+  queue_status: string;
 }
 
 export const folderRunsApi = {

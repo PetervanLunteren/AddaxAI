@@ -52,8 +52,11 @@ export function CompletedRunNotice({
 }: CompletedRunNoticeProps) {
   const Icon = failed ? AlertCircle : CheckCircle2;
   const iconClass = failed ? "text-destructive" : "text-primary";
+  // The failed message carries the next step. Its results are gone (there
+  // is no resume) and nothing else on the page says so; without it, users
+  // go looking in backups for work that was never saved anywhere.
   const message = failed
-    ? "Previous run did not finish"
+    ? "Previous run did not finish, run it again to get results"
     : "This folder is already analysed";
 
   return (

@@ -1512,6 +1512,7 @@ export function FolderRunModelStep() {
       <RerunConfirmDialog
         open={rerunOpen}
         run={lookupRun ?? null}
+        failed={lookupIsCurrent && queueStatus === "failed"}
         isBusy={rerunAnalysis.isPending || createRun.isPending}
         onCancel={() => setRerunOpen(false)}
         onConfirm={confirmRerun}

@@ -1175,6 +1175,25 @@ def test_list_folder_runs_distinguishes_empty_result_from_unanalysed(
     assert by_id[empty_result.id]["detection_count"] == 0
 
 
+def test_list_folder_runs_carries_queue_status(client, db, tmp_path):
+    """A run killed mid-analysis (crash, power cut) has zero files just like
+    a run that never started, but it is a different fact: it must be run
+    again, and the setup step says so. The list carries the queue status so
+    it can say the same instead of "not analysed yet"."""
+    from app.models import DeploymentQueue
+
+    fresh = _make_run(db, str(tmp_path / "fresh"))
+    failed = _make_run(db, str(tmp_path / "failed"))
+    entry = db.query(DeploymentQueue).filter_by(project_id=failed.id).one()
+    entry.status = "failed"
+    db.flush()
+
+    by_id = {r["id"]: r for r in client.get("/api/folder-runs").json()}
+
+    assert by_id[fresh.id]["queue_status"] == "pending"
+    assert by_id[failed.id]["queue_status"] == "failed"
+
+
 def test_list_folder_runs_excludes_research_projects(client, db, tmp_path):
     _make_run(db, str(tmp_path))
     make_project(db, mode="research")

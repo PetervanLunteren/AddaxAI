@@ -154,9 +154,14 @@ export function RestoreBackupDialog({
       disabled={sourcePath === null}
       variant="destructive"
     >
+      {/* The last sentence is for the user whose analysis was cut short
+          by a crash or a power cut. That work was never in any backup, so
+          a restore cannot bring it back, and without this line they loop
+          through restores looking for it. */}
       <Callout variant="info">
         Your images and videos are never touched. Only the database is
-        swapped.
+        swapped. An analysis that was interrupted is not in any backup;
+        run that analysis again instead.
       </Callout>
 
       <div className="space-y-2">
