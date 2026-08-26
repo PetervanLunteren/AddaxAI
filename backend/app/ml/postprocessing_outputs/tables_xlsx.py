@@ -1,7 +1,7 @@
 """Folder-run tabular XLSX output.
 
-One workbook with two sheets, Files and Detections — the same two
-tables as the folder-run CSV export, in one file. A folder run is "run
+One workbook with three sheets, Summary, Files and Detections — the same
+three tables as the folder-run CSV export, in one file. A folder run is "run
 AI without ecological interpretation", so the projects-mode sheets
 (Deployments, Counts) are intentionally absent. The sheets wrap the
 shared ``export_crud`` builders and are trimmed to the same column set
@@ -50,30 +50,38 @@ def write_tables_xlsx(
     project_id: str,
     target_dir: Path,
 ) -> TablesXlsxResult:
-    """Write the two-sheet ``addaxai-spreadsheet.xlsx`` (Files + Detections)."""
+    """Write the three-sheet ``addaxai-spreadsheet.xlsx`` (Summary + Files +
+    Detections)."""
     project = db.get(Project, project_id)
     if project is None:
         raise ValueError(f"Project {project_id!r} not found")
 
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    # One scope for both sheets and for both modes: the threshold plus the
+    # One scope for every sheet and for both modes: the threshold plus the
     # verified override, and only boxes on a video's visible frame, so the
     # workbook holds what the Labels step showed (matches tables_csv).
     # ``addaxai-recognitions.json`` stays the complete record of the run.
     #
     # Built before the files sheet and released right after, so this row
     # set and build_files_rows' own never sit in memory together: on a
-    # large run each is the biggest allocation in the whole save job.
+    # large run each is the biggest allocation in the whole save job. The
+    # summary is a handful of rows off the same fetch.
     scoped = export_crud.get_scoped_detection_rows(db, project)
     det_headers, det_rows = folder_run_table(
         *export_crud.build_detection_rows(db, project, scoped)
+    )
+    summary_headers, summary_rows = folder_run_table(
+        *export_crud.build_summary_rows(db, project, scoped)
     )
     del scoped
     files_headers, files_rows = folder_run_table(
         *export_crud.build_files_rows(db, project)
     )
+    # Summary first: a workbook opens on its first sheet, and this is the
+    # one that answers "what was found" (same rule as the projects export).
     sheets = [
+        ("Summary", summary_headers, summary_rows),
         ("Files", files_headers, files_rows),
         ("Detections", det_headers, det_rows),
     ]

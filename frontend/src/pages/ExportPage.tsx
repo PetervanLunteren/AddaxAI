@@ -201,7 +201,7 @@ export default function ExportPage() {
   // needs no wording of its own.
   const nothingSelected = tableScope?.deploymentIds?.length === 0;
 
-  // One "Spreadsheet" download covering four tables. XLSX is a single
+  // One "Spreadsheet" download covering five tables. XLSX is a single
   // workbook; CSV / TSV save one file per table (browsers may show a
   // one-time "allow multiple downloads" prompt outside Electron).
   const handleDownloadSpreadsheet = async (value: string) => {
@@ -216,6 +216,8 @@ export default function ExportPage() {
       } else {
         // Same order as the XLSX sheets (build_spreadsheet_sheets) and as
         // the docs: broadest question first. Keep the three in step.
+        const summary = await exportApi.downloadSummary(projectId, format, tableScope);
+        downloadBlob(summary, `addaxai-summary.${format}`);
         const counts = await exportApi.downloadObservations(projectId, format, tableScope);
         downloadBlob(counts, `addaxai-counts.${format}`);
         const detections = await exportApi.downloadDetections(projectId, format, tableScope);
@@ -327,7 +329,7 @@ export default function ExportPage() {
           <CardContent className="pt-6">
             <ExportRow
               title="Spreadsheet"
-              description="Counts, detections, files and deployments, including species labels and your corrections."
+              description="Summary, counts, detections, files and deployments, including species labels and your corrections."
               filters={
                 projectId ? (
                   <ExportScopeSelect

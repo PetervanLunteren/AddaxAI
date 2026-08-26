@@ -11,9 +11,11 @@ Streaming endpoints, one per export type:
   CSV / TSV / XLSX.
 - ``/observations``: event-level one-row-per-species-per-event with the
   effective count (the Counts grain) in CSV / TSV / XLSX.
-- ``/spreadsheet``: combined XLSX with Counts, Detections, Files and
-  Deployments sheets for the one format that holds several tables in one
-  file.
+- ``/summary``: one row per species / category with counts over the other
+  tables (the overview) in CSV / TSV / XLSX.
+- ``/spreadsheet``: combined XLSX with Summary, Counts, Detections, Files
+  and Deployments sheets for the one format that holds several tables in
+  one file.
 - ``/spatial``: GIS layers in GeoJSON / Shapefile (ZIP) / GeoPackage.
 - ``/camtrap-dp``: Camera Trap Data Package v1.0 (GBIF-compatible) as a ZIP.
 
@@ -197,6 +199,29 @@ async def export_observations(
     return _tabular_response(headers, rows, base, "Counts", format)
 
 
+@router.get("/summary")
+async def export_summary(
+    project_id: str,
+    format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
+    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
+    deployment_ids: str | None = Query(
+        None, description="Comma-separated deployment IDs"
+    ),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Summary: one row per species / category with counts over the other tables."""
+    project = _resolve_project(project_id, db)
+    scope = export_crud.resolve_scope_deployment_ids(
+        db, project, _parse_ids(site_ids), _parse_ids(deployment_ids)
+    )
+    scoped = export_crud.get_scoped_detection_rows(
+        db, project, deployment_ids=scope
+    )
+    headers, rows = export_crud.build_summary_rows(db, project, scoped, scope)
+    base = _filename_base(project, "summary")
+    return _tabular_response(headers, rows, base, "Summary", format)
+
+
 @router.get("/spreadsheet")
 async def export_spreadsheet(
     project_id: str,
@@ -206,10 +231,11 @@ async def export_spreadsheet(
     ),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Combined workbook: Counts, Detections, Files and Deployments sheets.
+    """Combined workbook: Summary, Counts, Detections, Files and Deployments
+    sheets.
 
     XLSX only, the one format that holds several tables in a single file.
-    For CSV / TSV the client downloads the four single-table endpoints
+    For CSV / TSV the client downloads the five single-table endpoints
     instead, in the same order.
     """
     project = _resolve_project(project_id, db)

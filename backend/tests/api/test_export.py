@@ -126,10 +126,12 @@ def test_export_detections_csv_happy_path(client, db):
 
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     headers = rows[0]
-    # Lean detections table: detection_id + file_id + the detection's own
-    # fields. Time / place live in files.csv (join on file_id).
+    # Lean detections table: detection_id + file_id + the file's path + the
+    # detection's own fields. Time / place live in files.csv (join on
+    # file_id); relative_path is there so a reader can find the photo
+    # without that join.
     assert headers == [
-        "detection_id", "file_id", "deployment_id", "event_id",
+        "detection_id", "file_id", "relative_path", "deployment_id", "event_id",
         "detection_category", "detection_confidence",
         "classification_label", "classification_confidence",
         "ai_classification_label", "ai_classification_confidence",
@@ -1112,13 +1114,14 @@ def test_export_observations_project_not_found(client):
 
 
 def test_export_spreadsheet_is_multi_sheet_workbook(client, db):
-    """The combined Spreadsheet export is one XLSX with Counts, Detections,
-    Files and Deployments sheets.
+    """The combined Spreadsheet export is one XLSX with Summary, Counts,
+    Detections, Files and Deployments sheets.
 
     Order is asserted, not just membership: a workbook opens on its first
-    sheet, so that sheet is what a user takes the file to contain. Counts
-    leads because it is the analysis-ready table the docs send people to
-    first."""
+    sheet, so that sheet is what a user takes the file to contain. Summary
+    leads because "which species, how many" is what the file is opened
+    for; Counts follows as the analysis-ready table the docs send people
+    to."""
     from openpyxl import load_workbook
 
     from app.api.crud.event_observation import calculate_max_n_for_event
@@ -1138,18 +1141,280 @@ def test_export_spreadsheet_is_multi_sheet_workbook(client, db):
     assert "spreadsheetml" in resp.headers["content-type"]
 
     wb = load_workbook(io.BytesIO(resp.content))
-    assert wb.sheetnames == ["Counts", "Detections", "Files", "Deployments"]
+    assert wb.sheetnames == [
+        "Summary", "Counts", "Detections", "Files", "Deployments",
+    ]
     deployments = list(wb["Deployments"].iter_rows(values_only=True))
     files = list(wb["Files"].iter_rows(values_only=True))
     det = list(wb["Detections"].iter_rows(values_only=True))
     counts = list(wb["Counts"].iter_rows(values_only=True))
+    summary = list(wb["Summary"].iter_rows(values_only=True))
     assert deployments[0][0] == "deployment_id"
     assert files[0][0] == "file_id"
     assert det[0][0] == "detection_id"
     assert counts[0][0] == "event_id"
-    # The deer appears as a detection row and an event-level count row.
+    assert summary[0][0] == "detection_category"
+    # The deer appears as a detection row, an event-level count row and a
+    # summary row.
     assert any("deer" in str(v) for row in det[1:] for v in row)
     assert any("deer" in str(v) for row in counts[1:] for v in row)
+    assert any("deer" in str(v) for row in summary[1:] for v in row)
+
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+
+
+def _summary_rows(client, project_id: str, query: str = "") -> dict[tuple, dict]:
+    """Summary table keyed by (detection_category, classification_label)."""
+    resp = client.get(f"/api/projects/{project_id}/export/summary?format=csv{query}")
+    assert resp.status_code == 200, resp.text
+    rows = list(csv.DictReader(io.StringIO(resp.content.decode("utf-8"))))
+    return {(r["detection_category"], r["classification_label"]): r for r in rows}
+
+
+def _detection_rows(client, project_id: str) -> list[dict]:
+    resp = client.get(f"/api/projects/{project_id}/export/detections?format=csv")
+    assert resp.status_code == 200, resp.text
+    return list(csv.DictReader(io.StringIO(resp.content.decode("utf-8"))))
+
+
+def test_summary_counts_images_videos_detections_events_individuals(client, db):
+    """One row per species, and every count column counts one other table:
+    n_detections the Detections rows, n_images / n_videos the files those
+    rows sit on, n_events the events those files belong to, n_individuals
+    the Counts table total."""
+    from app.api.crud.event_observation import calculate_max_n_for_event
+
+    project, _site, deployment = _build_simple_project(db)
+    # Event A: two images, three deer boxes (two on one image).
+    ev_a = make_event_with_files(
+        db,
+        deployment_id=deployment.id,
+        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+        files_verified=[False, False],
+    )
+    img_1, img_2 = ev_a.files
+    make_detection(db, file_id=img_1.id, confidence=0.9, label="deer")
+    make_detection(db, file_id=img_1.id, confidence=0.8, label="deer")
+    make_detection(db, file_id=img_2.id, confidence=0.7, label="deer")
+    calculate_max_n_for_event(db, ev_a.id, project.counting_threshold)
+    # Event B: one video, one deer box on its saved frame.
+    ev_b = make_event_with_files(
+        db,
+        deployment_id=deployment.id,
+        event_start_local=datetime(2024, 6, 16, 9, 0, 0),
+    )
+    video = ev_b.files[0]
+    video.file_type = "video"
+    video.file_format = "mp4"
+    video.best_frame_number = 3
+    make_detection(db, file_id=video.id, confidence=0.9, label="deer", frame_number=3)
+    calculate_max_n_for_event(db, ev_b.id, project.counting_threshold)
+    db.commit()
+
+    deer = _summary_rows(client, project.id)[("animal", "deer")]
+    assert deer["n_images"] == "2"
+    assert deer["n_videos"] == "1"
+    assert deer["n_detections"] == "4"
+    assert deer["n_events"] == "2"
+    # MaxN is the most deer in one file per event: 2 in event A, 1 in B.
+    assert deer["n_individuals"] == "3"
+
+    # The same number the Detections table shows for deer.
+    det = _detection_rows(client, project.id)
+    assert len([r for r in det if r["classification_label"] == "deer"]) == 4
+
+
+def test_summary_person_vehicle_and_unclassified_animal_rows(client, db):
+    """Boxes with no species get their own rows, blank label and ranks,
+    named Person / Vehicle / Animal like the Files table. n_individuals
+    still lines up, although the Counts table names those rows by their
+    category instead of a blank label."""
+    from app.api.crud.event_observation import calculate_max_n_for_event
+
+    project, _site, deployment = _build_simple_project(db)
+    ev = make_event_with_files(
+        db,
+        deployment_id=deployment.id,
+        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+    )
+    f = ev.files[0]
+    make_detection(db, file_id=f.id, category="person", confidence=0.9,
+                   common_name="Person", scientific_name="Person")
+    make_detection(db, file_id=f.id, category="vehicle", confidence=0.9,
+                   common_name="Vehicle", scientific_name="Vehicle")
+    make_detection(db, file_id=f.id, category="animal", confidence=0.9,
+                   common_name="Animal", scientific_name="Animal")
+    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    db.commit()
+
+    rows = _summary_rows(client, project.id)
+    assert set(rows) == {("person", ""), ("vehicle", ""), ("animal", "")}
+    for key, name in ((("person", ""), "Person"), (("vehicle", ""), "Vehicle"),
+                      (("animal", ""), "Animal")):
+        row = rows[key]
+        assert row["common_name"] == name
+        assert row["taxon_class"] == ""
+        assert row["n_detections"] == "1"
+        assert row["n_individuals"] == "1"
+
+
+def test_summary_folds_a_literal_animal_label_onto_the_unclassified_row(client, db):
+    """A box labelled with the builtin ``animal`` label is an unclassified
+    animal, same as a box with no label. The Counts table already keys both
+    as ``animal`` (COALESCE(label, category)), so the Summary must too, or
+    the individuals land on a row the detections are not on. Seen on a real
+    project: 7 boxes labelled "animal", n_individuals 0."""
+    from app.api.crud.event_observation import calculate_max_n_for_event
+
+    project, _site, deployment = _build_simple_project(db)
+    ev = make_event_with_files(
+        db,
+        deployment_id=deployment.id,
+        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+        files_verified=[False, False],
+    )
+    f_literal, f_null = ev.files
+    make_detection(db, file_id=f_literal.id, confidence=0.9, label="animal",
+                   common_name="Animal", scientific_name="Animal")
+    make_detection(db, file_id=f_null.id, confidence=0.9, label=None,
+                   common_name="Animal", scientific_name="Animal")
+    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    db.commit()
+
+    rows = _summary_rows(client, project.id)
+    assert set(rows) == {("animal", "")}
+    assert rows[("animal", "")]["n_detections"] == "2"
+    assert rows[("animal", "")]["n_images"] == "2"
+    assert rows[("animal", "")]["n_individuals"] == "1"
+
+
+def test_summary_skips_a_box_a_person_marked_false(client, db):
+    """"Mark false" leaves the box in the Detections table as the record of
+    what was rejected, but a rejected box was not found, so the Summary
+    has no row for it. Same rule as the Counts table."""
+    project, _site, deployment = _build_simple_project(db)
+    f = make_file(db, deployment_id=deployment.id)
+    make_detection(db, file_id=f.id, confidence=0.9, label="deer")
+    make_detection(db, file_id=f.id, confidence=0.9, label="false detection",
+                   verified=True, classification_method="human")
+    db.commit()
+
+    assert set(_summary_rows(client, project.id)) == {("animal", "deer")}
+    det = _detection_rows(client, project.id)
+    assert {r["classification_label"] for r in det} == {"deer", "false detection"}
+
+
+def test_summary_respects_threshold_and_verified_override(client, db):
+    project, _site, deployment = _build_simple_project(db, counting_threshold=0.5)
+    f = make_file(db, deployment_id=deployment.id)
+    make_detection(db, file_id=f.id, confidence=0.2, label="cat")
+    make_detection(db, file_id=f.id, confidence=0.2, label="badger", verified=True)
+    db.commit()
+
+    rows = _summary_rows(client, project.id)
+    assert set(rows) == {("animal", "badger")}
+
+
+def test_summary_ignores_off_best_frame_video_boxes(client, db):
+    """A box on a frame nobody can open is not a species that was found,
+    same rule as the Detections table."""
+    project, _site, deployment = _build_simple_project(db)
+    f = make_file(db, deployment_id=deployment.id, file_type="video",
+                  file_format="mp4", best_frame_number=3)
+    make_detection(db, file_id=f.id, confidence=0.9, label="deer", frame_number=7)
+    make_detection(db, file_id=f.id, category="person", confidence=0.6,
+                   frame_number=3)
+    db.commit()
+
+    rows = _summary_rows(client, project.id)
+    assert set(rows) == {("person", "")}
+    assert rows[("person", "")]["n_videos"] == "1"
+    assert rows[("person", "")]["n_images"] == "0"
+
+
+def test_summary_scope_by_deployment(client, db):
+    project, site, dep_a = _build_simple_project(db)
+    dep_b = make_deployment(db, site_id=site.id)
+    make_detection(db, file_id=make_file(db, deployment_id=dep_a.id).id, label="deer")
+    make_detection(db, file_id=make_file(db, deployment_id=dep_b.id).id, label="fox")
+    db.commit()
+
+    assert set(_summary_rows(client, project.id)) == {
+        ("animal", "deer"), ("animal", "fox"),
+    }
+    scoped = _summary_rows(client, project.id, f"&deployment_ids={dep_b.id}")
+    assert set(scoped) == {("animal", "fox")}
+
+
+def test_summary_skips_a_species_that_only_exists_in_the_counts_table(client, db):
+    """A species added by hand on the Counts page has no detection, so it
+    has no Summary row: the table follows the Detections table, and every
+    row can be traced back to a box."""
+    from app.models import EventObservation
+
+    project, _site, deployment = _build_simple_project(db)
+    ev = make_event_with_files(
+        db,
+        deployment_id=deployment.id,
+        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+    )
+    make_detection(db, file_id=ev.files[0].id, confidence=0.9, label="deer")
+    db.add(EventObservation(
+        id=str(uuid.uuid4()), event_id=ev.id, label="wolf", category="animal",
+        max_n=0, human_count=2,
+    ))
+    db.commit()
+
+    rows = _summary_rows(client, project.id)
+    assert set(rows) == {("animal", "deer")}
+    # And the Counts table does carry the wolf, so the difference is real.
+    resp = client.get(f"/api/projects/{project.id}/export/observations?format=csv")
+    assert "wolf" in resp.content.decode("utf-8")
+
+
+def test_summary_sorted_by_n_detections_desc(client, db):
+    project, _site, deployment = _build_simple_project(db)
+    f = make_file(db, deployment_id=deployment.id)
+    make_detection(db, file_id=f.id, label="fox")
+    make_detection(db, file_id=f.id, label="deer")
+    make_detection(db, file_id=f.id, label="deer")
+    db.commit()
+
+    rows = list(_summary_rows(client, project.id))
+    assert rows == [("animal", "deer"), ("animal", "fox")]
+
+
+def test_summary_endpoint_csv_and_xlsx(client, db):
+    from openpyxl import load_workbook
+
+    project, _site, deployment = _build_simple_project(db)
+    make_detection(db, file_id=make_file(db, deployment_id=deployment.id).id,
+                   label="deer")
+    db.commit()
+
+    resp = client.get(f"/api/projects/{project.id}/export/summary?format=csv")
+    headers = next(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
+    assert headers == [
+        "detection_category", "classification_label",
+        "taxon_class", "taxon_order", "taxon_family", "taxon_genus",
+        "taxon_species", "taxon_variant", "scientific_name", "common_name",
+        "n_images", "n_videos", "n_detections", "n_events", "n_individuals",
+    ]
+
+    resp = client.get(f"/api/projects/{project.id}/export/summary?format=xlsx")
+    assert resp.status_code == 200
+    wb = load_workbook(io.BytesIO(resp.content))
+    assert wb.sheetnames == ["Summary"]
+    ws = list(wb["Summary"].iter_rows(values_only=True))
+    assert ws[1][headers.index("classification_label")] == "deer"
+    assert ws[1][headers.index("n_detections")] == 1
+
+    assert client.get(
+        "/api/projects/does-not-exist/export/summary?format=csv"
+    ).status_code == 404
 
 
 # ---------------------------------------------------------------------------

@@ -37,6 +37,7 @@ from app.api.crud.export_formats import slugify
 from app.core.logging_config import get_logger
 from app.db.sql_params import iter_id_chunks
 from app.ml.detection_visibility import visible_detections
+from app.ml.label_exclusion import is_non_label
 from app.ml.observation_type import strongest_passing_detection
 from app.ml.taxonomic_rank import species_binomial
 from app.models import (
@@ -86,6 +87,10 @@ OBSERVATIONS_SCHEMA = (
 #
 #   detection_id    — the detection row id.
 #   file_id         — FK to files.csv (time, place, paths live there).
+#   relative_path   — path inside the deployment folder, same value as
+#                     files.csv. The one non-id column from the file, so a
+#                     person reading this table in Excel can find the photo
+#                     without a join (a beta tester could not).
 #   deployment_id   — FK to deployments.csv (site, effort).
 #   event_id        — FK to the event (also on files.csv).
 #   detection_category — detector class: animal / person / vehicle.
@@ -116,6 +121,7 @@ OBSERVATIONS_SCHEMA = (
 _FLAT_DETECTION_HEADERS = [
     "detection_id",
     "file_id",
+    "relative_path",
     "deployment_id",
     "event_id",
     # Detector stage (MegaDetector): category + score.
@@ -609,7 +615,13 @@ def build_detection_rows(
             if detection.id not in shown:
                 continue
             rows.append(
-                [detection.id, file_obj.id, deployment_id, event_id]
+                [
+                    detection.id,
+                    file_obj.id,
+                    _relative_path(file_obj, deployment),
+                    deployment_id,
+                    event_id,
+                ]
                 + _detection_cells(detection, taxonomy)
             )
 
@@ -1064,26 +1076,165 @@ def build_observation_rows(
     return _OBSERVATIONS_HEADERS, rows
 
 
+# ---------------------------------------------------------------------------
+# Summary rows (one row per species / category, with counts)
+# ---------------------------------------------------------------------------
+
+# The overview table: what was found and how much of it. One row per
+# species (or per person / vehicle / unclassified animal), the same name
+# block as the other tables, then one count per other table. Built for the
+# person who opens the workbook and wants the answer on the first sheet.
+_SUMMARY_HEADERS = [
+    "detection_category",
+    "classification_label",
+    "taxon_class",
+    "taxon_order",
+    "taxon_family",
+    "taxon_genus",
+    "taxon_species",
+    "taxon_variant",
+    "scientific_name",
+    "common_name",
+    "n_images",
+    "n_videos",
+    "n_detections",
+    "n_events",
+    "n_individuals",
+]
+
+
+def _summary_key(category: str, label: str | None) -> tuple[str, str]:
+    """What identifies a Summary row: the detector category plus the species
+    label, blank when nothing was classified (person, vehicle, unclassified
+    animal).
+
+    A label that only repeats the category is no species either. The
+    builtin ``animal`` taxonomy row exists exactly for unclassified boxes,
+    so a detection can carry it as a literal label, and the Counts table
+    names every unclassified box by its category (``COALESCE(label,
+    category)``). Folding both spellings onto the blank key is what keeps
+    ``n_individuals`` on the same row as ``n_detections``.
+    """
+    return (category, "" if label in (None, "", category) else label)
+
+
+def build_summary_rows(
+    db: Session,
+    project: Project,
+    scoped_rows: Sequence[Row[Any]],
+    deployment_ids: list[str] | None = None,
+) -> tuple[list[str], list[list[Any]]]:
+    """
+    Build `(headers, rows)` for the Summary export.
+
+    One rule: a row is a species / category that appears in the Detections
+    table, and every count column counts one other table for it.
+
+    - ``n_detections``: its rows in the Detections table.
+    - ``n_images`` / ``n_videos``: the files those rows sit on, by type.
+    - ``n_events``: the events those files belong to.
+    - ``n_individuals``: the sum of ``count`` in the Counts table (the
+      confirmed number where one was set, else the AI's MaxN).
+
+    The rows come from the same ``scoped_rows`` and the same visibility gate
+    as ``build_detection_rows``, so the two tables cannot disagree. That is
+    also why a species that only exists in the Counts table (added by hand
+    on the Counts page, or an excluded species with a leftover observation
+    row) gets no row here: it has no detection to count.
+
+    The one departure from the Detections table: a box a person rejected
+    ("Mark false", label ``false detection``) keeps its Detections row as
+    the honest record, but it was not found, so it gets no Summary row.
+    The Counts table skips it the same way.
+
+    Both sides key through ``_summary_key``, which treats a label that only
+    repeats the category as "no species"; see there for why.
+    """
+    grouped = list(_group_rows_by_file(scoped_rows))
+    event_map = _events_by_file(db, [f.id for f, _d, _s, _dets in grouped])
+
+    name_cells: dict[tuple[str, str], list[Any]] = {}
+    images: dict[tuple[str, str], set[str]] = defaultdict(set)
+    videos: dict[tuple[str, str], set[str]] = defaultdict(set)
+    events: dict[tuple[str, str], set[str]] = defaultdict(set)
+    n_detections: dict[tuple[str, str], int] = defaultdict(int)
+
+    for file_obj, _deployment, _site, detections in grouped:
+        event = event_map.get(file_obj.id)
+        shown = {
+            d.id
+            for d in visible_detections(
+                file_obj, [det for det, _tax in detections]
+            )
+        }
+        for detection, taxonomy in detections:
+            if detection.id not in shown or is_non_label(detection.label):
+                continue
+            key = _summary_key(detection.category, detection.label)
+            if key not in name_cells:
+                name_cells[key] = [
+                    *_taxon_ranks(taxonomy),
+                    detection.scientific_name or "",
+                    detection.common_name or "",
+                ]
+            n_detections[key] += 1
+            (videos if file_obj.file_type == "video" else images)[key].add(
+                file_obj.id
+            )
+            if event is not None:
+                events[key].add(event.id)
+
+    individuals: dict[tuple[str, str], int] = defaultdict(int)
+    obs_headers, obs_rows = build_observation_rows(db, project, deployment_ids)
+    cat_i = obs_headers.index("category")
+    label_i = obs_headers.index("classification_label")
+    count_i = obs_headers.index("count")
+    for obs_row in obs_rows:
+        key = _summary_key(obs_row[cat_i], obs_row[label_i])
+        individuals[key] += obs_row[count_i]
+
+    rows: list[list[Any]] = []
+    for key, names in name_cells.items():
+        category, label = key
+        rows.append(
+            [
+                category,
+                label,
+                *names,
+                len(images[key]),
+                len(videos[key]),
+                n_detections[key],
+                len(events[key]),
+                individuals[key],
+            ]
+        )
+    # Most seen first; ties read in a stable alphabetical order.
+    det_i = _SUMMARY_HEADERS.index("n_detections")
+    rows.sort(key=lambda r: (-r[det_i], r[0], r[1]))
+    return _SUMMARY_HEADERS, rows
+
+
 def build_spreadsheet_sheets(
     db: Session,
     project: Project,
     deployment_ids: list[str] | None = None,
 ) -> list[tuple[str, list[str], list[list[Any]]]]:
     """The tables that make up the project Export page's combined
-    spreadsheet: Counts, Detections, Files, and Deployments. The
-    folder-run Save step writes its own two-sheet workbook (Files +
-    Detections) from the same row builders.
+    spreadsheet: Summary, Counts, Detections, Files, and Deployments. The
+    folder-run Save step writes its own three-sheet workbook (Summary +
+    Files + Detections) from the same row builders.
 
     **Sheet order is the docs order, broadest question first.** A
     workbook opens on its first sheet, so that sheet is what a user
     takes the file to contain. Deployments used to lead, which is one
     row per camera of locations and effort, and reading no further is
     how a beta tester concluded the export held nothing but deployment
-    metadata. Counts leads instead because it is the analysis-ready
-    table `docs/docs/reference/exports.md` already tells people to start
-    with. Keep the two in step, and note the CSV / TSV path downloads
-    the same four tables one file at a time from `ExportPage.tsx`, in an
-    order written out there separately.
+    metadata. Summary leads because "which species, and how many" is the
+    question the file is opened for; Counts follows as the analysis-ready
+    table `docs/docs/reference/exports.md` tells people to start with.
+    Keep the two in step, and note the CSV / TSV path downloads the same
+    five tables one file at a time from `ExportPage.tsx`, in an order
+    written out there separately.
 
     ``deployment_ids`` narrows every sheet to a subset of the project's
     deployments; None exports everything."""
@@ -1095,8 +1246,12 @@ def build_spreadsheet_sheets(
         db, project, deployment_ids, scoped_rows=scoped
     )
     det_headers, det_rows = build_detection_rows(db, project, scoped)
+    summary_headers, summary_rows = build_summary_rows(
+        db, project, scoped, deployment_ids
+    )
     obs_headers, obs_rows = build_observation_rows(db, project, deployment_ids)
     return [
+        ("Summary", summary_headers, summary_rows),
         ("Counts", obs_headers, obs_rows),
         ("Detections", det_headers, det_rows),
         ("Files", files_headers, files_rows),

@@ -101,7 +101,19 @@ export const exportApi = {
       withScope(`/api/projects/${projectId}/export/observations?format=${format}`, scope),
     ),
 
-  /** Combined two-sheet workbook (Detections + Counts). XLSX only. */
+  /** Overview table: one row per species (or person / vehicle / unclassified
+   *  animal) with counts over the other tables. */
+  downloadSummary: (
+    projectId: string,
+    format: ObservationFormat,
+    scope?: ExportScope,
+  ): Promise<Blob> =>
+    fetchBlob(
+      withScope(`/api/projects/${projectId}/export/summary?format=${format}`, scope),
+    ),
+
+  /** Combined workbook: Summary, Counts, Detections, Files and Deployments.
+   *  XLSX only. */
   downloadSpreadsheetXlsx: (projectId: string, scope?: ExportScope): Promise<Blob> =>
     fetchBlob(withScope(`/api/projects/${projectId}/export/spreadsheet`, scope)),
 

@@ -9,10 +9,11 @@ What is in the files AddaxAI writes. Most of this page covers the columns in the
 
 One limit to know if your project is large: an Excel sheet holds at most 1,048,576 rows, so a table bigger than that cannot be saved as XLSX. AddaxAI tells you when this happens instead of writing a file Excel cannot open. Pick CSV for those projects, it has no row limit.
 
-AddaxAI exports four tables. Which one you want depends on the question you are asking. A folder run has no [sites, no deployments](../understanding/how-a-project-is-organised.mdx) and no confirmed counts, so two of them are projects only.
+AddaxAI exports five tables. Which one you want depends on the question you are asking. A folder run has no [sites, no deployments](../understanding/how-a-project-is-organised.mdx) and no confirmed counts, so two of them are projects only.
 
 | Table | One row is | Use it for | Available in |
 |---|---|---|---|
+| Summary | one species | a quick overview of what was found and how much | Both |
 | Counts | one species in one event | ecological analysis. Start here | Projects |
 | Detections | one box on one photo | model checking, bounding boxes | Both |
 | Files | one photo or video | one label per file, file lists, finding blanks | Both |
@@ -20,13 +21,32 @@ AddaxAI exports four tables. Which one you want depends on the question you are 
 
 ## What the tables contain
 
-All four tables hold the same set of detections, and it is the same set the app shows you. Two rules decide it, and they work the same way in a project and in a folder run.
+All five tables hold the same set of detections, and it is the same set the app shows you. Two rules decide it, and they work the same way in a project and in a folder run.
 
 Anything below your [counting threshold](../understanding/confidence-and-verification.md) is left out, unless you verified it yourself. A detection you verified always stays in, whatever it scored, because your decision outranks the score.
 
 For videos, only the frame AddaxAI saved is included. A video is analysed frame by frame, but only one frame is kept as a picture, so a box on any other frame has no image you could ever look at. Those boxes are left out of the tables rather than listed as animals you cannot find.
 
 If you do want every box on every frame, use the recognition file described at the end of this page. That one is complete on purpose.
+
+## Summary
+
+One row per species, plus one row each for people, vehicles and animals without a species. The first sheet of the workbook, so you see what was found before anything else. Each count column counts one of the other tables, so the numbers can always be traced back.
+
+| Column | Meaning |
+|---|---|
+| `detection_category` | animal, person or vehicle |
+| `classification_label` | The species label as used by the model. Empty for people, vehicles and animals without a species. A box whose label is just `animal` counts as an animal without a species |
+| `taxon_class` to `taxon_variant` | Taxonomy, broad to specific |
+| `scientific_name` | Scientific name. Reads `Person`, `Vehicle` or `Animal` when there is no species |
+| `common_name` | Common name, with the same fallback |
+| `n_images` | Photos with at least one box of this species |
+| `n_videos` | Videos with at least one box of this species |
+| `n_detections` | Boxes of this species, the rows in the Detections table |
+| `n_events` | Events with at least one such photo or video |
+| `n_individuals` | Total of the `count` column in the Counts table for this species: your confirmed numbers where you set them, otherwise the AI's highest number seen in a single photo per event |
+
+A row exists when the species has at least one box in the Detections table. A species you added by hand on the Counts page, without a box, has no row here. Boxes you marked as false are not counted either, although they stay in the Detections table as a record.
 
 ## Counts
 
@@ -59,6 +79,7 @@ One row per box. Use it when you care about individual boxes. Blank files do not
 |---|---|
 | `detection_id` | Identifier of the box |
 | `file_id` | Which file it is on |
+| `relative_path` | Path inside the deployment folder, so you can find the photo without joining to the Files table |
 | `deployment_id` | Which camera period |
 | `event_id` | Which event, empty if not grouped |
 | `detection_category` | animal, person or vehicle |
@@ -132,7 +153,7 @@ One row per camera period. This is your effort table.
 
 ## Folder runs
 
-In the two tables a folder run writes, `deployment_id` is dropped because there is no deployment, and `notes` because nothing ever fills it.
+In the three tables a folder run writes, `deployment_id` is dropped because there is no deployment, and `notes` because nothing ever fills it. The Summary keeps `n_images`, `n_videos` and `n_detections` and drops `n_events` and `n_individuals`: those are ecological interpretation, and a folder run has no Counts table to back them.
 
 `event_id` stays. Files and detections from the same burst share one, so you can still group by visit. What you cannot do is look the event up, because the counts table is projects only. In a project that column points at a row in counts; in a folder run it is only a grouping key.
 

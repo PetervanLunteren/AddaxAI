@@ -158,28 +158,21 @@ def _detection_counts_by_category(
 
 
 def _top_species(
-    db: Session, project_id: str, threshold: float, limit: int = 20
+    db: Session, project: Project, limit: int = 20
 ) -> list[tuple[str, int]]:
-    """Top-N species by detection count, threshold-aware."""
-    from sqlalchemy import or_
+    """Top-N species by detection count: the Summary table's rows, so this
+    list and the Summary sheet next to it can never disagree. Rows without
+    a species (person, vehicle, unclassified animal) are left out, since
+    the heading says species."""
+    from app.api.crud import export as export_crud
 
-    rows = db.execute(
-        select(Detection.label, func.count(Detection.id))
-        .join(File, File.id == Detection.file_id)
-        .join(Deployment, File.deployment_id == Deployment.id)
-        .where(Deployment.project_id == project_id)
-        .where(Detection.label.is_not(None))
-        .where(
-            or_(
-                Detection.confidence >= threshold,
-                Detection.verified == True,  # noqa: E712
-            )
-        )
-        .group_by(Detection.label)
-        .order_by(func.count(Detection.id).desc())
-        .limit(limit)
-    ).all()
-    return [(label, int(count)) for label, count in rows]
+    scoped = export_crud.get_scoped_detection_rows(db, project)
+    headers, rows = export_crud.build_summary_rows(db, project, scoped)
+    label_i = headers.index("classification_label")
+    count_i = headers.index("n_detections")
+    return [
+        (row[label_i], row[count_i]) for row in rows if row[label_i]
+    ][:limit]
 
 
 def _verification_stats(
@@ -434,9 +427,7 @@ def write_run_readme(
     detection_counts = _detection_counts_by_category(
         db, project_id, project.counting_threshold
     )
-    top_species = _top_species(
-        db, project_id, project.counting_threshold
-    )
+    top_species = _top_species(db, project)
     verification = _verification_stats(db, project_id)
     skipped_files = _skipped_files(db, project_id)
 

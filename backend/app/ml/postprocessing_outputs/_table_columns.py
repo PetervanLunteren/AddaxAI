@@ -18,8 +18,16 @@ the run never exports.
 ``notes`` is dropped. ``File.notes`` is writable over the API but no UI
 ever sets it, so the column is always empty.
 
+``n_events`` and ``n_individuals`` are dropped from the summary. Both are
+ecological interpretation, which is what projects mode exists for: the
+individuals column is the Counts table total, and a folder run has no
+Counts table; the events column would be a headline "independent events"
+figure computed from an interval almost no folder-run user sets. What is
+left, images, videos and boxes per species, is what the AI directly
+produced.
+
 ``event_id`` is kept: it is the only column that says which files belong
-to the same burst.
+to the same burst. A key a user can group on is not a figure.
 """
 
 from __future__ import annotations
@@ -27,7 +35,9 @@ from __future__ import annotations
 from typing import Any
 
 # Columns the shared builders emit that say nothing in a folder run.
-OMITTED_COLUMNS = frozenset({"deployment_id", "notes"})
+OMITTED_COLUMNS = frozenset(
+    {"deployment_id", "notes", "n_events", "n_individuals"}
+)
 
 
 def folder_run_table(

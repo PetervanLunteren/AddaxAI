@@ -23,7 +23,9 @@ def test_drops_deployment_id_and_notes():
 
 
 def test_omitted_columns_is_the_documented_set():
-    assert OMITTED_COLUMNS == {"deployment_id", "notes"}
+    assert OMITTED_COLUMNS == {
+        "deployment_id", "notes", "n_events", "n_individuals",
+    }
 
 
 def test_keeps_event_id():

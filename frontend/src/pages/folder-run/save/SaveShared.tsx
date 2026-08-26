@@ -368,7 +368,7 @@ export function ExportBody({
         checked={exportOpts.spreadsheet}
         onChange={(v) => setExportOpts({ ...exportOpts, spreadsheet: v })}
         label="Spreadsheet"
-        caption="Tables for files and detections"
+        caption="Tables for the species summary, files and detections"
       />
       {exportOpts.spreadsheet && (
         <ChildRows>

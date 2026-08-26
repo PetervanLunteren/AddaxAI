@@ -97,6 +97,45 @@ def test_readme_carries_run_metadata(db, tmp_path):
     assert project.id in text
 
 
+def test_readme_top_species_matches_the_summary_table(db, tmp_path):
+    """The readme's top species are the Summary sheet's rows, so the two
+    outputs in one folder cannot disagree: a video's off-frame boxes and a
+    box a person marked false count in neither."""
+    project = make_project(db, name="readme-species-summary", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    img = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=_placeholder(tmp_path / "src" / "IMG.jpg"),
+        observation_type="animal",
+    )
+    make_detection(db, file_id=img.id, confidence=0.9, label="deer")
+    make_detection(db, file_id=img.id, confidence=0.9, label="false detection",
+                   verified=True, classification_method="human")
+    clip = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=_placeholder(tmp_path / "src" / "clip.mp4"),
+        file_type="video",
+        file_format="mp4",
+        best_frame_number=3,
+        observation_type="animal",
+    )
+    make_detection(db, file_id=clip.id, confidence=0.9, label="deer", frame_number=7)
+    make_detection(db, file_id=clip.id, confidence=0.9, label="fox", frame_number=3)
+
+    target = tmp_path / "out"
+    write_run_readme(db, project.id, target, media_threshold=0.5)
+    text = (target / SUMMARY_FILENAME).read_text("utf-8")
+    section = text[text.find("Top species"):].split("\n\n")[0]
+
+    assert "false detection" not in section
+    assert "deer" in section and "fox" in section
+    # One deer on the image; the clip's deer is on a frame nobody can open.
+    deer_line = next(line for line in section.splitlines() if "deer" in line)
+    assert deer_line.split()[-1] == "1"
+
+
 def test_readme_lists_top_species(db, tmp_path):
     project = make_project(
         db, name="readme-species", counting_threshold=0.5

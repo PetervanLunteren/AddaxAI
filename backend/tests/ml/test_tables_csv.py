@@ -1,10 +1,11 @@
 """Tests for the tables_csv postprocess output module.
 
 The row schemas live in the ``export_crud`` builders and have their own
-coverage there. Here we pin that this wrapper writes both files
-(``addaxai-files.csv`` + ``addaxai-detections.csv``) at the right paths,
-that it trims to the folder-run column set, and that ``relative_path`` on
-the files table is the file's path under its deployment's source folder.
+coverage there. Here we pin that this wrapper writes all three files
+(``addaxai-summary.csv`` + ``addaxai-files.csv`` +
+``addaxai-detections.csv``) at the right paths, that it trims to the
+folder-run column set, and that ``relative_path`` on the files and
+detections tables is the file's path under its deployment's source folder.
 """
 
 import csv
@@ -16,6 +17,7 @@ import pytest
 from app.ml.postprocessing_outputs.tables_csv import (
     DETECTIONS_FILENAME,
     FILES_FILENAME,
+    SUMMARY_FILENAME,
     write_tables_csv,
 )
 from tests.conftest import (
@@ -33,7 +35,7 @@ def _write_placeholder(path: Path) -> str:
 
 
 
-def test_writes_both_files_at_canonical_paths(db, tmp_path):
+def test_writes_all_three_files_at_canonical_paths(db, tmp_path):
     project = make_project(db, name="csv-basic")
     dep = make_deployment(db, project_id=project.id)
     file = make_file(
@@ -57,14 +59,26 @@ def test_writes_both_files_at_canonical_paths(db, tmp_path):
     target = tmp_path / "out"
     result = write_tables_csv(db, project.id, target)
 
-    # Files + detections only: a folder run has no deployments or
-    # counts tables (ecological interpretation lives in projects mode).
+    # Summary + files + detections only: a folder run has no deployments
+    # or counts tables (ecological interpretation lives in projects mode).
+    assert (target / SUMMARY_FILENAME).is_file()
     assert (target / FILES_FILENAME).is_file()
     assert (target / DETECTIONS_FILENAME).is_file()
     assert (target / DETECTIONS_FILENAME).stat().st_size > 0
-    assert len(result.output_paths) == 2
+    assert len(result.output_paths) == 3
     assert not (target / "addaxai-deployments.csv").exists()
     assert not (target / "addaxai-counts.csv").exists()
+
+    with open(target / SUMMARY_FILENAME, newline="") as f:
+        summary = list(csv.DictReader(f))
+    assert [r["classification_label"] for r in summary] == ["dog"]
+    assert summary[0]["n_images"] == "1"
+    assert summary[0]["n_detections"] == "1"
+    # No ecological interpretation in a folder run: no events figure and
+    # no Counts total. Photos, videos and boxes per species only.
+    assert "n_events" not in summary[0]
+    assert "n_individuals" not in summary[0]
+    assert set(summary[0]) >= {"n_images", "n_videos", "n_detections"}
 
 
 def test_folder_run_headers_omit_deployment_id_and_notes(db, tmp_path):
@@ -109,6 +123,7 @@ def test_folder_run_headers_omit_deployment_id_and_notes(db, tmp_path):
 
     assert "detection_id" in det_headers
     assert "relative_path" in files_headers
+    assert "relative_path" in det_headers
 
     # The camera EXIF columns survive the folder-run trim: they are file
     # metadata, not projects-only structure.
@@ -260,8 +275,8 @@ def test_event_id_carries_the_real_event_id_when_clustered(db, tmp_path):
 
 
 def test_row_count_totals_all_tables(db, tmp_path):
-    """Two files, each with one detection. Total row_count =
-    2 files + 2 detections."""
+    """Two files, each with one detection of its own species. Total
+    row_count = 2 summary rows + 2 files + 2 detections."""
     project = make_project(db, name="csv-rows")
     dep = make_deployment(db, project_id=project.id)
     for n, label in enumerate(["dog", "cat"]):
@@ -286,12 +301,18 @@ def test_row_count_totals_all_tables(db, tmp_path):
     target = tmp_path / "out"
     result = write_tables_csv(db, project.id, target)
 
-    assert result.row_count == 4
+    assert result.row_count == 6
+
+
+def _relative_paths(target: Path, filename: str) -> set[str]:
+    with open(target / filename, newline="") as f:
+        return {r["relative_path"] for r in csv.DictReader(f)}
 
 
 def test_relative_path_is_relative_to_deployment_folder(db, tmp_path):
-    """relative_path on the files table is the file's path under its
-    deployment's source folder."""
+    """relative_path on the files and detections tables is the file's path
+    under its deployment's source folder. Both tables, so a reader of
+    either can find the photo without a join."""
     project = make_project(db, name="csv-relpath")
     dep = make_deployment(
         db, project_id=project.id, folder_path=str(tmp_path / "CameraA"),
@@ -310,17 +331,13 @@ def test_relative_path_is_relative_to_deployment_folder(db, tmp_path):
     target = tmp_path / "out"
     write_tables_csv(db, project.id, target)
 
-    csv = (target / FILES_FILENAME).read_text()
-    header_line, *data_lines = csv.splitlines()
-    headers = header_line.split(",")
-    rel_idx = headers.index("relative_path")
-    rel_values = {row.split(",")[rel_idx] for row in data_lines}
-    assert rel_values == {"sub/IMG.jpg"}
+    assert _relative_paths(target, FILES_FILENAME) == {"sub/IMG.jpg"}
+    assert _relative_paths(target, DETECTIONS_FILENAME) == {"sub/IMG.jpg"}
 
 
 def test_relative_path_falls_back_to_filename(db, tmp_path):
     """When the deployment has no source folder, relative_path is the
-    bare filename."""
+    bare filename, on both tables."""
     project = make_project(db, name="csv-relpath-fallback")
     dep = make_deployment(db, project_id=project.id, folder_path=None)
     file = make_file(
@@ -337,12 +354,8 @@ def test_relative_path_falls_back_to_filename(db, tmp_path):
     target = tmp_path / "out"
     write_tables_csv(db, project.id, target)
 
-    csv = (target / FILES_FILENAME).read_text()
-    header_line, *data_lines = csv.splitlines()
-    headers = header_line.split(",")
-    rel_idx = headers.index("relative_path")
-    rel_values = {row.split(",")[rel_idx] for row in data_lines}
-    assert rel_values == {"IMG.jpg"}
+    assert _relative_paths(target, FILES_FILENAME) == {"IMG.jpg"}
+    assert _relative_paths(target, DETECTIONS_FILENAME) == {"IMG.jpg"}
 
 
 def test_unknown_project_raises(db, tmp_path):
