@@ -2,15 +2,12 @@
 
 ## Runbooks (skills)
 
-Recurring, gotcha-heavy jobs have step-by-step runbooks under `skills/`. Read the
-relevant one before starting, and follow its gotcha list and validation checklist
-rather than re-deriving the process:
-
-- `skills/add-classification-model/SKILL.md` : add a new classifier to the zoo end to end.
-- `skills/build-taxonomy-csv/SKILL.md` : produce a model's taxonomy.csv via GBIF.
-- `skills/run-model-test-harness/SKILL.md` : run and read `test_models.py`.
-
-The sections below are the reference material those runbooks point at.
+Recurring, gotcha-heavy jobs (adding a classifier to the zoo, building its
+taxonomy.csv, running the `test_models.py` harness, publishing a release) are
+Claude Code skills under `.claude/skills/` on Peter's machine. That folder is
+gitignored, so a clone does not carry them. The sections below are the
+reference material those skills point at, and they are the source of truth for
+anyone working without them.
 
 ## After cloning
 
