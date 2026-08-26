@@ -68,10 +68,9 @@ export function QueueCard({ projectId }: QueueCardProps) {
 
   const handleRunQueue = async () => {
     const pendingCount = entries?.filter((e) => e.status === "pending").length || 0;
-    if (pendingCount === 0) {
-      alert("No pending deployments to process");
-      return;
-    }
+    // The button is disabled without pending entries; this only guards a
+    // stale click between a refetch and the re-render.
+    if (pendingCount === 0) return;
 
     // Pre-flight: refuse to start if any of this project's configured
     // models is missing weights or env. The dialog (rendered in
@@ -105,7 +104,7 @@ export function QueueCard({ projectId }: QueueCardProps) {
     } catch (error) {
       console.error("[QueueCard] Failed to process queue:", error);
       const message = error instanceof Error ? error.message : String(error);
-      alert(`Failed to start processing: ${message}`);
+      toast.error(`Failed to start processing: ${message}`);
     }
   };
 
