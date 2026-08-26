@@ -51,6 +51,7 @@ import { SiteSelector } from "./SiteSelector";
 import { AddSiteModal } from "./AddSiteModal";
 import { ImportDeploymentsDialog } from "./ImportDeploymentsDialog";
 import { DatetimeOffsetModal } from "./DatetimeOffsetModal";
+import { PairedCamerasCheckbox } from "./PairedCamerasCheckbox";
 import { useFolderScan } from "@/hooks/useFolderScan";
 
 interface AddDeploymentCardProps {
@@ -67,12 +68,13 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
   const [, setTouchedFields] = useState({ folder: false, site: false });
   const [datetimeOffsetSeconds, setDatetimeOffsetSeconds] = useState(0);
   const [fileMtimeChecked, setFileMtimeChecked] = useState(false);
+  const [pairedCameras, setPairedCameras] = useState(false);
   const [offsetModalOpen, setOffsetModalOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [tags, setTags] = useState<Record<string, string>>({});
-  // Notes and tags are collapsed by default: both are optional, both are
-  // editable later on the deployment itself, and a note usually only makes
-  // sense once the images have been looked at. Not persisted, matching the
+  // Options (paired cameras, notes, tags) are collapsed by default: all
+  // are optional, all are editable later on the deployment itself, and
+  // most deployments need none of them. Not persisted, matching the
   // "Advanced settings" collapsible in FolderRunModelStep.
   const [metadataOpen, setMetadataOpen] = useState(false);
   // Reprocess confirmation: shown when the folder is already a deployment.
@@ -112,6 +114,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
       image_count: number;
       datetime_offset_seconds: number | null;
       use_file_mtime_fallback: boolean;
+      paired_cameras: boolean;
       notes: string | null;
       tags: Record<string, string>;
     }) =>
@@ -123,6 +126,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
         image_count: data.image_count,
         datetime_offset_seconds: data.datetime_offset_seconds || null,
         use_file_mtime_fallback: data.use_file_mtime_fallback,
+        paired_cameras: data.paired_cameras,
         notes: data.notes,
         tags: data.tags,
       }),
@@ -135,12 +139,9 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
       setSiteId(null);
       setDatetimeOffsetSeconds(0);
       setFileMtimeChecked(false);
+      setPairedCameras(false);
       setNotes("");
       setTags({});
-    },
-    onError: (error) => {
-      // Only show error alerts
-      alert(`Failed to add to queue: ${error instanceof Error ? error.message : "Unknown error"}`);
     },
   });
 
@@ -203,6 +204,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
         image_count: scanResult.image_count,
         datetime_offset_seconds: datetimeOffsetSeconds || null,
         use_file_mtime_fallback: useFileMtimeFallback,
+        paired_cameras: pairedCameras,
         notes: notes.trim() || null,
         tags,
       });
@@ -215,15 +217,21 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
       setSiteId(null);
       setDatetimeOffsetSeconds(0);
       setFileMtimeChecked(false);
+      setPairedCameras(false);
       setNotes("");
       setTags({});
     },
-    onError: (error) => {
-      alert(
-        `Failed to reprocess: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
-    },
   });
+
+  // One error slot for both submit paths, shown as a callout above the
+  // button (no window.alert: it blocks the page and cannot be styled or
+  // read back by tests). The mutation objects own the state; dismiss
+  // resets them, and picking another folder clears it too.
+  const submitError = addToQueue.error ?? reprocess.error;
+  const clearSubmitError = () => {
+    addToQueue.reset();
+    reprocess.reset();
+  };
 
   const handleSubmit = () => {
     if (!folderPath || !scanResult) return;
@@ -241,6 +249,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
       image_count: scanResult.image_count,
       datetime_offset_seconds: datetimeOffsetSeconds || null,
       use_file_mtime_fallback: useFileMtimeFallback,
+      paired_cameras: pairedCameras,
       notes: notes.trim() || null,
       tags,
     });
@@ -290,6 +299,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
               setFolderPath(path);
               setDatetimeOffsetSeconds(0); // Reset offset when folder changes
               setFileMtimeChecked(false); // and the file-date opt-in
+              clearSubmitError(); // a stale error would describe the old folder
               setTouchedFields((prev) => ({ ...prev, folder: true }));
             }}
             datetimeOffsetSeconds={datetimeOffsetSeconds}
@@ -315,7 +325,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
             deploymentGps={scanResult?.gps_location ?? null}
           />
 
-          {/* Notes and tags */}
+          {/* Options: paired cameras, notes, tags */}
           <Collapsible open={metadataOpen} onOpenChange={setMetadataOpen}>
             <CollapsibleTrigger asChild>
               <button
@@ -323,7 +333,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
                 className="flex items-center gap-2 text-left text-sm font-semibold leading-none transition-colors hover:text-primary"
               >
                 <span>
-                  Notes and tags
+                  Options
                   <span className="ml-1 font-normal text-muted-foreground">
                     optional
                   </span>
@@ -336,6 +346,12 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
               </button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-6 pt-4">
+              {/* Paired cameras: the subfolders are dependent cameras. */}
+              <PairedCamerasCheckbox
+                checked={pairedCameras}
+                onChange={setPairedCameras}
+              />
+
               {/* Notes */}
               <div className="space-y-2">
                 <FieldHeader
@@ -364,6 +380,13 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
         </CardContent>
 
         <CardFooter className="flex-col gap-3 items-stretch">
+          {submitError && (
+            <Callout variant="error" size="compact" onDismiss={clearSubmitError}>
+              {submitError instanceof Error
+                ? submitError.message
+                : "Something went wrong. Try again."}
+            </Callout>
+          )}
           {/* Surface duplicate-blocker messages above the disabled button so
               users don't have to hover to see why they're blocked. */}
           {(blockingDeployment || blockingQueueEntry) && (

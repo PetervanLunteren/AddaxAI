@@ -826,6 +826,9 @@ def split_deployment(
                 notes=parent.notes,
                 tags=dict(parent.tags or {}),
                 datetime_offset_seconds=parent.datetime_offset_seconds,
+                # A child is one subfolder, so a paired parent's cameras
+                # are separated by the split. The flag does not carry over.
+                paired_cameras=False,
             )
             db.add(child)
             db.flush()

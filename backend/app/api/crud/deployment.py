@@ -110,6 +110,7 @@ def create_deployment(db: Session, deployment: DeploymentCreate) -> Deployment:
         camera_model=deployment.camera_model,
         camera_serial=deployment.camera_serial,
         notes=deployment.notes,
+        paired_cameras=deployment.paired_cameras,
         tags=deployment.tags,
     )
     db.add(db_deployment)
@@ -138,6 +139,13 @@ def update_deployment(
     dashboard charts, and event listings would stay frozen at the
     pre-edit offset because those views read off the baked
     File.captured_at_local rather than recomputing on every render.
+
+    When paired_cameras changes, the deployment's events are regenerated
+    at once (the grouping rule changed, see `event_clustering`), carrying
+    confirmed counts onto events whose file set stayed the same. The
+    project's postprocessing hash is cleared so the "needs reprocessing"
+    banner asks for a reprocess, which re-runs smoothing on the new
+    grouping. Events of other deployments are untouched.
     """
     db_deployment = get_deployment(db, deployment_id)
     if db_deployment is None:
@@ -160,11 +168,23 @@ def update_deployment(
         new_offset = update_data["datetime_offset_seconds"] or 0
         offset_delta_seconds = new_offset - old_offset
 
+    paired_changed = (
+        "paired_cameras" in update_data
+        and update_data["paired_cameras"] is not None
+        and update_data["paired_cameras"] != db_deployment.paired_cameras
+    )
+
     for field_name, value in update_data.items():
         setattr(db_deployment, field_name, value)
 
     if offset_delta_seconds != 0:
         _apply_offset_shift(db, db_deployment, offset_delta_seconds)
+
+    if paired_changed:
+        from app.api.crud.event import generate_events_for_deployment
+
+        generate_events_for_deployment(db, db_deployment)
+        db_deployment.project.postprocessing_settings_hash = None
 
     db.commit()
     db.refresh(db_deployment)
@@ -638,7 +658,8 @@ def get_deployment_info(db: Session, deployment_id: str):
     # (max - min) + 1 day span, summed. For a clean single-folder
     # deployment this equals the old `(end - start) + 1` formula; for a
     # mixed backlog it correctly excludes the offline gaps between cards.
-    # See `app.api.crud.trap_nights` for detail.
+    # A paired-cameras deployment counts as one camera. See
+    # `app.api.crud.trap_nights` for detail.
     from app.api.crud.trap_nights import compute_trap_nights_for_deployment
 
     trap_nights = compute_trap_nights_for_deployment(db, deployment_id)
@@ -677,6 +698,7 @@ def get_deployment_info(db: Session, deployment_id: str):
     return DeploymentInfoResponse(
         deployment_id=deployment.id,
         folder_path=deployment.folder_path,
+        paired_cameras=deployment.paired_cameras,
         site_id=site_id,
         site_name=site_name,
         start_date_local=deployment.start_date_local,

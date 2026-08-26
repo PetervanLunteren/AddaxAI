@@ -12,7 +12,17 @@ import uuid
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import JSON, Date, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -79,6 +89,14 @@ class Deployment(Base):
     camera_serial: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    # The subfolders of this folder are dependent cameras: one animal
+    # triggers more than one of them. Events cluster across the
+    # subfolders and effort counts once. Off: each subfolder is its own
+    # camera or card period. See DEVELOPERS.md "Paired cameras".
+    paired_cameras: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="0", default=False
+    )
 
     # Audit: the datetime offset (seconds) that was applied to all file
     # timestamps when this deployment was analyzed. Informational only,

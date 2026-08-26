@@ -108,3 +108,69 @@ def test_process_queue_with_pending(client, db):
     assert resp.status_code == 202
     assert resp.json()["jobs_started"] == 1
     assert len(resp.json()["job_ids"]) == 1
+
+
+def test_paired_cameras_defaults_off(client, db):
+    """Omitting the field must never silently pair the subfolders."""
+    p = make_project(db)
+    resp = _create_entry(client, p.id)
+    assert resp.status_code == 201
+    assert resp.json()["paired_cameras"] is False
+
+
+def test_paired_cameras_round_trips(client, db, tmp_path):
+    """Chosen at queue-add time, read by the worker later, so it lives on
+    the row."""
+    p = make_project(db)
+    for cam in ("cam1", "cam2"):
+        (tmp_path / cam).mkdir()
+        (tmp_path / cam / "a.jpg").write_bytes(b"x")
+    resp = client.post(
+        "/api/deployment-queue",
+        json={
+            "project_id": p.id,
+            "folder_path": str(tmp_path),
+            "image_count": 2,
+            "paired_cameras": True,
+        },
+    )
+    assert resp.status_code == 201
+    fetched = client.get(f"/api/deployment-queue/{resp.json()['id']}")
+    assert fetched.json()["paired_cameras"] is True
+
+
+def test_paired_cameras_needs_two_camera_subfolders(client, db, tmp_path):
+    """The flag describes a folder layout, so the queue refuses it for a
+    folder that does not have that layout: flat files, or one subfolder."""
+    from app.services.csv_import_deployments import PAIRED_CAMERAS_NEED_SUBFOLDERS
+
+    p = make_project(db)
+    flat = tmp_path / "flat"
+    flat.mkdir()
+    (flat / "a.jpg").write_bytes(b"x")
+    one = tmp_path / "one"
+    (one / "cam1").mkdir(parents=True)
+    (one / "cam1" / "a.jpg").write_bytes(b"x")
+    pair = tmp_path / "pair"
+    for cam in ("cam1", "cam2"):
+        (pair / cam).mkdir(parents=True)
+        (pair / cam / "a.jpg").write_bytes(b"x")
+
+    def post(folder, paired):
+        return client.post(
+            "/api/deployment-queue",
+            json={
+                "project_id": p.id,
+                "folder_path": str(folder),
+                "image_count": 1,
+                "paired_cameras": paired,
+            },
+        )
+
+    for folder in (flat, one):
+        resp = post(folder, True)
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == PAIRED_CAMERAS_NEED_SUBFOLDERS
+    assert post(pair, True).status_code == 201
+    # Unpaired never looks at the layout.
+    assert post(flat, False).status_code == 201

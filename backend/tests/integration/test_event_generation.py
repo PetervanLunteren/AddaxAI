@@ -437,3 +437,89 @@ def test_events_same_folder_still_cluster(deployment_scaffold):
     assert total == 1
     event = db.query(Event).one()
     assert event.file_count == 3
+
+
+def _load_paired_station(s: dict) -> None:
+    """Two cameras at one station, one subfolder each, firing one second
+    apart at the same animals. cam_a sees 2 zebras on its second frame,
+    cam_b sees 1 on both of its frames."""
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    base = datetime(2024, 6, 15, 10, 0, 0)
+    (deploy_dir / "cam_a").mkdir()
+    (deploy_dir / "cam_b").mkdir()
+    box = {"category": "1", "conf": 0.9, "bbox": [0.1, 0.2, 0.3, 0.4],
+           "classifications": [[1, 0.8]]}
+    box2 = {**box, "bbox": [0.5, 0.5, 0.2, 0.2]}
+    schedule = [
+        ("cam_a/img_000.jpg", base, [box]),
+        ("cam_b/img_000.jpg", base + timedelta(seconds=1), [box]),
+        ("cam_a/img_001.jpg", base + timedelta(seconds=2), [box, box2]),
+        ("cam_b/img_001.jpg", base + timedelta(seconds=3), [box]),
+    ]
+    images = []
+    for rel, ts, dets in schedule:
+        create_tiny_jpeg(deploy_dir / rel)
+        images.append({
+            "file": rel,
+            "exif_metadata": {"DateTimeOriginal": ts.strftime("%Y:%m:%d %H:%M:%S")},
+            "detections": dets,
+        })
+    md_json = build_detection_json(images, classification_categories={"1": "zebra"})
+    json_path = write_json(s["artifacts"] / "results.json", md_json)
+    with patch("app.ml.json_pipeline.extract_video_dates", return_value={}):
+        load_json_to_database(
+            json_path=json_path,
+            deployment_id=s["deployment"].id,
+            deployment_folder=deploy_dir,
+            job_id=s["job"].id,
+            db=db,
+            artifacts_folder=s["artifacts"],
+        )
+
+
+def test_paired_cameras_form_one_event_with_max_not_sum(deployment_scaffold):
+    """A paired station groups both cameras' frames into one event in
+    capture order, and MaxN is the largest count in any single frame (2),
+    not the sum over both cameras (5)."""
+    from app.api.crud.event import count_regroup_impact
+    from app.ml.postprocessing import build_smoother_input
+
+    s = deployment_scaffold
+    db = s["db"]
+    s["project"].independence_interval = 1800
+    s["deployment"].paired_cameras = True
+    db.flush()
+    _load_paired_station(s)
+
+    assert generate_events_for_project(db, s["project"].id) == 1
+    event = db.query(Event).one()
+    assert event.file_count == 4
+    ordered = sorted(event.files, key=lambda f: f.captured_at_local)
+    assert [f.file_path.rsplit("/", 2)[1] for f in ordered] == [
+        "cam_a", "cam_b", "cam_a", "cam_b",
+    ]
+    (obs,) = event.observations
+    assert obs.label == "zebra"
+    assert obs.max_n == 2
+
+    # The smoother sees the same grouping: one seq_id across both cameras.
+    smoother = build_smoother_input(s["deployment"].id, 1800, db)
+    assert len(smoother) == 4
+    assert len({row["seq_id"] for row in smoother}) == 1
+
+    # The regroup preview clusters with the same rule, so at the current
+    # interval nothing is at risk.
+    event.confirmed = True
+    db.commit()
+    assert count_regroup_impact(db, s["project"].id, 1800)["confirmed_at_risk"] == 0
+
+
+def test_unpaired_station_layout_stays_two_events(deployment_scaffold):
+    """Same layout with the flag off keeps the per-subfolder rule."""
+    s = deployment_scaffold
+    db = s["db"]
+    s["project"].independence_interval = 1800
+    db.flush()
+    _load_paired_station(s)
+
+    assert generate_events_for_project(db, s["project"].id) == 2

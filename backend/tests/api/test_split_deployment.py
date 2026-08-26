@@ -63,6 +63,7 @@ def _seed_deployment_with_files(
         notes="shared note",
         tags={"region": "NL"},
         datetime_offset_seconds=123,
+        paired_cameras=True,
     )
     # Point File rows at the on-disk files. Timestamps are spaced by 1 hour
     # so straddling tests can rely on deterministic bounds.
@@ -344,6 +345,8 @@ def test_split_creates_children_and_removes_parent(client, db, tmp_path):
         assert child.notes == "shared note"
         assert child.tags == {"region": "NL"}
         assert child.datetime_offset_seconds == 123
+        # A child is one subfolder, so the parent's pairing does not carry.
+        assert child.paired_cameras is False
         assert child.folder_status == "valid"
         assert child.start_date_local == date(2024, 1, 5)
         assert child.end_date_local == date(2024, 1, 5)

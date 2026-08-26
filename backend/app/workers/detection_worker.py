@@ -301,6 +301,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 # the per-run record).
                 if datetime_offset_seconds:
                     deployment.datetime_offset_seconds = datetime_offset_seconds
+                deployment.paired_cameras = entry.paired_cameras
                 deployment.classification_gate_used = project.classification_gate
                 db.commit()
                 logger.info(f"Created deployment: {deployment.id}")

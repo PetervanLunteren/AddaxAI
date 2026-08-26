@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tests.conftest import make_project
+from tests.conftest import make_deployment, make_detection, make_file, make_project
 
 
 @pytest.fixture(autouse=True)
@@ -374,12 +374,31 @@ def test_reprocess_not_found(client):
     assert resp.status_code == 404
 
 
+def _seed_classification(db, project):
+    """One labelled detection, so the project has something to reprocess."""
+    d = make_deployment(db, project_id=project.id)
+    f = make_file(db, deployment_id=d.id)
+    make_detection(db, file_id=f.id, category="animal", confidence=0.9, label="fox")
+    db.commit()
+
+
 def test_reprocess_success(client, db):
     p = make_project(db)
+    _seed_classification(db, p)
     with patch("app.api.routers.projects.ws_manager"):
         resp = client.post(f"/api/projects/{p.id}/reprocess")
     assert resp.status_code == 202
     assert "job_id" in resp.json()
+
+
+def test_reprocess_refuses_a_project_without_classifications(client, db):
+    """Without classifications there is nothing to smooth, and the job
+    would sit in `pending` for good because the worker only starts once
+    the frontend attaches to its progress channel."""
+    p = make_project(db)
+    resp = client.post(f"/api/projects/{p.id}/reprocess")
+    assert resp.status_code == 400
+    assert "no classifications" in resp.json()["detail"]
 
 
 def test_re_embed_no_model(client, db):
@@ -525,6 +544,7 @@ def test_reprocess_accepts_folder_run_projects(client, db):
     and reprocesses through the same endpoints as the Settings page;
     neither may gate on project mode."""
     p = make_project(db, mode="folder_run")
+    _seed_classification(db, p)
 
     resp = client.patch(
         f"/api/projects/{p.id}",

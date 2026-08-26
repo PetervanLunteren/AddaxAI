@@ -29,7 +29,15 @@ Worked cases (one deployment):
   = 30.
 - Ten parallel cameras bundled as one deployment, each capturing Jan 1 -
   Mar 31 → 10 × 90 = 900. This is the motivating fix: the prior
-  merge-overlapping algorithm silently collapsed them into 90.
+  merge-overlapping algorithm silently collapsed them into 90. This is
+  the unpaired reading of subfolders; see "Paired cameras" below.
+
+Paired cameras (`Deployment.paired_cameras`): the subfolders are
+dependent cameras (one animal triggers more than one), so the deployment
+is one unit of effort.
+All its files go in one bucket, giving one interval from the first to
+the last capture, and the effort counts once. Two cameras for Jan 1 -
+Mar 31 → 90, not 180. The boundary subtraction has nothing to do.
 
 Known edge cases the boundary-subtraction rule does not fully solve:
 
@@ -59,7 +67,33 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import File
+from app.db.sql_params import iter_id_chunks
+from app.models import Deployment, File
+
+
+def _paired_deployment_ids(db: Session, deployment_ids: list[str]) -> set[str]:
+    """Ids of the given deployments that have `paired_cameras` on."""
+    paired: set[str] = set()
+    for chunk in iter_id_chunks(deployment_ids):
+        paired.update(
+            db.execute(
+                select(Deployment.id)
+                .where(Deployment.id.in_(chunk))
+                .where(Deployment.paired_cameras.is_(True))
+            ).scalars()
+        )
+    return paired
+
+
+def _bucket_dates(
+    rows: list[tuple[str, date]], *, paired_cameras: bool
+) -> dict[str, list[date]]:
+    """Capture dates per subfolder, or all in one bucket for paired cameras."""
+    by_folder: dict[str, list[date]] = defaultdict(list)
+    for file_path, captured_at in rows:
+        key = "" if paired_cameras else str(Path(file_path).parent)
+        by_folder[key].append(captured_at.date())
+    return by_folder
 
 
 def _clip_interval(
@@ -142,11 +176,8 @@ def compute_trap_nights_for_deployment(
     if not rows:
         return None
 
-    by_folder: dict[str, list[date]] = defaultdict(list)
-    for file_path, captured_at in rows:
-        folder = str(Path(file_path).parent)
-        by_folder[folder].append(captured_at.date())
-
+    paired = deployment_id in _paired_deployment_ids(db, [deployment_id])
+    by_folder = _bucket_dates(rows, paired_cameras=paired)
     intervals = _intervals_from_folder_dates(by_folder, clip_start, clip_end)
     return _trap_nights_from_intervals(intervals)
 
@@ -166,7 +197,8 @@ def compute_intervals_for_deployments(
     empty list for deployments that have no capture-bearing files within
     the clip window. Intervals are inclusive `[start, end]`, sorted by
     start date, and **not merged**: two parallel subfolders within one
-    deployment produce two separate intervals.
+    deployment produce two separate intervals. A paired-cameras
+    deployment is the exception: one interval for the whole deployment.
 
     See the module docstring for the algorithm.
     """
@@ -180,17 +212,16 @@ def compute_intervals_for_deployments(
         .where(File.captured_at_local.isnot(None))
     ).all()
 
-    by_dep_folder: dict[str, dict[str, list[date]]] = defaultdict(
-        lambda: defaultdict(list)
-    )
+    rows_by_dep: dict[str, list[tuple[str, date]]] = defaultdict(list)
     for deployment_id, file_path, captured_at in rows:
-        folder = str(Path(file_path).parent)
-        by_dep_folder[deployment_id][folder].append(captured_at.date())
+        rows_by_dep[deployment_id].append((file_path, captured_at))
+    paired_ids = _paired_deployment_ids(db, list(rows_by_dep))
 
     result: dict[str, list[tuple[date, date]]] = {
         dep_id: [] for dep_id in deployment_ids
     }
-    for dep_id, by_folder in by_dep_folder.items():
+    for dep_id, dep_rows in rows_by_dep.items():
+        by_folder = _bucket_dates(dep_rows, paired_cameras=dep_id in paired_ids)
         result[dep_id] = _intervals_from_folder_dates(
             by_folder, clip_start, clip_end
         )

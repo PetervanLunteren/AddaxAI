@@ -12,6 +12,11 @@ whenever the time gap between consecutive files exceeds
 across SD cards when a user runs a mixed backlog as a single
 deployment. Time gaps handle the standard independence-interval rule
 from camera-trap literature.
+
+Paired cameras (`Deployment.paired_cameras`) invert the folder rule: the
+subfolders are dependent cameras, so all files go in one bucket and an
+animal seen by more than one camera lands in one event. The caller
+passes the flag; this module never reads the deployment itself.
 """
 
 from __future__ import annotations
@@ -36,14 +41,19 @@ def folder_key(f: File) -> str:
 def cluster_files_into_events(
     files: Iterable[File],
     independence_interval: int,
+    *,
+    paired_cameras: bool,
 ) -> list[list[File]]:
     """
     Partition `files` into event clusters.
 
     Each returned list is one event's files in capture-time order.
-    Clusters never span different folders and never contain two
-    consecutive files whose capture-time gap exceeds
-    `independence_interval` (seconds).
+    Clusters never contain two consecutive files whose capture-time gap
+    exceeds `independence_interval` (seconds). With `paired_cameras`
+    off, clusters never span different folders either; with it on, the
+    deployment's subfolders are one camera and files cluster across them.
+    The flag has no default on purpose: every caller states which
+    deployment semantics it wants.
 
     Files with `captured_at_local == None` (no EXIF capture date) can't
     be time-grouped, so each becomes its own single-file event at the
@@ -57,7 +67,7 @@ def cluster_files_into_events(
         if f.captured_at_local is None:
             dateless.append(f)
             continue
-        by_folder[folder_key(f)].append(f)
+        by_folder["" if paired_cameras else folder_key(f)].append(f)
 
     clusters: list[list[File]] = []
     # Iterate folders in a deterministic order so generated events and

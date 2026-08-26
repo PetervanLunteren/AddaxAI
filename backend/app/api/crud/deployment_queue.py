@@ -56,6 +56,7 @@ def _new_queue_entry(entry: DeploymentQueueCreate) -> DeploymentQueue:
         image_count=entry.image_count,
         datetime_offset_seconds=entry.datetime_offset_seconds,
         use_file_mtime_fallback=entry.use_file_mtime_fallback,
+        paired_cameras=entry.paired_cameras,
         notes=entry.notes,
         tags=entry.tags,
         status="pending",

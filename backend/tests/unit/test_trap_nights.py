@@ -364,3 +364,62 @@ def test_bulk_empty_deployment_returns_zero(db):
     db.commit()
     bulk = compute_trap_nights_for_deployments(db, [d1.id, d2.id])
     assert bulk == {d1.id: 1, d2.id: 0}
+
+
+def test_paired_cameras_count_the_station_once(db):
+    """Two cameras at one station, one subfolder each, both running Jan 1 ..
+    Jan 10 with partial overlap in what they captured. Unpaired that is two
+    parallel cameras (10 + 8 = 18). Paired it is one station: 10."""
+    p = make_project(db)
+    d = make_deployment(db, project_id=p.id, folder_path="/data/station")
+    for day in (1, 5, 10):
+        make_file(
+            db,
+            deployment_id=d.id,
+            file_path=f"/data/station/cam_a/img_{day:02d}.jpg",
+            captured_at_local=_dt(2024, 1, day),
+        )
+    for day in (3, 10):
+        make_file(
+            db,
+            deployment_id=d.id,
+            file_path=f"/data/station/cam_b/img_{day:02d}.jpg",
+            captured_at_local=_dt(2024, 1, day),
+        )
+    db.commit()
+
+    assert compute_trap_nights_for_deployment(db, d.id) == 18
+    assert compute_trap_nights_for_deployments(db, [d.id]) == {d.id: 18}
+
+    d.paired_cameras = True
+    db.commit()
+
+    assert compute_trap_nights_for_deployment(db, d.id) == 10
+    assert compute_trap_nights_for_deployments(db, [d.id]) == {d.id: 10}
+
+
+def test_paired_cameras_give_one_interval(db):
+    """The timeline reads the intervals: a paired deployment is one bar."""
+    from app.api.crud.trap_nights import compute_intervals_for_deployments
+
+    p = make_project(db)
+    paired = make_deployment(
+        db, project_id=p.id, folder_path="/data/station", paired_cameras=True
+    )
+    single = make_deployment(db, project_id=p.id, folder_path="/data/other")
+    for dep, cam in ((paired, "cam_a"), (paired, "cam_b"), (single, "cam_a"), (single, "cam_b")):
+        for day in (1, 10):
+            make_file(
+                db,
+                deployment_id=dep.id,
+                file_path=f"{dep.folder_path}/{cam}/img_{day:02d}.jpg",
+                captured_at_local=_dt(2024, 1, day),
+            )
+    db.commit()
+
+    intervals = compute_intervals_for_deployments(db, [paired.id, single.id])
+    assert intervals[paired.id] == [(date(2024, 1, 1), date(2024, 1, 10))]
+    assert intervals[single.id] == [
+        (date(2024, 1, 1), date(2024, 1, 10)),
+        (date(2024, 1, 1), date(2024, 1, 10)),
+    ]

@@ -118,6 +118,25 @@ def walk_media_files(folder: Path) -> tuple[list[Path], list[Path]]:
     return images, videos
 
 
+def has_paired_camera_layout(folder: Path) -> bool:
+    """Whether ``folder`` holds media in at least two direct subfolders.
+
+    That is the layout ``Deployment.paired_cameras`` describes: one
+    subfolder per camera. Files directly in ``folder`` do not count, and
+    one camera folder is not a pair. Same walk as everything else here.
+
+    Raises:
+        OSError: if the folder cannot be listed, like ``walk_media_files``.
+    """
+    images, videos = walk_media_files(folder)
+    children = {
+        f.relative_to(folder).parts[0]
+        for f in images + videos
+        if len(f.relative_to(folder).parts) > 1
+    }
+    return len(children) >= 2
+
+
 def count_media_files(folder: Path) -> tuple[int, int]:
     """How many images and videos are under ``folder``, as ``(images, videos)``.
 

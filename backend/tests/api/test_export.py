@@ -1935,3 +1935,37 @@ def test_export_camtrap_dp_variant_rows(client, db):
     ]
     assert len(fox_entries) == 1
     assert fox_entries[0]["taxonRank"] == "species"
+
+
+# ---------------------------------------------------------------------------
+# Paired cameras in the deployment exports
+# ---------------------------------------------------------------------------
+
+
+def test_export_deployments_rows_carry_paired_cameras(db):
+    from app.api.crud.export import build_deployments_rows
+
+    project, _site, deployment = _build_simple_project(db)
+    deployment.paired_cameras = True
+    db.commit()
+
+    headers, rows = build_deployments_rows(db, project)
+    assert "paired_cameras" in headers
+    assert rows[0][headers.index("paired_cameras")] == "true"
+
+
+def test_export_camtrap_dp_tags_paired_cameras(client, db):
+    """Camtrap DP defines a deployment as one camera, so a paired
+    deployment says so in deploymentTags, next to the user's own tags."""
+    project, _site, deployment = _build_simple_project(db, timezone="Europe/Amsterdam")
+    deployment.paired_cameras = True
+    deployment.tags = {"season": "wet"}
+    make_file(db, deployment_id=deployment.id, captured_at_local=datetime(2024, 6, 15, 9, 0, 0))
+    db.commit()
+
+    resp = _run_camtrap_dp_export(client, db, project.id)
+    assert resp.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        deps_rows = list(csv.reader(io.StringIO(zf.read("deployments.csv").decode())))
+    tags_col = deps_rows[0].index("deploymentTags")
+    assert deps_rows[1][tags_col] == "season:wet | paired_cameras:true"

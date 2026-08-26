@@ -35,6 +35,13 @@ class DeploymentBase(BaseModel):
     datetime_offset_seconds: int | None = Field(
         None, description="Datetime offset in seconds applied during analysis"
     )
+    paired_cameras: bool = Field(
+        False,
+        description=(
+            "The subfolders are dependent cameras: cluster "
+            "events across them and count effort once"
+        ),
+    )
     tags: dict[str, str] = Field(
         default_factory=dict, description="Custom key:value metadata tags"
     )
@@ -74,6 +81,7 @@ class DeploymentUpdate(BaseModel):
     camera_serial: str | None = None
     notes: str | None = Field(None, max_length=1000)
     datetime_offset_seconds: int | None = None
+    paired_cameras: bool | None = None
     tags: dict[str, str] | None = None
 
 
@@ -177,6 +185,7 @@ class DeploymentInfoResponse(BaseModel):
 
     deployment_id: str
     folder_path: str | None
+    paired_cameras: bool
     site_id: str | None
     site_name: str | None
     start_date_local: date
@@ -194,7 +203,8 @@ class DeploymentInfoResponse(BaseModel):
     # Top 5 species by observation count within this deployment. Empty
     # list when the deployment has no observations yet.
     top_species: list[DeploymentTopSpecies]
-    # (end_date - start_date) + 1 days. None when end_date_local is None.
+    # Subfolder-aware effort, see `app.api.crud.trap_nights`. None when
+    # the deployment has no dated files.
     trap_nights: int | None
     # observation_count / trap_nights * 100. None when trap_nights is
     # None or 0.

@@ -54,6 +54,7 @@ class DeploymentImportRow(BaseModel):
     folder: str
     site: str | None = None
     notes: str | None = None
+    paired_cameras: bool = False
     image_count: int = Field(default=0, ge=0)
     video_count: int = Field(default=0, ge=0)
 

@@ -110,10 +110,14 @@ def build_smoother_input(
     deployment = (
         db.query(Deployment).filter(Deployment.id == deployment_id).first()
     )
-    deployment_folder = deployment.folder_path if deployment else None
+    if deployment is None:
+        raise ValueError(f"Deployment {deployment_id} not found")
+    deployment_folder = deployment.folder_path
 
     smoother_input: list[dict] = []
-    for cluster in cluster_files_into_events(files, independence_interval):
+    for cluster in cluster_files_into_events(
+        files, independence_interval, paired_cameras=deployment.paired_cameras
+    ):
         seq_id = str(uuid.uuid4())
         for file_record in cluster:
             # Date-less files form single-file events and can't be

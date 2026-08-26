@@ -292,6 +292,9 @@ export interface DeploymentResponse {
   notes: string | null;
   tags: Record<string, string>;
   datetime_offset_seconds: number | null;
+  /** The subfolders are dependent cameras: events cluster
+   * across them and effort counts once. */
+  paired_cameras: boolean;
   created_at_utc: string;
   /** Non-fatal issues from this deployment's analysis run. Null when
    * the run had nothing to flag. */
@@ -308,6 +311,8 @@ export interface DeploymentUpdate {
   notes?: string | null;
   tags?: Record<string, string> | null;
   datetime_offset_seconds?: number | null;
+  /** Changing it regroups the deployment's events at once. */
+  paired_cameras?: boolean;
 }
 
 export interface BulkRelinkItem {
@@ -394,6 +399,7 @@ export interface DeploymentVerification {
 export interface DeploymentInfo {
   deployment_id: string;
   folder_path: string | null;
+  paired_cameras: boolean;
   /** Null when the deployment has no camera site assigned. */
   site_id: string | null;
   /** Null when the deployment has no camera site assigned. */
@@ -409,7 +415,8 @@ export interface DeploymentInfo {
   observation_count: number;
   detection_categories: DeploymentDetectionCategories;
   top_species: DeploymentTopSpecies[];
-  /** (end - start) + 1 days. Null when end_date_local is null. */
+  /** Subfolder-aware effort (paired cameras count once). Null when the
+   * deployment has no dated files. */
   trap_nights: number | null;
   /** observations / trap_nights * 100. Null when trap_nights is null or 0. */
   observation_rate_per_100_trap_nights: number | null;
@@ -1099,6 +1106,7 @@ export interface DeploymentImportRow {
   folder: string;
   site: string | null;
   notes: string | null;
+  paired_cameras: boolean;
   image_count: number;
   video_count: number;
 }

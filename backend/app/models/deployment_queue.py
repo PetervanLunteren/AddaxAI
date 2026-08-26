@@ -63,6 +63,12 @@ class DeploymentQueue(Base):
         Boolean, nullable=False, server_default="0", default=False
     )
 
+    # Copied onto the Deployment when the entry is processed. See
+    # `Deployment.paired_cameras`.
+    paired_cameras: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="0", default=False
+    )
+
     # Optional metadata entered during deployment creation, carried over to
     # the final Deployment record when the queue entry is processed.
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

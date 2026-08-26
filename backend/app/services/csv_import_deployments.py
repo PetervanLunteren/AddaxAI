@@ -22,12 +22,12 @@ from app.api.schemas.csv_import import CsvImportProblem, DeploymentImportRow
 from app.core.logging_config import get_logger
 from app.models import Deployment, DeploymentQueue, Site
 from app.services.csv_import import RawCsvRow, blank_to_none, read_csv_rows
-from app.services.folder_scanner import count_media_files
+from app.services.folder_scanner import count_media_files, has_paired_camera_layout
 
 logger = get_logger(__name__)
 
 DEPLOYMENT_REQUIRED_COLUMNS = ("folder",)
-DEPLOYMENT_OPTIONAL_COLUMNS = ("site", "notes")
+DEPLOYMENT_OPTIONAL_COLUMNS = ("site", "notes", "paired_cameras")
 
 # Queue entries in these states own their folder. A completed or failed
 # entry does not, so its folder can be queued again.
@@ -38,6 +38,26 @@ _MAX_NOTES = 1000
 # Constant messages, so the dialog can group rows that share a mistake.
 FOLDER_EMPTY = "Folder is empty. Enter the full path to the folder with the images or videos."
 NOTES_TOO_LONG = "Notes are longer than 1000 characters. Use a shorter text."
+PAIRED_CAMERAS_NOT_BOOLEAN = (
+    "paired_cameras must be true or false. Leave it empty for false."
+)
+PAIRED_CAMERAS_DOCS_URL = (
+    "https://docs.addaxai.com/docs/understanding/how-a-project-is-organised#paired-cameras"
+)
+PAIRED_CAMERAS_NEED_SUBFOLDERS = (
+    "Paired cameras need one subfolder per camera inside this folder, with at "
+    f"least two cameras. See {PAIRED_CAMERAS_DOCS_URL}"
+)
+
+
+def check_paired_camera_layout(folder: str) -> str | None:
+    """The message to show when ``paired_cameras`` is on but ``folder`` does
+    not hold one subfolder per camera, else None. Shared by the queue
+    create, the CSV import and the deployment edit so the rule and its
+    wording live in one place."""
+    if has_paired_camera_layout(Path(folder)):
+        return None
+    return PAIRED_CAMERAS_NEED_SUBFOLDERS
 FOLDER_NOT_ABSOLUTE = (
     "This is not a full path. Enter the full path, for example /Volumes/Data/CAM01 "
     "or D:\\Data\\CAM01."
@@ -215,6 +235,18 @@ def validate_deployment_rows(
                 )
             )
 
+        if row.paired_cameras and folder_problem is None:
+            layout_problem = check_paired_camera_layout(folder)
+            if layout_problem is not None:
+                problems.append(
+                    CsvImportProblem(
+                        row=row.row,
+                        column="paired_cameras",
+                        message=layout_problem,
+                        value="true",
+                    )
+                )
+
         if row.site is not None and row.site not in site_ids:
             problems.append(
                 CsvImportProblem(
@@ -325,6 +357,18 @@ def _parse_row(raw: RawCsvRow) -> tuple[DeploymentImportRow | None, list[CsvImpo
     if len(notes) > _MAX_NOTES:
         problems.append(CsvImportProblem(row=raw.row, column="notes", message=NOTES_TOO_LONG))
 
+    paired_raw = raw.values["paired_cameras"].strip().lower()
+    paired_cameras = paired_raw == "true"
+    if paired_raw not in ("", "true", "false"):
+        problems.append(
+            CsvImportProblem(
+                row=raw.row,
+                column="paired_cameras",
+                message=PAIRED_CAMERAS_NOT_BOOLEAN,
+                value=raw.values["paired_cameras"],
+            )
+        )
+
     if problems:
         return None, problems
 
@@ -334,6 +378,7 @@ def _parse_row(raw: RawCsvRow) -> tuple[DeploymentImportRow | None, list[CsvImpo
             folder=folder,
             site=blank_to_none(raw.values["site"]),
             notes=blank_to_none(notes),
+            paired_cameras=paired_cameras,
         ),
         [],
     )

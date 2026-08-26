@@ -41,6 +41,8 @@ The last row is the card swap. Some cameras, Reconyx and Bushnell among them, st
 
 Because of this, the effort stays right even if you analyse a whole season of card swaps, or a few cameras, in one go. The trap nights still add up. The one thing it needs is that each camera period sits in its own subfolder. Files from different periods dropped into one folder read as a single long stretch, gap included.
 
+The one exception is a deployment with "Paired cameras" ticked: its subfolders are dependent cameras, so the effort runs from the first file of any camera to the last, once. See [paired cameras](./how-a-project-is-organised.mdx#paired-cameras).
+
 ## Rates per 100 trap nights
 
 Most charts show a rate, not a raw count:

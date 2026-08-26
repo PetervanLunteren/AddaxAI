@@ -678,6 +678,7 @@ _DEPLOYMENTS_HEADERS = [
     "deployment_start",
     "deployment_end",
     "trap_nights",
+    "paired_cameras",
     "deployment_notes",
     "deployment_tags",
 ]
@@ -722,6 +723,7 @@ def build_deployments_rows(
                 dep.start_date_local.isoformat() if dep.start_date_local else "",
                 dep.end_date_local.isoformat() if dep.end_date_local else "",
                 trap_nights.get(dep.id, ""),
+                "true" if dep.paired_cameras else "false",
                 dep.notes or "",
                 _format_tags(dep.tags),
             ]
@@ -1316,6 +1318,11 @@ def build_camtrap_dp_tables(
         sites_seen[site.id] = site
         camera_model = deployment.camera_model or ""
         camera_id = deployment.camera_serial or deployment.camera_model or deployment.id
+        # Camtrap DP defines a deployment as one camera. A paired-cameras
+        # deployment holds several, so say so in deploymentTags.
+        deployment_tags = dict(deployment.tags or {})
+        if deployment.paired_cameras:
+            deployment_tags["paired_cameras"] = "true"
         # Row order must match _CAMTRAP_DEPLOYMENTS_HEADERS exactly.
         deployments_rows.append(
             [
@@ -1343,7 +1350,7 @@ def build_camtrap_dp_tables(
                 "",                                                           # featureType
                 site.habitat_type or "",                                      # habitat
                 "",                                                           # deploymentGroups
-                _format_tags(deployment.tags),                                # deploymentTags
+                _format_tags(deployment_tags),                                # deploymentTags
                 deployment.notes or "",                                       # deploymentComments
             ]
         )

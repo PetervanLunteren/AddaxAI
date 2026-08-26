@@ -40,6 +40,7 @@ def test_duplicate_copies_settings_sites_and_requeues_deployments(db):
         site_id=site.id,
         folder_path="/data/cam1",
         notes="hi",
+        paired_cameras=True,
     )
 
     new = duplicate_project(db, source.id, _params("Copy A"))
@@ -70,6 +71,7 @@ def test_duplicate_copies_settings_sites_and_requeues_deployments(db):
     assert q[0].site_id == new_sites[0].id
     assert q[0].status == "pending"
     assert q[0].notes == "hi"
+    assert q[0].paired_cameras is True
 
 
 def test_duplicate_without_settings_uses_defaults(db):

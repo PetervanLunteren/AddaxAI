@@ -28,6 +28,13 @@ class DeploymentQueueBase(BaseModel):
             "Never overrides a real capture date"
         ),
     )
+    paired_cameras: bool = Field(
+        False,
+        description=(
+            "The subfolders are dependent cameras: cluster "
+            "events across them and count effort once"
+        ),
+    )
     notes: str | None = Field(
         None, max_length=1000, description="Optional deployment notes"
     )

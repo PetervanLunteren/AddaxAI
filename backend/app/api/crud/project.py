@@ -177,6 +177,7 @@ def duplicate_project(
                     notes=dep.notes,
                     tags=dict(dep.tags or {}),
                     datetime_offset_seconds=dep.datetime_offset_seconds,
+                    paired_cameras=dep.paired_cameras,
                     status="pending",
                 )
             )

@@ -152,6 +152,7 @@ function InfoBody({ info }: { info: DeploymentInfo }) {
 
       <Section title="Location">
         <Row label="Path" value={info.folder_path ?? <NotSet />} />
+        <Row label="Paired cameras" value={info.paired_cameras ? "Yes" : "No"} />
         <Row label="Site" value={info.site_name} />
       </Section>
 

@@ -54,6 +54,10 @@ export const shots: Record<string, Shot> = {
     src: "/img/counts-event.webp",
     alt: "An event opened on the Counts page: the best frame, the film strip of the event below, and the count editor with a Confirm button",
   },
+  pairedCameras: {
+    src: "https://github.com/user-attachments/assets/3849091c-1fee-4c70-bc2c-671344ba26f1",
+    alt: "The new deployment form with a station folder chosen and Paired cameras ticked",
+  },
   processQueue: {
     src: "/img/project-process-queue.webp",
     alt: "Process page: a new deployment being added and five waiting in the queue",

@@ -26,6 +26,9 @@ export interface DeploymentQueueEntry {
   /** Fill missing capture dates from each file's modification time.
    * Never overrides a real capture date. */
   use_file_mtime_fallback: boolean;
+  /** The subfolders are dependent cameras. Copied onto the
+   * deployment when the entry is processed. */
+  paired_cameras: boolean;
   notes: string | null;
   tags: Record<string, string>;
   status: "pending" | "processing" | "completed" | "failed";
@@ -47,6 +50,7 @@ export interface DeploymentQueueCreate {
   image_count?: number;
   datetime_offset_seconds?: number | null;
   use_file_mtime_fallback?: boolean;
+  paired_cameras?: boolean;
   notes?: string | null;
   tags?: Record<string, string>;
 }

@@ -27,6 +27,8 @@ Nothing is thrown away. The Detections export still has one row per box, on ever
 
 Files from the same camera, taken close together in time. AddaxAI groups them for you. So if a deer walks past and the camera fires 12 times in one minute, that is one event, not 12.
 
+A deployment with [paired cameras](./how-a-project-is-organised.mdx#paired-cameras) is one camera for this purpose.
+
 The gap that starts a new event is the independence interval, 30 minutes by default. That gap is measured from one photo to the next, not from the start of the event. So a photo joins the event when it comes within 30 minutes of the previous photo, and only a longer gap starts a new one. An event has no fixed length: it can run for hours if the camera keeps triggering.
 
 Both modes group files into events. A folder run uses them behind the scenes, to smooth labels and to order the grid on the Labels page. Only a project turns them into counts you can confirm.

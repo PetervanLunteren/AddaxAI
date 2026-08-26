@@ -929,6 +929,16 @@ async def reprocess_classifications(
             detail=f"Project with id '{project_id}' not found",
         )
 
+    # Nothing to smooth without classifications. The job would otherwise
+    # sit in `pending` for good, because the worker only starts once the
+    # frontend attaches to its progress channel, and the frontend never
+    # starts a reprocess for such a project.
+    if not _has_classifications(db, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This project has no classifications to reprocess.",
+        )
+
     from app.api.crud import job as crud_job
     from app.api.schemas.job import JobCreate
 
@@ -1397,6 +1407,19 @@ def get_files_without_date(
     return {"count": count or 0}
 
 
+def _has_classifications(db: Session, project_id: str) -> bool:
+    """Whether any detection in the project carries a classification label."""
+    return (
+        db.query(Detection.id)
+        .join(File)
+        .join(Deployment)
+        .filter(Deployment.project_id == project_id)
+        .filter(Detection.label.isnot(None))
+        .limit(1)
+        .first()
+    ) is not None
+
+
 @router.get("/{project_id}/postprocessing-status")
 def get_postprocessing_status(
     project_id: str,
@@ -1417,16 +1440,7 @@ def get_postprocessing_status(
             detail=f"Project with id '{project_id}' not found",
         )
 
-    # Check if any classifications exist for this project
-    has_cls = (
-        db.query(Detection.id)
-        .join(File)
-        .join(Deployment)
-        .filter(Deployment.project_id == project_id)
-        .filter(Detection.label.isnot(None))
-        .limit(1)
-        .first()
-    ) is not None
+    has_cls = _has_classifications(db, project_id)
 
     # Compute current hash and compare
     from app.ml.postprocessing import compute_postprocessing_settings_hash

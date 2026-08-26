@@ -217,6 +217,14 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
               </>
             )}
 
+            {/* Paired cameras (only when on) */}
+            {entry.paired_cameras && (
+              <>
+                <dt className="text-gray-500 font-medium">Paired cameras:</dt>
+                <dd className="text-gray-900">Subfolders count as one camera</dd>
+              </>
+            )}
+
             {/* Notes */}
             {entry.notes && (
               <>

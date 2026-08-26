@@ -6,7 +6,7 @@ single image within an event.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import insert
 
@@ -1010,3 +1010,49 @@ def test_count_regroup_impact(db):
     assert unchanged["confirmed_at_risk"] == 0
     assert unchanged["counts_at_risk"] == 0
     assert unchanged["example"] is None
+
+
+def test_update_paired_cameras_regroups_only_that_deployment(db):
+    """Editing the flag regenerates the deployment's events at once,
+    keeps confirmations on the other deployment, and clears the
+    postprocessing hash so the reprocess banner appears."""
+    from app.api.crud.deployment import update_deployment
+    from app.api.crud.event import generate_events_for_project
+    from app.api.schemas.deployment import DeploymentUpdate
+
+    project = make_project(db, counting_threshold=0.5, independence_interval=300)
+    project.postprocessing_settings_hash = "stamped"
+    station = make_deployment(db, project_id=project.id, folder_path="/data/station")
+    other = make_deployment(db, project_id=project.id, folder_path="/data/other")
+    t0 = datetime(2024, 1, 1, 12, 0, 0)
+    for cam, offset in (("cam_a", 0), ("cam_b", 1)):
+        ts = t0 + timedelta(seconds=offset)
+        f = _file_with_dets(db, station.id, ts, [("cow", "animal", 0.9)])
+        f.file_path = f"/data/station/{cam}/{f.id}.jpg"
+    _file_with_dets(db, other.id, t0, [("deer", "animal", 0.9)])
+    db.commit()
+
+    generate_events_for_project(db, project.id)
+    assert len(_events(db, station.id)) == 2
+    deer_event = _events(db, other.id)[0]
+    deer_event.confirmed = True
+    db.commit()
+
+    update_deployment(db, station.id, DeploymentUpdate(paired_cameras=True))
+
+    assert len(_events(db, station.id)) == 1
+    assert _events(db, station.id)[0].file_count == 2
+    assert _events(db, other.id)[0].confirmed is True
+    assert project.postprocessing_settings_hash is None
+
+    # Saving the same value again is a no-op for events and the hash.
+    project.postprocessing_settings_hash = "stamped"
+    db.commit()
+    update_deployment(db, station.id, DeploymentUpdate(paired_cameras=True))
+    assert len(_events(db, station.id)) == 1
+    assert project.postprocessing_settings_hash == "stamped"
+
+    # Turning it off splits the event again.
+    update_deployment(db, station.id, DeploymentUpdate(paired_cameras=False))
+    assert len(_events(db, station.id)) == 2
+    assert project.postprocessing_settings_hash is None

@@ -49,6 +49,39 @@ One thing does want them split. [Camtrap DP](../reference/exports.md#camtrap-dp)
 
 You do not have to decide up front. Add the folder, look at the results, and split later on the Deployments page. The split follows the folder hierarchy, and your images and videos stay where they are on disk.
 
+## Paired cameras
+
+Some cameras are dependent on each other: one animal passing triggers more than one of them. Two cameras facing each other across a trail, a camera at each end of a wildlife bridge or tunnel, or several cameras around one waterhole. Counted as separate deployments they would double the events, the counts and the effort. In AddaxAI, dependent cameras are one deployment with "Paired cameras" ticked.
+
+Put each camera's files in its own subfolder under one folder for the deployment. If the cameras are stored elsewhere, move or copy their folders together first:
+
+```
+november-pickup/
+├── cam1/
+│   ├── IMG_0001.JPG
+│   └── IMG_0002.JPG
+├── cam2/
+│   ├── IMG_0001.JPG
+│   └── IMG_0002.JPG
+└── cam3/
+    ├── IMG_0001.JPG
+    └── IMG_0002.JPG
+```
+
+Add `november-pickup` as one deployment on the Process page, open "Options" and tick "Paired cameras". The CSV import has a `paired_cameras` column for the same thing.
+
+<AppShot name="pairedCameras" />
+
+What the tick changes:
+
+- **Events.** Files from all cameras are grouped by time, as if they came from one camera. An animal that passes the cameras is one event, with the files of every camera in time order.
+- **Observations.** The count of an observation is the largest number seen in any single file, so the same animal seen by more than one camera is counted once.
+- **Trap nights.** The deployment counts once. Two cameras that both ran 1 to 15 August give 15 trap nights, not 30.
+
+Without the tick, AddaxAI reads subfolders as separate cameras or card periods and adds their effort up. See [how trap nights are counted](./trap-nights.md#deployments-with-subfolders).
+
+Forgot the tick, or ticked it by mistake? Change it later on the Deployments page under Edit. AddaxAI regroups the deployment's events and reprocesses the labels; confirmed counts on events that change are reset, so do this before you start checking counts.
+
 <AppShot name="deployments" />
 
 ## A deployment without a site

@@ -432,9 +432,7 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
 
     Returns total event count created.
     """
-    from app.api.crud.event_observation import calculate_max_n_for_event
     from app.models import Project
-    from app.services.event_clustering import cluster_files_into_events
 
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
@@ -459,35 +457,78 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
         db.execute(delete(Event).where(Event.deployment_id.in_(chunk)))
 
     total_events = 0
-
     for deployment in deployments:
-        files = (
-            db.query(File)
-            .options(joinedload(File.source_video))
-            .filter(File.deployment_id == deployment.id)
-            .filter(File.file_type.in_(["image", "video"]))
-            .all()
+        total_events += _regenerate_deployment_events(
+            db, deployment, independence_interval, threshold, carry
         )
-
-        for cluster in cluster_files_into_events(files, independence_interval):
-            event = _create_event(db, deployment.id, cluster)
-            carried = carry.get(frozenset(f.id for f in cluster))
-            if carried is not None:
-                event.confirmed = carried.confirmed
-            # Rebuild MaxN, carrying the human layer for a matched event.
-            # calculate_max_n_for_event still clears `confirmed` if the
-            # species/count set changed (e.g. smoothing relabelled a crop).
-            calculate_max_n_for_event(
-                db,
-                event.id,
-                threshold,
-                prior=carried.prior if carried is not None else None,
-            )
-            total_events += 1
 
     db.flush()
     db.commit()
     return total_events
+
+
+def generate_events_for_deployment(db: Session, deployment: Deployment) -> int:
+    """
+    Regenerate the events of one deployment, carrying the human layer
+    like `generate_events_for_project` does. Used when a deployment-level
+    setting that changes the grouping (`paired_cameras`) is edited.
+
+    Does NOT commit: the caller owns the transaction. Returns the number
+    of events created.
+    """
+    project = deployment.project
+    carry = _snapshot_event_carry(db, [deployment.id])
+    db.execute(delete(Event).where(Event.deployment_id == deployment.id))
+    count = _regenerate_deployment_events(
+        db,
+        deployment,
+        project.independence_interval,
+        project.counting_threshold,
+        carry,
+    )
+    db.flush()
+    return count
+
+
+def _regenerate_deployment_events(
+    db: Session,
+    deployment: Deployment,
+    independence_interval: int,
+    threshold: float,
+    carry: dict[frozenset, _EventCarry],
+) -> int:
+    """Rebuild one deployment's events from its files. The caller has
+    already snapshotted `carry` and deleted the old Event rows. No commit."""
+    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.services.event_clustering import cluster_files_into_events
+
+    files = (
+        db.query(File)
+        .options(joinedload(File.source_video))
+        .filter(File.deployment_id == deployment.id)
+        .filter(File.file_type.in_(["image", "video"]))
+        .all()
+    )
+
+    count = 0
+    for cluster in cluster_files_into_events(
+        files, independence_interval, paired_cameras=deployment.paired_cameras
+    ):
+        event = _create_event(db, deployment.id, cluster)
+        carried = carry.get(frozenset(f.id for f in cluster))
+        if carried is not None:
+            event.confirmed = carried.confirmed
+        # Rebuild MaxN, carrying the human layer for a matched event.
+        # calculate_max_n_for_event still clears `confirmed` if the
+        # species/count set changed (e.g. smoothing relabelled a crop).
+        calculate_max_n_for_event(
+            db,
+            event.id,
+            threshold,
+            prior=carried.prior if carried is not None else None,
+        )
+        count += 1
+    return count
 
 
 def _format_event_range(start, end) -> str | None:
@@ -567,7 +608,9 @@ def count_regroup_impact(
             .filter(File.file_type.in_(["image", "video"]))
             .all()
         )
-        for cluster in cluster_files_into_events(files, independence_interval):
+        for cluster in cluster_files_into_events(
+            files, independence_interval, paired_cameras=dep.paired_cameras
+        ):
             new_filesets.add(frozenset(f.id for f in cluster))
 
     events = (

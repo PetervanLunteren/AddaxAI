@@ -182,7 +182,9 @@ export function CsvImportDialog<TRow extends { row: number }>({
             <ul className="rounded-lg border divide-y text-sm">
               {columns.map((column) => (
                 <li key={column.name} className="flex gap-3 px-3 py-2">
-                  <span className="w-32 shrink-0 font-mono text-xs leading-5">
+                  {/* Wide enough for the longest name plus "optional"
+                      (paired_cameras) without wrapping into the help. */}
+                  <span className="w-40 shrink-0 font-mono text-xs leading-5">
                     {column.name}
                     {column.optional && (
                       <span className="ml-1 font-sans text-muted-foreground">

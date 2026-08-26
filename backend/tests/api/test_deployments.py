@@ -780,3 +780,30 @@ def test_group_broken_survives_an_unreadable_ancestor(
 
     assert response.status_code == 200
     assert response.json()["groups"][0]["suggested_path"] is None
+
+
+def test_turning_paired_cameras_on_needs_camera_subfolders(client, db, tmp_path):
+    """PATCH refuses the flag for a folder without one subfolder per camera,
+    and turning it off never looks at the disk."""
+    from app.services.csv_import_deployments import PAIRED_CAMERAS_NEED_SUBFOLDERS
+
+    p = make_project(db)
+    flat = tmp_path / "flat"
+    flat.mkdir()
+    (flat / "a.jpg").write_bytes(b"x")
+    d = make_deployment(db, project_id=p.id, folder_path=str(flat))
+    db.commit()
+
+    resp = client.patch(f"/api/deployments/{d.id}", json={"paired_cameras": True})
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == PAIRED_CAMERAS_NEED_SUBFOLDERS
+
+    pair = tmp_path / "pair"
+    for cam in ("cam1", "cam2"):
+        (pair / cam).mkdir(parents=True)
+        (pair / cam / "a.jpg").write_bytes(b"x")
+    d2 = make_deployment(db, project_id=p.id, folder_path=str(pair), paired_cameras=True)
+    db.commit()
+    resp = client.patch(f"/api/deployments/{d2.id}", json={"paired_cameras": False})
+    assert resp.status_code == 200
+    assert resp.json()["paired_cameras"] is False

@@ -70,6 +70,7 @@ def test_preview_returns_rows_with_counts(client, db, tmp_path):
             "folder": folder,
             "site": "CAM01",
             "notes": "first season",
+            "paired_cameras": False,
             "image_count": 3,
             "video_count": 2,
         }
@@ -566,7 +567,8 @@ def test_preview_reports_a_missing_folder_column(client, db):
 def test_preview_reports_an_unrecognised_column(client, db):
     p = make_project(db)
     body = _preview(client, p.id, "folder,start_date\n/tmp/x,2026-01-01\n").json()
-    assert "Allowed columns are: folder, site, notes." in body["problems"][0]["message"]
+    message = body["problems"][0]["message"]
+    assert "Allowed columns are: folder, site, notes, paired_cameras." in message
 
 
 def test_preview_reports_a_header_only_file(client, db):
@@ -688,3 +690,72 @@ def test_import_unknown_project_returns_404(client, db, tmp_path):
     resp = _import(client, "does-not-exist", f"{HEADER}\n{folder},,\n")
     assert resp.status_code == 404
     assert db.query(DeploymentQueue).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# paired_cameras column
+# ---------------------------------------------------------------------------
+
+
+def test_import_paired_cameras_column_round_trips(client, db, tmp_path):
+    """true pairs the subfolders, false and blank do not, case does not matter."""
+    p = make_project(db)
+    _folder(tmp_path, "station_a/cam1")
+    _folder(tmp_path, "station_a/cam2")
+    a = str(tmp_path / "station_a")
+    b = _folder(tmp_path, "station_b")
+    c = _folder(tmp_path, "station_c")
+    header = "folder,site,notes,paired_cameras"
+    body = _import(client, p.id, f"{header}\n{a},,,TRUE\n{b},,,false\n{c},,,\n").json()
+    assert body == {"imported": 3, "problems": []}
+
+    entries = sorted(_entries(db, p.id), key=lambda e: e.folder_path)
+    assert [e.paired_cameras for e in entries] == [True, False, False]
+
+
+def test_import_defaults_paired_cameras_off_when_column_is_absent(client, db, tmp_path):
+    p = make_project(db)
+    folder = _folder(tmp_path, "cam01")
+    _import(client, p.id, f"{HEADER}\n{folder},,\n")
+    assert _entries(db, p.id)[0].paired_cameras is False
+
+
+def test_preview_rejects_a_paired_cameras_value_that_is_not_a_boolean(client, db, tmp_path):
+    from app.services.csv_import_deployments import PAIRED_CAMERAS_NOT_BOOLEAN
+
+    p = make_project(db)
+    folder = _folder(tmp_path, "cam01")
+    body = _preview(client, p.id, f"folder,paired_cameras\n{folder},yes\n").json()
+    assert body["rows"] == []
+    assert body["problems"] == [
+        {
+            "row": 2,
+            "column": "paired_cameras",
+            "message": PAIRED_CAMERAS_NOT_BOOLEAN,
+            "value": "yes",
+        }
+    ]
+
+
+def test_preview_flags_paired_cameras_without_camera_subfolders(client, db, tmp_path):
+    from app.services.csv_import_deployments import PAIRED_CAMERAS_NEED_SUBFOLDERS
+
+    p = make_project(db)
+    flat = _folder(tmp_path, "flat", images=2)
+    _folder(tmp_path, "pair/cam1", images=1)
+    _folder(tmp_path, "pair/cam2", images=1)
+    pair = str(tmp_path / "pair")
+    body = _preview(
+        client, p.id, f"folder,paired_cameras\n{flat},true\n{pair},true\n"
+    ).json()
+    # The flat row is dropped from the preview and reported as a problem;
+    # the real pair goes through.
+    assert [(r["folder"], r["paired_cameras"]) for r in body["rows"]] == [(pair, True)]
+    assert body["problems"] == [
+        {
+            "row": 2,
+            "column": "paired_cameras",
+            "message": PAIRED_CAMERAS_NEED_SUBFOLDERS,
+            "value": "true",
+        }
+    ]

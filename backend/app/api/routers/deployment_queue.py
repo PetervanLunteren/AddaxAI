@@ -31,6 +31,7 @@ from app.db.base import get_db
 from app.models import Project
 from app.services.csv_import import MAX_CSV_BYTES, drop_problem_rows
 from app.services.csv_import_deployments import (
+    check_paired_camera_layout,
     normalize_folder,
     parse_deployment_csv,
     resolve_site_ids,
@@ -101,6 +102,18 @@ def create_queue_entry(
 
     Creates a queue entry that will be processed when user clicks "Process Queue".
     """
+    if entry.paired_cameras:
+        try:
+            layout_problem = check_paired_camera_layout(entry.folder_path)
+        except OSError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Could not read folder: {e}",
+            ) from e
+        if layout_problem is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=layout_problem
+            )
     try:
         db_entry = crud_queue.create_queue_entry(db, entry)
         logger.info(
@@ -163,6 +176,7 @@ def import_deployments(
             image_count=row.image_count,
             video_count=row.video_count,
             notes=row.notes,
+            paired_cameras=row.paired_cameras,
         )
         for row in rows
     ]

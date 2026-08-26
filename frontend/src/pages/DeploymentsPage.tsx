@@ -12,6 +12,7 @@ import { deploymentsApi } from "../api/deployments";
 import { sitesApi } from "../api/sites";
 import { basename } from "../lib/path-utils";
 import type { DeploymentResponse, DeploymentStatsOnly } from "../api/types";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import {
@@ -510,6 +511,11 @@ export function DeploymentsPage() {
                           </TooltipProvider>
                         )}
                         <span>{dep.folder_basename}</span>
+                        {dep.paired_cameras && (
+                          <Badge variant="outline" className="shrink-0 font-normal">
+                            Paired cameras
+                          </Badge>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
