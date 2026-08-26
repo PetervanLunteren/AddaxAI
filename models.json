@@ -263,7 +263,7 @@
         "env": "pytorch",
         "model_fname": "sdzwa_westernus_v1_efficientnet.pt",
         "description": "This model distinguishes between 51 species and groups found across the western United States, and expands the San Diego Zoo Wildlife Alliance's Southwest USA model to the whole region. It was trained on 555,668 images, mostly from LILA datasets (https://lila.science), and reached an overall accuracy of 94.9% on a 46,238 image evaluation set. Created by Kyra Swanson (San Diego Zoo Wildlife Alliance) in 2026.",
-        "description_short": "51 species • San Diego Zoo Wildlife Alliance • Trained on 556k images",
+        "description_short": "51 species • Trained on 556k images",
         "developer": "San Diego Zoo Wildlife Alliance",
         "license": "https://opensource.org/license/mit",
         "info_url": "https://github.com/conservationtechlab",
