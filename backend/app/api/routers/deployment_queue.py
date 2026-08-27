@@ -177,6 +177,7 @@ def import_deployments(
             video_count=row.video_count,
             notes=row.notes,
             paired_cameras=row.paired_cameras,
+            tags=row.tags,
         )
         for row in rows
     ]

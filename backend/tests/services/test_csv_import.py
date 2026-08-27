@@ -173,7 +173,7 @@ def test_unrecognised_column_is_reported_with_the_allowed_ones():
     rows, problems = _read("name,latitude,camera_id\nCAM01,52.1,7\n")
     assert rows == []
     assert [p.column for p in problems] == ["camera_id"]
-    assert "Allowed columns are: name, latitude, notes." in problems[0].message
+    assert "Allowed columns are: name, latitude, notes, tag:<name>." in problems[0].message
 
 
 def test_repeated_column_is_reported():

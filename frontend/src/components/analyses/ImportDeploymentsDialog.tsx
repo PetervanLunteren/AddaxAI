@@ -18,6 +18,7 @@ import {
   type CsvColumnHelp,
 } from "@/components/ui/csv-import-dialog";
 import { StartTruncatedPath } from "@/components/ui/start-truncated-path";
+import { TagPills } from "@/components/ui/tag-pills";
 
 const COLUMNS: CsvColumnHelp[] = [
   {
@@ -39,6 +40,13 @@ const COLUMNS: CsvColumnHelp[] = [
     optional: true,
     help: "true when the folder holds one subfolder per camera and the cameras are dependent, triggering on the same animals. Their files form one event and the trap nights count once. Leave it empty for false.",
   },
+  {
+    // A pattern, not a literal column: any column whose name starts with
+    // tag: is a tag. See ImportSitesDialog for the same entry.
+    name: "tag:<name>",
+    optional: true,
+    help: "One column per tag. The part after tag: is the tag name and the cell is its value, for example a column tag:camera with the value Reconyx. Leave the cell empty for no tag on that row. Tags show up on the deployment and in the exports.",
+  },
 ];
 
 // Every row here is deliberate. The file can only teach through its data,
@@ -48,7 +56,9 @@ const COLUMNS: CsvColumnHelp[] = [
 // then fail), a filled notes, the smallest row, the same site used again for a
 // second period (so it is clear one site can hold many deployments), and an
 // empty site, which is allowed and means the site is set later, and a paired
-// deployment of dependent cameras, one subfolder per camera.
+// deployment of dependent cameras, one subfolder per camera. The two tag:
+// columns show that there can be several, each filled on some rows and
+// empty on others.
 //
 // Every path ends in a deployment_NNN folder on purpose. A path like
 // .../2026/river-crossing reads as a whole site's footage, which nudges people
@@ -57,13 +67,13 @@ const COLUMNS: CsvColumnHelp[] = [
 //
 // The site names match the site example, so a user who runs both imports in
 // order sees the link between the two files work.
-const EXAMPLE_CSV = `folder,site,notes,paired_cameras
-/Volumes/Field data/Kifaru Plains north/deployment_001,Kifaru Plains north,,
-/Volumes/Field data/River crossing/deployment_001,River crossing,SD card was nearly full,
-/Volumes/Field data/Acacia thicket/deployment_001,Acacia thicket,,
-/Volumes/Field data/River crossing/deployment_002,River crossing,"Second period, same camera",
-/Volumes/Field data/unsorted/deployment_001,,Site not decided yet,
-/Volumes/Field data/Waterhole/deployment_001,Waterhole,Two cameras facing each other,true
+const EXAMPLE_CSV = `folder,site,notes,paired_cameras,tag:camera,tag:season
+/Volumes/Field data/Kifaru Plains north/deployment_001,Kifaru Plains north,,,Reconyx HP2X,dry
+/Volumes/Field data/River crossing/deployment_001,River crossing,SD card was nearly full,,Browning,dry
+/Volumes/Field data/Acacia thicket/deployment_001,Acacia thicket,,,,wet
+/Volumes/Field data/River crossing/deployment_002,River crossing,"Second period, same camera",,Browning,wet
+/Volumes/Field data/unsorted/deployment_001,,Site not decided yet,,,
+/Volumes/Field data/Waterhole/deployment_001,Waterhole,Two cameras facing each other,true,Reconyx HP2X,
 `;
 
 interface ImportDeploymentsDialogProps {
@@ -141,6 +151,13 @@ export function ImportDeploymentsDialog({
           >
             {row.notes ?? ""}
           </span>
+          {/* Own line under the row (basis-full), so however many tags a
+              row has, the list never grows a horizontal scrollbar. */}
+          {Object.keys(row.tags).length > 0 && (
+            <span className="basis-full">
+              <TagPills tags={row.tags} maxVisible={6} />
+            </span>
+          )}
         </>
       )}
     />

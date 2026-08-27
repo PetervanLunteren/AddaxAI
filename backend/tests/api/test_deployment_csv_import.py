@@ -71,6 +71,7 @@ def test_preview_returns_rows_with_counts(client, db, tmp_path):
             "site": "CAM01",
             "notes": "first season",
             "paired_cameras": False,
+            "tags": {},
             "image_count": 3,
             "video_count": 2,
         }
@@ -568,7 +569,7 @@ def test_preview_reports_an_unrecognised_column(client, db):
     p = make_project(db)
     body = _preview(client, p.id, "folder,start_date\n/tmp/x,2026-01-01\n").json()
     message = body["problems"][0]["message"]
-    assert "Allowed columns are: folder, site, notes, paired_cameras." in message
+    assert "Allowed columns are: folder, site, notes, paired_cameras, tag:<name>." in message
 
 
 def test_preview_reports_a_header_only_file(client, db):
@@ -759,3 +760,21 @@ def test_preview_flags_paired_cameras_without_camera_subfolders(client, db, tmp_
             "value": "true",
         }
     ]
+
+
+# ---------------------------------------------------------------------------
+# Tags: one tag:<name> column per tag key, carried onto the queue entry
+# ---------------------------------------------------------------------------
+
+
+def test_tag_columns_land_on_the_queue_entry(client, db, tmp_path):
+    p = make_project(db)
+    folder = _folder(tmp_path, "cam01")
+    body = f"folder,tag:camera,tag:height\n{folder},Reconyx,\n"
+
+    preview = _preview(client, p.id, body).json()
+    assert preview["problems"] == []
+    assert preview["rows"][0]["tags"] == {"camera": "Reconyx"}
+
+    assert _import(client, p.id, body).json()["imported"] == 1
+    assert _entries(db, p.id)[0].tags == {"camera": "Reconyx"}

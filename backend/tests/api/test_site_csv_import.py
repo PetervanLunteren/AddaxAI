@@ -45,6 +45,7 @@ def test_preview_returns_rows_and_no_problems(client, db):
         "elevation_m": 12.0,
         "habitat_type": "Forest",
         "notes": "near the path",
+        "tags": {},
     }
 
 
@@ -375,3 +376,91 @@ def test_import_unknown_project_returns_404(client, db):
     resp = _import(client, "does-not-exist", CLEAN)
     assert resp.status_code == 404
     assert db.query(Site).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# Tags: one tag:<name> column per tag key
+# ---------------------------------------------------------------------------
+
+
+TAGGED = (
+    "name,latitude,longitude,tag:tenure,tag: camera\n"
+    "CAM01,52.09,5.12,Aboriginal land,Reconyx\n"
+    "CAM02,52.10,5.15,,Browning\n"
+)
+
+
+def test_tag_columns_become_tags(client, db):
+    p = make_project(db)
+    body = _preview(client, p.id, TAGGED).json()
+    assert body["problems"] == []
+    # The space after the colon is not part of the tag name.
+    assert body["rows"][0]["tags"] == {"tenure": "Aboriginal land", "camera": "Reconyx"}
+    # An empty cell is no tag, not a tag with an empty value.
+    assert body["rows"][1]["tags"] == {"camera": "Browning"}
+
+
+def test_import_writes_the_tags_on_the_site(client, db):
+    p = make_project(db)
+    assert _import(client, p.id, TAGGED).json()["imported"] == 2
+    by_name = {s.name: s.tags for s in db.query(Site).filter(Site.project_id == p.id)}
+    assert by_name == {
+        "CAM01": {"tenure": "Aboriginal land", "camera": "Reconyx"},
+        "CAM02": {"camera": "Browning"},
+    }
+
+
+def test_a_tag_column_needs_a_name(client, db):
+    from app.services.csv_import import TAG_KEY_EMPTY
+
+    p = make_project(db)
+    body = _preview(client, p.id, "name,latitude,longitude,tag:\nCAM01,52.09,5.12,x\n").json()
+    assert body["rows"] == []
+    assert _messages(body) == [TAG_KEY_EMPTY]
+
+
+def test_a_tag_name_has_the_editor_limit(client, db):
+    from app.services.csv_import import TAG_KEY_TOO_LONG
+
+    p = make_project(db)
+    header = "name,latitude,longitude,tag:" + "k" * 41
+    body = _preview(client, p.id, f"{header}\nCAM01,52.09,5.12,x\n").json()
+    assert _messages(body) == [TAG_KEY_TOO_LONG]
+
+
+def test_a_tag_value_has_the_editor_limit(client, db):
+    from app.services.csv_import import TAG_VALUE_TOO_LONG
+
+    p = make_project(db)
+    body = _preview(
+        client, p.id, f"name,latitude,longitude,tag:note\nCAM01,52.09,5.12,{'v' * 151}\n"
+    ).json()
+    assert body["rows"] == []
+    assert [(q["row"], q["column"], q["message"]) for q in body["problems"]] == [
+        (2, "tag:note", TAG_VALUE_TOO_LONG)
+    ]
+
+
+def test_the_same_tag_twice_is_a_duplicate_column(client, db):
+    p = make_project(db)
+    body = _preview(
+        client, p.id, "name,latitude,longitude,tag:camera,tag: camera\nCAM01,52.09,5.12,a,b\n"
+    ).json()
+    assert body["rows"] == []
+    assert body["problems"][0]["column"] == "tag: camera"
+    assert "more than once" in body["problems"][0]["message"]
+
+
+def test_unknown_column_message_names_the_tag_form(client, db):
+    p = make_project(db)
+    body = _preview(client, p.id, "name,latitude,longitude,camera\nCAM01,52.09,5.12,a\n").json()
+    assert "tag:<name>" in body["problems"][0]["message"]
+
+
+def test_the_tag_prefix_is_read_in_any_letter_case(client, db):
+    """Excel capitalises the first letter of a header cell on its own, so
+    Tag:Camera has to mean the same as tag:Camera."""
+    p = make_project(db)
+    body = _preview(client, p.id, "name,latitude,longitude,Tag:Camera\nCAM01,52.09,5.12,x\n").json()
+    assert body["problems"] == []
+    assert body["rows"][0]["tags"] == {"Camera": "x"}

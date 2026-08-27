@@ -1099,6 +1099,8 @@ export interface SiteImportRow {
   elevation_m: number | null;
   habitat_type: string | null;
   notes: string | null;
+  /** From the tag:<name> columns. Empty when the file has none. */
+  tags: Record<string, string>;
 }
 
 export interface DeploymentImportRow {
@@ -1107,6 +1109,7 @@ export interface DeploymentImportRow {
   site: string | null;
   notes: string | null;
   paired_cameras: boolean;
+  tags: Record<string, string>;
   image_count: number;
   video_count: number;
 }

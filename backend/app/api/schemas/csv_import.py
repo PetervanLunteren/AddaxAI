@@ -34,6 +34,8 @@ class SiteImportRow(BaseModel):
     elevation_m: float | None = None
     habitat_type: str | None = None
     notes: str | None = None
+    # From the ``tag:<name>`` columns. Empty when the file has none.
+    tags: dict[str, str] = Field(default_factory=dict)
 
 
 class SiteImportPreview(BaseModel):
@@ -55,6 +57,7 @@ class DeploymentImportRow(BaseModel):
     site: str | None = None
     notes: str | None = None
     paired_cameras: bool = False
+    tags: dict[str, str] = Field(default_factory=dict)
     image_count: int = Field(default=0, ge=0)
     video_count: int = Field(default=0, ge=0)
 

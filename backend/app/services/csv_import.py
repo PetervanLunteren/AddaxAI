@@ -10,6 +10,12 @@ modules next to this one.
 Row numbers are the line numbers a spreadsheet shows, so the header is row 1
 and the first record is row 2. That is what the user needs to find the row
 again in Excel.
+
+Tags: a column named ``tag:<name>`` is a tag, one column per tag key, so a
+spreadsheet keeps one column per attribute and Excel can filter on it. The
+cell is the value and an empty cell means "no such tag on this row". Both
+imports read them the same way, which is why they live here and not in the
+per-import modules.
 """
 
 import csv
@@ -22,6 +28,12 @@ from app.api.schemas.csv_import import CsvImportProblem
 # Generous: roughly 20k rows. The whole file is read into memory, so there
 # has to be a ceiling somewhere.
 MAX_CSV_BYTES = 2 * 1024 * 1024
+
+TAG_COLUMN_PREFIX = "tag:"
+# Mirror the limits of the tags editor in the app (tags-editor.tsx), so a
+# tag that imports can also be edited afterwards.
+MAX_TAG_KEY = 40
+MAX_TAG_VALUE = 150
 
 _NOT_UTF8 = (
     "The file is not valid UTF-8 text. Open it in your spreadsheet program "
@@ -37,6 +49,17 @@ _UNREADABLE = (
     "quotation marks above this row, or open the file in your spreadsheet "
     "program and save it again as CSV."
 )
+TAG_KEY_EMPTY = (
+    "This tag column has no name after tag:. Write the tag name after the "
+    "colon, for example tag:season."
+)
+TAG_KEY_TOO_LONG = (
+    f"This tag name is longer than {MAX_TAG_KEY} characters. Use a shorter name "
+    "after tag:."
+)
+TAG_VALUE_TOO_LONG = (
+    f"This tag value is longer than {MAX_TAG_VALUE} characters. Use a shorter value."
+)
 
 
 @dataclass(frozen=True)
@@ -49,6 +72,9 @@ class RawCsvRow:
 
     row: int
     values: dict[str, str]
+    # Tag name -> value, from the ``tag:<name>`` columns. Empty cells are
+    # left out, so a key here always has a value.
+    tags: dict[str, str]
 
 
 def blank_to_none(value: str) -> str | None:
@@ -109,6 +135,8 @@ def read_csv_rows(
     known = set(required_columns) | set(optional_columns)
 
     header: list[str] | None = None
+    # Header index -> tag name, for the tag: columns.
+    tag_columns: dict[int, str] = {}
     rows: list[RawCsvRow] = []
     problems: list[CsvImportProblem] = []
 
@@ -124,6 +152,11 @@ def read_csv_rows(
                 header_problems = _check_header(header, required_columns, optional_columns)
                 if header_problems:
                     return [], header_problems
+                tag_columns = {
+                    index: _tag_key(name)
+                    for index, name in enumerate(header)
+                    if _is_tag_column(name)
+                }
                 continue
 
             if len(cells) > len(header):
@@ -134,9 +167,31 @@ def read_csv_rows(
 
             values = dict.fromkeys(known, "")
             for index, name in enumerate(header):
-                if index < len(cells):
+                if index < len(cells) and index not in tag_columns:
                     values[name] = cells[index].strip()
-            rows.append(RawCsvRow(row=reader.line_num, values=values))
+
+            tags: dict[str, str] = {}
+            too_long: list[CsvImportProblem] = []
+            for index, key in tag_columns.items():
+                cell = cells[index].strip() if index < len(cells) else ""
+                if not cell:
+                    continue
+                if len(cell) > MAX_TAG_VALUE:
+                    too_long.append(
+                        CsvImportProblem(
+                            row=reader.line_num,
+                            column=header[index],
+                            message=TAG_VALUE_TOO_LONG,
+                            value=cell,
+                        )
+                    )
+                    continue
+                tags[key] = cell
+            if too_long:
+                problems.extend(too_long)
+                continue
+
+            rows.append(RawCsvRow(row=reader.line_num, values=values, tags=tags))
     except csv.Error:
         # Almost always an unbalanced quotation mark: everything after it is
         # read as one value until csv gives up on the 131,072 character field
@@ -169,6 +224,18 @@ def _pick_delimiter(text: str) -> str:
     return ";" if ";" in header_line and "," not in header_line else ","
 
 
+def _is_tag_column(column_name: str) -> bool:
+    """``tag:`` in any letter case: a spreadsheet capitalises the first
+    letter of a header cell without being asked."""
+    return column_name.lower().startswith(TAG_COLUMN_PREFIX)
+
+
+def _tag_key(column_name: str) -> str:
+    """The tag name of a ``tag:<name>`` column, with the spaces people leave
+    after the colon removed."""
+    return column_name[len(TAG_COLUMN_PREFIX):].strip()
+
+
 def _check_header(
     header: list[str],
     required_columns: tuple[str, ...],
@@ -180,12 +247,16 @@ def _check_header(
     the row-level ones. There is at most one per column so there is nothing
     to group, and naming them is what makes the fix obvious.
     """
-    allowed = ", ".join(required_columns + optional_columns)
+    allowed = ", ".join(required_columns + optional_columns) + ", tag:<name>"
     problems: list[CsvImportProblem] = []
     seen: set[str] = set()
 
     for name in header:
-        if name in seen:
+        # Two tag columns that differ only in spacing after the colon are the
+        # same tag, so duplicates are checked on the tag name.
+        is_tag = _is_tag_column(name)
+        identity = TAG_COLUMN_PREFIX + _tag_key(name) if is_tag else name
+        if identity in seen:
             problems.append(
                 CsvImportProblem(
                     column=name,
@@ -193,7 +264,14 @@ def _check_header(
                 )
             )
             continue
-        seen.add(name)
+        seen.add(identity)
+        if is_tag:
+            key = _tag_key(name)
+            if not key:
+                problems.append(CsvImportProblem(column=name, message=TAG_KEY_EMPTY))
+            elif len(key) > MAX_TAG_KEY:
+                problems.append(CsvImportProblem(column=name, message=TAG_KEY_TOO_LONG))
+            continue
         if name not in required_columns and name not in optional_columns:
             problems.append(
                 CsvImportProblem(

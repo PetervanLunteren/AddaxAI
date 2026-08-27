@@ -160,6 +160,7 @@ def import_sites(
             elevation_m=row.elevation_m,
             habitat_type=row.habitat_type,
             notes=row.notes,
+            tags=row.tags,
         )
         for row in rows
     ]

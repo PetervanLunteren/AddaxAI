@@ -198,8 +198,9 @@ export function CsvImportDialog<TRow extends { row: number }>({
             </ul>
             <p className="mt-2 text-xs text-muted-foreground">
               The first row must hold these column names. Column order does not
-              matter. If a value contains a comma, put it in double quotes.
-              Spreadsheet apps do this for you.
+              matter, and you can add as many tag: columns as you like. If a
+              value contains a comma, put it in double quotes. Spreadsheet apps
+              do this for you.
             </p>
           </div>
 
@@ -271,13 +272,16 @@ export function CsvImportDialog<TRow extends { row: number }>({
                     } will be imported:`
                   : `${preview.rows.length} row${
                       preview.rows.length === 1 ? "" : "s"
-                    } look fine:`}
+                    } look${preview.rows.length === 1 ? "s" : ""} fine:`}
               </p>
               <ul className="max-h-[40vh] overflow-y-auto rounded-lg border divide-y text-sm">
+                {/* flex-wrap so a renderRow can push a wide, optional part
+                    (the tags) onto its own line with basis-full instead of
+                    widening the list sideways. */}
                 {preview.rows.map((row) => (
                   <li
                     key={row.row}
-                    className="flex items-baseline gap-4 px-3 py-2"
+                    className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-3 py-2"
                   >
                     {renderRow(row)}
                   </li>

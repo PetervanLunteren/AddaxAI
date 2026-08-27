@@ -186,6 +186,7 @@ def _parse_row(raw: RawCsvRow) -> tuple[SiteImportRow | None, list[CsvImportProb
             elevation_m=elevation,
             habitat_type=blank_to_none(habitat),
             notes=blank_to_none(notes),
+            tags=raw.tags,
         ),
         [],
     )

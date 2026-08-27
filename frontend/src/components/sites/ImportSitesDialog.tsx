@@ -14,6 +14,7 @@ import {
   CsvImportDialog,
   type CsvColumnHelp,
 } from "@/components/ui/csv-import-dialog";
+import { TagPills } from "@/components/ui/tag-pills";
 
 const COLUMNS: CsvColumnHelp[] = [
   { name: "name", help: "The site name. It must be unique within this project." },
@@ -39,6 +40,14 @@ const COLUMNS: CsvColumnHelp[] = [
     help: "Free text, for example forest or grassland.",
   },
   { name: "notes", optional: true, help: "Free text for your own records." },
+  {
+    // The name is a pattern, not a literal column: any column whose name
+    // starts with tag: is a tag. One column per tag, so a sheet keeps one
+    // column per attribute and can filter on it.
+    name: "tag:<name>",
+    optional: true,
+    help: "One column per tag. The part after tag: is the tag name and the cell is its value, for example a column tag:tenure with the value Aboriginal land. Leave the cell empty for no tag on that row. Tags show up on the site and in the exports.",
+  },
 ];
 
 // Every row here is deliberate. The file can only teach through its data,
@@ -47,19 +56,21 @@ const COLUMNS: CsvColumnHelp[] = [
 // empty notes at the end of the line, an empty elevation between two commas,
 // all three optional columns empty at once (the smallest a row can be, with
 // short coordinates so nobody thinks four decimals are required), and a value
-// containing a comma wrapped in double quotes.
+// containing a comma wrapped in double quotes. The two tag: columns show a
+// tag filled on some rows and empty on others, and that the tag name is
+// whatever the user writes after the colon.
 //
 // Coordinates are negative and use a dot as the decimal separator. A comma
 // decimal is the mistake people actually make, so every example contradicts it.
 //
 // The site names match the deployment example, so a user who runs both imports
 // in order sees the link between the two files work.
-const EXAMPLE_CSV = `name,latitude,longitude,elevation_m,habitat_type,notes
-Kifaru Plains north,-1.4061,35.0117,1620,Savannah,Camera on an acacia at the trail junction
-River crossing,-1.4133,35.0208,1585,Riparian,
-Acacia thicket,-1.4210,35.0290,,Woodland,Dense cover in the wet season
-Salt lick,-1.44,35.04,,,
-Ridge viewpoint,-1.4188,35.0412,1702.5,Rocky outcrop,"Steep approach, use the north track"
+const EXAMPLE_CSV = `name,latitude,longitude,elevation_m,habitat_type,notes,tag:tenure,tag:water
+Kifaru Plains north,-1.4061,35.0117,1620,Savannah,Camera on an acacia at the trail junction,Community conservancy,
+River crossing,-1.4133,35.0208,1585,Riparian,,National park,Permanent
+Acacia thicket,-1.4210,35.0290,,Woodland,Dense cover in the wet season,National park,
+Salt lick,-1.44,35.04,,,,,Seasonal
+Ridge viewpoint,-1.4188,35.0412,1702.5,Rocky outcrop,"Steep approach, use the north track",Community conservancy,
 `;
 
 interface ImportSitesDialogProps {
@@ -125,6 +136,13 @@ export function ImportSitesDialog({
           >
             {row.notes ?? ""}
           </span>
+          {/* Own line under the row (basis-full), so however many tags a
+              row has, the list never grows a horizontal scrollbar. */}
+          {Object.keys(row.tags).length > 0 && (
+            <span className="basis-full">
+              <TagPills tags={row.tags} maxVisible={6} />
+            </span>
+          )}
         </>
       )}
     />

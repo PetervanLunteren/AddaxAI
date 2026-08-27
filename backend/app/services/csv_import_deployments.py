@@ -379,6 +379,7 @@ def _parse_row(raw: RawCsvRow) -> tuple[DeploymentImportRow | None, list[CsvImpo
             site=blank_to_none(raw.values["site"]),
             notes=blank_to_none(notes),
             paired_cameras=paired_cameras,
+            tags=raw.tags,
         ),
         [],
     )
