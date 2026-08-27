@@ -180,6 +180,23 @@ Set `ADDAXAI_HF_TOKEN` to the token. Needs AddaxAI 7.0.14 or newer. It is sent t
 </FaqItem>
 
 <FaqItem
+  id="only-the-models-are-blocked"
+  q="Only the models are blocked"
+  summary="Everything downloads except Hugging Face. Copy the models from one prepared computer."
+>
+
+If the other addresses are reachable and only `huggingface.co` and `*.hf.co` are blocked, you do not need to copy the whole data folder. Copy only the models.
+
+1. Set `ADDAXAI_USER_DATA_DIR` on every machine, see [environment variables](../reference/environment-variables.mdx).
+2. On one computer that can reach the models, or one that uses [your own mirror](#we-can-only-download-through-our-own-mirror), install AddaxAI and download the models you need.
+3. Copy its `models` folder into the data folder on the other machines, for example from a network share.
+4. Set `ADDAXAI_DISABLE_MODEL_UPDATES` to `true` on the other machines.
+
+The environment still downloads on each machine at first launch. New models and model fixes only arrive when you copy the folder again.
+
+</FaqItem>
+
+<FaqItem
   id="we-cannot-download-anything-at-all"
   q="We cannot download anything at all"
   summary="Prepare one computer, then copy the result to the rest."
