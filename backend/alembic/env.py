@@ -94,6 +94,17 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # Foreign keys OFF for the whole run, as alembic's SQLite docs
+        # require. `set_sqlite_pragma` in db/base.py turns them on for
+        # every engine, this one included, and batch mode rebuilds a
+        # table with CREATE, copy, DROP TABLE, RENAME. With foreign keys
+        # on, DROP TABLE runs an implicit DELETE FROM first and every
+        # ON DELETE CASCADE fires: rebuilding `projects` emptied sites,
+        # deployments, files and detections in the test that found this
+        # (tests/db/test_migration_keeps_rows.py). On the raw DBAPI
+        # connection: the pragma is a no-op inside a transaction, and
+        # going through SQLAlchemy would open one.
+        connection.connection.dbapi_connection.execute("PRAGMA foreign_keys=OFF")
         context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
