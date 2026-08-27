@@ -33,6 +33,7 @@ import type {
   CustomLabelUpdate,
   GBIFSuggestion,
 } from "../../api/types";
+import { invalidateLabelQueries } from "../../lib/invalidate-label-queries";
 
 interface TaxonomySheetProps {
   customLabel: CustomLabelResponse | null;
@@ -157,7 +158,7 @@ export function TaxonomySheet({
     onSuccess: () => {
       toast.success("Taxonomy saved");
       queryClient.invalidateQueries({ queryKey: ["custom-labels", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+      invalidateLabelQueries(queryClient);
       onOpenChange(false);
     },
     onError: () => {
@@ -183,7 +184,7 @@ export function TaxonomySheet({
         toast.success(`Label "${created.name}" created`);
       }
       queryClient.invalidateQueries({ queryKey: ["custom-labels", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+      invalidateLabelQueries(queryClient);
       onCreated?.(created);
       onOpenChange(false);
     },

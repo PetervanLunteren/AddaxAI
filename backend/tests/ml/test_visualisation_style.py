@@ -1,76 +1,23 @@
 """Pin the visualisation style spec.
 
-Two-way contract test: the Python species-colour algorithm must match
-the TypeScript reference in `frontend/src/utils/species-colors.ts`.
-If anyone tweaks one and forgets the other, the verify grid and the
-exported JPEGs drift apart and start looking different.
-
-Spec recap:
-- FNV-1a hash of the lowercased label string
-- 32-bit unsigned result mod 1000, divided by 1000 → 0..1 position
-- RGB-space lerp between #0f6064 and #f9f871
-
-The reference values below are computed by running the same algorithm
-on the same inputs in the TypeScript file. If the algorithm has
-genuinely changed, recompute and update both sides together.
+Species colours are no longer computed here: `detection_color` reads
+the project's map from `crud/label_colors.py` (tested in
+`tests/api/test_label_colors.py`) and only falls back to a hash for a
+label the map does not know. The category colours still mirror
+`getCategoryColor` in `frontend/src/lib/detection-utils.ts`.
 """
 
-import pytest
-
+from app.api.crud.label_colors import SPECIES_PALETTE, fallback_color
 from app.ml.postprocessing_outputs._visualisation_style import (
-    _fnv1a_position,
     category_color,
     detection_color,
     render_metrics,
-    species_color,
 )
 
 
-# Reference positions computed by running the canonical FNV-1a
-# algorithm (`hashToPosition` in frontend/src/utils/species-colors.ts)
-# on the same input strings. Any drift between the two
-# implementations of the same spec must show up here.
-@pytest.mark.parametrize(
-    "label,expected_position",
-    [
-        ("dog", 0.817),
-        ("cat", 0.031),
-        ("leopard", 0.370),
-        ("aardvark", 0.179),
-        ("elephant", 0.860),
-    ],
-)
-def test_fnv1a_position_matches_reference(label, expected_position):
-    assert _fnv1a_position(label) == pytest.approx(expected_position)
-
-
-def test_species_color_is_deterministic():
-    """Same input always gives the same colour. No global state."""
-    assert species_color("leopard") == species_color("leopard")
-    assert species_color("leopard") == species_color("LEOPARD")  # case-insensitive
-
-
-def test_species_color_differs_per_label():
-    a = species_color("dog")
-    b = species_color("cat")
-    assert a != b
-
-
-def test_species_color_endpoints():
-    """A label that hashes to the extremes should land near the
-    gradient endpoints. Use synthetic labels chosen so the FNV-1a
-    output mod 1000 lands at 0 (close to #0f6064) and ~999 (close
-    to #f9f871)."""
-    # We can't pick exact hash-zero labels by inspection, but we can
-    # at least assert the gradient covers both extremes by checking
-    # that some labels in a sample produce colors closer to either
-    # endpoint.
-    samples = ["aardvark", "bear", "cat", "dog", "elephant", "fox", "gorilla"]
-    rs = [species_color(s)[0] for s in samples]
-    # Gradient goes from r=15 (dark teal) to r=249 (light yellow).
-    # A reasonable random spread should cover both halves.
-    assert min(rs) < 100, "expected some labels near the teal end"
-    assert max(rs) > 150, "expected some labels near the yellow end"
+def _rgb(hex_color: str) -> tuple[int, int, int]:
+    value = hex_color.lstrip("#")
+    return (int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16))
 
 
 def test_category_color_known_values():
@@ -82,13 +29,26 @@ def test_category_color_known_values():
     assert category_color("alien") == (136, 32, 0)
 
 
+def test_detection_color_reads_the_project_map():
+    """A labelled detection takes the colour the map assigned, looked up
+    case-insensitively, exactly like the grid does."""
+    colors = {"leopard": "#17559b"}
+    assert detection_color("Leopard", "animal", colors) == _rgb("#17559b")
+
+
+def test_detection_color_falls_back_for_an_unknown_label():
+    """A label outside the project's counting threshold is not in the
+    map; it still draws, deterministically, from the same palette."""
+    a = detection_color("aardvark", "animal", {})
+    assert a == detection_color("AARDVARK", "animal", {})
+    assert a == _rgb(fallback_color("aardvark"))
+    assert fallback_color("aardvark") in SPECIES_PALETTE
+
+
 def test_detection_color_prefers_label_over_category():
-    """A labelled detection uses its species colour; an unlabelled
-    one falls back to the category colour."""
-    labelled = detection_color("dog", "animal")
-    unlabelled = detection_color(None, "animal")
-    assert labelled == species_color("dog")
-    assert unlabelled == category_color("animal")
+    """An unlabelled detection falls back to the category colour."""
+    assert detection_color(None, "animal", {}) == category_color("animal")
+    assert detection_color("", "person", {}) == category_color("person")
 
 
 def test_render_metrics_single_font_and_no_dot():

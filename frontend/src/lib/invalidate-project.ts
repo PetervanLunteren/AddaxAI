@@ -30,6 +30,7 @@ export function invalidateProjectData(
     ["event-count-filtered"],
     ["statistics"],
     ["label-tree"],
+    ["label-colors"],
     ["project-label-stats"],
     ["observations-stats", projectId],
     ["observation-rate-map", projectId],

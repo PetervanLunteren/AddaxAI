@@ -17,6 +17,7 @@ import { getDetectionColor, shouldDrawBbox } from "../../lib/detection-utils";
 import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
 import { SpotlightDim } from "./SpotlightDim";
 import type { FileWithDetections } from "../../api/types";
+import { useSpeciesColorsVersion } from "../../utils/species-colors";
 
 interface FrameThumbnailProps {
   fileId: string;
@@ -39,6 +40,8 @@ export function FrameThumbnail({
   imageFilter,
   className,
 }: FrameThumbnailProps) {
+  // Repaint when the project's colour map lands or changes.
+  useSpeciesColorsVersion();
   // A thumbnail that 404s leaves the neutral grey behind, and boxes drawn
   // on that grey read as a very dark photo with animals in it rather than
   // as an absent one. Say the picture is gone instead of decorating a

@@ -29,6 +29,7 @@ import { cn } from "../../lib/utils";
 import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
 import { Badge } from "../ui/badge";
 import type { DetectionSummary } from "../../api/types";
+import { useSpeciesColorsVersion } from "../../utils/species-colors";
 
 type TileSize = "S" | "M" | "L";
 
@@ -41,6 +42,8 @@ interface CropCardProps {
 }
 
 export const CropCard = memo(function CropCard({ detection, selected, onSelect, onDoubleClick, tileSize = "M" }: CropCardProps) {
+  // Repaint when the project's colour map lands or changes.
+  useSpeciesColorsVersion();
   // The shared rule, not the one string: pressing X writes
   // "false detection", but the same tile should read the same way for
   // any of the six "nothing here" labels a person can apply.

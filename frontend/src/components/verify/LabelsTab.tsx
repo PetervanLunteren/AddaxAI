@@ -91,6 +91,7 @@ import type {
   EventFilterParams,
   VerifySort,
 } from "../../api/types";
+import { invalidateLabelQueries } from "../../lib/invalidate-label-queries";
 
 // Labels dropdown, kept deliberately small: browse look-alikes or
 // review by event. Low-confidence triage is the confidence slider's
@@ -700,7 +701,7 @@ export function LabelsTab({
     // an in-grid verify/relabel, so it must reconcile without blanking the
     // grid the user is working in.
     sortMutation.mutate({ sort: lblSort, background: true });
-    queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+    invalidateLabelQueries(queryClient);
     // Cohort counts feed the toolbar pill; any relabel / verify path
     // can change which detections still belong in a cohort. Invalidate
     // here so the pill catches up after every bulk action, not just
@@ -869,7 +870,7 @@ export function LabelsTab({
         neighbor_top_scientific_name: null,
         verified: true,
       }));
-      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+      invalidateLabelQueries(queryClient);
       advanceSelectionAfter(ids);
     },
     [applyDetectionAction, advanceSelectionAfter, queryClient]
@@ -905,7 +906,7 @@ export function LabelsTab({
             : prev,
         );
         queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
-        queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+        invalidateLabelQueries(queryClient);
         // Refresh every event-family query (list, single-event modal,
         // count badges, filter options) so the Counts page reflects the
         // rebuilt observations, not just the ["events"] list prefix.
@@ -1006,7 +1007,7 @@ export function LabelsTab({
             verified: true,
           }));
           advanceSelectionAfter(ids);
-          queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+          invalidateLabelQueries(queryClient);
         })
         .catch((err: Error) => toast.error(err.message));
     },
@@ -1025,7 +1026,7 @@ export function LabelsTab({
         neighbor_top_scientific_name: null,
         verified: true,
       }));
-      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+      invalidateLabelQueries(queryClient);
       advanceSelectionAfter(ids);
     },
     [applyDetectionAction, advanceSelectionAfter, queryClient]
@@ -1052,7 +1053,7 @@ export function LabelsTab({
             verified: true,
           }));
           advanceSelectionAfter(ids);
-          queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+          invalidateLabelQueries(queryClient);
         })
         .catch((err: Error) => toast.error(err.message));
     },
@@ -1072,7 +1073,7 @@ export function LabelsTab({
         neighbor_top_scientific_name: null,
         verified: true,
       }));
-      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+      invalidateLabelQueries(queryClient);
       advanceSelectionAfter(ids);
     },
     [applyDetectionAction, advanceSelectionAfter, queryClient]

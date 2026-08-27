@@ -1,109 +1,68 @@
 /**
- * Species color mapping utility
+ * Species colours.
  *
- * Generates consistent colors for species using a deterministic hash.
- * The same label string always produces the same color, regardless of
- * what other labels are on the page. No global mutable state.
+ * The backend assigns them (`backend/app/api/crud/label_colors.py`):
+ * species present in the project are sorted by taxonomy and walk a
+ * palette ordered so consecutive entries contrast most, which gives
+ * look-alike siblings the most different colours. This file only holds
+ * the map that `useLabelColors` fetches per project and answers lookups
+ * from it. There is deliberately no colour algorithm on this side: one
+ * implementation means the annotated JPEG export and the grid can never
+ * disagree.
  *
- * Gradient: #0f6064 (dark teal) -> #f9f871 (light yellow)
+ * Keys are `label_taxonomy_id` or the label name, matched
+ * case-insensitively. A key the map does not know renders neutral grey
+ * so a missing map is visible rather than silently plausible.
  */
-import chroma from 'chroma-js';
+import { useSyncExternalStore } from "react";
+import chroma from "chroma-js";
 
-// Species color gradient (single source of truth)
-// Previous: chroma.scale(['#0f6064', '#f9f871'])
-const speciesScale = chroma.scale(['#0f6064', '#f9f871']);
+/** Colour for a label the project map does not know (map not loaded
+ * yet, or a label outside the project's counting threshold). */
+export const UNKNOWN_SPECIES_COLOR = "#6b7280";
 
-// Aliases map: taxonomy UUID -> label name (and vice versa).
-// Both keys resolve to the same hash-based color because the
-// hash is computed from whichever key was registered first.
-const aliasCache: Map<string, string> = new Map();
+let labelColors: Record<string, string> = {};
+let version = 0;
+const listeners = new Set<() => void>();
 
-/**
- * Register aliases so that a taxonomy UUID and its display name
- * resolve to the same color. Call this when event data is loaded.
- */
-export function setSpeciesContext(
-  _speciesList: string[],
-  aliases?: Record<string, string>,
-): void {
-  if (aliases) {
-    for (const [key, alias] of Object.entries(aliases)) {
-      const k = key.toLowerCase();
-      const a = alias.toLowerCase();
-      if (a) {
-        aliasCache.set(k, a);
-        aliasCache.set(a, k);
-      }
-    }
-  }
+/** Replace the active map. Called by `useLabelColors` whenever the
+ * project's colour query resolves. Bumps a version so subscribed
+ * components repaint. */
+export function setLabelColors(colors: Record<string, string>): void {
+  labelColors = colors;
+  version += 1;
+  for (const listener of listeners) listener();
 }
 
-/** Deterministic hash of a string to a 0-1 gradient position. */
-function hashToPosition(str: string): number {
-  // FNV-1a hash for even distribution
-  let hash = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    hash ^= str.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return ((hash >>> 0) % 1000) / 1000;
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 }
 
-/** Get the canonical key for color lookup (follows aliases). */
-function canonicalKey(species: string): string {
-  const lower = species.toLowerCase();
-  // If this key has an alias, pick whichever is shorter (more likely
-  // the human-readable name) to hash. This ensures UUID and name
-  // produce the same color.
-  const alias = aliasCache.get(lower);
-  if (alias) {
-    return lower.length <= alias.length ? lower : alias;
-  }
-  return lower;
+function getVersion(): number {
+  return version;
+}
+
+/** Re-render the calling component when the colour map changes. Needed
+ * by anything that colours during render and is memoised, or that
+ * paints onto a canvas inside an effect (add the returned version to
+ * that effect's deps). */
+export function useSpeciesColorsVersion(): number {
+  return useSyncExternalStore(subscribe, getVersion, getVersion);
 }
 
 export function getSpeciesColor(species: string): string {
-  const position = hashToPosition(canonicalKey(species));
-  return speciesScale(position).hex();
-}
-
-export function getSpeciesColors(speciesList: string[]): string[] {
-  return speciesList.map(species => getSpeciesColor(species));
-}
-
-export function getSpeciesColorWithAlpha(species: string, alpha: number = 0.8): string {
-  const position = hashToPosition(canonicalKey(species));
-  return speciesScale(position).alpha(alpha).css();
-}
-
-export function getSpeciesChartColors(species: string, backgroundAlpha: number = 0.8): {
-  borderColor: string;
-  backgroundColor: string;
-} {
-  return {
-    borderColor: getSpeciesColor(species),
-    backgroundColor: getSpeciesColorWithAlpha(species, backgroundAlpha),
-  };
+  return labelColors[species.toLowerCase()] ?? UNKNOWN_SPECIES_COLOR;
 }
 
 /** Pick a foreground color (white or near-black) that meets WCAG AA
  * contrast against the given background.
  *
  * Pass the ACTUAL rendered background colour (hex string) rather than a
- * species key: there were chips where the background was derived from
- * `label_taxonomy_id` while the text was derived from `label`, the two
- * keys hashed to different positions on the scale, and white-on-yellow
- * slipped through unreadable. Sourcing the bg directly makes the
- * mismatch impossible. Threshold is 4.5 (AA, normal text); chips below
- * that get dark text.
+ * species key, so the text can never be derived from a different key
+ * than the background was. Threshold is 4.5 (AA, normal text); chips
+ * below that get dark text.
  */
 export function getContrastTextColor(bgHex: string): string {
   return chroma.contrast(bgHex, "white") >= 4.5 ? "white" : "#1f2937";
-}
-
-/** @deprecated use `getContrastTextColor(getSpeciesColor(key))` so the
- * bg and the text are computed from the same key. Retained briefly so
- * older call sites compile while they migrate. */
-export function getSpeciesTextColor(species: string): string {
-  return getContrastTextColor(getSpeciesColor(species));
 }

@@ -68,6 +68,7 @@ import { LabelPicker } from "./LabelPicker";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
 import { VideoFilmstrip } from "./VideoFilmstrip";
 import { useLabelOptions } from "../../hooks/useLabelOptions";
+import { invalidateLabelQueries } from "../../lib/invalidate-label-queries";
 
 // Minimum gap between Shift+wheel frame steps, so a trackpad's burst of
 // wheel events per swipe scrubs at a steady ~8 frames/second.
@@ -440,7 +441,7 @@ export function EventDetailModal({
       setRelabelDetectionId(null);
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
-      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+      invalidateLabelQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
     },
     onError: (err: Error) => toast.error(err.message),

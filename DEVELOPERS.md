@@ -724,6 +724,22 @@ The flag is chosen on the queue entry (form checkbox or the `paired_cameras` CSV
 
 Not built, on purpose: a per-camera clock offset (Adjust dates shifts the whole deployment; sync the cameras in the field), per-camera statistics inside a paired deployment, and Camera Base's left/right flank tagging.
 
+## Species colours
+
+Every species-coloured surface (Labels grid chips and boxes, Counts chips, video overlays, the map popup, the annotated JPEG export) reads one map, assigned per project by `assign_label_colors` in `backend/app/api/crud/label_colors.py`. The rule:
+
+> Sort the species present in the project by taxonomy (class, order, family, genus, species, variant, name), then give rank `i` the palette entry `i mod 12`. The palette is ordered farthest-first, so consecutive entries contrast most, and consecutive ranks are the species most likely to be confused for each other.
+
+"Present" is `present_label_rows` in `crud/event.py`, the same query the label filter offers, so a species can never be filterable without a colour or the other way round.
+
+**Why not a hash of the label.** Until 2026-08-27 a label was hashed onto the brand gradient (teal to yellow). Hashing has no idea which other species are on screen, so with ten present species two of them land on the same or a neighbouring colour almost every time (the birthday problem), and the middle of that gradient is all olive, which a beta tester reported as "two shades of green on two rodents". `docs/guides/check-labels.mdx` promises the odd one out stands out by colour; only a scheme that looks at what is present can keep that promise.
+
+**One implementation.** The frontend fetches `GET /api/projects/{id}/label-colors` (`useLabelColors`, mounted in `AppLayout` and `FolderRunLayout`) and `getSpeciesColor` only looks the key up, by `label_taxonomy_id` or lowercased label name. The export gets the same map through `detection_color(label, category, colors)`. There used to be a byte-for-byte Python mirror of the TypeScript hash, pinned by a test; that is exactly the kind of drift a single implementation removes. Do not add a colour algorithm on the frontend.
+
+**Consequences to know.** Colours are per project, and a species that first appears through a relabel shifts the species after it by one slot, so `invalidateLabelQueries` refetches the map together with the label tree on every relabel. A key the map does not know renders neutral grey on screen (visible, never plausible) and a deterministic palette pick in the export, which can only happen for a label that passes the media threshold but not the counting threshold. Species 13 onwards wrap; that pairs a species with one twelve ranks away, which is almost never a relative. The category colours are excluded from the palette on purpose, so a species cannot be mistaken for an unlabelled box. Unclassified boxes carry a `__builtin__` taxonomy row named after their category (`taxonomy_db.ensure_builtin_taxonomy`); `assign_label_colors` hands those rows the category colour and no palette slot, because the frontend colours by `label_taxonomy_id` first and would otherwise paint a person box as a species while the export painted it orange.
+
+Pinned by `tests/api/test_label_colors.py` and `tests/ml/test_visualisation_style.py`.
+
 ## Insights (in-depth analytical views)
 
 The Insights section in the sidebar hosts page-wide, scientifically-grounded visualisations that go deeper than the Dashboard's glanceable summary. Each view is its own route under `/projects/:id/insights/...` with its own filter bar and URL state persistence (via `frontend/src/lib/filter-url.ts`). The parent `insights` path redirects to the first child (`insights/map`) so clicking the parent does something useful. Future views slot in next to the existing ones.

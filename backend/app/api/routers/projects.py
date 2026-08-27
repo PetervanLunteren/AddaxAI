@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.api.crud import project as crud_project
 from app.api.crud.deployment import _delete_deployment_artifacts
+from app.api.crud.label_colors import assign_label_colors
 from app.api.schemas.project import (
     CustomLabelCreate,
     CustomLabelResponse,
@@ -954,6 +955,27 @@ async def reprocess_classifications(
     ws_manager.register_start(job.id, lambda jid=job.id: process_postprocessing_job(jid))
 
     return {"message": "Postprocessing started", "job_id": job.id}
+
+
+@router.get("/{project_id}/label-colors")
+def get_label_colors(
+    project_id: str, db: Session = Depends(get_db)
+) -> dict[str, str]:
+    """
+    Colour per species present in the project, keyed by both the
+    label_taxonomy id and the lowercased label name.
+
+    Assigned so taxonomic neighbours get the most contrasting colours;
+    see ``crud/label_colors.py``. The annotated JPEG export reads the
+    same map, so what this returns is what ends up on disk.
+    """
+    project = crud_project.get_project(db, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project with id '{project_id}' not found",
+        )
+    return assign_label_colors(db, project_id)
 
 
 @router.get("/{project_id}/label-taxonomy-map")

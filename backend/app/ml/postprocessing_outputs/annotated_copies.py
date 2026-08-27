@@ -47,7 +47,7 @@ Source-vs-destination semantics:
 from __future__ import annotations
 
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -57,6 +57,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app import __version__ as APP_VERSION
+from app.api.crud.label_colors import assign_label_colors
 from app.core.confidence import format_confidence_pct
 from app.core.logging_config import get_logger
 from app.models import Deployment, Detection, File, Project
@@ -325,11 +326,12 @@ def _compute_pill_layout(
     m: RenderMetrics,
     font,
     name_mode: str,
+    colors: Mapping[str, str],
 ) -> _PillLayout:
     """Pill geometry for one detection, sized by ``m``. Two-line when a
     species label is present, single-line otherwise. Both lines share
     one font."""
-    color = detection_color(detection.label, detection.category)
+    color = detection_color(detection.label, detection.category, colors)
     has_label = bool(detection.label)
     category_text = (
         f"{detection.category.capitalize()} "
@@ -369,6 +371,7 @@ def _draw_one(
     m: RenderMetrics,
     font,
     name_mode: str,
+    colors: Mapping[str, str],
 ) -> None:
     """Draw one bbox + pill onto the RGBA overlay, sized by ``m``."""
     if (
@@ -386,7 +389,7 @@ def _draw_one(
     if x1 <= x0 or y1 <= y0:
         return
 
-    color = detection_color(detection.label, detection.category)
+    color = detection_color(detection.label, detection.category, colors)
 
     # Single near-solid coloured rounded outline.
     draw.rounded_rectangle(
@@ -396,7 +399,7 @@ def _draw_one(
         width=m.stroke,
     )
 
-    pill = _compute_pill_layout(draw, detection, m, font, name_mode)
+    pill = _compute_pill_layout(draw, detection, m, font, name_mode, colors)
     pill_x = max(0, min(x0, img_w - pill.pill_width))
     pill_y = (
         y0 - pill.pill_height if y0 - pill.pill_height >= 0 else y0
@@ -519,6 +522,9 @@ def write_annotated_copies(
         raise ValueError(f"Project {project_id!r} not found")
 
     threshold = media_threshold
+    # The same map the Labels grid shows, so a species keeps its colour
+    # from screen to disk. Built once per run, not per file.
+    colors = assign_label_colors(db, project_id)
 
     files = db.execute(
         select(File)
@@ -631,7 +637,7 @@ def write_annotated_copies(
                 m = render_metrics(*rgba.size)
                 font = _font(m.font)
                 for det in bbox_dets:
-                    _draw_one(draw, det, rgba.size, m, font, name_mode)
+                    _draw_one(draw, det, rgba.size, m, font, name_mode, colors)
                     result.bbox_count += 1
                 image = Image.alpha_composite(rgba, overlay).convert("RGB")
 

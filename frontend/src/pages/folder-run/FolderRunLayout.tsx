@@ -25,6 +25,7 @@ import { Outlet, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { HomeButton } from "../../components/layout/HomeButton";
 import { StepProgress } from "../../components/folder-run/StepProgress";
+import { useLabelColors } from "../../hooks/useLabelColors";
 import { WideModeContext, useWideMode } from "../../components/verify/wide-mode";
 import {
   folderRunsApi,
@@ -62,6 +63,8 @@ function stepFromPath(pathname: string): FolderRunStep {
 export function FolderRunLayout() {
   const { runId } = useParams<{ runId: string }>();
   const navigate = useNavigate();
+  // A folder run is a project too: species colours for its Labels step.
+  useLabelColors(runId);
 
   const { data: run, isLoading } = useQuery({
     queryKey: ["folder-run", runId],

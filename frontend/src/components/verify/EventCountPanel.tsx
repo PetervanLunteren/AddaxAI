@@ -25,9 +25,11 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
 import { getSpeciesColor } from "../../utils/species-colors";
+import { getCategoryColor } from "../../lib/detection-utils";
 import { LabelPicker } from "./LabelPicker";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 import type { EventObservationItem } from "../../api/types";
+import { useSpeciesColorsVersion } from "../../utils/species-colors";
 
 // How long a typed digit stays "open" to be extended by the next one, so
 // "1" then "2" within the window sets 12 instead of 2. Single digits still
@@ -56,6 +58,8 @@ export function EventCountPanel({
   labelOptions,
   labelOptionsLoading,
 }: EventCountPanelProps) {
+  // Repaint when the project's colour map lands or changes.
+  useSpeciesColorsVersion();
   const queryClient = useQueryClient();
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["event", eventId] });
@@ -267,7 +271,12 @@ export function EventCountPanel({
             label: obs.label,
             category: obs.category,
           });
-          const colorKey = obs.label_taxonomy_id || obs.label || obs.category;
+          // Species colour when the observation names a species, the
+          // category colour for a bare person / vehicle / animal.
+          const speciesKey = obs.label_taxonomy_id || obs.label;
+          const swatch = speciesKey
+            ? getSpeciesColor(speciesKey)
+            : getCategoryColor(obs.category);
           return (
             <div
               key={obs.id}
@@ -280,7 +289,7 @@ export function EventCountPanel({
               <span className="flex items-center gap-1.5 truncate">
                 <span
                   className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
-                  style={{ backgroundColor: getSpeciesColor(colorKey) }}
+                  style={{ backgroundColor: swatch }}
                 />
                 {/* Click the name to change the species (count carries over).
                     No button: keeps the row uncluttered, the label itself is

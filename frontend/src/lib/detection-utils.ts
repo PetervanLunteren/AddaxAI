@@ -199,8 +199,8 @@ export function getCategoryColor(category: string): string {
 }
 
 /** Text color (white or dark) for a category chip whose background is
- *  getCategoryColor(category). Mirrors getSpeciesTextColor's contrast
- *  rule so category chips read the same way as species chips. */
+ *  getCategoryColor(category). Mirrors getContrastTextColor's rule so
+ *  category chips read the same way as species chips. */
 export function getCategoryTextColor(category: string): string {
   const bg = getCategoryColor(category);
   return chroma.contrast(bg, "white") >= 3 ? "white" : "#1f2937";

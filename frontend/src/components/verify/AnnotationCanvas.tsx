@@ -26,6 +26,7 @@ import {
   PILL_BG,
 } from "../../lib/detection-overlay";
 import type { FileWithDetections, DetectionResponse } from "../../api/types";
+import { useSpeciesColorsVersion } from "../../utils/species-colors";
 
 interface AnnotationCanvasProps {
   file: FileWithDetections;
@@ -101,6 +102,8 @@ export function AnnotationCanvas({
   exportFnRef,
   zoomFnRef,
 }: AnnotationCanvasProps) {
+  // Repaint when the project's colour map lands or changes.
+  useSpeciesColorsVersion();
   const stageRef = useRef<any>(null);
   const transformerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);

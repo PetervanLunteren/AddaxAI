@@ -27,6 +27,8 @@ import {
 import { TaxonomySheet } from "./TaxonomySheet";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 import type { CustomLabelResponse } from "../../api/types";
+import { invalidateLabelQueries } from "../../lib/invalidate-label-queries";
+import { useSpeciesColorsVersion } from "../../utils/species-colors";
 
 /** Get the dot color for a label option: species color for labels, category color for general. */
 function getLabelDotColor(opt: LabelOption): string {
@@ -128,6 +130,8 @@ export function LabelPicker({
   triggerTitle,
   headless,
 }: LabelPickerProps) {
+  // Repaint when the project's colour map lands or changes.
+  useSpeciesColorsVersion();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [taxonomyLabel, setTaxonomyLabel] = useState<CustomLabelResponse | null>(null);
@@ -240,7 +244,7 @@ export function LabelPicker({
   const handleTaxonomySheetCreated = useCallback(
     (created: CustomLabelResponse) => {
       queryClient.invalidateQueries({ queryKey: ["custom-labels", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["label-tree"] });
+      invalidateLabelQueries(queryClient);
       const option: LabelOption = {
         value: created.name,
         displayName: created.name,

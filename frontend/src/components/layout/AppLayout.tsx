@@ -9,11 +9,14 @@ import { SidebarCollapseContext } from "./sidebar-context";
 import { DeploymentHealthToast } from "./DeploymentHealthToast";
 import { ModelSetupRequiredDialog } from "../models/ModelSetupRequiredDialog";
 import { cn } from "../../lib/utils";
+import { useLabelColors } from "../../hooks/useLabelColors";
 
 const COLLAPSE_KEY = "addaxai:sidebar-collapsed";
 
 export function AppLayout() {
   const { projectId } = useParams<{ projectId: string }>();
+  // Species colours for every page under this project.
+  useLabelColors(projectId);
   // Collapsed = icon-only rail. Persisted so the choice sticks across
   // reloads. Owned here (not in Sidebar) because the content margin has
   // to track the rail width.

@@ -35,6 +35,7 @@ import type { DetectionSummary } from "../../api/types";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 import { LabelPicker } from "./LabelPicker";
 import { DetailCard, VerifyDetailShell } from "./VerifyDetailShell";
+import { useSpeciesColorsVersion } from "../../utils/species-colors";
 
 interface DetectionDetailModalProps {
   detection: DetectionSummary | null;
@@ -74,6 +75,8 @@ export function DetectionDetailModal({
   labelOptions = [],
   labelOptionsLoading = false,
 }: DetectionDetailModalProps) {
+  // Repaint when the project's colour map lands or changes.
+  useSpeciesColorsVersion();
   const [viewport, setViewport] = useState({
     width: window.innerWidth,
     height: window.innerHeight,

@@ -28,6 +28,7 @@ import {
 } from "../../lib/detection-overlay";
 import { SpotlightDim } from "./SpotlightDim";
 import type { FileWithDetections, DetectionResponse } from "../../api/types";
+import { useSpeciesColorsVersion } from "../../utils/species-colors";
 interface VideoPlayerProps {
   file: FileWithDetections;
   detectionThreshold: number;
@@ -171,6 +172,8 @@ export function VideoPlayer({
   autoExport,
   onAutoExportConsumed,
 }: VideoPlayerProps) {
+  // Repaint when the project's colour map lands or changes.
+  useSpeciesColorsVersion();
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [currentFrame, setCurrentFrame] = useState<number>(0);

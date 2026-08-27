@@ -61,7 +61,18 @@ Good / active   = #0f6064
 For example for gradients in heatmaps or other multi level color scales
 from (dark, first alphabetically) = #0f6064
 to (light, last alphabetically)   = #f9f871
-For example, species specific colors are calculated based on the number of species and mapped using this gradient (see `src/utils/species-colors.ts`). 
+
+### Species colours
+Species are categories, not a scale, so they do not use the gradient. The
+backend assigns them per project (`backend/app/api/crud/label_colors.py`, see
+"Species colours" in DEVELOPERS.md) from a 12-colour palette ordered so
+consecutive entries contrast most, and the frontend only looks them up
+(`getSpeciesColor` in `src/utils/species-colors.ts`, fed by `useLabelColors`).
+Do not compute a species colour on the frontend: the annotated JPEG export
+reads the same map, and one implementation is what keeps them equal. The
+three category colours (#0f6064 animal, #ff8945 person, #71b7ba vehicle) are
+not in the species palette, so a species never looks like an unlabelled box.
+Always pair a species background with `getContrastTextColor(bg)`.
 
 
 ### Typography

@@ -12,7 +12,8 @@ import { formatCameraDate } from "../../lib/datetime";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
 import {
   getSpeciesColor,
-  getSpeciesTextColor,
+  getContrastTextColor,
+  useSpeciesColorsVersion,
 } from "../../utils/species-colors";
 
 interface SitePopupProps {
@@ -20,6 +21,8 @@ interface SitePopupProps {
 }
 
 export function SitePopup({ feature }: SitePopupProps) {
+  // Repaint the chips when the project's colour map lands.
+  useSpeciesColorsVersion();
   const {
     site_name,
     deployment_count,
@@ -70,9 +73,7 @@ export function SitePopup({ feature }: SitePopupProps) {
           <div className="flex flex-wrap gap-1">
             {species_breakdown.slice(0, 8).map((sp) => {
               const bg = getSpeciesColor(sp.label_taxonomy_id ?? sp.label);
-              const fg = getSpeciesTextColor(
-                sp.label_taxonomy_id ?? sp.label
-              );
+              const fg = getContrastTextColor(bg);
               return (
                 <span
                   key={`${sp.label_taxonomy_id ?? sp.label}`}

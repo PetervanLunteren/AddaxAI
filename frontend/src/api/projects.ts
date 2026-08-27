@@ -196,6 +196,14 @@ export const projectsApi = {
     ),
 
   /**
+   * Colour per species present in the project, keyed by label_taxonomy
+   * id and by lowercased label name. Assigned server-side so the
+   * annotated JPEG export matches the grid.
+   */
+  getLabelColors: (projectId: string) =>
+    api.get<Record<string, string>>(`/api/projects/${projectId}/label-colors`),
+
+  /**
    * Get taxonomy fields for all labels in a project (model + custom)
    */
   getLabelTaxonomyMap: (projectId: string) =>

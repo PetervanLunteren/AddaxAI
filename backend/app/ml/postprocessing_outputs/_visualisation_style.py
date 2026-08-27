@@ -7,18 +7,12 @@ written to disk looks like what the user sees in the verify grid:
 rounded bounding box outlines and rounded label pills with white
 text on a dark background.
 
-Canonical references (keep the COLOUR algorithm in sync — single spec,
-two implementations):
-
-- frontend/src/lib/detection-utils.ts    (category colours)
-- frontend/src/utils/species-colors.ts   (species colour algorithm)
-
-The species colour is a deterministic FNV-1a hash of the lowercased
-label string mapped onto an RGB-interpolated gradient between
-`#0f6064` and `#f9f871`. Same algorithm as `chroma.scale([...])` with
-default RGB interpolation in the frontend, so a label that looks
-"teal-green" in the verify grid also looks "teal-green" in the
-exported JPEG.
+Colours: the category colours mirror ``getCategoryColor`` in
+``frontend/src/lib/detection-utils.ts``. Species colours are not
+computed here at all: ``app.api.crud.label_colors`` assigns them once
+per project and the frontend fetches that same map, so there is one
+implementation and the JPEG on disk matches the grid on screen by
+construction. Callers pass the map into ``detection_color``.
 
 Layout is NOT a fixed-pixel mirror of the frontend. The frontend
 rescales its fixed 10/12px constants to screen pixels at render time
@@ -34,7 +28,10 @@ backdrop.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+
+from app.api.crud.label_colors import fallback_color
 
 # ─────────────────────────────────────────────────────────────────
 # Category colours — canonical map mirrors getCategoryColor() in
@@ -48,56 +45,6 @@ _CATEGORY_RGB: dict[str, tuple[int, int, int]] = {
 _DEFAULT_CATEGORY_RGB: tuple[int, int, int] = (136, 32, 0)  # #882000
 
 
-# ─────────────────────────────────────────────────────────────────
-# Species gradient endpoints. Mirror `chroma.scale(['#0f6064',
-# '#f9f871'])` in frontend/src/utils/species-colors.ts. chroma.scale
-# defaults to RGB interpolation, so the lerp here is plain componentwise.
-# ─────────────────────────────────────────────────────────────────
-_SPECIES_GRADIENT_FROM: tuple[int, int, int] = (15, 96, 100)  # #0f6064
-_SPECIES_GRADIENT_TO: tuple[int, int, int] = (249, 248, 113)  # #f9f871
-
-
-def _fnv1a_position(text: str) -> float:
-    """FNV-1a hash of `text` mapped to a 0..1 gradient position.
-
-    Mirrors `hashToPosition` in species-colors.ts byte-for-byte: same
-    FNV offset basis and prime, same mod 1000 / 1000 step, same
-    32-bit unsigned right-shift before mod. Different input
-    characters here would produce a different colour in the verify
-    grid, so this MUST stay matched.
-    """
-    hash_value = 2166136261
-    for ch in text:
-        hash_value ^= ord(ch)
-        # Imul-equivalent multiplication, truncated to 32 bits.
-        hash_value = (hash_value * 16777619) & 0xFFFFFFFF
-    return (hash_value % 1000) / 1000
-
-
-def _lerp_rgb(
-    a: tuple[int, int, int],
-    b: tuple[int, int, int],
-    t: float,
-) -> tuple[int, int, int]:
-    """Componentwise RGB lerp clamped to 0..255 integers."""
-    return (
-        int(round(a[0] + (b[0] - a[0]) * t)),
-        int(round(a[1] + (b[1] - a[1]) * t)),
-        int(round(a[2] + (b[2] - a[2]) * t)),
-    )
-
-
-def species_color(label: str) -> tuple[int, int, int]:
-    """Resolve a species label to its RGB colour.
-
-    Same answer the verify UI would give: hash the lowercased label,
-    interpolate between the two gradient endpoints. Deterministic and
-    stateless — no project context required.
-    """
-    position = _fnv1a_position(label.strip().lower())
-    return _lerp_rgb(_SPECIES_GRADIENT_FROM, _SPECIES_GRADIENT_TO, position)
-
-
 def category_color(category: str) -> tuple[int, int, int]:
     """Resolve an MD category ("animal" / "person" / "vehicle") to RGB.
 
@@ -108,18 +55,29 @@ def category_color(category: str) -> tuple[int, int, int]:
 
 
 def detection_color(
-    label: str | None, category: str
+    label: str | None,
+    category: str,
+    colors: Mapping[str, str],
 ) -> tuple[int, int, int]:
     """Pick the colour a detection's box and pill dot use.
 
     Species colour wins when a label exists, exactly like
-    `getDetectionColor` in the frontend. Falls back to the category
-    colour for unlabelled detections (typical when a project runs
-    detection-only).
+    ``getDetectionColor`` in the frontend. ``colors`` is the project's
+    map from ``assign_label_colors``; a label it does not know (one
+    that passes the media threshold but not the project's counting
+    threshold) takes the deterministic fallback. Unlabelled
+    detections use the category colour.
     """
     if label:
-        return species_color(label)
+        return _hex_to_rgb(
+            colors.get(label.strip().lower()) or fallback_color(label)
+        )
     return category_color(category)
+
+
+def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    value = hex_color.lstrip("#")
+    return (int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16))
 
 
 # ─────────────────────────────────────────────────────────────────

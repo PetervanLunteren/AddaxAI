@@ -1292,6 +1292,39 @@ def get_event_verification_stats(
     }
 
 
+def present_label_rows(
+    db: Session, project_id: str, threshold: float, *columns
+) -> list:
+    """Distinct ``label_taxonomy_id`` values the project's grid can show.
+
+    The one definition of "species present in this project": labelled
+    detections at or above ``threshold`` or verified, on the visible
+    frame. The label filter list and the species colour map both read
+    it, so a species can never be offered as a filter without a colour
+    or the other way round. Extra ``columns`` ride along in the same
+    distinct query; the taxonomy id is always the first column.
+    """
+    threshold_clause = or_(
+        Detection.confidence >= threshold,
+        Detection.verified == True,  # noqa: E712
+    )
+    return (
+        db.query(Detection.label_taxonomy_id, *columns)
+        .join(File, File.id == Detection.file_id)
+        .join(Deployment, Deployment.id == File.deployment_id)
+        .filter(Deployment.project_id == project_id)
+        .filter(Detection.label_taxonomy_id.isnot(None))
+        .filter(threshold_clause)
+        # Same visible surface as the label tree this list stands in for
+        # (it is the fallback shown when a project has no taxonomy). Without
+        # it the flat list offers species that live only on frames the grid
+        # never renders, so picking one returns nothing.
+        .filter(on_visible_frame())
+        .distinct()
+        .all()
+    )
+
+
 def get_filter_options(db: Session, project_id: str) -> dict:
     """Get available filter options for a project (distinct labels, date range).
 
@@ -1308,28 +1341,16 @@ def get_filter_options(db: Session, project_id: str) -> dict:
     )
 
     # Distinct taxonomy IDs across threshold-passing detections
-    label_rows = (
-        db.query(
-            Detection.label_taxonomy_id,
-            func.coalesce(
-                Detection.scientific_name, Detection.label, Detection.category
-            ),
-            func.coalesce(
-                Detection.common_name, Detection.label, Detection.category
-            ),
-        )
-        .join(File, File.id == Detection.file_id)
-        .join(Deployment, Deployment.id == File.deployment_id)
-        .filter(Deployment.project_id == project_id)
-        .filter(Detection.label_taxonomy_id.isnot(None))
-        .filter(threshold_clause)
-        # Same visible surface as the label tree this list stands in for
-        # (it is the fallback shown when a project has no taxonomy). Without
-        # it the flat list offers species that live only on frames the grid
-        # never renders, so picking one returns nothing.
-        .filter(on_visible_frame())
-        .distinct()
-        .all()
+    label_rows = present_label_rows(
+        db,
+        project_id,
+        threshold,
+        func.coalesce(
+            Detection.scientific_name, Detection.label, Detection.category
+        ),
+        func.coalesce(
+            Detection.common_name, Detection.label, Detection.category
+        ),
     )
     label_list = sorted([row[0] for row in label_rows if row[0]])
 

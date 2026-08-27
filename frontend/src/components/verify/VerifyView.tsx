@@ -37,9 +37,9 @@ import { Card, CardContent } from "../ui/card";
 import { getObservationBadge } from "../../lib/detection-utils";
 import { speciesLabelMap } from "../../lib/species-name-mode";
 import {
-  setSpeciesContext,
   getSpeciesColor,
-  getSpeciesTextColor,
+  getContrastTextColor,
+  useSpeciesColorsVersion,
 } from "../../utils/species-colors";
 import type {
   EventSummary,
@@ -253,23 +253,8 @@ export function VerifyView({ projectId }: VerifyViewProps) {
     placeholderData: (prev) => prev,
   });
 
-  // Set species color context from current events.
-  // Labels are taxonomy UUIDs; register the active-mode name map as aliases
-  // so name-string lookups (in LabelPicker, overlay, etc.) get
-  // the same color.
-  useMemo(() => {
-    if (events?.length) {
-      const allLabels = [...new Set(events.flatMap((e) => e.labels))];
-      // Collect UUID -> name aliases from all events (active name mode).
-      const aliases: Record<string, string> = {};
-      for (const e of events) {
-        for (const [uuid, name] of Object.entries(speciesLabelMap(e))) {
-          aliases[uuid] = name;
-        }
-      }
-      if (allLabels.length > 0) setSpeciesContext(allLabels, aliases);
-    }
-  }, [events]);
+  // Repaint the event cards when the project's colour map lands.
+  useSpeciesColorsVersion();
 
   const totalEvents = totalCountData?.count ?? 0;
   const filteredEvents = isFiltered
@@ -527,7 +512,7 @@ function EventCard({
                     className="text-[10px] px-1.5 py-0.5 max-w-[100px]"
                     style={{
                       backgroundColor: getSpeciesColor(sp),
-                      color: getSpeciesTextColor(sp),
+                      color: getContrastTextColor(getSpeciesColor(sp)),
                     }}
                   >
                     <span className="truncate">

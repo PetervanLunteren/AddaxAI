@@ -51,9 +51,6 @@ import { projectsApi } from "../../api/projects";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { buildSiteOptions } from "../../lib/site-filter-options";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
-import {
-  setSpeciesContext,
-} from "../../utils/species-colors";
 
 // One colour for every bar, matching AddaxAI Connect's species chart:
 // the species name is already on the axis, so per-bar colours read as
@@ -204,14 +201,6 @@ export function DashboardView({ projectId }: { projectId: string }) {
       ),
     enabled: !!projectId,
   });
-
-  useMemo(() => {
-    if (species && species.length > 0) {
-      const allSpecies = species.map((s) => s.species);
-      allSpecies.push("animal", "person", "vehicle", "empty");
-      setSpeciesContext(allSpecies);
-    }
-  }, [species]);
 
   const trapNights = overview?.trap_nights ?? 0;
   const norm = (n: number) => +((n / trapNights) * 100).toFixed(2);
