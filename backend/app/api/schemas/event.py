@@ -69,10 +69,11 @@ class EventSummary(BaseModel):
 
 
 class EventObservationItem(BaseModel):
-    """One species row of an event's count list (the Observations-page
-    count editor). `effective_count` is the human-authoritative count
-    (`human_count` if set, else the AI-derived `max_n`). A human-only
-    species the AI missed has max_n=0."""
+    """One cohort row of an event's count list (the Counts-page count
+    editor). `effective_count` is the human-authoritative count
+    (`human_count` if set, else the AI-derived `max_n`). A human-only row
+    (a species the AI missed, or a cohort split off by hand) has max_n=0.
+    The demographics are None until a person sets them."""
 
     id: str
     category: str
@@ -82,6 +83,9 @@ class EventObservationItem(BaseModel):
     scientific_name: str | None = None
     max_n: int
     effective_count: int
+    sex: str | None
+    life_stage: str | None
+    behavior: str | None
 
 
 class EventWithFiles(BaseModel):
@@ -100,6 +104,8 @@ class EventWithFiles(BaseModel):
     confirmed: bool = False
     # Per-species count list (AI + human-only), highest count first.
     observations: list[EventObservationItem] = []
+    # A person's free text about the visit (Event.notes).
+    notes: str | None
     created_at_utc: datetime
     site_name: str | None = None
     files: list[FileWithDetections]

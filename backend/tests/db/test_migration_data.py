@@ -610,3 +610,58 @@ def test_6f7a8b9c0d1e_downgrade_restores_the_every_frame_rule(engine):
     assert _scalar(
         engine, "SELECT observation_type FROM files WHERE id = :i", i=video
     ) == "animal"
+
+
+# ---------------------------------------------------------------------------
+# a1b2c3d4e5f7 — observation cohorts: several rows per species per event
+# ---------------------------------------------------------------------------
+
+
+def test_a1b2c3d4e5f7_allows_two_cohorts_of_one_species(engine):
+    """The whole point of the migration is the constraint it drops, and
+    nothing else notices a dropped constraint: `schema_problems()` only
+    reports what the models declare and the DB lacks. So this inserts the
+    second row the old schema refused. Existing rows read NULL (unknown)
+    in the new columns, and the event gets its notes column."""
+    upgrade_to("9c0d1e2f3a4b")
+
+    with engine.begin() as conn:
+        project_id, deployment_id = seed_deployment(conn)
+        event_id = insert_row(conn, "events", deployment_id=deployment_id)
+        taxonomy_id = insert_row(
+            conn, "label_taxonomy", name="deer", level="species",
+            classification_model_id="m", project_id=project_id,
+        )
+        first = insert_row(
+            conn, "event_observations", event_id=event_id,
+            label="deer", label_taxonomy_id=taxonomy_id,
+            category="animal", max_n=2,
+        )
+
+    upgrade_to("a1b2c3d4e5f7")
+
+    with engine.begin() as conn:
+        second = insert_row(
+            conn, "event_observations", event_id=event_id,
+            label="deer", label_taxonomy_id=taxonomy_id,
+            category="animal", max_n=0, human_count=1, sex="female",
+        )
+
+    assert _scalar(
+        engine,
+        "SELECT COUNT(*) FROM event_observations "
+        "WHERE event_id = :e AND label_taxonomy_id = :t",
+        e=event_id, t=taxonomy_id,
+    ) == 2
+    assert _scalar(
+        engine,
+        "SELECT sex IS NULL AND life_stage IS NULL AND behavior IS NULL "
+        "FROM event_observations WHERE id = :i",
+        i=first,
+    ) == 1
+    assert _scalar(
+        engine, "SELECT notes IS NULL FROM events WHERE id = :i", i=event_id
+    ) == 1
+    assert _scalar(
+        engine, "SELECT sex FROM event_observations WHERE id = :i", i=second
+    ) == "female"

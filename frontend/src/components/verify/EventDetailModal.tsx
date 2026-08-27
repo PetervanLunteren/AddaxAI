@@ -584,7 +584,8 @@ export function EventDetailModal({
       // Don't fire when typing in inputs
       if (
         e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement
       ) {
         return;
       }
@@ -693,6 +694,12 @@ export function EventDetailModal({
       <DialogContent
         className="flex flex-col p-0 pt-3 gap-0 overflow-hidden [&>button.absolute]:hidden"
         onOpenAutoFocus={(e) => e.preventDefault()}
+        // Escape inside the event note closes the note (EventCountPanel
+        // handles it), not the modal. Radix listens in the capture phase,
+        // so this is the only place that can stop it.
+        onEscapeKeyDown={(e) => {
+          if (e.target instanceof HTMLTextAreaElement) e.preventDefault();
+        }}
         style={{
           width: modalStyle.width,
           height: modalStyle.height,
@@ -1067,6 +1074,7 @@ export function EventDetailModal({
                 projectId={projectId}
                 observations={event.observations}
                 confirmed={event.confirmed}
+                notes={event.notes}
                 onConfirm={handleConfirmAndAdvance}
                 labelOptions={labelOptions}
                 labelOptionsLoading={labelOptionsLoading}

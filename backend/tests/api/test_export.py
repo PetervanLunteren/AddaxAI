@@ -2234,3 +2234,146 @@ def test_export_camtrap_dp_tags_paired_cameras(client, db):
         deps_rows = list(csv.reader(io.StringIO(zf.read("deployments.csv").decode())))
     tags_col = deps_rows[0].index("deploymentTags")
     assert deps_rows[1][tags_col] == "season:wet | paired_cameras:true"
+
+
+# ---------------------------------------------------------------------------
+# Cohorts (sex, life stage, behaviour), event notes and the file marks
+# ---------------------------------------------------------------------------
+
+
+def _deer_event_with_cohorts(db):
+    """A deer event with a note: the AI row set to male, plus a split-off
+    juvenile female. Returns (project, event)."""
+    from app.api.crud.event_observation import (
+        calculate_max_n_for_event,
+        set_event_notes,
+        set_observation_attributes,
+        split_observation,
+    )
+
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    ev = make_event_with_files(
+        db, deployment_id=deployment.id,
+        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+    )
+    for _ in range(3):
+        make_detection(
+            db, file_id=ev.files[0].id, category="animal", confidence=0.9,
+            label="deer", bbox_x=0.1, bbox_y=0.1, bbox_width=0.2, bbox_height=0.2,
+        )
+    (deer,) = calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    db.flush()
+    set_observation_attributes(db, deer.id, sex="male")
+    cohort = split_observation(db, deer.id)
+    set_observation_attributes(db, cohort.id, sex="female", life_stage="juvenile")
+    set_event_notes(db, ev.id, "with mother")
+    db.commit()
+    return project, ev
+
+
+def test_export_observations_one_row_per_cohort(client, db):
+    project, _ev = _deer_event_with_cohorts(db)
+    resp = client.get(f"/api/projects/{project.id}/export/observations?format=csv")
+    headers, *rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
+    cols = [
+        headers.index(c)
+        for c in ("count", "sex", "life_stage", "behavior", "event_notes")
+    ]
+    # The event's note repeats on each of its rows.
+    assert [[r[i] for i in cols] for r in rows] == [
+        ["2", "male", "", "", "with mother"],
+        ["1", "female", "juvenile", "", "with mother"],
+    ]
+
+
+def test_export_camtrap_dp_event_rows_carry_the_cohort_fields(client, db):
+    """One event-level row per cohort. Unknown is blank, never "unknown":
+    Camtrap DP's sex / lifeStage enums have no such value. The event's note
+    goes to observationComments of each of its rows."""
+    project, _ev = _deer_event_with_cohorts(db)
+    resp = _run_camtrap_dp_export(client, db, project.id)
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        headers, *obs_rows = csv.reader(
+            io.StringIO(zf.read("observations.csv").decode())
+        )
+    level_i = headers.index("observationLevel")
+    cols = [
+        headers.index(c)
+        for c in ("count", "sex", "lifeStage", "behavior", "observationComments")
+    ]
+    event = [r for r in obs_rows if r[level_i] == "event"]
+    assert [[r[i] for i in cols] for r in event] == [
+        ["2", "male", "", "", "with mother"],
+        ["1", "female", "juvenile", "", "with mother"],
+    ]
+
+
+def test_export_camtrap_dp_variant_wins_over_the_row_and_comments_join(client, db):
+    from app.api.crud.event_observation import (
+        calculate_max_n_for_event,
+        set_event_notes,
+        set_observation_attributes,
+    )
+
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    ev = make_event_with_files(
+        db, deployment_id=deployment.id,
+        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+    )
+    det = make_detection(
+        db, file_id=ev.files[0].id, category="animal", confidence=0.9,
+        label="fox pup",
+    )
+    tax = LabelTaxonomy(
+        name="fox pup", level="variant", classification_model_id="",
+        project_id=project.id, taxon_genus="vulpes", taxon_species="vulpes",
+        taxon_variant="pup", scientific_name="V. vulpes (pup)",
+    )
+    db.add(tax)
+    db.flush()
+    det.label_taxonomy_id = tax.id
+    db.flush()
+    (obs,) = calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    db.flush()
+    set_observation_attributes(db, obs.id, life_stage="adult")
+    set_event_notes(db, ev.id, "odd one")
+    db.commit()
+
+    resp = _run_camtrap_dp_export(client, db, project.id)
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        headers, *obs_rows = csv.reader(
+            io.StringIO(zf.read("observations.csv").decode())
+        )
+    level_i = headers.index("observationLevel")
+    (event,) = [r for r in obs_rows if r[level_i] == "event"]
+    # "pup" is not in the enum, so it rides in the comment, before the note.
+    assert event[headers.index("lifeStage")] == "adult"
+    assert event[headers.index("observationComments")] == "variant: pup; odd one"
+
+
+def test_files_export_carries_the_favourite_and_flag_marks(client, db):
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    marked = make_file(
+        db, deployment_id=deployment.id,
+        captured_at_local=datetime(2024, 6, 15, 9, 0, 0),
+        favorited=True, flagged=True,
+    )
+    plain = make_file(
+        db, deployment_id=deployment.id,
+        captured_at_local=datetime(2024, 6, 15, 10, 0, 0),
+    )
+    db.commit()
+
+    resp = client.get(f"/api/projects/{project.id}/export/files?format=csv")
+    headers, *rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
+    by_id = {r[headers.index("file_id")]: r for r in rows}
+    fav_i, flag_i = headers.index("is_favorited"), headers.index("is_flagged")
+    assert (by_id[marked.id][fav_i], by_id[marked.id][flag_i]) == ("TRUE", "TRUE")
+    assert (by_id[plain.id][fav_i], by_id[plain.id][flag_i]) == ("FALSE", "FALSE")
+
+    resp = _run_camtrap_dp_export(client, db, project.id)
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        headers, *media = csv.reader(io.StringIO(zf.read("media.csv").decode()))
+    by_id = {r[headers.index("mediaID")]: r for r in media}
+    assert by_id[marked.id][headers.index("favorite")] == "true"
+    assert by_id[plain.id][headers.index("favorite")] == ""

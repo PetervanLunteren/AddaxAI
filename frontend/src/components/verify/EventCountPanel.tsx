@@ -13,22 +13,33 @@
  * "removed" (a human-added row is deleted; an AI row keeps its boxes but its
  * count drops to 0, which survives a MaxN recompute and leaves the
  * ecological exports). Re-add via the picker or "Reset to AI".
+ *
+ * A row is one cohort. Its second line holds sex, life stage and behaviour
+ * for the individuals on that row; Split makes a second row of the same
+ * species so 4 males and 2 females can be two rows with their own counts.
+ * The species total is the sum. A note is about the visit, so there is one
+ * per event, under the list.
  */
 
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Minus, Plus, RotateCcw, X } from "lucide-react";
+import { Check, Copy, Minus, Plus, RotateCcw, X } from "lucide-react";
 import { toast } from "sonner";
 import { eventsApi } from "../../api/events";
 import { cn } from "../../lib/utils";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Textarea } from "../ui/textarea";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
 import { getSpeciesColor } from "../../utils/species-colors";
 import { getCategoryColor } from "../../lib/detection-utils";
+import { OBSERVATION_ATTRIBUTES } from "../../lib/observation-attributes";
 import { LabelPicker } from "./LabelPicker";
 import type { LabelOption } from "../../hooks/useLabelOptions";
-import type { EventObservationItem } from "../../api/types";
+import type {
+  EventObservationItem,
+  ObservationAttributesPatch,
+} from "../../api/types";
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
 
 // How long a typed digit stays "open" to be extended by the next one, so
@@ -42,6 +53,8 @@ interface EventCountPanelProps {
   /** Full observation list (including hidden count-0 rows). */
   observations: EventObservationItem[];
   confirmed: boolean;
+  /** The event's free text (Event.notes). */
+  notes: string | null;
   /** Confirm the event and jump to the next unconfirmed one (modal owns it,
    *  shared with the Enter key). */
   onConfirm: () => void;
@@ -54,6 +67,7 @@ export function EventCountPanel({
   projectId,
   observations,
   confirmed,
+  notes,
   onConfirm,
   labelOptions,
   labelOptionsLoading,
@@ -103,20 +117,55 @@ export function EventCountPanel({
     onSuccess: invalidate,
     onError: onError("reset the counts"),
   });
+  const setAttributes = useMutation({
+    mutationFn: ({
+      obsId,
+      patch,
+    }: {
+      obsId: string;
+      patch: ObservationAttributesPatch;
+    }) => eventsApi.setObservationAttributes(eventId, obsId, patch),
+    onSuccess: invalidate,
+    onError: onError("save the details"),
+  });
+  const splitObs = useMutation({
+    mutationFn: (obsId: string) => eventsApi.splitObservation(eventId, obsId),
+    onSuccess: invalidate,
+    onError: onError("split the row"),
+  });
+  const setNotes = useMutation({
+    mutationFn: (next: string | null) => eventsApi.setNotes(eventId, next),
+    onSuccess: invalidate,
+    onError: onError("save the note"),
+  });
+  // While a request runs the buttons are disabled but not dimmed
+  // (`disabled:opacity-100`): with three selects per row the default 50%
+  // fade made the whole list blink on every edit. The selects are not
+  // guarded at all, and neither is the count box: a browser greys a
+  // disabled <select> and <input> itself, and a change during another
+  // request is just one more PATCH.
   const busy =
     setCount.isPending ||
     addSpecies.isPending ||
     relabelSpecies.isPending ||
     removeObs.isPending ||
-    resetCounts.isPending;
+    resetCounts.isPending ||
+    setAttributes.isPending ||
+    splitObs.isPending;
 
   // Visible rows = species actually present (count > 0). A count-0 row is a
   // removed species, hidden from the editor.
   const visible = observations.filter((o) => o.effective_count > 0);
-  // Any override, count-0 removal, or human-only row counts as a human edit
-  // (so "Reset to AI" lights up).
+  // Any override, count-0 removal, human-only row or demographic counts
+  // as a human edit (so "Reset to AI" lights up). Not the note: reset is
+  // about the counts and leaves it alone.
   const hasHumanEdits = observations.some(
-    (o) => o.max_n === 0 || o.effective_count !== o.max_n,
+    (o) =>
+      o.max_n === 0 ||
+      o.effective_count !== o.max_n ||
+      o.sex !== null ||
+      o.life_stage !== null ||
+      o.behavior !== null,
   );
 
   // Set a count, treating 0 as "remove": an AI row goes to count 0 (survives
@@ -131,6 +180,18 @@ export function EventCountPanel({
   };
 
   const [addOpen, setAddOpen] = useState(false);
+  // The note is collapsed by default (a preview, or "+ Add notes") and
+  // opens into a textarea. Closes again when the event changes. The text
+  // is a local draft while open: binding the textarea to the saved value
+  // remounted it on every save, which put the caret at the start and
+  // pulled focus back from whatever the user clicked next.
+  const [notesExpanded, setNotesExpanded] = useState(false);
+  const [draft, setDraft] = useState("");
+  const openNotes = () => {
+    setDraft(notes ?? "");
+    setNotesExpanded(true);
+  };
+  useEffect(() => setNotesExpanded(false), [eventId]);
   // Row whose species is being changed. Clicking a row's name opens the
   // picker; picking a species relabels the row (count-level: the count moves
   // to the target species, summing if it already has a row). Null = closed.
@@ -165,7 +226,8 @@ export function EventCountPanel({
   // up/down pick a species row; digits set the active row's count (type fast
   // for multi-digit); + / - nudge it by one; R relabels the active row. Bound
   // only while the panel is mounted (i.e. the modal is open). Editing keys are
-  // ignored while typing in an input (the count field, the picker).
+  // ignored while typing in an input (the count field, the picker, the note)
+  // or while a select has focus (its own arrows pick an option).
   useEffect(() => {
     const clearDigitBuffer = () => {
       if (digitTimerRef.current) clearTimeout(digitTimerRef.current);
@@ -175,7 +237,8 @@ export function EventCountPanel({
     const handler = (e: KeyboardEvent) => {
       if (
         e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement
       ) {
         return;
       }
@@ -281,11 +344,13 @@ export function EventCountPanel({
             <div
               key={obs.id}
               onMouseDown={() => setActiveIndex(index)}
+              onFocusCapture={() => setActiveIndex(index)}
               className={cn(
-                "flex items-center justify-between gap-2 rounded border bg-white px-2 py-1.5 text-sm",
+                "flex flex-col gap-1 rounded border bg-white px-2 py-1.5 text-sm",
                 index === activeIndex && "ring-2 ring-primary/40",
               )}
             >
+            <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5 truncate">
                 <span
                   className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
@@ -298,7 +363,7 @@ export function EventCountPanel({
                   type="button"
                   disabled={busy}
                   onClick={() => setRelabelObs(obs)}
-                  className="-mx-1 -my-0.5 truncate rounded px-1 py-0.5 text-left transition-colors hover:bg-accent disabled:opacity-50 disabled:hover:bg-transparent"
+                  className="-mx-1 -my-0.5 truncate rounded px-1 py-0.5 text-left transition-colors hover:bg-accent disabled:hover:bg-transparent"
                   title={`${name} — click to change species`}
                 >
                   {name}
@@ -308,7 +373,7 @@ export function EventCountPanel({
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-6 w-6"
+                  className="h-6 w-6 disabled:opacity-100"
                   disabled={busy}
                   title="Decrease"
                   onClick={() => applyCount(obs, obs.effective_count - 1)}
@@ -320,7 +385,6 @@ export function EventCountPanel({
                   type="text"
                   inputMode="numeric"
                   defaultValue={obs.effective_count}
-                  disabled={busy}
                   className="w-9 rounded border bg-white px-1 py-0.5 text-center text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") e.currentTarget.blur();
@@ -335,7 +399,7 @@ export function EventCountPanel({
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-6 w-6"
+                  className="h-6 w-6 disabled:opacity-100"
                   disabled={busy}
                   title="Increase"
                   onClick={() => applyCount(obs, obs.effective_count + 1)}
@@ -345,7 +409,17 @@ export function EventCountPanel({
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-6 w-6 text-muted-foreground"
+                  className="h-6 w-6 text-muted-foreground disabled:opacity-100"
+                  disabled={busy}
+                  title="Split into two rows"
+                  onClick={() => splitObs.mutate(obs.id)}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6 text-muted-foreground disabled:opacity-100"
                   disabled={busy}
                   title="Remove species"
                   onClick={() => applyCount(obs, 0)}
@@ -353,6 +427,38 @@ export function EventCountPanel({
                   <X className="h-3.5 w-3.5" />
                 </Button>
               </span>
+            </div>
+            {/* Line 2: what the individuals on this row are. Empty means
+                unknown and is sent as null. Native selects: three per row,
+                no portal, and their own arrow keys stay their own. */}
+            <div className="flex items-center gap-1">
+              {OBSERVATION_ATTRIBUTES.map(({ field, label, options }) => (
+                <select
+                  key={field}
+                  value={obs[field] ?? ""}
+                  title={label}
+                  aria-label={label}
+                  className={cn(
+                    "h-6 min-w-0 rounded border bg-white px-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary",
+                    field === "behavior" ? "flex-[1.5]" : "flex-1",
+                    obs[field] === null && "text-muted-foreground",
+                  )}
+                  onChange={(e) =>
+                    setAttributes.mutate({
+                      obsId: obs.id,
+                      patch: { [field]: e.currentTarget.value || null },
+                    })
+                  }
+                >
+                  <option value="">{label}</option>
+                  {options.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              ))}
+            </div>
             </div>
           );
         })}
@@ -368,7 +474,7 @@ export function EventCountPanel({
         <button
           onClick={() => setAddOpen(true)}
           disabled={busy}
-          className="flex w-full items-center justify-center gap-1.5 rounded border border-dashed px-2 py-1.5 text-sm text-muted-foreground hover:border-primary/50 hover:text-foreground disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-1.5 rounded border border-dashed px-2 py-1.5 text-sm text-muted-foreground hover:border-primary/50 hover:text-foreground"
         >
           <Plus className="h-3.5 w-3.5" />
           Add species
@@ -403,9 +509,64 @@ export function EventCountPanel({
         />
       </div>
 
-      {/* Footer: reset to the AI proposal, then the primary Confirm. Pinned
-          to the panel bottom so Confirm holds a stable position. */}
+      {/* Footer: the event's note, reset to the AI proposal, then the
+          primary Confirm. Pinned to the panel bottom so Confirm holds a
+          stable position. The note follows AddaxAI Connect: collapsed it
+          is an "Add notes" link or a two-line preview, expanded it is a
+          textarea with Done. Done (or leaving the field) saves; Escape
+          closes it without saving. */}
       <div className="shrink-0 border-t px-3 py-2 space-y-2">
+        {notesExpanded ? (
+          <div className="rounded-md border bg-white p-2">
+            <Textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Add notes about this event..."
+              aria-label="Notes on this event"
+              autoFocus
+              maxLength={2000}
+              className="min-h-[80px] resize-none border-0 bg-transparent px-1 py-1 text-sm focus-visible:ring-0 focus-visible:ring-offset-0"
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  // Closes the note only; the modal's DialogContent keeps
+                  // Escape from a textarea from closing the modal.
+                  setDraft(notes ?? "");
+                  setNotesExpanded(false);
+                }
+              }}
+              onBlur={() => {
+                const next = draft.trim() || null;
+                if (next !== notes) setNotes.mutate(next);
+              }}
+            />
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setNotesExpanded(false)}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        ) : notes ? (
+          <button
+            type="button"
+            onClick={openNotes}
+            className="w-full rounded-md border bg-muted/30 p-2 text-left transition-colors hover:bg-muted/50"
+          >
+            <p className="mb-0.5 text-xs text-muted-foreground">Notes</p>
+            <p className="line-clamp-2 whitespace-pre-line text-sm">{notes}</p>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={openNotes}
+            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            + Add notes
+          </button>
+        )}
         {hasHumanEdits && (
           <Button
             variant="ghost"

@@ -155,20 +155,23 @@ def test_schema_problems_reports_a_missing_unique_constraint(engine) -> None:
     upgrade_to_head()
     with engine.begin() as conn:
         conn.execute(text("PRAGMA foreign_keys=OFF"))
-        conn.execute(text("ALTER TABLE event_observations RENAME TO _eo_old"))
+        # Other tables reference sites; without this the rename rewrites
+        # their foreign keys to point at _sites_old.
+        conn.execute(text("PRAGMA legacy_alter_table=ON"))
+        conn.execute(text("ALTER TABLE sites RENAME TO _sites_old"))
         conn.execute(
             text(
-                "CREATE TABLE event_observations ("
+                "CREATE TABLE sites ("
                 "id VARCHAR(36) NOT NULL PRIMARY KEY, "
-                "event_id VARCHAR(36) NOT NULL "
-                "REFERENCES events(id) ON DELETE CASCADE)"
+                "project_id VARCHAR(36) NOT NULL "
+                "REFERENCES projects(id) ON DELETE CASCADE)"
             )
         )
-        conn.execute(text("DROP TABLE _eo_old"))
+        conn.execute(text("DROP TABLE _sites_old"))
 
     problems = schema_problems(engine)
     assert any(
-        "uq_event_obs_event_taxonomy" in p for p in problems
+        "uq_site_name_per_project" in p for p in problems
     ), problems
 
 

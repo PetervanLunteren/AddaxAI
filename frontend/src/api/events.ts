@@ -6,6 +6,7 @@ import { api } from "../lib/api-client";
 import type {
   EventSummary,
   EventWithFiles,
+  ObservationAttributesPatch,
   AdjacentEventsResponse,
   EventFilterParams,
   EventFilterOptions,
@@ -159,6 +160,40 @@ export const eventsApi = {
     return api.delete<EventWithFiles>(
       `/api/events/${eventId}/observations/${observationId}`,
     );
+  },
+
+  /** Set sex / life stage / behaviour on one row. Only the keys in the
+   *  patch change; null clears a field. */
+  setObservationAttributes: async (
+    eventId: string,
+    observationId: string,
+    patch: ObservationAttributesPatch,
+  ): Promise<EventWithFiles> => {
+    return api.patch<EventWithFiles>(
+      `/api/events/${eventId}/observations/${observationId}/attributes`,
+      patch,
+    );
+  },
+
+  /** Split one row into two of the same species (source minus one, new
+   *  row at one) so each can get its own demographics. */
+  splitObservation: async (
+    eventId: string,
+    observationId: string,
+  ): Promise<EventWithFiles> => {
+    return api.post<EventWithFiles>(
+      `/api/events/${eventId}/observations/${observationId}/split`,
+    );
+  },
+
+  /** Set the event's free text. Never touches the confirmation. */
+  setNotes: async (
+    eventId: string,
+    notes: string | null,
+  ): Promise<EventWithFiles> => {
+    return api.patch<EventWithFiles>(`/api/events/${eventId}/notes`, {
+      notes,
+    });
   },
 
   /** Drop every human count edit on the event, back to the AI proposal. */

@@ -50,7 +50,7 @@ A row exists when the species has at least one box in the Detections table. A sp
 
 ## Counts
 
-One row per species per event, with the count. Each row is one [observation](../understanding/detections-events-observations.mdx), so an animal is counted once per event instead of once per photo. This is the analysis-ready table.
+One row per species per event, with the count. Each row is one [observation](../understanding/detections-events-observations.mdx), so an animal is counted once per event instead of once per photo. If you split a species into groups on the Counts page (adult and juvenile, male and female), each group is its own row. This is the analysis-ready table.
 
 | Column | Meaning |
 |---|---|
@@ -69,6 +69,10 @@ One row per species per event, with the count. Each row is one [observation](../
 | `scientific_name` | Scientific name for display |
 | `common_name` | Common name for display |
 | `count` | Number of individuals. Your confirmed number if you set one, otherwise the AI's highest number seen in a single photo |
+| `sex` | female or male, if you set it. Empty means unknown |
+| `life_stage` | adult, subadult or juvenile, if you set it |
+| `behavior` | What the animals were doing, if you set it, for example foraging |
+| `event_notes` | Your note on the event, repeated on each of its rows |
 | `is_confirmed` | TRUE if you signed off the count for this event |
 
 ## Detections
@@ -128,6 +132,8 @@ One row per photo or video, whether or not anything was found.
 | `scientific_name` | Scientific name of that same box |
 | `common_name` | Common name of that same box. Never empty on a file that holds something: it reads `Person`, `Vehicle` or `Animal` when there is no species |
 | `is_verified` | TRUE if you verified this file: every box on it was verified, or, for a file with nothing on it, you verified that it is empty |
+| `is_favorited` | TRUE if you marked the file as a favourite on the Labels page |
+| `is_flagged` | TRUE if you flagged the file for review on the Labels page |
 | `notes` | Your own notes |
 
 `observation_type` is the only place "blank" appears. Use it to count empty files.
@@ -178,3 +184,5 @@ Projects can also export point layers for GIS tools such as QGIS and ArcGIS, as 
 Projects can also export Camtrap DP, a standard format for camera trap data. It uses its own column names and a fixed structure, so other tools and archives can read your data without knowing anything about AddaxAI. Use it when you share data or deposit it in a repository.
 
 For models that predict below species level (adult or juvenile fox, for example), `scientificName` always carries the real species name. The variant goes into `lifeStage` (adult, subadult, juvenile) or `sex` (female, male) when it fits those fields, and into `observationComments` otherwise.
+
+What you set on the Counts page goes into the same fields: `sex`, `lifeStage` and `behavior` per row, and your note on the event into `observationComments` of each of its rows. Unknown stays empty. A favourite file gets `favorite` set to true in the media table.

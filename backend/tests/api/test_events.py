@@ -868,3 +868,97 @@ def test_verification_stats_reach_100_percent_with_blanks_around(client, db):
     ).json()
     assert data["events_confirmed"] == 1
     assert data["events_total"] == 1
+
+
+def test_observation_attributes_and_split_endpoints(client, db):
+    """The cohort flow over the wire: the four fields are on every row,
+    a demographic edit unconfirms, a note does not, a value outside the
+    vocabulary is refused, and split gives a second row of the species."""
+    from app.api.crud.event_observation import calculate_max_n_for_event
+
+    p = make_project(db, counting_threshold=0.5)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    ev = make_event_with_files(
+        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12)
+    )
+    for _ in range(3):
+        make_detection(
+            db, file_id=ev.files[0].id, category="animal", label="cow",
+            confidence=0.9,
+        )
+    db.flush()
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.commit()
+
+    data = client.get(f"/api/events/{ev.id}").json()
+    (obs,) = data["observations"]
+    # The wire carries the four fields, null until set (a frontend type is
+    # not evidence; see DEVELOPERS.md).
+    assert {k: obs[k] for k in ("sex", "life_stage", "behavior")} == {
+        "sex": None, "life_stage": None, "behavior": None,
+    }
+    assert data["notes"] is None
+
+    client.patch(f"/api/events/{ev.id}/confirm", json={"confirmed": True})
+    # A note is on the event and never unconfirms.
+    data = client.patch(
+        f"/api/events/{ev.id}/notes", json={"notes": "by the fence"}
+    ).json()
+    assert data["confirmed"] is True
+    assert data["notes"] == "by the fence"
+    assert client.patch("/api/events/nope/notes", json={"notes": "x"}).status_code == 404
+
+    url = f"/api/events/{ev.id}/observations/{obs['id']}/attributes"
+
+    data = client.patch(url, json={"sex": "male", "behavior": "foraging"}).json()
+    assert data["confirmed"] is False
+    assert data["observations"][0]["sex"] == "male"
+    assert data["observations"][0]["behavior"] == "foraging"
+    # Unnamed fields stay; null clears.
+    data = client.patch(url, json={"sex": None}).json()
+    assert data["observations"][0]["sex"] is None
+    assert data["observations"][0]["behavior"] == "foraging"
+
+    assert client.patch(url, json={"sex": "unknown"}).status_code == 422
+    assert client.patch(url, json={"life_stage": "calf"}).status_code == 422
+
+    data = client.post(
+        f"/api/events/{ev.id}/observations/{obs['id']}/split"
+    ).json()
+    counts = [(o["label"], o["effective_count"], o["max_n"]) for o in data["observations"]]
+    assert counts == [("cow", 2, 3), ("cow", 1, 0)]
+
+    assert client.post(
+        f"/api/events/{ev.id}/observations/nope/split"
+    ).status_code == 404
+
+
+def test_observation_endpoints_refuse_a_row_from_another_event(client, db):
+    from app.api.crud.event_observation import calculate_max_n_for_event
+
+    p = make_project(db, counting_threshold=0.5)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    ev = make_event_with_files(
+        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12)
+    )
+    other = make_event_with_files(
+        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 2, 12)
+    )
+    make_detection(db, file_id=ev.files[0].id, category="animal", label="cow", confidence=0.9)
+    db.flush()
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.commit()
+    (obs,) = client.get(f"/api/events/{ev.id}").json()["observations"]
+    base = f"/api/events/{other.id}/observations/{obs['id']}"
+    assert client.post(f"{base}/split").status_code == 404
+    assert client.patch(f"{base}/attributes", json={"sex": "male"}).status_code == 404
+    assert client.patch(base, json={"count": 4}).status_code == 404
+    assert client.delete(base).status_code == 404
+    relabel = client.patch(
+        f"{base}/relabel", json={"category": "animal", "label": "deer"}
+    )
+    assert relabel.status_code == 404
+    (unchanged,) = client.get(f"/api/events/{ev.id}").json()["observations"]
+    assert (unchanged["effective_count"], unchanged["sex"]) == (1, None)

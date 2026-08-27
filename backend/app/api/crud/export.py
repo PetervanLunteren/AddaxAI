@@ -35,6 +35,7 @@ from sqlalchemy.orm import Session, defer
 
 from app.api.crud.export_formats import slugify
 from app.core.logging_config import get_logger
+from app.core.observation_attributes import LIFE_STAGES, SEXES
 from app.db.sql_params import iter_id_chunks
 from app.ml.detection_visibility import visible_detections
 from app.ml.label_exclusion import is_non_label
@@ -458,8 +459,9 @@ def _camtrap_taxonomy_name(taxonomy: LabelTaxonomy | None) -> str | None:
 # Camtrap DP's enums for the two observation columns a variant can fill.
 # External standard (https://camtrap-dp.tdwg.org/data/); values outside
 # them fail validation, so anything else goes to observationComments.
-_CAMTRAP_LIFE_STAGES = frozenset({"adult", "subadult", "juvenile"})
-_CAMTRAP_SEXES = frozenset({"female", "male"})
+# The same vocabularies a person picks from on the Counts page.
+_CAMTRAP_LIFE_STAGES = frozenset(LIFE_STAGES)
+_CAMTRAP_SEXES = frozenset(SEXES)
 
 
 def _camtrap_variant_fields(
@@ -479,6 +481,29 @@ def _camtrap_variant_fields(
     if variant in _CAMTRAP_SEXES:
         return "", variant, ""
     return "", "", f"variant: {variant}"
+
+
+def _camtrap_cohort_fields(
+    taxonomy: LabelTaxonomy | None, obs: EventObservation, event_notes: str | None
+) -> tuple[str, str, str, str]:
+    """Camtrap DP's ``(lifeStage, sex, behavior, observationComments)`` for
+    one cohort row.
+
+    The model's variant wins over what a person set on the row when both
+    speak (a variant is the taxon's own claim; that cannot happen for a
+    model without variants). NULL exports blank, never "unknown": the
+    enums have no such value. The event's note goes to observationComments
+    of each of its rows (the standard has no event-level comment), after
+    the variant comment when there is one.
+    """
+    life_stage, sex, variant_comment = _camtrap_variant_fields(taxonomy)
+    comments = "; ".join(c for c in (variant_comment, event_notes or "") if c)
+    return (
+        life_stage or obs.life_stage or "",
+        sex or obs.sex or "",
+        obs.behavior or "",
+        comments,
+    )
 
 
 def _file_event(
@@ -836,6 +861,9 @@ _FILES_HEADERS = [
     "scientific_name",
     "common_name",
     "is_verified",
+    # The two marks a person can put on a file on the Labels page.
+    "is_favorited",
+    "is_flagged",
     "notes",
 ]
 
@@ -920,6 +948,8 @@ def build_files_rows(
                 file_obj.observation_type or "",
                 *_strongest_species_cells(project, file_obj, detections),
                 "TRUE" if file_obj.verified else "FALSE",
+                "TRUE" if file_obj.favorited else "FALSE",
+                "TRUE" if file_obj.flagged else "FALSE",
                 file_obj.notes or "",
             ]
         )
@@ -1019,6 +1049,14 @@ _OBSERVATIONS_HEADERS = [
     # The human-confirmed count, falling back to the AI's count when the
     # event isn't confirmed.
     "count",
+    # What a person recorded about the individuals on this row, blank
+    # when unknown. One species can have several rows in an event (4 adult
+    # males, 2 juveniles); the species total is their sum.
+    "sex",
+    "life_stage",
+    "behavior",
+    # The event's note, repeated on each of its rows.
+    "event_notes",
     "is_confirmed",
 ]
 
@@ -1031,10 +1069,11 @@ def build_observation_rows(
     """
     Build `(headers, rows)` for the event-level Observations export.
 
-    Grain: one row per event x species, carrying the effective count
-    (human-confirmed if set, else the AI count) and the event sign-off.
-    Count-0 rows (a species a human removed) are skipped. This maps to the
-    Counts page; the per-detection grain lives in the Detections export.
+    Grain: one row per event x cohort (a species, or one demographic group
+    of it), carrying the effective count (human-confirmed if set, else the
+    AI count) and the event sign-off. Count-0 rows (a species a human
+    removed) are skipped. This maps to the Counts page; the per-detection
+    grain lives in the Detections export.
     """
     tz_name = project.timezone
 
@@ -1069,6 +1108,10 @@ def build_observation_rows(
                 (taxonomy.scientific_name if taxonomy else "") or "",
                 (taxonomy.common_name if taxonomy else "") or "",
                 count,
+                obs.sex or "",
+                obs.life_stage or "",
+                obs.behavior or "",
+                event.notes or "",
                 "TRUE" if event.confirmed else "FALSE",
             ]
         )
@@ -1545,7 +1588,7 @@ def build_camtrap_dp_tables(
                 "",                                                 # fileName
                 _media_type_for(file_obj.file_format),              # fileMediatype
                 "",                                                 # exifData
-                "",                                                 # favorite
+                "true" if file_obj.favorited else "",               # favorite
                 "",                                                 # mediaComments
             ]
         )
@@ -1573,6 +1616,7 @@ def build_camtrap_dp_tables(
                     "deployment_id": deployment.id,
                     "event_start": event_start or captured_iso,
                     "event_end": event_end or captured_iso,
+                    "notes": event.notes or "",
                 },
             )
 
@@ -1730,7 +1774,9 @@ def _camtrap_event_row(
     "human" when the count was set by a person, else "machine" (MaxN).
     """
     method = "human" if obs.human_count is not None else "machine"
-    life_stage, sex, variant_comment = _camtrap_variant_fields(taxonomy)
+    life_stage, sex, behavior, comments = _camtrap_cohort_fields(
+        taxonomy, obs, ctx["notes"]
+    )
     return [
         f"obs-event-{obs.id}",            # observationID
         ctx["deployment_id"],             # deploymentID
@@ -1745,7 +1791,7 @@ def _camtrap_event_row(
         count,                            # count
         life_stage,                       # lifeStage
         sex,                              # sex
-        "",                               # behavior
+        behavior,                         # behavior
         "",                               # individualID
         "",                               # individualPositionRadius
         "",                               # individualPositionAngle
@@ -1759,7 +1805,7 @@ def _camtrap_event_row(
         "",                               # classificationTimestamp
         "",                               # classificationProbability
         "",                               # observationTags
-        variant_comment,                  # observationComments
+        comments,                         # observationComments
     ]
 
 

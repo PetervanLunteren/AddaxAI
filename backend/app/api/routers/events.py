@@ -26,6 +26,7 @@ from app.api.schemas.event import (
     LabelTreeResponse,
 )
 from app.api.schemas.file import FileWithDetections
+from app.core.observation_attributes import Behavior, LifeStage, Sex
 from app.db.base import get_db
 from app.models import Project
 from app.models.event_observation import EventObservation
@@ -365,6 +366,7 @@ async def get_event(
         max_n_frames=max_n_frames,
         confirmed=event.confirmed,
         observations=observations,
+        notes=event.notes,
         created_at_utc=event.created_at_utc,
         site_name=site_name,
         files=[FileWithDetections.model_validate(f, from_attributes=True) for f in sorted_files],
@@ -384,6 +386,9 @@ def _obs_item(obs: EventObservation) -> EventObservationItem:
         scientific_name=tax.scientific_name if tax else None,
         max_n=obs.max_n,
         effective_count=obs.effective_count,
+        sex=obs.sex,
+        life_stage=obs.life_stage,
+        behavior=obs.behavior,
     )
 
 
@@ -416,6 +421,22 @@ class RelabelObservationRequest(BaseModel):
     label_taxonomy_id: str | None = None
 
 
+class SetObservationAttributesRequest(BaseModel):
+    """Set sex / life stage / behaviour on one cohort row. A field not in
+    the body is left alone; null clears it. Values outside the vocabularies
+    in app.core.observation_attributes are refused (422)."""
+
+    sex: Sex | None = None
+    life_stage: LifeStage | None = None
+    behavior: Behavior | None = None
+
+
+class EventNotesRequest(BaseModel):
+    """A person's free text about the visit. Null or blank clears it."""
+
+    notes: str | None = Field(None, max_length=2000)
+
+
 @router.patch("/{event_id}/confirm", response_model=EventWithFiles)
 async def confirm_event(
     event_id: str,
@@ -424,6 +445,19 @@ async def confirm_event(
 ):
     """Set/clear the human confirmation of the event's species and counts."""
     event = event_obs_crud.set_event_confirmed(db, event_id, body.confirmed)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return await get_event(event_id, db)
+
+
+@router.patch("/{event_id}/notes", response_model=EventWithFiles)
+async def set_event_notes(
+    event_id: str,
+    body: EventNotesRequest,
+    db: Session = Depends(get_db),
+):
+    """Set the event's free text. Does not touch the confirmation."""
+    event = event_obs_crud.set_event_notes(db, event_id, body.notes)
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
     return await get_event(event_id, db)
@@ -460,7 +494,9 @@ async def set_observation_count(
     db: Session = Depends(get_db),
 ):
     """Set (or clear) the human count for one species in the event."""
-    obs = event_obs_crud.set_human_count(db, observation_id, body.count)
+    obs = event_obs_crud.set_human_count(
+        db, observation_id, body.count, event_id=event_id
+    )
     if obs is None:
         raise HTTPException(status_code=404, detail="Observation not found")
     return await get_event(event_id, db)
@@ -484,7 +520,45 @@ async def relabel_event_observation(
         category=body.category,
         label=body.label,
         label_taxonomy_id=body.label_taxonomy_id,
+        event_id=event_id,
     )
+    if obs is None:
+        raise HTTPException(status_code=404, detail="Observation not found")
+    return await get_event(event_id, db)
+
+
+@router.patch(
+    "/{event_id}/observations/{observation_id}/attributes",
+    response_model=EventWithFiles,
+)
+async def set_observation_attributes(
+    event_id: str,
+    observation_id: str,
+    body: SetObservationAttributesRequest,
+    db: Session = Depends(get_db),
+):
+    """Set sex / life stage / behaviour on one cohort row."""
+    # Only the fields the body named: absent leaves alone, null clears.
+    obs = event_obs_crud.set_observation_attributes(
+        db, observation_id, event_id=event_id, **body.model_dump(exclude_unset=True)
+    )
+    if obs is None:
+        raise HTTPException(status_code=404, detail="Observation not found")
+    return await get_event(event_id, db)
+
+
+@router.post(
+    "/{event_id}/observations/{observation_id}/split",
+    response_model=EventWithFiles,
+)
+async def split_event_observation(
+    event_id: str,
+    observation_id: str,
+    db: Session = Depends(get_db),
+):
+    """Split one row into two cohorts of the same species (source minus
+    one, new row at one) so each can get its own demographics."""
+    obs = event_obs_crud.split_observation(db, observation_id, event_id=event_id)
     if obs is None:
         raise HTTPException(status_code=404, detail="Observation not found")
     return await get_event(event_id, db)
@@ -501,7 +575,7 @@ async def delete_event_observation(
 ):
     """Remove the human contribution to one species (deletes a human-only
     row, or clears the override on an AI row)."""
-    result = event_obs_crud.delete_event_observation(db, observation_id)
+    result = event_obs_crud.delete_event_observation(db, observation_id, event_id=event_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Observation not found")
     return await get_event(event_id, db)

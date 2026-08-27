@@ -673,8 +673,10 @@ export interface MaxNFrame {
   effective_count: number;
 }
 
-/** One species row of an event's count list (the Observations-page count
- *  editor). A human-only species the AI missed has `max_n: 0`. */
+/** One cohort row of an event's count list (the Counts-page count editor).
+ *  A human-only row (a species the AI missed, or a cohort split off by
+ *  hand) has `max_n: 0`. The demographics are null until set; their
+ *  values come from `lib/observation-attributes.ts`. */
 export interface EventObservationItem {
   id: string;
   category: string;
@@ -684,6 +686,17 @@ export interface EventObservationItem {
   scientific_name: string | null;
   max_n: number;
   effective_count: number;
+  sex: string | null;
+  life_stage: string | null;
+  behavior: string | null;
+}
+
+/** Partial update of a row's demographics: a missing key leaves the field
+ *  alone, null clears it. */
+export interface ObservationAttributesPatch {
+  sex?: string | null;
+  life_stage?: string | null;
+  behavior?: string | null;
 }
 
 // Event types
@@ -735,6 +748,8 @@ export interface EventWithFiles {
   confirmed: boolean;
   /** Per-species count list (AI + human-only), highest count first. */
   observations: EventObservationItem[];
+  /** A person's free text about the visit. */
+  notes: string | null;
   created_at_utc: string;
   site_name: string | null;
   files: FileWithDetections[];

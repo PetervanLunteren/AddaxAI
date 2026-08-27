@@ -1,9 +1,15 @@
 """
-EventObservation model - per-species MaxN counts within events.
+EventObservation model - per-cohort MaxN counts within events.
 
 MaxN is the maximum number of individuals of a species visible in any
 single image within an event. This prevents double-counting animals
 that appear across multiple frames.
+
+A row is one cohort: a species in an event, with a count and optional
+sex / life stage / behaviour. The AI seeds one row per species; a person
+can label that row in place or split it into several cohorts (4 males and
+2 females of one species are two rows). See DEVELOPERS.md, "Observation
+cohorts".
 """
 
 import uuid
@@ -14,7 +20,6 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
-    UniqueConstraint,
     func,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -30,11 +35,10 @@ if TYPE_CHECKING:
 
 class EventObservation(Base):
     """
-    Per-species observation count within an event.
-
-    Each row represents one species (or category like person/vehicle)
-    detected in an event, with its MaxN count and the image where
-    that peak count was observed.
+    One cohort of one species (or category like person/vehicle) within
+    an event, with its count and the image where the AI's peak count was
+    observed. Several rows per species are allowed: they differ in sex,
+    life stage or behaviour, or are what a person split off.
     """
 
     __tablename__ = "event_observations"
@@ -70,6 +74,15 @@ class EventObservation(Base):
     # species the AI missed) has max_n=0, max_n_file_id=NULL, and
     # human_count set.
     human_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Demographics of the individuals on this row, set by a person; the AI
+    # never fills them. NULL means unknown, and exports leave the cell
+    # blank: Camtrap DP's `sex` / `lifeStage` enums have no "unknown"
+    # value. Allowed values live in app.core.observation_attributes.
+    sex: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    life_stage: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    behavior: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Free text lives on the event (`Event.notes`), not here: a remark is
+    # almost always about the visit, and one box per event beats one per row.
 
     # Relationships
     event: Mapped["Event"] = relationship(
@@ -94,11 +107,10 @@ class EventObservation(Base):
     def effective_count(cls):  # noqa: N805
         return func.coalesce(cls.human_count, cls.max_n)
 
+    # No unique constraint on (event_id, label_taxonomy_id): cohorts of one
+    # species are several rows. Migration a1b2c3d4e5f7 dropped
+    # `uq_event_obs_event_taxonomy`.
     __table_args__ = (
-        UniqueConstraint(
-            "event_id", "label_taxonomy_id",
-            name="uq_event_obs_event_taxonomy",
-        ),
         Index("idx_event_obs_event", "event_id"),
         Index("idx_event_obs_label", "label"),
         Index("idx_event_obs_label_taxonomy", "label_taxonomy_id"),

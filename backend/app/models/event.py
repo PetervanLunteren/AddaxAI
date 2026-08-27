@@ -20,6 +20,7 @@ from sqlalchemy import (
     Integer,
     String,
     Table,
+    Text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -70,6 +71,13 @@ class Event(Base):
     confirmed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="0", default=False
     )
+    # A person's free text about the visit ("camera knocked over", "the
+    # juvenile limps"). Never cleared by the app and never lost on a
+    # regroup: a regenerated event inherits the notes of every old event
+    # it shares a file with (see crud/event, `_snapshot_event_carry`).
+    # Editing it does not clear `confirmed`. Exported as Camtrap DP
+    # `observationComments` on the event's rows.
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at_utc: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

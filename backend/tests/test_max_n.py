@@ -13,13 +13,17 @@ from sqlalchemy import insert
 from app.api.crud.event_observation import (
     add_human_species,
     calculate_max_n_for_event,
+    delete_event_observation,
     get_event_ids_for_detections,
     list_event_observations,
     recalculate_max_n_for_project,
     relabel_observation,
     reset_event_to_ai,
     set_event_confirmed,
+    set_event_notes,
     set_human_count,
+    set_observation_attributes,
+    split_observation,
 )
 from app.models.event import Event, event_files
 from app.models.event_observation import EventObservation
@@ -1056,3 +1060,322 @@ def test_update_paired_cameras_regroups_only_that_deployment(db):
     update_deployment(db, station.id, DeploymentUpdate(paired_cameras=False))
     assert len(_events(db, station.id)) == 2
     assert project.postprocessing_settings_hash is None
+
+
+# ── Cohorts: sex, life stage and behaviour per row; notes per event ─────
+#
+# A row is one cohort. The AI seeds one row per species; a person labels it
+# in place or splits it. The rebuild carries all of that (DEVELOPERS.md,
+# "Observation cohorts").
+
+
+def _cow_event(db, n_cows: int = 6):
+    project = make_project(db, counting_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    ev, _files, dets = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12),
+        [{"detections": [("cow", "animal", 0.9)] * n_cows}],
+    )
+    (cow,) = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    return ev, cow, dets
+
+
+def test_demographics_on_the_ai_row_survive_a_recompute(db):
+    """"These 6 cows are all male" is one dropdown on the AI row, and a
+    Labels-page relabel (a rebuild) must not lose it."""
+    ev, cow, _ = _cow_event(db)
+    set_observation_attributes(db, cow.id, sex="male", life_stage="adult")
+
+    (recalc,) = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    assert recalc.max_n == 6
+    assert recalc.human_count is None
+    assert (recalc.sex, recalc.life_stage, recalc.behavior) == ("male", "adult", None)
+
+
+def test_split_makes_two_cohorts_and_both_survive_a_recompute(db):
+    """Split: source minus one, new human-only row at one with nothing set.
+    After a rebuild the AI row is still the seed and the cohort is still
+    there, in the same order."""
+    ev, cow, _ = _cow_event(db)
+    new = split_observation(db, cow.id)
+    assert new.max_n == 0
+    assert new.human_count == 1
+    assert (new.sex, new.life_stage, new.behavior) == (None, None, None)
+    assert db.get(EventObservation, cow.id).effective_count == 5
+
+    set_observation_attributes(db, cow.id, sex="male")
+    set_observation_attributes(db, new.id, sex="female", life_stage="juvenile")
+
+    rows = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    assert [(r.max_n, r.effective_count, r.sex, r.life_stage) for r in rows] == [
+        (6, 5, "male", None),
+        (0, 1, "female", "juvenile"),
+    ]
+    assert [r.label for r in list_event_observations(db, ev.id)] == ["cow", "cow"]
+
+
+def test_split_at_one_gives_two_rows_of_one(db):
+    """Connect's floor: splitting a row of one never deletes it."""
+    ev, cow, _ = _cow_event(db, n_cows=1)
+    new = split_observation(db, cow.id)
+    assert db.get(EventObservation, cow.id).effective_count == 1
+    assert new.effective_count == 1
+
+
+def test_a_cohort_survives_even_when_the_ai_now_detects_its_species(db):
+    """A split-off cohort is not the plain human-only row the AI merges
+    into: it stays its own row when the species gets an AI row."""
+    project = make_project(db, counting_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    ev, files, _ = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12), [{"detections": []}]
+    )
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    plain = add_human_species(db, ev.id, category="animal", count=2, label="fox")
+    juvenile = add_human_species(
+        db, ev.id, category="animal", count=1, label="fox", life_stage="juvenile"
+    )
+    assert plain.id != juvenile.id
+
+    # The AI now finds a fox: the plain row merges into the AI row (count
+    # 2 kept), the juvenile cohort stays.
+    make_detection(db, file_id=files[0].id, category="animal", confidence=0.9, label="fox")
+    db.flush()
+    rows = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    assert [(r.max_n, r.effective_count, r.life_stage) for r in rows] == [
+        (1, 2, None),
+        (0, 1, "juvenile"),
+    ]
+
+
+def test_add_species_merges_only_into_the_row_with_the_same_demographics(db):
+    ev, cow, _ = _cow_event(db)
+    set_observation_attributes(db, cow.id, sex="male")
+    female = add_human_species(db, ev.id, category="animal", count=2, label="cow", sex="female")
+    assert female.id != cow.id
+    again = add_human_species(db, ev.id, category="animal", count=3, label="cow", sex="female")
+    assert again.id == female.id
+    assert again.effective_count == 3
+
+
+def test_relabel_keeps_the_cohorts_demographics(db):
+    """Relabelling a female cohort of cows to deer gives a female deer row,
+    summing only into a female deer row that already exists."""
+    ev, cow, _ = _cow_event(db)
+    add_human_species(db, ev.id, category="animal", count=1, label="deer", sex="female")
+    female_cow = add_human_species(
+        db, ev.id, category="animal", count=2, label="cow", sex="female"
+    )
+    target = relabel_observation(db, female_cow.id, category="animal", label="deer")
+    assert (target.label, target.sex, target.effective_count) == ("deer", "female", 3)
+    deer_rows = [o for o in list_event_observations(db, ev.id) if o.label == "deer"]
+    assert len(deer_rows) == 1
+
+    male = add_human_species(db, ev.id, category="animal", count=1, label="cow", sex="male")
+    target = relabel_observation(db, male.id, category="animal", label="deer")
+    assert (target.sex, target.effective_count) == ("male", 1)
+
+
+def test_demographic_edits_unconfirm_but_notes_do_not(db):
+    ev, cow, _ = _cow_event(db)
+    set_event_confirmed(db, ev.id, True)
+
+    set_event_notes(db, ev.id, "  grazing by the fence ")
+    assert db.get(Event, ev.id).confirmed is True
+    assert db.get(Event, ev.id).notes == "grazing by the fence"
+    set_event_notes(db, ev.id, "   ")
+    assert db.get(Event, ev.id).notes is None
+
+    set_observation_attributes(db, cow.id, behavior="foraging")
+    assert db.get(Event, ev.id).confirmed is False
+
+    # A no-op recompute keeps the sign-off with demographics in place.
+    set_event_confirmed(db, ev.id, True)
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    assert db.get(Event, ev.id).confirmed is True
+
+
+def test_set_attributes_leaves_unnamed_fields_alone_and_clears_with_none(db):
+    ev, cow, _ = _cow_event(db)
+    set_observation_attributes(db, cow.id, sex="male", life_stage="adult")
+    row = set_observation_attributes(db, cow.id, sex=None)
+    assert (row.sex, row.life_stage) == (None, "adult")
+
+
+def test_reset_to_ai_clears_demographics_and_deletes_cohorts(db):
+    ev, cow, _ = _cow_event(db)
+    set_observation_attributes(db, cow.id, sex="male")
+    split_observation(db, cow.id)
+    set_event_notes(db, ev.id, "kept")
+    reset_event_to_ai(db, ev.id)
+    rows = list_event_observations(db, ev.id)
+    assert len(rows) == 1
+    assert (rows[0].human_count, rows[0].sex) == (None, None)
+    # Reset is about the counts; a note is the person's and stays.
+    assert db.get(Event, ev.id).notes == "kept"
+
+
+def test_cohorts_sit_under_their_species_in_creation_order(db):
+    """Order: species by AI MaxN, then within a species the AI row first
+    and the cohorts as they were made. Editing a dropdown does not move a
+    row."""
+    project = make_project(db, counting_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    ev, _files, _ = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12),
+        [{"detections": [("cow", "animal", 0.9)] * 3 + [("fox", "animal", 0.9)]}],
+    )
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    fox = next(o for o in list_event_observations(db, ev.id) if o.label == "fox")
+    fox_cohort = split_observation(db, fox.id)
+    cow = next(o for o in list_event_observations(db, ev.id) if o.label == "cow")
+    cow_a = split_observation(db, cow.id)
+    cow_b = split_observation(db, cow.id)
+    add_human_species(db, ev.id, category="animal", count=1, label="badger")
+
+    def order():
+        return [(o.label, o.id) for o in list_event_observations(db, ev.id)]
+
+    expected = [
+        ("cow", cow.id), ("cow", cow_a.id), ("cow", cow_b.id),
+        ("fox", fox.id), ("fox", fox_cohort.id),
+    ]
+    assert order()[:5] == expected
+    assert order()[5][0] == "badger"
+
+    set_observation_attributes(db, cow_a.id, sex="female")
+    set_observation_attributes(db, cow.id, life_stage="juvenile")
+    assert order()[:5] == expected
+
+    # A rebuild reinserts the rows in that same order.
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    assert [o.label for o in list_event_observations(db, ev.id)] == [
+        "cow", "cow", "cow", "fox", "fox", "badger",
+    ]
+
+
+def test_generate_events_carries_cohorts_when_the_file_set_is_unchanged(db):
+    from app.api.crud.event import generate_events_for_project
+
+    project = make_project(db, counting_threshold=0.5, independence_interval=1800)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    ev, _files, _ = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12),
+        [{"detections": [("cow", "animal", 0.9)] * 4}],
+    )
+    (cow,) = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    set_observation_attributes(db, cow.id, sex="male")
+    cohort = split_observation(db, cow.id)
+    set_observation_attributes(db, cohort.id, sex="female")
+    set_event_notes(db, ev.id, "with calf")
+    set_event_confirmed(db, ev.id, True)
+
+    generate_events_for_project(db, project.id)
+    (new_ev,) = db.query(Event).filter(Event.deployment_id == dep.id).all()
+    rows = list_event_observations(db, new_ev.id)
+    assert new_ev.confirmed is True
+    assert new_ev.notes == "with calf"
+    assert [(r.effective_count, r.sex) for r in rows] == [
+        (3, "male"),
+        (1, "female"),
+    ]
+
+
+def test_notes_survive_a_merge_and_a_split(db):
+    """Counts are dropped when events regroup; notes never are. A merge
+    joins the notes in time order, a split copies the note to every
+    child."""
+    from app.api.crud.event import generate_events_for_project
+
+    project = make_project(db, counting_threshold=0.5, independence_interval=300)
+    dep = make_deployment(db, project_id=project.id)
+    _file_with_dets(db, dep.id, datetime(2024, 1, 1, 12, 0, 0), [("cow", "animal", 0.9)])
+    _file_with_dets(db, dep.id, datetime(2024, 1, 1, 12, 10, 0), [("bear", "animal", 0.9)])
+    db.commit()
+    generate_events_for_project(db, project.id)
+    first, second = sorted(_events(db, dep.id), key=lambda e: e.event_start_local)
+    set_event_notes(db, first.id, "camera knocked")
+    set_event_notes(db, second.id, "check interval")
+
+    # Merge: one event, both notes, earliest first, one per line.
+    project.independence_interval = 3600
+    db.commit()
+    generate_events_for_project(db, project.id)
+    (merged,) = _events(db, dep.id)
+    assert merged.notes == "camera knocked\ncheck interval"
+    assert merged.confirmed is False
+
+    # Split it again: both children carry the joined note.
+    project.independence_interval = 300
+    db.commit()
+    generate_events_for_project(db, project.id)
+    assert [e.notes for e in _events(db, dep.id)] == [
+        "camera knocked\ncheck interval",
+        "camera knocked\ncheck interval",
+    ]
+
+
+def test_demographics_survive_when_the_ai_stops_seeing_the_species(db):
+    """An AI row a person labelled keeps that label as a human-only row
+    when the species disappears from the detections (a relabel, a higher
+    threshold), the same way a count override does."""
+    ev, cow, dets = _cow_event(db, n_cows=1)
+    set_observation_attributes(db, cow.id, sex="male")
+    for d in dets:
+        d.label = "bear"
+    db.flush()
+    rows = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    assert [(r.label, r.max_n, r.effective_count, r.sex) for r in rows] == [
+        ("bear", 1, 1, None),
+        ("cow", 0, 1, "male"),
+    ]
+
+
+def test_max_n_frames_carry_the_species_total(db):
+    """The card chip reads `max_n_frames[].effective_count`; after a split
+    it must be the sum of the cohorts, not the frame row's own count."""
+    from app.api.crud.event_observation import get_max_n_frames
+
+    ev, cow, _ = _cow_event(db, n_cows=2)
+    split_observation(db, cow.id)
+    (frame,) = get_max_n_frames(db, ev.id)
+    assert (frame["label"], frame["max_n"], frame["effective_count"]) == ("cow", 2, 2)
+
+
+def test_observation_edits_are_scoped_to_the_event_in_the_path(db):
+    ev, cow, _ = _cow_event(db)
+    other = make_event_with_files(
+        db, deployment_id=ev.deployment_id, event_start_local=datetime(2024, 2, 1, 12)
+    )
+    assert set_human_count(db, cow.id, 5, event_id=other.id) is None
+    assert split_observation(db, cow.id, event_id=other.id) is None
+    assert set_observation_attributes(db, cow.id, sex="male", event_id=other.id) is None
+    assert delete_event_observation(db, cow.id, event_id=other.id) is None
+    assert relabel_observation(
+        db, cow.id, category="animal", label="deer", event_id=other.id
+    ) is None
+    assert db.get(EventObservation, cow.id).effective_count == 6
+    assert set_human_count(db, cow.id, 5, event_id=ev.id).effective_count == 5
+
+
+def test_regroup_example_sums_a_split_species(db):
+    from app.api.crud.event import _regroup_example
+
+    ev, cow, _ = _cow_event(db, n_cows=3)
+    split_observation(db, cow.id)
+    example = _regroup_example(db, ev.id, None, None, set(), set())
+    assert example["observations"] == [{"label": "cow", "count": 3}]

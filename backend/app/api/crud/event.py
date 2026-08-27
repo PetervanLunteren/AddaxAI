@@ -6,10 +6,11 @@ Events are time-clustered groups of files within a deployment.
 
 import uuid
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, time
 
-from sqlalchemy import Integer, delete, exists, func, insert, or_, select
+from sqlalchemy import Integer, delete, exists, func, insert, or_, select, text
 from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.core.logging_config import get_logger
@@ -359,27 +360,60 @@ class _EventCarry:
     prior: list  # list[PriorObs]
 
 
+@dataclass
+class _RegroupCarry:
+    """What survives a regeneration, with two different rules.
+
+    Counts and the sign-off (`by_fileset`) are claims about one exact file
+    set, so they carry only onto a new event with the same files; a merged
+    or split event gets the AI's numbers back and is unconfirmed. Notes are
+    free text nobody can rebuild, so they are never lost: a new event
+    inherits the notes of every old event it shares a file with. A split
+    duplicates the note onto every child, a merge joins the notes in time
+    order, one per line."""
+
+    by_fileset: dict[frozenset, _EventCarry]
+    old_event_by_file: dict[str, str]
+    notes_by_old_event: dict[str, tuple[datetime | None, str, str]]
+
+    def inherited_notes(self, file_ids: Iterable[str]) -> str | None:
+        old_ids = {
+            self.old_event_by_file[f]
+            for f in file_ids
+            if f in self.old_event_by_file
+        }
+        found = sorted(
+            self.notes_by_old_event[i] for i in old_ids if i in self.notes_by_old_event
+        )
+        if not found:
+            return None
+        return "\n".join(note for _start, _id, note in found)
+
+
 def _snapshot_event_carry(
     db: Session, deployment_ids: list[str]
-) -> dict[frozenset, _EventCarry]:
+) -> _RegroupCarry:
     """Snapshot each event's confirmed flag + observation rows, keyed by its
-    exact set of file IDs. Files are partitioned across events, so the keys
-    are unique. Used to carry human confirmations/counts onto regenerated
-    events with the same grouping."""
+    exact set of file IDs (files are partitioned across events, so the keys
+    are unique), plus every note keyed by file so it can be carried by
+    overlap. See `_RegroupCarry` for the two rules."""
     from app.api.crud.event_observation import PriorObs
 
-    carry: dict[frozenset, _EventCarry] = {}
+    carry = _RegroupCarry({}, {}, {})
     if not deployment_ids:
         return carry
 
     events = (
-        db.query(Event.id, Event.confirmed)
+        db.query(Event.id, Event.confirmed, Event.notes, Event.event_start_local)
         .filter(Event.deployment_id.in_(deployment_ids))
         .all()
     )
     if not events:
         return carry
     event_ids = [e.id for e in events]
+    for e in events:
+        if e.notes:
+            carry.notes_by_old_event[e.id] = (e.event_start_local, e.id, e.notes)
 
     # Chunk the event-id filters: one `IN (?, ?, ...)` over every event blows
     # SQLite's bound-parameter limit on a large project (see app/db/sql_params).
@@ -392,25 +426,35 @@ def _snapshot_event_carry(
 
     obs_by_event: dict[str, list] = defaultdict(list)
     for chunk in iter_id_chunks(event_ids):
-        for o in db.query(EventObservation).filter(
-            EventObservation.event_id.in_(chunk)
+        # rowid order: the cohorts of a species keep their order through
+        # the regeneration (see `_rows_in_stored_order`).
+        for o in (
+            db.query(EventObservation)
+            .filter(EventObservation.event_id.in_(chunk))
+            .order_by(text("event_observations.rowid"))
         ):
             obs_by_event[o.event_id].append(
                 PriorObs(
                     label=o.label,
                     label_taxonomy_id=o.label_taxonomy_id,
                     category=o.category,
+                    max_n=o.max_n,
                     human_count=o.human_count,
                     effective_count=o.effective_count,
+                    sex=o.sex,
+                    life_stage=o.life_stage,
+                    behavior=o.behavior,
                 )
             )
 
     for e in events:
         fileset = frozenset(files_by_event.get(e.id, set()))
         if fileset:
-            carry[fileset] = _EventCarry(
+            carry.by_fileset[fileset] = _EventCarry(
                 confirmed=e.confirmed, prior=obs_by_event.get(e.id, [])
             )
+        for fid in fileset:
+            carry.old_event_by_file[fid] = e.id
     return carry
 
 
@@ -495,7 +539,7 @@ def _regenerate_deployment_events(
     deployment: Deployment,
     independence_interval: int,
     threshold: float,
-    carry: dict[frozenset, _EventCarry],
+    carry: _RegroupCarry,
 ) -> int:
     """Rebuild one deployment's events from its files. The caller has
     already snapshotted `carry` and deleted the old Event rows. No commit."""
@@ -515,9 +559,11 @@ def _regenerate_deployment_events(
         files, independence_interval, paired_cameras=deployment.paired_cameras
     ):
         event = _create_event(db, deployment.id, cluster)
-        carried = carry.get(frozenset(f.id for f in cluster))
+        file_ids = [f.id for f in cluster]
+        carried = carry.by_fileset.get(frozenset(file_ids))
         if carried is not None:
             event.confirmed = carried.confirmed
+        event.notes = carry.inherited_notes(file_ids)
         # Rebuild MaxN, carrying the human layer for a matched event.
         # calculate_max_n_for_event still clears `confirmed` if the
         # species/count set changed (e.g. smoothing relabelled a crop).
@@ -553,15 +599,20 @@ def _regroup_example(
     """A concrete "here's what you'll lose" example for one confirmed event
     that regroups: its confirmed animal counts, its time range, and how many
     new events its files land in (1 = merged into a bigger event, >1 = split)."""
-    observations = [
-        {"label": o.label, "count": o.effective_count}
-        for o in db.query(EventObservation)
+    # Summed per species: a species split into cohorts is one entry.
+    count_by_label: dict[str, int] = defaultdict(int)
+    for o in (
+        db.query(EventObservation)
         .filter(
             EventObservation.event_id == event_id,
             EventObservation.category == "animal",
             EventObservation.label.isnot(None),
         )
         .all()
+    ):
+        count_by_label[o.label] += o.effective_count
+    observations = [
+        {"label": label, "count": count} for label, count in count_by_label.items()
     ]
     maps_to = sum(1 for fs in new_filesets if fs & event_files_set)
     return {

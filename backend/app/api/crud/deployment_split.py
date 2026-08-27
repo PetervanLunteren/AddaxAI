@@ -668,8 +668,11 @@ def _reassign_events(
                 ),
                 file_count=len(files_here),
                 # Observations are duplicated as-is, so the human's
-                # confirmation still holds for each child event.
+                # confirmation still holds for each child event. The note
+                # too: a remark is never lost, at worst it sits on one
+                # child more than it should.
                 confirmed=event.confirmed,
+                notes=event.notes,
             )
             db.add(new_event)
             db.flush()
@@ -695,9 +698,12 @@ def _reassign_events(
                         category=obs.category,
                         max_n=obs.max_n,
                         max_n_file_id=max_n_file_id,
-                        # Carry the human count override so a split never
-                        # silently drops a confirmed count.
+                        # Carry the human layer so a split never silently
+                        # drops a confirmed count or a cohort's demographics.
                         human_count=obs.human_count,
+                        sex=obs.sex,
+                        life_stage=obs.life_stage,
+                        behavior=obs.behavior,
                     )
                 )
 
