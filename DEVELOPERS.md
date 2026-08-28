@@ -1057,6 +1057,8 @@ bird,aves,,,,
 
 When taxonomic rollup is enabled and a detection's top-1 confidence is below threshold, confidences are summed up the taxonomy tree. If a higher-level taxon (e.g. "felidae" at family level) crosses the threshold, `Detection.label` is set to that taxon name.
 
+**The label is the model's own class when it has one for that taxon.** `load_taxon_class_names` maps every non-variant class to the taxon it *is* (`("family", "aves;galliformes;phasianidae;;")` to `family phasianidae (grouse)`), and `_format_rollup_label` uses that before inventing `genus species` or a bare taxon. This is what the official pipeline does through its `taxonomy_map`, where every ancestor is itself a label (a rollup to aves reads "bird"). Without it a confident "grouse" came back as "phasianidae", WUSA's "fox" as "vulpes", and a sex-age model produced both "odocoileus hemionus (mule deer)" and a rolled-up "odocoileus hemionus": two folders for one deer. Two classes on one chain ("bird" and "raptor" both filed as aves) make the taxon ambiguous, so it falls back to the bare taxon rather than picking one. A model whose species exists only as variants (red fox adult / juvenile, no plain red fox) still gets "vulpes vulpes". Only the label string is affected: which level wins and its confidence are the mechanism's, and stay byte for byte as reverse engineered from `run_md_and_speciesnet`.
+
 `add_rollup_taxonomy_entry(model_id, name, level, taxonomy_lookup, db)` inserts a new `label_taxonomy` row for the rolled-up label so it appears in the tree under the correct branch. Called from `backend/app/ml/postprocessing.py` for each new rolled-up label.
 
 ### Where population is triggered

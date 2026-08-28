@@ -170,13 +170,25 @@ def load_taxonomy_lookup(csv_path: Path) -> dict[str, dict[str, str]]:
     return lookup
 
 
-def _format_rollup_label(level: str, entry: dict[str, str]) -> str:
+def _format_rollup_label(
+    level: str,
+    entry: dict[str, str],
+    taxon_class_names: dict[tuple[str, str], str] | None = None,
+) -> str:
     """Format the display label for a rolled-up detection.
 
     ``entry`` is the representative taxonomy entry the rollup summed on,
     so the genus is read from the same chain the taxon came from, never
     looked up by value (two genera can share a species epithet).
+
+    When the model has exactly one class for this taxon
+    (``taxon_class_names``, see ``load_taxon_class_names``) that class
+    name is the label; only otherwise is one invented from the chain.
     """
+    if taxon_class_names:
+        key = (level, _build_taxonomy_key_for_level(entry, level))
+        if key in taxon_class_names:
+            return taxon_class_names[key]
     taxon_value = entry[level]
     if level == "species" and "genus" in entry:
         return f"{entry['genus']} {taxon_value}"
@@ -209,6 +221,55 @@ def _build_rollup_description(
             tokens.append("")
     tokens.append(label)
     return ";".join(tokens)
+
+
+def load_taxon_class_names(csv_path: Path) -> dict[tuple[str, str], str]:
+    """
+    Map each taxon the model has a class for to that class name.
+
+    Keyed by ``(level, chain_key)`` where ``level`` is the deepest rank
+    the row fills and ``chain_key`` is the geofence-format key at that
+    level, so ``("family", "aves;galliformes;phasianidae;;")`` maps to
+    ``"family phasianidae (grouse)"``. Values are lowercase model_class.
+
+    A rollup that lands on one of these taxa is labelled with the
+    model's own class instead of an invented ``genus species`` / bare
+    taxon, which is what the official pipeline does through its
+    ``taxonomy_map`` (every SpeciesNet ancestor is itself a label).
+    Without it a confident "grouse" came back as "phasianidae", and a
+    sex-age model got both "odocoileus hemionus (mule deer)" and a
+    rolled-up "odocoileus hemionus" for one species.
+
+    Variant rows are skipped: "red fox adult" is not the species. Two
+    classes on one chain ("bird" and "raptor" both filed under aves)
+    make that taxon ambiguous and it is dropped, so the rollup falls
+    back to the bare taxon rather than picking one.
+    """
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Taxonomy CSV not found: {csv_path}")
+
+    names: dict[tuple[str, str], str] = {}
+    ambiguous: set[tuple[str, str]] = set()
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            model_class = row.get("model_class", "").strip().lower()
+            if not model_class or row.get("variant", "").strip():
+                continue
+            entry = {
+                level: row.get(level, "").strip().lower()
+                for level in TAXONOMY_LEVELS
+                if row.get(level, "").strip()
+            }
+            if not entry:
+                continue
+            deepest = [level for level in TAXONOMY_LEVELS if level in entry][-1]
+            key = (deepest, _build_taxonomy_key_for_level(entry, deepest))
+            if key in names or key in ambiguous:
+                ambiguous.add(key)
+                names.pop(key, None)
+            else:
+                names[key] = model_class
+    return names
 
 
 def _build_taxonomy_key_for_level(
@@ -244,6 +305,7 @@ def rollup_single_detection(
     excluded_names: frozenset[str] | None = None,
     allowed_taxonomy_keys: frozenset[str] | None = None,
     threshold: float = ROLLUP_THRESHOLD,
+    taxon_class_names: dict[tuple[str, str], str] | None = None,
 ) -> dict | None:
     """
     Apply taxonomic rollup to a single detection's classifications.
@@ -280,6 +342,9 @@ def rollup_single_detection(
             fallback. Defaults to the fixed ``ROLLUP_THRESHOLD`` (0.65,
             in app.core.confidence); the parameter stays overridable so
             tests can exercise other values.
+        taxon_class_names: The model's own class per taxon, from
+            ``load_taxon_class_names``. Only affects the label string of
+            a rollup result, never which level or confidence it picks.
 
     Returns:
         None if no rollup found (keep raw top-1 as-is).
@@ -398,7 +463,7 @@ def rollup_single_detection(
                 continue  # geofence: ancestor not allowed
             entry = level_entries[level][key]
             return {
-                "label": _format_rollup_label(level, entry),
+                "label": _format_rollup_label(level, entry, taxon_class_names),
                 "confidence": sums[key],
                 "level": level,
                 "taxon": entry[level],
@@ -456,6 +521,7 @@ def apply_taxonomic_rollup_to_results(
     taxonomy_lookup = load_taxonomy_lookup(taxonomy_csv_path)
     if not taxonomy_lookup:
         return RollupResult(md_results=md_results)
+    taxon_class_names = load_taxon_class_names(taxonomy_csv_path)
 
     class_cats = md_results.get("classification_categories", {})
     if not class_cats:
@@ -474,7 +540,6 @@ def apply_taxonomic_rollup_to_results(
     rolled_up = 0
     skipped = 0
     new_entries: list[dict] = []
-    seen_rollup_labels: set[str] = set()
 
     # `images or []` / `detections or []` keeps the rollup safe against
     # process_video failure entries (`detections: null` for corrupt
@@ -492,6 +557,7 @@ def apply_taxonomic_rollup_to_results(
                 excluded_names=excluded_names,
                 allowed_taxonomy_keys=allowed_taxonomy_keys,
                 threshold=threshold,
+                taxon_class_names=taxon_class_names,
             )
             if result is None:
                 # No rollup needed or rollup found nothing - keep raw top-1
@@ -511,12 +577,11 @@ def apply_taxonomic_rollup_to_results(
                 descriptions[new_id] = _build_rollup_description(
                     result["level"], result["taxon"], result["ancestors"],
                 )
-
-            # Track new rolled-up entries (deduplicate by label). The
-            # ancestors ride along so the DB entry never has to find
-            # them again by value search.
-            if label.lower() not in seen_rollup_labels:
-                seen_rollup_labels.add(label.lower())
+                # Track new rolled-up entries for the label_taxonomy
+                # table. A label that resolved to one of the model's own
+                # classes already has its row from taxonomy.csv. The
+                # ancestors ride along so the DB entry never has to find
+                # them again by value search.
                 new_entries.append({
                     "name": label.lower(),
                     "level": result["level"],

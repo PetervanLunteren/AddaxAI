@@ -9,6 +9,7 @@ from app.ml.label_exclusion import NON_LABEL_CLASSES
 from app.ml.taxonomic_rollup import (
     apply_taxonomic_rollup_to_results,
     format_leaf_annotation,
+    load_taxon_class_names,
     load_taxonomy_lookup,
     rollup_single_detection,
 )
@@ -711,3 +712,152 @@ def test_excluding_every_variant_of_a_species_falls_to_family():
     assert result is not None
     assert result["level"] == "family"
     assert result["label"] == "canidae"
+
+
+# --- The rollup names a taxon after the model's own class when it has one ---
+#
+# What the official pipeline does through its taxonomy_map: every SpeciesNet
+# ancestor is itself a label, so a rollup that lands on aves is labelled
+# "bird". Custom taxonomy.csv files have no ancestor rows, so the label is
+# invented from the chain unless the model has a class for exactly that
+# taxon. Grant Hiebert's sex-age model (2026-08-25) showed the failure:
+# "odocoileus hemionus (mule deer)" next to a rolled-up "odocoileus
+# hemionus", two species folders for one deer; and every confident
+# "family phasianidae (grouse)" came back as "phasianidae".
+
+
+def _write_taxonomy(tmp_path, rows):
+    path = tmp_path / "taxonomy.csv"
+    fieldnames = ["model_class", "class", "order", "family", "genus", "species", "variant"]
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({k: row.get(k, "") for k in fieldnames})
+    return path
+
+
+_DEER = {"class": "mammalia", "order": "artiodactyla", "family": "cervidae",
+         "genus": "odocoileus", "species": "hemionus"}
+
+
+def test_taxon_class_names_skip_variants_and_ambiguous_chains(tmp_path):
+    path = _write_taxonomy(tmp_path, [
+        {"model_class": "mule deer", **_DEER},
+        {"model_class": "mule deer female", **_DEER, "variant": "female adult"},
+        {"model_class": "grouse family", "class": "aves", "order": "galliformes",
+         "family": "phasianidae"},
+        {"model_class": "bird", "class": "aves"},
+        {"model_class": "raptor", "class": "aves"},
+        {"model_class": "blank"},
+    ])
+    names = load_taxon_class_names(path)
+    assert names == {
+        ("species", "mammalia;artiodactyla;cervidae;odocoileus;hemionus"): "mule deer",
+        ("family", "aves;galliformes;phasianidae;;"): "grouse family",
+    }
+
+
+def test_species_rollup_over_variants_reuses_the_plain_species_class(tmp_path):
+    path = _write_taxonomy(tmp_path, [
+        {"model_class": "mule deer", **_DEER},
+        {"model_class": "mule deer female", **_DEER, "variant": "female adult"},
+    ])
+    lookup = load_taxonomy_lookup(path)
+    names = load_taxon_class_names(path)
+    ids = {"0": "mule deer", "1": "mule deer female"}
+    # 0.58 + 0.42: neither confident, species sum 1.0 (Cherry_Fork/1677.jpg)
+    without = rollup_single_detection([[0, 0.58], [1, 0.42]], ids, lookup)
+    with_names = rollup_single_detection(
+        [[0, 0.58], [1, 0.42]], ids, lookup, taxon_class_names=names,
+    )
+    assert without["label"] == "odocoileus hemionus"
+    assert with_names["label"] == "mule deer"
+    # Only the label differs: level and confidence are the mechanism's.
+    assert with_names["level"] == without["level"] == "species"
+    assert with_names["confidence"] == without["confidence"]
+
+
+def test_confident_rank_level_class_keeps_its_name(tmp_path):
+    path = _write_taxonomy(tmp_path, [
+        {"model_class": "grouse family", "class": "aves", "order": "galliformes",
+         "family": "phasianidae"},
+        {"model_class": "wild turkey", "class": "aves", "order": "galliformes",
+         "family": "phasianidae", "genus": "meleagris", "species": "gallopavo"},
+    ])
+    lookup = load_taxonomy_lookup(path)
+    names = load_taxon_class_names(path)
+    ids = {"0": "grouse family", "1": "wild turkey"}
+    # Non-species top-1 always rolls up (summed confidence, as the
+    # official pipeline does); the summed family now keeps the class name.
+    result = rollup_single_detection(
+        [[0, 0.90], [1, 0.05]], ids, lookup, taxon_class_names=names,
+    )
+    assert result["level"] == "family"
+    assert result["confidence"] == pytest.approx(0.95, abs=0.01)
+    assert result["label"] == "grouse family"
+
+
+def test_ambiguous_taxon_falls_back_to_the_bare_taxon(tmp_path):
+    path = _write_taxonomy(tmp_path, [
+        {"model_class": "bird", "class": "aves"},
+        {"model_class": "raptor", "class": "aves"},
+    ])
+    lookup = load_taxonomy_lookup(path)
+    names = load_taxon_class_names(path)
+    ids = {"0": "raptor", "1": "bird"}
+    result = rollup_single_detection(
+        [[0, 0.40], [1, 0.30]], ids, lookup, taxon_class_names=names,
+    )
+    assert result["level"] == "class"
+    assert result["label"] == "aves"
+
+
+def test_variant_only_species_still_gets_an_invented_name(tmp_path):
+    """No plain species class (Manitoba's red fox adult / juvenile): the
+    rollup invents "vulpes vulpes" as before."""
+    fox = {"class": "mammalia", "order": "carnivora", "family": "canidae",
+           "genus": "vulpes", "species": "vulpes"}
+    path = _write_taxonomy(tmp_path, [
+        {"model_class": "red fox adult", **fox, "variant": "adult"},
+        {"model_class": "red fox juvenile", **fox, "variant": "juvenile"},
+    ])
+    lookup = load_taxonomy_lookup(path)
+    names = load_taxon_class_names(path)
+    ids = {"0": "red fox adult", "1": "red fox juvenile"}
+    result = rollup_single_detection(
+        [[0, 0.40], [1, 0.30]], ids, lookup, taxon_class_names=names,
+    )
+    assert result["label"] == "vulpes vulpes"
+
+
+def test_apply_rollup_reuses_the_existing_category_and_adds_no_entry(tmp_path):
+    """End to end on a results dict: the rolled-up deer lands on the
+    model's own category id, so no second label, folder or taxonomy row
+    appears; a taxon without a class still gets a new category."""
+    path = _write_taxonomy(tmp_path, [
+        {"model_class": "mule deer", **_DEER},
+        {"model_class": "mule deer female", **_DEER, "variant": "female adult"},
+        {"model_class": "elk", "class": "mammalia", "order": "artiodactyla",
+         "family": "cervidae", "genus": "cervus", "species": "canadensis"},
+    ])
+    md = {
+        "classification_categories": {"0": "mule deer", "1": "mule deer female", "2": "elk"},
+        "images": [
+            {"file": "a.jpg", "detections": [
+                {"category": "1", "conf": 0.9, "bbox": [0, 0, 1, 1],
+                 "classifications": [["0", 0.58], ["1", 0.42]]}]},
+            {"file": "b.jpg", "detections": [
+                {"category": "1", "conf": 0.9, "bbox": [0, 0, 1, 1],
+                 "classifications": [["0", 0.40], ["2", 0.35]]}]},
+        ],
+    }
+    result = apply_taxonomic_rollup_to_results(md, path)
+    cats = result.md_results["classification_categories"]
+    deer, cervidae = (
+        img["detections"][0]["classifications"][0] for img in result.md_results["images"]
+    )
+    assert deer[0] == "0" and cats["0"] == "mule deer"
+    assert deer[1] == pytest.approx(1.0)
+    assert cats[cervidae[0]] == "cervidae"
+    assert [e["name"] for e in result.new_entries] == ["cervidae"]
