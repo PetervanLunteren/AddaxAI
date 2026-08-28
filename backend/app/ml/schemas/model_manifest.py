@@ -87,6 +87,11 @@ class ModelManifest(BaseModel):
     # detection covering the full image is fed straight into the
     # classification phase. See app.ml.full_image_detection.
     full_image_cls: bool = False
+    # Picture of what the model expects to see, shown in the model info
+    # sheet. A URL only, the image never lives in the repo or the app.
+    # Meant for models with a specific setup (a drift-fence bucket, a
+    # baited tray) so a user can compare it with their own photos.
+    example_image_url: str | None = None
 
     # Embedding-specific
     embedding_dim: int | None = None  # 384, 768, or 1024

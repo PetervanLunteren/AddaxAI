@@ -826,6 +826,11 @@ export interface ModelInfo {
   license?: string | null;
   min_app_version?: string | null;
   embedding_dim?: number | null;
+  /** The model labels the whole frame; no detector runs. The detector
+   *  row and the detection settings are greyed out on it. */
+  full_image_cls?: boolean;
+  /** Picture of what the model expects to see, shown in the info sheet. */
+  example_image_url?: string | null;
   /** Geographic region the cls model is trained for. Drives the
    *  grouping in classification dropdowns. `null` for detection /
    *  embedding models, and for any cls manifest not yet annotated. */

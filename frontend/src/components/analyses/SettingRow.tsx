@@ -19,11 +19,13 @@ import type { ReactNode } from "react";
 
 import { FormDescription, FormLabel } from "../ui/form";
 import { Badge } from "../ui/badge";
+import { cn } from "@/lib/utils";
 
 export function SettingRow({
   label,
   description,
   isCustom = false,
+  disabled = false,
   children,
 }: {
   label: string;
@@ -31,10 +33,17 @@ export function SettingRow({
   description: ReactNode;
   /** True when this setting differs from its factory default. */
   isCustom?: boolean;
+  /** Greys the row and disables its controls. The caption should say why. */
+  disabled?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-2 items-center gap-8 py-6">
+    <div
+      className={cn(
+        "grid grid-cols-2 items-center gap-8 py-6",
+        disabled && "opacity-50",
+      )}
+    >
       <div className="space-y-1">
         <div className="flex items-center gap-2">
           <FormLabel>{label}</FormLabel>
@@ -46,7 +55,12 @@ export function SettingRow({
         </div>
         <FormDescription className="text-sm">{description}</FormDescription>
       </div>
-      <div className="space-y-2">{children}</div>
+      {/* A disabled fieldset disables every native control inside it,
+          including the Radix select trigger (a button), so callers do
+          not have to thread `disabled` into each control. */}
+      <fieldset disabled={disabled} className="min-w-0 space-y-2">
+        {children}
+      </fieldset>
     </div>
   );
 }

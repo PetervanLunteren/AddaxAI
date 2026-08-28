@@ -53,6 +53,7 @@ interface ImageSizeRowProps<T extends FieldValues> {
   name: FieldPathByValue<T, number | null> & FieldPath<T>;
   label: string;
   description: string;
+  disabled?: boolean;
 }
 
 export function ImageSizeRow<T extends FieldValues>({
@@ -60,6 +61,7 @@ export function ImageSizeRow<T extends FieldValues>({
   name,
   label,
   description,
+  disabled = false,
 }: ImageSizeRowProps<T>) {
   return (
     <FormField
@@ -76,6 +78,7 @@ export function ImageSizeRow<T extends FieldValues>({
             label={label}
             description={description}
             isCustom={isCustom}
+            disabled={disabled}
           >
               <div className="flex gap-2">
                 <Select

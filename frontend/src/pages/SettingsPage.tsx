@@ -288,6 +288,11 @@ export default function SettingsPage() {
   // Watch model changes
   const detectionModelId = form.watch("detection_model_id");
   const classificationModelId = form.watch("classification_model_id");
+  // A full-image classifier skips MegaDetector, so the detector row and
+  // the detection settings are greyed out with one caption saying so.
+  const fullImageCls =
+    classificationModels.find((m) => m.model_id === classificationModelId)
+      ?.full_image_cls === true;
   const labelCaption = useLabelSelectionCaption(
     classificationModelId && classificationModelId !== "none" ? classificationModelId : "",
   );
@@ -784,14 +789,15 @@ export default function SettingsPage() {
                   control={form.control}
                   name="detection_model_id"
                   render={({ field }) => (
-                    <div className="grid grid-cols-2 items-center gap-8 py-6">
-                      <div className="space-y-1">
-                        <FormLabel>Detection model</FormLabel>
-                        <FormDescription className="text-sm">
-                          Finds animals, people, and vehicles in each image or video frame. Everything else builds on what it finds.
-                        </FormDescription>
-                      </div>
-                      <div className="space-y-2">
+                    <SettingRow
+                      label="Detection model"
+                      disabled={fullImageCls}
+                      description={
+                        fullImageCls
+                          ? SETTING_CAPTIONS.fullImageClassifier
+                          : "Finds animals, people, and vehicles in each image or video frame. Everything else builds on what it finds."
+                      }
+                    >
                         <ModelSelect
                           value={field.value}
                           onValueChange={field.onChange}
@@ -824,8 +830,7 @@ export default function SettingsPage() {
                             isPreparing={preparationStage === "preparing" && preparingModelType === "detection"}
                           />
                         )}
-                      </div>
-                    </div>
+                    </SettingRow>
                   )}
                 />
 
@@ -977,7 +982,12 @@ export default function SettingsPage() {
                         control={form.control}
                         name="detection_batch_size"
                         label="Detection batch size"
-                        description={SETTING_CAPTIONS.detectionBatchSize}
+                        disabled={fullImageCls}
+                        description={
+                          fullImageCls
+                            ? SETTING_CAPTIONS.fullImageClassifier
+                            : SETTING_CAPTIONS.detectionBatchSize
+                        }
                         defaultGpu={detectionModel.default_batch_size_gpu}
                         defaultCpu={detectionModel.default_batch_size_cpu}
                       />
@@ -1135,7 +1145,12 @@ export default function SettingsPage() {
                   control={form.control}
                   name="detection_image_size"
                   label="Detection image size"
-                  description={`${SETTING_CAPTIONS.detectionImageSize} Applies to new analyses only.`}
+                  disabled={fullImageCls}
+                  description={
+                    fullImageCls
+                      ? SETTING_CAPTIONS.fullImageClassifier
+                      : `${SETTING_CAPTIONS.detectionImageSize} Applies to new analyses only.`
+                  }
                 />
 
                 {/* Image augmentation (inference-time) */}
@@ -1146,11 +1161,16 @@ export default function SettingsPage() {
                     <SettingRow
                       label="Image augmentation"
                       isCustom={changedAdvanced.includes("detection_augment")}
+                      disabled={fullImageCls}
                       description={
-                        <>
-                          {SETTING_CAPTIONS.imageAugmentation} Applies to new
-                          analyses only.
-                        </>
+                        fullImageCls ? (
+                          SETTING_CAPTIONS.fullImageClassifier
+                        ) : (
+                          <>
+                            {SETTING_CAPTIONS.imageAugmentation} Applies to new
+                            analyses only.
+                          </>
+                        )
                       }
                     >
                         <Switch
@@ -1170,11 +1190,16 @@ export default function SettingsPage() {
                     <SettingRow
                       label="Classify detections above"
                       isCustom={changedAdvanced.includes("classification_gate")}
+                      disabled={fullImageCls}
                       description={
-                        <>
-                          {SETTING_CAPTIONS.classificationGate} Applies to new
-                          analyses only.
-                        </>
+                        fullImageCls ? (
+                          SETTING_CAPTIONS.fullImageClassifier
+                        ) : (
+                          <>
+                            {SETTING_CAPTIONS.classificationGate} Applies to new
+                            analyses only.
+                          </>
+                        )
                       }
                     >
                         <ConfidenceSlider

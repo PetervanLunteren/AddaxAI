@@ -108,6 +108,10 @@ class ModelInfo(BaseModel):
     # region annotation (those fall into a synthetic "Other" group on
     # the frontend).
     region: str | None = None
+    # True when the model labels the whole frame and MegaDetector is
+    # skipped. The UI greys out the detector and its settings on it.
+    full_image_cls: bool = False
+    example_image_url: str | None = None
     # Per-pipeline default batch sizes used when the project leaves the
     # batch_size override unset. Same value for every model in the same
     # pipeline today; comes from app.ml.batch_size constants.
@@ -828,6 +832,8 @@ def list_classification_models() -> list[ModelInfo]:
             license=getattr(manifest, "license", None),
             min_app_version=manifest.min_app_version,
             region=getattr(manifest, "region", None),
+            full_image_cls=bool(getattr(manifest, "full_image_cls", False)),
+            example_image_url=getattr(manifest, "example_image_url", None),
             default_batch_size_gpu=cls_gpu,
             default_batch_size_cpu=cls_cpu,
         )

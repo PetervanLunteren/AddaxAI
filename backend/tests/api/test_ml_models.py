@@ -47,6 +47,36 @@ def test_list_classification_models(client, mock_managers):
     assert data[0]["model_id"] == "none"
 
 
+def test_full_image_classifier_flag_reaches_the_list(client, mock_managers):
+    """The UI greys out the detector and its settings on this flag, and
+    shows the example picture; both ride on the classification list."""
+    from types import SimpleNamespace
+
+    mock_manifest, _, _ = mock_managers
+    manifest = SimpleNamespace(
+        model_id="FULL-1",
+        friendly_name="Bucket cameras",
+        emoji=None,
+        description="Classifies the whole frame.",
+        description_short=None,
+        developer=None,
+        owner=None,
+        info_url=None,
+        citation=None,
+        license=None,
+        min_app_version="7.0.1",
+        region="americas",
+        full_image_cls=True,
+        example_image_url="https://example.org/bucket.jpg",
+    )
+    mock_manifest.get_classification_models.return_value = {"FULL-1": manifest}
+    resp = client.get("/api/ml/models/classification")
+    assert resp.status_code == 200
+    model = next(m for m in resp.json() if m["model_id"] == "FULL-1")
+    assert model["full_image_cls"] is True
+    assert model["example_image_url"] == "https://example.org/bucket.jpg"
+
+
 def test_list_embedding_models(client, mock_managers):
     mock_manifest, _, _ = mock_managers
     mock_manifest.get_embedding_models.return_value = {}

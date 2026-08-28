@@ -45,6 +45,12 @@ export const SETTING_CAPTIONS = {
     "Detections below this confidence are not identified to species and " +
     "skip label review, but are still saved and exported. " +
     `The default is ${formatConfidencePct(DEFAULT_CLASSIFICATION_GATE)}.`,
+  // Replaces the caption of the detector row and the detection settings
+  // when the chosen classifier is a full-image model. Said in words on
+  // the greyed row itself, because a user who does not know this spends
+  // an afternoon on sliders that cannot change anything.
+  fullImageClassifier:
+    "This model classifies the whole photo, so no detector runs. This setting does not apply.",
   mediaFilter:
     "Which files the AI looks at. Files left out are not analysed and do not appear in the results. Images and videos is the default.",
   videoFrameRate:

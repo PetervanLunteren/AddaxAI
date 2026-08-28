@@ -93,6 +93,12 @@ export function ProjectSettingsModal({
             <p className="text-sm font-medium text-gray-700 mb-1">Detection model</p>
             <p className="text-sm text-gray-900">
               {detectionModel?.emoji} {detectionModel?.friendly_name || project.detection_model_id}
+              {classificationModel?.full_image_cls && (
+                <span className="text-muted-foreground">
+                  {" "}
+                  (not used: the classification model reads the whole photo)
+                </span>
+              )}
             </p>
           </div>
 

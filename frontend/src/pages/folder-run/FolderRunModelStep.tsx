@@ -407,6 +407,9 @@ export function FolderRunModelStep() {
   const classificationModel = classificationModels.find(
     (m) => m.model_id === classificationModelId,
   );
+  // A full-image classifier skips MegaDetector, so the detector row and
+  // the detection settings are greyed out with one caption saying so.
+  const fullImageCls = classificationModel?.full_image_cls === true;
   const embeddingModel = embeddingModels.find(
     (m) => m.model_id === embeddingModelId,
   );
@@ -1064,7 +1067,12 @@ export function FolderRunModelStep() {
                           isCustom={changedAdvanced.includes(
                             "detection_model_id",
                           )}
-                          description="The model that finds animals, people, and vehicles. MegaDetector 5a is the default and works well in most regions."
+                          disabled={fullImageCls}
+                          description={
+                            fullImageCls
+                              ? SETTING_CAPTIONS.fullImageClassifier
+                              : "The model that finds animals, people, and vehicles. MegaDetector 5a is the default and works well in most regions."
+                          }
                         >
                             <ModelSelect
                               value={field.value}
@@ -1241,7 +1249,12 @@ export function FolderRunModelStep() {
                       control={form.control}
                       name="detection_image_size"
                       label="Detection image size"
-                      description={SETTING_CAPTIONS.detectionImageSize}
+                      disabled={fullImageCls}
+                      description={
+                        fullImageCls
+                          ? SETTING_CAPTIONS.fullImageClassifier
+                          : SETTING_CAPTIONS.detectionImageSize
+                      }
                     />
 
                     <FormField
@@ -1251,7 +1264,12 @@ export function FolderRunModelStep() {
                         <SettingRow
                           label="Image augmentation"
                           isCustom={changedAdvanced.includes("detection_augment")}
-                          description={SETTING_CAPTIONS.imageAugmentation}
+                          disabled={fullImageCls}
+                          description={
+                            fullImageCls
+                              ? SETTING_CAPTIONS.fullImageClassifier
+                              : SETTING_CAPTIONS.imageAugmentation
+                          }
                         >
                           <Switch
                             checked={field.value}
@@ -1269,7 +1287,12 @@ export function FolderRunModelStep() {
                         <SettingRow
                           label="Classify detections above"
                           isCustom={changedAdvanced.includes("classification_gate")}
-                          description={SETTING_CAPTIONS.classificationGate}
+                          disabled={fullImageCls}
+                          description={
+                            fullImageCls
+                              ? SETTING_CAPTIONS.fullImageClassifier
+                              : SETTING_CAPTIONS.classificationGate
+                          }
                         >
                           <ConfidenceSlider
                             value={field.value}
@@ -1292,7 +1315,12 @@ export function FolderRunModelStep() {
                         control={form.control}
                         name="detection_batch_size"
                         label="Detection batch size"
-                        description={SETTING_CAPTIONS.detectionBatchSize}
+                        disabled={fullImageCls}
+                        description={
+                          fullImageCls
+                            ? SETTING_CAPTIONS.fullImageClassifier
+                            : SETTING_CAPTIONS.detectionBatchSize
+                        }
                         defaultGpu={detectionModel.default_batch_size_gpu}
                         defaultCpu={detectionModel.default_batch_size_cpu}
                       />

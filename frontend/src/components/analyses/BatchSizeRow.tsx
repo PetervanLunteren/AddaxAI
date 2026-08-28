@@ -39,6 +39,7 @@ interface BatchSizeRowProps<T extends FieldValues> {
   name: FieldPathByValue<T, number | null> & FieldPath<T>;
   label: string;
   description: string;
+  disabled?: boolean;
   defaultGpu: number;
   defaultCpu: number;
 }
@@ -48,6 +49,7 @@ export function BatchSizeRow<T extends FieldValues>({
   name,
   label,
   description,
+  disabled = false,
   defaultGpu,
   defaultCpu,
 }: BatchSizeRowProps<T>) {
@@ -63,6 +65,7 @@ export function BatchSizeRow<T extends FieldValues>({
             label={label}
             description={description}
             isCustom={isCustom}
+            disabled={disabled}
           >
               <div className="flex gap-2">
                 <Select
