@@ -692,7 +692,39 @@ export function LabelsTab({
     [orderedDetectionIds]
   );
 
+  // The large view navigates a list pinned when it opens. The grid list
+  // drops a crop the moment it is verified (default filter "Unverified",
+  // applied server-side on the refetch), so navigating the live list made
+  // "previous" skip the crop just verified and never return to the other
+  // animal in the same photo (Grant Hiebert, 2026-08-25). The pin holds the
+  // crops themselves, patched by every action below, so they stay
+  // reachable and current until the view closes.
+  const detailNavRef = useRef<{
+    ids: string[];
+    byId: Map<string, DetectionSummary>;
+  } | null>(null);
+
+  // A refetched grid row (canonical names after a relabel) wins over the
+  // pinned copy; a crop the refetch no longer returns keeps its pinned,
+  // patched copy.
+  const detailNavList = useMemo((): DetectionSummary[] => {
+    const pinned = detailNavRef.current;
+    if (!detailDetection || !pinned) return [];
+    const live = new Map(
+      (sortResult?.detections ?? []).map((d) => [d.detection_id, d]),
+    );
+    return pinned.ids.flatMap((id) => {
+      const d = live.get(id) ?? pinned.byId.get(id);
+      return d ? [d] : [];
+    });
+  }, [detailDetection, sortResult]);
+
   const handleCardClick = useCallback((detection: DetectionSummary) => {
+    const grid = allDetectionsRef.current;
+    detailNavRef.current = {
+      ids: grid.map((d) => d.detection_id),
+      byId: new Map(grid.map((d) => [d.detection_id, d])),
+    };
     setDetailDetection(detection);
   }, []);
 
@@ -735,6 +767,10 @@ export function LabelsTab({
           ...sortResult,
           detections: sortResult.detections.map(patchFn),
         });
+      }
+      const pinned = detailNavRef.current;
+      if (pinned) {
+        for (const [id, d] of pinned.byId) pinned.byId.set(id, patchFn(d));
       }
       // Keep the detail modal in sync
       setDetailDetection((prev) => (prev ? patchFn(prev) : prev));
@@ -1767,20 +1803,20 @@ export function LabelsTab({
         }}
         position={
           detailDetection
-            ? `${allDetections.findIndex((d) => d.detection_id === detailDetection.detection_id) + 1} / ${allDetections.length}`
+            ? `${detailNavList.findIndex((d) => d.detection_id === detailDetection.detection_id) + 1} / ${detailNavList.length}`
             : undefined
         }
         onNavigate={(direction) => {
           if (!detailDetection) return false;
-          const idx = allDetections.findIndex(
+          const idx = detailNavList.findIndex(
             (d) => d.detection_id === detailDetection.detection_id
           );
           if (idx === -1) return false;
 
           if (direction === "nextUnverified") {
             // Find next unverified after current index, wrapping around
-            for (let i = 1; i <= allDetections.length; i++) {
-              const candidate = allDetections[(idx + i) % allDetections.length];
+            for (let i = 1; i <= detailNavList.length; i++) {
+              const candidate = detailNavList[(idx + i) % detailNavList.length];
               if (!candidate.verified) {
                 setDetailDetection(candidate);
                 return true;
@@ -1794,10 +1830,10 @@ export function LabelsTab({
 
           const nextIdx =
             direction === "next"
-              ? Math.min(idx + 1, allDetections.length - 1)
+              ? Math.min(idx + 1, detailNavList.length - 1)
               : Math.max(idx - 1, 0);
           if (nextIdx === idx) return false;
-          setDetailDetection(allDetections[nextIdx]);
+          setDetailDetection(detailNavList[nextIdx]);
           return true;
         }}
       />
