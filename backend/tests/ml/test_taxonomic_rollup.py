@@ -861,3 +861,25 @@ def test_apply_rollup_reuses_the_existing_category_and_adds_no_entry(tmp_path):
     assert deer[1] == pytest.approx(1.0)
     assert cats[cervidae[0]] == "cervidae"
     assert [e["name"] for e in result.new_entries] == ["cervidae"]
+
+
+def test_rollup_never_hands_back_an_excluded_class_name(tmp_path):
+    """Excluding "grouse family" and rolling up onto family phasianidae
+    must not label the crop "grouse family" again: the bare taxon is the
+    honest name for a taxon the user took out of the run."""
+    path = _write_taxonomy(tmp_path, [
+        {"model_class": "grouse family", "class": "aves", "order": "galliformes",
+         "family": "phasianidae"},
+        {"model_class": "wild turkey", "class": "aves", "order": "galliformes",
+         "family": "phasianidae", "genus": "meleagris", "species": "gallopavo"},
+    ])
+    lookup = load_taxonomy_lookup(path)
+    names = load_taxon_class_names(path)
+    ids = {"0": "grouse family", "1": "wild turkey"}
+    result = rollup_single_detection(
+        [[0, 0.90], [1, 0.05]], ids, lookup,
+        excluded_names=frozenset({"grouse family"}),
+        taxon_class_names=names,
+    )
+    assert result["level"] == "family"
+    assert result["label"] == "phasianidae"

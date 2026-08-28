@@ -156,7 +156,7 @@ def build_classification_category_descriptions(
     # Load taxonomy CSV into lookup by model_class name
     taxonomy_lookup: dict[str, dict[str, str]] = {}
 
-    with open(taxonomy_csv_path, newline="") as f:
+    with open(taxonomy_csv_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             model_class = row.get("model_class", "").strip().lower()

@@ -367,6 +367,14 @@ def rollup_single_detection(
     top_is_excluded = (
         excluded_names is not None and top_name in excluded_names
     )
+    # A rollup that lands on an excluded class's own taxon must not hand
+    # the detection that class name back: the user took it out of the
+    # run. The bare taxon is the honest label there, as before.
+    if excluded_names and taxon_class_names:
+        taxon_class_names = {
+            key: name for key, name in taxon_class_names.items()
+            if name not in excluded_names
+        }
 
     top_is_species = (
         top_in_taxonomy

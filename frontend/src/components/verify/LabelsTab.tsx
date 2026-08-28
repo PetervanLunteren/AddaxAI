@@ -742,6 +742,10 @@ export function LabelsTab({
     // Cascade to the Media / Events views (File.verified rollup) and the
     // verified-progress pill — see applyDetectionAction.
     queryClient.invalidateQueries({ queryKey: ["events"] });
+    // The large view draws its box and pill from the file query; without
+    // this, stepping back onto a relabelled crop showed the old label on
+    // the photo next to the new one on the button.
+    queryClient.invalidateQueries({ queryKey: ["file"] });
   }, [lblSort, queryClient, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Re-embed (Embed now / Process now) finished: the grid renders from
@@ -1808,15 +1812,25 @@ export function LabelsTab({
         }
         onNavigate={(direction) => {
           if (!detailDetection) return false;
-          const idx = detailNavList.findIndex(
+          // The modal patches a crop and asks for the next one in the
+          // same tick, before React re-renders, so the memoised list
+          // still holds the crop as it was. The pinned copies are
+          // patched synchronously; read the flags from them, or the
+          // last unverified crop is found "unverified" again and shown
+          // a second time instead of closing the view.
+          const pinned = detailNavRef.current;
+          const list = detailNavList.map(
+            (d) => pinned?.byId.get(d.detection_id) ?? d,
+          );
+          const idx = list.findIndex(
             (d) => d.detection_id === detailDetection.detection_id
           );
           if (idx === -1) return false;
 
           if (direction === "nextUnverified") {
             // Find next unverified after current index, wrapping around
-            for (let i = 1; i <= detailNavList.length; i++) {
-              const candidate = detailNavList[(idx + i) % detailNavList.length];
+            for (let i = 1; i <= list.length; i++) {
+              const candidate = list[(idx + i) % list.length];
               if (!candidate.verified) {
                 setDetailDetection(candidate);
                 return true;
@@ -1830,10 +1844,10 @@ export function LabelsTab({
 
           const nextIdx =
             direction === "next"
-              ? Math.min(idx + 1, detailNavList.length - 1)
+              ? Math.min(idx + 1, list.length - 1)
               : Math.max(idx - 1, 0);
           if (nextIdx === idx) return false;
-          setDetailDetection(detailNavList[nextIdx]);
+          setDetailDetection(list[nextIdx]);
           return true;
         }}
       />

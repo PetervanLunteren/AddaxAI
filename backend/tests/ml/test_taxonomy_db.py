@@ -343,3 +343,34 @@ def test_populate_variant_idempotent(db, variant_taxonomy_csv):
     assert count2 == 0
 
 
+
+
+def test_category_descriptions_read_taxonomy_csv_as_utf8(tmp_path):
+    """A taxonomy.csv with an accented common name must read the same on
+    every OS. Windows opens text as cp1252 unless told otherwise, so the
+    description carried mojibake into label_taxonomy. Reproduced by
+    forcing an ASCII locale in a child interpreter, like the manifest test."""
+    import os
+    import subprocess
+    import sys
+
+    csv_path = tmp_path / "taxonomy.csv"
+    csv_path.write_bytes(
+        "model_class,class,order,family,genus,species\n"
+        "señuelo,mammalia,carnivora,canidae,vulpes,vulpes\n".encode()
+    )
+    code = (
+        "import sys; from pathlib import Path; "
+        "from app.ml.json_utils import build_classification_category_descriptions as b; "
+        f"d = b({{'0': 'señuelo'}}, Path({str(csv_path)!r})); "
+        "sys.stdout.buffer.write(d['0'].encode('utf-8'))"
+    )
+    env = {**os.environ, "LC_ALL": "C", "LANG": "C", "PYTHONUTF8": "0",
+           "PYTHONCOERCECLOCALE": "0"}
+    result = subprocess.run(
+        [sys.executable, "-X", "utf8=0", "-c", code], env=env, capture_output=True,
+        cwd=os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+    description = result.stdout.decode("utf-8")
+    assert description.startswith("señuelo;mammalia;carnivora;canidae;vulpes;vulpes")
