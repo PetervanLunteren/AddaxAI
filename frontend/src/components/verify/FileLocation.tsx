@@ -3,8 +3,8 @@
  *
  * The filename alone did not tell a user with many subfolders where to
  * look when they want the raw photo outside the app (Grant Hiebert,
- * 2026-08-25), so the folder is shown under it, in full. It wraps rather
- * than truncates: a cut path is exactly the part they cannot type. The
+ * 2026-08-25), so the folder is shown under it on one line, cut at the
+ * start so the nearest subfolders stay readable, full path on hover. The
  * "Show in folder" button hands the file to the OS file explorer and
  * only renders inside Electron, where that is possible; the event view
  * offers the same action in its menu through the same hook.
@@ -18,6 +18,7 @@ import { FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useRevealInFolder } from "@/lib/file-reveal";
 import { basename, dirname } from "@/lib/path-utils";
+import { TruncateStart } from "@/components/ui/truncate-start";
 
 interface FileLocationProps {
   filePath: string;
@@ -35,10 +36,13 @@ export function FileLocation({ filePath, suffix }: FileLocationProps) {
         {suffix}
       </div>
       {folder && (
-        <div className="flex items-start gap-1">
-          <div className="min-w-0 flex-1 break-all text-[11px] text-muted-foreground/70">
+        <div className="flex items-center gap-1">
+          <TruncateStart
+            title={folder}
+            className="flex-1 text-[11px] text-muted-foreground/70"
+          >
             {folder}
-          </div>
+          </TruncateStart>
           {window.electronAPI && (
             <Button
               variant="ghost"

@@ -36,6 +36,7 @@ import type { LabelOption } from "../../hooks/useLabelOptions";
 import { LabelPicker } from "./LabelPicker";
 import { DetailCard, VerifyDetailShell } from "./VerifyDetailShell";
 import { FileLocation } from "./FileLocation";
+import { TruncateStart } from "@/components/ui/truncate-start";
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
 
 interface DetectionDetailModalProps {
@@ -786,10 +787,15 @@ export function DetectionDetailModal({
                 disabled={verifyMutation.isPending}
                 variant={detection.verified ? "outline" : "default"}
               >
-                <Check className="h-4 w-4 mr-1" />
-                {detection.verified ? "Unverify" : "Verify"} &ldquo;
-                {getDetectionDisplayName(detection)}
-                &rdquo;
+                <Check className="h-4 w-4 mr-1 shrink-0" />
+                <span className="flex min-w-0">
+                  <span className="shrink-0">
+                    {detection.verified ? "Unverify" : "Verify"}&nbsp;
+                  </span>
+                  <TruncateStart title={getDetectionDisplayName(detection)}>
+                    &ldquo;{getDetectionDisplayName(detection)}&rdquo;
+                  </TruncateStart>
+                </span>
                 {!detection.verified && (
                   <kbd className="ml-1.5 text-[10px] font-sans text-primary-foreground/60 border border-primary-foreground/30 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(255,255,255,0.1)] leading-none">
                     ⏎
