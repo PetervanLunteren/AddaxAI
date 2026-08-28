@@ -9,7 +9,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Ban, Check, CircleHelp, ImageOff, Tag, Play } from "lucide-react";
-import { basename } from "../../lib/path-utils";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { filesApi } from "../../api/files";
@@ -36,6 +35,7 @@ import type { DetectionSummary } from "../../api/types";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 import { LabelPicker } from "./LabelPicker";
 import { DetailCard, VerifyDetailShell } from "./VerifyDetailShell";
+import { FileLocation } from "./FileLocation";
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
 
 interface DetectionDetailModalProps {
@@ -523,12 +523,15 @@ export function DetectionDetailModal({
                   title={fileData.file_type === "video" ? "Video" : "Image"}
                 >
                   <div className="space-y-0.5 text-xs text-muted-foreground">
-                    <div className="truncate">
-                      {basename(fileData.file_path)}
-                      {fileData.file_type === "video" && detection.frame_number != null && (
-                        <span> · frame {detection.frame_number}</span>
-                      )}
-                    </div>
+                    <FileLocation
+                      filePath={fileData.file_path}
+                      suffix={
+                        fileData.file_type === "video" &&
+                        detection.frame_number != null && (
+                          <span> · frame {detection.frame_number}</span>
+                        )
+                      }
+                    />
                     <div>
                       {formatCameraDate(detection.captured_at_local, { day: "numeric", month: "short", year: "numeric" }, "en-GB")}{" "}
                       {formatCameraTime(detection.captured_at_local, { hour: "2-digit", minute: "2-digit" }, "en-GB")}

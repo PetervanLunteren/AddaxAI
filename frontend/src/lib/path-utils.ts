@@ -40,6 +40,18 @@ export function basename(path: string | null | undefined): string {
   return i >= 0 ? trimmed.slice(i + 1) : trimmed;
 }
 
+/**
+ * Everything before the leaf segment, with the trailing separator
+ * stripped: the folder a file lives in. Empty when the path has no
+ * separator. Same separator handling as `basename`.
+ */
+export function dirname(path: string | null | undefined): string {
+  if (!path) return "";
+  const trimmed = path.replace(TRAIL_SEP_RE, "");
+  const i = lastSepIndex(trimmed);
+  return i > 0 ? trimmed.slice(0, i) : "";
+}
+
 /** Split a path into segments, treating `/` and `\` as equivalent. */
 export function splitPath(path: string): string[] {
   return path.split(SEP_RE);

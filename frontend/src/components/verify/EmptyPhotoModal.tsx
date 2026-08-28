@@ -56,6 +56,7 @@ import { Callout } from "../ui/callout";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { LabelPicker } from "./LabelPicker";
 import { DetailCard, VerifyDetailShell } from "./VerifyDetailShell";
+import { FileLocation } from "./FileLocation";
 import type { EmptyFileItem } from "../../api/types";
 
 interface EmptyPhotoModalProps {
@@ -347,7 +348,7 @@ export function EmptyPhotoModal({
         <>
           <DetailCard title={item.file_type === "video" ? "Video" : "Image"}>
             <div className="space-y-0.5 text-xs text-muted-foreground">
-              <div className="truncate">{basename(item.file_path)}</div>
+              <FileLocation filePath={item.file_path} />
               <div>
                 {captured ? (
                   <>
