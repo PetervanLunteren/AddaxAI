@@ -84,7 +84,7 @@ class ManifestManager:
                     continue
 
                 try:
-                    with open(manifest_path) as f:
+                    with open(manifest_path, encoding="utf-8") as f:
                         data = json.load(f)
 
                     manifest = ModelManifest(**data)

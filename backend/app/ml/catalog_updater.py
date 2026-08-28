@@ -270,7 +270,7 @@ class ModelCatalogUpdater:
             unchanged = False
             if manifest_path.exists():
                 try:
-                    with open(manifest_path) as f:
+                    with open(manifest_path, encoding="utf-8") as f:
                         existing = json.load(f)
                     unchanged = existing == manifest_data
                 except (json.JSONDecodeError, OSError) as e:
@@ -281,7 +281,7 @@ class ModelCatalogUpdater:
 
             if not unchanged:
                 model_dir.mkdir(parents=True, exist_ok=True)
-                with open(manifest_path, "w") as f:
+                with open(manifest_path, "w", encoding="utf-8") as f:
                     json.dump(manifest_data, f, indent=2)
 
             # Taxonomy ships in the HF repo, not the catalog, so fetch it

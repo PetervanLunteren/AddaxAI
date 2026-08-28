@@ -7,6 +7,9 @@ whole model catalog vanished, surfacing downstream as a misleading
 """
 
 import json
+import os
+import subprocess
+import sys
 
 from app.ml.manifest_manager import ManifestManager
 
@@ -61,3 +64,45 @@ def test_all_valid_still_load(tmp_path):
 
     assert set(manifests.keys()) == {"A", "B"}
     assert manifests["A"].model_category == "detection"
+
+
+def test_manifest_with_emoji_loads_under_a_non_utf8_locale(tmp_path):
+    """A hand-written manifest with a raw emoji must read the same on every OS.
+
+    Windows opens text files as cp1252 unless told otherwise, so a
+    friendly name like "🇨🇦 BC Canada" came back as "ðŸ‡¨ðŸ‡¦ BC Canada"
+    (Grant Hiebert, 2026-08-25). Catalog manifests never showed it
+    because json.dump escapes the emoji to ASCII. The read has to name
+    UTF-8 explicitly. Reproduced here by forcing an ASCII locale in a
+    child interpreter: without the fix the manifest is skipped as
+    unreadable and the model disappears.
+    """
+    det = tmp_path / "det"
+    (det / "FLAG-1").mkdir(parents=True)
+    data = _valid_manifest("FLAG-1")
+    data["friendly_name"] = "🇨🇦 BC Canada (Wild Eyes)"
+    (det / "FLAG-1" / "manifest.json").write_bytes(
+        json.dumps(data, ensure_ascii=False).encode("utf-8")
+    )
+
+    env = {
+        **os.environ,
+        "LC_ALL": "C",
+        "LANG": "C",
+        "PYTHONUTF8": "0",
+        "PYTHONCOERCECLOCALE": "0",
+    }
+    code = (
+        "import sys; from pathlib import Path; "
+        "from app.ml.manifest_manager import ManifestManager; "
+        f"m = ManifestManager(models_dir=Path({str(tmp_path)!r})).load_manifests(); "
+        "sys.stdout.buffer.write(m['FLAG-1'].friendly_name.encode('utf-8'))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        env=env,
+        capture_output=True,
+        cwd=os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+    assert result.stdout.decode("utf-8") == "🇨🇦 BC Canada (Wild Eyes)"
