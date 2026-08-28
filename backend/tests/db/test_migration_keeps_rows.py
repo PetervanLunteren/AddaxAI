@@ -43,6 +43,16 @@ _DELETES_ON_PURPOSE: dict[str, frozenset[str]] = {
 # delete their children explicitly.
 _ORPHANS_KNOWN = frozenset({"f2a3b4c5d6e7"})
 
+# SQLite 3.45.x (the CI runner, the frozen macOS and Windows builds)
+# reports a false `NULL value in <table>.<column>` from integrity_check
+# for a REAL column added with `ADD COLUMN ... NOT NULL DEFAULT`, until
+# the row is rewritten. The value reads back fine on every version and
+# 3.46 fixed the verdict; see DEVELOPERS.md "Database migrations". The
+# test reads the column instead, so a real NULL still fails.
+_INTEGRITY_FALSE_POSITIVE: dict[str, tuple[str, str]] = {
+    "c5d6e7f8a9b0": ("projects", "classification_gate"),
+}
+
 
 def _steps() -> list[tuple[str, str]]:
     """(from, to) for every migration in the chain, oldest first."""
@@ -123,6 +133,16 @@ def test_migration_keeps_every_row(engine, isolated_db_settings, step):
     health = sqlite_health(db_path)
     if rev in _ORPHANS_KNOWN:
         health = [h for h in health if "foreign key" not in h]
+    if rev in _INTEGRITY_FALSE_POSITIVE:
+        table, column = _INTEGRITY_FALSE_POSITIVE[rev]
+        health = [h for h in health if h != f"integrity_check: NULL value in {table}.{column}"]
+        with sqlite3.connect(db_path) as conn:
+            # typeof, not IS NULL: the planner folds IS NULL on a NOT
+            # NULL column to false without reading a row.
+            really_null = conn.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE typeof({column}) = 'null'"
+            ).fetchone()[0]
+        assert really_null == 0
     assert health == []
     allowed = _DELETES_ON_PURPOSE.get(rev, frozenset())
     unexpected = [
