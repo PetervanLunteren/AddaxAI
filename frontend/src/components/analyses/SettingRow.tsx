@@ -41,8 +41,11 @@ export function SettingRow({
     <div
       className={cn(
         "grid grid-cols-2 items-center gap-8 py-6",
-        disabled && "opacity-50",
+        // pointer-events-none as well as the fieldset: Radix triggers and
+        // the "Model details" link do not obey a disabled fieldset.
+        disabled && "opacity-50 pointer-events-none",
       )}
+      aria-disabled={disabled || undefined}
     >
       <div className="space-y-1">
         <div className="flex items-center gap-2">
