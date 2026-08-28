@@ -16,6 +16,7 @@ import { basename } from "../../lib/path-utils";
 import {
   roundedRectPath,
   computePillLayout,
+  placePill,
   PILL_PAD_Y,
   LINE_GAP,
   FONT,
@@ -703,14 +704,11 @@ export function AnnotationCanvas({
             const zDiv = readOnly ? zoom : 1;
             const lineW = colorW / zDiv;
 
-            // Clamp the pill so it stays inside the stage. Without this, a
-            // bbox near the right edge of the image pushes its label pill
-            // off-canvas where it gets clipped (the dot + label disappear).
-            const pillX = Math.max(
-              0,
-              Math.min(x, stageSize.width - pill.pillWidth),
+            const { x: pillX, y: pillY } = placePill(
+              { x, y, width: w, height: h },
+              { width: pill.pillWidth, height: pill.pillHeight },
+              stageSize,
             );
-            const pillY = y - pill.pillHeight < 0 ? y : y - pill.pillHeight;
 
             return (
               <React.Fragment key={detection.id}>

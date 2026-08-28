@@ -15,6 +15,7 @@ import { splitPath } from "../../lib/path-utils";
 import { passesDrawFilter } from "../../lib/detection-utils";
 import {
   computePillLayout,
+  placePill,
   roundedRectPath,
   PILL_PAD_Y,
   LINE_GAP,
@@ -137,11 +138,18 @@ function drawOverlaysOnCanvas(
   ctx.textBaseline = "top";
   for (const det of dets) {
     const pill = computePillLayout(det);
-    const x = det.bbox_x * w;
-    const y = det.bbox_y * h;
     const pw = pill.pillWidth * scale;
     const ph = pill.pillHeight * scale;
-    const pillY = y - ph > 0 ? y - ph : y;
+    const { x, y: pillY } = placePill(
+      {
+        x: det.bbox_x * w,
+        y: det.bbox_y * h,
+        width: det.bbox_width * w,
+        height: det.bbox_height * h,
+      },
+      { width: pw, height: ph },
+      { width: w, height: h },
+    );
 
     // Pill background
     ctx.beginPath();
@@ -550,10 +558,16 @@ export function VideoPlayer({
             {/* Label pills — rendered at screen-pixel sizes via scale(s) */}
             {currentDetections.map((det) => {
               const pill = computePillLayout(det);
-              const x = det.bbox_x * imgW;
-              const y = det.bbox_y * imgH;
-              const pillH = pill.pillHeight * s;
-              const pillY = y - pillH > 0 ? y - pillH : y;
+              const { x, y: pillY } = placePill(
+                {
+                  x: det.bbox_x * imgW,
+                  y: det.bbox_y * imgH,
+                  width: det.bbox_width * imgW,
+                  height: det.bbox_height * imgH,
+                },
+                { width: pill.pillWidth * s, height: pill.pillHeight * s },
+                { width: imgW, height: imgH },
+              );
 
               return (
                 <g key={`label-${det.id}`} transform={`translate(${x}, ${pillY}) scale(${s})`}>

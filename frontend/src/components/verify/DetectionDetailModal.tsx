@@ -25,6 +25,7 @@ import { FrameThumbnail } from "./FrameThumbnail";
 import { ContextCard } from "./ContextCard";
 import {
   computePillLayout,
+  placePill,
   svgRoundedRectPath,
   PILL_PAD_Y, LINE_GAP,
   FONT, TEXT_START_X,
@@ -451,8 +452,11 @@ export function DetectionDetailModal({
                 const by = (fullDetection.bbox_y ?? 0) * imgH;
                 const bw = (fullDetection.bbox_width ?? 0) * imgW;
                 const bh = (fullDetection.bbox_height ?? 0) * imgH;
-                const pillH = pill.pillHeight * s;
-                const pillY = by - pillH > 0 ? by - pillH : by;
+                const { x: pillX, y: pillY } = placePill(
+                  { x: bx, y: by, width: bw, height: bh },
+                  { width: pill.pillWidth * s, height: pill.pillHeight * s },
+                  { width: imgW, height: imgH },
+                );
                 const spotlightPath =
                   `M0,0H${imgW}V${imgH}H0Z` +
                   svgRoundedRectPath(bx, by, bw, bh, BBOX_CORNER_RADIUS * s);
@@ -477,7 +481,7 @@ export function DetectionDetailModal({
                     />
 
                     {/* Pill label */}
-                    <g transform={`translate(${bx}, ${pillY}) scale(${s})`}>
+                    <g transform={`translate(${pillX}, ${pillY}) scale(${s})`}>
                       <rect
                         x={0} y={0}
                         width={pill.pillWidth} height={pill.pillHeight}

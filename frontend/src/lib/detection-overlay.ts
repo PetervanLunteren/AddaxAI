@@ -116,3 +116,39 @@ export function computePillLayout(detection: DetectionResponse): PillLayout {
 
   return { categoryText, labelText, hasLabel, pillWidth, pillHeight, color };
 }
+
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Where a box's label pill goes. Above the box when there is room, else
+ * below it, else inside at the top (a box spanning the full height, the
+ * only case with nowhere else). Clamped to the frame horizontally so a
+ * box at the right edge keeps its label on the picture.
+ *
+ * One rule for every renderer (Konva canvas, SVG, 2D canvas). Each used
+ * to carry its own copy that fell back to *inside* the box, which put
+ * the pill on the animal's head whenever the box touched the top edge
+ * (Grant Hiebert, 2026-08-25). `box`, `pill` and `frame` share one unit:
+ * pass the pill size already scaled to it.
+ */
+export function placePill(
+  box: Rect,
+  pill: { width: number; height: number },
+  frame: { width: number; height: number },
+): { x: number; y: number } {
+  const x = Math.max(0, Math.min(box.x, frame.width - pill.width));
+  let y: number;
+  if (box.y - pill.height >= 0) {
+    y = box.y - pill.height;
+  } else if (box.y + box.height + pill.height <= frame.height) {
+    y = box.y + box.height;
+  } else {
+    y = box.y;
+  }
+  return { x, y };
+}
