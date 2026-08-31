@@ -1379,3 +1379,60 @@ def test_regroup_example_sums_a_split_species(db):
     split_observation(db, cow.id)
     example = _regroup_example(db, ev.id, None, None, set(), set())
     assert example["observations"] == [{"label": "cow", "count": 3}]
+
+
+def test_update_camera_offsets_shifts_one_subfolder_and_regroups(db):
+    """A per-camera delta moves only that subfolder's files (exact prefix,
+    so a sibling folder sharing the prefix is untouched), regenerates the
+    deployment's events and clears the postprocessing hash. Removing the
+    key shifts back."""
+    from app.api.crud.deployment import update_deployment
+    from app.api.crud.event import generate_events_for_project
+    from app.api.schemas.deployment import DeploymentUpdate
+    from app.models import File
+
+    project = make_project(db, counting_threshold=0.5, independence_interval=300)
+    project.postprocessing_settings_hash = "stamped"
+    station = make_deployment(
+        db, project_id=project.id, folder_path="/data/station", paired_cameras=True
+    )
+    t0 = datetime(2024, 1, 1, 12, 0, 0)
+    paths = {}
+    # cam_2 fires 301 s after cam_1 (one past the interval), cam_2b is a
+    # sibling whose name shares the prefix "cam_2" and must not move.
+    for cam, secs in (("cam_1", 0), ("cam_2", 301), ("cam_2b", 0)):
+        f = _file_with_dets(db, station.id, t0 + timedelta(seconds=secs), [("cow", "animal", 0.9)])
+        f.file_path = f"/data/station/{cam}/{f.id}.jpg"
+        paths[cam] = f.file_path
+    db.commit()
+
+    generate_events_for_project(db, project.id)
+    assert len(_events(db, station.id)) == 2
+
+    update_deployment(db, station.id, DeploymentUpdate(camera_offsets={"cam_2": -301}))
+
+    by_cam = {
+        cam: db.query(File).filter(File.file_path == p).one().captured_at_local
+        for cam, p in paths.items()
+    }
+    assert by_cam["cam_2"] == t0
+    assert by_cam["cam_1"] == t0
+    assert by_cam["cam_2b"] == t0
+    assert len(_events(db, station.id)) == 1
+    assert _events(db, station.id)[0].file_count == 3
+    assert station.camera_offsets == {"cam_2": -301}
+    assert project.postprocessing_settings_hash is None
+
+    # Same value again: no regroup, hash untouched.
+    project.postprocessing_settings_hash = "stamped"
+    db.commit()
+    update_deployment(db, station.id, DeploymentUpdate(camera_offsets={"cam_2": -301}))
+    assert project.postprocessing_settings_hash == "stamped"
+
+    # Dropping the key shifts cam_2 back and splits the event again.
+    update_deployment(db, station.id, DeploymentUpdate(camera_offsets={}))
+    assert db.query(File).filter(File.file_path == paths["cam_2"]).one().captured_at_local == (
+        t0 + timedelta(seconds=301)
+    )
+    assert len(_events(db, station.id)) == 2
+    assert project.postprocessing_settings_hash is None

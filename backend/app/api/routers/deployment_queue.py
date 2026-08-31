@@ -31,6 +31,7 @@ from app.db.base import get_db
 from app.models import Project
 from app.services.csv_import import MAX_CSV_BYTES, drop_problem_rows
 from app.services.csv_import_deployments import (
+    CAMERA_OFFSETS_NEED_PAIRED,
     check_paired_camera_layout,
     normalize_folder,
     parse_deployment_csv,
@@ -102,6 +103,11 @@ def create_queue_entry(
 
     Creates a queue entry that will be processed when user clicks "Process Queue".
     """
+    if entry.camera_offsets and not entry.paired_cameras:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=CAMERA_OFFSETS_NEED_PAIRED,
+        )
     if entry.paired_cameras:
         try:
             layout_problem = check_paired_camera_layout(entry.folder_path)

@@ -105,6 +105,15 @@ class Deployment(Base):
         Integer, nullable=True
     )
 
+    # Per-camera clock correction on top of datetime_offset_seconds, for
+    # paired cameras only: {"<subfolder name>": seconds}. A file gets the
+    # entry of the first path segment under the deployment folder; root
+    # files get only the base offset. Audit value like the base offset.
+    # See DEVELOPERS.md "Paired cameras".
+    camera_offsets: Mapped[dict] = mapped_column(
+        JSON, nullable=False, server_default="{}", default=dict
+    )
+
     # Audit: the classification gate this deployment was analysed with
     # (the project's value at run time). The project-level setting can
     # change between runs, so mixed-gate projects need the per-run

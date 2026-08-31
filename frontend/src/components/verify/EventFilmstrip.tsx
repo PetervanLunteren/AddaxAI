@@ -103,6 +103,13 @@ export function EventFilmstrip({
                   {offset}
                 </span>
               )}
+              {/* Paired cameras: which camera this frame came from, so a
+                  clock drift between cameras is visible in the order. */}
+              {file.camera && (
+                <span className="pointer-events-none absolute top-1 right-1 max-w-[60%] truncate rounded bg-black/55 px-1.5 py-0.5 text-[11px] leading-none text-white/90">
+                  {file.camera}
+                </span>
+              )}
               {file.file_type === "video" && (
                 <span className="pointer-events-none absolute bottom-1 left-1 flex items-center justify-center rounded-full bg-black/60 p-1">
                   <Play className="h-3 w-3 fill-white text-white" />

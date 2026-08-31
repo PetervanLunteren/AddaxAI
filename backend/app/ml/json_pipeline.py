@@ -135,6 +135,7 @@ def load_json_to_database(
     ) = None,
     builtin_taxonomy_ids: dict[str, str] | None = None,
     datetime_offset_seconds: int = 0,
+    camera_offsets: dict[str, int] | None = None,
     use_file_mtime_fallback: bool = False,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> PipelineResult:
@@ -382,11 +383,20 @@ def load_json_to_database(
                 if not file_id:
                     file_id = str(uuid.uuid4())
 
-                # Apply user-specified datetime offset (from the "Adjust
-                # dates" modal). This corrects camera firmware clock errors
-                # like factory resets to 1970 or AM/PM mistakes.
-                if datetime_offset_seconds and captured_at_local is not None:
-                    captured_at_local += timedelta(seconds=datetime_offset_seconds)
+                # Apply the user's datetime offset (from the "Adjust dates"
+                # modal): the whole-deployment shift, plus for paired
+                # cameras the shift of this file's camera, keyed by the
+                # first path segment under the deployment folder. Root
+                # files get only the base. Corrects camera clock errors
+                # like factory resets to 1970, AM/PM mistakes and drift
+                # between the cameras of one station.
+                offset_seconds = datetime_offset_seconds
+                if camera_offsets:
+                    parts = Path(relative_file).parts
+                    if len(parts) > 1:
+                        offset_seconds += camera_offsets.get(parts[0], 0)
+                if offset_seconds and captured_at_local is not None:
+                    captured_at_local += timedelta(seconds=offset_seconds)
 
                 # Frame rate + analysed frame numbers (video only) -
                 # output by MegaDetector's process_video. Both are
@@ -652,6 +662,7 @@ def load_json_to_database_owned_session(
     ) = None,
     builtin_taxonomy_ids: dict[str, str] | None = None,
     datetime_offset_seconds: int = 0,
+    camera_offsets: dict[str, int] | None = None,
     use_file_mtime_fallback: bool = False,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> PipelineResult:
@@ -680,6 +691,7 @@ def load_json_to_database_owned_session(
             taxonomy_name_to_id=taxonomy_name_to_id,
             builtin_taxonomy_ids=builtin_taxonomy_ids,
             datetime_offset_seconds=datetime_offset_seconds,
+            camera_offsets=camera_offsets,
             use_file_mtime_fallback=use_file_mtime_fallback,
             progress_callback=progress_callback,
         )

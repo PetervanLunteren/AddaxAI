@@ -18,7 +18,14 @@ import {
   startReprocessIfNeeded,
   warnIfDeploymentsSkipped,
 } from "../../lib/reprocessSettings";
-import { formatOffset } from "../../lib/utils";
+import { camerasFromSampleFiles, formatOffsetSummary } from "../../lib/utils";
+
+/** Same keys with the same non-zero values. */
+function sameOffsets(a: Record<string, number>, b: Record<string, number>): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) if ((a[k] ?? 0) !== (b[k] ?? 0)) return false;
+  return true;
+}
 import { ApplySettingsModal } from "../settings/ApplySettingsModal";
 import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
@@ -64,6 +71,9 @@ export function EditDeploymentDialog({
   const [pairedCameras, setPairedCameras] = useState<boolean>(
     deployment.paired_cameras
   );
+  const [cameraOffsets, setCameraOffsets] = useState<Record<string, number>>(
+    deployment.camera_offsets ?? {}
+  );
   const [notes, setNotes] = useState<string>(deployment.notes ?? "");
   const [tags, setTags] = useState<Record<string, string>>(deployment.tags ?? {});
   const [offsetModalOpen, setOffsetModalOpen] = useState(false);
@@ -79,6 +89,7 @@ export function EditDeploymentDialog({
       setSiteId(deployment.site_id);
       setDatetimeOffset(deployment.datetime_offset_seconds ?? 0);
       setPairedCameras(deployment.paired_cameras);
+      setCameraOffsets(deployment.camera_offsets ?? {});
       setNotes(deployment.notes ?? "");
       setTags(deployment.tags ?? {});
     }
@@ -93,6 +104,15 @@ export function EditDeploymentDialog({
   );
 
   const pairedChanged = pairedCameras !== deployment.paired_cameras;
+  // Offsets are sent as {} when the pair is turned off, which un-shifts.
+  const effectiveCameraOffsets = pairedCameras ? cameraOffsets : {};
+  const cameraOffsetsChanged = !sameOffsets(
+    effectiveCameraOffsets,
+    deployment.camera_offsets ?? {}
+  );
+  // Both change the event grouping: the PATCH regroups, then a reprocess
+  // re-runs smoothing on the new grouping.
+  const needsReprocess = pairedChanged || cameraOffsetsChanged;
 
   const invalidateAfterSave = () => {
     queryClient.invalidateQueries({ queryKey: ["deployments", projectId] });
@@ -118,12 +138,13 @@ export function EditDeploymentDialog({
         site_id: siteId,
         datetime_offset_seconds: datetimeOffset || null,
         paired_cameras: pairedCameras,
+        camera_offsets: effectiveCameraOffsets,
         notes: notes.trim() || null,
         tags,
       });
       // The PATCH already regrouped the events; the reprocess re-runs
       // smoothing on them. Null when the project has no classifications.
-      return pairedChanged ? await startReprocessIfNeeded(projectId) : null;
+      return needsReprocess ? await startReprocessIfNeeded(projectId) : null;
     },
     onSuccess: (jobId) => {
       if (jobId) {
@@ -153,8 +174,7 @@ export function EditDeploymentDialog({
 
   const offsetButtonDisabled =
     deployment.folder_status !== "valid" || !scanResult;
-  const offsetLabel =
-    datetimeOffset === 0 ? "No offset applied" : formatOffset(datetimeOffset);
+  const offsetLabel = formatOffsetSummary(datetimeOffset, effectiveCameraOffsets);
 
   return (
     <>
@@ -227,7 +247,7 @@ export function EditDeploymentDialog({
                 checked={pairedCameras}
                 onChange={setPairedCameras}
               />
-              {pairedChanged && (
+              {needsReprocess && (
                 <Callout variant="warning" size="compact">
                   Saving regroups this deployment's events. Confirmed
                   counts stay only on events whose files stay together.
@@ -308,7 +328,19 @@ export function EditDeploymentDialog({
           sampleFiles={scanResult.sample_files}
           folderPath={deployment.folder_path}
           currentOffsetSeconds={datetimeOffset}
-          onApply={setDatetimeOffset}
+          onApply={(seconds, camera) => {
+            if (camera) {
+              setCameraOffsets((prev) => {
+                const next = { ...prev, [camera]: seconds };
+                return Object.fromEntries(Object.entries(next).filter(([, s]) => s !== 0));
+              });
+            } else {
+              setDatetimeOffset(seconds);
+            }
+          }}
+          cameras={camerasFromSampleFiles(scanResult.sample_files)}
+          pairedCameras={pairedCameras}
+          cameraOffsets={effectiveCameraOffsets}
           // The queue entry's mtime opt-in is gone after analysis, so
           // derive it: when the scan finds no metadata dates, any dates
           // in the DB can only have come from file modification times,

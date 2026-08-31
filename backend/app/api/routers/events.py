@@ -5,6 +5,7 @@ Provides endpoints for event grouping, browsing, and navigation.
 """
 
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -369,8 +370,27 @@ async def get_event(
         notes=event.notes,
         created_at_utc=event.created_at_utc,
         site_name=site_name,
-        files=[FileWithDetections.model_validate(f, from_attributes=True) for f in sorted_files],
+        files=[
+            FileWithDetections.model_validate(f, from_attributes=True).model_copy(
+                update={"camera": _camera_name(f.file_path, event.deployment)}
+            )
+            for f in sorted_files
+        ],
     )
+
+
+def _camera_name(file_path: str, deployment) -> str | None:
+    """The subfolder (camera) a file of a paired deployment sits in, else None.
+
+    Root-level files and files outside the deployment folder give None.
+    """
+    if deployment is None or not deployment.paired_cameras or not deployment.folder_path:
+        return None
+    try:
+        parts = Path(file_path).relative_to(deployment.folder_path).parts
+    except ValueError:
+        return None
+    return parts[0] if len(parts) > 1 else None
 
 
 def _obs_item(obs: EventObservation) -> EventObservationItem:

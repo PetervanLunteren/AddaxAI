@@ -44,6 +44,7 @@ PAIRED_CAMERAS_NOT_BOOLEAN = (
 PAIRED_CAMERAS_DOCS_URL = (
     "https://docs.addaxai.com/docs/understanding/how-a-project-is-organised#paired-cameras"
 )
+CAMERA_OFFSETS_NEED_PAIRED = "Camera offsets need paired cameras."
 PAIRED_CAMERAS_NEED_SUBFOLDERS = (
     "Paired cameras need one subfolder per camera inside this folder, with at "
     f"least two cameras. See {PAIRED_CAMERAS_DOCS_URL}"

@@ -962,3 +962,46 @@ def test_observation_endpoints_refuse_a_row_from_another_event(client, db):
     assert relabel.status_code == 404
     (unchanged,) = client.get(f"/api/events/{ev.id}").json()["observations"]
     assert (unchanged["effective_count"], unchanged["sex"]) == (1, None)
+
+
+def test_get_event_labels_files_with_their_camera_for_paired_deployments(client, db):
+    """Each file of a paired deployment carries its subfolder name so the
+    filmstrip can show which camera it came from. Root files and files of
+    unpaired deployments get None."""
+    from app.models.event import event_files as event_files_table
+    from tests.conftest import make_file
+
+    p = make_project(db)
+    paired = make_deployment(db, project_id=p.id, folder_path="/data/station", paired_cameras=True)
+    ev = make_event_with_files(
+        db, deployment_id=paired.id, event_start_local=datetime(2024, 1, 1, 12, 0)
+    )
+    first = ev.files[0]
+    first.file_path = "/data/station/cam_a/a.jpg"
+    nested = make_file(
+        db,
+        deployment_id=paired.id,
+        file_path="/data/station/cam_b/100MEDIA/b.jpg",
+        captured_at_local=datetime(2024, 1, 1, 12, 0, 1),
+    )
+    root = make_file(
+        db,
+        deployment_id=paired.id,
+        file_path="/data/station/root.jpg",
+        captured_at_local=datetime(2024, 1, 1, 12, 0, 2),
+    )
+    for f in (nested, root):
+        db.execute(event_files_table.insert().values(event_id=ev.id, file_id=f.id))
+    db.commit()
+
+    data = client.get(f"/api/events/{ev.id}").json()
+    assert [f["camera"] for f in data["files"]] == ["cam_a", "cam_b", None]
+
+    unpaired = make_deployment(db, project_id=p.id, folder_path="/data/other")
+    ev2 = make_event_with_files(
+        db, deployment_id=unpaired.id, event_start_local=datetime(2024, 1, 1, 12, 0)
+    )
+    ev2.files[0].file_path = "/data/other/cam_a/a.jpg"
+    db.commit()
+    data = client.get(f"/api/events/{ev2.id}").json()
+    assert data["files"][0]["camera"] is None

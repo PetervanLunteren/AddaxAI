@@ -141,6 +141,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                 folder_path = Path(entry.folder_path)
                 datetime_offset_seconds = entry.datetime_offset_seconds or 0
+                camera_offsets = dict(entry.camera_offsets or {})
                 use_file_mtime_fallback = entry.use_file_mtime_fallback
                 if not folder_path.exists():
                     error_msg = f"Folder not found: {folder_path}"
@@ -302,6 +303,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 if datetime_offset_seconds:
                     deployment.datetime_offset_seconds = datetime_offset_seconds
                 deployment.paired_cameras = entry.paired_cameras
+                deployment.camera_offsets = camera_offsets
                 deployment.classification_gate_used = project.classification_gate
                 db.commit()
                 logger.info(f"Created deployment: {deployment.id}")
@@ -811,6 +813,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         taxonomy_name_to_id,
                         builtin_taxonomy_ids,
                         datetime_offset_seconds,
+                        camera_offsets=camera_offsets,
                         use_file_mtime_fallback=use_file_mtime_fallback,
                         progress_callback=sync_db_load_progress,
                     )

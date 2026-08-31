@@ -10,7 +10,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Folder, Trash2, Eye, EyeOff, LifeBuoy } from "lucide-react";
 import { basename } from "@/lib/path-utils";
-import { formatDateSpan } from "@/lib/utils";
+import { formatDateSpan, formatOffsetSummary } from "@/lib/utils";
 import { exportDiagnosticReport } from "@/lib/diagnostic-export";
 import { Button } from "@/components/ui/button";
 import { TagPills } from "@/components/ui/tag-pills";
@@ -18,18 +18,6 @@ import { sitesApi } from "@/api/sites";
 import { useFolderScan } from "@/hooks/useFolderScan";
 import type { DeploymentQueueEntry } from "@/api/deployment-queue";
 
-function formatDatetimeOffset(seconds: number): string {
-  const sign = seconds >= 0 ? "+" : "-";
-  const abs = Math.abs(seconds);
-  const h = Math.floor(abs / 3600);
-  const m = Math.floor((abs % 3600) / 60);
-  const s = abs % 60;
-  const parts: string[] = [];
-  if (h > 0) parts.push(`${h}h`);
-  if (m > 0) parts.push(`${m}m`);
-  if (s > 0 || parts.length === 0) parts.push(`${s}s`);
-  return `${sign}${parts.join(" ")}`;
-}
 
 interface QueueItemProps {
   entry: DeploymentQueueEntry;
@@ -58,7 +46,8 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
 
   const hasTags = entry.tags && Object.keys(entry.tags).length > 0;
   const hasOffset =
-    entry.datetime_offset_seconds != null && entry.datetime_offset_seconds !== 0;
+    (entry.datetime_offset_seconds != null && entry.datetime_offset_seconds !== 0) ||
+    Object.values(entry.camera_offsets ?? {}).some((s) => s !== 0);
 
   // Status badge styling
   const getStatusBadge = () => {
@@ -212,7 +201,10 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
               <>
                 <dt className="text-gray-500 font-medium">Time offset:</dt>
                 <dd className="text-gray-900">
-                  {formatDatetimeOffset(entry.datetime_offset_seconds!)}
+                  {formatOffsetSummary(
+                    entry.datetime_offset_seconds ?? 0,
+                    entry.camera_offsets ?? {},
+                  )}
                 </dd>
               </>
             )}

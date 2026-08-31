@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useFolderScan } from "@/hooks/useFolderScan";
 import { isElectron } from "@/lib/platform";
-import { formatOffset } from "@/lib/utils";
+import { formatOffsetSummary } from "@/lib/utils";
 
 // Dev-only: Test deployment folders for quick selection
 const TEST_DEPLOYMENTS: { scope: string; path: string }[] = [
@@ -67,6 +67,8 @@ interface FolderSelectorProps {
   error?: string;
   /** Current datetime offset in seconds (0 = no offset). */
   datetimeOffsetSeconds?: number;
+  /** Per-camera offsets of a paired deployment, shown next to the base. */
+  cameraOffsets?: Record<string, number>;
   /** Called when the user clicks "Adjust dates". Parent opens the modal. */
   onAdjustDates?: () => void;
   /** Hide the built-in "Folder" label (when the parent provides its own). */
@@ -104,6 +106,7 @@ export function FolderSelector({
   onChange,
   error,
   datetimeOffsetSeconds = 0,
+  cameraOffsets = {},
   onAdjustDates,
   hideLabel = false,
   caption,
@@ -305,6 +308,7 @@ export function FolderSelector({
                 startDate={captionStart}
                 endDate={captionEnd}
                 offsetSeconds={datetimeOffsetSeconds}
+                cameraOffsets={cameraOffsets}
                 onAdjustDates={onAdjustDates}
                 datesFromFileMtime={showingFileDates}
               />
@@ -389,6 +393,7 @@ function CompactScanLine({
   startDate,
   endDate,
   offsetSeconds,
+  cameraOffsets = {},
   onAdjustDates,
   datesFromFileMtime = false,
 }: {
@@ -397,6 +402,7 @@ function CompactScanLine({
   startDate: string | null;
   endDate: string | null;
   offsetSeconds: number;
+  cameraOffsets?: Record<string, number>;
   onAdjustDates?: () => void;
   /** The dates came from file modification times, not from the camera.
    *  Names the source in the caption so the number is not mistaken for a
@@ -425,8 +431,9 @@ function CompactScanLine({
     parts.push(`${videoCount} ${videoCount === 1 ? "video" : "videos"}`);
   }
   parts.push(dateRange);
-  if (offsetSeconds !== 0) {
-    parts.push(`offset ${formatOffset(offsetSeconds)}`);
+  const hasCameraOffsets = Object.values(cameraOffsets).some((s) => s !== 0);
+  if (offsetSeconds !== 0 || hasCameraOffsets) {
+    parts.push(`offset ${formatOffsetSummary(offsetSeconds, cameraOffsets)}`);
   }
 
   return (

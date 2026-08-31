@@ -174,3 +174,30 @@ def test_paired_cameras_needs_two_camera_subfolders(client, db, tmp_path):
     assert post(pair, True).status_code == 201
     # Unpaired never looks at the layout.
     assert post(flat, False).status_code == 201
+
+
+def test_camera_offsets_round_trip_and_need_paired(client, db, tmp_path):
+    p = make_project(db)
+    for cam in ("cam1", "cam2"):
+        (tmp_path / cam).mkdir()
+        (tmp_path / cam / "a.jpg").write_bytes(b"x")
+    body = {
+        "project_id": p.id,
+        "folder_path": str(tmp_path),
+        "image_count": 2,
+        "camera_offsets": {"cam2": -34},
+    }
+    resp = client.post("/api/deployment-queue", json=body)
+    assert resp.status_code == 400
+    assert "paired" in resp.json()["detail"].lower()
+
+    resp = client.post("/api/deployment-queue", json={**body, "paired_cameras": True})
+    assert resp.status_code == 201
+    fetched = client.get(f"/api/deployment-queue/{resp.json()['id']}")
+    assert fetched.json()["camera_offsets"] == {"cam2": -34}
+
+    plain = client.post(
+        "/api/deployment-queue",
+        json={"project_id": p.id, "folder_path": "/some/other", "image_count": 1},
+    )
+    assert plain.json()["camera_offsets"] == {}

@@ -807,3 +807,45 @@ def test_turning_paired_cameras_on_needs_camera_subfolders(client, db, tmp_path)
     resp = client.patch(f"/api/deployments/{d2.id}", json={"paired_cameras": False})
     assert resp.status_code == 200
     assert resp.json()["paired_cameras"] is False
+
+
+def test_camera_offsets_need_paired_cameras_and_a_valid_folder(client, db, tmp_path):
+    for cam in ("cam1", "cam2"):
+        (tmp_path / cam).mkdir()
+        (tmp_path / cam / "a.jpg").write_bytes(b"x")
+    p = make_project(db)
+    unpaired = make_deployment(db, project_id=p.id, folder_path=str(tmp_path))
+    resp = client.patch(f"/api/deployments/{unpaired.id}", json={"camera_offsets": {"cam2": 5}})
+    assert resp.status_code == 400
+    assert "paired" in resp.json()["detail"].lower()
+
+    broken = make_deployment(
+        db,
+        project_id=p.id,
+        folder_path=str(tmp_path / "gone"),
+        paired_cameras=True,
+        folder_status="needs_relink",
+    )
+    resp = client.patch(f"/api/deployments/{broken.id}", json={"camera_offsets": {"cam2": 5}})
+    assert resp.status_code == 400
+
+    paired = make_deployment(
+        db, project_id=p.id, folder_path=str(tmp_path), paired_cameras=True
+    )
+    resp = client.patch(f"/api/deployments/{paired.id}", json={"camera_offsets": {"cam2": 5}})
+    assert resp.status_code == 200
+    assert resp.json()["camera_offsets"] == {"cam2": 5}
+
+    # Turning the pair off in the same request with offsets is refused, and
+    # sending {} together with paired off is the way to unpair.
+    resp = client.patch(
+        f"/api/deployments/{paired.id}",
+        json={"paired_cameras": False, "camera_offsets": {"cam2": 5}},
+    )
+    assert resp.status_code == 400
+    resp = client.patch(
+        f"/api/deployments/{paired.id}",
+        json={"paired_cameras": False, "camera_offsets": {}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["camera_offsets"] == {}

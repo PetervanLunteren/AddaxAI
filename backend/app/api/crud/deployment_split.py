@@ -831,7 +831,15 @@ def split_deployment(
                 camera_serial=parent.camera_serial,
                 notes=parent.notes,
                 tags=dict(parent.tags or {}),
-                datetime_offset_seconds=parent.datetime_offset_seconds,
+                # A child is one camera, so its camera offset folds into
+                # its own base offset (audit values; the files are already
+                # shifted). None when the total is zero, like the parent.
+                datetime_offset_seconds=(
+                    (parent.datetime_offset_seconds or 0)
+                    + (parent.camera_offsets or {}).get(bucket.name, 0)
+                )
+                or None,
+                camera_offsets={},
                 # A child is one subfolder, so a paired parent's cameras
                 # are separated by the split. The flag does not carry over.
                 paired_cameras=False,

@@ -146,6 +146,13 @@ def update_deployment(
     project's postprocessing hash is cleared so the "needs reprocessing"
     banner asks for a reprocess, which re-runs smoothing on the new
     grouping. Events of other deployments are untouched.
+
+    When camera_offsets changes (paired cameras), each camera's delta is
+    applied to the files of that subfolder only, without touching the
+    event bounds: the order of files across cameras changed, so the
+    events are regenerated like for a paired_cameras change, with the
+    same carry rule and the same hash clearing. A key that disappears is
+    a delta back to zero, so unpairing (which sends {}) un-shifts.
     """
     db_deployment = get_deployment(db, deployment_id)
     if db_deployment is None:
@@ -174,13 +181,32 @@ def update_deployment(
         and update_data["paired_cameras"] != db_deployment.paired_cameras
     )
 
+    # Per-camera deltas over the union of old and new keys, so a removed
+    # camera shifts back to zero.
+    camera_deltas: dict[str, int] = {}
+    if "camera_offsets" in update_data and update_data["camera_offsets"] is not None:
+        old_cams = db_deployment.camera_offsets or {}
+        new_cams = update_data["camera_offsets"]
+        for cam in set(old_cams) | set(new_cams):
+            delta = new_cams.get(cam, 0) - old_cams.get(cam, 0)
+            if delta:
+                camera_deltas[cam] = delta
+    if camera_deltas and not db_deployment.folder_path:
+        raise ValueError("Camera offsets need a deployment folder")
+
     for field_name, value in update_data.items():
         setattr(db_deployment, field_name, value)
 
     if offset_delta_seconds != 0:
         _apply_offset_shift(db, db_deployment, offset_delta_seconds)
 
-    if paired_changed:
+    for cam, delta in camera_deltas.items():
+        prefix = str(Path(db_deployment.folder_path) / cam) + os.sep
+        _apply_offset_shift(
+            db, db_deployment, delta, path_prefix=prefix, shift_events=False
+        )
+
+    if paired_changed or camera_deltas:
         from app.api.crud.event import generate_events_for_deployment
 
         generate_events_for_deployment(db, db_deployment)
@@ -192,12 +218,24 @@ def update_deployment(
 
 
 def _apply_offset_shift(
-    db: Session, deployment: Deployment, delta_seconds: int
+    db: Session,
+    deployment: Deployment,
+    delta_seconds: int,
+    *,
+    path_prefix: str | None = None,
+    shift_events: bool = True,
 ) -> None:
     """
     Shift every observational datetime in a deployment by
     `delta_seconds`, then recompute the deployment's date range from
     the shifted files.
+
+    `path_prefix` limits the file shift to one camera subfolder of a
+    paired deployment (an exact prefix match on `File.file_path`, not
+    LIKE, because `_` and `%` in folder names are LIKE wildcards). The
+    caller passes `shift_events=False` with it: a partial shift changes
+    the order of files across cameras, so the events are regenerated
+    afterwards instead of translated.
 
     Touches `File.captured_at_local`, `Event.event_start_local`,
     `Event.event_end_local`, and `Deployment.start_date_local /
@@ -219,20 +257,26 @@ def _apply_offset_shift(
     sign = "+" if delta_seconds > 0 else ""
     modifier = f"{sign}{delta_seconds} seconds"
 
-    db.query(File).filter(File.deployment_id == deployment.id).update(
+    files_query = db.query(File).filter(File.deployment_id == deployment.id)
+    if path_prefix is not None:
+        files_query = files_query.filter(
+            func.substr(File.file_path, 1, len(path_prefix)) == path_prefix
+        )
+    files_query.update(
         {"captured_at_local": func.datetime(File.captured_at_local, modifier)},
         synchronize_session=False,
     )
 
-    db.query(Event).filter(Event.deployment_id == deployment.id).update(
-        {
-            "event_start_local": func.datetime(
-                Event.event_start_local, modifier
-            ),
-            "event_end_local": func.datetime(Event.event_end_local, modifier),
-        },
-        synchronize_session=False,
-    )
+    if shift_events:
+        db.query(Event).filter(Event.deployment_id == deployment.id).update(
+            {
+                "event_start_local": func.datetime(
+                    Event.event_start_local, modifier
+                ),
+                "event_end_local": func.datetime(Event.event_end_local, modifier),
+            },
+            synchronize_session=False,
+        )
 
     # Refresh the deployment's date window from the post-shift file
     # range. start_date_local / end_date_local are calendar dates, not

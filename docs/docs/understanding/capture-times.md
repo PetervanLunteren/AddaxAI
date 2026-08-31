@@ -45,4 +45,10 @@ Both open the same Adjust dates window. It shows one image next to the date Adda
 
 Doing this after an analysis is safe. AddaxAI shifts the stored times and updates the dates, events and charts, so you do not have to analyse again.
 
+### Paired cameras
+
+For a [paired deployment](./how-a-project-is-organised.mdx#paired-cameras) the Adjust dates window has a camera dropdown. It only shows once "Paired cameras" is ticked. "All cameras" shifts the whole deployment. "Only cam1" gives that camera an extra shift on top of it.
+
+Changing a camera's shift after an analysis regroups the deployment's events and reprocesses the labels. Confirmed counts on events that change are reset.
+
 <img src="/img/adjust-dates.webp" alt="The Adjust dates window, comparing the date burned into the photo with the date read from the file" style={{maxWidth: '620px', width: '100%', display: 'block'}} />

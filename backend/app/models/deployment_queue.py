@@ -54,6 +54,12 @@ class DeploymentQueue(Base):
         Integer, nullable=True
     )
 
+    # Per-camera clock correction for paired cameras, copied onto the
+    # Deployment when the entry is processed. See `Deployment.camera_offsets`.
+    camera_offsets: Mapped[dict] = mapped_column(
+        JSON, nullable=False, server_default="{}", default=dict
+    )
+
     # Fall back to each file's modification time for files whose metadata
     # carries no capture date. Off unless the user ticked the box in the
     # folder scan, which is only offered when the scan found no dates at

@@ -52,6 +52,12 @@ import { AddSiteModal } from "./AddSiteModal";
 import { ImportDeploymentsDialog } from "./ImportDeploymentsDialog";
 import { DatetimeOffsetModal } from "./DatetimeOffsetModal";
 import { PairedCamerasCheckbox } from "./PairedCamerasCheckbox";
+import { camerasFromSampleFiles } from "@/lib/utils";
+
+/** Drop zero entries so {} means "no camera offsets". */
+function withoutZeros(offsets: Record<string, number>): Record<string, number> {
+  return Object.fromEntries(Object.entries(offsets).filter(([, s]) => s !== 0));
+}
 import { useFolderScan } from "@/hooks/useFolderScan";
 
 interface AddDeploymentCardProps {
@@ -69,6 +75,8 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
   const [datetimeOffsetSeconds, setDatetimeOffsetSeconds] = useState(0);
   const [fileMtimeChecked, setFileMtimeChecked] = useState(false);
   const [pairedCameras, setPairedCameras] = useState(false);
+  // Per-camera offsets (paired cameras only), keyed by subfolder name.
+  const [cameraOffsets, setCameraOffsets] = useState<Record<string, number>>({});
   const [offsetModalOpen, setOffsetModalOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [tags, setTags] = useState<Record<string, string>>({});
@@ -115,6 +123,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
       datetime_offset_seconds: number | null;
       use_file_mtime_fallback: boolean;
       paired_cameras: boolean;
+      camera_offsets: Record<string, number>;
       notes: string | null;
       tags: Record<string, string>;
     }) =>
@@ -127,6 +136,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
         datetime_offset_seconds: data.datetime_offset_seconds || null,
         use_file_mtime_fallback: data.use_file_mtime_fallback,
         paired_cameras: data.paired_cameras,
+        camera_offsets: data.camera_offsets,
         notes: data.notes,
         tags: data.tags,
       }),
@@ -140,6 +150,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
       setDatetimeOffsetSeconds(0);
       setFileMtimeChecked(false);
       setPairedCameras(false);
+      setCameraOffsets({});
       setNotes("");
       setTags({});
     },
@@ -205,6 +216,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
         datetime_offset_seconds: datetimeOffsetSeconds || null,
         use_file_mtime_fallback: useFileMtimeFallback,
         paired_cameras: pairedCameras,
+        camera_offsets: pairedCameras ? cameraOffsets : {},
         notes: notes.trim() || null,
         tags,
       });
@@ -218,6 +230,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
       setDatetimeOffsetSeconds(0);
       setFileMtimeChecked(false);
       setPairedCameras(false);
+      setCameraOffsets({});
       setNotes("");
       setTags({});
     },
@@ -250,6 +263,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
       datetime_offset_seconds: datetimeOffsetSeconds || null,
       use_file_mtime_fallback: useFileMtimeFallback,
       paired_cameras: pairedCameras,
+      camera_offsets: pairedCameras ? cameraOffsets : {},
       notes: notes.trim() || null,
       tags,
     });
@@ -298,11 +312,13 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
             onChange={(path) => {
               setFolderPath(path);
               setDatetimeOffsetSeconds(0); // Reset offset when folder changes
+              setCameraOffsets({}); // the cameras belong to the old folder
               setFileMtimeChecked(false); // and the file-date opt-in
               clearSubmitError(); // a stale error would describe the old folder
               setTouchedFields((prev) => ({ ...prev, folder: true }));
             }}
             datetimeOffsetSeconds={datetimeOffsetSeconds}
+            cameraOffsets={cameraOffsets}
             onAdjustDates={() => setOffsetModalOpen(true)}
             missingDateNote="AddaxAI will still detect and classify these files, but with no date they are left out of time-based stats, charts, and trap-night effort."
             useFileMtimeFallback={useFileMtimeFallback}
@@ -349,7 +365,10 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
               {/* Paired cameras: the subfolders are dependent cameras. */}
               <PairedCamerasCheckbox
                 checked={pairedCameras}
-                onChange={setPairedCameras}
+                onChange={(v) => {
+                  setPairedCameras(v);
+                  if (!v) setCameraOffsets({}); // offsets belong to the pair
+                }}
               />
 
               {/* Notes */}
@@ -463,7 +482,16 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
           sampleFiles={scanResult.sample_files}
           folderPath={folderPath}
           currentOffsetSeconds={datetimeOffsetSeconds}
-          onApply={setDatetimeOffsetSeconds}
+          onApply={(seconds, camera) => {
+            if (camera) {
+              setCameraOffsets((prev) => withoutZeros({ ...prev, [camera]: seconds }));
+            } else {
+              setDatetimeOffsetSeconds(seconds);
+            }
+          }}
+          cameras={camerasFromSampleFiles(scanResult.sample_files)}
+          pairedCameras={pairedCameras}
+          cameraOffsets={cameraOffsets}
           useFileMtimeFallback={useFileMtimeFallback}
         />
       )}

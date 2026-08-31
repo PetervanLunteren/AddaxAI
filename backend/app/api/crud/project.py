@@ -178,6 +178,7 @@ def duplicate_project(
                     tags=dict(dep.tags or {}),
                     datetime_offset_seconds=dep.datetime_offset_seconds,
                     paired_cameras=dep.paired_cameras,
+                    camera_offsets=dict(dep.camera_offsets or {}),
                     status="pending",
                 )
             )

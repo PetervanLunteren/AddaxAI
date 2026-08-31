@@ -29,6 +29,8 @@ export interface DeploymentQueueEntry {
   /** The subfolders are dependent cameras. Copied onto the
    * deployment when the entry is processed. */
   paired_cameras: boolean;
+  /** Per-camera seconds on top of datetime_offset_seconds. */
+  camera_offsets: Record<string, number>;
   notes: string | null;
   tags: Record<string, string>;
   status: "pending" | "processing" | "completed" | "failed";
@@ -51,6 +53,7 @@ export interface DeploymentQueueCreate {
   datetime_offset_seconds?: number | null;
   use_file_mtime_fallback?: boolean;
   paired_cameras?: boolean;
+  camera_offsets?: Record<string, number>;
   notes?: string | null;
   tags?: Record<string, string>;
 }

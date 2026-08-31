@@ -35,6 +35,13 @@ class DeploymentQueueBase(BaseModel):
             "events across them and count effort once"
         ),
     )
+    camera_offsets: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Per-camera seconds added on top of datetime_offset_seconds, "
+            "keyed by subfolder name. Paired cameras only"
+        ),
+    )
     notes: str | None = Field(
         None, max_length=1000, description="Optional deployment notes"
     )

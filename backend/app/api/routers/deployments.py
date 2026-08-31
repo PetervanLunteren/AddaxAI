@@ -48,7 +48,10 @@ from app.api.schemas.deployment import (
 from app.core.logging_config import get_logger
 from app.core.media_types import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from app.db.base import get_db
-from app.services.csv_import_deployments import check_paired_camera_layout
+from app.services.csv_import_deployments import (
+    CAMERA_OFFSETS_NEED_PAIRED,
+    check_paired_camera_layout,
+)
 from app.services.folder_scanner import scan_folder
 
 logger = get_logger(__name__)
@@ -752,6 +755,21 @@ def update_deployment(
         if layout_problem is not None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=layout_problem
+            )
+
+    # Camera offsets are a paired-cameras feature and shift files on disk
+    # paths, so the folder must be paired (after this update) and valid.
+    if update_fields.get("camera_offsets"):
+        paired_after = update_fields.get("paired_cameras", current.paired_cameras)
+        if not paired_after:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=CAMERA_OFFSETS_NEED_PAIRED,
+            )
+        if current.folder_path is None or current.folder_status != "valid":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Reconnect the folder first, then set camera offsets.",
             )
 
     # If folder_path is changing, route through the relink flow so we

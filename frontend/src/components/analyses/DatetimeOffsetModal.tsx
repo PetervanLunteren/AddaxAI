@@ -18,6 +18,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -40,7 +47,18 @@ interface DatetimeOffsetModalProps {
   sampleFiles: SampleFile[];
   folderPath: string;
   currentOffsetSeconds: number;
-  onApply: (offsetSeconds: number) => void;
+  /** The whole-deployment offset, or one camera's own offset when
+   *  `camera` is set (on top of the whole-deployment one). */
+  onApply: (offsetSeconds: number, camera: string | null) => void;
+  /** The folder's camera-style subfolders (from the scan). With two or
+   *  more and `pairedCameras` on, a dropdown lets one camera be corrected
+   *  on its own; with `pairedCameras` off, a one-line hint says where the
+   *  tick is. */
+  cameras?: string[];
+  /** Whether the deployment is (being) marked as paired cameras. */
+  pairedCameras?: boolean;
+  /** Current per-camera offsets, keyed like `cameras`. */
+  cameraOffsets?: Record<string, number>;
   /** Mirror of the folder-scan opt-in. Without it this modal would show
    *  "unknown" for every file in a folder that has no capture dates, so
    *  the offset could never be worked out for exactly the folders that
@@ -82,9 +100,30 @@ export function DatetimeOffsetModal({
   currentOffsetSeconds,
   onApply,
   useFileMtimeFallback = false,
+  cameras,
+  pairedCameras = false,
+  cameraOffsets = {},
 }: DatetimeOffsetModalProps) {
   const [referenceIndex, setReferenceIndex] = useState(0);
+  // The value being edited: the whole-deployment offset, or the selected
+  // camera's own extra offset. One rule keeps the two from double
+  // counting: the shown date is raw + fixedSeconds + offsetSeconds, where
+  // fixedSeconds is the whole-deployment offset while a camera is
+  // selected and zero otherwise.
   const [offsetSeconds, setOffsetSeconds] = useState(currentOffsetSeconds);
+  const [selectedCamera, setSelectedCamera] = useState<string | null>(null);
+  const fixedSeconds = selectedCamera ? currentOffsetSeconds : 0;
+  // Stale keys (a camera folder that disappeared) stay listed so their
+  // value can still be cleared.
+  const cameraChoices = [...new Set([...(cameras ?? []), ...Object.keys(cameraOffsets)])].sort();
+  const showCameras = pairedCameras && cameraChoices.length >= 2;
+  // The Adjust dates link sits above the Options section, so someone with
+  // dependent cameras can land here before ticking Paired cameras. One
+  // muted line, only when the folder looks like it could be a pair.
+  const showPairedHint = !pairedCameras && (cameras?.length ?? 0) >= 2;
+  const visibleFiles = selectedCamera
+    ? sampleFiles.filter((f) => f.path.split(/[\\/]/)[0] === selectedCamera)
+    : sampleFiles;
 
   // Image zoom + pan state
   const [imageZoom, setImageZoom] = useState(1);
@@ -150,7 +189,7 @@ export function DatetimeOffsetModal({
   const [dateCache, setDateCache] = useState<Record<number, string | null>>({});
   const [dateFetching, setDateFetching] = useState(false);
 
-  const currentFile = sampleFiles[referenceIndex] ?? null;
+  const currentFile = visibleFiles[referenceIndex] ?? null;
   const currentDatetime = dateCache[referenceIndex] ?? null;
 
   // Fetch datetime for the current image on navigation
@@ -191,7 +230,7 @@ export function DatetimeOffsetModal({
   // create a feedback loop with user edits to the date picker.
   useEffect(() => {
     if (currentDatetime) {
-      setCorrectedDateStr(shiftedDateStr(currentDatetime, offsetSeconds));
+      setCorrectedDateStr(shiftedDateStr(currentDatetime, fixedSeconds + offsetSeconds));
     } else {
       setCorrectedDateStr("");
     }
@@ -200,6 +239,7 @@ export function DatetimeOffsetModal({
   // Re-initialize working state when the modal opens
   useEffect(() => {
     if (open) {
+      setSelectedCamera(null);
       setOffsetSeconds(currentOffsetSeconds);
       setReferenceIndex(0);
       setImageZoom(1);
@@ -215,6 +255,24 @@ export function DatetimeOffsetModal({
     setDateCache({});
   }, [folderPath, useFileMtimeFallback]);
 
+  const handleCameraChange = useCallback(
+    (value: string) => {
+      const cam = value === "__all__" ? null : value;
+      setSelectedCamera(cam);
+      setOffsetSeconds(cam ? (cameraOffsets[cam] ?? 0) : currentOffsetSeconds);
+      setReferenceIndex(0);
+      // Clear the cache here, not in an effect keyed on selectedCamera:
+      // the fetch effect runs before such an effect and would see the old
+      // camera's entry at index 0, skip the fetch, and then lose it to
+      // the wipe, leaving the new camera's date unknown forever.
+      setDateCache({});
+      setImageZoom(1);
+      setPanX(0);
+      setPanY(0);
+    },
+    [cameraOffsets, currentOffsetSeconds],
+  );
+
   // Sync offset from corrected date. Diffed in naive wall-clock space:
   // the backend applies the offset to naive datetimes, so an epoch diff
   // taken across a DST boundary would be an hour off what the user typed.
@@ -225,9 +283,9 @@ export function DatetimeOffsetModal({
       const originalMs = naiveDateMs(currentDatetime);
       const correctedMs = naiveDateMs(dateStr);
       if (originalMs === null || correctedMs === null) return;
-      setOffsetSeconds(Math.round((correctedMs - originalMs) / 1000));
+      setOffsetSeconds(Math.round((correctedMs - originalMs) / 1000) - fixedSeconds);
     },
-    [currentDatetime],
+    [currentDatetime, fixedSeconds],
   );
 
   // Quick offset buttons
@@ -236,25 +294,25 @@ export function DatetimeOffsetModal({
       const newOffset = offsetSeconds + deltaSeconds;
       setOffsetSeconds(newOffset);
       if (currentDatetime) {
-        setCorrectedDateStr(shiftedDateStr(currentDatetime, newOffset));
+        setCorrectedDateStr(shiftedDateStr(currentDatetime, fixedSeconds + newOffset));
       }
     },
-    [offsetSeconds, currentDatetime],
+    [offsetSeconds, currentDatetime, fixedSeconds],
   );
 
   const handleApply = useCallback(() => {
-    onApply(offsetSeconds);
+    onApply(offsetSeconds, selectedCamera);
     onOpenChange(false);
-  }, [offsetSeconds, onApply, onOpenChange]);
+  }, [offsetSeconds, selectedCamera, onApply, onOpenChange]);
 
   const handleReset = useCallback(() => {
     setOffsetSeconds(0);
     if (currentDatetime) {
-      setCorrectedDateStr(shiftedDateStr(currentDatetime, 0));
+      setCorrectedDateStr(shiftedDateStr(currentDatetime, fixedSeconds));
     } else {
       setCorrectedDateStr("");
     }
-  }, [currentDatetime]);
+  }, [currentDatetime, fixedSeconds]);
 
   if (sampleFiles.length === 0) {
     return (
@@ -285,10 +343,39 @@ export function DatetimeOffsetModal({
             A camera clock error affects all files equally. Scroll to zoom in
             and read the burned-in date. If it doesn't match the extracted
             date, set the correct date for one image, browse a few more to
-            verify the offset looks right, then click apply. The same
-            correction will be applied to all files in the deployment.
+            verify the offset looks right, then click apply.
+            {showCameras
+              ? " Paired cameras drift apart: pick one camera to correct it on its own, on top of the shift for the whole deployment."
+              : " The same correction will be applied to all files in the deployment."}
           </DialogDescription>
         </DialogHeader>
+
+        {showPairedHint && (
+          <p className="text-xs text-muted-foreground">
+            Does this deployment contain multiple dependent cameras? Tick
+            Paired cameras under Options first, then each camera can get its
+            own time shift.
+          </p>
+        )}
+
+        {showCameras && (
+          <div className="flex items-center gap-3">
+            <Label className="text-xs shrink-0">Camera</Label>
+            <Select value={selectedCamera ?? "__all__"} onValueChange={handleCameraChange}>
+              <SelectTrigger className="h-8 w-64 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All cameras</SelectItem>
+                {cameraChoices.map((cam) => (
+                  <SelectItem key={cam} value={cam}>
+                    Only {cam}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="grid grid-cols-[1fr_auto] gap-6">
@@ -351,7 +438,7 @@ export function DatetimeOffsetModal({
                     </div>
 
                     {/* Navigation */}
-                    {sampleFiles.length > 1 && (
+                    {visibleFiles.length > 1 && (
                       <div className="flex items-center justify-center gap-3">
                         <Button
                           type="button"
@@ -363,25 +450,25 @@ export function DatetimeOffsetModal({
                             const next = referenceIndex - 1;
                             setReferenceIndex(next);
                             const dt = dateCache[next];
-                            setCorrectedDateStr(dt ? shiftedDateStr(dt, offsetSeconds) : "");
+                            setCorrectedDateStr(dt ? shiftedDateStr(dt, fixedSeconds + offsetSeconds) : "");
                           }}
                         >
                           <ChevronLeft className="h-4 w-4" />
                         </Button>
                         <span className="text-xs text-muted-foreground">
-                          {referenceIndex + 1} of {sampleFiles.length}
+                          {referenceIndex + 1} of {visibleFiles.length}
                         </span>
                         <Button
                           type="button"
                           variant="outline"
                           size="icon"
                           className="h-8 w-8"
-                          disabled={referenceIndex === sampleFiles.length - 1}
+                          disabled={referenceIndex === visibleFiles.length - 1}
                           onClick={() => {
                             const next = referenceIndex + 1;
                             setReferenceIndex(next);
                             const dt = dateCache[next];
-                            setCorrectedDateStr(dt ? shiftedDateStr(dt, offsetSeconds) : "");
+                            setCorrectedDateStr(dt ? shiftedDateStr(dt, fixedSeconds + offsetSeconds) : "");
                           }}
                         >
                           <ChevronRight className="h-4 w-4" />
@@ -428,6 +515,14 @@ export function DatetimeOffsetModal({
                   </Button>
                   <Button type="button" variant="outline" size="sm" onClick={() => applyQuickOffset(3600)}>
                     +1 hour
+                  </Button>
+                  {/* Seconds matter for paired cameras, whose clocks drift
+                      by seconds; offered everywhere so the modal is one. */}
+                  <Button type="button" variant="outline" size="sm" onClick={() => applyQuickOffset(-1)}>
+                    -1 second
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => applyQuickOffset(1)}>
+                    +1 second
                   </Button>
                 </div>
               </div>
@@ -486,7 +581,9 @@ export function DatetimeOffsetModal({
                 <div className="flex items-start justify-between gap-2">
                   <div className="space-y-1">
                     <div className="text-xs text-muted-foreground">
-                      All dates will be shifted by
+                      {selectedCamera
+                        ? `Files of ${selectedCamera} get an extra shift of`
+                        : "All dates will be shifted by"}
                     </div>
                     <div className="text-sm font-medium">
                       {offsetSeconds === 0

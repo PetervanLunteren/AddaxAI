@@ -92,6 +92,9 @@ class FileWithDetections(FileResponse):
     """File with detections response schema."""
 
     detections: list[DetectionResponse]
+    # The camera (subfolder name) this file came from, for files of a
+    # paired-cameras deployment. None otherwise, and for root-level files.
+    camera: str | None = None
 
     class Config:
         from_attributes = True

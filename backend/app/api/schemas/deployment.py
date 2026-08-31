@@ -42,6 +42,13 @@ class DeploymentBase(BaseModel):
             "events across them and count effort once"
         ),
     )
+    camera_offsets: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Per-camera seconds added on top of datetime_offset_seconds, "
+            "keyed by subfolder name. Paired cameras only"
+        ),
+    )
     tags: dict[str, str] = Field(
         default_factory=dict, description="Custom key:value metadata tags"
     )
@@ -82,6 +89,7 @@ class DeploymentUpdate(BaseModel):
     notes: str | None = Field(None, max_length=1000)
     datetime_offset_seconds: int | None = None
     paired_cameras: bool | None = None
+    camera_offsets: dict[str, int] | None = None
     tags: dict[str, str] | None = None
 
 

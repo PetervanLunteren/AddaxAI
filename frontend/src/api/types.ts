@@ -295,6 +295,9 @@ export interface DeploymentResponse {
   /** The subfolders are dependent cameras: events cluster
    * across them and effort counts once. */
   paired_cameras: boolean;
+  /** Per-camera seconds on top of datetime_offset_seconds, keyed by
+   * subfolder name. Paired cameras only; {} when none. */
+  camera_offsets: Record<string, number>;
   created_at_utc: string;
   /** Non-fatal issues from this deployment's analysis run. Null when
    * the run had nothing to flag. */
@@ -313,6 +316,8 @@ export interface DeploymentUpdate {
   datetime_offset_seconds?: number | null;
   /** Changing it regroups the deployment's events at once. */
   paired_cameras?: boolean;
+  /** Changing a camera's offset shifts that subfolder and regroups. */
+  camera_offsets?: Record<string, number>;
 }
 
 export interface BulkRelinkItem {
@@ -587,6 +592,9 @@ export interface FileResponse {
 
 export interface FileWithDetections extends FileResponse {
   detections: DetectionResponse[];
+  /** The camera (subfolder) of a paired deployment this file came from.
+   * Null for unpaired deployments and root-level files. */
+  camera?: string | null;
 }
 
 // On-demand video filmstrip: evenly-spaced low-res frames for the
