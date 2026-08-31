@@ -47,7 +47,7 @@ Doing this after an analysis is safe. AddaxAI shifts the stored times and update
 
 ### Paired cameras
 
-For a [paired deployment](./how-a-project-is-organised.mdx#paired-cameras) the Adjust dates window has a camera dropdown. It only shows once "Paired cameras" is ticked. "All cameras" shifts the whole deployment. "Only cam1" gives that camera an extra shift on top of it.
+For a [paired deployment](./how-a-project-is-organised.mdx#paired-cameras) the Adjust dates window has a camera dropdown. It only shows once "Paired cameras" is ticked. "All cameras" shifts the whole deployment. "Only cam1" shifts that camera alone.
 
 Changing a camera's shift after an analysis regroups the deployment's events and reprocesses the labels. Confirmed counts on events that change are reset.
 

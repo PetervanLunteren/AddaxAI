@@ -345,7 +345,7 @@ export function DatetimeOffsetModal({
             date, set the correct date for one image, browse a few more to
             verify the offset looks right, then click apply.
             {showCameras
-              ? " Paired cameras drift apart: pick one camera to correct it on its own, on top of the shift for the whole deployment."
+              ? " Paired cameras drift apart: pick one camera to correct that camera alone."
               : " The same correction will be applied to all files in the deployment."}
           </DialogDescription>
         </DialogHeader>
@@ -582,7 +582,7 @@ export function DatetimeOffsetModal({
                   <div className="space-y-1">
                     <div className="text-xs text-muted-foreground">
                       {selectedCamera
-                        ? `Files of ${selectedCamera} get an extra shift of`
+                        ? `Only ${selectedCamera} will be shifted by`
                         : "All dates will be shifted by"}
                     </div>
                     <div className="text-sm font-medium">
