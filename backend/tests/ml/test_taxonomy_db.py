@@ -362,7 +362,10 @@ def test_category_descriptions_read_taxonomy_csv_as_utf8(tmp_path):
     code = (
         "import sys; from pathlib import Path; "
         "from app.ml.json_utils import build_classification_category_descriptions as b; "
-        f"d = b({{'0': 'señuelo'}}, Path({str(csv_path)!r})); "
+        # The name is spelled as an escape so argv stays ASCII: under the C
+        # locale Linux decodes the command line as ASCII and refuses a raw ñ
+        # before running anything. The child still builds the string señuelo.
+        f"d = b({{'0': 'se\\xf1uelo'}}, Path({str(csv_path)!r})); "
         "sys.stdout.buffer.write(d['0'].encode('utf-8'))"
     )
     env = {**os.environ, "LC_ALL": "C", "LANG": "C", "PYTHONUTF8": "0",
