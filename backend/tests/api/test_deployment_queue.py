@@ -201,3 +201,19 @@ def test_camera_offsets_round_trip_and_need_paired(client, db, tmp_path):
         json={"project_id": p.id, "folder_path": "/some/other", "image_count": 1},
     )
     assert plain.json()["camera_offsets"] == {}
+
+
+def test_queue_stores_the_folder_path_normalised(client, db):
+    """A typed trailing slash must not survive into the row: the worker
+    builds the deployment's folder_path through `Path`, and the ghost
+    deployment rule in `reconcile_interrupted_jobs` compares the two."""
+    from app.models import DeploymentQueue
+
+    p = make_project(db)
+    resp = client.post(
+        "/api/deployment-queue",
+        json={"project_id": p.id, "folder_path": "/some/folder/", "image_count": 1},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["folder_path"] == "/some/folder"
+    assert db.get(DeploymentQueue, resp.json()["id"]).folder_path == "/some/folder"

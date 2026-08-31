@@ -465,6 +465,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     yield
 
+    # Shutdown: stop any analysis subprocess first. It lives in its own
+    # session, so it would otherwise outlive us, finish on its own, and
+    # delete the checkpoint the next run needs (see "Resuming an
+    # interrupted analysis" in DEVELOPERS.md).
+    from app.core.job_cancellation import kill_all_tracked
+    killed = kill_all_tracked()
+    if killed:
+        logger.info(f"Stopped {killed} analysis subprocess tree(s) on shutdown")
+
     # Shutdown: cancel background tasks if still running
     for task in (
         sync_task,

@@ -218,7 +218,11 @@ Often yes. AddaxAI copies your database every day and before every update, and y
 
 <FaqItem id="the-app-says-the-previous-run-did-not-finish" q="The app says the previous run did not finish. Where are my results?">
 
-They are gone. The run was interrupted, by a crash, a power cut or the app closing, and the results of an interrupted run are not saved anywhere. Restoring a backup will not bring them back either, because the run was never in one. Open the folder again and click "Re-run analysis". The run starts from the beginning, and your photos and backups are untouched.
+The run was interrupted, by a crash, a power cut or the app closing. Its results never reached the database, so they are not in any backup either, and restoring one will not bring them back.
+
+What does survive is the detection progress. While MegaDetector works through your photos it saves where it got to every few hundred images. Open the folder again and click "Re-run analysis". If there is progress to pick up, the window says how far detection got and offers "Continue" next to "Start over". Continue skips the photos that were already detected; the steps after detection (species classification, counting) run again from the start. Videos are not covered: their detection always starts over.
+
+Continue is only offered when the detection settings (detector, image size, augmentation) are the same as in the interrupted run. Your photos and backups are untouched either way.
 
 </FaqItem>
 

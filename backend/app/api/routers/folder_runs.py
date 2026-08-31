@@ -46,6 +46,7 @@ from app.core.confidence import DEFAULT_COUNTING_THRESHOLD
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
+from app.ml import detection_checkpoint as ckpt
 from app.ml.postprocessing_outputs.output_preview import (
     build_output_preview,
 )
@@ -323,6 +324,16 @@ class OutputPreviewResponse(BaseModel):
     root_files: list[str]
 
 
+class DetectionResume(BaseModel):
+    """What an interrupted run's detection checkpoint holds, for the
+    Continue / Start over choice in the re-run dialog. ``images_done ==
+    images_total`` means detection finished and only the later phases
+    are left to redo."""
+
+    images_done: int
+    images_total: int
+
+
 class FolderRunLookupResponse(BaseModel):
     """Summary the Step 1 folder picker uses to render the
     "already analysed" notice card.
@@ -350,6 +361,10 @@ class FolderRunLookupResponse(BaseModel):
     classification_model_id: str | None
     detection_model_name: str | None
     classification_model_name: str | None
+    # The saved detection settings, so the re-run dialog can tell whether
+    # the form still matches what ``detection_resume`` was measured under.
+    detection_image_size: int | None
+    detection_augment: bool
     step: FolderRunStep
     file_count: int
     detection_count: int
@@ -361,6 +376,18 @@ class FolderRunLookupResponse(BaseModel):
     # split. ``event_count`` is the denominator for the confirmed percentage.
     event_count: int
     confirmed_event_count: int
+    # How far image detection got before the run was interrupted, when
+    # there is something to continue from. None for every other run.
+    detection_resume: DetectionResume | None = None
+
+
+class RerunRequest(BaseModel):
+    """Body of ``POST /api/folder-runs/{id}/rerun``. Optional: an empty
+    body is a plain re-run that clears everything."""
+
+    # Keep the interrupted run's detection checkpoint so the next run
+    # continues where detection stopped (the user chose Continue).
+    keep_checkpoint: bool = False
 
 
 class SaveOutputsResponse(BaseModel):
@@ -451,12 +478,17 @@ def _find_existing_run(db: Session, source_folder: str) -> Project | None:
 
     Pre-existing duplicates are not deleted here — they stay
     invisible (no list surfaces them) and harmless.
+
+    Compared in the normalised form the queue stores, so a typed
+    trailing slash still finds the run.
     """
+    from app.services.csv_import_deployments import normalize_folder
+
     stmt = (
         select(Project)
         .join(DeploymentQueue, DeploymentQueue.project_id == Project.id)
         .where(Project.mode == "folder_run")
-        .where(DeploymentQueue.folder_path == source_folder)
+        .where(DeploymentQueue.folder_path == normalize_folder(source_folder))
         .order_by(Project.updated_at_utc.desc())
         .limit(1)
     )
@@ -757,13 +789,20 @@ def delete_folder_run(run_id: str, db: Session = Depends(get_db)) -> None:
 
 @router.get("/lookup", response_model=FolderRunLookupResponse | None)
 def lookup_folder_run(
-    folder: str, db: Session = Depends(get_db)
+    folder: str,
+    image_count: int | None = None,
+    db: Session = Depends(get_db),
 ) -> FolderRunLookupResponse | None:
     """Probe for an existing folder-run project that points at ``folder``.
 
     Returns the summary the Step 1 picker needs to render the
     "already analysed" notice card. Returns ``null`` when no matching
     run exists — that's the common case, the form just proceeds.
+
+    ``image_count`` is the picker's live scan of the folder. It decides
+    whether an interrupted run's detection checkpoint still applies (see
+    ``_detection_resume``); without it the queue entry's stored count is
+    used, which is what the interrupted run saw.
 
     Declared above ``GET /{run_id}`` so the ``lookup`` literal is
     routed correctly (FastAPI matches routes in declaration order).
@@ -851,6 +890,8 @@ def lookup_folder_run(
         classification_model_id=existing.classification_model_id,
         detection_model_name=detection_model_name,
         classification_model_name=classification_model_name,
+        detection_image_size=existing.detection_image_size,
+        detection_augment=existing.detection_augment,
         step=step,
         file_count=file_count,
         detection_count=detection_count,
@@ -859,6 +900,50 @@ def lookup_folder_run(
         verified_detection_count=verified_detection_count,
         event_count=event_count,
         confirmed_event_count=confirmed_event_count,
+        detection_resume=_detection_resume(db, existing, folder, image_count),
+    )
+
+
+def _detection_resume(
+    db: Session, project: Project, folder: str, image_count: int | None
+) -> DetectionResume | None:
+    """What the interrupted run's checkpoint holds under the saved
+    detection settings, or None.
+
+    Only a ``failed`` entry is asked: a completed run has no checkpoint
+    files left, and a pending one (after Cancel) continues on its own
+    when it is started. The image count is the picker's live scan when
+    it sent one, else the queue entry's, which the worker rewrote to
+    what was on disk before detection started. A folder that gained or
+    lost files since the crash therefore gets no Continue offer, which
+    is also what the worker decides when it checks the same meta at run
+    start.
+    """
+    if project.detection_model_id is None:
+        return None
+    entry = next(
+        (
+            e
+            for e in crud_queue.get_queue_entries(db, project.id, status=None)
+            if e.folder_path == folder
+        ),
+        None,
+    )
+    if entry is None or entry.status != "failed":
+        return None
+    state = ckpt.inspect(
+        ckpt.artifacts_dir(Path(entry.folder_path), project.id),
+        ckpt.CheckpointMeta(
+            detection_model_id=project.detection_model_id,
+            image_size=project.detection_image_size,
+            augment=project.detection_augment,
+            image_count=entry.image_count if image_count is None else image_count,
+        ),
+    )
+    if state is None:
+        return None
+    return DetectionResume(
+        images_done=state.images_done, images_total=state.images_total
     )
 
 
@@ -872,7 +957,9 @@ def get_folder_run(
 
 @router.post("/{run_id}/rerun", response_model=FolderRunResponse)
 def rerun_folder_run(
-    run_id: str, db: Session = Depends(get_db)
+    run_id: str,
+    body: RerunRequest | None = None,
+    db: Session = Depends(get_db),
 ) -> FolderRunResponse:
     """Reset a folder run for re-analysis.
 
@@ -881,6 +968,8 @@ def rerun_folder_run(
     queue entry back to ``status='pending'`` so the existing process
     endpoint picks it up. The project row and the queue entry id
     survive, so the URL stays valid and the persisted step stays put.
+    With ``keep_checkpoint`` the interrupted run's detection checkpoint
+    files stay in the cache so detection continues where it stopped.
 
     This destroys human verifications. The caller surfaces a
     destructive confirm dialog before invoking it.
@@ -896,7 +985,9 @@ def rerun_folder_run(
     # reset covers both the DB wipe and the on-disk .addaxai cleanup, and
     # the latter is unbounded on a slow external drive.
     started = time.perf_counter()
-    ok = crud_project.reset_folder_run_data(db, run_id)
+    ok = crud_project.reset_folder_run_data(
+        db, run_id, keep_checkpoint=bool(body and body.keep_checkpoint)
+    )
     if not ok:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

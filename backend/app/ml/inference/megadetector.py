@@ -67,6 +67,9 @@ def _build_run_detector_batch_cmd(
     batch_size: int | None,
     image_size: int | None,
     augment: bool,
+    checkpoint_path: Path | None = None,
+    checkpoint_frequency: int | None = None,
+    resume: bool = False,
 ) -> list[str]:
     """Assemble the ``run_detector_batch`` command line.
 
@@ -78,6 +81,11 @@ def _build_run_detector_batch_cmd(
     MegaDetector use its own default). Note ``--include_image_size`` (below)
     is a different flag: it adds image dimensions to the output, unrelated to
     the ``--image_size`` inference-resize override.
+
+    ``checkpoint_path`` with ``checkpoint_frequency`` makes MegaDetector save
+    its results so far every N images; ``resume`` additionally loads that
+    file first and skips the images already in it. See "Resuming an
+    interrupted analysis" in DEVELOPERS.md.
     """
     cmd = [
         str(python_path),
@@ -105,6 +113,14 @@ def _build_run_detector_batch_cmd(
         cmd.insert(-3, str(image_size))
     if augment:
         cmd.insert(-3, "--augment")
+    if checkpoint_path is not None and checkpoint_frequency is not None:
+        cmd.insert(-3, "--checkpoint_frequency")
+        cmd.insert(-3, str(checkpoint_frequency))
+        cmd.insert(-3, "--checkpoint_path")
+        cmd.insert(-3, str(checkpoint_path))
+        if resume:
+            cmd.insert(-3, "--resume_from_checkpoint")
+            cmd.insert(-3, str(checkpoint_path))
     return cmd
 
 
@@ -277,6 +293,9 @@ class MegaDetectorV1000(DetectionModel):
         progress_callback: Callable[[str, float], None] | None = None,
         output_path: Path | None = None,
         job_id: str | None = None,
+        checkpoint_path: Path | None = None,
+        checkpoint_frequency: int | None = None,
+        images_done: int = 0,
     ) -> Path:
         """
         Run MegaDetector and save results directly to JSON file (for JSON-based pipeline).
@@ -298,6 +317,12 @@ class MegaDetectorV1000(DetectionModel):
             progress_callback: Optional callback(message, progress)
             output_path: Optional explicit output path. If provided, results are written
                 here instead of the default .addaxai/detection_results.json.
+            checkpoint_path: Where MegaDetector saves its results so far, every
+                ``checkpoint_frequency`` images. When the file already exists
+                the run resumes from it. None disables checkpointing.
+            images_done: How many of ``image_paths`` the checkpoint already
+                holds. MegaDetector's own progress counts only the remaining
+                images, so this offsets the progress shown to the user.
 
         Returns:
             Path to saved detection_results.json file
@@ -344,6 +369,13 @@ class MegaDetectorV1000(DetectionModel):
                 with open(file_list_json, "w") as f:
                     json.dump([str(p) for p in image_paths], f)
 
+                resume = checkpoint_path is not None and checkpoint_path.exists()
+                total_images = len(image_paths)
+                # What MegaDetector still has to do. Its tqdm counts these,
+                # so every count it reports is offset by ``images_done``
+                # below to read as progress over the whole folder.
+                remaining_images = max(total_images - images_done, 0)
+
                 # Build command — pass file list instead of folder
                 cmd = _build_run_detector_batch_cmd(
                     python_path=self.python_path,
@@ -354,11 +386,29 @@ class MegaDetectorV1000(DetectionModel):
                     batch_size=batch_size,
                     image_size=image_size,
                     augment=augment,
+                    checkpoint_path=checkpoint_path,
+                    checkpoint_frequency=checkpoint_frequency,
+                    resume=resume,
                 )
 
                 logger.info(f"Running command: {' '.join(cmd)}")
 
-                if progress_callback:
+                if resume:
+                    logger.info(
+                        f"Resuming detection from {checkpoint_path}: "
+                        f"{images_done} of {total_images} images already done"
+                    )
+                    if progress_callback:
+                        try:
+                            progress_callback(
+                                f"Continuing where detection stopped: "
+                                f"{images_done:,} of {total_images:,} images already done",
+                                0.1 + 0.8 * images_done / max(total_images, 1),
+                                {"current": images_done, "total": total_images},
+                            )
+                        except TypeError:
+                            pass
+                elif progress_callback:
                     progress_callback(f"Running detection on {len(image_paths)} images...", 0.1)
 
                 # Execute MegaDetector with streaming output in its own
@@ -418,12 +468,25 @@ class MegaDetectorV1000(DetectionModel):
                                             metrics.get("current", 0)
                                             / total_batches
                                         )
-                                        metrics["total"] = len(image_paths)
+                                        metrics["total"] = remaining_images
                                         metrics["current"] = round(
-                                            fraction * len(image_paths)
+                                            fraction * remaining_images
                                         )
                                     if "rate" in metrics:
                                         metrics["rate"] *= batch_size
+
+                                # On a resume MegaDetector counts only the
+                                # images it still has to do. Shift both the
+                                # count and the bar so they read over the
+                                # whole folder.
+                                if images_done:
+                                    if metrics and "current" in metrics:
+                                        metrics["current"] += images_done
+                                        metrics["total"] = total_images
+                                    if progress is not None:
+                                        progress = (
+                                            images_done + progress * remaining_images
+                                        ) / max(total_images, 1)
 
                                 if progress is not None:
                                     # Try to send metrics if callback accepts
@@ -456,6 +519,23 @@ class MegaDetectorV1000(DetectionModel):
                 # but downstream consumers expect relative paths
                 with open(temp_output) as f:
                     md_results = json.load(f)
+
+                # A resumed run carries every entry of its checkpoint, also
+                # for files renamed or removed since. Keep only what was
+                # asked for, or a file that is gone gets a row in the
+                # database. Compared as paths: MegaDetector writes forward
+                # slashes on every platform.
+                wanted = {Path(p) for p in image_paths}
+                all_images = md_results.get("images", [])
+                md_results["images"] = [
+                    img for img in all_images if Path(img["file"]) in wanted
+                ]
+                dropped = len(all_images) - len(md_results["images"])
+                if dropped:
+                    logger.info(
+                        f"Dropped {dropped} checkpoint entr{'y' if dropped == 1 else 'ies'} "
+                        f"for files no longer in the folder"
+                    )
 
                 # Every consumer treats "file" as relative to the deployment
                 # folder (see DEVELOPERS.md "Paths to user media are never

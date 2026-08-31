@@ -27,6 +27,7 @@ from app.core.job_cancellation import JobCancelledError, clear_cancel
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db, refresh_query_statistics
+from app.ml import detection_checkpoint as ckpt
 from app.ml.detection import MD_OUTPUT_CONFIDENCE_THRESHOLD
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.inference.custom_classification_model import CustomClassificationModel
@@ -314,7 +315,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                 # JSON file paths
                 video_json_path = artifacts_folder / "detection_video.json"
-                image_json_path = artifacts_folder / "detection_image.json"
+                image_json_path = artifacts_folder / ckpt.IMAGE_DETECTION_JSON
                 final_json_path = artifacts_folder / "results.json"
 
                 json_files_to_merge = []
@@ -570,6 +571,10 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 # we synthesise a detection JSON with one full-image bbox per
                 # image so the classification phase has something to consume.
                 # ============================================================
+                # Bound before the branches below, like `cls_model_dir` above:
+                # the MegaDetector branches read it and the full-image branch
+                # never sets it.
+                resume_state: ckpt.ResumeState | None = None
                 if image_files and full_image_cls:
                     logger.info(
                         f"Phase 3 (skipped): full-image classifier — "
@@ -587,6 +592,47 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     json_files_to_merge.append(image_json_path)
 
                 elif image_files:
+                    # An interrupted run may have left detection work in the
+                    # artifacts folder: MegaDetector's own checkpoint, or the
+                    # whole detection JSON when a later phase died. Either is
+                    # only trusted under the exact same detection settings;
+                    # anything else is cleared before we start. See "Resuming
+                    # an interrupted analysis" in DEVELOPERS.md.
+                    checkpoint_meta = ckpt.CheckpointMeta(
+                        detection_model_id=detection_model_id,
+                        image_size=project.detection_image_size,
+                        augment=project.detection_augment,
+                        image_count=len(image_files),
+                    )
+                    resume_state = ckpt.inspect(artifacts_folder, checkpoint_meta)
+                    if resume_state is None:
+                        if ckpt.CheckpointMeta.read(artifacts_folder) is not None:
+                            logger.info(
+                                "Discarding a detection checkpoint made under "
+                                "other settings or for a different set of images"
+                            )
+                        ckpt.discard(artifacts_folder)
+                        checkpoint_meta.write(artifacts_folder)
+
+                if image_files and not full_image_cls and resume_state and resume_state.complete:
+                    logger.info(
+                        f"Phase 3 (skipped): reusing the finished detection of "
+                        f"{len(image_files)} images from an interrupted run"
+                    )
+                    await deployment_progress_callback(
+                        "Detection already finished in the interrupted run, reusing it",
+                        0.0,
+                        "image_detection",
+                        1.0,
+                        {
+                            "current": len(image_files),
+                            "total": len(image_files),
+                            "unit": "image",
+                        },
+                    )
+                    json_files_to_merge.append(image_json_path)
+
+                elif image_files and not full_image_cls:
                     logger.info(f"Phase 3: Running image detection on {len(image_files)} images")
 
                     # Create synchronous progress wrapper for executor
@@ -621,7 +667,10 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         _fp=folder_path,
                         _ijp=image_json_path,
                         _bs=project.detection_batch_size,
-                        _jid=job_id: detection_model.detect_to_json(
+                        _jid=job_id,
+                        _af=artifacts_folder,
+                        _done=resume_state.images_done if resume_state else 0:
+                        detection_model.detect_to_json(
                             image_paths=_if,
                             deployment_folder=_fp,
                             confidence_threshold=MD_OUTPUT_CONFIDENCE_THRESHOLD,
@@ -631,6 +680,11 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                             progress_callback=sync_image_detection_progress,
                             output_path=_ijp,
                             job_id=_jid,
+                            checkpoint_path=_af / ckpt.CHECKPOINT_FILE,
+                            checkpoint_frequency=ckpt.checkpoint_frequency(
+                                len(_if), _bs
+                            ),
+                            images_done=_done,
                         ),
                     )
 
@@ -1053,8 +1107,18 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                     logger.info(f"Embedding complete: {embedded_count} detections embedded")
 
-                # Clean up intermediate JSONs (only results.json is needed at runtime)
-                for intermediate in [video_json_path, image_json_path]:
+                # Clean up intermediate JSONs (only results.json is needed at
+                # runtime). The checkpoint files go with them: MegaDetector
+                # removes its own checkpoint when detection finishes, but a
+                # run that never reached the MegaDetector branch (videos only,
+                # full-image classifier) would leave a stale one behind.
+                for intermediate in [
+                    video_json_path,
+                    image_json_path,
+                    artifacts_folder / ckpt.META_FILE,
+                    artifacts_folder / ckpt.CHECKPOINT_FILE,
+                    artifacts_folder / (ckpt.CHECKPOINT_FILE + "_tmp"),
+                ]:
                     if intermediate != final_json_path and intermediate.exists():
                         intermediate.unlink()
                         logger.debug(f"Cleaned up intermediate: {intermediate.name}")

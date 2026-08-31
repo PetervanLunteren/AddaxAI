@@ -47,10 +47,18 @@ def get_queue_entry(db: Session, entry_id: str) -> DeploymentQueue | None:
 
 def _new_queue_entry(entry: DeploymentQueueCreate) -> DeploymentQueue:
     """Build the row. Shared so the single and bulk paths cannot drift apart
-    when a column is added."""
+    when a column is added.
+
+    The folder path is stored normalised (no trailing slash, no doubled
+    separators): the worker builds the deployment's path through `Path`,
+    and everything that later pairs the two (the ghost-deployment rule in
+    `reconcile_interrupted_jobs`, the folder-run lookup) compares strings.
+    """
+    from app.services.csv_import_deployments import normalize_folder
+
     return DeploymentQueue(
         project_id=entry.project_id,
-        folder_path=entry.folder_path,
+        folder_path=normalize_folder(entry.folder_path),
         site_id=entry.site_id,
         video_count=entry.video_count,
         image_count=entry.image_count,

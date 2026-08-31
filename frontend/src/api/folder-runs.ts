@@ -80,6 +80,10 @@ export interface FolderRunLookup {
    * when the model isn't installed (catalog drift, fresh install). */
   detection_model_name: string | null;
   classification_model_name: string | null;
+  /** The saved detection settings, so the re-run dialog can tell whether
+   * the form still matches what `detection_resume` was measured under. */
+  detection_image_size: number | null;
+  detection_augment: boolean;
   step: FolderRunStep;
   file_count: number;
   detection_count: number;
@@ -91,6 +95,16 @@ export interface FolderRunLookup {
    * two-metric verification split (the other half is verified detections). */
   event_count: number;
   confirmed_event_count: number;
+  /** How far image detection got before the run was interrupted, when
+   * there is a checkpoint to continue from. `images_done === images_total`
+   * means detection finished and only the later steps are left. Null for
+   * every other run. */
+  detection_resume: DetectionResume | null;
+}
+
+export interface DetectionResume {
+  images_done: number;
+  images_total: number;
 }
 
 export type SeparateGroupBy = "taxonomic" | "flat" | "none";
@@ -318,10 +332,13 @@ export const folderRunsApi = {
     api.get<FolderRunResponse>(`/api/folder-runs/${runId}`),
 
   /** Probe for an existing folder-run project pointing at this source
-   * folder. Returns null when there's no match (the common case). */
-  lookup: (folder: string) =>
+   * folder. Returns null when there's no match (the common case).
+   * `imageCount` is the live scan count; it decides whether a failed
+   * run's detection checkpoint still fits the folder. */
+  lookup: (folder: string, imageCount?: number) =>
     api.get<FolderRunLookup | null>(
-      `/api/folder-runs/lookup?folder=${encodeURIComponent(folder)}`,
+      `/api/folder-runs/lookup?folder=${encodeURIComponent(folder)}` +
+        (imageCount === undefined ? "" : `&image_count=${imageCount}`),
     ),
 
   /** Persist the current step so a reopened run lands here. */
@@ -329,9 +346,11 @@ export const folderRunsApi = {
     api.patch<FolderRunResponse>(`/api/folder-runs/${runId}/step`, { step }),
 
   /** Wipe a folder run's analysis output so the queue entry can be
-   * re-processed. Caller surfaces a destructive confirm dialog. */
-  rerun: (runId: string) =>
-    api.post<FolderRunResponse>(`/api/folder-runs/${runId}/rerun`, {}),
+   * re-processed. Caller surfaces a destructive confirm dialog.
+   * `keep_checkpoint` keeps an interrupted run's detection checkpoint so
+   * the next run continues where detection stopped. */
+  rerun: (runId: string, opts: { keep_checkpoint: boolean } = { keep_checkpoint: false }) =>
+    api.post<FolderRunResponse>(`/api/folder-runs/${runId}/rerun`, opts),
 
   /** Run the chosen postprocess outputs synchronously. */
   saveOutputs: (runId: string, payload: SaveOutputsRequest) =>

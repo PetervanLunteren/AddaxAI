@@ -73,6 +73,28 @@ def clear_cancel(job_id: str) -> None:
         _current_process.pop(job_id, None)
 
 
+def kill_all_tracked() -> int:
+    """Kill every tracked subprocess tree. Call once at backend shutdown.
+
+    The ML subprocesses run in their own session (see `popen_group`), so
+    stopping the backend does not stop them: a detector left behind by an
+    app quit ran on for hours, then deleted its own checkpoint and wrote
+    its output where nothing would ever read it. Returns how many trees
+    were killed.
+    """
+    with _lock:
+        tracked = list(_current_process.items())
+    killed = 0
+    for job_id, proc in tracked:
+        if proc.poll() is None:
+            logger.info(
+                f"Shutdown: killing subprocess tree for job {job_id}, pid {proc.pid}"
+            )
+            _kill_tree(proc)
+            killed += 1
+    return killed
+
+
 @contextmanager
 def track_subprocess(job_id: str | None, proc: subprocess.Popen):
     """Register `proc` as the job's current subprocess for the duration

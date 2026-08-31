@@ -180,3 +180,68 @@ def test_pending_start_cleanup_leaves_a_job_that_ran(db):
     db.expire_all()
     refreshed = db.get(Job, job.id)
     assert refreshed.status == "completed"
+
+
+def _stuck_entry(db, project_id: str, folder: str):
+    from app.api.crud import deployment_queue as crud_queue
+    from app.api.schemas.deployment_queue import DeploymentQueueCreate
+
+    entry = crud_queue.create_queue_entry(
+        db, DeploymentQueueCreate(project_id=project_id, folder_path=folder)
+    )
+    crud_queue.update_queue_status(db, entry.id, status="processing")
+    return entry
+
+
+def test_reconcile_deletes_the_ghost_placeholder_of_a_stuck_entry(db, tmp_path):
+    """A hard kill leaves the worker's placeholder deployment behind: same
+    project, same folder, no files, entry still processing. Reconcile
+    deletes exactly that row and leaves the artifacts folder alone, since
+    it holds the detection checkpoint the next run continues from."""
+    from app.api.crud.job import reconcile_interrupted_jobs
+    from app.models import Deployment
+    from tests.conftest import make_deployment, make_file
+
+    folder = tmp_path / "cam1"
+    folder.mkdir()
+    artifacts = folder / ".addaxai" / "projects"
+    artifacts.mkdir(parents=True)
+    marker = artifacts / "md_checkpoint.json"
+    marker.write_text("{}")
+
+    project = make_project(db)
+    other_project = make_project(db)
+    _stuck_entry(db, project.id, str(folder))
+
+    ghost = make_deployment(db, project_id=project.id, folder_path=str(folder))
+    with_files = make_deployment(db, project_id=project.id, folder_path=str(folder))
+    make_file(db, deployment_id=with_files.id)
+    other_folder = make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "cam2")
+    )
+    other_project_dep = make_deployment(
+        db, project_id=other_project.id, folder_path=str(folder)
+    )
+    db.flush()
+
+    reconcile_interrupted_jobs(db)
+
+    assert db.get(Deployment, ghost.id) is None
+    for kept in (with_files, other_folder, other_project_dep):
+        assert db.get(Deployment, kept.id) is not None
+    assert marker.exists()
+
+
+def test_reconcile_without_stuck_entries_keeps_zero_file_deployments(db, tmp_path):
+    """The rule is tied to a stuck entry. A zero-file deployment on its own
+    (e.g. created through the API) is not a ghost and stays."""
+    from app.api.crud.job import reconcile_interrupted_jobs
+    from app.models import Deployment
+    from tests.conftest import make_deployment
+
+    project = make_project(db)
+    dep = make_deployment(db, project_id=project.id, folder_path=str(tmp_path))
+    db.flush()
+
+    assert reconcile_interrupted_jobs(db) == 0
+    assert db.get(Deployment, dep.id) is not None

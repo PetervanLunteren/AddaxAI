@@ -488,8 +488,8 @@ export function RunQueueModal({
                 : "AddaxAI filled in what it found. You can accept the results as they are, but the AI makes mistakes, so a quick review is recommended."
               : hasCancelled
                 ? mode === "folder-run"
-                  ? "The run was stopped before finishing."
-                  : "Review what finished before the run was stopped."
+                  ? "The run was stopped before finishing. Any finished detection work is kept for the next run of this folder."
+                  : "Review what finished before the run was stopped. Any finished detection work is kept for the next run of that folder."
                 : hasError
                   ? "The run stopped before finishing. Review the details below."
                   : isCancelling

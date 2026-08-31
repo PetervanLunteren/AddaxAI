@@ -394,7 +394,12 @@ def delete_deployment(db: Session, deployment_id: str) -> bool:
     return True
 
 
-def _delete_deployment_artifacts(folder_path: str, project_id: str) -> None:
+def _delete_deployment_artifacts(
+    folder_path: str,
+    project_id: str,
+    *,
+    keep_names: frozenset[str] = frozenset(),
+) -> None:
     """
     Remove the project-scoped .addaxai folder for a deleted deployment.
 
@@ -403,6 +408,10 @@ def _delete_deployment_artifacts(folder_path: str, project_id: str) -> None:
     (e.g. an unmounted external drive). Cleans up empty parent dirs
     (`.addaxai/projects/`, `.addaxai/`) so the folder is left as the
     user originally placed it on disk.
+
+    `keep_names` spares the named files directly under the project
+    folder when any of them exists: the re-run path uses it to keep an
+    interrupted run's detection checkpoint while everything else goes.
     """
     project_dir = Path(folder_path) / ".addaxai" / "projects" / project_id
     projects_dir = project_dir.parent
@@ -414,6 +423,21 @@ def _delete_deployment_artifacts(folder_path: str, project_id: str) -> None:
             # external or network drive, which is indistinguishable from a
             # slow DB delete in the log otherwise.
             started = time.perf_counter()
+            kept = sorted(n for n in keep_names if (project_dir / n).exists())
+            if kept:
+                for child in project_dir.iterdir():
+                    if child.name in kept:
+                        continue
+                    if child.is_dir() and not child.is_symlink():
+                        shutil.rmtree(child)
+                    else:
+                        child.unlink()
+                logger.info(
+                    f"Removed deployment artifacts under {project_dir}, "
+                    f"kept {kept} ({time.perf_counter() - started:.1f}s)"
+                )
+                # The folder is not empty, so there is nothing to roll up.
+                return
             shutil.rmtree(project_dir)
             logger.info(
                 f"Removed deployment artifacts: {project_dir} "

@@ -294,7 +294,9 @@ def delete_folder_run(db: Session, project_id: str) -> bool:
     return True
 
 
-def reset_folder_run_data(db: Session, project_id: str) -> bool:
+def reset_folder_run_data(
+    db: Session, project_id: str, *, keep_checkpoint: bool = False
+) -> bool:
     """
     Reset a folder-run for re-analysis.
 
@@ -306,12 +308,19 @@ def reset_folder_run_data(db: Session, project_id: str) -> bool:
     deployment-id fields so the existing ``POST /api/deployment-queue/
     process`` flow picks it up as if it had never run.
 
+    ``keep_checkpoint`` spares an interrupted run's detection checkpoint
+    files so the next run continues where detection stopped (the user
+    chose Continue). Everything else in the cache still goes.
+
     Returns True on success, False when the project doesn't exist.
 
     Verified detections are destroyed by this operation. The caller
     must surface a destructive confirm dialog before invoking it.
     """
     from app.api.crud.deployment import _delete_deployment_artifacts
+    from app.ml.detection_checkpoint import CHECKPOINT_FILES
+
+    keep_names = frozenset(CHECKPOINT_FILES) if keep_checkpoint else frozenset()
 
     db_project = get_project(db, project_id)
     if db_project is None:
@@ -340,7 +349,7 @@ def reset_folder_run_data(db: Session, project_id: str) -> bool:
     db.commit()
 
     for folder_path in folder_paths:
-        _delete_deployment_artifacts(folder_path, project_id)
+        _delete_deployment_artifacts(folder_path, project_id, keep_names=keep_names)
     return True
 
 

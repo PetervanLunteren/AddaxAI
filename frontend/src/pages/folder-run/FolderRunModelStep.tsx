@@ -380,12 +380,24 @@ export function FolderRunModelStep() {
   const [offsetModalOpen, setOffsetModalOpen] = useState(false);
   const lookupReady =
     !!folderPath && !!scanResult && scanResult.total_count > 0;
+  // The live image count rides along so the lookup can tell whether an
+  // interrupted run's detection checkpoint still fits the folder.
   const { data: lookupRun, isFetching: isLookingUp } = useQuery({
-    queryKey: ["folder-run-lookup", folderPath],
-    queryFn: () => folderRunsApi.lookup(folderPath!),
+    queryKey: ["folder-run-lookup", folderPath, scanResult?.image_count],
+    queryFn: () => folderRunsApi.lookup(folderPath!, scanResult?.image_count),
     enabled: lookupReady,
     staleTime: 30_000,
   });
+  // A brand-new run that lands on a folder with a run already is that
+  // run: open it. Its own setup step knows whether it finished, failed
+  // or can continue from a checkpoint, so both entry paths (this page
+  // and Show recent runs) show one and the same notice and dialog.
+  // Staying here used to call a failed run "already analysed" and its
+  // Re-run went through force_new, which deleted the checkpoint.
+  useEffect(() => {
+    if (runId || !lookupRun || isLookingUp) return;
+    navigate(`/folder-runs/${lookupRun.id}/setup`, { replace: true });
+  }, [runId, lookupRun, isLookingUp, navigate]);
   // Recent runs: the caption link only appears when there is no folder
   // picked yet AND there is at least one previous run, so it never links to
   // an empty list. The dialog owns the resume / delete behaviour.
@@ -624,10 +636,18 @@ export function FolderRunModelStep() {
    * deleted by `POST /api/folder-runs/{id}/rerun`. The confirm
    * dialog gates this mutation. */
   const rerunAnalysis = useMutation({
-    mutationFn: async (data: SettingsFormData) => {
+    mutationFn: async ({
+      data,
+      keepCheckpoint,
+    }: {
+      data: SettingsFormData;
+      keepCheckpoint: boolean;
+    }) => {
       if (!runId) throw new Error("missing run id");
       await persistSettings(runId, data);
-      const reset = await folderRunsApi.rerun(runId);
+      const reset = await folderRunsApi.rerun(runId, {
+        keep_checkpoint: keepCheckpoint,
+      });
       queryClient.setQueryData(["folder-run", runId], reset);
       const resp = await deploymentQueueApi.process({ project_id: runId });
       return resp;
@@ -695,7 +715,7 @@ export function FolderRunModelStep() {
    * screen that can say so: the notice row behind it merely greys out its
    * buttons. Closing on settle rather than on success preserves today's
    * error behaviour, where the message renders on the page underneath. */
-  const confirmRerun = () => {
+  const confirmRerun = (keepCheckpoint: boolean) => {
     setNothingToRun(false);
     const closeDialog = () => setRerunOpen(false);
     if (!lookupRun) {
@@ -705,7 +725,10 @@ export function FolderRunModelStep() {
     const data = form.getValues();
     persistLastUsed(data);
     if (lookupRun.id === runId) {
-      rerunAnalysis.mutate(data, { onSettled: closeDialog });
+      rerunAnalysis.mutate(
+        { data, keepCheckpoint },
+        { onSettled: closeDialog },
+      );
       return;
     }
     if (!folderPath || !scanResult) {
@@ -814,6 +837,15 @@ export function FolderRunModelStep() {
   const queueStatus = run?.queue_entry?.status;
   const isTerminal =
     queueStatus === "completed" || queueStatus === "failed";
+  // Continue is only honest while the form still holds the detection
+  // settings the checkpoint was made under: the lookup is keyed by folder
+  // and not refetched on form edits, and a re-run persists the form first,
+  // so a changed image size would make the worker discard the checkpoint.
+  const canContinue =
+    !!lookupRun?.detection_resume &&
+    form.watch("detection_model_id") === lookupRun.detection_model_id &&
+    form.watch("detection_image_size") === lookupRun.detection_image_size &&
+    form.watch("detection_augment") === lookupRun.detection_augment;
   const folderChanged =
     !!runId && run?.queue_entry?.folder_path !== folderPath;
   const isMutating =
@@ -1541,6 +1573,7 @@ export function FolderRunModelStep() {
         open={rerunOpen}
         run={lookupRun ?? null}
         failed={lookupIsCurrent && queueStatus === "failed"}
+        canContinue={canContinue}
         isBusy={rerunAnalysis.isPending || createRun.isPending}
         onCancel={() => setRerunOpen(false)}
         onConfirm={confirmRerun}

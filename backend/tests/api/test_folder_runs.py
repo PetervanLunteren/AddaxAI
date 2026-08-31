@@ -1246,3 +1246,169 @@ def test_delete_folder_run_refuses_research_project(client, db):
 
     assert client.delete(f"/api/folder-runs/{project.id}").status_code == 404
     assert db.get(type(project), project.id) is not None
+
+
+# --- detection checkpoints -------------------------------------------------
+
+
+def _artifacts(folder, run_id):
+    from app.ml.detection_checkpoint import artifacts_dir
+
+    d = artifacts_dir(folder, run_id)
+    d.mkdir(parents=True)
+    return d
+
+
+def _write_checkpoint_files(artifacts, *, images_done: int, meta):
+    import json
+
+    meta.write(artifacts)
+    (artifacts / "md_checkpoint.json").write_text(
+        json.dumps({"checkpoint": [{"file": f"{i}.jpg"} for i in range(images_done)]})
+    )
+
+
+def test_rerun_without_a_body_removes_the_whole_cache(client, tmp_path):
+    folder = tmp_path / "run"
+    folder.mkdir()
+    run_id = _create_run(client, str(folder))
+    artifacts = _artifacts(folder, run_id)
+    (artifacts / "md_checkpoint.json").write_text("{}")
+    (artifacts / "results.json").write_text("{}")
+
+    resp = client.post(f"/api/folder-runs/{run_id}/rerun")
+    assert resp.status_code == 200
+    assert not (folder / ".addaxai").exists()
+
+
+def test_rerun_keeps_only_the_checkpoint_files_when_asked(client, tmp_path):
+    """Continue keeps what the next run needs to pick detection up and
+    nothing else: the rest of the cache describes the run being wiped."""
+    from app.ml.detection_checkpoint import CHECKPOINT_FILES
+
+    folder = tmp_path / "run"
+    folder.mkdir()
+    run_id = _create_run(client, str(folder))
+    artifacts = _artifacts(folder, run_id)
+    for name in CHECKPOINT_FILES:
+        (artifacts / name).write_text("{}")
+    (artifacts / "results.json").write_text("{}")
+    (artifacts / "embeddings.npz").write_bytes(b"x")
+    frames = artifacts / "video_frames" / "clip.mp4"
+    frames.mkdir(parents=True)
+    (frames / "frame000010.jpg").write_bytes(b"jpg")
+
+    resp = client.post(
+        f"/api/folder-runs/{run_id}/rerun", json={"keep_checkpoint": True}
+    )
+    assert resp.status_code == 200
+    assert sorted(p.name for p in artifacts.iterdir()) == sorted(CHECKPOINT_FILES)
+    assert resp.json()["queue_entry"]["status"] == "pending"
+
+
+def test_lookup_reports_detection_resume_for_a_failed_run(client, db, tmp_path):
+    """The re-run dialog's Continue button is fed by the lookup: how far
+    detection got, plus the saved detection settings the checkpoint is
+    valid for. Only a failed entry is asked, and only a checkpoint made
+    under the saved settings counts."""
+    from app.ml.detection_checkpoint import CheckpointMeta
+    from app.models import DeploymentQueue, Project
+
+    folder = tmp_path / "run"
+    folder.mkdir()
+    resp = client.post(
+        "/api/folder-runs",
+        json={"source_folder": str(folder), "image_count": 4, "video_count": 0},
+    )
+    run_id = resp.json()["project"]["id"]
+    entry_id = resp.json()["queue_entry"]["id"]
+    project = db.get(Project, run_id)
+    project.detection_model_id = "MD5A-0-0"
+    entry = db.get(DeploymentQueue, entry_id)
+    entry.status = "failed"
+    db.commit()
+
+    artifacts = _artifacts(folder, run_id)
+    matching = CheckpointMeta(
+        detection_model_id="MD5A-0-0",
+        image_size=project.detection_image_size,
+        augment=project.detection_augment,
+        image_count=4,
+    )
+    _write_checkpoint_files(artifacts, images_done=3, meta=matching)
+
+    body = client.get("/api/folder-runs/lookup", params={"folder": str(folder)}).json()
+    assert body["detection_resume"] == {"images_done": 3, "images_total": 4}
+    assert body["detection_image_size"] == project.detection_image_size
+    assert body["detection_augment"] == project.detection_augment
+
+    # Made under other settings: nothing to continue from.
+    other = CheckpointMeta(
+        detection_model_id="MD5A-0-0",
+        image_size=1280,
+        augment=project.detection_augment,
+        image_count=4,
+    )
+    _write_checkpoint_files(artifacts, images_done=3, meta=other)
+    body = client.get("/api/folder-runs/lookup", params={"folder": str(folder)}).json()
+    assert body["detection_resume"] is None
+
+    # A completed run is never asked, whatever sits in the cache.
+    _write_checkpoint_files(artifacts, images_done=3, meta=matching)
+    entry.status = "completed"
+    db.commit()
+    body = client.get("/api/folder-runs/lookup", params={"folder": str(folder)}).json()
+    assert body["detection_resume"] is None
+
+
+def test_lookup_uses_the_live_image_count_when_given(client, db, tmp_path):
+    """The picker knows how many images the folder holds right now. A
+    folder that lost or gained files since the crash gets no Continue,
+    which is also what the worker will decide."""
+    from app.ml.detection_checkpoint import CheckpointMeta
+    from app.models import DeploymentQueue, Project
+
+    folder = tmp_path / "run"
+    folder.mkdir()
+    resp = client.post(
+        "/api/folder-runs",
+        json={"source_folder": str(folder), "image_count": 4, "video_count": 0},
+    )
+    run_id = resp.json()["project"]["id"]
+    project = db.get(Project, run_id)
+    project.detection_model_id = "MD5A-0-0"
+    entry = db.get(DeploymentQueue, resp.json()["queue_entry"]["id"])
+    entry.status = "failed"
+    db.commit()
+    _write_checkpoint_files(
+        _artifacts(folder, run_id),
+        images_done=3,
+        meta=CheckpointMeta("MD5A-0-0", project.detection_image_size,
+                            project.detection_augment, 4),
+    )
+
+    params = {"folder": str(folder)}
+    assert client.get("/api/folder-runs/lookup", params=params).json()[
+        "detection_resume"
+    ] == {"images_done": 3, "images_total": 4}
+    assert client.get(
+        "/api/folder-runs/lookup", params={**params, "image_count": 4}
+    ).json()["detection_resume"] == {"images_done": 3, "images_total": 4}
+    assert client.get(
+        "/api/folder-runs/lookup", params={**params, "image_count": 3}
+    ).json()["detection_resume"] is None
+
+
+def test_folder_run_paths_match_with_or_without_a_trailing_slash(client):
+    """Create with a slash, look up without, and the other way round: one
+    run, found both ways. The queue stores the normalised form."""
+    created = client.post(
+        "/api/folder-runs", json={"source_folder": "/tmp/slash-run/"}
+    ).json()
+    assert created["queue_entry"]["folder_path"] == "/tmp/slash-run"
+    for folder in ("/tmp/slash-run", "/tmp/slash-run/"):
+        body = client.get("/api/folder-runs/lookup", params={"folder": folder}).json()
+        assert body is not None and body["id"] == created["project"]["id"]
+    # And create-or-resume returns the same run rather than a second one.
+    again = client.post("/api/folder-runs", json={"source_folder": "/tmp/slash-run"}).json()
+    assert again["project"]["id"] == created["project"]["id"]

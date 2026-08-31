@@ -151,9 +151,23 @@ def reconcile_interrupted_jobs(db: Session) -> int:
     them alone is what let orphans accumulate for ever, invisible except
     as a job list that never settles.
 
+    A stuck entry may also have left its placeholder deployment behind.
+    The worker creates that row before phase 1 and its failure and
+    cancel handlers delete it, but a hard kill runs no handler, so the
+    ghost stayed: a deployment with today's date and no files that
+    blocked re-adding the same folder. It is exactly "same project,
+    same folder, no File rows, entry still processing", so those rows
+    are deleted here, database only. The artifacts folder is left
+    alone on purpose: it holds the detection checkpoint the next run
+    continues from. The one other way to get a zero-file deployment is
+    `POST /api/deployments`, which nothing in the app calls and which
+    never pairs with a processing entry.
+
     Returns the number of jobs reconciled.
     """
+    from app.models.deployment import Deployment
     from app.models.deployment_queue import DeploymentQueue
+    from app.models.file import File
 
     interrupted = list(
         db.execute(
@@ -180,6 +194,18 @@ def reconcile_interrupted_jobs(db: Session) -> int:
         job.completed_at_utc = now
 
     for entry in stuck:
+        has_files = (
+            select(File.id).where(File.deployment_id == Deployment.id).exists()
+        )
+        ghosts = db.execute(
+            select(Deployment).where(
+                Deployment.project_id == entry.project_id,
+                Deployment.folder_path == entry.folder_path,
+                ~has_files,
+            )
+        ).scalars().all()
+        for ghost in ghosts:
+            db.delete(ghost)
         entry.status = "failed"
         if not entry.error:
             entry.error = reason

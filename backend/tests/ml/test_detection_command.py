@@ -104,3 +104,42 @@ def test_video_cmd_augment_only():
     cmd = _video_cmd(augment=True)
     assert "--image_size" not in cmd
     assert cmd[-1] == "--augment"
+
+
+# --- checkpoints ----------------------------------------------------------
+
+
+def test_image_cmd_has_no_checkpoint_flags_by_default():
+    cmd = _image_cmd()
+    assert "--checkpoint_frequency" not in cmd
+    assert "--checkpoint_path" not in cmd
+    assert "--resume_from_checkpoint" not in cmd
+
+
+def test_image_cmd_checkpoint_flags_when_a_path_is_given():
+    cmd = _image_cmd(
+        checkpoint_path=Path("art/md_checkpoint.json"), checkpoint_frequency=500
+    )
+    assert cmd[cmd.index("--checkpoint_frequency") + 1] == "500"
+    assert cmd[cmd.index("--checkpoint_path") + 1] == "art/md_checkpoint.json"
+    # Not resuming: MegaDetector would otherwise load a file that is not there.
+    assert "--resume_from_checkpoint" not in cmd
+    assert cmd[-3:] == ["model.pt", "files.json", "out.json"]
+
+
+def test_image_cmd_resume_flag_points_at_the_same_checkpoint():
+    cmd = _image_cmd(
+        checkpoint_path=Path("art/md_checkpoint.json"),
+        checkpoint_frequency=500,
+        resume=True,
+    )
+    assert cmd[cmd.index("--resume_from_checkpoint") + 1] == "art/md_checkpoint.json"
+    assert cmd[cmd.index("--checkpoint_path") + 1] == "art/md_checkpoint.json"
+    assert cmd[-3:] == ["model.pt", "files.json", "out.json"]
+
+
+def test_image_cmd_resume_alone_does_nothing():
+    """`resume` without a checkpoint path has nothing to resume from and
+    must not emit a flag MegaDetector would reject."""
+    cmd = _image_cmd(resume=True)
+    assert "--resume_from_checkpoint" not in cmd

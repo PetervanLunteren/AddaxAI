@@ -8,11 +8,18 @@
  * effect with the verified count called out specifically.
  *
  * A failed run (killed by a crash or a power cut) gets a different
- * dialog: there is nothing to weigh, because nothing of it survived and
- * there is no resume. The summary box and the backups Callout are
- * dropped for it. "Analysed 21 Aug · 0 files" is nonsense for a run that
- * never finished, and the backups line sent a user into a loop of
- * restores looking for results that were never saved anywhere.
+ * dialog: there is nothing to weigh, because nothing of it reached the
+ * database. The summary box and the backups Callout are dropped for it.
+ * "Analysed 21 Aug · 0 files" is nonsense for a run that never finished,
+ * and the backups line sent a user into a loop of restores looking for
+ * results that were never saved anywhere.
+ *
+ * What can survive is detection progress: MegaDetector saves a checkpoint
+ * every few hundred images, and a finished detection file counts as one
+ * too. When the lookup reports that (`detection_resume`) and the form
+ * still holds the detection settings it was made under (`canContinue`),
+ * the failed dialog offers Continue next to Start over. The steps after
+ * detection always run again; only detection itself is picked up.
  */
 
 import { Button } from "../ui/button";
@@ -25,7 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
-import type { FolderRunLookup } from "../../api/folder-runs";
+import type { DetectionResume, FolderRunLookup } from "../../api/folder-runs";
 
 interface RerunConfirmDialogProps {
   open: boolean;
@@ -35,15 +42,21 @@ interface RerunConfirmDialogProps {
   /** True when the run's queue entry is "failed": the previous run was
    * interrupted and has no results to discard. */
   failed: boolean;
+  /** True when the failed run left a detection checkpoint that is valid
+   * for the detection settings currently in the form. Adds Continue. */
+  canContinue: boolean;
   isBusy: boolean;
   onCancel: () => void;
-  onConfirm: () => void;
+  /** `keepCheckpoint` is true for Continue, false for Start over and for
+   * a plain re-run. */
+  onConfirm: (keepCheckpoint: boolean) => void;
 }
 
 export function RerunConfirmDialog({
   open,
   run,
   failed,
+  canContinue,
   isBusy,
   onCancel,
   onConfirm,
@@ -52,6 +65,7 @@ export function RerunConfirmDialog({
     !failed &&
     ((run?.verified_detection_count ?? 0) > 0 ||
       (run?.confirmed_event_count ?? 0) > 0);
+  const resume = failed && canContinue ? run?.detection_resume ?? null : null;
 
   return (
     // The dialog stays up while the wipe runs (see `confirmRerun`), so it
@@ -66,12 +80,18 @@ export function RerunConfirmDialog({
       <DialogContent nonDismissable={isBusy}>
         <DialogHeader>
           <DialogTitle>
-            {failed ? "Run the analysis again?" : "Re-run analysis?"}
+            {resume
+              ? "Continue the analysis?"
+              : failed
+                ? "Run the analysis again?"
+                : "Re-run analysis?"}
           </DialogTitle>
           <DialogDescription>
-            {failed
-              ? "The previous run was interrupted. Its results cannot be recovered, so the analysis starts from the beginning."
-              : "Re-running deletes the existing analysis output and starts fresh."}
+            {resume
+              ? formatResume(resume)
+              : failed
+                ? "The previous run was interrupted. Its results cannot be recovered, so the analysis starts from the beginning."
+                : "Re-running deletes the existing analysis output and starts fresh."}
           </DialogDescription>
         </DialogHeader>
 
@@ -112,17 +132,36 @@ export function RerunConfirmDialog({
           <Button variant="outline" onClick={onCancel} disabled={isBusy}>
             Cancel
           </Button>
-          <Button onClick={onConfirm} disabled={isBusy}>
+          {resume && (
+            <Button
+              variant="outline"
+              onClick={() => onConfirm(false)}
+              disabled={isBusy}
+            >
+              Start over
+            </Button>
+          )}
+          <Button onClick={() => onConfirm(!!resume)} disabled={isBusy}>
             {isBusy
               ? "Clearing previous results…"
-              : failed
-                ? "Run analysis"
-                : "Re-run analysis"}
+              : resume
+                ? "Continue"
+                : failed
+                  ? "Run analysis"
+                  : "Re-run analysis"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
+}
+
+function formatResume(resume: DetectionResume): string {
+  const total = resume.images_total.toLocaleString();
+  if (resume.images_done >= resume.images_total) {
+    return `Detection finished for all ${total} images before the run was interrupted. Continue skips detection. The steps after detection run again.`;
+  }
+  return `Detection got to ${resume.images_done.toLocaleString()} of ${total} images before the run was interrupted. Continue picks up there. The steps after detection run again.`;
 }
 
 function formatRunSummary(run: FolderRunLookup): string {
