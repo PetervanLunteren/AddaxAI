@@ -42,31 +42,6 @@ export function isNonLabel(label: string | null | undefined): boolean {
 }
 
 /**
- * A box a person drew by hand.
- *
- * `job_id === null` is the marker, and it is the only exact one:
- * `create_human_detection` is the sole writer that leaves it unset,
- * every machine box carries the id of the run that produced it. Do not
- * substitute `classification_method === "human"` (a *relabelled*
- * machine box gets that too) or `confidence === 1.0` (true today by
- * construction, but a coincidence rather than a statement of intent).
- *
- * Says nothing about the label. A drawn box the person later marked as
- * "nothing here" is still their box, and the empties viewer has to keep
- * showing it: it is the only surface that box appears on, so hiding it
- * strands a row the user can neither see nor delete. Callers that mean
- * "a drawn box still claiming something is there" add `!isNonLabel(...)`
- * themselves, which is one clause at the two call sites rather than a
- * third near-identical helper.
- */
-export function isHumanDrawnBox(detection: {
-  bbox_x: number | null;
-  job_id: string | null;
-}): boolean {
-  return detection.bbox_x !== null && detection.job_id === null;
-}
-
-/**
  * Everything `shouldDrawBbox` decides except the video best-frame rule.
  *
  * Split out for `VideoPlayer`, which draws every frame's boxes over the
@@ -117,23 +92,9 @@ export function passesDrawFilter(
  * canvas of an unrelated frame — that is the crop-service bug in
  * another costume, and it looks perfectly fine until the subject moves.
  *
- * `humanDrawnOnly` swaps `passesDrawFilter` for `isHumanDrawnBox`: show
- * what the person put there and nothing the detector found. The empties
- * viewer needs it, because that page's whole claim is that there is
- * nothing in the picture, so a *detector* box drawn on it argues with
- * the page. It used to ask for this by passing a threshold of `1` and
- * relying on human boxes carrying confidence 1.0, which worked but said
- * none of that out loud, and broke the moment the verified override
- * arrived.
- *
- * Note what this mode deliberately does **not** filter: a drawn box the
- * person later marked as "nothing here". Applying the rejected-box gate
- * here too would hide the one and only surface such a box appears on —
- * it has no card in the Detections tab, because the label is what makes
- * its file count as empty — leaving a row the user can neither see nor
- * delete. Showing it is not a contradiction: the file is still empty,
- * because a rejected box counts for nothing, and the box is there so it
- * can be removed.
+ * No rule here reads who drew a box. A drawn box is verified at
+ * confidence 1.0, so it passes like any confirmed box; one the person
+ * later marked as "nothing here" disappears like any rejected box.
  *
  * Centralised so every grid tile / canvas / modal applies the same
  * rules; without this, regressions slipped in tile-by-tile.
@@ -143,7 +104,6 @@ export function shouldDrawBbox<
     confidence: number;
     verified: boolean;
     label: string | null;
-    job_id: string | null;
     bbox_x: number | null;
     bbox_y: number | null;
     bbox_width: number | null;
@@ -154,18 +114,13 @@ export function shouldDrawBbox<
   detection: D,
   file: { file_type: string; best_frame_number: number | null },
   detectionThreshold: number,
-  options: { humanDrawnOnly?: boolean } = {},
 ): detection is D & {
   bbox_x: number;
   bbox_y: number;
   bbox_width: number;
   bbox_height: number;
 } {
-  if (options.humanDrawnOnly) {
-    if (!isHumanDrawnBox(detection)) return false;
-  } else if (!passesDrawFilter(detection, detectionThreshold)) {
-    return false;
-  }
+  if (!passesDrawFilter(detection, detectionThreshold)) return false;
   if (detection.bbox_x === null) return false;
   if (file.file_type === "video" && file.best_frame_number != null) {
     return detection.frame_number === file.best_frame_number;

@@ -14,8 +14,8 @@
 import { api } from "../lib/api-client";
 import type {
   CohortsResponse,
-  EmptiesParams,
-  EmptiesResponse,
+  LabelsFilesParams,
+  LabelsFilesResponse,
   LabelsProgress,
   LabelStatsResponse,
   SearchRequest,
@@ -193,19 +193,20 @@ export const labelsApi = {
   },
 
   /**
-   * The project's empty photos: files where nothing passed the current
-   * floor. The other half of the Labels page, one item per photo
-   * rather than one per box.
+   * The project's files for the Files tab, one item per file rather
+   * than one per box. `empty` narrows to the files where nothing passed
+   * the current floor ("show_only") or where something did ("hide").
    */
-  empties: async (
+  files: async (
     projectId: string,
-    params: EmptiesParams = {},
-  ): Promise<EmptiesResponse> => {
+    params: LabelsFilesParams = {},
+  ): Promise<LabelsFilesResponse> => {
     const sp = new URLSearchParams();
     if (params.site_ids?.length) sp.set("site_ids", params.site_ids.join(","));
     if (params.date_from) sp.set("date_from", params.date_from);
     if (params.date_to) sp.set("date_to", params.date_to);
     if (params.verification) sp.set("verification", params.verification);
+    if (params.empty) sp.set("empty", params.empty);
     if (params.min_confidence !== undefined) {
       sp.set("min_confidence", String(params.min_confidence));
     }
@@ -215,8 +216,8 @@ export const labelsApi = {
     }
     if (params.skip) sp.set("skip", String(params.skip));
     if (params.limit) sp.set("limit", String(params.limit));
-    return api.get<EmptiesResponse>(
-      `/api/projects/${projectId}/labels/empties?${sp.toString()}`,
+    return api.get<LabelsFilesResponse>(
+      `/api/projects/${projectId}/labels/files?${sp.toString()}`,
     );
   },
 

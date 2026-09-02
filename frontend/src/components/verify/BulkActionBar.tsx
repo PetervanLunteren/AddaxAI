@@ -12,15 +12,8 @@ import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { detectionsApi } from "../../api/detections";
 import { LabelPicker } from "./LabelPicker";
+import { UNDO_KBD } from "./shortcuts";
 import type { LabelOption } from "../../hooks/useLabelOptions";
-
-// Undo shortcut hint: Cmd+Z on macOS, Ctrl+Z elsewhere (the platform
-// standard for undo on all three OSes).
-const UNDO_KBD =
-  typeof navigator !== "undefined" &&
-  navigator.platform.toLowerCase().includes("mac")
-    ? "⌘Z"
-    : "Ctrl+Z";
 
 interface BulkActionBarProps {
   selectedIds: Set<string>;

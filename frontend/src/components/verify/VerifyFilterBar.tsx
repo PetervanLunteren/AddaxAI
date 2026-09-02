@@ -11,9 +11,11 @@
  *
  * Page specifics:
  * - Counts (events): all slots; `showLikedFlaggedEmpty = true`.
- * - Labels: same slots, but the More popover only contains the
- *   confidence ranges (`showLikedFlaggedEmpty = false`). Verified
+ * - Labels, Detections: same slots, but the More popover only contains
+ *   the confidence ranges (`showLikedFlaggedEmpty = false`). Verified
  *   options match (all / unverified / verified).
+ * - Labels, Files: as Detections plus the Empty select
+ *   (`showEmpty = true`), resting on "all" (`emptyDefault`).
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -26,6 +28,7 @@ import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { buildSiteOptions } from "../../lib/site-filter-options";
 import { speciesLabelMap } from "../../lib/species-name-mode";
 import type {
+  EmptyFilter,
   EventFilterParams,
   VerificationFilter,
 } from "../../api/types";
@@ -81,6 +84,13 @@ interface VerifyFilterBarProps {
   /** Whether the More popover renders the liked / flagged / empty
    *  selects. False on the Labels page (those don't apply there). */
   showLikedFlaggedEmpty?: boolean;
+  /** Render the Empty select on its own, without liked / flagged. The
+   *  Files tab: a file is empty or not, but liked and flagged are event
+   *  filters there. Defaults to `showLikedFlaggedEmpty`. */
+  showEmpty?: boolean;
+  /** The page's default empty value, same contract as
+   *  `verificationDefault`. Counts rests on "hide", Files on "all". */
+  emptyDefault?: EmptyFilter;
   /** Detection-confidence slider floor behaviour: "clamp" (Counts,
    *  stops at the project threshold with a reason) or "open" (Labels,
    *  full scale so the user can dig into the low-confidence tail). */
@@ -90,8 +100,8 @@ interface VerifyFilterBarProps {
    *  and it never renders a chip. Counts defaults to "all"; the
    *  Labels page passes "unverified". */
   verificationDefault?: VerificationFilter;
-  /** Whether to render the label filter. False in Empties, where every
-   *  photo is empty by definition and so has no label to filter on. */
+  /** Whether to render the label filter. False on the Files tab, whose
+   *  list query has no label join. */
   showLabels?: boolean;
 }
 
@@ -104,6 +114,8 @@ export function VerifyFilterBar({
   countBy,
   verificationOptions,
   showLikedFlaggedEmpty = true,
+  showEmpty = showLikedFlaggedEmpty,
+  emptyDefault = "hide",
   confidenceFloorMode = "clamp",
   verificationDefault = "all",
   showLabels = true,
@@ -308,6 +320,8 @@ export function VerifyFilterBar({
             }
             showClassification={!!classificationModelId}
             showLikedFlaggedEmpty={showLikedFlaggedEmpty}
+            showEmpty={showEmpty}
+            emptyDefault={emptyDefault}
           />
         </div>
       </div>
@@ -319,6 +333,7 @@ export function VerifyFilterBar({
         filters={filters}
         onChange={onChange}
         verificationDefault={verificationDefault}
+        emptyDefault={emptyDefault}
         siteNames={siteNames}
         displayLabels={filterOptions ? speciesLabelMap(filterOptions) : undefined}
         detectionFloor={detectionFloor}

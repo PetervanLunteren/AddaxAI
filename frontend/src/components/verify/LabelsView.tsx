@@ -1,11 +1,10 @@
 /**
  * Labels view — the Labels page body, decoupled from page chrome.
  *
- * Owns the Detections / Empties switch and mounts one of the two tabs.
+ * Owns the Detections / Files switch and mounts one of the two tabs.
  * Detections is `LabelsTab`, the embedding-driven crop grid: one card per
- * detection above the threshold. Empties is `EmptiesTab`: one card per
- * photo with nothing above it. Every photo in the project is in exactly
- * one of them.
+ * detection above the threshold. Files is `FilesTab`: one card per file,
+ * boxes and all. Two views of the same work, see `ViewModeToggle`.
  *
  * The switch rides into each tab's toolbar through the `toolbarExtra`
  * slot that already existed for the folder-run step's settings button,
@@ -22,7 +21,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
 import { projectsApi } from "../../api/projects";
-import { EmptiesTab } from "./EmptiesTab";
+import { FilesTab } from "./FilesTab";
 import { LabelsTab } from "./LabelsTab";
 import { lblFiltersFromSearchParams } from "./labels-filters";
 import { useLabelsProgress } from "./useLabelsProgress";
@@ -43,7 +42,7 @@ export interface LabelsViewProps {
   /** Take the user to where the detection threshold is set. The control
    *  is in a different place per mode, a route in projects mode and a
    *  slideout in a folder run, so the host supplies the trip rather than
-   *  the grid guessing. Omitted, the empties note just names it. */
+   *  the grid guessing. Omitted, the threshold note just names it. */
   onEditThreshold?: () => void;
 }
 
@@ -61,7 +60,7 @@ export function LabelsView({
   });
 
   const mode: LabelsViewMode =
-    searchParams.get("view") === "empties" ? "empties" : "crops";
+    searchParams.get("view") === "files" ? "files" : "crops";
 
   // Drives the chips on the toggle and the pointer each tab shows when
   // its grid runs out, so neither half of the work can hide behind the
@@ -78,7 +77,7 @@ export function LabelsView({
         (prev) => {
           const sp = new URLSearchParams(prev);
           // "crops" is the implicit default, so it leaves no param.
-          if (next === "empties") sp.set("view", "empties");
+          if (next === "files") sp.set("view", "files");
           else sp.delete("view");
           return sp;
         },
@@ -94,20 +93,20 @@ export function LabelsView({
         value={mode}
         onChange={setMode}
         cropsLeft={progress.cropsLeft}
-        emptiesLeft={progress.emptiesLeft}
+        filesLeft={progress.filesLeft}
       />
       {toolbarExtra}
     </>
   );
 
-  if (mode === "empties") {
+  if (mode === "files") {
     return (
-      <EmptiesTab
+      <FilesTab
         projectId={projectId}
         toolbarExtra={toolbar}
         onSelectionChange={onSelectionChange}
         otherTabLeft={progress.cropsLeft}
-        thisTabLeft={progress.emptiesLeft}
+        thisTabLeft={progress.filesLeft}
         totalLabels={progress.total}
         onSwitchTab={() => setMode("crops")}
         onEditThreshold={onEditThreshold}
@@ -122,10 +121,10 @@ export function LabelsView({
       onSelectionChange={onSelectionChange}
       toolbarExtra={toolbar}
       refreshSignal={refreshSignal}
-      otherTabLeft={progress.emptiesLeft}
+      otherTabLeft={progress.filesLeft}
       thisTabLeft={progress.cropsLeft}
       totalLabels={progress.total}
-      onSwitchTab={() => setMode("empties")}
+      onSwitchTab={() => setMode("files")}
     />
   );
 }

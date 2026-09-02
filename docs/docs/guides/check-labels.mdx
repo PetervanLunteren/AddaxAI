@@ -22,19 +22,19 @@ Prefer to watch? This video shows how to find and fix wrong labels quickly.
 
 The Labels page shows one card per detection: the cropped animal and the species the AI chose. A progress bar shows how much of the project you have checked.
 
-## Detections and empties
+## Detections and files
 
-The page has two tabs. Detections shows one card per box the AI found above your detection threshold. Empties shows one card per file, photo or video, where it found nothing at all. Every file is in one of the two, and your threshold decides which one.
+The page has two tabs. Detections shows one card per box the AI found above your detection threshold. Files shows one card per file, photo or video, with its boxes drawn on it. They are two views of the same work: a box you verify in Detections counts towards its file, and a file you verify in Files takes its boxes out of Detections.
 
-Use Empties to check that the AI did not miss anything. It opens sorted by folder, so one camera's files sit together and you can scan them quickly.
+Use Files to judge whole pictures: check that the AI did not miss anything, and fix a file with several animals in one go. It opens sorted by folder, so one camera's files sit together and you can scan them quickly. To see only the files where the AI found nothing, set the Empty filter under More filters to "Show only empty".
 
 <AppShot name="verifyEmpties" />
 
-Select the ones that really are empty and click Verify to sign them off in one go. Double-click a file to see it full size, where Enter verifies it and takes you to the next one you have not checked. If you do see an animal, click "Draw a box" and drag around it. The species search opens so you can name it right away, and the file moves over to Detections.
+Select the files that are right and click Verify to sign them off in one go. Double-click a file to see it full size, where Enter verifies it and takes you to the next one you have not checked. Verifying a file means the boxes you see are all there is: every box on it is verified, and weak boxes below your threshold are removed for good. If you do see an animal without a box, click "Draw a box" and drag around it. The species search opens so you can name it right away. Click a box to select it, or press Tab to step through the boxes, then R relabels it, X marks it as a false detection and 1 to 5 apply your saved labels. With no box selected the same keys act on every box in the picture, and M relabels them all to the picture's most common label. Ctrl+Z (Cmd+Z on Mac) undoes a label change. B hides the boxes so you can see what is under them.
 
-Most empty photos do have a box, the AI just scored it too low to show you. Lower the detection confidence in More filters and those photos move to Detections, where a cropped card is faster to judge than a whole frame.
+Most empty photos do have a box, the AI just scored it too low to show you. Lower the detection confidence in More filters and those photos get their boxes back, where a cropped card in Detections is faster to judge than a whole frame.
 
-Videos work a little different. The AI checks every frame of the clip, not just the one you see, so a video in Empties means it found nothing in it. AddaxAI keeps one frame per video, the one showing the most of what the AI found, and that is the frame you see here and draw on. Tiles from a video are marked "Video · one frame", so you can see which ones they are.
+Videos work a little different. The AI checks every frame of the clip, not just the one you see. AddaxAI keeps one frame per video, the one showing the most of what the AI found, and that is the frame you see here, verify and draw on. Tiles from a video are marked "Video · one frame", so you can see which ones they are.
 
 ## Same in folder runs and projects
 

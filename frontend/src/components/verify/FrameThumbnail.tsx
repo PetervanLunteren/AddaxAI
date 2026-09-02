@@ -6,8 +6,9 @@
  * Draws the 512px thumbnail (?size=thumb) and, when `showBoxes` is on and the
  * file's detections have loaded, a dimming spotlight with colored box
  * outlines. The SVG draws in the image's own pixel space with
- * preserveAspectRatio="slice" (SVG's object-cover), so the boxes line up with
- * the object-cover image at any tile aspect, with no manual fitting math.
+ * preserveAspectRatio matching the image's object-fit ("slice" for cover,
+ * "meet" for contain), so the boxes line up at any tile aspect, with no
+ * manual fitting math.
  */
 
 import { useState } from "react";
@@ -29,6 +30,10 @@ interface FrameThumbnailProps {
   showBoxes?: boolean;
   /** CSS filter applied to the image (brightness / contrast). */
   imageFilter?: string;
+  /** "cover" fills the tile and crops (event cards, filmstrip); "contain"
+   *  shows the whole frame and letterboxes (Files tiles, where the animal
+   *  walking into shot sits at the edge that cover would cut off). */
+  fit?: "cover" | "contain";
   className?: string;
 }
 
@@ -38,6 +43,7 @@ export function FrameThumbnail({
   detectionThreshold,
   showBoxes = true,
   imageFilter,
+  fit = "cover",
   className,
 }: FrameThumbnailProps) {
   // Repaint when the project's colour map lands or changes.
@@ -77,7 +83,7 @@ export function FrameThumbnail({
         <img
           src={`${API_BASE_URL}/api/files/${fileId}/image?size=thumb`}
           alt=""
-          className="w-full h-full object-cover"
+          className={`w-full h-full ${fit === "contain" ? "object-contain" : "object-cover"}`}
           style={imageFilter ? { filter: imageFilter } : undefined}
           onError={() => {
             setImageFailed(true);
@@ -91,7 +97,7 @@ export function FrameThumbnail({
         <svg
           className="absolute inset-0 w-full h-full pointer-events-none"
           viewBox={`0 0 ${imgW} ${imgH}`}
-          preserveAspectRatio="xMidYMid slice"
+          preserveAspectRatio={fit === "contain" ? "xMidYMid meet" : "xMidYMid slice"}
         >
           <SpotlightDim
             width={imgW}

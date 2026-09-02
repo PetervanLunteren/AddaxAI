@@ -55,6 +55,8 @@ import {
   type LabelsVerification,
 } from "./labels-filters";
 import { nextAfterActed, selectOnClick } from "./grid-selection";
+import { labelMajority, type LabelMajority } from "./label-majority";
+import { useShortcutLabels } from "../../hooks/useShortcutLabels";
 import { GridEmptyState } from "./GridEmptyState";
 import { CropGrid } from "./CropGrid";
 import type { CropGridHandle } from "./CropGrid";
@@ -81,7 +83,7 @@ import {
 import { LabelsWelcomePopover } from "./LabelsWelcomePopover";
 import { ReEmbedModal } from "../projects/ReEmbedModal";
 import { useLabelsProgress } from "./useLabelsProgress";
-import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
+import { useLabelOptions } from "../../hooks/useLabelOptions";
 import type {
   CohortItem,
   SortResponse,
@@ -158,7 +160,7 @@ interface LabelsTabProps {
   /** Bumping this re-runs the sort even when filters are unchanged.
    *  Used to refresh the grid after a reprocess rewrites labels. */
   refreshSignal?: number;
-  /** Labels not yet checked in the Empties tab, for the pointer shown
+  /** Files not yet signed off in the Files tab, for the pointer shown
    *  when this grid runs out. */
   otherTabLeft?: number;
   /** Unverified labels in this tab, and every label in scope. Both feed
@@ -189,46 +191,14 @@ function toLabelFilters(f: LabelsFilterState): LabelFilters {
   };
 }
 
-interface SelectionMajority {
-  count: number;
-  label: string;
-  category: string;
-  common_name: string | null;
-  scientific_name: string | null;
-}
-
-/** Most common label among the selected detections.
- *
- *  Returns null when nothing in the selection carries a label.
- *  Ties resolve to the first label encountered, which is deterministic
- *  given the grid's iteration order. Drives both the Match-majority
- *  action and the label shown on its button, so the two never diverge.
- */
+/** Most common label among the selected detections (`labelMajority`
+ *  over the selection). Drives both the Match-majority action and the
+ *  label shown on its button, so the two never diverge. */
 function selectionMajority(
   detections: DetectionSummary[],
   idSet: Set<string>,
-): SelectionMajority | null {
-  const counts = new Map<string, SelectionMajority>();
-  for (const d of detections) {
-    if (!idSet.has(d.detection_id) || !d.label) continue;
-    const entry = counts.get(d.label);
-    if (entry) {
-      entry.count += 1;
-    } else {
-      counts.set(d.label, {
-        count: 1,
-        label: d.label,
-        category: d.category,
-        common_name: d.common_name,
-        scientific_name: d.scientific_name,
-      });
-    }
-  }
-  let mode: SelectionMajority | null = null;
-  for (const entry of counts.values()) {
-    if (!mode || entry.count > mode.count) mode = entry;
-  }
-  return mode;
+): LabelMajority | null {
+  return labelMajority(detections.filter((d) => idSet.has(d.detection_id)));
 }
 
 // Only suggest narrowing once the dataset is big enough that the wait
@@ -359,7 +329,7 @@ export function LabelsTab({
   );
 
   // ── Local settings state (persisted to localStorage) ────────────────
-  // Shared with the Empties tab; see `labels-settings.ts`.
+  // Shared with the Files tab; see `labels-settings.ts`.
   const savedSettings = useMemo(() => readLabelsSettings(), []);
 
   const isLabelSort = (v: unknown): v is LabelSort =>
@@ -477,34 +447,13 @@ export function LabelsTab({
   const { options: labelOptions, isLoading: labelOptionsLoading } =
     useLabelOptions(classificationModelId, projectId);
 
-  // Project query for shortcut_labels
   const { data: project } = useQuery({
     queryKey: ["project", projectId],
     queryFn: () => projectsApi.get(projectId),
   });
 
-  const [shortcutLabels, setShortcutLabels] = useState<Record<number, LabelOption>>({});
-
-  useEffect(() => {
-    if (project?.shortcut_labels) {
-      const parsed: Record<number, LabelOption> = {};
-      for (const [k, v] of Object.entries(project.shortcut_labels)) {
-        parsed[Number(k)] = v as LabelOption;
-      }
-      setShortcutLabels(parsed);
-    }
-  }, [project?.shortcut_labels]);
-
-  const updateShortcutLabels = useCallback(
-    (updater: (prev: Record<number, LabelOption>) => Record<number, LabelOption>) => {
-      setShortcutLabels((prev) => {
-        const next = updater(prev);
-        projectsApi.update(projectId, { shortcut_labels: next });
-        return next;
-      });
-    },
-    [projectId]
-  );
+  // The 1 to 5 slots, shared with the Files viewer.
+  const { shortcutLabels, updateShortcutLabels } = useShortcutLabels(projectId);
 
   // Stats query — embedded-detection counts for the missing-embeddings
   // banner and the "no embeddings yet" empty state.
@@ -674,7 +623,7 @@ export function LabelsTab({
   });
 
   // Click / shift-range / cmd-toggle live in `grid-selection.ts`, shared
-  // with the Empties grid so the two feel identical.
+  // with the Files grid so the two feel identical.
   const handleSelect = useCallback(
     (detectionId: string, e: React.MouseEvent) => {
       setSelectedIds((prev) => {
@@ -1325,7 +1274,7 @@ export function LabelsTab({
   // currently-loaded / filtered detections, so a narrowed view does
   // not read as 100% verified. Same source as the Events and Media
   // pills, so all three views report the same number.
-  // Counted in photos, shared with the Empties tab. The two tabs show
+  // Counted in labels, shared with the Files tab. The two tabs show
   // different units but are one job, and a bar that jumped when you
   // switched tabs would suggest otherwise.
   const pageProgress = useLabelsProgress(projectId, lblFilters);
@@ -1664,8 +1613,8 @@ export function LabelsTab({
           viewCount={totalCount}
           tabHasNothing={totalLabels > 0 && thisTabLeft === 0 && totalCount === 0}
           noun="detections"
-          otherNoun="empty files"
-          otherTabName="Empties"
+          otherNoun="files"
+          otherTabName="Files"
           onClearFilters={() => setLblFilters({})}
           onSwitchTab={onSwitchTab}
         />

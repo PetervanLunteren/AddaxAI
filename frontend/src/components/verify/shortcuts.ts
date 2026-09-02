@@ -13,3 +13,7 @@ export type Shortcut = readonly [keys: string, action: string];
 /** "Cmd" on a Mac, "Ctrl" everywhere else, so both tabs spell the
  *  modifier the same way. */
 export const MOD = navigator.platform.includes("Mac") ? "Cmd" : "Ctrl";
+
+/** The undo hint on a button: the platform's own spelling, shared by
+ *  the Detections bar and the Files viewer so the two read the same. */
+export const UNDO_KBD = MOD === "Cmd" ? "⌘Z" : "Ctrl+Z";

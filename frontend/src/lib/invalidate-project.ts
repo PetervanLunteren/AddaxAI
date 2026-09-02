@@ -35,11 +35,11 @@ export function invalidateProjectData(
     ["observations-stats", projectId],
     ["observation-rate-map", projectId],
     ["labels-unprocessed", projectId],
-    // The Labels page's photo-level progress bar, and the empties list
+    // The Labels page's photo-level progress bar, and the files list
     // itself: a reprocess or a threshold change moves which photos count
     // as empty, so both go stale on exactly these cascade events.
     ["labels-progress", projectId],
-    ["empties", projectId],
+    ["labels-files", projectId],
   ];
   for (const queryKey of keys) {
     void queryClient.invalidateQueries({ queryKey });

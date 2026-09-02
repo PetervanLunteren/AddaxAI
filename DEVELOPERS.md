@@ -482,96 +482,78 @@ This must be applied consistently across every module that counts, lists, filter
 
 **The same rule applies to what is drawn, not only to what is counted.** `shouldDrawBbox` in `frontend/src/lib/detection-utils.ts` is the one place a bounding box is admitted to a canvas, and it carries the override too. Relabelling never rewrites `Detection.confidence` (`bulk_relabel` and `update_detection` both leave it alone), so a box a human confirmed at 3% keeps that 3% forever. Without the override such a box earns a card, a count and a MaxN, and then paints no rectangle on the photo those numbers describe.
 
-It also refuses a box a person **rejected**, mirroring `is_a_real_detection()`. A falsed box is already out of every count, so outlining it argues with the number printed beside it. The row itself is kept (see "Non-label detection skip"), it is just not drawn on any counting surface. The empties viewer is the deliberate exception, below.
+It also refuses a box a person **rejected**, mirroring `is_a_real_detection()`. A falsed box is already out of every count, so outlining it argues with the number printed beside it. The row itself is kept (see "Non-label detection skip"), it is just not drawn on any counting surface.
 
 **Both rules live in `passesDrawFilter`, not in `shouldDrawBbox` itself.** `VideoPlayer` draws every frame's boxes over the real video on purpose, so it cannot use `shouldDrawBbox` (the best-frame gate would blank it), and it used to carry its own inline `confidence < threshold` instead. Neither rule reached it, and the result was one event modal disagreeing with itself: in the Counts event view a box a human confirmed below the threshold drew in frame mode and vanished on play, while a box they rejected did the reverse. If a new surface needs the rules without the frame gate, call `passesDrawFilter`; do not inline the comparison again.
 
-**Do not identify a human-drawn box by `confidence == 1.0` or by `classification_method == "human"`.** The first is true today only by construction, and the second is set by *relabelling* a machine box as well. `job_id is None` is the only exact marker: `create_human_detection` is the sole writer that leaves it unset. `isHumanDrawnBox` holds that rule, and the empties viewer asks for it by name (`humanDrawnOnly`) rather than by passing a threshold of `1` and hoping.
+**No rule reads who drew a box.** A drawn box is created verified at confidence 1.0, so every rule above treats it like any confirmed box, and a drawn box the person later marked false disappears like any rejected box. If you ever do need provenance (exports, debugging), `job_id is None` is the only exact marker: `create_human_detection` is the sole writer that leaves it unset. Do not substitute `confidence == 1.0` (true today only by construction) or `classification_method == "human"` (set by *relabelling* a machine box as well).
 
 **A frontend type is not evidence that a field is on the wire.** `schemas/file.py` has its own `DetectionResponse`, separate from the one in `schemas/detection.py`, and it carried neither `verified` nor `job_id` while `api/types.ts` declared both. Neither type checker can see that: TypeScript believes its own declaration and Python never reads it. Both fields are now required there rather than defaulted, so a missing one fails loudly instead of arriving as a plausible `undefined` that reads as "not verified" and "not human-drawn". `tests/api/test_file_detection_wire_fields.py` asserts the wire, which is the only place the two sides meet; a frontend unit test would build its fixture from the same lying type and pass.
 
-## Verifying an empty file deletes its detections
+## Verifying a file deletes its invisible detections
 
-A person looking at a whole frame and calling it empty is making a claim
-about the photograph: there is no animal in it. Every box the detector
-left on that file is therefore a false positive, so `update_file`
-(`crud/file.py`) removes them rather than keeping them below the
-threshold. It branches on the same "reviewable" rule the rollup uses
-(threshold-or-verified, visible frame): nothing reviewable means empty,
-and empty means the boxes go.
+Signing a file off on the Files tab says "the boxes you can see are all
+there is". `set_file_verified` (`crud/file.py`) makes that true: on the
+file's visible frame, every box the person could not see (below
+`counting_threshold` and not verified) is deleted, and every box they
+could see is verified. One rule for empty and non-empty files alike, and
+for every box whoever drew it: a drawn box is created verified at
+confidence 1.0, so it is always visible and never hit. Unverifying a file
+clears `verified` on every box of the file, drawn ones included. Both
+paths re-derive `observation_type` and the event MaxN, as the detection
+endpoints do. Verify is idempotent, so a second Enter picks up boxes
+added since.
 
-**Why not keep them.** Keeping them made "empty" true only at the
-threshold it was checked at. Drop the confidence slider and the file came
-back carrying a 3% smudge while still flagged verified; raise
-`counting_threshold` afterwards and it exported `is_verified = TRUE`
-beside a species nobody had confirmed. Deleting collapses all of that
-into one sentence a user can hold: you said there is nothing there, so
-there is nothing there.
+**Why delete rather than keep the weak boxes.** Keeping them made
+"verified" true only at the threshold it was checked at. Drop the
+confidence slider and the file came back carrying a 3% smudge while still
+flagged verified; raise `counting_threshold` afterwards and it exported
+`is_verified = TRUE` beside a species nobody had confirmed. Marking them
+false instead would freeze roughly 1,500 unlooked-at vegetation boxes per
+500 photos as human decisions, permanently. Deleting asserts nothing.
 
-**Considered and rejected: marking the boxes "false" instead.** That
-asserts a human judgement about each box that nobody made, and it would
-freeze roughly 1,500 unlooked-at vegetation boxes as verified decisions
-per 500 photos checked, permanently, since verified detections are never
-reprocessed. Deleting asserts nothing.
+**This is only defensible while the Files viewer draws no sub-threshold
+boxes.** `AnnotationCanvas` draws through `shouldDrawBbox`, so it shows
+exactly the threshold-or-verified boxes the rule keeps. The person is
+judging the picture, not a threshold. If weak boxes are ever drawn there,
+the verdict becomes threshold-dependent and deleting on it does not
+follow.
 
-**This is only defensible while the empties viewer draws no detector
-boxes.** The person is judging the picture, not a threshold. If the
-sub-threshold boxes are ever drawn there again, the verdict becomes
-threshold-dependent and deleting on it does not follow. Revisit this if
-that changes. The viewer enforces it with `humanDrawnOnly` on
-`AnnotationCanvas`, which admits only boxes with `job_id is None`: the
-ones the person drew themselves, which is the whole point of the page.
-It used to say this by passing a detection threshold of `1` and relying
-on human boxes carrying confidence 1.0. That worked, but it stated none
-of the intent and it broke the moment the verified override arrived.
-
-**A drawn box the person later rejected still draws here, and must.**
-That is the one place the rejected-box rule is deliberately not applied,
-because this viewer is the only surface such a box appears on: its label
-is exactly what makes its file count as empty, so it has no card in the
-Detections tab either. Hiding it strands a row the user can neither see
-nor delete, and there is no way back, since the empties viewer has no
-undo. It is not a contradiction of the page: the file is still empty,
-because a rejected box counts for nothing, and the box is on screen so
-it can be removed. `hasHumanBox`, which drives the "this file is not
-empty any more" callout, adds `!isNonLabel(...)` for that reason and the
-canvas does not.
-
-**Boxes the user drew are never deleted**, and that path is unreachable
-rather than merely guarded: `on_visible_frame_of` passes verified
-detections on *any* frame, so a drawn box keeps its file reviewable even
-on a video where it sits off the best frame. Pinned by
-`test_a_file_holding_a_drawn_box_is_never_treated_as_empty`.
+**Scoped to the visible frame.** For a video that is its best frame plus
+verified boxes on any frame. Boxes on frames nobody saw are neither
+deleted nor verified; before this the verify write had no frame clause
+and signed off boxes on frames the person never opened. A video with no
+best frame has no visible surface, so verifying it sets the flag and
+touches no boxes.
 
 **The reprocess must know.** `update_database_from_smoothed_results`
 matches JSON detections to rows by `file_path` + bbox + `frame_number`
 and counts an unmatched one as an error. A deleted box is exactly that,
 so without an exemption the next reprocess of a checked project reports
-one error per removed box: measured at 3.2 per empty file, a few hundred
+one error per removed box: measured at 3.2 per file, a few hundred
 failures that are not failures, shown to the user in the reprocess
-summary. `postprocessing.py` skips them for files that are verified and
-blank. That same matcher is why the deletion survives a reprocess: it
-updates in place and never re-inserts.
+summary. `postprocessing.py` skips unmatched boxes on every verified
+file; a missing box on a file nobody signed off still counts. That
+includes a file that was signed off and then unticked: its weak boxes
+are gone for good, so every reprocess reports them until it is signed
+off again (measured: 13 errors for one such file). That same matcher is
+why the deletion survives a reprocess: it updates in place and never
+re-inserts. It also means a machine box a person moved or resized on a
+verified file is no longer a false alarm.
 
 **Nothing is truly lost.** `results.json` on disk is never modified and
 still holds every box, which is what a re-analysis reads back. A
 re-analysis also discards the verification itself, as it does for crop
 verifications.
 
-**One rule decides "empty", on both sides of the tab switch.**
-`get_empty_files` applies `is_a_real_detection()` and the verify path in
-`update_file` did not, so a file whose only real box had been marked
-false sat in the Empties tab and then took the *not empty* branch when
-the user pressed Verify on it: the rejected box counted as something a
-person could have been judging, purely because marking it false had also
-verified it, and the weak boxes beside it survived a verdict of "there
-is nothing here". Both now apply it. Note the route this is reachable
-by, because it is not the obvious one: marking a box false verifies it,
-which rolls up and leaves `File.verified` true, and `update_file` only
-runs the branch on a change, so it takes a user who unticks the file to
-look again and then calls it empty.
+**A rejected box does not make a file look occupied.** The Files tab's
+empty filter applies `is_a_real_detection()`, so a file whose only real
+box was marked false reads as empty; verifying it deletes the weak boxes
+beside the rejected one and leaves the rejected box, which is verified
+and therefore never touched.
 
-Tests: `tests/api/test_empty_verify_discards.py` and
+Tests: `tests/api/test_empty_verify_discards.py`,
+`tests/api/test_files.py` (the bulk endpoint) and
 `test_a_discarded_box_is_not_reported_as_a_reprocess_error` in
 `tests/integration/test_postprocessing_pipeline.py`.
 
@@ -587,7 +569,7 @@ Do not confuse it with `is_non_label_detection` in the same module, which skips 
 
 User species exclusion is a separate path: `apply_label_exclusion_to_results` in postprocessing, which builds its excluded set from the non-label classes plus the project's `excluded_classes`.
 
-**Observation type:** files where all detections were skipped get `observation_type="blank"`. They are counted as blank images on the dashboard, and they are reachable in the Labels page's Empties tab (see "Verifying an empty file"). They have no card in the Detections tab, which is per-detection.
+**Observation type:** files where all detections were skipped get `observation_type="blank"`. They are counted as blank images on the dashboard, and they are reachable on the Labels page's Files tab with the Empty filter (see "Verifying a file deletes its invisible detections"). They have no card in the Detections tab, which is per-detection.
 
 **Raw JSON preservation:** the JSON on disk (`results.json`) is never modified. It contains all original detections including those classified as blank. The skip only applies during the in-memory DB load step.
 

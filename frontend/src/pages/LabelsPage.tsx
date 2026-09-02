@@ -47,7 +47,7 @@ export default function LabelsPage() {
         <WideModeContext.Provider value={wideMode}>
           <LabelsView
             projectId={projectId!}
-            // The empties note offers to open the detection threshold.
+            // The Files tab note offers to open the detection threshold.
             // In projects mode that is the settings page.
             onEditThreshold={() => navigate(`/projects/${projectId}/settings`)}
           />

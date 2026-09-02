@@ -1,14 +1,14 @@
 /**
  * The frame both Labels detail views sit in.
  *
- * Detections and Empties open different things (one detection versus one
+ * Detections and Files open different things (one detection versus one
  * whole file) but a person is doing the same job in both, so they look
  * and work the same: picture on the left, what it is on the top right,
  * what you can do about it on the bottom right, navigation in between.
  *
  * Only the frame lives here. Zoom, panning, the canvas and every action
  * stay with the view that owns them, because those genuinely differ:
- * the crop view pans a static image, the empties view hands the whole
+ * the crop view pans a static image, the file view hands the whole
  * panel to `AnnotationCanvas`, which does its own. The shell takes the
  * image panel's props rather than rendering blind, so the panel classes
  * are still written once.

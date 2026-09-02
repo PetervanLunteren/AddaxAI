@@ -1,7 +1,7 @@
 /**
  * Selection behaviour shared by the two Labels grids.
  *
- * Detections selects boxes and Empties selects photos, but the gestures
+ * Detections selects boxes and Files selects files, but the gestures
  * are the same and a user should only have to learn them once:
  *
  *   click            select just this one, and put the anchor here

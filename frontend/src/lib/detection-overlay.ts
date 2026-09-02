@@ -14,7 +14,7 @@ import type { DetectionResponse } from "../api/types";
 export const PILL_PAD_X = 6;
 export const PILL_PAD_Y = 4;
 export const LINE_GAP = 2;
-export const FONT = 10; // both pill lines share one size
+export const FONT = 12; // both pill lines share one size
 export const TEXT_START_X = PILL_PAD_X; // no dot, text starts at the pad
 
 export const BBOX_STROKE_WIDTH = 2;

@@ -101,7 +101,7 @@ export function AnalysisSettingsButton({
   onApplied?: () => void;
   /** Drive the sheet from outside. Both must be passed together, and
    *  then the host owns the state; the Labels step does this so a link
-   *  in the empties note can open the threshold from inside the grid.
+   *  in the Files tab note can open the threshold from inside the grid.
    *  Left out, the button owns its own state as before. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;

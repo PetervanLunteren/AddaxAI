@@ -1,12 +1,17 @@
 /**
- * EmptiesTab - the Empties half of the Labels page.
+ * FilesTab - the Files half of the Labels page.
  *
- * One tile per photo where nothing passed the detection threshold. The
- * job here is different from the crop grid's: not "is this label
- * right?" but "did the detector miss something?". So the unit is the
- * photo, the sorts are about where a photo sits rather than what it
- * looks like, and the only verdicts are "yes it is empty" (checked) or
- * a drawn box, which takes the photo out of this list entirely.
+ * One tile per file, with its visible boxes drawn on it. The job here is
+ * different from the crop grid's: not "is this label right?" but "is
+ * this picture right?". So the unit is the file, the sorts are about
+ * where a file sits rather than what it looks like, and the verdict is
+ * one: Verify means the boxes you can see are all there is. Weak boxes
+ * below the threshold are removed, the visible ones are signed off, and
+ * a box you draw first is one of them.
+ *
+ * The Empty select in More filters narrows to the files where nothing
+ * passed the threshold (the old Empties tab) or to the files where
+ * something did. It rests on "all".
  *
  * Shares its filter state with the crop grid through the `lbl_*` URL
  * params (see `labels-filters.ts`), so switching tabs keeps the site,
@@ -41,12 +46,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui/alert-dialog";
-import { EmptiesGrid } from "./EmptiesGrid";
+import { FilesGrid } from "./FilesGrid";
 import { GridEmptyState } from "./GridEmptyState";
 import { LabelsKeyboardPopover } from "./LabelsKeyboardPopover";
 import { MOD, type Shortcut } from "./shortcuts";
 import { nextAfterActed, selectOnClick } from "./grid-selection";
-import { EmptyPhotoModal } from "./EmptyPhotoModal";
+import { FileDetailModal } from "./FileDetailModal";
 import { LabelsSettings } from "./LabelsSettings";
 import { SortSelector } from "./SortSelector";
 import { useTileSize } from "./labels-settings";
@@ -66,12 +71,12 @@ import {
 } from "./labels-filters";
 import { useLabelsProgress } from "./useLabelsProgress";
 import { useWideModeControls } from "./wide-mode";
-import type { EmptiesParams, EmptyFileItem, VerifySort } from "../../api/types";
+import type { LabelsFileItem, LabelsFilesParams, VerifySort } from "../../api/types";
 import type { ReactNode } from "react";
 
 const PAGE_SIZE = 48;
 
-const EMPTIES_SHORTCUTS: readonly Shortcut[] = [
+const FILES_SHORTCUTS: readonly Shortcut[] = [
   ["Click", "Select"],
   [`${MOD} + Click`, "Toggle select"],
   ["Shift + Click", "Extend range"],
@@ -80,24 +85,36 @@ const EMPTIES_SHORTCUTS: readonly Shortcut[] = [
   ["Enter", "Verify"],
   [`${MOD} + A`, "Select all on this page"],
   ["Esc", "Deselect"],
+  // In the viewer. R, X, U and 1 to 5 act on the selected box, or on
+  // every box on the picture when none is selected.
+  ["← / →", "Previous / next file"],
+  ["D", "Draw a box"],
+  ["B", "Hide or show the boxes"],
+  ["Tab / Shift + Tab", "Select the next / previous box"],
+  ["X", "Mark false detection"],
+  ["U", "Mark unknown (unidentifiable)"],
+  ["R", "Relabel"],
+  ["M", "Relabel to most common on the picture"],
+  ["1 - 5", "Apply a saved label (set them on the Detections tab)"],
+  [`${MOD} + Z`, "Undo last action"],
 ];
-const EMPTIES_SORT_MODES: readonly VerifySort[] = [
+const FILES_SORT_MODES: readonly VerifySort[] = [
   "path",
   "newest",
   "oldest",
   "random",
 ];
 
-type EmptiesSort = "path" | "newest" | "oldest" | "random";
+type FilesSort = "path" | "newest" | "oldest" | "random";
 
-interface EmptiesTabProps {
+interface FilesTabProps {
   projectId: string;
   toolbarExtra?: ReactNode;
   onSelectionChange?: (count: number) => void;
-  /** Labels not yet checked in the Detections tab, for the pointer shown when
-   *  this grid runs out. */
+  /** Boxes not yet checked in the Detections tab, for the pointer shown
+   *  when this grid runs out. */
   otherTabLeft?: number;
-  /** Unverified labels in this tab, and every label in scope, so the
+  /** Files not signed off in this tab, and every label in scope, so the
    *  empty state can tell "you finished" from "your filters are hiding
    *  the rest". */
   thisTabLeft?: number;
@@ -110,7 +127,7 @@ interface EmptiesTabProps {
   onEditThreshold?: () => void;
 }
 
-export function EmptiesTab({
+export function FilesTab({
   projectId,
   toolbarExtra,
   onSelectionChange,
@@ -119,12 +136,12 @@ export function EmptiesTab({
   totalLabels = 0,
   onSwitchTab,
   onEditThreshold,
-}: EmptiesTabProps) {
+}: FilesTabProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { wide, toggle: toggleWide } = useWideModeControls();
 
-  const [sort, setSort] = useState<EmptiesSort>("path");
+  const [sort, setSort] = useState<FilesSort>("path");
   const [seed, setSeed] = useState<number | null>(null);
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -133,12 +150,12 @@ export function EmptiesTab({
   const [tileSize, setTileSize] = useTileSize();
   // Only the bulk path asks. In the viewer you are looking at the photo
   // when you decide; here Cmd+A selects 47 files you have not opened,
-  // and verifying removes the detector's boxes from every one of them,
-  // with no undo (unlike the Detections grid, which has an undo stack).
-  // Holds the ids, not a flag. The dialog's own text would otherwise
-  // read from the live selection, which empties as the action runs: it
-  // re-rendered to "Verify 0 files?" mid-close, and that re-render left
-  // Radix's exit transition stranded so the panel never unmounted.
+  // and verifying removes the weak boxes from every one of them, with no
+  // undo (unlike the Detections grid, which has an undo stack). Holds
+  // the ids, not a flag. The dialog's own text would otherwise read from
+  // the live selection, which empties as the action runs: it re-rendered
+  // to "Verify 0 files?" mid-close, and that re-render left Radix's exit
+  // transition stranded so the panel never unmounted.
   const [confirmBulk, setConfirmBulk] = useState<string[] | null>(null);
 
   const filters = useMemo(
@@ -162,19 +179,23 @@ export function EmptiesTab({
     queryFn: () => projectsApi.get(projectId),
   });
 
+  // "all" is the page default: every file, empty or not.
+  const empty = filters.empty ?? "all";
+
   // Both memoised so they can be dependencies without rebuilding every
   // caller that reads them once a render.
-  const baseParams: EmptiesParams = useMemo(
+  const baseParams: LabelsFilesParams = useMemo(
     () => ({
       site_ids: filters.site_ids,
       date_from: filters.date_from,
       date_to: filters.date_to,
       min_confidence: filters.min_confidence,
+      empty,
     }),
-    [filters],
+    [filters, empty],
   );
 
-  const listParams: EmptiesParams = useMemo(
+  const listParams: LabelsFilesParams = useMemo(
     () => ({
       ...baseParams,
       // "unverified" is the page default: the job is what you have not
@@ -189,8 +210,8 @@ export function EmptiesTab({
   );
 
   const { data, isLoading, isFetching, isPlaceholderData } = useQuery({
-    queryKey: ["empties", projectId, listParams],
-    queryFn: () => labelsApi.empties(projectId, listParams),
+    queryKey: ["labels-files", projectId, listParams],
+    queryFn: () => labelsApi.files(projectId, listParams),
     // Page, sort and filters are all in the key, so touching any of them
     // is a new query and the grid would otherwise blank out and remount
     // 48 tiles, each re-requesting its thumbnail. Hold the old page
@@ -207,8 +228,8 @@ export function EmptiesTab({
   // matched at all" are different messages and this is what tells them
   // apart. Costs nothing while there is anything to show.
   const { data: viewIgnoringChecked } = useQuery({
-    queryKey: ["empties-view-total", projectId, baseParams],
-    queryFn: () => labelsApi.empties(projectId, { ...baseParams, limit: 1 }),
+    queryKey: ["labels-files-view-total", projectId, baseParams],
+    queryFn: () => labelsApi.files(projectId, { ...baseParams, limit: 1 }),
     enabled: !isLoading && (data?.total ?? 0) === 0,
   });
   const viewCountIgnoringChecked = viewIgnoringChecked?.total ?? 0;
@@ -218,15 +239,15 @@ export function EmptiesTab({
   const floor = data?.floor ?? project?.counting_threshold ?? 0;
 
   const refresh = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["empties", projectId] });
+    queryClient.invalidateQueries({ queryKey: ["labels-files", projectId] });
     queryClient.invalidateQueries({ queryKey: ["labels-progress", projectId] });
   }, [projectId, queryClient]);
 
   // The viewer changes files while it is open, and some of those
-  // changes take the file out of this list: draw a box and it is no
-  // longer empty. Refetching there would pull the file out from under
-  // the person still working on the box they just drew, so the counts
-  // update straight away and the list waits for the viewer to close.
+  // changes take the file out of this list: sign it off and it is no
+  // longer unverified. Refetching there would pull the file out from
+  // under the person still working on it, so the counts update straight
+  // away and the list waits for the viewer to close.
   const listDirtyRef = useRef(false);
   const refreshCountsNow = useCallback(() => {
     listDirtyRef.current = true;
@@ -236,14 +257,14 @@ export function EmptiesTab({
     setOpenIndex(null);
     if (listDirtyRef.current) {
       listDirtyRef.current = false;
-      queryClient.invalidateQueries({ queryKey: ["empties", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["labels-files", projectId] });
     }
   }, [projectId, queryClient]);
 
   /**
    * The viewer reached the end of this page. Fetch what comes next and
-   * hand it a fresh list instead of shutting it, so a long run of
-   * empties is one pass rather than 48 files and a reopen.
+   * hand it a fresh list instead of shutting it, so a long run of files
+   * is one pass rather than 48 files and a reopen.
    *
    * The viewer holds a spinner while this runs, and that is what makes
    * it safe: its index points into `items`, so the two would disagree
@@ -271,8 +292,8 @@ export function EmptiesTab({
       for (let i = 0; i < 40 && queryClient.isMutating() > 0; i++) {
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
-      const fresh = await labelsApi.empties(projectId, listParams);
-      queryClient.setQueryData(["empties", projectId, listParams], fresh);
+      const fresh = await labelsApi.files(projectId, listParams);
+      queryClient.setQueryData(["labels-files", projectId, listParams], fresh);
       listDirtyRef.current = false;
       const next = fresh.items.findIndex((i) => !i.verified);
       setOpenIndex(next === -1 ? null : next);
@@ -317,7 +338,7 @@ export function EmptiesTab({
     updateSelection(new Set());
   }, [updateSelection]);
 
-  /** After a bulk action, select the photo sliding into the freed slot,
+  /** After a bulk action, select the file sliding into the freed slot,
    *  so a repeated pass never needs the mouse again. Same rule as the
    *  crop grid. */
   const advanceAfter = useCallback(
@@ -336,28 +357,26 @@ export function EmptiesTab({
   );
 
   const markChecked = useMutation({
-    mutationFn: async (ids: string[]) => {
-      // No bulk file endpoint exists and one photo at a time is honest
-      // here: a page is 48, not 50,000.
-      for (const id of ids) {
-        await filesApi.update(id, { verified: true });
-      }
-    },
+    mutationFn: (ids: string[]) => filesApi.bulkVerify(ids),
     onSuccess: (_r, ids) => {
       // No success toast: this is the repeated action on this page, and
-      // the result is already on screen. The photos leave the grid, the
+      // the result is already on screen. The files leave the grid, the
       // selection moves to the next one, and the progress bar ticks up.
       // Matches the crop grid, which stays quiet on a verify too. Errors
       // still toast.
       advanceAfter(ids);
       refresh();
+      // The tiles draw from the file detail, which the verify changed.
+      for (const id of ids) {
+        queryClient.invalidateQueries({ queryKey: ["file", id] });
+      }
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
   // Grid keyboard, matching the crop grid: Escape clears the selection,
   // Enter acts on it. Skipped while the viewer is open, which owns the
-  // keyboard for the photo it is showing.
+  // keyboard for the file it is showing.
   useEffect(() => {
     if (openIndex !== null) return;
     const onKey = (e: KeyboardEvent) => {
@@ -376,7 +395,7 @@ export function EmptiesTab({
       } else if (e.key === "a" && (e.metaKey || e.ctrlKey)) {
         // Select everything on screen, like the crop grid. "On screen"
         // is this page, not all 229: the action would otherwise reach
-        // photos the user has not looked at and cannot see.
+        // files the user has not looked at and cannot see.
         e.preventDefault();
         anchorRef.current = orderedIds[0] ?? null;
         updateSelection(new Set(orderedIds));
@@ -386,6 +405,13 @@ export function EmptiesTab({
     return () => window.removeEventListener("keydown", onKey);
   }, [openIndex, selected, clearSelection, markChecked, orderedIds, updateSelection]);
 
+  const countNoun =
+    empty === "show_only"
+      ? " with nothing found"
+      : empty === "hide"
+        ? " with detections"
+        : "";
+
   return (
     <div className="space-y-4">
       <VerifyFilterBar
@@ -394,10 +420,12 @@ export function EmptiesTab({
         projectId={projectId}
         detectionFloor={project?.counting_threshold ?? 0}
         countBy="file"
-        // Every photo here is empty by definition, so it has no label to
-        // filter on and no liked / flagged / empty triple to apply.
+        // The list query has no label join, and liked / flagged are
+        // event filters. The Empty select is the one More filter here.
         showLabels={false}
         showLikedFlaggedEmpty={false}
+        showEmpty
+        emptyDefault="all"
         confidenceFloorMode="open"
         verificationDefault="unverified"
       />
@@ -407,9 +435,9 @@ export function EmptiesTab({
         <SortSelector
           sort={sort}
           seed={seed}
-          availableSorts={EMPTIES_SORT_MODES}
+          availableSorts={FILES_SORT_MODES}
           onChange={(next, nextSeed) => {
-            setSort(next as EmptiesSort);
+            setSort(next as FilesSort);
             setSeed(nextSeed ?? null);
             setPage(0);
           }}
@@ -425,7 +453,7 @@ export function EmptiesTab({
           />
           <VerifyGuideLink step="labels" />
           <LabelsKeyboardPopover
-            shortcuts={EMPTIES_SHORTCUTS}
+            shortcuts={FILES_SHORTCUTS}
             footer="After verifying, the next file is selected, so you can keep going."
           />
           <LabelsSettings tileSize={tileSize} onTileSizeChange={setTileSize} />
@@ -439,33 +467,36 @@ export function EmptiesTab({
         </div>
       </VerifyToolbar>
 
-      {/* One sentence, because the setting's own name now says what it
-          does and its caption says how far it reaches. Naming where it
-          lives is gone too: it is a link, and that is a location the
-          note would otherwise have to word per mode. */}
-      <Callout variant="info" size="compact">
-        {/* The project's threshold, not `floor`. `floor` is the
-            effective one, which the confidence slider drags down, so
-            quoting it made the sentence claim the setting was 1% when it
-            was really 20%. The slider is a lens; this sentence is about
-            the setting it names. */}
-        A file counts as empty when nothing was found with a detection
-        confidence above{" "}
-        {formatConfidencePct(project?.counting_threshold ?? floor)}, the
-        threshold set with{" "}
-        {onEditThreshold ? (
-          <button
-            type="button"
-            onClick={onEditThreshold}
-            className="underline underline-offset-2 hover:no-underline"
-          >
-            Count detections above
-          </button>
-        ) : (
-          "Count detections above"
-        )}
-        .
-      </Callout>
+      {/* Only while the Empty filter is narrowing to empties: that is
+          the one view where "empty" needs defining. One sentence, because
+          the setting's own name says what it does. Naming where it lives
+          is gone too: it is a link, and that is a location the note
+          would otherwise have to word per mode. */}
+      {empty === "show_only" && (
+        <Callout variant="info" size="compact">
+          {/* The project's threshold, not `floor`. `floor` is the
+              effective one, which the confidence slider drags down, so
+              quoting it made the sentence claim the setting was 1% when
+              it was really 20%. The slider is a lens; this sentence is
+              about the setting it names. */}
+          A file counts as empty when nothing was found with a detection
+          confidence above{" "}
+          {formatConfidencePct(project?.counting_threshold ?? floor)}, the
+          threshold set with{" "}
+          {onEditThreshold ? (
+            <button
+              type="button"
+              onClick={onEditThreshold}
+              className="underline underline-offset-2 hover:no-underline"
+            >
+              Count detections above
+            </button>
+          ) : (
+            "Count detections above"
+          )}
+          .
+        </Callout>
+      )}
 
       {isLoading ? (
         <div className="flex h-64 items-center justify-center">
@@ -479,7 +510,7 @@ export function EmptiesTab({
           viewFinished={viewCountIgnoringChecked > 0}
           viewCount={viewCountIgnoringChecked}
           tabHasNothing={viewCountIgnoringChecked === 0}
-          noun="empty files"
+          noun="files"
           otherNoun="detections"
           otherTabName="Detections"
           onClearFilters={() => setFilters({})}
@@ -489,13 +520,13 @@ export function EmptiesTab({
         <>
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <span>
-              {total.toLocaleString()} file{total === 1 ? "" : "s"} with
-              nothing found
+              {total.toLocaleString()} file{total === 1 ? "" : "s"}
+              {countNoun}
             </span>
             {isFetching && <Loader2 className="h-4 w-4 animate-spin" />}
           </div>
 
-          <EmptiesGrid
+          <FilesGrid
             // Dimmed while the tiles on screen belong to the previous
             // page, so held-over content never reads as the answer to
             // what you just asked for. Same cue as the Counts grid.
@@ -503,9 +534,10 @@ export function EmptiesTab({
             items={items}
             selectedIds={selected}
             onSelect={handleSelect}
+            detectionThreshold={project?.counting_threshold ?? 0}
             tileSize={tileSize}
             onBackgroundClick={clearSelection}
-            onOpen={(item: EmptyFileItem) =>
+            onOpen={(item: LabelsFileItem) =>
               setOpenIndex(items.findIndex((i) => i.id === item.id))
             }
           />
@@ -562,25 +594,20 @@ export function EmptiesTab({
         </div>
       )}
 
-      {/* The work starts only once the dialog has finished closing.
-          Running 48 sequential PATCHes while it was still unmounting
-          re-rendered this whole subtree through Radix's exit
-          transition, which then never completed: the panel stayed
-          mounted and its scroll lock left `body` at
+      {/* The work starts only once the dialog has finished closing. When
+          the verify ran while it was still unmounting, the re-render went
+          through Radix's exit transition, which then never completed:
+          the panel stayed mounted and its scroll lock left `body` at
           `pointer-events: none`, so the page was unusable until a
-          reload. Let the Action close it, then act in `onOpenChange`. */}
+          reload. Let the Action close it, then act. */}
       <AlertDialog
         open={confirmBulk !== null}
         onOpenChange={(open) => {
           if (!open) setConfirmBulk(null);
         }}
       >
-        {/* No exit animation. Radix keeps the panel mounted until the
-            close animation ends, and the 48 sequential PATCHes this
-            starts re-render the tree hard enough that the end never
-            arrives: it stayed mounted with `body` at
-            `pointer-events: none`, locking the page until a reload.
-            Nothing to wait for means it unmounts at once. */}
+        {/* No exit animation, for the same reason: nothing to wait for
+            means it unmounts at once. */}
         <AlertDialogContent className="!animate-none">
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -588,10 +615,10 @@ export function EmptiesTab({
               {confirmBulk?.length === 1 ? "" : "s"}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              You are saying there is nothing in{" "}
-              {confirmBulk?.length === 1 ? "it" : "them"}, so the
-              detector's leftover boxes are removed. That cannot be
-              undone. Boxes you drew yourself are kept.
+              You are saying the boxes you can see are all there is, so
+              weak boxes below your threshold are removed from{" "}
+              {confirmBulk?.length === 1 ? "it" : "them"}. That cannot be
+              undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -605,7 +632,7 @@ export function EmptiesTab({
         </AlertDialogContent>
       </AlertDialog>
 
-      <EmptyPhotoModal
+      <FileDetailModal
         projectId={projectId}
         items={items}
         index={openIndex}

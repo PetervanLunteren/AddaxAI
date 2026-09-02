@@ -38,4 +38,18 @@ export const filesApi = {
   ): Promise<FileResponse> => {
     return api.patch<FileResponse>(`/api/files/${id}`, data);
   },
+
+  /**
+   * Verify or unverify up to 500 files in one request. Same rule per
+   * file as `update(id, { verified })`.
+   */
+  bulkVerify: async (
+    ids: string[],
+    verified = true,
+  ): Promise<{ updated_count: number }> => {
+    return api.post<{ updated_count: number }>("/api/files/bulk-verify", {
+      file_ids: ids,
+      verified,
+    });
+  },
 };

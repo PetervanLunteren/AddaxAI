@@ -544,7 +544,8 @@ export interface DetectionResponse {
   confidence: number;
   /** The analysis run that produced this box, or `null` when a person
    * drew it by hand. That null is the only exact marker of a
-   * human-drawn box; see `isHumanDrawnBox` in lib/detection-utils.ts. */
+   * human-drawn box. No UI rule reads it: a box is a box. It is on the
+   * wire for exports and debugging. */
   job_id: string | null;
   /** All four bbox fields are null together for event-level observations
    * (a species seen in a video clip without a frame-anchored ROI). For
@@ -633,7 +634,7 @@ export type VerifySort =
   | "random"
   | "similarity"
   | "events"
-  // Empties only. Orders by file path, which groups one camera's
+  // Files tab only. Orders by file path, which groups one camera's
   // photos together because the path starts with its folder.
   | "path";
 
@@ -1021,8 +1022,9 @@ export interface CohortsResponse {
   cohorts: CohortItem[];
 }
 
-/** One empty photo: a file where nothing passed the current floor. */
-export interface EmptyFileItem {
+/** One file on the Files tab. No detections: the tile fetches the file
+ *  detail for its boxes, the same row the viewer opens. */
+export interface LabelsFileItem {
   id: string;
   deployment_id: string;
   file_path: string;
@@ -1031,19 +1033,22 @@ export interface EmptyFileItem {
   verified: boolean;
 }
 
-export interface EmptiesResponse {
-  /** Uncapped count of matching photos, not just this page. */
+export interface LabelsFilesResponse {
+  /** Uncapped count of matching files, not just this page. */
   total: number;
-  /** The confidence these photos were judged empty at. */
+  /** The confidence the empty filter was judged at. */
   floor: number;
-  items: EmptyFileItem[];
+  items: LabelsFileItem[];
 }
 
-export interface EmptiesParams {
+export interface LabelsFilesParams {
   site_ids?: string[];
   date_from?: string;
   date_to?: string;
   verification?: VerificationFilter;
+  /** "show_only" = files where nothing passes the floor, "hide" = files
+   *  where something does, "all" (the default) = both. */
+  empty?: EmptyFilter;
   min_confidence?: number;
   sort?: "path" | "newest" | "oldest" | "random";
   seed?: number | null;
@@ -1052,15 +1057,19 @@ export interface EmptiesParams {
 }
 
 export interface LabelsProgress {
-  /** Passing detections plus one per empty file: the number of cards
-   *  across both tabs of the Labels page. */
+  /** Passing detections plus one per empty file: one bar for the page. */
   total_labels: number;
   verified_labels: number;
-  /** The two halves, so each tab can say what is waiting in the other. */
+  /** The two halves of that bar. */
   crop_labels: number;
   crop_labels_verified: number;
   empty_labels: number;
   empty_labels_verified: number;
+  /** Every file in scope and how many are signed off, for the Files tab's
+   *  chip. Overlaps with crop_labels on purpose: Files lists files with
+   *  boxes too. */
+  files: number;
+  files_verified: number;
 }
 
 export interface LabelStatsResponse {

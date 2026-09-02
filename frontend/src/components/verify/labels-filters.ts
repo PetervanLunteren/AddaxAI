@@ -1,8 +1,8 @@
 /**
  * Filter state for the Labels page, shared by both of its tabs.
  *
- * Detections and Empties show different units (one card per detection, one
- * per photo) but they filter the same population by the same things:
+ * Detections and Files show different units (one card per detection, one
+ * per file) but they filter the same population by the same things:
  * sites, dates, checked state, and the detection confidence floor. The
  * state lives in the URL under `lbl_*` so switching tabs keeps it, and
  * so a filtered view can be shared as a link.
@@ -12,7 +12,7 @@
  * into a 1,900-line component.
  */
 
-import type { EventFilterParams } from "../../api/types";
+import type { EmptyFilter, EventFilterParams } from "../../api/types";
 
 export type LabelsVerification = "all" | "unverified" | "verified";
 
@@ -28,6 +28,9 @@ export interface LabelsFilterState {
   /** Default "unverified" when omitted — verified detections are usually
    *  not what the user is looking at on this tab. */
   verification?: LabelsVerification;
+  /** Files tab only. Default "all" when omitted: every file, empty or
+   *  not. "show_only" is the old Empties tab. */
+  empty?: EmptyFilter;
 }
 
 /** Parse lbl_* params from URL. */
@@ -54,6 +57,10 @@ export function lblFiltersFromSearchParams(
   const ver = sp.get("lbl_verification");
   if (ver === "all" || ver === "unverified" || ver === "verified") {
     f.verification = ver;
+  }
+  const empty = sp.get("lbl_empty");
+  if (empty === "all" || empty === "show_only" || empty === "hide") {
+    f.empty = empty;
   }
   return f;
 }
@@ -83,6 +90,8 @@ export function lblFiltersToSearchParams(
   if (filters.verification && filters.verification !== "unverified") {
     sp.set("lbl_verification", filters.verification);
   }
+  // "all" is the implicit default; the bar writes undefined for it.
+  if (filters.empty) sp.set("lbl_empty", filters.empty);
   return sp;
 }
 
@@ -100,6 +109,7 @@ export function toFilterBarFilters(f: LabelsFilterState): EventFilterParams {
     // Raw, no default materialized: the bar resolves the resting
     // value itself and the chips must only see explicit filters.
     verification: f.verification,
+    empty: f.empty,
   };
 }
 
@@ -119,5 +129,6 @@ export function fromFilterBarFilters(
     min_label_confidence: fp.min_label_confidence,
     max_label_confidence: fp.max_label_confidence,
     verification: fp.verification as LabelsVerification | undefined,
+    empty: fp.empty,
   };
 }

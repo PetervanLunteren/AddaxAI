@@ -5,13 +5,17 @@
  */
 
 import { X } from "lucide-react";
-import type { EventFilterParams } from "../../api/types";
+import type { EmptyFilter, EventFilterParams } from "../../api/types";
 import { Badge } from "../ui/badge";
 
 /** True when any user filter is set on these params. Shared by every
  *  verify tab so the chip row and "no results" copy stay in sync with
- *  the chips this component actually renders. */
-export function hasAnyActiveFilter(filters: EventFilterParams): boolean {
+ *  the chips this component actually renders. `emptyDefault` is the
+ *  page's resting empty value (Counts "hide", Files "all"). */
+export function hasAnyActiveFilter(
+  filters: EventFilterParams,
+  emptyDefault: EmptyFilter = "hide",
+): boolean {
   return (
     (filters.site_ids?.length ?? 0) > 0 ||
     !!filters.date_from ||
@@ -20,7 +24,7 @@ export function hasAnyActiveFilter(filters: EventFilterParams): boolean {
     (!!filters.verification && filters.verification !== "all") ||
     (!!filters.flagged && filters.flagged !== "all") ||
     (!!filters.favorited && filters.favorited !== "all") ||
-    (!!filters.empty && filters.empty !== "hide") ||
+    (!!filters.empty && filters.empty !== emptyDefault) ||
     filters.min_confidence !== undefined ||
     filters.max_confidence !== undefined ||
     filters.min_label_confidence !== undefined ||
@@ -39,6 +43,9 @@ interface FilterChipsProps {
    *  equals it (a default is not a filter). Counts defaults to "all",
    *  the Labels page to "unverified". */
   verificationDefault?: string;
+  /** The page's default empty value, same rule: no chip when the filter
+   *  equals it. Counts rests on "hide", the Files tab on "all". */
+  emptyDefault?: EmptyFilter;
   /** Override the verification chip wording (the Counts page uses
    *  "Confirmed" / "Unconfirmed"; defaults to "Verified" / "Unverified"). */
   verificationLabels?: Record<string, string>;
@@ -72,6 +79,8 @@ const FAVORITED_LABELS: Record<string, string> = {
 const EMPTY_LABELS: Record<string, string> = {
   show_only: "Empty only",
   all: "Including empty",
+  // Only ever a chip on the Files tab, where "all" is the default.
+  hide: "Hiding empty",
 };
 
 
@@ -82,6 +91,7 @@ export function FilterChips({
   displayLabels,
   detectionFloor = 0,
   verificationDefault = "all",
+  emptyDefault = "hide",
   verificationLabels = VERIFICATION_LABELS,
 }: FilterChipsProps) {
   const chips: { key: string; label: string; onRemove: () => void }[] = [];
@@ -173,16 +183,14 @@ export function FilterChips({
     });
   }
 
-  // Empty chip. "hide" is the implicit default (hide blank captures),
-  // so it renders no chip — a default is not a filter. Only a
-  // deviation ("Including empty" / "Empty only") shows, and removing it
-  // resets to the "hide" default (set explicitly because undefined also
-  // falls back to "hide").
-  if (filters.empty && filters.empty !== "hide") {
+  // Empty chip. The page default renders no chip — a default is not a
+  // filter. Only a deviation shows, and removing it clears the filter,
+  // which the page resolves back to its default.
+  if (filters.empty && filters.empty !== emptyDefault) {
     chips.push({
       key: "empty",
       label: EMPTY_LABELS[filters.empty] ?? filters.empty,
-      onRemove: () => onChange({ ...filters, empty: "hide" }),
+      onRemove: () => onChange({ ...filters, empty: undefined }),
     });
   }
 

@@ -7,7 +7,7 @@
  * looking at, so they should survive a fresh link and not travel with a
  * shared one.
  *
- * One module owns the key, so Detections and Empties read and write the same
+ * One module owns the key, so Detections and Files read and write the same
  * store instead of each keeping its own idea of what "large tiles"
  * means. Tile size in particular is one preference, not two: a person
  * who wants big tiles wants them in both tabs, even though the two map

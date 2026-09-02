@@ -1,10 +1,12 @@
 /**
- * Detections / Empties switch for the Labels page.
+ * Detections / Files switch for the Labels page.
  *
- * The two halves of one job. Detections shows every detection above the
- * detection threshold, one card per box. Empties shows every photo with
- * none, one card per photo. Every photo in the project is in exactly
- * one of them, and the threshold decides which.
+ * Two views of one job. Detections shows every detection above the
+ * detection threshold, one card per box. Files shows every file, one
+ * card per file, with its boxes on it. They overlap on purpose: a box
+ * verified in Detections is one step towards its file, and a file
+ * signed off in Files takes its boxes out of Detections. The chips
+ * count different units, boxes and files.
  *
  * Same segmented look as `TileSizeToggle`; not shared with it because
  * that one is typed to tile sizes and a generic control for two call
@@ -14,31 +16,32 @@
 import { compactNumber } from "../../lib/compact-number";
 import { cn } from "../../lib/utils";
 
-export type LabelsViewMode = "crops" | "empties";
+export type LabelsViewMode = "crops" | "files";
 
 interface ViewModeToggleProps {
   value: LabelsViewMode;
   onChange: (v: LabelsViewMode) => void;
-  /** Labels not yet checked in each tab. The chip is what stops the
-   *  other half of the work being invisible; it is dropped at zero so a
-   *  finished tab reads clean rather than showing a nought. */
+  /** Work left in each tab. The chip is what stops the other view of
+   *  the work being invisible; it is dropped at zero so a finished tab
+   *  reads clean rather than showing a nought. */
   cropsLeft?: number;
-  emptiesLeft?: number;
+  filesLeft?: number;
 }
 
 export function ViewModeToggle({
   value,
   onChange,
   cropsLeft = 0,
-  emptiesLeft = 0,
+  filesLeft = 0,
 }: ViewModeToggleProps) {
   const modes: {
     value: LabelsViewMode;
     label: string;
     left: number;
+    unit: string;
   }[] = [
-    { value: "crops", label: "Detections", left: cropsLeft },
-    { value: "empties", label: "Empties", left: emptiesLeft },
+    { value: "crops", label: "Detections", left: cropsLeft, unit: "boxes" },
+    { value: "files", label: "Files", left: filesLeft, unit: "files" },
   ];
 
   return (
@@ -63,7 +66,7 @@ export function ViewModeToggle({
             {mode.label}
             {mode.left > 0 && (
               <span
-                title={`${mode.left.toLocaleString()} not verified yet`}
+                title={`${mode.left.toLocaleString()} ${mode.unit} not verified yet`}
                 className={cn(
                   "rounded px-1 py-px text-[10px] font-normal tabular-nums",
                   active

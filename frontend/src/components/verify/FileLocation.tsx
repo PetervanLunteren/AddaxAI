@@ -7,7 +7,7 @@
  * is possible; the event view offers the same action in its menu
  * through the same hook.
  *
- * Shared by the Detections and Empties large views so the two cards
+ * Shared by the Detections and Files large views so the two cards
  * cannot drift.
  */
 

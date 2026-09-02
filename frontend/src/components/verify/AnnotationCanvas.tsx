@@ -1,8 +1,10 @@
 /**
  * Interactive annotation canvas using react-konva.
  *
- * Supports drawing, moving, resizing, and deleting bounding boxes.
- * Replaces the SVG overlay when verify mode is active.
+ * Draws every visible box (`shouldDrawBbox`) and supports drawing,
+ * moving and resizing them. There is no delete: a wrong box is marked
+ * false through its label pill, like any other box. Keys belong to the
+ * host component; this only reacts to props.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -32,11 +34,6 @@ import { useSpeciesColorsVersion } from "../../utils/species-colors";
 interface AnnotationCanvasProps {
   file: FileWithDetections;
   detectionThreshold: number;
-  /** Draw only the boxes a person put there, ignoring `detectionThreshold`
-   *  and every box the detector found. The empties viewer sets it: that
-   *  page says the picture is empty, so a machine box on it argues with
-   *  the page. See `shouldDrawBbox`. */
-  humanDrawnOnly?: boolean;
   selectedDetectionId: string | null;
   onSelectDetection: (id: string | null) => void;
   /** Fired when the user clicks a box's label pill — opens the relabel
@@ -86,7 +83,6 @@ interface DrawingBox {
 export function AnnotationCanvas({
   file,
   detectionThreshold,
-  humanDrawnOnly,
   selectedDetectionId,
   onSelectDetection,
   onRequestRelabel,
@@ -132,7 +128,7 @@ export function AnnotationCanvas({
   // observations (no bbox) never draw. `shouldDrawBbox` centralises
   // both gates.
   const filteredDetections = file.detections.filter((d) =>
-    shouldDrawBbox(d, file, detectionThreshold, { humanDrawnOnly }),
+    shouldDrawBbox(d, file, detectionThreshold),
   );
 
   // Update stage size based on container. Defined before the image-load
@@ -327,26 +323,6 @@ export function AnnotationCanvas({
       getZoom: () => zoom,
     };
   });
-
-  // Keyboard shortcut: D to toggle draw mode
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) {
-        return;
-      }
-
-      if (e.key === "d" || e.key === "D") {
-        e.preventDefault();
-        onDrawModeChange(!drawMode);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [drawMode, onDrawModeChange]);
 
   // Simpler conversion: just scale normalized -> stage pixels
   const normToPixel = (v: number, dim: number) =>

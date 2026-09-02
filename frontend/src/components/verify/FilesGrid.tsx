@@ -1,12 +1,12 @@
 /**
- * EmptiesGrid - paged grid of empty-photo tiles.
+ * FilesGrid - paged grid of file tiles for the Files tab.
  *
- * The Empties half of the Labels page. One tile per photo rather than
- * per detection, so it is a plain thumbnail: an empty photo has no box
- * worth cropping to, and drawing the sub-threshold ones on 48 tiles at
- * once is noise on a wall of vegetation. They are shown, dimmed and
- * scored, when a photo is opened full size, which is where they say
- * something useful.
+ * One tile per file rather than per detection: the whole frame with its
+ * visible boxes drawn on it (`FrameThumbnail`, the same overlay the
+ * Counts filmstrip uses), so a file with boxes is recognisable at a
+ * glance and an empty one is a plain photo. Each tile fetches the file
+ * detail for its boxes, the same query the viewer opens, so one cache
+ * entry serves both (`EventCollage` does the same).
  *
  * Deliberately not `CropGrid`. That one is window-virtualized with a
  * selection store and divider rows because it carries tens of thousands
@@ -16,15 +16,16 @@
  */
 
 import { memo, useLayoutEffect, useRef, useState } from "react";
-import { Check, ImageOff } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Check } from "lucide-react";
 
-import { API_BASE_URL } from "../../lib/api-client";
+import { filesApi } from "../../api/files";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import { basename } from "../../lib/path-utils";
-import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
 import { cn } from "../../lib/utils";
+import { FrameThumbnail } from "./FrameThumbnail";
 import { columnsForWidth, useWideModeValue } from "./wide-mode";
-import type { EmptyFileItem } from "../../api/types";
+import type { LabelsFileItem } from "../../api/types";
 import type { TileSize } from "./CropGrid";
 
 const GAP = 12;
@@ -44,27 +45,30 @@ const GAP = 12;
 // and goes soft. L is deliberately under it.
 const MIN_TILE: Record<TileSize, number> = { S: 220, M: 320, L: 460 };
 
-interface EmptiesGridProps {
-  items: EmptyFileItem[];
+interface FilesGridProps {
+  items: LabelsFileItem[];
   selectedIds: Set<string>;
   onSelect: (fileId: string, e: React.MouseEvent) => void;
-  onOpen: (item: EmptyFileItem) => void;
+  onOpen: (item: LabelsFileItem) => void;
   /** Clicking the gap between tiles clears, as in the crop grid. */
   onBackgroundClick?: () => void;
+  /** The project's counting threshold: which boxes the tiles draw. */
+  detectionThreshold: number;
   tileSize?: TileSize;
   /** Applied to the grid container, e.g. to dim held-over tiles. */
   className?: string;
 }
 
-export function EmptiesGrid({
+export function FilesGrid({
   items,
   selectedIds,
   onSelect,
   onOpen,
   onBackgroundClick,
+  detectionThreshold,
   tileSize = "M",
   className,
-}: EmptiesGridProps) {
+}: FilesGridProps) {
   const wide = useWideModeValue();
   const containerRef = useRef<HTMLDivElement>(null);
   const [columns, setColumns] = useState(4);
@@ -96,12 +100,13 @@ export function EmptiesGrid({
       }}
     >
       {items.map((item) => (
-        <EmptyTile
+        <FileTile
           key={item.id}
           item={item}
           selected={selectedIds.has(item.id)}
           onSelect={onSelect}
           onOpen={onOpen}
+          detectionThreshold={detectionThreshold}
           tileSize={tileSize}
         />
       ))}
@@ -109,23 +114,29 @@ export function EmptiesGrid({
   );
 }
 
-interface EmptyTileProps {
-  item: EmptyFileItem;
+interface FileTileProps {
+  item: LabelsFileItem;
   selected: boolean;
   onSelect: (fileId: string, e: React.MouseEvent) => void;
-  onOpen: (item: EmptyFileItem) => void;
+  onOpen: (item: LabelsFileItem) => void;
+  detectionThreshold: number;
   tileSize: TileSize;
 }
 
-const EmptyTile = memo(function EmptyTile({
+const FileTile = memo(function FileTile({
   item,
   selected,
   onSelect,
   onOpen,
+  detectionThreshold,
   tileSize,
-}: EmptyTileProps) {
-  const [imageFailed, setImageFailed] = useState(false);
+}: FileTileProps) {
   const isSmall = tileSize === "S";
+  // The same key the viewer uses, so opening a tile costs no request.
+  const { data: file } = useQuery({
+    queryKey: ["file", item.id],
+    queryFn: ({ signal }) => filesApi.get(item.id, { signal }),
+  });
 
   return (
     <div
@@ -142,43 +153,28 @@ const EmptyTile = memo(function EmptyTile({
       }}
       title={basename(item.file_path)}
     >
-      {/* 4:3 and `object-contain`, so the whole frame is visible and
-          nothing is cropped away. This matters more than it looks: 74%
-          of the files in a real database are 4:3 and 24% are 16:9, so a
-          fixed 16:9 tile with `object-cover` was cutting a quarter of
-          the height off three quarters of the photos, top and bottom.
-          That is exactly where an animal walking into shot appears, and
-          this grid exists to find those. A 16:9 photo letterboxes here
-          instead, which costs a little space and hides nothing. */}
+      {/* 4:3 and `contain`, so the whole frame is visible and nothing is
+          cropped away. This matters more than it looks: 74% of the files
+          in a real database are 4:3 and 24% are 16:9, so a fixed 16:9
+          tile with `cover` was cutting a quarter of the height off three
+          quarters of the photos, top and bottom. That is exactly where an
+          animal walking into shot appears, and this grid exists to find
+          those. A 16:9 photo letterboxes here instead, which costs a
+          little space and hides nothing. */}
       <div
         className={cn(
-          "aspect-[4/3] bg-muted relative overflow-hidden",
+          "aspect-[4/3] relative overflow-hidden",
           // S hides the caption, so the image is the bottom of the card
           // and has to carry the card's rounding itself.
           isSmall ? "rounded-lg" : "rounded-t-lg",
         )}
       >
-        {imageFailed ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-neutral-200">
-            <ImageOff
-              className={cn(
-                "text-neutral-400",
-                isSmall ? "h-4 w-4" : "h-6 w-6",
-              )}
-            />
-          </div>
-        ) : (
-          <img
-            src={`${API_BASE_URL}/api/files/${item.id}/image?size=thumb`}
-            alt={basename(item.file_path)}
-            loading="lazy"
-            className="w-full h-full object-contain"
-            onError={() => {
-              setImageFailed(true);
-              reportMissingMedia(item.deployment_id);
-            }}
-          />
-        )}
+        <FrameThumbnail
+          fileId={item.id}
+          file={file}
+          detectionThreshold={detectionThreshold}
+          fit="contain"
+        />
         {/* A video reads as a photo here, because the tile is the best
             frame. Without this, someone scanning a wall of tiles has no
             way to tell which of them are clips they are seeing one frame
@@ -192,12 +188,12 @@ const EmptyTile = memo(function EmptyTile({
             the tile instead). It also said the wrong thing about the
             feature: the frame is all there is.
 
-            Top left, not bottom left. Tiles are 4:3 with
-            `object-contain` and camera videos are 16:9, so the picture
-            letterboxes and anything pinned to the bottom floats on the
-            background strip below it, reading as a control under the
-            photo rather than a mark on it. The top edge has no such gap,
-            and `Check` already owns the top right. */}
+            Top left, not bottom left. Tiles are 4:3 with `contain` and
+            camera videos are 16:9, so the picture letterboxes and
+            anything pinned to the bottom floats on the background strip
+            below it, reading as a control under the photo rather than a
+            mark on it. The top edge has no such gap, and `Check` already
+            owns the top right. */}
         {item.file_type === "video" && (
           <span
             className="pointer-events-none absolute top-1 left-1 rounded bg-black/60 px-1 py-0.5 text-[10px] leading-none text-white"

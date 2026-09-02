@@ -47,8 +47,15 @@ interface VerifyMoreFiltersProps {
   /** Lowest classification confidence in the project (data-driven cls
    * slider clamp); null / undefined = no classifications yet. */
   minLabelConfidence?: number | null;
-  /** Render the liked / flagged / empty selects. False on Observations. */
+  /** Render the liked / flagged selects (and, unless `showEmpty` says
+   *  otherwise, the empty select). False on Detections. */
   showLikedFlaggedEmpty?: boolean;
+  /** Render the empty select. The Files tab wants it without liked /
+   *  flagged. Defaults to `showLikedFlaggedEmpty`. */
+  showEmpty?: boolean;
+  /** The resting value of the empty select. Choosing it clears the
+   *  filter and it never counts as active. Counts "hide", Files "all". */
+  emptyDefault?: EmptyFilter;
 }
 
 export function VerifyMoreFilters({
@@ -60,6 +67,8 @@ export function VerifyMoreFilters({
   showClassification = false,
   minLabelConfidence,
   showLikedFlaggedEmpty = true,
+  showEmpty = showLikedFlaggedEmpty,
+  emptyDefault = "hide",
 }: VerifyMoreFiltersProps) {
   const [open, setOpen] = useState(false);
 
@@ -74,7 +83,7 @@ export function VerifyMoreFilters({
   const activeCount =
     (showLikedFlaggedEmpty && filters.favorited && filters.favorited !== "all" ? 1 : 0) +
     (showLikedFlaggedEmpty && filters.flagged && filters.flagged !== "all" ? 1 : 0) +
-    (showLikedFlaggedEmpty && filters.empty && filters.empty !== "hide" ? 1 : 0) +
+    (showEmpty && filters.empty && filters.empty !== emptyDefault ? 1 : 0) +
     (detRangeActive ? 1 : 0) +
     (clsRangeActive ? 1 : 0);
 
@@ -153,32 +162,33 @@ export function VerifyMoreFilters({
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Empty</label>
-              <Select
-                value={filters.empty ?? "hide"}
-                onValueChange={(v) =>
-                  onChange({
-                    ...filters,
-                    // Record the choice literally — "hide" is the
-                    // implicit default, so "all" must be explicit
-                    // (undefined would fall back to "hide").
-                    empty: v as EmptyFilter,
-                  })
-                }
-              >
-                <SelectTrigger className="h-9 min-h-0 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="show_only">Show only empty</SelectItem>
-                  <SelectItem value="hide">Hide empty</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </>
+        )}
+
+        {showEmpty && (
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Empty</label>
+            <Select
+              value={filters.empty ?? emptyDefault}
+              onValueChange={(v) =>
+                onChange({
+                  ...filters,
+                  // Choosing the page default clears the filter (a
+                  // default is not a filter); anything else is explicit.
+                  empty: v === emptyDefault ? undefined : (v as EmptyFilter),
+                })
+              }
+            >
+              <SelectTrigger className="h-9 min-h-0 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="show_only">Show only empty</SelectItem>
+                <SelectItem value="hide">Hide empty</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         )}
 
         <ConfidenceRangeFilter

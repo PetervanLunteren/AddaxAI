@@ -3,9 +3,9 @@
  *
  * Renders its own toolbar icon trigger (Keyboard) so it sits inline
  * with the other utility icons in the verify toolbar. Takes the list of
- * shortcuts to show, because Detections and Empties have different ones, and
+ * shortcuts to show, because Detections and Files have different ones, and
  * renders the user-configurable label slots (1-5) alongside only when a
- * tab has them. Empties does not: there is nothing to label there.
+ * tab has them. Files does not: labels there are set on the box, in the viewer.
  *
  * Only grid shortcuts are listed, in both tabs. The detail views label
  * their own keys on the buttons that use them, so repeating them here

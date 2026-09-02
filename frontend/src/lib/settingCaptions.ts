@@ -34,7 +34,7 @@ export const SETTING_CAPTIONS = {
   // separated / annotated media. "The results the app shows and saves"
   // covers both modes without a branch. The empty sentence is the one
   // consequence people meet first, and it is worded like the note on the
-  // Empties tab so the two read as one idea rather than two rules.
+  // Files tab so the two read as one idea rather than two rules.
   detectionThreshold:
     "Detections below this score are treated as noise: hidden from the " +
     "grids, and left out of the results the app shows and saves. " +
