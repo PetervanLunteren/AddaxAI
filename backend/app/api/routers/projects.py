@@ -442,21 +442,28 @@ def update_project(
 
     # Validate that not all species are excluded
     if project.excluded_classes is not None and len(project.excluded_classes) > 0:
+        # Against the model the exclusions are for: the one in this same
+        # request when it changes the model, else the stored one. The
+        # folder-run setup step sends both in one PATCH, and checking
+        # SpeciesNet's 1918 Kenya exclusions against a stored 39-class
+        # model refused every model switch. Sets, not counts: a list
+        # longer than a model's class list is not the same as excluding
+        # every class of that model.
         db_existing = crud_project.get_project(db, project_id)
-        if db_existing and db_existing.classification_model_id:
+        model_id = project.classification_model_id or (
+            db_existing.classification_model_id if db_existing else None
+        )
+        if model_id:
             try:
                 from app.core.config import get_settings
                 from app.ml.taxonomy_parser import get_all_leaf_classes, parse_taxonomy_csv
 
                 settings = get_settings()
-                taxonomy_path = (
-                    settings.models_dir / "cls"
-                    / db_existing.classification_model_id / "taxonomy.csv"
-                )
+                taxonomy_path = settings.models_dir / "cls" / model_id / "taxonomy.csv"
                 if taxonomy_path.exists():
                     tree = parse_taxonomy_csv(taxonomy_path)
-                    all_classes = get_all_leaf_classes(tree)
-                    if len(project.excluded_classes) >= len(all_classes):
+                    all_classes = set(get_all_leaf_classes(tree))
+                    if all_classes and all_classes <= set(project.excluded_classes):
                         raise HTTPException(
                             status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Cannot exclude all species. At least one must remain included.",

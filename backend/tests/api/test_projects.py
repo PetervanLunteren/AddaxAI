@@ -667,3 +667,58 @@ def test_custom_label_reuses_the_builtin_row(client, db):
     )
     assert len(rows) == 1
     assert rows[0].classification_model_id == BUILTIN_MODEL_ID
+
+
+# --- Excluding species ---
+
+
+def _write_taxonomy(model_id, classes):
+    """A taxonomy.csv under the test models dir, one leaf per class."""
+    from app.core.config import get_settings
+
+    d = get_settings().models_dir / "cls" / model_id
+    d.mkdir(parents=True, exist_ok=True)
+    rows = "".join(f"{c},mammalia,,,,\n" for c in classes)
+    (d / "taxonomy.csv").write_text(
+        "model_class,class,order,family,genus,species\n" + rows
+    )
+
+
+def test_excluding_every_class_of_the_model_is_refused(client, db):
+    _write_taxonomy("tiny-model", ["fox", "hare"])
+    p = make_project(db, classification_model_id="tiny-model")
+    resp = client.patch(
+        f"/api/projects/{p.id}", json={"excluded_classes": ["fox", "hare"]}
+    )
+    assert resp.status_code == 400
+    assert "Cannot exclude all species" in resp.json()["detail"]
+
+
+def test_a_model_switch_is_checked_against_the_new_model(client, db):
+    """The folder-run setup step sends the new model and its exclusions
+    in one PATCH. Checking 1918 SpeciesNet exclusions against a stored
+    39-class model refused every switch (2026-09-01)."""
+    _write_taxonomy("tiny-model", ["fox", "hare"])
+    _write_taxonomy("big-model", ["a", "b", "c", "d", "e"])
+    p = make_project(db, classification_model_id="tiny-model")
+    resp = client.patch(
+        f"/api/projects/{p.id}",
+        json={
+            "classification_model_id": "big-model",
+            "excluded_classes": ["a", "b", "c", "d"],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["classification_model_id"] == "big-model"
+
+
+def test_a_long_list_that_leaves_a_class_is_not_excluding_all(client, db):
+    """Sets, not counts: names the model does not have do not count
+    towards emptying it."""
+    _write_taxonomy("tiny-model", ["fox", "hare"])
+    p = make_project(db, classification_model_id="tiny-model")
+    resp = client.patch(
+        f"/api/projects/{p.id}",
+        json={"excluded_classes": ["fox", "zebra", "lion", "okapi"]},
+    )
+    assert resp.status_code == 200, resp.text
