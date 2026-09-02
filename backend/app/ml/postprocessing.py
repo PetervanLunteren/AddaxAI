@@ -29,7 +29,7 @@ from app.core.job_cancellation import (
 from app.core.logging_config import get_logger
 from app.core.subprocess_group import popen_group
 from app.ml.detection_visibility import on_visible_frame_of
-from app.ml.observation_type import BLANK, derive_observation_type
+from app.ml.observation_type import derive_observation_type
 from app.ml.progress import ProgressTicker
 from app.models import Deployment, Detection, File, Project
 from app.utils.subprocess_env import clean_python_env
@@ -544,19 +544,18 @@ def update_database_from_smoothed_results(
         key = (det.file.file_path, bbox_key, det.frame_number)
         detection_lookup[key] = det
 
-    # Files a person has signed off as empty have had the detector's
-    # boxes deleted (`crud.file._discard_detector_boxes`), so the JSON
-    # still lists boxes that no longer exist here. That is the state we
-    # asked for, not a mismatch. Without this the very next reprocess of
-    # a checked project reports one "error" per removed box, which on
-    # measured data is 3.2 per empty file, so a few hundred failures
-    # that are not failures.
-    emptied_paths = {
+    # Signing a file off deletes the boxes below the threshold
+    # (`crud.file.set_file_verified`), so the JSON still lists boxes that
+    # no longer exist here. That is the state the person asked for, not a
+    # mismatch. Without this the very next reprocess of a checked project
+    # reports one "error" per removed box, which on measured data is 3.2
+    # per file, so a few hundred failures that are not failures. A
+    # missing box on a file nobody signed off still counts.
+    verified_paths = {
         path
         for (path,) in db.query(File.file_path)
         .filter(File.deployment_id == deployment_id)
         .filter(File.verified.is_(True))
-        .filter(File.observation_type == BLANK)
         .all()
     }
 
@@ -599,7 +598,7 @@ def update_database_from_smoothed_results(
 
                 db_det = detection_lookup.get(key)
                 if db_det is None:
-                    if absolute_path not in emptied_paths:
+                    if absolute_path not in verified_paths:
                         errors += 1
                     continue
 

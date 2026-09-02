@@ -403,6 +403,23 @@ def get_event_ids_for_detections(
     return [row[0] for row in rows]
 
 
+def get_event_ids_for_files(db: Session, file_ids: list[str]) -> list[str]:
+    """Event IDs that contain any of the given files.
+
+    By file, not by detection: a file whose boxes were just deleted has
+    nothing left to join through.
+    """
+    if not file_ids:
+        return []
+    rows = (
+        db.query(event_files.c.event_id)
+        .filter(event_files.c.file_id.in_(file_ids))
+        .distinct()
+        .all()
+    )
+    return [row[0] for row in rows]
+
+
 def get_thumbnail_file_id(db: Session, event_id: str) -> str | None:
     """Get the max_n_file_id of the dominant species (highest max_n)."""
     obs = (

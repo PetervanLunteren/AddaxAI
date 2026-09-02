@@ -605,14 +605,15 @@ def test_final_sweep_preserves_verified(deployment_scaffold):
 
 
 def test_a_discarded_box_is_not_reported_as_a_reprocess_error(deployment_scaffold):
-    """A file signed off as empty has had its boxes deleted, so the JSON
-    still lists boxes with no row to match. That is the state we asked
-    for, not a mismatch.
+    """A signed-off file has had its weak boxes deleted, so the JSON still
+    lists boxes with no row to match. That is the state the person asked
+    for, not a mismatch. The file need not be blank: verifying a file
+    with a passing box deletes the weak ones beside it too.
 
     Without the exemption the very next reprocess of a checked project
-    reports one error per removed box: measured at 3.2 per empty file, so
-    a few hundred failures that are not failures, shown to the user in
-    the reprocess summary.
+    reports one error per removed box: measured at 3.2 per file, so a few
+    hundred failures that are not failures, shown to the user in the
+    reprocess summary.
     """
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
@@ -626,14 +627,14 @@ def test_a_discarded_box_is_not_reported_as_a_reprocess_error(deployment_scaffol
     )
     emptied, kept = files[0], files[1]
 
-    # Stand in for the empty-verify: the boxes are gone and the file is
-    # marked reviewed and blank, exactly as `_discard_detector_boxes`
-    # plus `update_file` leave it.
+    # Stand in for the file verify: the box is gone and the file is
+    # signed off but not blank, exactly as `set_file_verified` leaves a
+    # file whose weak box sat beside a verified one.
     db.query(Detection).filter(Detection.file_id == emptied.id).delete(
         synchronize_session=False
     )
     emptied.verified = True
-    emptied.observation_type = "blank"
+    emptied.observation_type = "animal"
     db.commit()
 
     smoothed = build_detection_json(
@@ -670,3 +671,50 @@ def test_a_discarded_box_is_not_reported_as_a_reprocess_error(deployment_scaffol
     assert (
         db.query(Detection).filter(Detection.file_id == emptied.id).count() == 0
     )
+
+
+def test_a_missing_box_on_an_unverified_file_is_still_an_error(deployment_scaffold):
+    """The exemption reaches verified files only. A box the JSON lists
+    that the database lacks on a file nobody signed off is still the one
+    signal that the two disagree for a reason other than a user action."""
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    _load_basic_images(s)
+
+    files = (
+        db.query(File)
+        .filter(File.deployment_id == s["deployment"].id)
+        .order_by(File.captured_at_local.asc())
+        .all()
+    )
+    db.query(Detection).filter(Detection.file_id == files[0].id).delete(
+        synchronize_session=False
+    )
+    db.commit()
+
+    smoothed = build_detection_json(
+        [
+            {
+                "file": str(Path(f.file_path).relative_to(deploy_dir)),
+                "detections": [
+                    {
+                        "category": "1",
+                        "conf": 0.9,
+                        "bbox": [0.1, 0.2, 0.3, 0.4],
+                        "classifications": [[2, 0.8], [1, 0.2]],
+                    }
+                ],
+            }
+            for f in files
+        ],
+        classification_categories={"1": "lion", "2": "zebra", "3": "giraffe"},
+    )
+
+    counts = update_database_from_smoothed_results(
+        deployment_id=s["deployment"].id,
+        smoothed_results=smoothed,
+        deployment_folder=deploy_dir,
+        db=db,
+    )
+
+    assert counts["errors"] == 1

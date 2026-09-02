@@ -503,8 +503,9 @@ def test_drawing_a_box_takes_the_photo_out_of_the_empties(client, db):
     hand-drawn box is stored at confidence 1.0, so it passes any floor."""
     f = _setup_file(db)
     project_id = f.deployment.project_id
+    show_only = {"empty": "show_only"}
 
-    before = client.get(f"/api/projects/{project_id}/labels/empties").json()
+    before = client.get(f"/api/projects/{project_id}/labels/files", params=show_only).json()
     assert before["total"] == 1
 
     client.post("/api/detections", json={
@@ -516,5 +517,5 @@ def test_drawing_a_box_takes_the_photo_out_of_the_empties(client, db):
         "bbox_height": 0.3,
     })
 
-    after = client.get(f"/api/projects/{project_id}/labels/empties").json()
+    after = client.get(f"/api/projects/{project_id}/labels/files", params=show_only).json()
     assert after["total"] == 0

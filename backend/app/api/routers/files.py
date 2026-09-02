@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse as FastAPIFileResponse
 from fastapi.responses import Response
 from PIL import Image
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.crud import file as file_crud
@@ -92,6 +93,34 @@ async def list_files(
         files = file_crud.get_files(db, skip=skip, limit=limit, observation_type=observation_type)
 
     return files
+
+
+class BulkFileVerifyRequest(BaseModel):
+    file_ids: list[str] = Field(..., max_length=500)
+    verified: bool = True
+
+
+@router.post("/bulk-verify")
+def bulk_verify_files(
+    body: BulkFileVerifyRequest,
+    db: Session = Depends(get_db),
+):
+    """Verify or unverify up to 500 files in one request.
+
+    Same rule per file as `PATCH /api/files/{id}` with `verified`
+    (`crud.file.set_file_verified`), one commit for the batch. Same
+    shape as the detections bulk endpoints: an empty list is a no-op,
+    a list that matches nothing is a 404.
+    """
+    if not body.file_ids:
+        return {"updated_count": 0}
+    files = db.query(File).filter(File.id.in_(body.file_ids)).all()
+    if not files:
+        raise HTTPException(status_code=404, detail="No files found")
+    for f in files:
+        file_crud.set_file_verified(db, f, body.verified)
+    db.commit()
+    return {"updated_count": len(files)}
 
 
 @router.patch("/{file_id}", response_model=FileResponse)

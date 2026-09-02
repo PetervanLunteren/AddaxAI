@@ -1,14 +1,16 @@
-"""Tests for the Labels page's empties endpoint.
+"""Tests for the Labels page's files endpoint and its progress counts.
 
-An "empty" photo is one where nothing passed: no detection at or above
-the grid's current floor, and none verified. It is the same rule as
-``derive_observation_type`` computed live at the floor rather than read
-from the stored column, so it follows the confidence slider.
+The Files tab lists every file. Its ``empty`` filter narrows by whether
+anything on the file's visible surface passes: ``show_only`` keeps the
+files where nothing does, ``hide`` the files where something does. That
+is the same rule as ``derive_observation_type`` computed live at the
+grid's current floor rather than read from the stored column, so it
+follows the confidence slider.
 
-The property these tests exist to protect is the one users are told:
-every photo is either in the crop grid or in the empties list, never
-both and never neither. ``test_every_photo_is_in_exactly_one_of_the_two``
-is the one that pins it.
+The property these tests protect: the two halves of the ``empty`` filter
+partition the project, and ``show_only`` is exactly the set of files with
+no card in the Detections tab. ``test_every_photo_is_in_exactly_one_half``
+pins it.
 """
 
 import uuid
@@ -31,12 +33,17 @@ def _project_with_files(db, n_files=0, threshold=0.2):
     return p, d, files
 
 
-def _empties(client, project_id, **params):
-    resp = client.get(
-        f"/api/projects/{project_id}/labels/empties", params=params
-    )
+def _files(client, project_id, **params):
+    resp = client.get(f"/api/projects/{project_id}/labels/files", params=params)
     assert resp.status_code == 200, resp.text
     return resp.json()
+
+
+def _empties(client, project_id, **params):
+    return _files(client, project_id, empty="show_only", **params)
+
+
+# ── The empty filter ──────────────────────────────────────────────────
 
 
 def test_a_confident_box_is_not_empty(client, db):
@@ -49,7 +56,7 @@ def test_a_confident_box_is_not_empty(client, db):
 
 def test_a_weak_box_is_empty(client, db):
     """The whole point: a box below the threshold does not rescue a
-    photo from the empties list, because the user cannot see it."""
+    photo from the empty half, because the user cannot see it."""
     p, _d, (f,) = _project_with_files(db, 1)
     make_detection(db, file_id=f.id, confidence=0.05)
     db.commit()
@@ -124,10 +131,10 @@ def test_a_box_on_another_video_frame_does_not_rescue_a_file(client, db):
     assert _empties(client, p.id)["total"] == 0
 
 
-def test_every_photo_is_in_exactly_one_of_the_two(client, db):
-    """The mental model the UI promises: every photo is either in the
-    crop grid or in the empties list. Break the floor rule on either
-    side and a photo lands in both or in neither."""
+def test_every_photo_is_in_exactly_one_half(client, db):
+    """`show_only` is exactly the set of files with no card in the
+    Detections tab, and `hide` is the rest. Break the floor rule on
+    either side and a photo lands in both or in neither."""
     from sqlalchemy import or_
 
     from app.models import Detection, File
@@ -144,6 +151,10 @@ def test_every_photo_is_in_exactly_one_of_the_two(client, db):
     empty_ids = {
         item["id"] for item in _empties(client, p.id, limit=200)["items"]
     }
+    with_boxes = {
+        item["id"]
+        for item in _files(client, p.id, empty="hide", limit=200)["items"]
+    }
     in_crop_grid = {
         fid
         for (fid,) in db.query(Detection.file_id)
@@ -155,8 +166,36 @@ def test_every_photo_is_in_exactly_one_of_the_two(client, db):
     }
 
     all_ids = {f.id for f in files}
-    assert empty_ids | in_crop_grid == all_ids, "a photo is in neither"
-    assert not (empty_ids & in_crop_grid), "a photo is in both"
+    assert with_boxes == in_crop_grid
+    assert empty_ids | with_boxes == all_ids, "a photo is in neither"
+    assert not (empty_ids & with_boxes), "a photo is in both"
+
+
+def test_all_is_the_default_and_lists_every_file(client, db):
+    """The Files tab opens on everything. The empty filter is a lens on
+    the same list, not a separate one."""
+    p, _d, files = _project_with_files(db, 3)
+    make_detection(db, file_id=files[0].id, confidence=0.9)
+    make_detection(db, file_id=files[1].id, confidence=0.05)
+    db.commit()
+
+    assert _files(client, p.id)["total"] == 3
+    assert _files(client, p.id, empty="all")["total"] == 3
+    assert _files(client, p.id, empty="hide")["total"] == 1
+    assert _files(client, p.id, empty="show_only")["total"] == 2
+
+
+def test_an_unknown_empty_value_is_refused(client, db):
+    p, _d, _files_ = _project_with_files(db, 1)
+    db.commit()
+
+    resp = client.get(
+        f"/api/projects/{p.id}/labels/files", params={"empty": "maybe"}
+    )
+    assert resp.status_code == 422
+
+
+# ── Listing ───────────────────────────────────────────────────────────
 
 
 def test_the_checked_filter_hides_what_is_done(client, db):
@@ -164,9 +203,9 @@ def test_the_checked_filter_hides_what_is_done(client, db):
     a.verified = True
     db.commit()
 
-    assert _empties(client, p.id, verification="unverified")["total"] == 1
-    assert _empties(client, p.id, verification="verified")["total"] == 1
-    assert _empties(client, p.id)["total"] == 2
+    assert _files(client, p.id, verification="unverified")["total"] == 1
+    assert _files(client, p.id, verification="verified")["total"] == 1
+    assert _files(client, p.id)["total"] == 2
 
 
 def test_path_is_the_default_sort(client, db):
@@ -188,12 +227,10 @@ def test_path_is_the_default_sort(client, db):
     )
     db.commit()
 
-    by_path = [i["id"] for i in _empties(client, p.id)["items"]]
+    by_path = [i["id"] for i in _files(client, p.id)["items"]]
     assert by_path == [earlier.id, later.id]
 
-    by_newest = [
-        i["id"] for i in _empties(client, p.id, sort="newest")["items"]
-    ]
+    by_newest = [i["id"] for i in _files(client, p.id, sort="newest")["items"]]
     assert by_newest == [later.id, earlier.id]
 
 
@@ -201,43 +238,43 @@ def test_random_is_stable_for_a_seed_and_needs_one(client, db):
     """Sampling is the only workable strategy on a big project, and a
     seed is what stops the sample reshuffling under the user between
     pages."""
-    p, _d, _files = _project_with_files(db, 8)
+    p, _d, _files_ = _project_with_files(db, 8)
     db.commit()
 
-    first = [i["id"] for i in _empties(client, p.id, sort="random", seed=7)["items"]]
-    again = [i["id"] for i in _empties(client, p.id, sort="random", seed=7)["items"]]
+    first = [i["id"] for i in _files(client, p.id, sort="random", seed=7)["items"]]
+    again = [i["id"] for i in _files(client, p.id, sort="random", seed=7)["items"]]
     assert first == again
 
     resp = client.get(
-        f"/api/projects/{p.id}/labels/empties", params={"sort": "random"}
+        f"/api/projects/{p.id}/labels/files", params={"sort": "random"}
     )
     assert resp.status_code == 400
 
 
 def test_total_is_the_uncapped_count(client, db):
-    p, _d, _files = _project_with_files(db, 5)
+    p, _d, _files_ = _project_with_files(db, 5)
     db.commit()
 
-    data = _empties(client, p.id, limit=2)
+    data = _files(client, p.id, limit=2)
     assert data["total"] == 5
     assert len(data["items"]) == 2
 
 
 def test_the_floor_is_echoed_so_the_page_can_name_it(client, db):
-    p, _d, _files = _project_with_files(db, 1, threshold=0.35)
+    p, _d, _files_ = _project_with_files(db, 1, threshold=0.35)
     db.commit()
 
-    assert _empties(client, p.id)["floor"] == 0.35
-    assert _empties(client, p.id, min_confidence=0.02)["floor"] == 0.02
+    assert _files(client, p.id)["floor"] == 0.35
+    assert _files(client, p.id, min_confidence=0.02)["floor"] == 0.02
 
 
 def test_other_projects_are_not_included(client, db):
-    p, _d, _files = _project_with_files(db, 2)
+    p, _d, _files_ = _project_with_files(db, 2)
     other, _od, _of = _project_with_files(db, 3)
     db.commit()
 
-    assert _empties(client, p.id)["total"] == 2
-    assert _empties(client, other.id)["total"] == 3
+    assert _files(client, p.id)["total"] == 2
+    assert _files(client, other.id)["total"] == 3
 
 
 def test_a_deployment_with_no_site_is_included(client, db):
@@ -248,13 +285,11 @@ def test_a_deployment_with_no_site_is_included(client, db):
     make_file(db, deployment_id=d.id)
     db.commit()
 
-    assert _empties(client, p.id)["total"] == 1
+    assert _files(client, p.id)["total"] == 1
 
 
 def test_unknown_project_is_404(client, db):
-    resp = client.get(
-        f"/api/projects/{uuid.uuid4()}/labels/empties"
-    )
+    resp = client.get(f"/api/projects/{uuid.uuid4()}/labels/files")
     assert resp.status_code == 404
 
 
@@ -270,9 +305,8 @@ def _progress(client, project_id, **params):
 
 
 def test_a_label_is_a_passing_box_or_an_empty_file(client, db):
-    """The unit: every card a person has to look at, across both tabs.
-    Three passing boxes on two files, plus one file with nothing, is
-    four labels."""
+    """The unit: every call a person has to make. Three passing boxes on
+    two files, plus one file with nothing, is four labels."""
     p, _d, files = _project_with_files(db, 3)
     make_detection(db, file_id=files[0].id, confidence=0.9)
     make_detection(db, file_id=files[0].id, confidence=0.9)
@@ -283,13 +317,11 @@ def test_a_label_is_a_passing_box_or_an_empty_file(client, db):
     data = _progress(client, p.id)
     assert data["total_labels"] == 4
     assert data["verified_labels"] == 0
-    # The halves are reported separately so each tab can point at the
-    # other: three boxes in Crops, one empty file in Empties.
     assert data["crop_labels"] == 3
     assert data["empty_labels"] == 1
 
 
-def test_the_total_is_the_cards_across_both_tabs(client, db):
+def test_the_total_is_boxes_plus_empty_files(client, db):
     """The property the single bar rests on: crops + empties, with no
     overlap and nothing missed, because a file either has a passing box
     or it does not."""
@@ -317,8 +349,8 @@ def test_the_total_is_the_cards_across_both_tabs(client, db):
 
 
 def test_a_below_threshold_box_is_not_a_label(client, db):
-    """It has no card in either tab: too weak for Crops, and its file
-    shows in Empties as a single label, not one per hidden box."""
+    """It has no card in Detections, and its file is one "nothing here"
+    label, not one per hidden box."""
     p, _d, (f,) = _project_with_files(db, 1)
     make_detection(db, file_id=f.id, confidence=0.05)
     make_detection(db, file_id=f.id, confidence=0.03)
@@ -355,6 +387,26 @@ def test_confirming_an_empty_file_moves_the_bar(client, db):
     assert (data["empty_labels"], data["empty_labels_verified"]) == (1, 1)
 
 
+def test_files_counts_feed_the_files_chip(client, db):
+    """The Files tab's chip counts files, whatever is on them. A file with
+    two boxes is two labels for the bar and one file for the chip, and it
+    is only signed off once every box is."""
+    p, _d, files = _project_with_files(db, 2)
+    d1 = make_detection(db, file_id=files[0].id, confidence=0.9)
+    make_detection(db, file_id=files[0].id, confidence=0.9)
+    db.commit()
+
+    data = _progress(client, p.id)
+    assert (data["files"], data["files_verified"]) == (2, 0)
+    assert data["total_labels"] == 3
+
+    client.patch(f"/api/detections/{d1.id}/verify", json={"verified": True})
+    assert _progress(client, p.id)["files_verified"] == 0
+
+    client.patch(f"/api/files/{files[0].id}", json={"verified": True})
+    assert _progress(client, p.id)["files_verified"] == 1
+
+
 def test_progress_ignores_the_verified_filter(client, db):
     """There is deliberately no verification parameter: a bar whose
     denominator moves with the thing it measures can only read 0% or
@@ -370,8 +422,6 @@ def test_progress_ignores_the_verified_filter(client, db):
 
 
 def test_progress_follows_the_site_filter(client, db):
-    from tests.conftest import make_file
-
     p = make_project(db)
     s1 = make_site(db, project_id=p.id)
     s2 = make_site(db, project_id=p.id)
@@ -382,9 +432,8 @@ def test_progress_follows_the_site_filter(client, db):
     make_file(db, deployment_id=d2.id)
     db.commit()
 
-    assert (
-        _progress(client, p.id, site_ids=s2.id)["total_labels"] == 2
-    )
+    assert _progress(client, p.id, site_ids=s2.id)["total_labels"] == 2
+    assert _progress(client, p.id, site_ids=s2.id)["files"] == 2
 
 
 def test_progress_unknown_project_is_404(client, db):

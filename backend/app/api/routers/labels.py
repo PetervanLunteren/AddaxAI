@@ -17,12 +17,13 @@ from sqlalchemy.orm import Session
 
 from app.api.crud import file as file_crud
 from app.api.schemas.label import (
-    EmptiesResponse,
-    EmptiesSort,
-    EmptiesVerification,
-    EmptyFileItem,
+    EmptyFilter,
+    LabelsFileItem,
+    LabelsFilesResponse,
+    LabelsFilesSort,
     LabelsProgress,
     LabelStatsResponse,
+    LabelsVerification,
     SearchRequest,
     SortRequest,
 )
@@ -200,29 +201,32 @@ def get_unprocessed_count(
 
 
 @router.get(
-    "/{project_id}/labels/empties",
-    response_model=EmptiesResponse,
+    "/{project_id}/labels/files",
+    response_model=LabelsFilesResponse,
 )
-async def get_empties(
+async def get_labels_files(
     project_id: str,
     site_ids: str | None = Query(None, description="Comma-separated site IDs"),
     date_from: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
     date_to: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
-    verification: EmptiesVerification | None = Query(None),
+    verification: LabelsVerification | None = Query(None),
+    empty: EmptyFilter = Query("all"),
     min_confidence: float | None = Query(None, ge=0.0, le=1.0),
-    sort: EmptiesSort = Query("path"),
+    sort: LabelsFilesSort = Query("path"),
     seed: int | None = Query(None, description="Required for sort=random"),
     skip: int = Query(0, ge=0),
     limit: int = Query(48, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
-    """The project's empty photos: one per file where nothing passed.
+    """The project's files for the Files tab, one item per file.
 
     The other half of the Labels page. The crop grid shows every
-    detection above the floor; this shows every file with none, so a
-    photo the detector dismissed is still reachable and can be checked
-    by a human. Both sides take the floor from `effective_floor`, so
-    every photo in the project lands in exactly one of the two.
+    detection above the floor, one card per box; this shows the files
+    themselves, so a whole photo can be judged and a photo the detector
+    dismissed is still reachable. `empty` narrows to the files where
+    nothing passed the floor (`show_only`) or where something did
+    (`hide`); both sides take the floor from `effective_floor`, so the
+    two halves partition the project.
 
     `async def` because `captured_at_local` is an observational datetime
     and its serializer reads the project timezone from a ContextVar set
@@ -239,10 +243,11 @@ async def get_empties(
     _set_project_tz(db, project_id)
 
     floor = effective_floor(project.counting_threshold, min_confidence)
-    total, files = file_crud.get_empty_files(
+    total, files = file_crud.get_labels_files(
         db,
         project_id,
         floor=floor,
+        empty=empty,
         site_ids=site_ids.split(",") if site_ids else None,
         date_from=_parse_dt(date_from, "date_from"),
         date_to=_parse_dt(date_to, "date_to"),
@@ -252,10 +257,10 @@ async def get_empties(
         skip=skip,
         limit=limit,
     )
-    return EmptiesResponse(
+    return LabelsFilesResponse(
         total=total,
         floor=floor,
-        items=[EmptyFileItem.model_validate(f) for f in files],
+        items=[LabelsFileItem.model_validate(f) for f in files],
     )
 
 
@@ -302,6 +307,8 @@ async def get_labels_progress(
         crop_labels_verified=counts.crop_labels_verified,
         empty_labels=counts.empty_labels,
         empty_labels_verified=counts.empty_labels_verified,
+        files=counts.files,
+        files_verified=counts.files_verified,
     )
 
 

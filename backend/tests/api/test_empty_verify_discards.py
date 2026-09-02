@@ -1,24 +1,32 @@
-"""Verifying an empty file throws the detector's boxes away.
+"""Verifying a file throws its invisible boxes away.
 
-Saying a frame is empty is a statement about the photograph: there is no
-animal in it. Every box the detector left on it is therefore wrong, so
-they are deleted rather than kept below the threshold.
+Signing a file off says "the boxes you can see are all there is". Every
+box below the threshold on the frame the person saw is therefore wrong,
+so it is deleted rather than kept, and every box they could see is
+verified. One rule for empty and non-empty files alike.
 
-Keeping them made "empty" true only at the threshold it was checked at.
-Drop the confidence slider and the file came back carrying a 3% smudge
-while still flagged verified; raise the project threshold afterwards and
-it exported ``is_verified = TRUE`` beside a species nobody had confirmed.
+Keeping the weak boxes made "verified" true only at the threshold it was
+checked at. Drop the confidence slider and the file came back carrying a
+3% smudge while still flagged verified; raise the project threshold
+afterwards and it exported ``is_verified = TRUE`` beside a species nobody
+had confirmed.
 
-This is only defensible because the empties viewer draws no boxes over
-the frame, so the person is judging the picture and not a threshold. If
-weak boxes are ever drawn there again, these tests should be revisited
-along with the rule.
+This is only defensible because the Files viewer draws no sub-threshold
+boxes, so the person is judging the picture and not a threshold. If weak
+boxes are ever drawn there, these tests should be revisited along with
+the rule (``crud.file.set_file_verified``).
 """
 
-from app.models import Detection
+from datetime import datetime
+
+from sqlalchemy import select
+
+from app.models import Detection, Event, EventObservation, File
+from app.models.event import event_files
 from tests.conftest import (
     make_deployment,
     make_detection,
+    make_event_with_files,
     make_file,
     make_project,
     make_site,
@@ -83,24 +91,115 @@ def test_unverifying_does_not_bring_the_boxes_back(client, db):
     assert f.verified is False
 
 
-def test_a_file_with_a_passing_box_keeps_everything(client, db):
-    """The other branch. Nothing is empty here, so verifying signs the
-    boxes off instead of deleting them, including the weak ones that ride
-    along untouched."""
+def test_verifying_a_file_with_a_passing_box_deletes_the_weak_ones(client, db):
+    """Same rule on a file that is not empty: the box the person saw is
+    signed off, the one they could not see is gone. Keeping it left a
+    verified file that grew a box the moment the slider dropped."""
     f = _file_in_project(db)
     strong = make_detection(db, file_id=f.id, confidence=0.9)
-    weak = make_detection(db, file_id=f.id, confidence=0.05)
+    make_detection(db, file_id=f.id, confidence=0.05)
     db.commit()
 
     _verify(client, f.id)
 
-    kept = {d.id for d in _boxes(db, f.id)}
-    assert kept == {strong.id, weak.id}
+    assert {d.id for d in _boxes(db, f.id)} == {strong.id}
     db.refresh(strong)
-    db.refresh(weak)
     assert strong.verified is True
-    # Below the floor, so invisible to the user and never theirs to sign.
-    assert weak.verified is False
+    db.refresh(f)
+    assert f.verified is True
+
+
+def test_the_verify_write_is_frame_gated(client, db):
+    """A video is judged on its best frame. Boxes on the frames nobody saw
+    are neither deleted nor signed off, strong or weak. Before this the
+    verify write had no frame clause and signed off boxes on frames the
+    person never opened."""
+    f = _file_in_project(db, file_type="video", best_frame_number=0)
+    on_weak = make_detection(db, file_id=f.id, confidence=0.05, frame_number=0).id
+    on_strong = make_detection(db, file_id=f.id, confidence=0.9, frame_number=0).id
+    off_weak = make_detection(db, file_id=f.id, confidence=0.05, frame_number=7).id
+    off_strong = make_detection(db, file_id=f.id, confidence=0.9, frame_number=7).id
+    db.commit()
+
+    _verify(client, f.id)
+
+    surviving = {d.id: d for d in _boxes(db, f.id)}
+    assert on_weak not in surviving
+    assert surviving[on_strong].verified is True
+    assert surviving[off_weak].verified is False
+    assert surviving[off_strong].verified is False
+
+
+def test_verifying_a_file_recomputes_what_it_is_about(client, db):
+    """Deleting boxes and verifying boxes both move the strongest passing
+    detection, so `observation_type` is re-derived on the spot, as the
+    detection endpoints do. It used to stay stale until the next reprocess."""
+    f = _file_in_project(db, observation_type="animal")
+    make_detection(db, file_id=f.id, confidence=0.05)
+    db.commit()
+
+    _verify(client, f.id)
+    db.refresh(f)
+    assert f.observation_type == "blank"
+
+    g = _file_in_project(db, observation_type="unclassified")
+    make_detection(db, file_id=g.id, confidence=0.9, category="person")
+    db.commit()
+
+    _verify(client, g.id)
+    db.refresh(g)
+    assert g.observation_type == "person"
+
+
+def test_unverifying_a_file_recomputes_the_counts(client, db):
+    """A verified weak box counts; taking the file's sign-off back clears
+    the box's verified flag, so the observation it produced goes and a
+    confirmed event is unconfirmed. Neither happened before: the file
+    router recomputed nothing."""
+    p = make_project(db, counting_threshold=0.2)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    ev = make_event_with_files(
+        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12, 0)
+    )
+    file_id = db.execute(
+        select(event_files.c.file_id).where(event_files.c.event_id == ev.id)
+    ).scalar_one()
+    weak = make_detection(db, file_id=file_id, confidence=0.05, label="deer")
+    db.commit()
+
+    resp = client.patch(f"/api/detections/{weak.id}/verify", json={"verified": True})
+    assert resp.status_code == 200, resp.text
+    assert db.query(EventObservation).filter_by(event_id=ev.id).count() == 1
+    db.get(Event, ev.id).confirmed = True
+    db.commit()
+
+    _verify(client, file_id, verified=False)
+
+    db.expire_all()
+    assert db.get(File, file_id).verified is False
+    assert db.get(Detection, weak.id).verified is False
+    assert db.query(EventObservation).filter_by(event_id=ev.id).count() == 0
+    assert db.get(Event, ev.id).confirmed is False
+
+
+def test_reverifying_picks_up_boxes_added_since(client, db):
+    """Verify is idempotent, not a one-shot toggle. A box that arrived
+    after the first sign-off (a reprocess, a lowered threshold) is signed
+    off by the next Enter, where before that Enter was a no-op."""
+    f = _file_in_project(db)
+    make_detection(db, file_id=f.id, confidence=0.9)
+    db.commit()
+    _verify(client, f.id)
+
+    later = make_detection(db, file_id=f.id, confidence=0.9)
+    db.commit()
+    db.refresh(later)
+    assert later.verified is False
+
+    _verify(client, f.id)
+    db.refresh(later)
+    assert later.verified is True
 
 
 def test_only_boxes_on_the_frame_the_person_saw_are_discarded(client, db):
@@ -126,16 +225,11 @@ def test_only_boxes_on_the_frame_the_person_saw_are_discarded(client, db):
     assert off_screen in surviving
 
 
-def test_a_file_holding_a_drawn_box_is_never_treated_as_empty(client, db):
-    """The reason the delete cannot eat a person's own box.
-
-    `on_visible_frame_of` passes verified detections on *any* frame, so a
-    drawn box keeps its file reviewable even on a video where it sits off
-    the best frame. That makes the empty branch unreachable while one
-    exists, which is what the belt-and-braces clause in
-    `_discard_detector_boxes` is insurance against rather than a live
-    path. If this test ever fails, that clause is the thing holding the
-    line and it must stay.
+def test_a_drawn_box_survives_a_file_verify(client, db):
+    """The rule never reads who drew a box, and it does not have to: a
+    drawn box is verified at confidence 1.0, so it is always visible and
+    never below the threshold. Here it sits off the best frame, where
+    nothing is touched at all, so the noise beside it survives too.
     """
     f = _file_in_project(db, file_type="video", best_frame_number=0)
     drawn_id = make_detection(
@@ -158,25 +252,15 @@ def test_a_file_holding_a_drawn_box_is_never_treated_as_empty(client, db):
 
 
 def test_a_rejected_box_does_not_make_a_file_look_occupied(client, db):
-    """One rule decides "empty", on both sides of the tab switch.
+    """A file whose only real box was marked false reads as empty in the
+    Files tab (`is_a_real_detection()`), and verifying it deletes the weak
+    boxes beside the rejected one. The rejected box itself is kept: a
+    person looked at it and judged it, and it is verified, so the rule
+    never touches it.
 
-    `get_empty_files` applies `is_a_real_detection()`, so a file whose
-    only real box was marked false shows up in the Empties tab. The
-    verify path did not apply it, so pressing Verify on that very file
-    took the *not empty* branch: the rejected box counted as something a
-    person could have been judging, purely because marking it false had
-    also verified it. The weak boxes beside it then survived a verdict
-    of "there is nothing here".
-
-    A rejected box counts for nothing in every export, count and filter.
-    It must not be the one thing that makes a file look occupied here.
-
-    The unverify step in the middle is not padding. Marking a box false
-    verifies it, which rolls up and leaves `File.verified` true, and
-    `update_file` only runs this branch on a change. So the reachable
-    route to the empty verdict is a user who unticks the file to look at
-    it again and then calls it empty, which is exactly what the Empties
-    tab invites.
+    The untick in the middle mirrors the user's route: marking a box
+    false verifies it, which rolls up and leaves the file signed off, so
+    a person unticks it to look again and then signs it off as empty.
     """
     f = _file_in_project(db)
     rejected_id = make_detection(db, file_id=f.id, confidence=0.85).id
@@ -190,8 +274,10 @@ def test_a_rejected_box_does_not_make_a_file_look_occupied(client, db):
     assert resp.status_code == 200, resp.text
 
     project_id = f.deployment.project_id
-    empties = client.get(f"/api/projects/{project_id}/labels/empties").json()
-    assert empties["total"] == 1, "the file belongs in the Empties tab"
+    empties = client.get(
+        f"/api/projects/{project_id}/labels/files", params={"empty": "show_only"}
+    ).json()
+    assert empties["total"] == 1, "the file reads as empty"
 
     _verify(client, f.id, verified=False)
     _verify(client, f.id)
@@ -200,7 +286,4 @@ def test_a_rejected_box_does_not_make_a_file_look_occupied(client, db):
     assert noise_id not in surviving, (
         "the weak box survived a verdict of 'nothing here'"
     )
-    # The rejected box itself is kept: a person looked at it and judged
-    # it, and `_discard_detector_boxes` only removes what the detector
-    # left untouched.
     assert surviving == {rejected_id}

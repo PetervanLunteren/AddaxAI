@@ -180,11 +180,15 @@ class CohortsResponse(BaseModel):
 #: The Labels page's verification filter. A Literal so a typo is a 422
 #: rather than a silently unfiltered 200, which is what a bare ``str``
 #: gave: every other parameter on that endpoint already validates.
-EmptiesVerification = Literal["all", "verified", "unverified"]
+LabelsVerification = Literal["all", "verified", "unverified"]
 
-EmptiesSort = Literal[
+#: Same three values the Counts page's empty filter uses: only the files
+#: where nothing passes, only the files where something does, or both.
+EmptyFilter = Literal["all", "show_only", "hide"]
+
+LabelsFilesSort = Literal[
     # Default. Groups one camera's photos together, because file_path is
-    # absolute and starts with the deployment folder. Reviewing empties
+    # absolute and starts with the deployment folder. Reviewing files
     # means scanning the same scene repeatedly, and capture-time order
     # interleaves cameras.
     "path",
@@ -194,12 +198,12 @@ EmptiesSort = Literal[
 ]
 
 
-class EmptyFileItem(BaseModel):
-    """One empty photo: enough to draw a tile, nothing more.
+class LabelsFileItem(BaseModel):
+    """One file on the Files tab: enough to draw a tile, nothing more.
 
-    No detections are carried. The tiles are plain thumbnails, and the
-    weak boxes are fetched only when a photo is opened full size, where
-    they are worth looking at.
+    No detections are carried. The tile fetches the file detail for its
+    boxes, the same row the viewer opens, so the two share one cache
+    entry.
     """
 
     id: str
@@ -217,27 +221,30 @@ class EmptyFileItem(BaseModel):
         from_attributes = True
 
 
-class EmptiesResponse(BaseModel):
-    """Response for the empties endpoint.
+class LabelsFilesResponse(BaseModel):
+    """Response for the Files tab list.
 
-    `floor` is the confidence these files were judged empty at, echoed
-    so the page can name the number the user is actually looking at
-    rather than re-deriving it in the frontend.
+    `floor` is the confidence the empty filter was judged at, echoed so
+    the page can name the number the user is actually looking at rather
+    than re-deriving it in the frontend.
     """
 
     total: int
     floor: float
-    items: list[EmptyFileItem]
+    items: list[LabelsFileItem]
 
 
 class LabelsProgress(BaseModel):
     """How far through the Labels page the user is, counted in labels.
 
     A label is one call a person has to make: a detection above the
-    threshold (one card in Crops), or a file where nothing passes (one
-    card in Empties, carrying the label "nothing here"). The two do not
-    overlap and together they cover the project, so the total is exactly
-    the number of cards across both tabs.
+    threshold (one card in Detections), or a file where nothing passes
+    (one "nothing here" call). The two do not overlap and together they
+    cover the project, so one bar covers the page.
+
+    `files` / `files_verified` count every file in scope and how many
+    are signed off, for the Files tab's chip. Files with boxes are in
+    both units on purpose: the Files tab lists them too.
     """
 
     total_labels: int
@@ -248,6 +255,8 @@ class LabelsProgress(BaseModel):
     crop_labels_verified: int
     empty_labels: int
     empty_labels_verified: int
+    files: int
+    files_verified: int
 
 
 class LabelStatsResponse(BaseModel):

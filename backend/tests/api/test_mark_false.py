@@ -187,8 +187,8 @@ def test_the_empties_tab_and_the_export_agree_about_it(client, db):
     db.commit()
     _mark_false(client, [det.id])
 
-    empties = client.get(f"/api/projects/{project.id}/labels/empties",
-                         params={"verification": "all", "limit": 200})
+    empties = client.get(f"/api/projects/{project.id}/labels/files",
+                         params={"verification": "all", "empty": "show_only", "limit": 200})
     assert empties.status_code == 200, empties.text
     assert f.id in {i["id"] for i in empties.json()["items"]}
 
@@ -202,7 +202,7 @@ def test_an_unknown_verification_value_is_refused(client, db):
     """Every other parameter on this endpoint validates. A typo used to
     return 200 with silently unfiltered data."""
     project, _ = _scaffold(db)
-    resp = client.get(f"/api/projects/{project.id}/labels/empties",
+    resp = client.get(f"/api/projects/{project.id}/labels/files",
                       params={"verification": "nonsense"})
     assert resp.status_code == 422
 
@@ -211,7 +211,7 @@ def test_a_malformed_date_is_refused_rather_than_crashing(client, db):
     """`datetime.fromisoformat` raises ValueError, which reached the user
     as a 500 on a query they could fix themselves."""
     project, _ = _scaffold(db)
-    for endpoint in ("empties", "progress"):
+    for endpoint in ("files", "progress"):
         resp = client.get(f"/api/projects/{project.id}/labels/{endpoint}",
                           params={"date_from": "notadate"})
         assert resp.status_code == 422, f"{endpoint}: {resp.status_code}"

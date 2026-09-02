@@ -9,6 +9,10 @@ from typing import NamedTuple
 from sqlalchemy import Integer, and_, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.api.crud.event_observation import (
+    get_event_ids_for_files,
+    recalculate_max_n_for_events,
+)
 from app.api.schemas.file import FileUpdate
 from app.core.confidence import effective_floor
 from app.ml.detection_visibility import on_visible_frame, on_visible_frame_of
@@ -147,14 +151,15 @@ def get_files_by_project(
     )
 
 
-EMPTIES_SORT_VALUES = frozenset({"path", "newest", "oldest", "random"})
+LABELS_FILES_SORT_VALUES = frozenset({"path", "newest", "oldest", "random"})
 
 
-def get_empty_files(
+def get_labels_files(
     db: Session,
     project_id: str,
     *,
     floor: float,
+    empty: str = "all",
     site_ids: list[str] | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
@@ -164,26 +169,24 @@ def get_empty_files(
     skip: int = 0,
     limit: int = 48,
 ) -> tuple[int, list[File]]:
-    """The project's empty photos at ``floor``, and how many there are.
+    """The project's files for the Files tab, and how many there are.
 
-    A file is empty when nothing on its visible surface passes: no
-    detection at or above ``floor``, and none verified. That is
-    ``derive_observation_type(...) == BLANK`` computed live instead of
+    ``empty`` narrows by whether anything on the file's visible surface
+    passes at ``floor``: ``"show_only"`` keeps the files where nothing
+    does, ``"hide"`` the files where something does, ``"all"`` both. That
+    is ``derive_observation_type(...) == BLANK`` computed live instead of
     read from the stored ``observation_type`` column, so the answer
     follows the grid's confidence slider rather than the project
     setting. Both sides use ``effective_floor``, so with the slider at
-    rest the two agree exactly.
-
-    The consequence users are told about: every photo in the project is
-    in exactly one of two places, the crop grid via a passing detection
-    or this list. ``tests/api/test_empties.py`` pins that partition.
+    rest the two agree exactly, and the two halves partition the
+    project (``tests/api/test_labels_files.py``).
 
     Returns ``(total, page)`` — the uncapped count of matching files and
     the requested slice, so the toolbar can say how much is left to do.
 
     ``sort='path'`` is the default because it groups one camera's photos
     together: ``file_path`` is absolute, so it begins with the
-    deployment folder. Reviewing empties means scanning the same scene
+    deployment folder. Reviewing files means scanning the same scene
     over and over, and capture-time order interleaves cameras.
     """
     from app.api.crud.deployment import site_ids_filter
@@ -204,8 +207,11 @@ def get_empty_files(
         db.query(File)
         .join(Deployment, Deployment.id == File.deployment_id)
         .filter(Deployment.project_id == project_id)
-        .filter(~passing.exists())
     )
+    if empty == "show_only":
+        query = query.filter(~passing.exists())
+    elif empty == "hide":
+        query = query.filter(passing.exists())
 
     site_clause = site_ids_filter(site_ids)
     if site_clause is not None:
@@ -246,17 +252,24 @@ def get_empty_files(
 
 
 class LabelCounts(NamedTuple):
-    """The two halves of the Labels page, kept apart as well as summed.
+    """The two halves of the progress bar, kept apart as well as summed.
 
     A "crop label" is a detection above the threshold, one card in the
-    Crops tab. An "empty label" is a file with nothing above it, one
-    card in the Empties tab. They never overlap.
+    Detections tab. An "empty label" is a file with nothing above it, one
+    "nothing here" call. They never overlap, which is what lets one bar
+    cover the page.
+
+    ``files`` / ``files_verified`` count every file in scope and how many
+    are signed off, for the Files tab's chip. That unit overlaps with the
+    crop labels on purpose: the Files tab lists files with boxes too.
     """
 
     crop_labels: int
     crop_labels_verified: int
     empty_labels: int
     empty_labels_verified: int
+    files: int
+    files_verified: int
 
     @property
     def total(self) -> int:
@@ -370,11 +383,20 @@ def get_label_progress(
         .filter(~has_passing.exists())
     ).one()
 
+    files_total, files_verified = in_scope(
+        db.query(
+            func.count(File.id),
+            func.coalesce(func.sum(func.cast(File.verified, Integer)), 0),
+        ).select_from(File)
+    ).one()
+
     return LabelCounts(
         crop_labels=int(det_total or 0),
         crop_labels_verified=int(det_verified or 0),
         empty_labels=int(empty_total or 0),
         empty_labels_verified=int(empty_verified or 0),
+        files=int(files_total or 0),
+        files_verified=int(files_verified or 0),
     )
 
 
@@ -485,122 +507,77 @@ def recompute_file_verified_for_detections(
     recompute_file_verified(db, file_ids)
 
 
-def _discard_detector_boxes(db: Session, file: File) -> None:
-    """Remove the detector's boxes from a file a person has called empty.
+def set_file_verified(db: Session, file: File, verified: bool) -> None:
+    """Sign a file off, or take the sign-off back. No commit.
 
-    Verifying an empty frame is a statement about the picture: there is
-    no animal in it. Every box the detector left behind is therefore a
-    false positive, so they go.
+    Verifying a file says "the boxes you can see are all there is". So on
+    the file's visible frame, every box the person could not see (below
+    the threshold and not verified) is deleted, and every box they could
+    see is verified. One rule for every file, empty or not, and for every
+    box, whoever drew it: a drawn box has confidence 1.0, so it is always
+    visible and never deleted.
 
-    Keeping them made "empty" true only at one threshold. Drop the
-    confidence slider and the file reappeared carrying a 3% smudge while
-    still flagged verified, and a later change to the project threshold
-    made it export as ``is_verified = TRUE`` beside a species nobody had
-    confirmed.
+    Deleting the weak boxes rather than keeping them is what keeps
+    "verified" true at every threshold. Kept, a 3% smudge came back the
+    moment the confidence slider dropped, still under a verified flag,
+    and a later threshold change exported ``is_verified = TRUE`` beside a
+    species nobody had confirmed. This is only defensible while the Files
+    viewer draws no sub-threshold boxes: the person judged the picture,
+    not a threshold. ``results.json`` on disk still holds every box.
 
-    This is only defensible because the viewer draws no boxes over the
-    frame: the person is judging the photograph, not a threshold. If
-    weak boxes are ever drawn there again, revisit this, because then
-    the verdict becomes threshold-dependent and deleting on it does not
-    follow.
+    Scoped to the visible frame, which for a video is its best frame plus
+    verified boxes on any frame. Boxes on frames nobody saw are neither
+    deleted nor verified. A video with no best frame has no visible
+    surface, so verifying it sets the flag and touches no boxes.
 
-    Boxes the person drew are kept. That clause is insurance, not a live
-    path: ``on_visible_frame_of`` passes verified detections on *any*
-    frame, so a drawn box keeps its file reviewable even on a video where
-    it sits off the best frame, and the caller never reaches here while
-    one exists (pinned by
-    ``test_a_file_holding_a_drawn_box_is_never_treated_as_empty``).
+    Unverifying clears every box on the file, drawn ones included.
 
-    The NULL case is spelled out on purpose: ``classification_method`` is
-    nullable and a bare ``!= "human"`` matches no NULLs in SQL, which
-    would leave every unclassified box behind, and that is most of them.
-
-    Scoped to the file's visible surface, which for a video is its best
-    frame. The person judged the one frame the app shows them, and a clip
-    reads empty on that frame alone, so boxes on the other sampled frames
-    were never on screen and are not theirs to discard. Without this the
-    verdict on one frame threw away every box in the clip, including a
-    confident animal on a frame nobody had seen.
-
-    Nothing is truly lost. ``results.json`` on disk is never modified and
-    still holds every box, which is what a re-analysis reads back.
+    Idempotent, so re-verifying picks up boxes added since. Both paths
+    re-derive ``observation_type`` and the event MaxN, as the detection
+    endpoints do. The caller commits.
     """
-    db.query(Detection).filter(
-        Detection.file_id == file.id,
-        on_visible_frame_of(file),
-        or_(
-            Detection.classification_method.is_(None),
-            Detection.classification_method != "human",
-        ),
-    ).delete(synchronize_session=False)
+    threshold = _project_threshold_for_file(db, file)
+    now = datetime.now(UTC)
+    # Keep the file_id clause: the video branches of the predicate carry
+    # only the frame clause.
+    on_frame = and_(Detection.file_id == file.id, on_visible_frame_of(file))
+    if verified:
+        db.query(Detection).filter(
+            on_frame,
+            Detection.verified == False,  # noqa: E712
+            Detection.confidence < threshold,
+        ).delete(synchronize_session=False)
+        db.query(Detection).filter(
+            on_frame,
+            Detection.verified == False,  # noqa: E712
+        ).update(
+            {"verified": True, "verified_at_utc": now},
+            synchronize_session=False,
+        )
+        file.verified = True
+        file.verified_at_utc = now
+    else:
+        db.query(Detection).filter(Detection.file_id == file.id).update(
+            {"verified": False, "verified_at_utc": None},
+            synchronize_session=False,
+        )
+        file.verified = False
+        file.verified_at_utc = None
+    db.flush()
+    _set_observation_type(db, file, threshold)
+    event_ids = get_event_ids_for_files(db, [file.id])
+    if event_ids:
+        recalculate_max_n_for_events(db, event_ids, threshold)
 
 
 def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:
-    """
-    Update a file's verification status and/or notes.
-
-    Sets verified_at_utc to current time when verified changes to True,
-    clears it when verified changes to False.
-    """
+    """Update a file's verification status, notes, favorited or flagged."""
     file = db.query(File).filter(File.id == file_id).first()
     if not file:
         return None
 
     if update.verified is not None:
-        # The file-verify action (modal Enter). Sets File.verified and
-        # cascades down to the detections. recompute keeps File.verified
-        # consistent for files that have detections; for empty frames it
-        # is a no-op, so the flag we set here stands.
-        if update.verified and not file.verified:
-            now = datetime.now(UTC)
-            file.verified = True
-            file.verified_at_utc = now
-            threshold = _project_threshold_for_file(db, file)
-            # Is there anything here a person could have been judging?
-            # The same "reviewable" rule the Empties tab uses, visible
-            # frame and all, so the two cannot disagree about what
-            # counts as empty.
-            #
-            # `is_a_real_detection()` is load-bearing and was missing:
-            # `get_empty_files` applies it, this did not, so a file
-            # whose only box had been marked false sat in the Empties
-            # tab and then took the *not empty* branch when the user
-            # pressed Verify on it. The rejected box counts for nothing
-            # everywhere else, so it must not be the thing that makes a
-            # file look occupied here either.
-            reviewable = (
-                db.query(Detection.id)
-                .filter(Detection.file_id == file_id)
-                .filter(on_visible_frame_of(file))
-                .filter(is_a_real_detection())
-                .filter(
-                    or_(
-                        Detection.confidence >= threshold,
-                        Detection.verified == True,  # noqa: E712
-                    )
-                )
-                .first()
-            )
-            if reviewable is None:
-                # An empty frame. The verdict is "nothing here", so the
-                # detector's leftovers go with it.
-                _discard_detector_boxes(db, file)
-            else:
-                # Only verify detections above the project's detection
-                # threshold (below-threshold ones are not visible).
-                db.query(Detection).filter(
-                    Detection.file_id == file_id,
-                    Detection.verified == False,  # noqa: E712
-                    Detection.confidence >= threshold,
-                ).update({"verified": True, "verified_at_utc": now})
-                recompute_file_verified(db, [file_id])
-        elif not update.verified and file.verified:
-            file.verified = False
-            file.verified_at_utc = None
-            db.query(Detection).filter(
-                Detection.file_id == file_id,
-            ).update({"verified": False, "verified_at_utc": None})
-            recompute_file_verified(db, [file_id])
+        set_file_verified(db, file, update.verified)
 
     if update.notes is not None:
         file.notes = update.notes
@@ -635,17 +612,21 @@ def recalculate_observation_type(db: Session, file_id: str) -> None:
     if not file:
         return
 
+    _set_observation_type(db, file, _project_threshold_for_file(db, file))
+    db.commit()
+
+
+def _set_observation_type(db: Session, file: File, threshold: float) -> None:
+    """The derivation behind ``recalculate_observation_type``, no commit."""
     detections = (
         db.query(Detection)
-        .filter(Detection.file_id == file_id)
+        .filter(Detection.file_id == file.id)
         # Keep the file_id filter above: the video branches of this
         # predicate carry only the frame clause.
         .filter(on_visible_frame_of(file))
         .all()
     )
-    threshold = _project_threshold_for_file(db, file)
     file.observation_type = derive_observation_type(detections, threshold)
-    db.commit()
 
 
 def recalculate_observation_types_for_project(

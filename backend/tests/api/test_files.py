@@ -195,3 +195,53 @@ def test_label_tree_rejects_invalid_count_by(client, db):
         f"/api/events/label-tree?project_id={p.id}&count_by=bogus"
     )
     assert resp.status_code == 400
+
+
+def _bulk_verify(client, ids, verified=True):
+    return client.post(
+        "/api/files/bulk-verify", json={"file_ids": ids, "verified": verified}
+    )
+
+
+def test_bulk_verify_signs_off_every_file_in_one_request(client, db):
+    """The Files tab's bulk action. Same rule per file as the PATCH: the
+    visible boxes are verified, the weak ones deleted, the file flagged."""
+    from app.models import Detection
+
+    d, _ = _setup_deployment(db)
+    a = make_file(db, deployment_id=d.id)
+    b = make_file(db, deployment_id=d.id)
+    strong_id = make_detection(db, file_id=a.id, confidence=0.9).id
+    weak_id = make_detection(db, file_id=a.id, confidence=0.05).id
+    db.commit()
+
+    resp = _bulk_verify(client, [a.id, b.id])
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"updated_count": 2}
+
+    db.expire_all()
+    assert a.verified is True
+    assert b.verified is True
+    assert db.get(Detection, strong_id).verified is True
+    assert db.get(Detection, weak_id) is None
+
+
+def test_bulk_unverify_takes_the_sign_off_back(client, db):
+
+    d, _ = _setup_deployment(db)
+    a = make_file(db, deployment_id=d.id)
+    det = make_detection(db, file_id=a.id, confidence=0.9)
+    db.commit()
+    assert _bulk_verify(client, [a.id]).status_code == 200
+
+    resp = _bulk_verify(client, [a.id], verified=False)
+    assert resp.status_code == 200, resp.text
+
+    db.expire_all()
+    assert a.verified is False
+    assert det.verified is False
+
+
+def test_bulk_verify_of_nothing_is_a_no_op_and_of_unknown_ids_a_404(client, db):
+    assert _bulk_verify(client, []).json() == {"updated_count": 0}
+    assert _bulk_verify(client, [str(uuid.uuid4())]).status_code == 404
