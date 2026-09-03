@@ -59,7 +59,11 @@ function TaxonomyCaption({
   );
 }
 
-const RECENT_LABELS_MAX = 3;
+// Five, matching the 1-5 quick-label slots: one number for "the labels
+// this project keeps at hand". Three was too few — a typical project
+// cycles 4-6 common taxa (beta feedback), so the one needed most kept
+// falling off the list.
+const RECENT_LABELS_MAX = 5;
 
 function getRecentLabelKeys(projectId?: string): string[] {
   if (!projectId) return [];
