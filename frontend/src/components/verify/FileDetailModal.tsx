@@ -8,9 +8,10 @@
  *
  * Every visible box is drawn: above the threshold, or verified. The
  * sub-threshold boxes are not, and that is load-bearing: Verify says
- * "the boxes you can see are all there is", and the backend deletes the
- * ones you could not see. Drawing them would make that verdict about a
- * threshold instead of about the picture.
+ * "the boxes you can see are all there is", and the backend rejects the
+ * ones you could not see (marked "false detection", like the X key).
+ * Drawing them would make that verdict about a threshold instead of
+ * about the picture.
  *
  * What you can do. **Verify** signs the file off and moves on; it is one
  * action because it is one decision. Draw a box on an animal the
@@ -21,12 +22,29 @@
  *
  * The label actions are the Detections grid's, with one scope rule: R,
  * X, U and the saved labels 1 to 5 act on the selected box, and on every
- * visible box when none is selected. Click a box or Tab through them to
+ * visible box when none is selected. The same rule decides what happens
+ * next: a whole-picture action is the verdict, so it signs the file off
+ * and advances in the same press (like the Detections viewer); a
+ * selected-box action stays for the next box. Click a box or Tab through them to
  * select one; the buttons say which scope they are in. M relabels every
  * box to the picture's most common label, whatever is selected. Cmd+Z
- * reverts the last label change, as in the grid; a file verify (boxes
- * deleted) and a drawn box (no original label to go back to) are not
- * undoable. B hides the boxes to see what is under them.
+ * reverts the last label change, as in the grid; a file verify (its own
+ * scope of boxes) and a drawn box (no original label to go back to) are
+ * not undoable.
+ *
+ * The left rail is the shared `ViewerToolRail`, the same one as the
+ * Counts modal: brightness/contrast, hide boxes (B), flag (F), like,
+ * download and open in file explorer, each a plain icon. One mental
+ * model: the rail is how you look, the right column is what you
+ * decide.
+ *
+ * A playable video can be watched: P or the play button swaps the kept
+ * frame for the real clip with each frame's boxes (`VideoPlayer`, the
+ * Counts modal's player, which honours B). The keys stay live and keep
+ * acting on the kept frame's boxes, the only ones a verdict is about;
+ * D returns to the frame and arms the crosshair, because a box can
+ * only be drawn there. Download saves the annotated copy: the recorded
+ * boxed MP4 for a playable video, the boxed still otherwise.
  *
  * The file deliberately stays put after a change. An earlier version
  * refetched the list immediately, so a file that stopped matching the
@@ -48,9 +66,8 @@ import {
   CheckCheck,
   ChevronDown,
   CircleHelp,
-  Eye,
-  EyeOff,
   Loader2,
+  Play,
   Plus,
   SquareDashed,
   Tag,
@@ -69,6 +86,9 @@ import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
 import { useShortcutLabels } from "../../hooks/useShortcutLabels";
 import { Button } from "../ui/button";
 import { AnnotationCanvas } from "./AnnotationCanvas";
+import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
+import { ViewerToolRail } from "./ViewerToolRail";
+import { useFileTriage, useImageAdjust } from "./viewer-tools";
 import { labelMajority } from "./label-majority";
 import { LabelPicker, type PinnedOption } from "./LabelPicker";
 import { DetailCard, VerifyDetailShell } from "./VerifyDetailShell";
@@ -123,6 +143,21 @@ export function FileDetailModal({
   const queryClient = useQueryClient();
   const [drawMode, setDrawMode] = useState(false);
   const [boxesHidden, setBoxesHidden] = useState(false);
+  // For a playable video: the still (the kept frame, where all editing
+  // happens) or the real clip. The Counts event modal's pattern.
+  const [viewMode, setViewMode] = useState<"frame" | "video">("frame");
+  // One-shot: Download clicked from frame view mounts the player and
+  // runs the annotated-video export once the clip is playable.
+  const [pendingVideoExport, setPendingVideoExport] = useState(false);
+  // The mounted surface's export: annotated PNG from the canvas,
+  // recorded annotated MP4 from the player. Only one is mounted at a
+  // time, so one ref serves both (as in `EventDetailModal`).
+  const exportFnRef = useRef<(() => void) | null>(null);
+  // The shared rail's state: brightness/contrast and the flag/like
+  // writes (the F key below shares the same mutation).
+  const { brightness, setBrightness, contrast, setContrast, imageFilter } =
+    useImageAdjust();
+  const triage = useFileTriage();
   const [selectedDetectionId, setSelectedDetectionId] = useState<string | null>(
     null,
   );
@@ -164,6 +199,8 @@ export function FileDetailModal({
     setSelectedDetectionId(null);
     setRelabelTargets(null);
     setUndoStack([]);
+    setViewMode("frame");
+    setPendingVideoExport(false);
   }
   // Closed: forget what this run signed off. An effect, not part of the
   // render reset above, because a ref must not be touched during render.
@@ -198,6 +235,21 @@ export function FileDetailModal({
 
   // The list row is what the grid last fetched; the file query is live.
   const isVerified = file?.verified ?? item?.verified ?? false;
+
+  const playable = !!file && isPlayableVideo(file);
+
+  /** Download: for a playable video always the annotated MP4 (mount the
+   *  player if needed and record once it can play); for anything else
+   *  the annotated still PNG from the canvas. `EventDetailModal`'s
+   *  `handleDownload`, verbatim. */
+  const handleDownload = useCallback(() => {
+    if (playable) {
+      setViewMode("video");
+      setPendingVideoExport(true);
+    } else {
+      exportFnRef.current?.();
+    }
+  }, [playable]);
 
   // The boxes the canvas draws, left to right by box centre (top to
   // bottom for ties), the way a person reads the photo. Storage order
@@ -331,29 +383,47 @@ export function FileDetailModal({
   /** Every label action goes through here: the grid's `bulk-relabel`
    *  (which verifies), then the undo stack, then a refresh. The
    *  selection is cleared because the boxes it pointed at may no longer
-   *  be drawn (a box marked false leaves the canvas). */
+   *  be drawn (a box marked false leaves the canvas).
+   *
+   *  `advance`: a whole-picture action (no box selected) is a complete
+   *  verdict, so it signs the file off and moves on in the same press,
+   *  like the Detections viewer's X/U/1-5 - X,Enter,X,Enter becomes
+   *  X,X. A selected-box action stays: that user is mid-file, editing
+   *  box by box, and yanking them forward would break exactly the flow
+   *  the selection exists for. The verify is the same idempotent PATCH
+   *  as Enter, so the weak boxes are rejected identically. */
   const applyLabel = useCallback(
-    (ids: string[], label: string | null, category: string | undefined) => {
+    (
+      ids: string[],
+      label: string | null,
+      category: string | undefined,
+      advance = false,
+    ) => {
       if (ids.length === 0) return;
       detectionsApi
         .bulkRelabel(ids, label, category)
         .then(() => {
           setUndoStack((s) => [...s, ids]);
           setSelectedDetectionId(null);
-          handleCanvasChange();
+          if (advance) {
+            verifyAndAdvance();
+          } else {
+            handleCanvasChange();
+          }
         })
         .catch((err: Error) => toast.error(err.message));
     },
-    [handleCanvasChange],
+    [handleCanvasChange, verifyAndAdvance],
   );
 
+  const wholePicture = selectedDetectionId === null;
   const markTargetsFalse = useCallback(
-    () => applyLabel(targetIds, "false detection", undefined),
-    [applyLabel, targetIds],
+    () => applyLabel(targetIds, "false detection", undefined, wholePicture),
+    [applyLabel, targetIds, wholePicture],
   );
   const markTargetsUnknown = useCallback(
-    () => applyLabel(targetIds, "unknown", undefined),
-    [applyLabel, targetIds],
+    () => applyLabel(targetIds, "unknown", undefined, wholePicture),
+    [applyLabel, targetIds, wholePicture],
   );
   const relabelTargetsNow = useCallback(() => {
     if (targetIds.length) setRelabelTargets(targetIds);
@@ -366,15 +436,16 @@ export function FileDetailModal({
       visibleBoxes.map((d) => d.id),
       majority.label,
       majority.category,
+      wholePicture,
     );
-  }, [applyLabel, majority, visibleBoxes]);
+  }, [applyLabel, majority, visibleBoxes, wholePicture]);
   const applyShortcut = useCallback(
     (slot: number) => {
       const option = shortcutLabels[slot];
       if (!option) return;
-      applyLabel(targetIds, option.label, option.category);
+      applyLabel(targetIds, option.label, option.category, wholePicture);
     },
-    [applyLabel, shortcutLabels, targetIds],
+    [applyLabel, shortcutLabels, targetIds, wholePicture],
   );
 
   const handleUndo = useCallback(() => {
@@ -422,6 +493,15 @@ export function FileDetailModal({
       ) {
         return;
       }
+      // Keys inside a popover (the rail's brightness sliders) belong to
+      // the popover: without this, arrow keys on the slider also paged
+      // the viewer. Same guard as the grid's key handler.
+      if (
+        e.target instanceof HTMLElement &&
+        e.target.closest("[data-radix-popper-content-wrapper]")
+      ) {
+        return;
+      }
       const key = e.key.toLowerCase();
       if (e.key === "ArrowRight") { e.preventDefault(); go(1); }
       else if (e.key === "ArrowLeft") { e.preventDefault(); go(-1); }
@@ -432,18 +512,38 @@ export function FileDetailModal({
         e.preventDefault();
         handleUndo();
       } else if (key === "d") {
+        // Drawing happens on the kept frame, so from the player D goes
+        // back there and arms the crosshair in one press.
         e.preventDefault();
-        setDrawMode((v) => !v);
+        if (viewMode === "video") {
+          setViewMode("frame");
+          setDrawMode(true);
+        } else {
+          setDrawMode((v) => !v);
+        }
+      } else if (key === "p") {
+        // The Counts modal's key: a playable video toggles between its
+        // kept frame and the real clip.
+        if (playable) {
+          e.preventDefault();
+          setViewMode((v) => (v === "video" ? "frame" : "video"));
+        }
       } else if (key === "b") {
         e.preventDefault();
         setBoxesHidden((v) => !v);
+      } else if (key === "f") {
+        // Flag for review, the rail's key everywhere.
+        e.preventDefault();
+        if (file) triage.toggleFlag(file);
       } else if (e.key === "Tab") {
         // Taken from the dialog's focus order on purpose: the buttons
         // all have keys of their own, and Tab is the one key a person
         // expects to step through things on screen.
         e.preventDefault();
         cycleSelection(e.shiftKey ? -1 : 1);
-      } else if (key === "x") {
+      } else if (key === "x" || e.key === "Backspace" || e.key === "Delete") {
+        // Backspace/Delete alias X: "make this box go away" is what a
+        // person means by delete, and mark false is how the app says it.
         e.preventDefault();
         markTargetsFalse();
       } else if (key === "u") {
@@ -475,6 +575,10 @@ export function FileDetailModal({
     matchMajority,
     applyShortcut,
     handleUndo,
+    viewMode,
+    playable,
+    file,
+    triage,
   ]);
 
   // The page ran out and the next batch is being fetched. Hold the
@@ -520,25 +624,82 @@ export function FileDetailModal({
         else if (direction === "nextUnverified") advance();
         else go(1);
       }}
-      // No tool strip. Everything you can do sits in one column on the
-      // right, in words, because an unlabelled icon beside the picture
-      // is not found by someone who does not already know it is there.
+      // The shared rail: how you look at the picture (brightness, the
+      // box toggle, flag, More), identical to the Counts modal. The
+      // verdict actions stay in the right column, in words.
+      toolbar={
+        <ViewerToolRail
+          brightness={brightness}
+          onBrightnessChange={setBrightness}
+          contrast={contrast}
+          onContrastChange={setContrast}
+          boxesHidden={boxesHidden}
+          onToggleBoxes={() => setBoxesHidden((v) => !v)}
+          file={file}
+          triage={triage}
+          downloadLabel={playable ? "Download video" : "Download image"}
+          onDownload={handleDownload}
+        />
+      }
       image={
         file ? (
-          <AnnotationCanvas
-            file={file}
-            detectionThreshold={project?.counting_threshold ?? 0}
-            selectedDetectionId={selectedDetectionId}
-            onSelectDetection={setSelectedDetectionId}
-            onRequestRelabel={(id) => setRelabelTargets([id])}
-            drawMode={drawMode}
-            onDrawModeChange={setDrawMode}
-            onMutated={handleCanvasChange}
-            onCreated={handleCreated}
-            boxesHidden={boxesHidden}
-            defaultCategory={activeLabel?.category ?? "animal"}
-            defaultLabel={activeLabel?.label ?? undefined}
-          />
+          <div className="relative h-full w-full">
+            {viewMode === "video" && playable ? (
+              <VideoPlayer
+                file={file}
+                detectionThreshold={project?.counting_threshold ?? 0}
+                exportFnRef={exportFnRef}
+                autoExport={pendingVideoExport}
+                onAutoExportConsumed={() => setPendingVideoExport(false)}
+                boxesHidden={boxesHidden}
+              />
+            ) : (
+              <AnnotationCanvas
+                file={file}
+                detectionThreshold={project?.counting_threshold ?? 0}
+                selectedDetectionId={selectedDetectionId}
+                onSelectDetection={setSelectedDetectionId}
+                onRequestRelabel={(id) => setRelabelTargets([id])}
+                drawMode={drawMode}
+                onDrawModeChange={setDrawMode}
+                onMutated={handleCanvasChange}
+                onCreated={handleCreated}
+                boxesHidden={boxesHidden}
+                defaultCategory={activeLabel?.category ?? "animal"}
+                defaultLabel={activeLabel?.label ?? undefined}
+                exportFnRef={exportFnRef}
+                imageFilter={imageFilter}
+              />
+            )}
+
+            {/* The Counts modal's play affordance, verbatim: a big
+                center play button over a video's kept frame, and the
+                honest chip when the browser cannot play the format.
+                Click-through except the button, so the canvas keeps
+                its clicks. Hidden while drawing: a crosshair with a
+                play button under it invites a misclick. */}
+            {file.file_type === "video" &&
+              viewMode !== "video" &&
+              !drawMode &&
+              (playable ? (
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("video")}
+                    title="Watch this video (P)"
+                    className="pointer-events-auto flex h-16 w-16 items-center justify-center rounded-full bg-black/55 ring-1 ring-white/40 transition hover:scale-105 hover:bg-black/75"
+                  >
+                    <Play className="h-7 w-7 translate-x-0.5 fill-white text-white" />
+                  </button>
+                </div>
+              ) : (
+                <div className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex justify-center">
+                  <span className="rounded-md bg-black/60 px-2.5 py-1 text-xs text-white/80">
+                    Video format not supported for playback
+                  </span>
+                </div>
+              ))}
+          </div>
         ) : (
           <div className="text-white/50">Loading...</div>
         )
@@ -568,19 +729,22 @@ export function FileDetailModal({
                   the single frame is chosen afterwards, purely because
                   it is the only one written to disk as a JPEG.
 
-                  Deliberately not an offer to watch the video: a box can
-                  only be saved on the frame the app kept
-                  (`AnnotationCanvas` stamps `best_frame_number` on every
-                  box it creates), so an animal spotted on any other
-                  second is something the person could see and never
-                  record. Worded to hold in every case, including a clip
-                  where nothing was found at all and the kept frame is
-                  simply the middle one. */}
+                  The watch offer (the play button, P) shows the whole
+                  clip with each frame's boxes, which is a better basis
+                  for the Verify verdict than one still. The limit that
+                  keeps the caption's last clause: a box can only be
+                  saved on the kept frame (`AnnotationCanvas` stamps
+                  `best_frame_number` on every box it creates), so an
+                  animal seen on another second is recorded by drawing
+                  it on this frame. Worded to hold in every case,
+                  including a clip where nothing was found at all and
+                  the kept frame is simply the middle one. */}
               {item.file_type === "video" && (
                 <div className="pt-1 text-muted-foreground/80">
                   The AI checked the whole clip. This is the one frame
                   AddaxAI kept, so you are judging this frame, and a box
                   you draw is saved on it.
+                  {playable && " Press P or the play button to watch the clip."}
                 </div>
               )}
             </div>
@@ -610,21 +774,6 @@ export function FileDetailModal({
                 <SquareDashed className="h-4 w-4 mr-1" />
                 {drawMode ? "Stop drawing" : "Draw a box"}
                 <Kbd>D</Kbd>
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-center"
-                onClick={() => setBoxesHidden((v) => !v)}
-              >
-                {boxesHidden ? (
-                  <Eye className="h-4 w-4 mr-1" />
-                ) : (
-                  <EyeOff className="h-4 w-4 mr-1" />
-                )}
-                {boxesHidden ? "Show boxes" : "Hide boxes"}
-                <Kbd>B</Kbd>
               </Button>
 
               <Button
@@ -817,7 +966,12 @@ export function FileDetailModal({
             onSelect={(option) => {
               const ids = relabelTargets;
               setRelabelTargets(null);
-              if (ids) applyLabel(ids, option.label, option.category);
+              // Same advance rule as the keys: a whole-picture relabel
+              // is the verdict and moves on; a selected box (including
+              // a freshly drawn one, which arrives selected) stays.
+              if (ids) {
+                applyLabel(ids, option.label, option.category, wholePicture);
+              }
             }}
             options={labelOptions}
             isLoading={labelOptionsLoading}

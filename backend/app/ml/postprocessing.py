@@ -544,13 +544,14 @@ def update_database_from_smoothed_results(
         key = (det.file.file_path, bbox_key, det.frame_number)
         detection_lookup[key] = det
 
-    # Signing a file off deletes the boxes below the threshold
-    # (`crud.file.set_file_verified`), so the JSON still lists boxes that
-    # no longer exist here. That is the state the person asked for, not a
-    # mismatch. Without this the very next reprocess of a checked project
-    # reports one "error" per removed box, which on measured data is 3.2
-    # per file, so a few hundred failures that are not failures. A
-    # missing box on a file nobody signed off still counts.
+    # Signing a file off used to DELETE its boxes below the threshold;
+    # since 2026-09-02 `crud.file.set_file_verified` marks them "false
+    # detection" instead, so they match their JSON boxes again and this
+    # exemption is not needed for them. It stays for the rows already
+    # deleted under the old design (those files are still verified) and
+    # it also absorbs a machine box the person moved or resized, whose
+    # JSON key no longer matches. A missing box on a file nobody signed
+    # off still counts as an error.
     verified_paths = {
         path
         for (path,) in db.query(File.file_path)

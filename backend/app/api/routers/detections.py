@@ -387,6 +387,7 @@ def bulk_relabel_detections(
             det.common_name = builtin_common_name
         det.classification_method = "human"
         det.verified = True
+        det.verified_at_utc = datetime.now(UTC)
 
     file_crud.recompute_file_verified_for_detections(db, body.detection_ids)
     db.commit()

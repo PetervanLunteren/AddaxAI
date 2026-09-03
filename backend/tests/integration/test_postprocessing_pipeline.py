@@ -605,12 +605,14 @@ def test_final_sweep_preserves_verified(deployment_scaffold):
 
 
 def test_a_discarded_box_is_not_reported_as_a_reprocess_error(deployment_scaffold):
-    """A signed-off file has had its weak boxes deleted, so the JSON still
-    lists boxes with no row to match. That is the state the person asked
-    for, not a mismatch. The file need not be blank: verifying a file
-    with a passing box deletes the weak ones beside it too.
+    """Verifying a file used to DELETE its weak boxes, so on databases
+    checked before 2026-09-02 the JSON still lists boxes with no row to
+    match. That is the state the person asked for, not a mismatch, and
+    those files stay verified, so the exemption keeps covering them.
+    (New sign-offs reject the boxes instead of deleting them, so they
+    keep matching; see the test below this one's neighbour.)
 
-    Without the exemption the very next reprocess of a checked project
+    Without the exemption the very next reprocess of such a project
     reports one error per removed box: measured at 3.2 per file, so a few
     hundred failures that are not failures, shown to the user in the
     reprocess summary.
@@ -627,9 +629,9 @@ def test_a_discarded_box_is_not_reported_as_a_reprocess_error(deployment_scaffol
     )
     emptied, kept = files[0], files[1]
 
-    # Stand in for the file verify: the box is gone and the file is
-    # signed off but not blank, exactly as `set_file_verified` leaves a
-    # file whose weak box sat beside a verified one.
+    # Stand in for a pre-change file verify: the box is gone and the file
+    # is signed off but not blank, exactly as the old `set_file_verified`
+    # left a file whose weak box sat beside a verified one.
     db.query(Detection).filter(Detection.file_id == emptied.id).delete(
         synchronize_session=False
     )
@@ -718,3 +720,78 @@ def test_a_missing_box_on_an_unverified_file_is_still_an_error(deployment_scaffo
     )
 
     assert counts["errors"] == 1
+
+
+def test_an_unticked_files_rejected_boxes_reprocess_cleanly(deployment_scaffold):
+    """The payoff of rejecting weak boxes instead of deleting them.
+
+    Verify a file: its weak box is marked "false detection" and stays a
+    row, so the reprocess matcher finds it and skips it as verified —
+    zero errors, the verdict holds. Untick the file: the box is
+    unverified, so the next reprocess hands it back to the machine and
+    restores the AI's label — still zero errors. Under the delete design
+    the same untick produced one phantom error per removed box, forever.
+    """
+    from app.api.crud.file import set_file_verified
+
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    _load_basic_images(s)
+
+    files = (
+        db.query(File)
+        .filter(File.deployment_id == s["deployment"].id)
+        .order_by(File.captured_at_local.asc())
+        .all()
+    )
+    weak = db.query(Detection).filter(Detection.file_id == files[0].id).one()
+    weak.confidence = 0.05  # below the project threshold: invisible
+    db.commit()
+
+    set_file_verified(db, files[0], True)
+    db.commit()
+    db.refresh(weak)
+    assert weak.label == "false detection"
+    assert weak.verified is True
+
+    smoothed = build_detection_json(
+        [
+            {
+                "file": str(Path(f.file_path).relative_to(deploy_dir)),
+                "detections": [
+                    {
+                        "category": "1",
+                        "conf": 0.9,
+                        "bbox": [0.1, 0.2, 0.3, 0.4],
+                        "classifications": [[2, 0.8], [1, 0.2]],
+                    }
+                ],
+            }
+            for f in files
+        ],
+        classification_categories={"1": "lion", "2": "zebra", "3": "giraffe"},
+    )
+
+    counts = update_database_from_smoothed_results(
+        deployment_id=s["deployment"].id,
+        smoothed_results=smoothed,
+        deployment_folder=deploy_dir,
+        db=db,
+    )
+    assert counts["errors"] == 0
+    db.refresh(weak)
+    assert weak.label == "false detection", "the verdict survives a reprocess"
+
+    set_file_verified(db, files[0], False)
+    db.commit()
+
+    counts = update_database_from_smoothed_results(
+        deployment_id=s["deployment"].id,
+        smoothed_results=smoothed,
+        deployment_folder=deploy_dir,
+        db=db,
+    )
+    assert counts["errors"] == 0, "no phantom errors after the untick"
+    db.refresh(weak)
+    assert weak.label == "zebra", "the machine's call is restored"
+    assert weak.verified is False

@@ -45,6 +45,10 @@ interface VideoPlayerProps {
   /** Called as soon as an autoExport request has been picked up, so the
    *  parent can clear the one-shot flag. */
   onAutoExportConsumed?: () => void;
+  /** The modal's B toggle. Hides the live overlay only; the export
+   *  always records the boxes, because an annotated video is the one
+   *  thing it produces that the file on disk is not. */
+  boxesHidden?: boolean;
 }
 
 /** Browser-playable video formats. */
@@ -179,6 +183,7 @@ export function VideoPlayer({
   exportFnRef,
   autoExport,
   onAutoExportConsumed,
+  boxesHidden,
 }: VideoPlayerProps) {
   // Repaint when the project's colour map lands or changes.
   useSpeciesColorsVersion();
@@ -515,7 +520,7 @@ export function VideoPlayer({
         )}
 
         {/* SVG overlay: spotlight + bboxes + labels */}
-        {currentDetections.length > 0 && overlayOpacity > 0 && (
+        {!boxesHidden && currentDetections.length > 0 && overlayOpacity > 0 && (
           <svg
             style={{ opacity: overlayOpacity, transition: "opacity 0.05s linear" }}
             className="absolute inset-0 w-full h-full pointer-events-none"

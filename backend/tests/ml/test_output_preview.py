@@ -425,3 +425,31 @@ def test_excluded_filter_matches_taxonomy_id(db):
     assert preview.dropped_by_filter == 1
     assert preview.in_scope_files == 0
     assert dict(preview.by_media_tree) == {}
+
+
+def test_a_rejected_box_never_names_a_folder(db):
+    """A signed-off empty file holds verified "false detection" rows
+    (`set_file_verified` rejects the weak boxes it hides). The preview
+    must file it under blank like the run does, not invent a
+    `false_detection/` folder off the verified flag. And a file whose
+    strongest box was X'd is named by its next real box, as
+    `strongest_label_for_file` names it."""
+    project = make_project(db, name="prev-reject", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+
+    emptied = _animal_file(db, dep.id)
+    make_detection(
+        db, file_id=emptied.id, confidence=0.1,
+        label="false detection", verified=True,
+    )
+
+    xed = _animal_file(db, dep.id)
+    make_detection(
+        db, file_id=xed.id, confidence=0.9,
+        label="false detection", verified=True,
+    )
+    make_detection(db, file_id=xed.id, confidence=0.8, label="dog")
+
+    preview = build_output_preview(db, project.id, media_threshold=0.5)
+
+    assert preview.by_media_tree == {"blank": 1, "dog": 1}

@@ -14,7 +14,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, text
+from sqlalchemy import func, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -39,6 +39,7 @@ from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.ml.detection_visibility import on_visible_frame
+from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
 from app.models import Deployment, Detection, Event, File, Job, Project
 from app.models.detection_embedding import DetectionEmbedding
 from app.models.event_observation import EventObservation
@@ -782,7 +783,8 @@ def get_detection_stats(project_id: str, db: Session = Depends(get_db)) -> dict:
         .join(File)
         .join(Deployment)
         .filter(Deployment.project_id == project_id)
-        .filter(or_(Detection.confidence >= threshold, Detection.verified == True))  # noqa: E712
+        .filter(threshold_or_verified(threshold))
+        .filter(is_a_real_detection())
         .group_by(Detection.category)
         .all()
     )
@@ -815,7 +817,11 @@ def get_detection_count(
         .join(File)
         .join(Deployment)
         .filter(Deployment.project_id == project_id)
-        .filter(or_(Detection.confidence >= threshold, Detection.verified == True))  # noqa: E712
+        .filter(threshold_or_verified(threshold))
+        # Real observations only, the same rule the Labels progress chip
+        # applies: a box someone pressed X on is not a detection to
+        # count, so this number and the chip beside it agree.
+        .filter(is_a_real_detection())
         .filter(on_visible_frame())
         .scalar()
     ) or 0
@@ -848,10 +854,9 @@ def get_label_stats(
         .filter(Detection.label.isnot(None))
         .filter(on_visible_frame())
     )
+    query = query.filter(is_a_real_detection())
     if threshold > 0:
-        query = query.filter(
-            or_(Detection.confidence >= threshold, Detection.verified == True)  # noqa: E712
-        )
+        query = query.filter(threshold_or_verified(threshold))
     stats = (
         query
         .group_by(Detection.label)

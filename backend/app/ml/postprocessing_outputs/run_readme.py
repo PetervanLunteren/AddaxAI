@@ -29,6 +29,7 @@ from app import __version__ as APP_VERSION
 from app.core.confidence import ROLLUP_THRESHOLD, format_confidence_pct
 from app.core.config import get_settings
 from app.core.logging_config import get_logger
+from app.ml.label_exclusion import threshold_or_verified
 from app.ml.manifest_manager import ManifestManager
 from app.models import Deployment, Detection, File, Project
 
@@ -139,19 +140,13 @@ def _detection_counts_by_category(
 ) -> dict[str, int]:
     """Detections per category (animal / person / vehicle) passing
     the project threshold-with-verified rule."""
-    from sqlalchemy import or_
 
     rows = db.execute(
         select(Detection.category, func.count(Detection.id))
         .join(File, File.id == Detection.file_id)
         .join(Deployment, File.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
-        .where(
-            or_(
-                Detection.confidence >= threshold,
-                Detection.verified == True,  # noqa: E712
-            )
-        )
+        .where(threshold_or_verified(threshold))
         .group_by(Detection.category)
     ).all()
     return {category: int(count) for category, count in rows}

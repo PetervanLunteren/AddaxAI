@@ -91,7 +91,10 @@ export function VerifyDetailShell({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex flex-col p-3 pr-0 gap-0 overflow-hidden [&>button.absolute]:hidden"
+        // No horizontal padding: the tool rail sits flush at the left
+        // edge exactly as in the Counts modal (`EventDetailModal`), so
+        // the three viewers' rails are pixel-identical.
+        className="flex flex-col py-3 px-0 gap-0 overflow-hidden [&>button.absolute]:hidden"
         style={{ width, height, maxWidth: "95vw", maxHeight: "95vh" }}
         onOpenAutoFocus={(e) => e.preventDefault()}
         aria-describedby={undefined}
@@ -100,7 +103,7 @@ export function VerifyDetailShell({
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {toolbar && (
-            <div className="flex flex-col items-center gap-1 px-1.5 py-2 bg-white shrink-0">
+            <div className="flex flex-col items-center gap-1 px-1.5 py-2 bg-white border-r shrink-0">
               {toolbar}
             </div>
           )}

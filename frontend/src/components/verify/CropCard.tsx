@@ -11,7 +11,7 @@
  */
 
 import { memo, useState } from "react";
-import { Check, ImageOff } from "lucide-react";
+import { ImageOff } from "lucide-react";
 import { API_BASE_URL } from "../../lib/api-client";
 import {
   getDetectionColor,
@@ -28,6 +28,7 @@ import {
 import { cn } from "../../lib/utils";
 import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
 import { Badge } from "../ui/badge";
+import { StatusBadgeCluster } from "./StatusBadgeCluster";
 import type { DetectionSummary } from "../../api/types";
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
 
@@ -130,12 +131,14 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
         )}
       </div>
 
-      {/* Verified badge — overflows top-right corner */}
-      {detection.verified && (
-        <div className="absolute -top-1.5 -right-1.5 z-10 bg-primary rounded-full p-0.5 shadow-sm">
-          <Check className="h-3 w-3 text-primary-foreground" />
-        </div>
-      )}
+      {/* Corner badges — the Counts cards' cluster: verified check,
+          like, flag. The marks are the file's, so every crop of a
+          flagged file carries the flag. */}
+      <StatusBadgeCluster
+        confirmed={detection.verified}
+        favorited={detection.file_favorited}
+        flagged={detection.file_flagged}
+      />
 
       {/* Info bar — pill labels */}
       <div className="px-2 py-1.5">

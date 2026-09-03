@@ -458,27 +458,29 @@ Detections below `counting_threshold` are hidden from the UI. However, verified 
 **The rule:** anywhere you query detections and the result is user-facing, apply:
 
 ```python
-or_(Detection.confidence >= threshold, Detection.verified == True)
+threshold_or_verified(threshold)  # ml/label_exclusion.py
 ```
 
-This must be applied consistently across every module that counts, lists, filters, or displays detections. The places where this is currently enforced:
+It expands to "confidence at or above the threshold, OR verified as
+something real": the verified override, minus rejected boxes that never
+passed the threshold on their own. That refinement is what keeps the
+weak boxes a file sign-off rejects (see "Verifying a file rejects its
+invisible detections") buried, so do not inline the plain
+`or_(confidence >= threshold, verified)` — every backend module that
+counts, lists, filters, displays or exports detections calls the helper
+(`statistics`, `label_tree`, `event`, `event_observation`, `export`,
+`performance`, `file`, the routers, the media output writers,
+`embedding_utils`). The similarity sort worker keeps a hand-written SQL
+copy (no `app.*` on its path); it is marked at both ends.
 
-| Module | What it covers |
-|--------|---------------|
-| `crud/statistics.py` | Dashboard stats (overview, species, activity, trend, categories) |
-| `crud/label_tree.py` | Label filter tree counts (detection and event modes) |
-| `crud/event.py` | Event label filter, standalone confidence filter, verification stats, filter options |
-| `crud/project.py` | Project card detection counts (single and bulk) |
-| `routers/projects.py` | Detection count, label stats, category stats, independent event stats |
-| `ml/inference/similarity_script.py` | Similarity sort/search (raw SQL) |
+**When adding a new query that touches detections**, check whether the result is user-facing. If yes, call the helper. If you skip this, detection counts and filter options will be inconsistent with what the user sees in the verification grid.
 
-**When adding a new query that touches detections**, check whether the result is user-facing. If yes, apply the threshold with the verified override. If you skip this, detection counts and filter options will be inconsistent with what the user sees in the verification grid.
-
-**Two exceptions where `OR verified` does not apply:**
+**Three exceptions where the helper does not apply:**
 1. **User-driven confidence range filters** (e.g. a max_confidence ceiling). When a user explicitly sets a confidence range, respect it literally. The override only applies to the project's threshold floor, not to user-specified ceilings.
 2. **Per-file detection lists** (`crud/detection.py`). These serve the file detail view where the caller controls what to show. Not tied to the project threshold.
+3. **The anonymise blur** (`annotated_copies.py`) keeps the plain threshold-or-verified clause on purpose: privacy costs are asymmetric, so a person box a reviewer waved off is still blurred.
 
-**Common mistake:** writing `Detection.confidence >= threshold` without `OR Detection.verified == True`. This silently drops verified low-confidence detections from counts, filters, and charts. The result is that users see different numbers on different pages.
+**Common mistake:** writing `Detection.confidence >= threshold` without the override. This silently drops verified low-confidence detections from counts, filters, and charts. The result is that users see different numbers on different pages.
 
 **The same rule applies to what is drawn, not only to what is counted.** `shouldDrawBbox` in `frontend/src/lib/detection-utils.ts` is the one place a bounding box is admitted to a canvas, and it carries the override too. Relabelling never rewrites `Detection.confidence` (`bulk_relabel` and `update_detection` both leave it alone), so a box a human confirmed at 3% keeps that 3% forever. Without the override such a box earns a card, a count and a MaxN, and then paints no rectangle on the photo those numbers describe.
 
@@ -490,72 +492,79 @@ It also refuses a box a person **rejected**, mirroring `is_a_real_detection()`. 
 
 **A frontend type is not evidence that a field is on the wire.** `schemas/file.py` has its own `DetectionResponse`, separate from the one in `schemas/detection.py`, and it carried neither `verified` nor `job_id` while `api/types.ts` declared both. Neither type checker can see that: TypeScript believes its own declaration and Python never reads it. Both fields are now required there rather than defaulted, so a missing one fails loudly instead of arriving as a plausible `undefined` that reads as "not verified" and "not human-drawn". `tests/api/test_file_detection_wire_fields.py` asserts the wire, which is the only place the two sides meet; a frontend unit test would build its fixture from the same lying type and pass.
 
-## Verifying a file deletes its invisible detections
+## Verifying a file rejects its invisible detections
 
 Signing a file off on the Files tab says "the boxes you can see are all
 there is". `set_file_verified` (`crud/file.py`) makes that true: on the
 file's visible frame, every box the person could not see (below
-`counting_threshold` and not verified) is deleted, and every box they
-could see is verified. One rule for empty and non-empty files alike, and
-for every box whoever drew it: a drawn box is created verified at
-confidence 1.0, so it is always visible and never hit. Unverifying a file
-clears `verified` on every box of the file, drawn ones included. Both
-paths re-derive `observation_type` and the event MaxN, as the detection
-endpoints do. Verify is idempotent, so a second Enter picks up boxes
-added since.
+`counting_threshold` and not verified) is rejected the way the X key
+rejects a box (`mark_detections_false` in `crud/detection.py`: label
+"false detection", verified, `classification_method = "human"`, same
+per-project taxonomy row), and every box they could see is verified. One
+rule for empty and non-empty files alike, and for every box whoever drew
+it: a drawn box is created verified at confidence 1.0, so it is always
+visible and never hit. Unverifying a file clears `verified` on every box
+of the file, drawn ones included; the next reprocess then overwrites the
+unverified rejects with the machine's own call, so an untick genuinely
+hands the file back to the AI. Both paths re-derive `observation_type`
+and the event MaxN, as the detection endpoints do. Verify is idempotent,
+so a second Enter picks up boxes added since.
 
-**Why delete rather than keep the weak boxes.** Keeping them made
-"verified" true only at the threshold it was checked at. Drop the
-confidence slider and the file came back carrying a 3% smudge while still
-flagged verified; raise `counting_threshold` afterwards and it exported
-`is_verified = TRUE` beside a species nobody had confirmed. Marking them
-false instead would freeze roughly 1,500 unlooked-at vegetation boxes per
-500 photos as human decisions, permanently. Deleting asserts nothing.
+**Why reject rather than leave the weak boxes.** Left alone they made
+"verified" true only at the threshold it was checked at: drop the
+confidence slider and the file came back carrying a 3% smudge while
+still flagged verified. They used to be DELETED instead, which had two
+costs the rejection does not: the reprocess matcher reported the deleted
+boxes as errors on any signed-off-then-unticked file forever (measured:
+13 phantom errors for one file), and nothing short of a full re-analysis
+could bring them back.
 
-**This is only defensible while the Files viewer draws no sub-threshold
-boxes.** `AnnotationCanvas` draws through `shouldDrawBbox`, so it shows
-exactly the threshold-or-verified boxes the rule keeps. The person is
-judging the picture, not a threshold. If weak boxes are ever drawn there,
-the verdict becomes threshold-dependent and deleting on it does not
-follow.
+**The scope rule is what makes rejection viable.**
+`threshold_or_verified(threshold)` in `ml/label_exclusion.py` is the
+user-facing scope predicate: a detection passes on its own confidence,
+or because a human verified it *as something real*. A rejected box below
+the threshold fails both halves, so it stays invisible at every
+threshold, in every list, count, export, media output and performance
+metric. Without that refinement the rejected rows are verified and the
+plain threshold-or-verified rule surfaces all of them (a real project
+measured 4,050 weak boxes against 7,526 passing ones). Every user-facing
+query goes through the helper; the two hand copies (the similarity sort
+worker's SQL and `passesDrawFilter` on the frontend) are marked at the
+definition. One deliberate exception: the anonymise blur keeps the plain
+rule, because un-blurring a person on a reviewer's say-so is the wrong
+side to be wrong on. An above-threshold box a person pressed X on still
+passes, so the grid and the exports keep showing that verdict.
 
 **Scoped to the visible frame.** For a video that is its best frame plus
 verified boxes on any frame. Boxes on frames nobody saw are neither
-deleted nor verified; before this the verify write had no frame clause
+rejected nor verified; before this the verify write had no frame clause
 and signed off boxes on frames the person never opened. A video with no
 best frame has no visible surface, so verifying it sets the flag and
 touches no boxes.
 
-**The reprocess must know.** `update_database_from_smoothed_results`
-matches JSON detections to rows by `file_path` + bbox + `frame_number`
-and counts an unmatched one as an error. A deleted box is exactly that,
-so without an exemption the next reprocess of a checked project reports
-one error per removed box: measured at 3.2 per file, a few hundred
-failures that are not failures, shown to the user in the reprocess
-summary. `postprocessing.py` skips unmatched boxes on every verified
-file; a missing box on a file nobody signed off still counts. That
-includes a file that was signed off and then unticked: its weak boxes
-are gone for good, so every reprocess reports them until it is signed
-off again (measured: 13 errors for one such file). That same matcher is
-why the deletion survives a reprocess: it updates in place and never
-re-inserts. It also means a machine box a person moved or resized on a
-verified file is no longer a false alarm.
-
-**Nothing is truly lost.** `results.json` on disk is never modified and
-still holds every box, which is what a re-analysis reads back. A
-re-analysis also discards the verification itself, as it does for crop
-verifications.
+**The reprocess side.** `update_database_from_smoothed_results` matches
+JSON detections to rows by `file_path` + bbox + `frame_number` and
+counts an unmatched one as an error. Rejected rows still match, so a
+signed-off file reprocesses with zero errors, verified rows are skipped
+(the verdict holds), and after an untick the machine simply relabels
+them. The exemption in `postprocessing.py` (unmatched boxes on verified
+files are not errors) stays for two reasons: databases checked before
+2026-09-02 hold files whose weak boxes were deleted under the old
+design, and a machine box a person moved or resized no longer matches
+its JSON key either.
 
 **A rejected box does not make a file look occupied.** The Files tab's
 empty filter applies `is_a_real_detection()`, so a file whose only real
-box was marked false reads as empty; verifying it deletes the weak boxes
+box was marked false reads as empty; verifying it rejects the weak boxes
 beside the rejected one and leaves the rejected box, which is verified
 and therefore never touched.
 
-Tests: `tests/api/test_empty_verify_discards.py`,
-`tests/api/test_files.py` (the bulk endpoint) and
-`test_a_discarded_box_is_not_reported_as_a_reprocess_error` in
-`tests/integration/test_postprocessing_pipeline.py`.
+Tests: `tests/api/test_file_verify_rejects.py` (including the parity pin
+that an auto-rejected box is field-for-field identical to a pressed X,
+and the scope pin), `tests/api/test_files.py` (the bulk endpoint) and
+the reprocess pair in `tests/integration/test_postprocessing_pipeline.py`
+(`test_an_unticked_files_rejected_boxes_reprocess_cleanly`,
+`test_a_discarded_box_is_not_reported_as_a_reprocess_error`).
 
 ## Non-label detection skip
 
@@ -569,7 +578,7 @@ Do not confuse it with `is_non_label_detection` in the same module, which skips 
 
 User species exclusion is a separate path: `apply_label_exclusion_to_results` in postprocessing, which builds its excluded set from the non-label classes plus the project's `excluded_classes`.
 
-**Observation type:** files where all detections were skipped get `observation_type="blank"`. They are counted as blank images on the dashboard, and they are reachable on the Labels page's Files tab with the Empty filter (see "Verifying a file deletes its invisible detections"). They have no card in the Detections tab, which is per-detection.
+**Observation type:** files where all detections were skipped get `observation_type="blank"`. They are counted as blank images on the dashboard, and they are reachable on the Labels page's Files tab with the Empty filter (see "Verifying a file rejects its invisible detections"). They have no card in the Detections tab, which is per-detection.
 
 **Raw JSON preservation:** the JSON on disk (`results.json`) is never modified. It contains all original detections including those classified as blank. The skip only applies during the in-memory DB load step.
 
@@ -580,7 +589,7 @@ Two places apply it, because they are two different queries:
 - `strongest_passing_detection` (`ml/observation_type.py`) skips them, which fixes `observation_type` and therefore `files.csv`, folder placement and annotated copies in one move.
 - `_is_a_real_observation` in `crud/event_observation.py` skips them in the MaxN query, which groups by `COALESCE(label, category)` in its own SQL and never goes through the function above.
 
-**The row is kept, not deleted.** A human looked at that box and judged it. Keeping it preserves the undo stack on the Labels page, and keeps `addaxai-detections.csv` an honest record of what the detector found and what was rejected. This is deliberately the opposite call from the empties one above, and the difference is what was looked at: an empty file's leftover boxes were never examined individually, a falsed box was.
+**The row is kept, not deleted.** A human looked at that box and judged it. Keeping it preserves the undo stack on the Labels page, and keeps `addaxai-detections.csv` an honest record of what the detector found and what was rejected. A file sign-off keeps its rejected weak boxes for the same reason (see the section above); the difference is that those were never examined individually, so `threshold_or_verified` keeps them below the surface while a box someone actually pressed X on stays visible in the grid.
 
 `tests/api/test_mark_false.py` pins it, including that a real animal beside a falsed box still names the file, and that all six non-label classes behave alike.
 

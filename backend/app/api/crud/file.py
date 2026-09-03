@@ -9,6 +9,7 @@ from typing import NamedTuple
 from sqlalchemy import Integer, and_, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.api.crud.detection import mark_detections_false
 from app.api.crud.event_observation import (
     get_event_ids_for_files,
     recalculate_max_n_for_events,
@@ -16,9 +17,10 @@ from app.api.crud.event_observation import (
 from app.api.schemas.file import FileUpdate
 from app.core.confidence import effective_floor
 from app.ml.detection_visibility import on_visible_frame, on_visible_frame_of
-from app.ml.label_exclusion import is_a_real_detection
+from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
 from app.ml.observation_type import derive_observation_type
-from app.models import Deployment, Detection, File, Project
+from app.models import Deployment, Detection, Event, File, Project
+from app.models.event import event_files
 
 
 def _project_threshold_for_file(db: Session, file: File) -> float:
@@ -164,11 +166,19 @@ def get_labels_files(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     verification: str | None = None,
+    flagged: str | None = None,
+    favorited: str | None = None,
+    labels: list[str] | None = None,
+    min_confidence: float | None = None,
+    max_confidence: float | None = None,
+    min_label_confidence: float | None = None,
+    max_label_confidence: float | None = None,
     sort: str = "path",
     seed: int | None = None,
     skip: int = 0,
     limit: int = 48,
-) -> tuple[int, list[File]]:
+    find: str | None = None,
+) -> tuple[int, list[File], int | None]:
     """The project's files for the Files tab, and how many there are.
 
     ``empty`` narrows by whether anything on the file's visible surface
@@ -181,8 +191,12 @@ def get_labels_files(
     rest the two agree exactly, and the two halves partition the
     project (``tests/api/test_labels_files.py``).
 
-    Returns ``(total, page)`` — the uncapped count of matching files and
-    the requested slice, so the toolbar can say how much is left to do.
+    Returns ``(total, page, find_index)`` — the uncapped count of
+    matching files, the requested slice, and, when ``find`` names a file
+    id, that file's 0-based position in the full ordering (``None`` when
+    it does not match the filters). The position is what lets the
+    Detections modal's "Open in files view" land the viewer on the file
+    inside the list instead of showing it alone.
 
     ``sort='path'`` is the default because it groups one camera's photos
     together: ``file_path`` is absolute, so it begins with the
@@ -213,6 +227,38 @@ def get_labels_files(
     elif empty == "hide":
         query = query.filter(passing.exists())
 
+    # Box-level filters, the Detections tab's rules lifted to files: a
+    # file shows when ONE box matches all of them together (species AND
+    # confidence range), on the same `passing` scope as the empty
+    # partition, so an invisible box can never match. One combined
+    # EXISTS, not one per filter: a file with dog@0.9 and cat@0.3 must
+    # not match "dogs below 40%" off two different boxes.
+    #
+    # `min_confidence` at or below the floor is a no-op: the Files
+    # slider is clamped at the project threshold ("empty" is defined by
+    # that one setting, never by a transient slider), so a lower value
+    # can only arrive from a stale URL. Above the floor it is literal,
+    # exactly as the sort worker applies it, so a verified
+    # low-confidence box cannot satisfy a narrowed range there either.
+    # Files without any box only appear while no box filter is active
+    # (or through "Show only empty").
+    box_filters = []
+    if labels:
+        box_filters.append(Detection.label_taxonomy_id.in_(labels))
+    if min_confidence is not None and min_confidence > floor:
+        box_filters.append(Detection.confidence >= min_confidence)
+    if max_confidence is not None:
+        box_filters.append(Detection.confidence <= max_confidence)
+    # Classifier-score range. NULL label_confidence fails the comparison
+    # in SQL, so unclassified boxes are excluded automatically once a
+    # bound is set, the same behaviour as the Detections sort worker.
+    if min_label_confidence is not None:
+        box_filters.append(Detection.label_confidence >= min_label_confidence)
+    if max_label_confidence is not None:
+        box_filters.append(Detection.label_confidence <= max_label_confidence)
+    if box_filters:
+        query = query.filter(passing.where(*box_filters).exists())
+
     site_clause = site_ids_filter(site_ids)
     if site_clause is not None:
         query = query.filter(site_clause)
@@ -228,27 +274,88 @@ def get_labels_files(
         query = query.filter(File.verified.is_(True))
     elif verification == "unverified":
         query = query.filter(File.verified.is_(False))
+    # Triage marks live on the file itself, so unlike the events
+    # endpoint no EXISTS is needed. Anything else (None, "all") means
+    # no clause, matching `get_events`.
+    if flagged in ("flagged", "not_flagged"):
+        query = query.filter(File.flagged.is_(flagged == "flagged"))
+    if favorited in ("favorited", "not_favorited"):
+        query = query.filter(File.favorited.is_(favorited == "favorited"))
 
     total = query.count()
 
     # File.id breaks every tie, so paging is stable. Files with no
     # capture time sort last rather than wherever SQLite puts NULL.
     undated_last = File.captured_at_local.is_(None).asc()
+    # Same-second ties resolve by file name, not by row id: a burst shot
+    # within one second must come back in shooting order, and camera
+    # filenames are sequential. Lexicographic, which equals human order
+    # for the fixed-width names cameras write (IMG_0102); a true natural
+    # sort would need a computed key and no real data has asked for it.
+    name_break = [File.file_path.asc(), File.id.asc()]
     if sort == "path":
         order = [File.file_path.asc(), File.id.asc()]
     elif sort == "newest":
-        order = [undated_last, File.captured_at_local.desc(), File.id.asc()]
+        order = [undated_last, File.captured_at_local.desc(), *name_break]
     elif sort == "oldest":
-        order = [undated_last, File.captured_at_local.asc(), File.id.asc()]
+        order = [undated_last, File.captured_at_local.asc(), *name_break]
     elif sort == "random":
         if seed is None:
             raise ValueError("random sort requires a seed")
         order = [func.seeded_hash(File.id, seed).asc(), File.id.asc()]
+    elif sort == "events":
+        # Bursts contiguous: events newest first (as on the Detections
+        # tab), inside an event the files in shooting order. Correlated
+        # scalar subqueries rather than a join: a file in more than one
+        # event would duplicate rows under a join, and LIMIT 1 keeps the
+        # sort key single-valued. Files outside any event sort last.
+        event_id_sq = (
+            select(event_files.c.event_id)
+            .where(event_files.c.file_id == File.id)
+            .order_by(event_files.c.event_id)
+            .limit(1)
+            .correlate(File)
+            .scalar_subquery()
+        )
+        event_start_sq = (
+            select(Event.event_start_local)
+            .join(event_files, event_files.c.event_id == Event.id)
+            .where(event_files.c.file_id == File.id)
+            .order_by(event_files.c.event_id)
+            .limit(1)
+            .correlate(File)
+            .scalar_subquery()
+        )
+        order = [
+            event_start_sq.is_(None).asc(),
+            event_start_sq.desc(),
+            event_id_sq.asc(),
+            undated_last,
+            File.captured_at_local.asc(),
+            *name_break,
+        ]
     else:
         raise ValueError(f"unknown sort: {sort}")
 
+    find_index: int | None = None
+    if find is not None:
+        # The file's rank under the same filters and order the page
+        # itself uses, so "position N" and "page N // limit" can never
+        # disagree with what the grid shows. row_number over the
+        # filtered set (thousands of rows, one window pass), not a
+        # COUNT of rows sorting before it, which would mean restating
+        # every order key as a comparison.
+        ranked = query.with_entities(
+            File.id.label("fid"),
+            func.row_number().over(order_by=order).label("pos"),
+        ).subquery()
+        pos = (
+            db.query(ranked.c.pos).filter(ranked.c.fid == find).scalar()
+        )
+        find_index = pos - 1 if pos is not None else None
+
     page = query.order_by(*order).offset(skip).limit(limit).all()
-    return total, page
+    return total, page, find_index
 
 
 class LabelCounts(NamedTuple):
@@ -474,9 +581,7 @@ def recompute_file_verified(db: Session, file_ids: Iterable[str]) -> None:
             # never roll up to verified however much work the user did.
             # Measured on a real database: 24 of 26 videos were stuck.
             .filter(on_visible_frame_of(f))
-            .filter(
-                or_(Detection.confidence >= floor, Detection.verified == True)  # noqa: E712
-            )
+            .filter(threshold_or_verified(floor))
             .all()
         )
         if not rows:
@@ -512,22 +617,25 @@ def set_file_verified(db: Session, file: File, verified: bool) -> None:
 
     Verifying a file says "the boxes you can see are all there is". So on
     the file's visible frame, every box the person could not see (below
-    the threshold and not verified) is deleted, and every box they could
+    the threshold and not verified) is rejected the way the X key rejects
+    a box (marked "false detection", verified), and every box they could
     see is verified. One rule for every file, empty or not, and for every
     box, whoever drew it: a drawn box has confidence 1.0, so it is always
-    visible and never deleted.
+    visible and never rejected.
 
-    Deleting the weak boxes rather than keeping them is what keeps
-    "verified" true at every threshold. Kept, a 3% smudge came back the
-    moment the confidence slider dropped, still under a verified flag,
-    and a later threshold change exported ``is_verified = TRUE`` beside a
-    species nobody had confirmed. This is only defensible while the Files
-    viewer draws no sub-threshold boxes: the person judged the picture,
-    not a threshold. ``results.json`` on disk still holds every box.
+    Rejecting the weak boxes rather than leaving them is what keeps
+    "verified" true at every threshold: left alone, a 3% smudge came back
+    the moment the confidence slider dropped, still under a verified
+    flag. The rejected rows stay out of every user-facing scope through
+    ``threshold_or_verified`` (`ml/label_exclusion.py`). They used to be
+    deleted instead, which meant reprocess reported them as missing and
+    nothing could ever bring them back; kept as rejected rows they match
+    their ``results.json`` boxes again, and an unverify hands them back
+    to the machine on the next reprocess.
 
     Scoped to the visible frame, which for a video is its best frame plus
     verified boxes on any frame. Boxes on frames nobody saw are neither
-    deleted nor verified. A video with no best frame has no visible
+    rejected nor verified. A video with no best frame has no visible
     surface, so verifying it sets the flag and touches no boxes.
 
     Unverifying clears every box on the file, drawn ones included.
@@ -542,11 +650,16 @@ def set_file_verified(db: Session, file: File, verified: bool) -> None:
     # only the frame clause.
     on_frame = and_(Detection.file_id == file.id, on_visible_frame_of(file))
     if verified:
-        db.query(Detection).filter(
-            on_frame,
-            Detection.verified == False,  # noqa: E712
-            Detection.confidence < threshold,
-        ).delete(synchronize_session=False)
+        weak = (
+            db.query(Detection)
+            .filter(
+                on_frame,
+                Detection.verified == False,  # noqa: E712
+                Detection.confidence < threshold,
+            )
+            .all()
+        )
+        mark_detections_false(db, weak)
         db.query(Detection).filter(
             on_frame,
             Detection.verified == False,  # noqa: E712

@@ -36,6 +36,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.ml.detection_visibility import on_visible_frame_of
+from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
 from app.models import Detection, File
 
 
@@ -72,7 +73,12 @@ def passing_detections_for_file(
     strongest first.
 
     A "passing" detection is one over the project threshold (or
-    verified) AND not in the user's exclusion set.
+    verified) AND a real observation AND not in the user's exclusion
+    set. The ``is_a_real_detection`` clause is what keeps a rejected box
+    ("false detection", verified first in the ordering) from deciding a
+    file's folder: without it, one X press filed the whole picture under
+    ``false detection/`` while ``derive_observation_type`` skipped the
+    same box and called the file blank.
 
     Strongest is verified first, then confidence, matching
     ``derive_observation_type`` and ``build_event_primary_labels``. So
@@ -86,12 +92,8 @@ def passing_detections_for_file(
         # on some other frame naming the folder is the same bug as a box
         # on some other frame being drawn on it.
         .where(on_visible_frame_of(file))
-        .where(
-            or_(
-                Detection.confidence >= threshold,
-                Detection.verified == True,  # noqa: E712
-            )
-        )
+        .where(threshold_or_verified(threshold))
+        .where(is_a_real_detection())
         .order_by(
             Detection.verified.desc(),
             Detection.confidence.desc(),
@@ -163,12 +165,7 @@ def file_is_dropped_by_filter(
                 Detection.label_taxonomy_id.isnot(None),
             )
         )
-        .where(
-            or_(
-                Detection.confidence >= threshold,
-                Detection.verified == True,  # noqa: E712
-            )
-        )
+        .where(threshold_or_verified(threshold))
     ).scalars().all()
 
     if not rows:

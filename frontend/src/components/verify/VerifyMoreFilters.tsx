@@ -12,6 +12,7 @@
  * "clear all" affordance — no duplicate inside this popover.
  */
 
+import type { ReactNode } from "react";
 import { useState } from "react";
 import { Filter } from "lucide-react";
 
@@ -41,7 +42,7 @@ interface VerifyMoreFiltersProps {
    * Counts) or goes down the full scale ("open", Labels). */
   confidenceFloorMode?: "clamp" | "open";
   /** Reason shown while the handle rests on a clamped floor. */
-  clampReason?: string;
+  clampReason?: ReactNode;
   /** When false, the classification slider is hidden (no cls model). */
   showClassification?: boolean;
   /** Lowest classification confidence in the project (data-driven cls

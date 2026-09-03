@@ -205,7 +205,7 @@ def _bulk_verify(client, ids, verified=True):
 
 def test_bulk_verify_signs_off_every_file_in_one_request(client, db):
     """The Files tab's bulk action. Same rule per file as the PATCH: the
-    visible boxes are verified, the weak ones deleted, the file flagged."""
+    visible boxes are verified, the weak ones rejected, the file flagged."""
     from app.models import Detection
 
     d, _ = _setup_deployment(db)
@@ -223,7 +223,9 @@ def test_bulk_verify_signs_off_every_file_in_one_request(client, db):
     assert a.verified is True
     assert b.verified is True
     assert db.get(Detection, strong_id).verified is True
-    assert db.get(Detection, weak_id) is None
+    weak = db.get(Detection, weak_id)
+    assert weak.label == "false detection"
+    assert weak.verified is True
 
 
 def test_bulk_unverify_takes_the_sign_off_back(client, db):

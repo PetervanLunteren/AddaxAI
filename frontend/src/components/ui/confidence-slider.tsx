@@ -21,6 +21,7 @@
  * value label stays aligned with the track.
  */
 
+import { useState } from "react";
 import type { ReactNode } from "react";
 
 import { RotateCcw } from "lucide-react";
@@ -46,7 +47,7 @@ interface ConfidenceSliderProps {
   effectiveMin?: number;
   /** Quiet caption shown while the (low) handle rests on a clamped
    * minimum above the scale min. */
-  clampReason?: string;
+  clampReason?: ReactNode;
   /** Advisory (not a clamp): a compact info callout shown while the
    * (low) handle sits below ``value``. Info, not warning: the user did
    * something deliberate and supported; the message provides context,
@@ -75,6 +76,13 @@ export function ConfidenceSlider({
   resetDisabled = false,
   className,
 }: ConfidenceSliderProps) {
+  // The clamp caption only earns its space at the moment of confusion:
+  // it appears once the user actually drags into the clamp (the raw
+  // value came in below the floor) and stays until the popover closes.
+  // Resting at the clamp untouched shows nothing; a stale below-floor
+  // value from an old URL shows nothing either.
+  const [clampBumped, setClampBumped] = useState(false);
+
   const values = Array.isArray(value) ? value : [value];
   // Values persisted below the clamp (older URLs / settings) display at
   // the clamp so the handle and the effective behaviour agree.
@@ -95,6 +103,7 @@ export function ConfidenceSlider({
           step={CONFIDENCE_SCALE_STEP}
           value={shown}
           onValueChange={(next) => {
+            if (next[0] < effectiveMin - 1e-9) setClampBumped(true);
             const clamped = next.map((v, i) =>
               i === 0 ? Math.max(v, effectiveMin) : v,
             );
@@ -126,7 +135,7 @@ export function ConfidenceSlider({
           </button>
         )}
       </div>
-      {atClampedMin && clampReason && (
+      {atClampedMin && clampReason && clampBumped && (
         <p className="mt-1.5 text-xs text-muted-foreground">
           {clampReason}
         </p>

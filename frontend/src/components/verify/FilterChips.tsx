@@ -46,6 +46,11 @@ interface FilterChipsProps {
   /** The page's default empty value, same rule: no chip when the filter
    *  equals it. Counts rests on "hide", the Files tab on "all". */
   emptyDefault?: EmptyFilter;
+  /** Whether this view acts on the empty filter at all. The Detections
+   *  tab shares the Files tab's URL state but filters per box, where
+   *  "empty" means nothing, so a chip there would claim a filtering
+   *  that is not happening. */
+  showEmpty?: boolean;
   /** Override the verification chip wording (the Counts page uses
    *  "Confirmed" / "Unconfirmed"; defaults to "Verified" / "Unverified"). */
   verificationLabels?: Record<string, string>;
@@ -92,6 +97,7 @@ export function FilterChips({
   detectionFloor = 0,
   verificationDefault = "all",
   emptyDefault = "hide",
+  showEmpty = true,
   verificationLabels = VERIFICATION_LABELS,
 }: FilterChipsProps) {
   const chips: { key: string; label: string; onRemove: () => void }[] = [];
@@ -185,8 +191,10 @@ export function FilterChips({
 
   // Empty chip. The page default renders no chip — a default is not a
   // filter. Only a deviation shows, and removing it clears the filter,
-  // which the page resolves back to its default.
-  if (filters.empty && filters.empty !== emptyDefault) {
+  // which the page resolves back to its default. A view the filter is
+  // inert on (`showEmpty` false) shows no chip either, so a chip never
+  // claims a filtering that is not happening.
+  if (showEmpty && filters.empty && filters.empty !== emptyDefault) {
     chips.push({
       key: "empty",
       label: EMPTY_LABELS[filters.empty] ?? filters.empty,
@@ -200,9 +208,18 @@ export function FilterChips({
   if (detMin !== undefined || detMax !== undefined) {
     const lo = Math.round((detMin ?? detectionFloor) * 100);
     const hi = Math.round((detMax ?? 1) * 100);
+    // Say what is actually filtered: a floor alone reads "≥", not a
+    // range whose top is a 100% nobody set (the Files tab only has the
+    // floor, and on Detections an untouched high handle is no ceiling).
+    const label =
+      detMax === undefined
+        ? `Det: ≥ ${lo}%`
+        : detMin === undefined
+          ? `Det: ≤ ${hi}%`
+          : `Det: ${lo} – ${hi}%`;
     chips.push({
       key: "det-confidence",
-      label: `Det: ${lo} – ${hi}%`,
+      label,
       onRemove: () =>
         onChange({
           ...filters,
@@ -218,9 +235,15 @@ export function FilterChips({
   if (clsMin !== undefined || clsMax !== undefined) {
     const lo = Math.round((clsMin ?? 0) * 100);
     const hi = Math.round((clsMax ?? 1) * 100);
+    const label =
+      clsMax === undefined
+        ? `Cls: ≥ ${lo}%`
+        : clsMin === undefined
+          ? `Cls: ≤ ${hi}%`
+          : `Cls: ${lo} – ${hi}%`;
     chips.push({
       key: "cls-confidence",
-      label: `Cls: ${lo} – ${hi}%`,
+      label,
       onRemove: () =>
         onChange({
           ...filters,

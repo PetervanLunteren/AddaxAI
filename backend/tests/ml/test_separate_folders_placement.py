@@ -642,3 +642,48 @@ def test_event_grouping_uses_each_videos_best_frame(db, tmp_path):
 
     assert (target / "bushbuck").is_dir()
     assert not (target / "cattle").exists()
+
+
+def test_a_rejected_box_never_votes_or_names_a_folder(db, tmp_path):
+    """A verified "false detection" box sorts first (verified, high
+    confidence) but is not a species: the event folder comes from the
+    real boxes, and a file holding only rejected boxes files as blank.
+    Without the `is_a_real_detection` clause one X press named a whole
+    burst's folder `false detection/`."""
+    project = make_project(db, name="grp-reject", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    fa = make_file(
+        db, deployment_id=dep.id,
+        file_path=_make_source(tmp_path, "A.jpg"), observation_type="animal",
+    )
+    fb = make_file(
+        db, deployment_id=dep.id,
+        file_path=_make_source(tmp_path, "B.jpg"), observation_type="animal",
+    )
+    make_detection(
+        db, file_id=fa.id, confidence=0.95,
+        label="false detection", verified=True,
+    )
+    make_detection(db, file_id=fa.id, confidence=0.6, label="dog")
+    make_detection(db, file_id=fb.id, confidence=0.7, label="dog")
+    _link_event(db, dep.id, [fa.id, fb.id])
+
+    lone = make_file(
+        db, deployment_id=dep.id,
+        file_path=_make_source(tmp_path, "C.jpg"), observation_type="animal",
+    )
+    make_detection(
+        db, file_id=lone.id, confidence=0.9,
+        label="false detection", verified=True,
+    )
+
+    target = tmp_path / "out"
+    separate_into_folders(
+        db, project.id, _ctx(target), group_events=True, media_threshold=0.5
+    )
+
+    assert (target / "other" / "dog" / "A.jpg").is_file()
+    assert (target / "other" / "dog" / "B.jpg").is_file()
+    assert (target / "blank" / "C.jpg").is_file()
+    assert not (target / "false detection").exists()
+    assert not (target / "other" / "false detection").exists()

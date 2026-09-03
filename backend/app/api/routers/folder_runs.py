@@ -30,7 +30,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, case, distinct, func, or_, select
+from sqlalchemy import and_, case, distinct, func, select
 from sqlalchemy.orm import Session
 
 from app.api.crud import deployment_queue as crud_queue
@@ -47,6 +47,7 @@ from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.ml import detection_checkpoint as ckpt
+from app.ml.label_exclusion import threshold_or_verified
 from app.ml.postprocessing_outputs.output_preview import (
     build_output_preview,
 )
@@ -342,11 +343,12 @@ class FolderRunLookupResponse(BaseModel):
     aggregate queries that run on every folder-picker change.
 
     ``verified_detection_count`` is the canonical "how much has the
-    user reviewed" number. Marking a File as verified cascades
-    Detection.verified=True onto every visible detection in that
-    file (see ``crud/file.py:update_file``), so this count grows
-    whether the user verifies file-by-file or detection-by-detection
-    in the verify grid.
+    user reviewed" number. Signing a File off verifies every visible
+    detection on it and rejects the invisible weak ones (see
+    ``crud/file.py:set_file_verified``), so this count grows whether
+    the user verifies file-by-file or detection-by-detection in the
+    verify grid; the rejected boxes stay out of it through the shared
+    scope rule.
 
     Model name fields are resolved through the local manifest; when
     the model is not installed (catalog drift, fresh install) we
@@ -736,12 +738,7 @@ def list_folder_runs(db: Session = Depends(get_db)) -> list[FolderRunSummary]:
             .join(Deployment, File.deployment_id == Deployment.id)
             .join(Project, Deployment.project_id == Project.id)
             .where(Deployment.project_id.in_(project_ids))
-            .where(
-                or_(
-                    Detection.confidence >= Project.counting_threshold,
-                    Detection.verified.is_(True),
-                )
-            )
+            .where(threshold_or_verified(Project.counting_threshold))
             .group_by(Deployment.project_id)
         ).all()
     }
@@ -832,10 +829,7 @@ def lookup_folder_run(
     ) or 0
     detection_filter = and_(
         File.deployment_id.in_(deployment_ids_subq),
-        or_(
-            Detection.confidence >= threshold,
-            Detection.verified.is_(True),
-        ),
+        threshold_or_verified(threshold),
     )
     detection_count = db.scalar(
         select(func.count(Detection.id))
@@ -859,7 +853,7 @@ def lookup_folder_run(
         select(func.count(Detection.id))
         .select_from(Detection)
         .join(File, Detection.file_id == File.id)
-        .where(File.deployment_id.in_(deployment_ids_subq))
+        .where(detection_filter)
         .where(Detection.verified.is_(True))
     ) or 0
     # Count confirmation is the second half of the verification work

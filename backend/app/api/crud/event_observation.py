@@ -16,11 +16,11 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import delete, func, or_, text
+from sqlalchemy import delete, func, text
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
-from app.ml.label_exclusion import is_a_real_detection
+from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
 from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
 from app.models.event_observation import EventObservation
@@ -79,11 +79,8 @@ def _cohort_signature(row: Any) -> tuple:
 
 
 def _threshold_clause(threshold: float):
-    """Detection threshold filter: confidence >= threshold OR verified."""
-    return or_(
-        Detection.confidence >= threshold,
-        Detection.verified == True,  # noqa: E712
-    )
+    """The shared scope rule; kept as a local name for its two callers."""
+    return threshold_or_verified(threshold)
 
 
 def calculate_max_n_for_event(

@@ -460,3 +460,34 @@ def test_unknown_project_raises(db, tmp_path):
             anonymise=False,
             media_threshold=0.5,
         )
+
+
+def test_a_rejected_box_is_not_drawn(db, tmp_path):
+    """The app's canvas never outlines a box a person rejected
+    (`passesDrawFilter` rule 1); the annotated copy applies the same
+    rule, or the JPEG shows a "false detection" box the app denies
+    exists. The blur pass deliberately keeps rejected person boxes."""
+    project = make_project(db, name="vis-reject", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    src = _write_jpeg(tmp_path / "src" / "animal.jpg")
+    file = make_file(
+        db, deployment_id=dep.id, file_path=src, observation_type="animal"
+    )
+    make_detection(db, file_id=file.id, category="animal", confidence=0.9, label="dog")
+    make_detection(
+        db, file_id=file.id, category="animal", confidence=0.8,
+        label="false detection", verified=True,
+    )
+
+    target = tmp_path / "out"
+    result = write_annotated_copies(
+        db,
+        project.id,
+        _ctx(target),
+        draw_bboxes=True,
+        anonymise=False,
+        media_threshold=0.5,
+    )
+
+    assert result.written_count == 1
+    assert result.bbox_count == 1

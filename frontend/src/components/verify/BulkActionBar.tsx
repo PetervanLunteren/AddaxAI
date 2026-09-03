@@ -1,8 +1,14 @@
 /**
- * BulkActionBar - floating bar for bulk operations on selected detections.
+ * BulkActionBar - floating bar for bulk operations on a selection.
  *
- * Appears when one or more detections are selected.
- * Actions: Verify, Mark false, Match majority, Relabel, Deselect.
+ * Appears when one or more items are selected. Actions: Verify, Mark
+ * false, Unknown, Match majority, Relabel, Undo, Deselect.
+ *
+ * Two hosts, one bar. The Detections grid selects boxes and lets the
+ * built-in detection API calls run. The Files grid selects files and
+ * passes `performAction`, which replaces those calls with its own
+ * (mapping the file selection to the files' visible boxes) while the
+ * bar stays pixel-identical, so the two grids cannot drift apart.
  */
 
 import { useState } from "react";
@@ -44,7 +50,19 @@ interface BulkActionBarProps {
    *  is on the undo stack. */
   onUndo?: () => void;
   canUndo?: boolean;
+  /** When set, replaces the built-in detection API calls: the host runs
+   * each action itself and the bar is presentation only. The success
+   * callbacks (`onVerify` etc.) are then skipped too - the host already
+   * did its own follow-up. */
+  performAction?: (action: BulkBarAction) => Promise<void> | void;
 }
+
+/** What the host is asked to run when it owns the actions. */
+export type BulkBarAction =
+  | "verify"
+  | "false"
+  | "unknown"
+  | { relabel: LabelOption };
 
 export function BulkActionBar({
   selectedIds,
@@ -63,6 +81,7 @@ export function BulkActionBar({
   onRelabelOpenChange,
   onUndo,
   canUndo,
+  performAction,
 }: BulkActionBarProps) {
   const [relabelOpenLocal, setRelabelOpenLocal] = useState(false);
   const relabelOpen = relabelOpenProp ?? relabelOpenLocal;
@@ -71,8 +90,12 @@ export function BulkActionBar({
   const ids = Array.from(selectedIds);
 
   const verifyMutation = useMutation({
-    mutationFn: () => detectionsApi.bulkVerify(ids, true),
+    mutationFn: async () => {
+      if (performAction) return performAction("verify");
+      return detectionsApi.bulkVerify(ids, true);
+    },
     onSuccess: () => {
+      if (performAction) return;
       if (onVerify) {
         // Parent advances the selection to the next card; don't clear here.
         onVerify(ids);
@@ -85,8 +108,12 @@ export function BulkActionBar({
   });
 
   const markFalseMutation = useMutation({
-    mutationFn: () => detectionsApi.bulkRelabel(ids, "false detection", undefined),
+    mutationFn: async () => {
+      if (performAction) return performAction("false");
+      return detectionsApi.bulkRelabel(ids, "false detection", undefined);
+    },
     onSuccess: () => {
+      if (performAction) return;
       if (onMarkFalse) {
         onMarkFalse(ids);
       } else {
@@ -100,8 +127,12 @@ export function BulkActionBar({
   // "Unknown" is a real observation (unlike "false detection"): keep the
   // category, just relabel to unknown and verify so it leaves the queue.
   const markUnknownMutation = useMutation({
-    mutationFn: () => detectionsApi.bulkRelabel(ids, "unknown", undefined),
+    mutationFn: async () => {
+      if (performAction) return performAction("unknown");
+      return detectionsApi.bulkRelabel(ids, "unknown", undefined);
+    },
     onSuccess: () => {
+      if (performAction) return;
       if (onMarkUnknown) {
         onMarkUnknown(ids);
       } else {
@@ -113,9 +144,12 @@ export function BulkActionBar({
   });
 
   const relabelMutation = useMutation({
-    mutationFn: (opt: LabelOption) =>
-      detectionsApi.bulkRelabel(ids, opt.label, opt.category),
+    mutationFn: async (opt: LabelOption) => {
+      if (performAction) return performAction({ relabel: opt });
+      return detectionsApi.bulkRelabel(ids, opt.label, opt.category);
+    },
     onSuccess: (_data, opt) => {
+      if (performAction) return;
       if (onRelabel) {
         onRelabel(ids, opt.label, opt.category, opt.displayName);
       } else {

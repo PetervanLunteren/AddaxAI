@@ -60,6 +60,7 @@ from app import __version__ as APP_VERSION
 from app.api.crud.label_colors import assign_label_colors
 from app.core.confidence import format_confidence_pct
 from app.core.logging_config import get_logger
+from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
 from app.models import Deployment, Detection, File, Project
 
 from ._exif_writer import ExifBatch, build_tag_set, is_image_path
@@ -215,9 +216,12 @@ def _detections_to_blur(
 ) -> list[Detection]:
     """Person / vehicle detections to blur on this file.
 
-    Threshold + verified override matches the rule used everywhere
-    else: a verified person below threshold is still blurred — the
-    human reviewer confirmed it.
+    Deliberately the plain threshold-or-verified clause, NOT the shared
+    `threshold_or_verified` helper: that one drops rejected weak boxes,
+    and blur is privacy, where the cost of the two mistakes is not
+    symmetric. A person the detector saw weakly and a reviewer waved
+    off still gets blurred; the worst case of blurring too much is a
+    smudged bush.
     """
     stmt = (
         select(Detection)
@@ -445,12 +449,12 @@ def _detections_to_draw(
     stmt = (
         select(Detection)
         .where(Detection.file_id == file.id)
-        .where(
-            or_(
-                Detection.confidence >= threshold,
-                Detection.verified == True,  # noqa: E712
-            )
-        )
+        .where(threshold_or_verified(threshold))
+        # A box a person rejected is never outlined, the same rule the
+        # app's own canvas applies (`passesDrawFilter`): it is out of
+        # every count, so drawing it on the copy argues with the CSV
+        # beside it.
+        .where(is_a_real_detection())
         .where(Detection.bbox_x.is_not(None))
     )
     if file.file_type == "video":

@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FILTER_DEBOUNCE_MS,
   useDebouncedValue,
@@ -29,6 +29,7 @@ import {
   Video as VideoIcon,
 } from "lucide-react";
 import { eventsApi } from "../../api/events";
+import { warmFiles } from "./warm-files";
 import { projectsApi } from "../../api/projects";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import { Badge } from "../ui/badge";
@@ -204,6 +205,8 @@ export function VerifyView({ projectId }: VerifyViewProps) {
     return () => window.removeEventListener("navigate-event", handler);
   }, []);
 
+  const queryClient = useQueryClient();
+
   // Get project detection threshold
   const { data: project } = useQuery({
     queryKey: ["project", projectId],
@@ -252,6 +255,39 @@ export function VerifyView({ projectId }: VerifyViewProps) {
       }),
     placeholderData: (prev) => prev,
   });
+
+  // Warm the next page while this one is being worked: its event rows,
+  // then each card's collage files and thumbnails (`warmFiles`), so
+  // clicking Next paints instantly instead of starting cold. Skipped
+  // while the current page is the held-over placeholder, so the
+  // prefetch never competes with the fetch the user is waiting on.
+  useEffect(() => {
+    if (!events || isPlaceholderData || events.length < PAGE_SIZE) return;
+    const nextPage = page + 1;
+    queryClient
+      .prefetchQuery({
+        queryKey: ["events", projectId, nextPage, debouncedFilters],
+        queryFn: () =>
+          eventsApi.list({
+            project_id: projectId,
+            skip: nextPage * PAGE_SIZE,
+            limit: PAGE_SIZE,
+            filters: debouncedFilters,
+          }),
+      })
+      .then(() => {
+        const next = queryClient.getQueryData<EventSummary[]>([
+          "events",
+          projectId,
+          nextPage,
+          debouncedFilters,
+        ]);
+        warmFiles(
+          queryClient,
+          (next ?? []).flatMap((e) => e.collage_file_ids ?? []),
+        );
+      });
+  }, [events, isPlaceholderData, page, debouncedFilters, projectId, queryClient]);
 
   // Repaint the event cards when the project's colour map lands.
   useSpeciesColorsVersion();

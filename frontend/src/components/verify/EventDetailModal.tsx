@@ -4,8 +4,9 @@
  * Center: one focused image (the annotation canvas / video player) where
  * every tool acts, above a resizable wrapping-grid filmstrip of the event's
  * frames; drag the divider to trade focus size for scanning room, and click
- * a thumbnail to focus it. Left: the tool rail (draw, tag, zoom, brightness /
- * contrast / threshold, flag, like, download). Right: the event-level species
+ * a thumbnail to focus it. Left: the shared tool rail (`ViewerToolRail`:
+ * brightness/contrast, hide boxes, flag, like, download, explorer) plus
+ * the cine-loop. Right: the event-level species
  * + count editor (EventCountPanel) with the single "Confirm" sign-off.
  * Per-detection label cleanup at scale lives on the Labels page.
  */
@@ -24,16 +25,9 @@ import {
   ChevronRight,
   ChevronsRight,
   X,
-  Download,
-  Flag,
-  Heart,
-  FolderOpen,
   Play,
   Pause,
   Repeat,
-  MoreVertical,
-  Eye,
-  EyeOff,
   RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -42,7 +36,6 @@ import { eventsApi } from "../../api/events";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { projectsApi } from "../../api/projects";
-import { cn } from "../../lib/utils";
 import { basename } from "../../lib/path-utils";
 import { describeEventMedia } from "../../lib/event-media";
 import {
@@ -50,17 +43,16 @@ import {
   formatCameraTime,
   formatTimeOffset,
 } from "../../lib/datetime";
-import { useRevealInFolder } from "../../lib/file-reveal";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import type {
   EventFilterParams,
   EventWithFiles,
   FileWithDetections,
 } from "../../api/types";
 import { EventFilmstrip } from "./EventFilmstrip";
-import { ViewControls } from "./ViewControls";
+import { ViewerToolRail } from "./ViewerToolRail";
+import { useFileTriage, useImageAdjust } from "./viewer-tools";
 import type { TileSize } from "./CropGrid";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { EventCountPanel } from "./EventCountPanel";
@@ -93,7 +85,6 @@ export function EventDetailModal({
   filters,
 }: EventDetailModalProps) {
   const queryClient = useQueryClient();
-  const revealInFolder = useRevealInFolder();
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
   const [viewMode, setViewMode] = useState<"frame" | "video">("frame");
   // Auto-play: cine-loop the event's frames on a timer. A ref mirrors the
@@ -123,10 +114,8 @@ export function EventDetailModal({
   );
   const [boxesHidden, setBoxesHidden] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  // "More" menu open state, so picking an item closes it (menu behaviour).
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [brightness, setBrightness] = useState(50);
-  const [contrast, setContrast] = useState(50);
+  const { brightness, setBrightness, contrast, setContrast, imageFilter } =
+    useImageAdjust();
 
   // Filmstrip view settings, persisted per user: the resizable filmstrip
   // height (set by dragging the divider) and the S/M/L thumbnail size.
@@ -353,10 +342,6 @@ export function EventDetailModal({
     );
   })();
   const detectionThreshold = project?.counting_threshold ?? 0;
-  const imageFilter =
-    brightness !== 50 || contrast !== 50
-      ? `brightness(${brightness / 50}) contrast(${contrast / 50})`
-      : undefined;
 
   // The detection whose label pill was clicked (pills only render for the
   // focused file), seeding the relabel picker's current value.
@@ -402,24 +387,13 @@ export function EventDetailModal({
 
   // Like / flag live at the file level (the Event card badge lights up if
   // any file is set). Keyed by fileId.
-  const favoriteMutation = useMutation({
-    mutationFn: ({ fileId, favorited }: { fileId: string; favorited: boolean }) =>
-      filesApi.update(fileId, { favorited }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-      queryClient.invalidateQueries({ queryKey: ["events"] });
-      queryClient.invalidateQueries({ queryKey: ["file"] });
-    },
-  });
-  const flagMutation = useMutation({
-    mutationFn: ({ fileId, flagged }: { fileId: string; flagged: boolean }) =>
-      filesApi.update(fileId, { flagged }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-      queryClient.invalidateQueries({ queryKey: ["events"] });
-      queryClient.invalidateQueries({ queryKey: ["file"] });
-    },
-  });
+  // Flag/like via the shared rail hook; the ["file"] invalidation lives
+  // in the hook, the event caches are this modal's own concern.
+  const invalidateEventCaches = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+    queryClient.invalidateQueries({ queryKey: ["events"] });
+  }, [queryClient, eventId]);
+  const triage = useFileTriage(invalidateEventCaches);
 
   // In-place single-box relabel: clicking a label pill on the focus image
   // relabels that one detection through the same path the Labels page uses
@@ -590,6 +564,16 @@ export function EventDetailModal({
         return;
       }
 
+      // Keys inside a popover (the rail's brightness sliders) belong to
+      // the popover: without this, arrow keys on the slider also paged
+      // between events.
+      if (
+        e.target instanceof HTMLElement &&
+        e.target.closest("[data-radix-popper-content-wrapper]")
+      ) {
+        return;
+      }
+
       // The relabel picker is open: let it own the keyboard (Escape closes
       // it, not the modal; arrows/Enter drive its list) instead of the
       // modal's shortcuts firing underneath.
@@ -646,11 +630,7 @@ export function EventDetailModal({
         case "f":
         case "F":
           e.preventDefault();
-          if (currentFile)
-            flagMutation.mutate({
-              fileId: currentFile.id,
-              flagged: !currentFile.flagged,
-            });
+          if (currentFile) triage.toggleFlag(currentFile);
           break;
         case "b":
         case "B":
@@ -679,7 +659,7 @@ export function EventDetailModal({
     onClose,
     selectedFileIndex,
     files.length,
-    flagMutation,
+    triage,
     viewMode,
     playFocusedVideo,
     navigateEvent,
@@ -712,131 +692,47 @@ export function EventDetailModal({
 
         {/* Main content */}
         <div className="flex flex-1 min-h-0 overflow-hidden">
-          {/* Left toolbar — tools that act on the focused image. */}
+          {/* Left toolbar — the shared rail (how you look at the
+              picture), plus this modal's own cine-loop. Watching a video
+              moved to a big center play button over the focus (the
+              universal pattern), so the rail carries no play control. */}
           {currentFile && (
             <div className="flex flex-col items-center gap-1 px-1.5 py-2 bg-white border-r shrink-0">
-              {/* Watching a video moved to a big center play button over the
-                  focus (the universal pattern), so the rail no longer carries
-                  a play control of its own — only the cine-loop below. */}
-              {/* Image: brightness / contrast (seeing a dark IR animal). */}
-              <ViewControls
+              <ViewerToolRail
                 brightness={brightness}
                 onBrightnessChange={setBrightness}
                 contrast={contrast}
                 onContrastChange={setContrast}
-              />
-              {/* Show / hide the AI boxes — toggle off to count the scene
-                  yourself without the AI's boxes anchoring you. */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setBoxesHidden((h) => !h)}
-                title={boxesHidden ? "Show AI boxes (B)" : "Hide AI boxes (B)"}
-              >
-                {boxesHidden ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-              </Button>
-              {/* Loop event — cine-loop the event's frames to see motion.
-                  Videos show as their best frame here; watch a clip in full
-                  via the center play button on the focus. The loop glyph
-                  keeps it distinct from that video-play triangle. */}
-              {files.length > 1 && (
-                <Button
-                  variant={autoPlay ? "default" : "ghost"}
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={toggleAutoPlay}
-                  title={autoPlay ? "Stop (Space)" : "Loop event (Space)"}
-                >
-                  {autoPlay ? (
-                    <Pause className="h-4 w-4" />
-                  ) : (
-                    <Repeat className="h-4 w-4" />
-                  )}
-                </Button>
-              )}
-              {/* Flag for review — the one triage action worth its own key. */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() =>
-                  flagMutation.mutate({
-                    fileId: currentFile.id,
-                    flagged: !currentFile.flagged,
-                  })
+                boxesHidden={boxesHidden}
+                onToggleBoxes={() => setBoxesHidden((h) => !h)}
+                file={currentFile}
+                triage={triage}
+                downloadLabel={
+                  isPlayableVideo(currentFile)
+                    ? "Download video"
+                    : "Download image"
                 }
-                disabled={flagMutation.isPending}
-                title={currentFile.flagged ? "Remove flag" : "Flag for review (F)"}
+                onDownload={handleDownload}
               >
-                <Flag
-                  className={cn(
-                    "h-4 w-4",
-                    currentFile.flagged && "fill-[#71b7ba] text-[#71b7ba]"
-                  )}
-                />
-              </Button>
-              {/* Everything else (zoom, like, download, reveal) is rarely
-                  used here, so it lives behind one "more" menu. */}
-              <Popover open={moreOpen} onOpenChange={setMoreOpen}>
-                <PopoverTrigger asChild>
+                {/* Loop event — cine-loop the event's frames to see
+                    motion. The loop glyph keeps it distinct from the
+                    video-play triangle. */}
+                {files.length > 1 && (
                   <Button
-                    variant="ghost"
+                    variant={autoPlay ? "default" : "ghost"}
                     size="icon"
                     className="h-8 w-8"
-                    title="More"
+                    onClick={toggleAutoPlay}
+                    title={autoPlay ? "Stop (Space)" : "Loop event (Space)"}
                   >
-                    <MoreVertical className="h-4 w-4" />
+                    {autoPlay ? (
+                      <Pause className="h-4 w-4" />
+                    ) : (
+                      <Repeat className="h-4 w-4" />
+                    )}
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent side="right" align="start" className="w-48 p-1">
-                  <button
-                    onClick={() => {
-                      setMoreOpen(false);
-                      favoriteMutation.mutate({
-                        fileId: currentFile.id,
-                        favorited: !currentFile.favorited,
-                      });
-                    }}
-                    disabled={favoriteMutation.isPending}
-                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent transition-colors"
-                  >
-                    <Heart
-                      className={cn(
-                        "h-4 w-4",
-                        currentFile.favorited && "fill-[#882000] text-[#882000]"
-                      )}
-                    />
-                    {currentFile.favorited ? "Unlike" : "Like"}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setMoreOpen(false);
-                      handleDownload();
-                    }}
-                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent transition-colors"
-                  >
-                    <Download className="h-4 w-4" />
-                    {isPlayableVideo(currentFile)
-                      ? "Download video"
-                      : "Download image"}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setMoreOpen(false);
-                      revealInFolder(currentFile);
-                    }}
-                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent transition-colors"
-                  >
-                    <FolderOpen className="h-4 w-4" />
-                    Open in file explorer
-                  </button>
-                </PopoverContent>
-              </Popover>
+                )}
+              </ViewerToolRail>
             </div>
           )}
 
@@ -875,6 +771,7 @@ export function EventDetailModal({
                     exportFnRef={exportFnRef}
                     autoExport={pendingVideoExport}
                     onAutoExportConsumed={() => setPendingVideoExport(false)}
+                    boxesHidden={boxesHidden}
                   />
                 ) : currentFile.file_type === "video" &&
                   !(autoPlay && files.length > 1) ? (

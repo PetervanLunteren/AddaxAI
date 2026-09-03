@@ -907,6 +907,9 @@ export interface LabelFilters {
   max_label_confidence?: number;
   category?: string;
   verified?: boolean;
+  /** File-level triage marks; omitted means "all". */
+  flagged?: "flagged" | "not_flagged";
+  favorited?: "favorited" | "not_favorited";
 }
 
 /** Sort modes for the Observations (Labels) grid.
@@ -971,6 +974,9 @@ export interface DetectionSummary {
   crop_bbox: CropBbox | null;
   /** Video detections carry their frame index; image detections are null. */
   frame_number: number | null;
+  /** File-level triage marks, for the card's corner badge cluster. */
+  file_flagged: boolean;
+  file_favorited: boolean;
 }
 
 export interface SortResponse {
@@ -1031,6 +1037,11 @@ export interface LabelsFileItem {
   file_type: string;
   captured_at_local: string | null;
   verified: boolean;
+  /** Pixel size; the grid shapes its tiles to the page's majority ratio. */
+  width_px: number | null;
+  height_px: number | null;
+  /** Filled only under sort=events, for the grid's divider rows. */
+  event_id: string | null;
 }
 
 export interface LabelsFilesResponse {
@@ -1039,6 +1050,9 @@ export interface LabelsFilesResponse {
   /** The confidence the empty filter was judged at. */
   floor: number;
   items: LabelsFileItem[];
+  /** Answers `find`: that file's 0-based position in the full ordering,
+   *  null when it does not match the filters. Absent unless asked. */
+  find_index?: number | null;
 }
 
 export interface LabelsFilesParams {
@@ -1049,11 +1063,21 @@ export interface LabelsFilesParams {
   /** "show_only" = files where nothing passes the floor, "hide" = files
    *  where something does, "all" (the default) = both. */
   empty?: EmptyFilter;
+  /** Label taxonomy IDs; files with at least one visible box of these. */
+  labels?: string[];
   min_confidence?: number;
-  sort?: "path" | "newest" | "oldest" | "random";
+  max_confidence?: number;
+  min_label_confidence?: number;
+  max_label_confidence?: number;
+  sort?: "path" | "events" | "newest" | "oldest" | "random";
   seed?: number | null;
   skip?: number;
   limit?: number;
+  /** File id whose position in the full ordering to report back. */
+  find?: string;
+  /** File-level triage marks; omitted or "all" means no filter. */
+  flagged?: FlaggedFilter;
+  favorited?: FavoritedFilter;
 }
 
 export interface LabelsProgress {

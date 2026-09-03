@@ -102,6 +102,10 @@ def _filters_to_dict(filters: LabelFilters) -> dict[str, Any]:
         d["category"] = filters.category
     if filters.verified is not None:
         d["verified"] = filters.verified
+    if filters.flagged is not None:
+        d["flagged"] = filters.flagged
+    if filters.favorited is not None:
+        d["favorited"] = filters.favorited
     return d
 
 

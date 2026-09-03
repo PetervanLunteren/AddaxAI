@@ -17,11 +17,11 @@ Taxonomic rank resolution is shared with the dashboard via
 from collections import Counter, defaultdict
 from datetime import date
 
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.api.schemas.performance import ClassMetrics, PerformanceResponse
 from app.ml.detection_visibility import on_visible_frame
+from app.ml.label_exclusion import threshold_or_verified
 from app.ml.taxonomic_rank import (
     HIGHER_LEVEL_TAXA,
     MOST_SPECIFIC,
@@ -286,12 +286,7 @@ def get_classification_performance(
         .join(File, File.id == Detection.file_id)
         .join(Deployment, Deployment.id == File.deployment_id)
         .filter(Deployment.project_id == project_id)
-        .filter(
-            or_(
-                Detection.confidence >= threshold,
-                Detection.verified == True,  # noqa: E712
-            )
-        )
+        .filter(threshold_or_verified(threshold))
         .filter(on_visible_frame())
     )
     if site_ids:

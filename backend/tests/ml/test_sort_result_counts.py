@@ -309,6 +309,50 @@ def test_event_sort_reports_loaded_and_matching(sort_db):
     assert capped["total_matching"] == 3
 
 
+def test_flagged_and_liked_ride_on_rows_and_filter_the_pool(sort_db):
+    """The Counts triage marks reach the crop grid: `file_flagged` /
+    `file_favorited` ride on every row for the corner badge cluster,
+    and the matching filters narrow the pool at the file level."""
+    db_path, s = sort_db
+    p = make_project(s, classification_model_id=CLS_MODEL)
+    dep = make_deployment(s, project_id=p.id)
+
+    def det(day, **file_marks):
+        f = make_file(
+            s,
+            deployment_id=dep.id,
+            captured_at_local=datetime(2024, 1, day, 12),
+            width_px=1920,
+            height_px=1080,
+        )
+        for k, v in file_marks.items():
+            setattr(f, k, v)
+        make_detection(s, file_id=f.id, confidence=0.9, label="canis")
+        return f
+
+    plain = det(1)
+    marked = det(2, flagged=True, favorited=True)
+    s.commit()
+
+    rows = do_sort(db_path, p.id, {"sort": "events", "filters": {}})
+    by_file = {d["file_id"]: d for d in rows["detections"]}
+    assert by_file[marked.id]["file_flagged"] is True
+    assert by_file[marked.id]["file_favorited"] is True
+    assert by_file[plain.id]["file_flagged"] is False
+    assert by_file[plain.id]["file_favorited"] is False
+
+    got = do_sort(
+        db_path, p.id, {"sort": "events", "filters": {"flagged": "flagged"}}
+    )
+    assert [d["file_id"] for d in got["detections"]] == [marked.id]
+    got = do_sort(
+        db_path,
+        p.id,
+        {"sort": "events", "filters": {"favorited": "not_favorited"}},
+    )
+    assert [d["file_id"] for d in got["detections"]] == [plain.id]
+
+
 def test_empty_result_carries_every_count(sort_db, fake_faiss):
     """Nothing matched: all three counts are present and zero."""
     db_path, s = sort_db

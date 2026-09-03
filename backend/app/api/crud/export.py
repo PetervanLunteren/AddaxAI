@@ -38,7 +38,7 @@ from app.core.logging_config import get_logger
 from app.core.observation_attributes import LIFE_STAGES, SEXES
 from app.db.sql_params import iter_id_chunks
 from app.ml.detection_visibility import visible_detections
-from app.ml.label_exclusion import is_non_label
+from app.ml.label_exclusion import is_non_label, threshold_or_verified
 from app.ml.observation_type import strongest_passing_detection
 from app.ml.taxonomic_rank import species_binomial
 from app.models import (
@@ -307,10 +307,7 @@ def get_scoped_detection_rows(
     complete record is ``addaxai-recognitions.json``, which still
     carries every stored detection on every frame.
     """
-    threshold_clause = or_(
-        Detection.confidence >= project.counting_threshold,
-        Detection.verified.is_(True),
-    )
+    threshold_clause = threshold_or_verified(project.counting_threshold)
 
     # Outer join on Site so deployments without an assigned site still
     # appear in the export; the CSV serializer emits blank lat/lon cells

@@ -8,11 +8,11 @@ import uuid
 from pathlib import Path
 
 import numpy as np
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
 from app.db.sql_params import iter_id_chunks
+from app.ml.label_exclusion import threshold_or_verified
 from app.models import Detection, File
 from app.models.detection_embedding import DetectionEmbedding
 
@@ -57,12 +57,7 @@ def build_embedding_input(
         db.query(Detection, File)
         .join(File, Detection.file_id == File.id)
         .filter(File.deployment_id == deployment_id)
-        .filter(
-            or_(
-                Detection.confidence >= min_confidence,
-                Detection.verified.is_(True),
-            )
-        )
+        .filter(threshold_or_verified(min_confidence))
         .all()
     )
 

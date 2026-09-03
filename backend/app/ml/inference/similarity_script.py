@@ -87,6 +87,7 @@ _DETECTION_COLUMNS = """
        d.classification_method, d.file_id, d.frame_number,
        d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
        f.deployment_id, f.captured_at_local, f.width_px, f.height_px,
+       f.flagged AS file_flagged, f.favorited AS file_favorited,
        s.name AS site_name,
        -- Event membership for the "By event" sort and event dividers.
        -- event_files is many-to-many in the schema but one-event-per-file
@@ -209,12 +210,21 @@ def _build_query(
         params.append(filters["date_to"])
 
     # `project_floor` is the project's counting_threshold and applies the
-    # global "threshold + verified override" rule. `min_confidence` is the
-    # user's slider and is applied LITERALLY — a verified low-confidence
-    # detection passes the floor's OR clause but cannot satisfy a narrow
-    # user-set min.
+    # global scope rule: pass on confidence, or verified as something
+    # real. Hand-written copy of `threshold_or_verified` and its
+    # NON_LABEL_CLASSES in `app/ml/label_exclusion.py` (this script runs
+    # with no `app.*` on its path) — keep the three lists in step. The
+    # label clause is what keeps a verified file's rejected weak boxes
+    # ("false detection" below the floor) out of the grid. `min_confidence`
+    # is the user's slider and is applied LITERALLY — a verified
+    # low-confidence detection passes the floor's OR clause but cannot
+    # satisfy a narrow user-set min.
     if filters.get("project_floor") is not None:
-        clauses.append("(d.confidence >= ? OR d.verified = 1)")
+        clauses.append(
+            "(d.confidence >= ? OR (d.verified = 1 AND (d.label IS NULL"
+            " OR lower(d.label) NOT IN"
+            " ('bait','blank','empty','false detection','none','vide'))))"
+        )
         params.append(filters["project_floor"])
 
     if filters.get("min_confidence") is not None:
@@ -242,6 +252,16 @@ def _build_query(
     if filters.get("verified") is not None:
         clauses.append("d.verified = ?")
         params.append(1 if filters["verified"] else 0)
+
+    # File-level triage marks (the Counts filters on Labels). Absent
+    # means "all"; the values mirror the events endpoint's.
+    if filters.get("flagged"):
+        clauses.append("f.flagged = ?")
+        params.append(1 if filters["flagged"] == "flagged" else 0)
+
+    if filters.get("favorited"):
+        clauses.append("f.favorited = ?")
+        params.append(1 if filters["favorited"] == "favorited" else 0)
 
     sql = base_sql
     if clauses:
@@ -276,6 +296,8 @@ def _row_to_meta(row: sqlite3.Row) -> dict:
         "suggestion_dismissed": bool(row["suggestion_dismissed"]),
         "classification_method": row["classification_method"],
         "file_id": row["file_id"],
+        "file_flagged": bool(row["file_flagged"]),
+        "file_favorited": bool(row["file_favorited"]),
         "deployment_id": row["deployment_id"],
         "captured_at_local": ts,
         "site_name": row["site_name"],
@@ -604,6 +626,8 @@ def _build_summary(
         "crop_url": f"/api/detections/{detection_id}/crop?size=200",
         "crop_bbox": _compute_crop_bbox(meta),
         "frame_number": meta.get("frame_number"),
+        "file_flagged": meta.get("file_flagged", False),
+        "file_favorited": meta.get("file_favorited", False),
     }
 
 
@@ -1267,6 +1291,7 @@ def _load_anchor_embedding(
            d.verified, d.classification_method, d.file_id,
            d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
            f.deployment_id, f.captured_at_local, f.width_px, f.height_px,
+           f.flagged AS file_flagged, f.favorited AS file_favorited,
            s.name AS site_name
     FROM detection_embeddings de
     JOIN detections d ON d.id = de.detection_id
@@ -1307,6 +1332,8 @@ def _load_anchor_embedding(
         "verified": bool(row["verified"]),
         "classification_method": row["classification_method"],
         "file_id": row["file_id"],
+        "file_flagged": bool(row["file_flagged"]),
+        "file_favorited": bool(row["file_favorited"]),
         "deployment_id": row["deployment_id"],
         "captured_at_local": ts,
         "site_name": row["site_name"],

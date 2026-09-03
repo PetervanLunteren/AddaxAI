@@ -3,9 +3,9 @@
 The Files tab lists every file. Its ``empty`` filter narrows by whether
 anything on the file's visible surface passes: ``show_only`` keeps the
 files where nothing does, ``hide`` the files where something does. That
-is the same rule as ``derive_observation_type`` computed live at the
-grid's current floor rather than read from the stored column, so it
-follows the confidence slider.
+is the same rule as ``derive_observation_type``, judged at the project's
+counting threshold and at nothing else: the confidence slider is clamped
+there on Files, so a transient control can never redefine "empty".
 
 The property these tests protect: the two halves of the ``empty`` filter
 partition the project, and ``show_only`` is exactly the set of files with
@@ -76,22 +76,23 @@ def test_a_photo_with_no_boxes_at_all_is_empty(client, db):
     assert _empties(client, p.id)["items"][0]["id"] == f.id
 
 
-def test_lowering_the_slider_empties_the_list(client, db):
-    """Dragging the confidence slider down is what makes a photo stop
-    being empty: its weak box starts passing. Measured on real data the
-    list goes 229 -> 71 between the threshold and the bottom."""
+def test_the_slider_never_redefines_empty(client, db):
+    """"Empty" is defined by the project threshold, full stop. The Files
+    slider is clamped there, so a below-floor min (a stale URL) changes
+    nothing, and a raised min is a box filter that can only shrink the
+    list. One control, one meaning."""
     p, _d, (f,) = _project_with_files(db, 1)
     make_detection(db, file_id=f.id, confidence=0.05)
     db.commit()
 
     assert _empties(client, p.id)["total"] == 1
-    assert _empties(client, p.id, min_confidence=0.01)["total"] == 0
+    assert _empties(client, p.id, min_confidence=0.01)["total"] == 1
 
 
 def test_raising_the_slider_does_not_grow_the_list(client, db):
-    """`effective_floor` never goes above the project threshold. A user
-    narrowing to a high range is filtering what they look at, not
-    redefining what counts as found."""
+    """A user narrowing to a high range is filtering what they look at,
+    not redefining what counts as found: an empty file has no box in
+    any range, so the combination yields nothing."""
     p, _d, (f,) = _project_with_files(db, 1)
     make_detection(db, file_id=f.id, confidence=0.3)
     db.commit()
@@ -251,6 +252,86 @@ def test_random_is_stable_for_a_seed_and_needs_one(client, db):
     assert resp.status_code == 400
 
 
+def test_flagged_and_liked_filters_select_files(client, db):
+    """The Counts triage filters on Files: flag and heart live on the
+    file row itself, so the filter is a plain column match and "all"
+    (or absent) means no clause."""
+    p, d, _ = _project_with_files(db, 0)
+    plain = make_file(db, deployment_id=d.id)
+    marked = make_file(db, deployment_id=d.id)
+    marked.flagged = True
+    liked = make_file(db, deployment_id=d.id)
+    liked.favorited = True
+    db.commit()
+
+    got = _files(client, p.id, flagged="flagged")
+    assert [i["id"] for i in got["items"]] == [marked.id]
+    got = _files(client, p.id, favorited="favorited")
+    assert [i["id"] for i in got["items"]] == [liked.id]
+    got = _files(client, p.id, flagged="not_flagged")
+    assert {i["id"] for i in got["items"]} == {plain.id, liked.id}
+    assert _files(client, p.id, flagged="all")["total"] == 3
+    assert _files(client, p.id)["total"] == 3
+
+
+def test_find_reports_the_files_position_in_the_ordering(client, db):
+    """`find` answers "where does this file sit in the list", under the
+    same filters and sort as the page itself. It is what lets the
+    Detections modal's "Open in files view" open the viewer at the
+    file's real position, so next and previous continue through the
+    list instead of a one-file dead end."""
+    p, d, _ = _project_with_files(db, 0)
+    for name in ("cam-b/IMG_2.jpg", "cam-a/IMG_1.jpg", "cam-c/IMG_3.jpg"):
+        make_file(db, deployment_id=d.id, file_path=f"/{name}")
+    db.commit()
+
+    listed = [i["id"] for i in _files(client, p.id)["items"]]
+    for want, fid in enumerate(listed):
+        assert _files(client, p.id, find=fid)["find_index"] == want
+
+
+def test_find_follows_the_sort(client, db):
+    """The position is under the requested order, not path order, and a
+    seeded random order answers consistently with its own listing."""
+    p, d, _ = _project_with_files(db, 0)
+    old = make_file(
+        db,
+        deployment_id=d.id,
+        file_path="/a.jpg",
+        captured_at_local=datetime(2024, 1, 1, 12, 0),
+    )
+    new = make_file(
+        db,
+        deployment_id=d.id,
+        file_path="/b.jpg",
+        captured_at_local=datetime(2024, 1, 2, 12, 0),
+    )
+    db.commit()
+
+    assert _files(client, p.id, sort="newest", find=old.id)["find_index"] == 1
+    assert _files(client, p.id, sort="newest", find=new.id)["find_index"] == 0
+
+    shuffled = [
+        i["id"]
+        for i in _files(client, p.id, sort="random", seed=7)["items"]
+    ]
+    got = _files(client, p.id, sort="random", seed=7, find=old.id)
+    assert got["find_index"] == shuffled.index(old.id)
+
+
+def test_find_outside_the_filters_is_null(client, db):
+    """A file the current view does not hold has no position; the
+    frontend reads null and widens the view instead of guessing."""
+    p, _d, (f,) = _project_with_files(db, 1)
+    f.verified = True
+    db.commit()
+
+    data = _files(client, p.id, verification="unverified", find=f.id)
+    assert data["find_index"] is None
+    # And not asked for means not answered.
+    assert _files(client, p.id)["find_index"] is None
+
+
 def test_total_is_the_uncapped_count(client, db):
     p, _d, _files_ = _project_with_files(db, 5)
     db.commit()
@@ -261,11 +342,13 @@ def test_total_is_the_uncapped_count(client, db):
 
 
 def test_the_floor_is_echoed_so_the_page_can_name_it(client, db):
+    """Always the project threshold: the slider never moves the Files
+    floor, so the page can quote the setting without caveats."""
     p, _d, _files_ = _project_with_files(db, 1, threshold=0.35)
     db.commit()
 
     assert _files(client, p.id)["floor"] == 0.35
-    assert _files(client, p.id, min_confidence=0.02)["floor"] == 0.02
+    assert _files(client, p.id, min_confidence=0.02)["floor"] == 0.35
 
 
 def test_other_projects_are_not_included(client, db):
@@ -439,3 +522,188 @@ def test_progress_follows_the_site_filter(client, db):
 def test_progress_unknown_project_is_404(client, db):
     resp = client.get(f"/api/projects/{uuid.uuid4()}/labels/progress")
     assert resp.status_code == 404
+
+
+# ── The labels filter ─────────────────────────────────────────────────
+
+
+def test_labels_filter_keeps_files_containing_the_species(client, db):
+    """Same semantics as the events label filter: a file matches when at
+    least one VISIBLE box carries the picked taxonomy id. A weak
+    unverified box of the species does not rescue a file (the user
+    cannot see it), and a rejected box never matches
+    (`is_a_real_detection` inside the passing scope)."""
+    from app.models.label_taxonomy import LabelTaxonomy
+
+    p, d, (with_species, weak_only, other) = _project_with_files(db, 3)
+    tax = LabelTaxonomy(
+        classification_model_id="m", name="horse", level="species"
+    )
+    db.add(tax)
+    db.flush()
+
+    make_detection(
+        db, file_id=with_species.id, confidence=0.9,
+        label="horse", label_taxonomy_id=tax.id,
+    )
+    make_detection(
+        db, file_id=weak_only.id, confidence=0.05,
+        label="horse", label_taxonomy_id=tax.id,
+    )
+    make_detection(db, file_id=other.id, confidence=0.9, label="deer")
+    db.commit()
+
+    got = _files(client, p.id, labels=tax.id)
+    assert [i["id"] for i in got["items"]] == [with_species.id]
+
+    # A rejected box of the species is not the species.
+    make_detection(
+        db, file_id=other.id, confidence=0.9,
+        label="false detection", label_taxonomy_id=tax.id, verified=True,
+    )
+    db.commit()
+    got = _files(client, p.id, labels=tax.id)
+    assert [i["id"] for i in got["items"]] == [with_species.id]
+
+
+def test_confidence_range_selects_files_by_a_single_matching_box(client, db):
+    """The Detections rules lifted to files: a file shows when ONE box
+    satisfies every box filter together. dog@0.9 + cat@0.3 must not
+    match "dogs below 40%" off two different boxes, and a ceiling or a
+    raised minimum drops files with no box in the range. Boxless files
+    only appear while no box filter is active."""
+    from app.models.label_taxonomy import LabelTaxonomy
+
+    p, d, (strong, weakish, boxless) = _project_with_files(db, 3)
+    dog = LabelTaxonomy(
+        classification_model_id="m", name="dog", level="species"
+    )
+    db.add(dog)
+    db.flush()
+
+    make_detection(
+        db, file_id=strong.id, confidence=0.9,
+        label="dog", label_taxonomy_id=dog.id,
+    )
+    make_detection(db, file_id=strong.id, confidence=0.3, label="cat")
+    make_detection(db, file_id=weakish.id, confidence=0.3, label="cat")
+    db.commit()
+
+    # Raised minimum: only the file with a strong box.
+    got = _files(client, p.id, min_confidence=0.5)
+    assert [i["id"] for i in got["items"]] == [strong.id]
+
+    # Ceiling: both box-holding files have a box <= 0.4; boxless drops.
+    got = _files(client, p.id, max_confidence=0.4)
+    assert {i["id"] for i in got["items"]} == {strong.id, weakish.id}
+
+    # One box must match everything: there is no dog at or below 0.4.
+    got = _files(client, p.id, labels=dog.id, max_confidence=0.4)
+    assert got["total"] == 0
+    got = _files(client, p.id, labels=dog.id, min_confidence=0.5)
+    assert [i["id"] for i in got["items"]] == [strong.id]
+
+    # A below-floor min (stale URL; the slider is clamped) is a no-op:
+    # every file stays listed, the boxless one included.
+    got = _files(client, p.id, min_confidence=0.05)
+    assert got["total"] == 3
+
+
+def test_classification_range_selects_by_a_single_box_too(client, db):
+    """Label-confidence bounds join the same one-box-matches-all rule,
+    and a box the classifier never named (NULL score) can never satisfy
+    a bound, mirroring the Detections grid."""
+    p, d, (sure, unsure, unnamed) = _project_with_files(db, 3)
+    make_detection(
+        db, file_id=sure.id, confidence=0.9,
+        label="dog", label_confidence=0.95,
+    )
+    make_detection(
+        db, file_id=unsure.id, confidence=0.9,
+        label="dog", label_confidence=0.4,
+    )
+    make_detection(db, file_id=unnamed.id, confidence=0.9, label=None)
+    db.commit()
+
+    got = _files(client, p.id, min_label_confidence=0.8)
+    assert [i["id"] for i in got["items"]] == [sure.id]
+
+    got = _files(client, p.id, max_label_confidence=0.5)
+    assert [i["id"] for i in got["items"]] == [unsure.id]
+
+    # No bounds: the unnamed box's file is simply a file like any other.
+    assert _files(client, p.id)["total"] == 3
+
+
+def test_same_second_ties_break_by_file_name(client, db):
+    """A burst shot within one second must come back in shooting order.
+    The tie used to fall through to the row id, which is ingest order
+    and shuffled such bursts."""
+    p, d, _ = _project_with_files(db, 0)
+    t = datetime(2024, 5, 1, 12, 0, 0)
+    # Created out of name order on purpose: ingest order must not win.
+    b = make_file(db, deployment_id=d.id, file_path="/x/IMG_0002.jpg",
+                  captured_at_local=t)
+    a = make_file(db, deployment_id=d.id, file_path="/x/IMG_0001.jpg",
+                  captured_at_local=t)
+    c = make_file(db, deployment_id=d.id, file_path="/x/IMG_0003.jpg",
+                  captured_at_local=t)
+    db.commit()
+
+    got = _files(client, p.id, sort="oldest")
+    assert [i["id"] for i in got["items"]] == [a.id, b.id, c.id]
+    got = _files(client, p.id, sort="newest")
+    assert [i["id"] for i in got["items"]] == [a.id, b.id, c.id]
+
+
+def test_event_sort_keeps_bursts_together(client, db):
+    """Events newest first, each burst contiguous and in shooting order,
+    files outside any event last. Items carry their event id so the grid
+    can draw dividers."""
+    from sqlalchemy import insert
+
+    from app.models.event import Event
+    from app.models.event import event_files as ef
+    from tests.conftest import make_event_with_files  # noqa: F401
+
+    p, d, _ = _project_with_files(db, 0)
+
+    def burst(start, names):
+        files = [
+            make_file(db, deployment_id=d.id, file_path=n,
+                      captured_at_local=start)
+            for n in names
+        ]
+        ev = Event(deployment_id=d.id, event_start_local=start,
+                   event_end_local=start)
+        db.add(ev)
+        db.flush()
+        for f in files:
+            db.execute(insert(ef).values(event_id=ev.id, file_id=f.id))
+        return ev, files
+
+    old_ev, old_files = burst(
+        datetime(2024, 1, 1, 8, 0), ["/x/A_2.jpg", "/x/A_1.jpg"]
+    )
+    new_ev, new_files = burst(
+        datetime(2024, 6, 1, 8, 0), ["/x/B_1.jpg"]
+    )
+    loose = make_file(db, deployment_id=d.id, file_path="/x/C_1.jpg",
+                      captured_at_local=datetime(2024, 3, 1, 8, 0))
+    db.commit()
+
+    got = _files(client, p.id, sort="events")
+    ids = [i["id"] for i in got["items"]]
+    assert ids == [
+        new_files[0].id, old_files[1].id, old_files[0].id, loose.id
+    ]
+    assert got["items"][0]["event_id"] == new_ev.id
+    assert got["items"][1]["event_id"] == old_ev.id
+    assert got["items"][3]["event_id"] is None
+
+    # `find` under the same sort: the correlated event subqueries must
+    # work as window order keys too, or the handoff position would
+    # disagree with the listing.
+    for want, fid in enumerate(ids):
+        found = _files(client, p.id, sort="events", find=fid)
+        assert found["find_index"] == want

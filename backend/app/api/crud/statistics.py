@@ -34,7 +34,7 @@ from app.api.schemas.statistics import (
     VerificationProgressByLabel,
 )
 from app.ml.detection_visibility import on_visible_frame
-from app.ml.label_exclusion import NON_WILDLIFE_CLASSES
+from app.ml.label_exclusion import NON_WILDLIFE_CLASSES, threshold_or_verified
 from app.ml.taxonomic_rank import (
     HIGHER_LEVEL_TAXA,
     NO_TAXONOMY,
@@ -125,14 +125,8 @@ def _get_counting_threshold(db: Session, project_id: str) -> float:
 
 
 def _apply_threshold(query: Select, threshold: float) -> Select:
-    """Exclude detections below threshold, but always keep verified ones."""
-    from sqlalchemy import or_
-    return query.where(
-        or_(
-            Detection.confidence >= threshold,
-            Detection.verified == True,  # noqa: E712
-        )
-    )
+    """The shared scope rule, in this module's query-wrapping shape."""
+    return query.where(threshold_or_verified(threshold))
 
 
 # ---------------------------------------------------------------------------

@@ -41,6 +41,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ml.detection_visibility import on_visible_frame
+from app.ml.label_exclusion import is_a_real_detection
 from app.ml.observation_type import derive_observation_type
 from app.models import (
     Deployment,
@@ -219,6 +220,12 @@ def build_output_preview(
         # promises a species folder that the run itself never creates,
         # because `separate_folders` gates via `passing_detections_for_file`.
         .where(on_visible_frame())
+        # Same parity for rejected boxes ("false detection"): the run's
+        # helpers skip them everywhere, so the preview must not let one
+        # pass `_row_passes` on its verified flag and name a folder. A
+        # verified-empty file showed `false_detection: 1` in the preview
+        # tree while the run filed it under `blank`.
+        .where(is_a_real_detection())
         # Strongest first, same ordering as passing_detections_for_file
         # and derive_observation_type, so the first passing row per file
         # is the one that decides the folder.

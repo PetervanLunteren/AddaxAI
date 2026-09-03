@@ -10,12 +10,13 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, time
 
-from sqlalchemy import Integer, delete, exists, func, insert, or_, select, text
+from sqlalchemy import Integer, delete, exists, func, insert, select, text
 from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.core.logging_config import get_logger
 from app.db.sql_params import iter_id_chunks
 from app.ml.detection_visibility import on_visible_frame, visible_detections
+from app.ml.label_exclusion import threshold_or_verified
 from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
@@ -204,9 +205,9 @@ def _apply_event_filters(
     are excluded automatically when the bounds are set (correct
     behaviour: a NULL cannot satisfy a range).
 
-    `project_floor` is the project's `counting_threshold`, applied as
-    `(Detection.confidence >= floor OR Detection.verified == True)`. This
-    is the global override rule. `min_confidence` (the user's slider) is
+    `project_floor` is the project's `counting_threshold`, applied via
+    `threshold_or_verified` (the global override rule). `min_confidence`
+    (the user's slider) is
     applied LITERALLY without OR-verified — a verified low-confidence
     detection passes the floor but cannot satisfy a narrower user filter.
 
@@ -253,9 +254,7 @@ def _apply_event_filters(
             .where(Detection.label_taxonomy_id.in_(labels))
         )
         if project_floor is not None:
-            label_subq = label_subq.where(
-                or_(Detection.confidence >= project_floor, Detection.verified == True)  # noqa: E712
-            )
+            label_subq = label_subq.where(threshold_or_verified(project_floor))
         if min_confidence is not None:
             label_subq = label_subq.where(Detection.confidence >= min_confidence)
         if max_confidence is not None:
@@ -284,9 +283,7 @@ def _apply_event_filters(
             .where(event_files.c.event_id == Event.id)
         )
         if project_floor is not None:
-            conf_subq = conf_subq.where(
-                or_(Detection.confidence >= project_floor, Detection.verified == True)  # noqa: E712
-            )
+            conf_subq = conf_subq.where(threshold_or_verified(project_floor))
         if min_confidence is not None:
             conf_subq = conf_subq.where(Detection.confidence >= min_confidence)
         if max_confidence is not None:
@@ -1304,10 +1301,7 @@ def get_event_verification_stats(
         .filter(on_visible_frame())
     )
     if project_floor is not None:
-        floor_clause = or_(
-            Detection.confidence >= project_floor,
-            Detection.verified == True,  # noqa: E712
-        )
+        floor_clause = threshold_or_verified(project_floor)
         det_total_q = det_total_q.filter(floor_clause)
         det_verified_q = det_verified_q.filter(floor_clause)
     if min_confidence is not None:
@@ -1355,10 +1349,7 @@ def present_label_rows(
     or the other way round. Extra ``columns`` ride along in the same
     distinct query; the taxonomy id is always the first column.
     """
-    threshold_clause = or_(
-        Detection.confidence >= threshold,
-        Detection.verified == True,  # noqa: E712
-    )
+    threshold_clause = threshold_or_verified(threshold)
     return (
         db.query(Detection.label_taxonomy_id, *columns)
         .join(File, File.id == Detection.file_id)
@@ -1386,10 +1377,7 @@ def get_filter_options(db: Session, project_id: str) -> dict:
     threshold = project.counting_threshold if project else 0.0
 
     # Threshold clause: confidence >= threshold OR verified
-    threshold_clause = or_(
-        Detection.confidence >= threshold,
-        Detection.verified == True,  # noqa: E712
-    )
+    threshold_clause = threshold_or_verified(threshold)
 
     # Distinct taxonomy IDs across threshold-passing detections
     label_rows = present_label_rows(

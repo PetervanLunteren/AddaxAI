@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Ban, Check, CircleHelp, ImageOff, Tag, Play } from "lucide-react";
 import { toast } from "sonner";
@@ -18,7 +19,11 @@ import { eventsApi } from "../../api/events";
 import { projectsApi } from "../../api/projects";
 import { API_BASE_URL } from "../../lib/api-client";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
-import { getDetectionDisplayName } from "../../lib/detection-utils";
+import {
+  getDetectionColor,
+  getDetectionDisplayName,
+  shouldDrawBbox,
+} from "../../lib/detection-utils";
 import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
 import { FrameThumbnail } from "./FrameThumbnail";
 import { ContextCard } from "./ContextCard";
@@ -34,6 +39,10 @@ import {
 import type { DetectionSummary } from "../../api/types";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 import { LabelPicker } from "./LabelPicker";
+import { ViewerToolRail } from "./ViewerToolRail";
+import { useFileTriage, useImageAdjust } from "./viewer-tools";
+import { downloadBlob } from "../../lib/download";
+import { basename } from "../../lib/path-utils";
 import { DetailCard, VerifyDetailShell } from "./VerifyDetailShell";
 import { FileLocation } from "./FileLocation";
 import { TruncateStart } from "@/components/ui/truncate-start";
@@ -51,6 +60,12 @@ interface DetectionDetailModalProps {
   onMarkUnknown?: (detectionId: string) => void;
   /** Optimistic verify callback so parent can patch local state before navigating. */
   onVerify?: (detectionId: string, verified?: boolean) => void;
+  /** Optimistic flag/like callback: the rail (or F) toggled a mark on
+   *  the detection's file, so the grid can patch that file's crops. */
+  onFileTriaged?: (
+    fileId: string,
+    patch: { file_flagged?: boolean; file_favorited?: boolean },
+  ) => void;
   /** Navigate to adjacent detection. Return false if at boundary. */
   onNavigate?: (direction: "prev" | "next" | "nextUnverified") => boolean;
   /** Current position, e.g. "3 / 48" */
@@ -71,6 +86,7 @@ export function DetectionDetailModal({
   onMarkFalse,
   onMarkUnknown,
   onVerify,
+  onFileTriaged,
   onNavigate,
   position,
   projectId,
@@ -93,6 +109,34 @@ export function DetectionDetailModal({
   // wrapper keeps the bbox aligned for free.
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  // The shared rail's state (same as the Counts modal and the Files
+  // viewer): brightness/contrast on the source image, the box toggle,
+  // and the flag/like writes the F key shares.
+  const [boxesHidden, setBoxesHidden] = useState(false);
+  const { brightness, setBrightness, contrast, setContrast, imageFilter } =
+    useImageAdjust();
+  // The base hook's writes, plus the grid's optimistic patch: the crops
+  // of a flagged file show the badge without waiting for a re-sort.
+  const baseTriage = useFileTriage();
+  const triage = useMemo(
+    () => ({
+      ...baseTriage,
+      // Mirror the hook's while-pending guard: a swallowed press must
+      // not patch the grid either, or the badge would flip with no
+      // write behind it.
+      toggleFlag: (f: Parameters<typeof baseTriage.toggleFlag>[0]) => {
+        if (baseTriage.pending) return;
+        baseTriage.toggleFlag(f);
+        onFileTriaged?.(f.id, { file_flagged: !f.flagged });
+      },
+      toggleLike: (f: Parameters<typeof baseTriage.toggleLike>[0]) => {
+        if (baseTriage.pending) return;
+        baseTriage.toggleLike(f);
+        onFileTriaged?.(f.id, { file_favorited: !f.favorited });
+      },
+    }),
+    [baseTriage, onFileTriaged],
+  );
   const [isPanning, setIsPanning] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
   const imagePanelRef = useRef<HTMLDivElement | null>(null);
@@ -207,6 +251,40 @@ export function DetectionDetailModal({
   });
   const detectionThreshold = project?.counting_threshold ?? 0;
 
+  // "Open in Files": close this modal and hand the file to the Files
+  // tab's viewer (`lbl_file` is consumed by FilesTab), where the whole
+  // photo is the unit and Verify means the file. The escape hatch for
+  // "I want to judge the picture, not this box".
+  const [, setSearchParams] = useSearchParams();
+  const openInFiles = useCallback(() => {
+    if (!detection) return;
+    onOpenChange(false);
+    setSearchParams((prev) => {
+      const sp = new URLSearchParams(prev);
+      sp.set("view", "files");
+      sp.set("lbl_file", detection.file_id);
+      return sp;
+    });
+  }, [detection, onOpenChange, setSearchParams]);
+
+  /** The rail's Download: the crop this modal is about, saved as a
+   *  file. The whole annotated photo lives one "Open in files view"
+   *  away, so this stays the cheap honest thing. */
+  const downloadCrop = useCallback(async () => {
+    if (!detection) return;
+    try {
+      const resp = await fetch(`${API_BASE_URL}${detection.crop_url}`);
+      if (!resp.ok) throw new Error(`Could not fetch the crop (${resp.status})`);
+      const stem = basename(fileData?.file_path ?? "detection").replace(
+        /\.[^.]+$/,
+        "",
+      );
+      downloadBlob(await resp.blob(), `${stem}_crop.jpg`);
+    } catch (err) {
+      toast.error((err as Error).message);
+    }
+  }, [detection, fileData?.file_path]);
+
   // Fetch 10 nearest neighbors for the Label Agreement thumbnails
   const { data: neighborsData } = useQuery({
     queryKey: ["detection-neighbors", detection?.detection_id],
@@ -284,6 +362,15 @@ export function DetectionDetailModal({
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      // Keys inside a popover (the rail's brightness sliders) belong to
+      // the popover: without this, arrow keys on the slider also paged
+      // the viewer.
+      if (
+        e.target instanceof HTMLElement &&
+        e.target.closest("[data-radix-popper-content-wrapper]")
+      ) {
+        return;
+      }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       const key = e.key.toLowerCase();
@@ -297,7 +384,8 @@ export function DetectionDetailModal({
       } else if (e.key === "Enter") {
         e.preventDefault();
         handleVerifyAndAdvance();
-      } else if (key === "x") {
+      } else if (key === "x" || e.key === "Backspace" || e.key === "Delete") {
+        // Backspace/Delete alias X, as everywhere on the Labels page.
         e.preventDefault();
         if (!markFalseMutation.isPending) markFalseMutation.mutate();
       } else if (key === "u") {
@@ -318,6 +406,14 @@ export function DetectionDetailModal({
             category: detection.category,
           });
         }
+      } else if (key === "b") {
+        // The rail's box toggle, the same key as everywhere.
+        e.preventDefault();
+        setBoxesHidden((v) => !v);
+      } else if (key === "f") {
+        // Flag the detection's file for review.
+        e.preventDefault();
+        if (fileData) triage.toggleFlag(fileData);
       }
     }
 
@@ -332,12 +428,17 @@ export function DetectionDetailModal({
     relabelMutation,
     detection,
     onOpenChange,
+    fileData,
+    triage,
   ]);
 
   // Calculate modal dimensions to tightly fit the image + sidebar panel.
   // Keep previous size while loading to avoid a resize flash between images.
   const PANEL_W = 320;
   const IMAGE_PAD = 16;
+  // The shared tool rail's column (button width plus its padding), now
+  // part of the tightly-fitted dialog width.
+  const RAIL_W = 44;
   const lastModalStyle = useRef<{ width: number; height: number } | null>(null);
   const modalStyle = useMemo(() => {
     const maxW = viewport.width * 0.95;
@@ -347,7 +448,7 @@ export function DetectionDetailModal({
       return lastModalStyle.current ?? { width: maxW, height: maxH };
     }
 
-    const maxImgW = maxW - PANEL_W;
+    const maxImgW = maxW - PANEL_W - RAIL_W;
     const maxImgH = maxH - IMAGE_PAD;
 
     const scale = Math.min(
@@ -359,7 +460,7 @@ export function DetectionDetailModal({
     const imgDisplayH = fileData.height_px * scale;
 
     const style = {
-      width: Math.round(imgDisplayW + PANEL_W),
+      width: Math.round(imgDisplayW + PANEL_W + RAIL_W),
       height: Math.round(imgDisplayH + IMAGE_PAD),
     };
     lastModalStyle.current = style;
@@ -385,6 +486,23 @@ export function DetectionDetailModal({
       height={modalStyle.height}
       position={position}
       onNavigate={onNavigate}
+      // The shared rail: how you look at the picture, identical to the
+      // Counts modal and the Files viewer. Download here means the crop;
+      // the whole annotated photo is one "Open in files view" away.
+      toolbar={
+        <ViewerToolRail
+          brightness={brightness}
+          onBrightnessChange={setBrightness}
+          contrast={contrast}
+          onContrastChange={setContrast}
+          boxesHidden={boxesHidden}
+          onToggleBoxes={() => setBoxesHidden((v) => !v)}
+          file={fileData}
+          triage={triage}
+          downloadLabel="Download crop"
+          onDownload={downloadCrop}
+        />
+      }
       // Scroll to zoom, drag to pan when zoomed, double-click to reset.
       // The shell owns the panel's classes; the behaviour stays here.
       imagePanelProps={{
@@ -436,13 +554,14 @@ export function DetectionDetailModal({
                   alt="Source image"
                   draggable={false}
                   className="max-w-full max-h-full object-contain"
+                  style={imageFilter ? { filter: imageFilter } : undefined}
                   onError={() => {
                     setImageFailed(true);
                     reportMissingMedia(detection.deployment_id);
                   }}
                 />
               )}
-              {!imageFailed && fullDetection && fullDetection.bbox_x !== null && (() => {
+              {!imageFailed && !boxesHidden && fullDetection && fullDetection.bbox_x !== null && (() => {
                 // Event-level observations carry no bbox and never reach
                 // this modal (the Observations grid excludes them), but
                 // the type system can't see that — the guard above keeps
@@ -461,6 +580,17 @@ export function DetectionDetailModal({
                 const spotlightPath =
                   `M0,0H${imgW}V${imgH}H0Z` +
                   svgRoundedRectPath(bx, by, bw, bh, BBOX_CORNER_RADIUS * s);
+                // The file's other visible boxes. A photo must never
+                // lie: with only the focused box drawn, a second animal
+                // in the dim area read as "the AI missed it", which it
+                // never had (this modal shows one detection's context,
+                // not the file's verification). Drawn BEFORE the dim
+                // overlay, so the spotlight itself mutes them and the
+                // focused box stays the accent. Same rule as the Files
+                // viewer: every rendered photo shows every visible box.
+                const otherBoxes = (fileData?.detections ?? [])
+                  .filter((d) => shouldDrawBbox(d, fileData!, detectionThreshold))
+                  .filter((d) => d.id !== fullDetection.id);
 
                 return (
                   <svg
@@ -468,6 +598,20 @@ export function DetectionDetailModal({
                     viewBox={`0 0 ${imgW} ${imgH}`}
                     preserveAspectRatio="xMidYMid meet"
                   >
+                    {otherBoxes.map((d) => (
+                      <rect
+                        key={d.id}
+                        x={d.bbox_x * imgW}
+                        y={d.bbox_y * imgH}
+                        width={d.bbox_width * imgW}
+                        height={d.bbox_height * imgH}
+                        rx={BBOX_CORNER_RADIUS * s}
+                        fill="none"
+                        stroke={getDetectionColor(d)}
+                        strokeWidth={BBOX_STROKE_WIDTH * s}
+                        opacity={BBOX_OPACITY}
+                      />
+                    ))}
                     {/* Spotlight dim overlay */}
                     <path fillRule="evenodd" d={spotlightPath} fill={DIM_FILL} />
 
@@ -537,6 +681,16 @@ export function DetectionDetailModal({
                       {formatCameraDate(detection.captured_at_local, { day: "numeric", month: "short", year: "numeric" }, "en-GB")}{" "}
                       {formatCameraTime(detection.captured_at_local, { hour: "2-digit", minute: "2-digit" }, "en-GB")}
                       {detection.site_name && ` · ${detection.site_name}`}
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        onClick={openInFiles}
+                        title="See the whole photo with every box, and verify the file itself"
+                        className="underline underline-offset-2 hover:no-underline"
+                      >
+                        Open in files view
+                      </button>
                     </div>
                     {detection.similarity != null && (
                       <div>Similarity: {(detection.similarity * 100).toFixed(1)}%</div>

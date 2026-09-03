@@ -12,7 +12,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.crud import file as file_crud
@@ -30,9 +30,9 @@ from app.api.schemas.label import (
 from app.core.confidence import (
     DEFAULT_CLASSIFICATION_GATE,
     MD_OUTPUT_CONFIDENCE_THRESHOLD,
-    effective_floor,
 )
 from app.db.base import get_db
+from app.ml.label_exclusion import threshold_or_verified
 from app.models import Deployment, Detection, DetectionEmbedding, File, Project
 from app.services.label_service import (
     stream_cohorts_async,
@@ -210,12 +210,26 @@ async def get_labels_files(
     date_from: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
     date_to: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
     verification: LabelsVerification | None = Query(None),
+    flagged: str | None = Query(None, pattern="^(all|flagged|not_flagged)$"),
+    favorited: str | None = Query(
+        None, pattern="^(all|favorited|not_favorited)$"
+    ),
     empty: EmptyFilter = Query("all"),
+    labels: str | None = Query(
+        None, description="Comma-separated label taxonomy IDs"
+    ),
     min_confidence: float | None = Query(None, ge=0.0, le=1.0),
+    max_confidence: float | None = Query(None, ge=0.0, le=1.0),
+    min_label_confidence: float | None = Query(None, ge=0.0, le=1.0),
+    max_label_confidence: float | None = Query(None, ge=0.0, le=1.0),
     sort: LabelsFilesSort = Query("path"),
     seed: int | None = Query(None, description="Required for sort=random"),
     skip: int = Query(0, ge=0),
     limit: int = Query(48, ge=1, le=200),
+    find: str | None = Query(
+        None,
+        description="File id whose position in the full ordering to report",
+    ),
     db: Session = Depends(get_db),
 ):
     """The project's files for the Files tab, one item per file.
@@ -225,8 +239,9 @@ async def get_labels_files(
     themselves, so a whole photo can be judged and a photo the detector
     dismissed is still reachable. `empty` narrows to the files where
     nothing passed the floor (`show_only`) or where something did
-    (`hide`); both sides take the floor from `effective_floor`, so the
-    two halves partition the project.
+    (`hide`); the floor is the project's counting threshold, always, so
+    the two halves partition the project and a transient slider can
+    never redefine what "empty" means.
 
     `async def` because `captured_at_local` is an observational datetime
     and its serializer reads the project timezone from a ContextVar set
@@ -242,8 +257,13 @@ async def get_labels_files(
         )
     _set_project_tz(db, project_id)
 
-    floor = effective_floor(project.counting_threshold, min_confidence)
-    total, files = file_crud.get_labels_files(
+    # "Empty" is defined by the project's counting threshold alone; the
+    # confidence slider on Files is clamped there and never drags the
+    # floor down (that is a Detections-only affordance, where the weak
+    # boxes can actually be shown as cards). A below-floor
+    # `min_confidence` from a stale URL is a no-op in the CRUD.
+    floor = project.counting_threshold
+    total, files, find_index = file_crud.get_labels_files(
         db,
         project_id,
         floor=floor,
@@ -252,15 +272,42 @@ async def get_labels_files(
         date_from=_parse_dt(date_from, "date_from"),
         date_to=_parse_dt(date_to, "date_to"),
         verification=verification,
+        flagged=flagged,
+        favorited=favorited,
+        labels=labels.split(",") if labels else None,
+        min_confidence=min_confidence,
+        max_confidence=max_confidence,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
         sort=sort,
         seed=seed,
         skip=skip,
         limit=limit,
+        find=find,
     )
+    items = [LabelsFileItem.model_validate(f) for f in files]
+    if sort == "events" and files:
+        # One batch lookup for the page, matching the sort's own key (a
+        # file's first event). The grid draws divider rows from it.
+        from app.models.event import event_files as ef
+
+        rows = db.execute(
+            select(ef.c.file_id, ef.c.event_id)
+            .where(ef.c.file_id.in_([f.id for f in files]))
+            # Deterministic pick for a file in several events, matching
+            # the sort key's own ORDER BY event_id LIMIT 1.
+            .order_by(ef.c.event_id)
+        ).all()
+        first_event: dict[str, str] = {}
+        for file_id, event_id in rows:
+            first_event.setdefault(file_id, event_id)
+        for item in items:
+            item.event_id = first_event.get(item.id)
     return LabelsFilesResponse(
         total=total,
         floor=floor,
-        items=[LabelsFileItem.model_validate(f) for f in files],
+        items=items,
+        find_index=find_index,
     )
 
 
@@ -357,10 +404,7 @@ def get_label_stats(
         if project
         else DEFAULT_CLASSIFICATION_GATE
     )
-    above_gate_or_verified = or_(
-        Detection.confidence >= gate,
-        Detection.verified == True,  # noqa: E712
-    )
+    above_gate_or_verified = threshold_or_verified(gate)
 
     total = (
         db.query(func.count(Detection.id))
@@ -388,6 +432,9 @@ def get_label_stats(
         .join(Deployment, Deployment.id == File.deployment_id)
         .filter(Deployment.project_id == project_id)
         .filter(has_embedding)
+        # Same scope as `total` above, or a signed-off file's rejected
+        # weak boxes (verified, embedded) count as reviewed work here.
+        .filter(above_gate_or_verified)
         .filter(Detection.verified == True)  # noqa: E712
         .scalar()
     ) or 0

@@ -29,10 +29,11 @@ from pathlib import Path
 from types import TracebackType
 
 import exiftool
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
+from app.ml.label_exclusion import threshold_or_verified
 from app.models import Detection, File, Project
 from app.utils.exiftool_bin import resolve_exiftool
 
@@ -92,12 +93,7 @@ def build_tag_set(
     rows = db.execute(
         select(Detection)
         .where(Detection.file_id == file.id)
-        .where(
-            or_(
-                Detection.confidence >= threshold,
-                Detection.verified == True,  # noqa: E712
-            )
-        )
+        .where(threshold_or_verified(threshold))
         .order_by(Detection.confidence.desc())
     ).scalars().all()
 

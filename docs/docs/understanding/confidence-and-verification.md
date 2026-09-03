@@ -25,7 +25,7 @@ Every animal the detector finds is stored, but not every one is sent to the spec
 
 ### 2. What you see and what gets counted (Count detections above, default 0.2)
 
-This is the one most people are looking for. Detections below it are hidden from the grid, the charts and the counts. Change it any time: the app just shows more or less, so you can lower it later and see more without running the AI again. Files you verified on the Files tab are the exception, because verifying a file throws its weak boxes away for good. Leave it at the default while you check labels.
+This is the one most people are looking for. Detections below it are hidden from the grid, the charts and the counts. Change it any time: the app just shows more or less, so you can lower it later and see more without running the AI again. Files you verified on the Files tab are the exception, because verifying a file marks its weak boxes as false detections, and those stay hidden at any threshold. Leave it at the default while you check labels.
 
 ## So what does species confidence do?
 

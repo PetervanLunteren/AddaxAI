@@ -207,8 +207,24 @@ export const labelsApi = {
     if (params.date_to) sp.set("date_to", params.date_to);
     if (params.verification) sp.set("verification", params.verification);
     if (params.empty) sp.set("empty", params.empty);
+    if (params.flagged && params.flagged !== "all") {
+      sp.set("flagged", params.flagged);
+    }
+    if (params.favorited && params.favorited !== "all") {
+      sp.set("favorited", params.favorited);
+    }
+    if (params.labels?.length) sp.set("labels", params.labels.join(","));
     if (params.min_confidence !== undefined) {
       sp.set("min_confidence", String(params.min_confidence));
+    }
+    if (params.max_confidence !== undefined) {
+      sp.set("max_confidence", String(params.max_confidence));
+    }
+    if (params.min_label_confidence !== undefined) {
+      sp.set("min_label_confidence", String(params.min_label_confidence));
+    }
+    if (params.max_label_confidence !== undefined) {
+      sp.set("max_label_confidence", String(params.max_label_confidence));
     }
     if (params.sort) sp.set("sort", params.sort);
     if (params.seed !== undefined && params.seed !== null) {
@@ -216,6 +232,7 @@ export const labelsApi = {
     }
     if (params.skip) sp.set("skip", String(params.skip));
     if (params.limit) sp.set("limit", String(params.limit));
+    if (params.find) sp.set("find", params.find);
     return api.get<LabelsFilesResponse>(
       `/api/projects/${projectId}/labels/files?${sp.toString()}`,
     );

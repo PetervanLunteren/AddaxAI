@@ -23,6 +23,7 @@
  * which the API client skips).
  */
 
+import type { ReactNode } from "react";
 import {
   CONFIDENCE_SCALE_MIN,
   ConfidenceSlider,
@@ -42,7 +43,7 @@ interface ConfidenceRangeFilterProps {
   /** Whether the low handle stops at the floor or the scale minimum. */
   floorMode: "clamp" | "open";
   /** Caption shown while the handle rests on the clamped floor. */
-  clampReason?: string;
+  clampReason?: ReactNode;
   /** Whether to render the classification slider at all. */
   showClassification: boolean;
   /** Lowest classification confidence present in the project (from the

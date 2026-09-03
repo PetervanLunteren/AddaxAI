@@ -18,6 +18,7 @@
  *   (`showEmpty = true`), resting on "all" (`emptyDefault`).
  */
 
+import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -103,6 +104,9 @@ interface VerifyFilterBarProps {
   /** Whether to render the label filter. False on the Files tab, whose
    *  list query has no label join. */
   showLabels?: boolean;
+  /** Caption for the det slider's clamped floor. The default suits the
+   * Counts page; Files passes its own with the setting name linked. */
+  clampReason?: ReactNode;
 }
 
 export function VerifyFilterBar({
@@ -119,6 +123,7 @@ export function VerifyFilterBar({
   confidenceFloorMode = "clamp",
   verificationDefault = "all",
   showLabels = true,
+  clampReason,
 }: VerifyFilterBarProps) {
   const [labelModalOpen, setLabelModalOpen] = useState(false);
 
@@ -314,9 +319,10 @@ export function VerifyFilterBar({
             confidenceFloorMode={confidenceFloorMode}
             minLabelConfidence={filterOptions?.min_label_confidence}
             clampReason={
-              `Counting starts at the project's detection threshold ` +
-              `(${Math.round(detectionFloor * 100)}%). ` +
-              `Adjust it in the project settings.`
+              clampReason ??
+              `Counting starts at your "Count detections above" setting ` +
+                `(${Math.round(detectionFloor * 100)}%). ` +
+                `Adjust it in the project settings.`
             }
             showClassification={!!classificationModelId}
             showLikedFlaggedEmpty={showLikedFlaggedEmpty}
@@ -334,6 +340,7 @@ export function VerifyFilterBar({
         onChange={onChange}
         verificationDefault={verificationDefault}
         emptyDefault={emptyDefault}
+        showEmpty={showEmpty}
         siteNames={siteNames}
         displayLabels={filterOptions ? speciesLabelMap(filterOptions) : undefined}
         detectionFloor={detectionFloor}

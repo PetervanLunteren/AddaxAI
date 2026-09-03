@@ -6,11 +6,12 @@ annotated with event counts. Replaces the frontend's two-query + client-side
 pruning approach.
 """
 
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
 from app.ml.detection_visibility import on_visible_frame
+from app.ml.label_exclusion import threshold_or_verified
 from app.ml.taxonomic_rank import NO_TAXONOMY, species_binomial, to_display_case
 from app.ml.taxonomic_rollup import format_leaf_annotation
 from app.models import Deployment, Detection, Event, File, Project
@@ -78,7 +79,7 @@ def build_label_filter_tree(
             .join(Deployment, Deployment.id == File.deployment_id)
             .filter(Deployment.project_id == project_id)
             .filter(Detection.label_taxonomy_id.isnot(None))
-            .filter(or_(Detection.confidence >= threshold, Detection.verified == True))
+            .filter(threshold_or_verified(threshold))
             # Only detections the user can actually reach. Without
             # this the tree promised counts the grid cannot show.
             .filter(on_visible_frame())
@@ -99,7 +100,7 @@ def build_label_filter_tree(
             .join(Deployment, Deployment.id == File.deployment_id)
             .filter(Deployment.project_id == project_id)
             .filter(Detection.label_taxonomy_id.isnot(None))
-            .filter(or_(Detection.confidence >= threshold, Detection.verified == True))
+            .filter(threshold_or_verified(threshold))
             # Only detections the user can actually reach. Without
             # this the tree promised counts the grid cannot show.
             .filter(on_visible_frame())
@@ -119,7 +120,7 @@ def build_label_filter_tree(
             .join(Deployment, Deployment.id == Event.deployment_id)
             .filter(Deployment.project_id == project_id)
             .filter(Detection.label_taxonomy_id.isnot(None))
-            .filter(or_(Detection.confidence >= threshold, Detection.verified == True))
+            .filter(threshold_or_verified(threshold))
             # Only detections the user can actually reach. Without
             # this the tree promised counts the grid cannot show.
             .filter(on_visible_frame())

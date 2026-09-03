@@ -93,12 +93,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import __version__ as APP_VERSION
 from app.core.logging_config import get_logger
 from app.ml.detection_visibility import on_visible_frame, visible_detections
+from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
 from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, File, LabelTaxonomy, Project
 from app.models.event import event_files
@@ -260,12 +261,13 @@ def build_event_primary_labels(
         # the burst still denoises; it just counts boxes that exist as
         # pictures.
         .where(on_visible_frame())
-        .where(
-            or_(
-                Detection.confidence >= threshold,
-                Detection.verified == True,  # noqa: E712
-            )
-        )
+        .where(threshold_or_verified(threshold))
+        # A rejected box is not a species and must not vote: verified
+        # first in the ordering below, one X press could otherwise name
+        # a whole burst's folder "false detection". Same clause as
+        # `passing_detections_for_file`, so the vote and the per-file
+        # placement read the same boxes.
+        .where(is_a_real_detection())
         # Verified first, then confidence: the first row per file is that
         # file's strongest detection, which decides its chosen event.
         .order_by(

@@ -43,6 +43,35 @@ export function persistLabelsSetting(key: string, value: unknown): void {
 
 const TILE_SIZES: TileSize[] = ["S", "M", "L"];
 
+/** The Files tab's sort modes; mirrors `LabelsFilesSort` on the wire. */
+export type FilesSort = "path" | "events" | "newest" | "oldest" | "random";
+const FILES_SORTS: FilesSort[] = [
+  "path",
+  "events",
+  "newest",
+  "oldest",
+  "random",
+];
+
+/** The Files tab's sort, persisted like the Detections sort so a person
+ *  who works by event opens on event sort every time. "random" is a
+ *  one-off shuffle, not a way of working, and its seed is session
+ *  state, so it is never written: leaving in random reopens on the
+ *  last persisted sort. */
+export function useFilesSort(): [FilesSort, (v: FilesSort) => void] {
+  const saved = useMemo(() => readLabelsSettings().filesSort, []);
+  const [sort, setLocal] = useState<FilesSort>(
+    FILES_SORTS.includes(saved as FilesSort) && saved !== "random"
+      ? (saved as FilesSort)
+      : "path",
+  );
+  const setSort = useCallback((v: FilesSort) => {
+    setLocal(v);
+    if (v !== "random") persistLabelsSetting("filesSort", v);
+  }, []);
+  return [sort, setSort];
+}
+
 /** Tile size, shared by both grids and persisted. */
 export function useTileSize(): [TileSize, (v: TileSize) => void] {
   const saved = useMemo(() => readLabelsSettings().tileSize, []);

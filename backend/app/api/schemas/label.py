@@ -46,6 +46,10 @@ class LabelFilters(BaseModel):
     project_floor: float | None = Field(None, ge=0.0, le=1.0)
     category: str | None = None
     verified: bool | None = None
+    # File-level triage marks, the Counts filters brought to Labels.
+    # Omitted means "all"; the frontend never sends the "all" value.
+    flagged: Literal["flagged", "not_flagged"] | None = None
+    favorited: Literal["favorited", "not_favorited"] | None = None
 
 
 
@@ -117,6 +121,10 @@ class DetectionSummary(BaseModel):
     # Video detections carry the frame index they came from; image
     # detections expose None.
     frame_number: int | None = None
+    # File-level triage marks, for the card's corner badge cluster.
+    # Defaulted so older worker rows (mid-deploy) stay parseable.
+    file_flagged: bool = False
+    file_favorited: bool = False
 
     @field_serializer("captured_at_local", "event_start_local")
     def _serialize_local_datetimes(self, value: datetime | None) -> str | None:
@@ -195,6 +203,10 @@ LabelsFilesSort = Literal[
     "newest",
     "oldest",
     "random",
+    # Bursts kept together: events newest first, each event's files in
+    # shooting order. The grid shows divider rows in this mode, like the
+    # Detections tab's event sort.
+    "events",
 ]
 
 
@@ -212,6 +224,13 @@ class LabelsFileItem(BaseModel):
     file_type: str
     captured_at_local: datetime | None
     verified: bool
+    # Pixel size, so the grid can shape its tiles to the page's majority
+    # aspect ratio instead of forcing 4:3 on a 16:9 camera.
+    width_px: int | None
+    height_px: int | None
+    # The file's event, filled by the router only for sort=events, where
+    # the grid draws divider rows from it. None in every other sort.
+    event_id: str | None = None
 
     @field_serializer("captured_at_local")
     def _serialize_local_datetimes(self, value: datetime | None) -> str | None:
@@ -227,11 +246,16 @@ class LabelsFilesResponse(BaseModel):
     `floor` is the confidence the empty filter was judged at, echoed so
     the page can name the number the user is actually looking at rather
     than re-deriving it in the frontend.
+
+    `find_index` answers the `find` query param: the named file's
+    0-based position in the full ordering, or None when it does not
+    match the filters. Absent unless asked for.
     """
 
     total: int
     floor: float
     items: list[LabelsFileItem]
+    find_index: int | None = None
 
 
 class LabelsProgress(BaseModel):

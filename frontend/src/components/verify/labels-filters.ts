@@ -12,7 +12,12 @@
  * into a 1,900-line component.
  */
 
-import type { EmptyFilter, EventFilterParams } from "../../api/types";
+import type {
+  EmptyFilter,
+  EventFilterParams,
+  FavoritedFilter,
+  FlaggedFilter,
+} from "../../api/types";
 
 export type LabelsVerification = "all" | "unverified" | "verified";
 
@@ -31,6 +36,10 @@ export interface LabelsFilterState {
   /** Files tab only. Default "all" when omitted: every file, empty or
    *  not. "show_only" is the old Empties tab. */
   empty?: EmptyFilter;
+  /** File-level triage marks, the Counts filters on Labels. Omitted
+   *  means "all". */
+  flagged?: FlaggedFilter;
+  favorited?: FavoritedFilter;
 }
 
 /** Parse lbl_* params from URL. */
@@ -62,6 +71,14 @@ export function lblFiltersFromSearchParams(
   if (empty === "all" || empty === "show_only" || empty === "hide") {
     f.empty = empty;
   }
+  const flagged = sp.get("lbl_flagged");
+  if (flagged === "flagged" || flagged === "not_flagged") {
+    f.flagged = flagged;
+  }
+  const favorited = sp.get("lbl_favorited");
+  if (favorited === "favorited" || favorited === "not_favorited") {
+    f.favorited = favorited;
+  }
   return f;
 }
 
@@ -92,6 +109,12 @@ export function lblFiltersToSearchParams(
   }
   // "all" is the implicit default; the bar writes undefined for it.
   if (filters.empty) sp.set("lbl_empty", filters.empty);
+  if (filters.flagged && filters.flagged !== "all") {
+    sp.set("lbl_flagged", filters.flagged);
+  }
+  if (filters.favorited && filters.favorited !== "all") {
+    sp.set("lbl_favorited", filters.favorited);
+  }
   return sp;
 }
 
@@ -110,6 +133,8 @@ export function toFilterBarFilters(f: LabelsFilterState): EventFilterParams {
     // value itself and the chips must only see explicit filters.
     verification: f.verification,
     empty: f.empty,
+    flagged: f.flagged,
+    favorited: f.favorited,
   };
 }
 
@@ -130,5 +155,7 @@ export function fromFilterBarFilters(
     max_label_confidence: fp.max_label_confidence,
     verification: fp.verification as LabelsVerification | undefined,
     empty: fp.empty,
+    flagged: fp.flagged,
+    favorited: fp.favorited,
   };
 }

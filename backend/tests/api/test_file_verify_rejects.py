@@ -1,20 +1,23 @@
-"""Verifying a file throws its invisible boxes away.
+"""Verifying a file rejects its invisible boxes.
 
 Signing a file off says "the boxes you can see are all there is". Every
 box below the threshold on the frame the person saw is therefore wrong,
-so it is deleted rather than kept, and every box they could see is
-verified. One rule for empty and non-empty files alike.
+so it is rejected the way the X key rejects a box: marked "false
+detection" and verified. Every box they could see is verified as it
+stands. One rule for empty and non-empty files alike.
 
-Keeping the weak boxes made "verified" true only at the threshold it was
-checked at. Drop the confidence slider and the file came back carrying a
-3% smudge while still flagged verified; raise the project threshold
-afterwards and it exported ``is_verified = TRUE`` beside a species nobody
-had confirmed.
+Leaving the weak boxes untouched made "verified" true only at the
+threshold it was checked at: drop the confidence slider and the file
+came back carrying a 3% smudge while still flagged verified. Rejected
+rows cannot come back that way, because `threshold_or_verified`
+(`ml/label_exclusion.py`) keeps a below-threshold non-label box out of
+every user-facing scope at any threshold.
 
-This is only defensible because the Files viewer draws no sub-threshold
-boxes, so the person is judging the picture and not a threshold. If weak
-boxes are ever drawn there, these tests should be revisited along with
-the rule (``crud.file.set_file_verified``).
+They used to be DELETED instead of rejected. That reported them as
+missing on every reprocess of an unticked file, and nothing could ever
+bring them back; kept as rejected rows they still match their
+``results.json`` boxes, and an unverify hands them to the machine to
+restore on the next reprocess.
 """
 
 from datetime import datetime
@@ -50,35 +53,33 @@ def _boxes(db, file_id):
     return db.query(Detection).filter(Detection.file_id == file_id).all()
 
 
-def test_verifying_an_empty_file_discards_the_detector_boxes(client, db):
+def _assert_rejected(det):
+    assert det.label == "false detection"
+    assert det.verified is True
+    assert det.classification_method == "human"
+
+
+def test_verifying_an_empty_file_rejects_the_detector_boxes(client, db):
     f = _file_in_project(db)
     for conf in (0.01, 0.05, 0.19):
         make_detection(db, file_id=f.id, confidence=conf)
     db.commit()
-    assert len(_boxes(db, f.id)) == 3
 
     _verify(client, f.id)
 
-    assert _boxes(db, f.id) == []
+    boxes = _boxes(db, f.id)
+    assert len(boxes) == 3, "rejected, not deleted"
+    for det in boxes:
+        _assert_rejected(det)
     db.refresh(f)
     assert f.verified is True
 
 
-def test_a_box_with_no_classification_method_is_discarded_too(client, db):
-    """`classification_method` is nullable, and in SQL `!= 'human'` matches
-    no NULLs. A bare inequality would leave every unclassified box behind,
-    which is most of them."""
-    f = _file_in_project(db)
-    make_detection(db, file_id=f.id, confidence=0.05, classification_method=None)
-    make_detection(db, file_id=f.id, confidence=0.05, classification_method="ai")
-    db.commit()
-
-    _verify(client, f.id)
-
-    assert _boxes(db, f.id) == []
-
-
-def test_unverifying_does_not_bring_the_boxes_back(client, db):
+def test_unverifying_leaves_the_rejects_for_the_machine(client, db):
+    """Taking the sign-off back unverifies every box, the rejected ones
+    included. Their "false detection" label stays for now, but unverified
+    it belongs to the machine again: the next reprocess overwrites it
+    with the AI's own call, which is the whole point of keeping the row."""
     f = _file_in_project(db)
     make_detection(db, file_id=f.id, confidence=0.05)
     db.commit()
@@ -86,32 +87,35 @@ def test_unverifying_does_not_bring_the_boxes_back(client, db):
     _verify(client, f.id)
     _verify(client, f.id, verified=False)
 
-    assert _boxes(db, f.id) == []
+    (det,) = _boxes(db, f.id)
+    assert det.verified is False
+    assert det.label == "false detection"
     db.refresh(f)
     assert f.verified is False
 
 
-def test_verifying_a_file_with_a_passing_box_deletes_the_weak_ones(client, db):
+def test_verifying_a_file_with_a_passing_box_rejects_the_weak_ones(client, db):
     """Same rule on a file that is not empty: the box the person saw is
-    signed off, the one they could not see is gone. Keeping it left a
-    verified file that grew a box the moment the slider dropped."""
+    signed off as it stands, the one they could not see is rejected."""
     f = _file_in_project(db)
-    strong = make_detection(db, file_id=f.id, confidence=0.9)
-    make_detection(db, file_id=f.id, confidence=0.05)
+    strong = make_detection(db, file_id=f.id, confidence=0.9, label="deer")
+    weak = make_detection(db, file_id=f.id, confidence=0.05, label="deer")
     db.commit()
 
     _verify(client, f.id)
 
-    assert {d.id for d in _boxes(db, f.id)} == {strong.id}
     db.refresh(strong)
     assert strong.verified is True
+    assert strong.label == "deer"
+    db.refresh(weak)
+    _assert_rejected(weak)
     db.refresh(f)
     assert f.verified is True
 
 
 def test_the_verify_write_is_frame_gated(client, db):
     """A video is judged on its best frame. Boxes on the frames nobody saw
-    are neither deleted nor signed off, strong or weak. Before this the
+    are neither rejected nor signed off, strong or weak. Before this the
     verify write had no frame clause and signed off boxes on frames the
     person never opened."""
     f = _file_in_project(db, file_type="video", best_frame_number=0)
@@ -123,15 +127,17 @@ def test_the_verify_write_is_frame_gated(client, db):
 
     _verify(client, f.id)
 
-    surviving = {d.id: d for d in _boxes(db, f.id)}
-    assert on_weak not in surviving
-    assert surviving[on_strong].verified is True
-    assert surviving[off_weak].verified is False
-    assert surviving[off_strong].verified is False
+    by_id = {d.id: d for d in _boxes(db, f.id)}
+    _assert_rejected(by_id[on_weak])
+    assert by_id[on_strong].verified is True
+    assert by_id[on_strong].label is None
+    assert by_id[off_weak].verified is False
+    assert by_id[off_weak].label is None
+    assert by_id[off_strong].verified is False
 
 
 def test_verifying_a_file_recomputes_what_it_is_about(client, db):
-    """Deleting boxes and verifying boxes both move the strongest passing
+    """Rejecting boxes and verifying boxes both move the strongest passing
     detection, so `observation_type` is re-derived on the spot, as the
     detection endpoints do. It used to stay stale until the next reprocess."""
     f = _file_in_project(db, observation_type="animal")
@@ -202,13 +208,11 @@ def test_reverifying_picks_up_boxes_added_since(client, db):
     assert later.verified is True
 
 
-def test_only_boxes_on_the_frame_the_person_saw_are_discarded(client, db):
+def test_only_boxes_on_the_frame_the_person_saw_are_rejected(client, db):
     """A clip reads empty on its best frame alone, and that frame is the
     only one the app shows. Boxes on the other sampled frames were never
     on screen, so a verdict about the visible frame is not a verdict
-    about them. Without the visible-frame scope, one Enter on a video
-    threw away every box in the clip, including a confident animal on a
-    frame nobody had opened."""
+    about them."""
     f = _file_in_project(db, file_type="video", best_frame_number=0)
     on_screen = make_detection(
         db, file_id=f.id, confidence=0.05, frame_number=0
@@ -220,56 +224,59 @@ def test_only_boxes_on_the_frame_the_person_saw_are_discarded(client, db):
 
     _verify(client, f.id)
 
-    surviving = {d.id for d in _boxes(db, f.id)}
-    assert on_screen not in surviving
-    assert off_screen in surviving
+    by_id = {d.id: d for d in _boxes(db, f.id)}
+    _assert_rejected(by_id[on_screen])
+    assert by_id[off_screen].label is None
+    assert by_id[off_screen].verified is False
 
 
 def test_a_drawn_box_survives_a_file_verify(client, db):
     """The rule never reads who drew a box, and it does not have to: a
     drawn box is verified at confidence 1.0, so it is always visible and
     never below the threshold. Here it sits off the best frame, where
-    nothing is touched at all, so the noise beside it survives too.
+    nothing is touched at all, so the noise beside it is untouched too.
     """
     f = _file_in_project(db, file_type="video", best_frame_number=0)
-    drawn_id = make_detection(
+    drawn = make_detection(
         db,
         file_id=f.id,
         confidence=1.0,
         frame_number=5,
         verified=True,
         classification_method="human",
-    ).id
-    noise_id = make_detection(
-        db, file_id=f.id, confidence=0.05, frame_number=5
-    ).id
+        label="deer",
+    )
+    noise = make_detection(db, file_id=f.id, confidence=0.05, frame_number=5)
     db.commit()
 
     _verify(client, f.id)
 
-    surviving = {d.id for d in _boxes(db, f.id)}
-    assert surviving == {drawn_id, noise_id}
+    db.refresh(drawn)
+    assert drawn.label == "deer"
+    assert drawn.verified is True
+    db.refresh(noise)
+    assert noise.label is None
+    assert noise.verified is False
 
 
 def test_a_rejected_box_does_not_make_a_file_look_occupied(client, db):
     """A file whose only real box was marked false reads as empty in the
-    Files tab (`is_a_real_detection()`), and verifying it deletes the weak
-    boxes beside the rejected one. The rejected box itself is kept: a
-    person looked at it and judged it, and it is verified, so the rule
-    never touches it.
+    Files tab (`is_a_real_detection()`), and verifying it rejects the weak
+    boxes beside the rejected one. The box the person X'd is verified
+    already, so the rule never touches it.
 
     The untick in the middle mirrors the user's route: marking a box
     false verifies it, which rolls up and leaves the file signed off, so
     a person unticks it to look again and then signs it off as empty.
     """
     f = _file_in_project(db)
-    rejected_id = make_detection(db, file_id=f.id, confidence=0.85).id
-    noise_id = make_detection(db, file_id=f.id, confidence=0.05).id
+    rejected = make_detection(db, file_id=f.id, confidence=0.85)
+    noise = make_detection(db, file_id=f.id, confidence=0.05)
     db.commit()
 
     resp = client.post(
         "/api/detections/bulk-relabel",
-        json={"detection_ids": [rejected_id], "label": "false detection"},
+        json={"detection_ids": [rejected.id], "label": "false detection"},
     )
     assert resp.status_code == 200, resp.text
 
@@ -282,8 +289,70 @@ def test_a_rejected_box_does_not_make_a_file_look_occupied(client, db):
     _verify(client, f.id, verified=False)
     _verify(client, f.id)
 
-    surviving = {d.id for d in _boxes(db, f.id)}
-    assert noise_id not in surviving, (
-        "the weak box survived a verdict of 'nothing here'"
+    db.refresh(noise)
+    _assert_rejected(noise)
+
+
+def test_an_auto_rejected_box_matches_a_pressed_x(client, db):
+    """The parity pin: a weak box rejected by a file sign-off must be
+    indistinguishable from a box the person pressed X on, field for
+    field. Two code paths write the verdict (`mark_detections_false` and
+    the bulk-relabel endpoint); this is what keeps them from drifting."""
+    p = make_project(db, counting_threshold=0.2)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    f = make_file(db, deployment_id=d.id)
+    auto = make_detection(db, file_id=f.id, confidence=0.05)
+    pressed = make_detection(db, file_id=f.id, confidence=0.85)
+    db.commit()
+
+    resp = client.post(
+        "/api/detections/bulk-relabel",
+        json={"detection_ids": [pressed.id], "label": "false detection"},
     )
-    assert surviving == {rejected_id}
+    assert resp.status_code == 200, resp.text
+    _verify(client, f.id, verified=False)
+    _verify(client, f.id)
+
+    db.refresh(auto)
+    db.refresh(pressed)
+    for field in (
+        "label",
+        "label_confidence",
+        "label_taxonomy_id",
+        "common_name",
+        "scientific_name",
+        "classification_method",
+        "verified",
+    ):
+        assert getattr(auto, field) == getattr(pressed, field), field
+    assert auto.label_taxonomy_id is not None, (
+        "both share the project's custom 'false detection' taxonomy row"
+    )
+
+
+def test_a_rejected_weak_box_stays_out_of_every_scope(client, db):
+    """The other half of the design: rejecting instead of deleting only
+    works because `threshold_or_verified` keeps the rejected row buried.
+    Verified rows used to pass every user-facing scope unconditionally,
+    so without the refinement a signed-off project surfaced thousands of
+    them (4,050 weak boxes against 7,526 passing ones on a real one)."""
+    f = _file_in_project(db)
+    make_detection(db, file_id=f.id, confidence=0.9, label="deer")
+    make_detection(db, file_id=f.id, confidence=0.05, label="deer")
+    db.commit()
+    project_id = f.deployment.project_id
+
+    _verify(client, f.id)
+
+    count = client.get(
+        f"/api/projects/{project_id}/detection-count", params={"threshold": 0.2}
+    ).json()["count"]
+    assert count == 1, "the rejected weak box is not a countable detection"
+
+    stats = client.get(
+        f"/api/projects/{project_id}/label-stats", params={"threshold": 0.2}
+    ).json()
+    assert {row["label"] for row in stats} == {"deer"}, (
+        "'false detection' is not offered as a label"
+    )

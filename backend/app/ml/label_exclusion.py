@@ -17,7 +17,7 @@ These two steps are independent. JSON files on disk remain untouched
 as raw ground truth.
 """
 
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.logging_config import get_logger
@@ -29,7 +29,9 @@ logger = get_logger(__name__)
 # Non-label classes: predictions that mean "nothing here" or "false positive".
 # A detection whose top-1 is one of these is not loaded to the database.
 # Also stripped before smoothing/rollup so they don't corrupt those algorithms.
-# Add new junk classes here (e.g. "calibration", "setup").
+# Add new junk classes here (e.g. "calibration", "setup") — and in the two
+# hand copies: `NON_LABEL_CLASSES` in `frontend/src/lib/detection-utils.ts`
+# and the SQL list in `app/ml/inference/similarity_script.py`.
 NON_LABEL_CLASSES = frozenset({
     "bait", "blank", "empty", "false detection", "none", "vide",
 })
@@ -57,6 +59,38 @@ def is_non_label(label: str | None) -> bool:
     """The same rule for a label already in hand. ``None`` is a real
     detection the classifier simply never named, not a rejection."""
     return bool(label) and label.lower() in NON_LABEL_CLASSES
+
+
+def threshold_or_verified(threshold) -> ColumnElement[bool]:
+    """The user-facing scope rule (DEVELOPERS.md), in one place.
+
+    A detection passes on its own confidence, or because a human
+    verified it **as something real**. The refinement is the second
+    half: verifying a file rejects its invisible sub-threshold boxes by
+    marking them "false detection" (``set_file_verified``), and those
+    rows must stay invisible at every threshold, in every list, count,
+    export and media output. Without it they are verified, so the plain
+    threshold-or-verified rule surfaces thousands of them the moment
+    someone verifies a project (a real project measured 4,050 weak boxes
+    against 7,526 passing ones).
+
+    An above-threshold rejected box still passes: the person pressed X
+    on it in the grid, so the grid and the exports keep showing that
+    verdict rather than making the box vanish.
+
+    ``threshold`` is a float, or a column expression where the query
+    compares per row (the folder-run summaries join ``Project``).
+    The similarity sort worker keeps a hand-written SQL copy of this
+    (``similarity_script.py``, no ``app.*`` imports there) — keep the
+    two in step.
+    """
+    return or_(
+        Detection.confidence >= threshold,
+        and_(
+            Detection.verified == True,  # noqa: E712
+            is_a_real_detection(),
+        ),
+    )
 
 
 # Non-wildlife classes: real detections that are not wild animals.

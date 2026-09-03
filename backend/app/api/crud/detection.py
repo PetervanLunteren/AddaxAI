@@ -410,3 +410,42 @@ def _resolve_detection_taxonomy(
     db.add(new_entry)
     db.flush()
     return new_entry.id
+
+
+FALSE_DETECTION = "false detection"
+
+
+def mark_detections_false(db: Session, detections: list[Detection]) -> None:
+    """Reject boxes the way the X key does. No commit.
+
+    Field-for-field what ``bulk_relabel_detections`` writes for the
+    label "false detection", so a box rejected here is
+    indistinguishable from one a person pressed X on: same label, same
+    taxonomy row, same verified flag. ``set_file_verified`` uses this
+    for the invisible sub-threshold boxes a file sign-off rejects. The
+    ``original_*`` mirror is untouched, so undo and a later unverify +
+    reprocess can both hand the box back to the machine.
+
+    A parity test (`test_empty_verify_discards.py`) pins the two paths
+    against drift.
+    """
+    if not detections:
+        return
+    now = datetime.now(UTC)
+    taxonomy_id = _resolve_detection_taxonomy(db, detections[0], FALSE_DETECTION)
+
+    from app.ml.taxonomic_rollup import resolve_label_names
+    from app.models.label_taxonomy import LabelTaxonomy
+
+    tax = db.get(LabelTaxonomy, taxonomy_id) if taxonomy_id else None
+    common_name, scientific_name = resolve_label_names(FALSE_DETECTION, tax, "")
+
+    for det in detections:
+        det.label = FALSE_DETECTION
+        det.label_confidence = 1.0
+        det.label_taxonomy_id = taxonomy_id
+        det.common_name = common_name
+        det.scientific_name = scientific_name
+        det.classification_method = "human"
+        det.verified = True
+        det.verified_at_utc = now

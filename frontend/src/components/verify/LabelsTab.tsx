@@ -106,7 +106,7 @@ const CROPS_SHORTCUTS: readonly Shortcut[] = [
   ["Double-click", "Open detail"],
   ["Click outside", "Deselect all"],
   ["Enter", "Verify selected"],
-  ["X", "Mark false detection"],
+  ["X / Backspace", "Mark false detection"],
   ["U", "Mark unknown (unidentifiable)"],
   ["R", "Relabel selected"],
   ["M", "Relabel to most common in selection"],
@@ -114,6 +114,9 @@ const CROPS_SHORTCUTS: readonly Shortcut[] = [
   ["E", "Select next event to check (event sort)"],
   [`${MOD} + Z`, "Undo last action"],
   ["Esc", "Deselect / close"],
+  // Viewer only.
+  ["B", "Hide or show the boxes"],
+  ["F", "Flag the file for review"],
 ];
 
 const LABELS_SORT_MODES: readonly VerifySort[] = [
@@ -188,6 +191,8 @@ function toLabelFilters(f: LabelsFilterState): LabelFilters {
     min_label_confidence: f.min_label_confidence,
     max_label_confidence: f.max_label_confidence,
     verified: ver === "all" ? undefined : ver === "verified",
+    flagged: f.flagged === "all" ? undefined : f.flagged,
+    favorited: f.favorited === "all" ? undefined : f.favorited,
   };
 }
 
@@ -1172,7 +1177,12 @@ export function LabelsTab({
         return;
       }
 
-      if ((e.key === "x" || e.key === "X") && !e.ctrlKey && !e.metaKey && selectedIds.size > 0) {
+      // Backspace/Delete alias X: pressing delete on a selected box is
+      // everyone's first guess, and mark false is how the app says it.
+      if (
+        (e.key === "x" || e.key === "X" || e.key === "Backspace" || e.key === "Delete") &&
+        !e.ctrlKey && !e.metaKey && selectedIds.size > 0
+      ) {
         e.preventDefault();
         handleMarkFalse(Array.from(selectedIds));
         return;
@@ -1376,7 +1386,10 @@ export function LabelsTab({
         classificationModelId={classificationModelId}
         detectionFloor={project?.counting_threshold ?? 0}
         countBy="detection"
-        showLikedFlaggedEmpty={false}
+        // Liked / flagged as on Counts (a crop shows its file's marks);
+        // the empty select stays Files-only, it means nothing per box.
+        showLikedFlaggedEmpty
+        showEmpty={false}
         confidenceFloorMode="open"
         verificationDefault="unverified"
       />
@@ -1753,6 +1766,14 @@ export function LabelsTab({
         }}
         onVerify={(detectionId, verified = true) => {
           applyUndoableAction([detectionId], (d) => ({ ...d, verified }));
+        }}
+        // The rail's flag/like: patch every crop of that file so the
+        // corner badges follow without a re-sort. Not undoable — F is
+        // its own undo.
+        onFileTriaged={(fileId, patch) => {
+          patchLocalDetections((d) =>
+            d.file_id === fileId ? { ...d, ...patch } : d,
+          );
         }}
         position={
           detailDetection

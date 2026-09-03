@@ -67,10 +67,13 @@ def effective_floor(
     which callers apply separately and literally; it does not change what
     counts as passing.
 
-    One helper because two surfaces depend on agreeing exactly. The crop
-    grid shows the detections above this floor; the empties grid shows
-    the files with none. If the two computed it differently, a photo
-    could appear in both tabs or in neither.
+    Used by the Detections grid and the progress counts, which must
+    agree exactly on what the slider currently shows. The Files tab
+    deliberately does NOT follow it: there "empty" is pinned to the
+    project threshold alone, because the Files viewer can never draw a
+    sub-threshold box (Verify signs off what is drawn), so a slider
+    that silently moved its empty definition was one control with two
+    meanings.
     """
     if min_confidence is None:
         return counting_threshold

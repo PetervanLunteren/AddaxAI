@@ -6,8 +6,8 @@
  * this picture right?". So the unit is the file, the sorts are about
  * where a file sits rather than what it looks like, and the verdict is
  * one: Verify means the boxes you can see are all there is. Weak boxes
- * below the threshold are removed, the visible ones are signed off, and
- * a box you draw first is one of them.
+ * below the threshold are set aside as false detections, the visible
+ * ones are signed off, and a box you draw first is one of them.
  *
  * The Empty select in More filters narrows to the files where nothing
  * passed the threshold (the old Empties tab) or to the files where
@@ -21,31 +21,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import {
-  CheckCheck,
-  Loader2,
-  Maximize2,
-  Minimize2,
-  X,
-} from "lucide-react";
+import { Loader2, Maximize2, Minimize2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { detectionsApi } from "../../api/detections";
 import { filesApi } from "../../api/files";
 import { labelsApi } from "../../api/labels";
 import { projectsApi } from "../../api/projects";
+import { useLabelOptions } from "../../hooks/useLabelOptions";
+import { useShortcutLabels } from "../../hooks/useShortcutLabels";
+import { shouldDrawBbox } from "../../lib/detection-utils";
+import { resolveSpeciesName } from "../../lib/species-name-mode";
+import { labelMajority } from "./label-majority";
+import { BulkActionBar } from "./BulkActionBar";
 import { formatConfidencePct } from "../../lib/confidence";
 import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "../ui/alert-dialog";
 import { FilesGrid } from "./FilesGrid";
 import { GridEmptyState } from "./GridEmptyState";
 import { LabelsKeyboardPopover } from "./LabelsKeyboardPopover";
@@ -54,7 +45,8 @@ import { nextAfterActed, selectOnClick } from "./grid-selection";
 import { FileDetailModal } from "./FileDetailModal";
 import { LabelsSettings } from "./LabelsSettings";
 import { SortSelector } from "./SortSelector";
-import { useTileSize } from "./labels-settings";
+import { useFilesSort, useTileSize } from "./labels-settings";
+import type { FilesSort } from "./labels-settings";
 import { VerifyFilterBar } from "./VerifyFilterBar";
 import {
   VerifyGuideLink,
@@ -70,12 +62,22 @@ import {
   type LabelsFilterState,
 } from "./labels-filters";
 import { useLabelsProgress } from "./useLabelsProgress";
+import { warmFiles } from "./warm-files";
 import { useWideModeControls } from "./wide-mode";
-import type { LabelsFileItem, LabelsFilesParams, VerifySort } from "../../api/types";
+import type {
+  LabelsFileItem,
+  LabelsFilesParams,
+  LabelsFilesResponse,
+  VerifySort,
+} from "../../api/types";
 import type { ReactNode } from "react";
 
 const PAGE_SIZE = 48;
 
+// The crop grid's keys, at file scope: a label action reaches every
+// visible box of the selected files. In the viewer the same keys act on
+// the selected box, or on every box of the picture when none is
+// selected. Viewer-only extras at the end.
 const FILES_SHORTCUTS: readonly Shortcut[] = [
   ["Click", "Select"],
   [`${MOD} + Click`, "Toggle select"],
@@ -84,28 +86,29 @@ const FILES_SHORTCUTS: readonly Shortcut[] = [
   ["Click outside", "Deselect all"],
   ["Enter", "Verify"],
   [`${MOD} + A`, "Select all on this page"],
+  ["E", "Select next event to check (event sort)"],
+  ["X / Backspace", "Mark false detection"],
+  ["U", "Mark unknown (unidentifiable)"],
+  ["R", "Relabel"],
+  ["M", "Relabel to most common"],
+  ["1 - 5", "Apply a saved label"],
+  [`${MOD} + Z`, "Undo last label action"],
   ["Esc", "Deselect"],
-  // In the viewer. R, X, U and 1 to 5 act on the selected box, or on
-  // every box on the picture when none is selected.
+  // Viewer only.
   ["← / →", "Previous / next file"],
   ["D", "Draw a box"],
   ["B", "Hide or show the boxes"],
+  ["F", "Flag for review"],
+  ["P", "Play a video / back to its frame"],
   ["Tab / Shift + Tab", "Select the next / previous box"],
-  ["X", "Mark false detection"],
-  ["U", "Mark unknown (unidentifiable)"],
-  ["R", "Relabel"],
-  ["M", "Relabel to most common on the picture"],
-  ["1 - 5", "Apply a saved label (set them on the Detections tab)"],
-  [`${MOD} + Z`, "Undo last action"],
 ];
 const FILES_SORT_MODES: readonly VerifySort[] = [
   "path",
+  "events",
   "newest",
   "oldest",
   "random",
 ];
-
-type FilesSort = "path" | "newest" | "oldest" | "random";
 
 interface FilesTabProps {
   projectId: string;
@@ -141,28 +144,69 @@ export function FilesTab({
   const queryClient = useQueryClient();
   const { wide, toggle: toggleWide } = useWideModeControls();
 
-  const [sort, setSort] = useState<FilesSort>("path");
+  const [sort, setSort] = useFilesSort();
   const [seed, setSeed] = useState<number | null>(null);
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const anchorRef = useRef<string | null>(null);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [tileSize, setTileSize] = useTileSize();
-  // Only the bulk path asks. In the viewer you are looking at the photo
-  // when you decide; here Cmd+A selects 47 files you have not opened,
-  // and verifying removes the weak boxes from every one of them, with no
-  // undo (unlike the Detections grid, which has an undo stack). Holds
-  // the ids, not a flag. The dialog's own text would otherwise read from
-  // the live selection, which empties as the action runs: it re-rendered
-  // to "Verify 0 files?" mid-close, and that re-render left Radix's exit
-  // transition stranded so the panel never unmounted.
-  const [confirmBulk, setConfirmBulk] = useState<string[] | null>(null);
 
-  const filters = useMemo(
-    () => lblFiltersFromSearchParams(searchParams),
-    [searchParams],
-  );
+  const { data: project } = useQuery({
+    queryKey: ["project", projectId],
+    queryFn: () => projectsApi.get(projectId),
+  });
+
+  const filters = useMemo(() => {
+    const f = lblFiltersFromSearchParams(searchParams);
+    // The slider here is clamped at the project threshold ("empty" is
+    // defined by that one setting, never by a transient control), so a
+    // below-floor minimum can only be a leftover from digging down on
+    // the Detections tab. Dropped rather than displayed: a chip for a
+    // filter that does nothing reads as working.
+    const thr = project?.counting_threshold;
+    if (
+      thr !== undefined &&
+      f.min_confidence !== undefined &&
+      f.min_confidence <= thr
+    ) {
+      delete f.min_confidence;
+    }
+    return f;
+  }, [searchParams, project?.counting_threshold]);
   const progress = useLabelsProgress(projectId, filters);
+
+  // A file handed over by the Detections modal's "Open in files view":
+  // ask the list where the file sits under the current filters and
+  // sort (`find`), land the grid on that page and open the viewer
+  // there, so next and previous continue through the list exactly as
+  // if the tile had been clicked. A file the view does not hold
+  // (usually: already verified while the view shows unverified) widens
+  // the verification filter to "all files", visibly, and asks again.
+  // A file even that cannot reach (a box filter it no longer matches)
+  // falls back to a one-file viewer, so the link always shows the
+  // file. One-shot: the param is consumed and removed so back/reload
+  // does not reopen it.
+  const [soloItem, setSoloItem] = useState<LabelsFileItem | null>(null);
+  const [pendingOpenId, setPendingOpenId] = useState<string | null>(null);
+  const openSolo = useCallback((fid: string) => {
+    filesApi
+      .get(fid)
+      .then((f) => {
+        setSoloItem({
+          id: f.id,
+          deployment_id: f.deployment_id,
+          file_path: f.file_path,
+          file_type: f.file_type,
+          captured_at_local: f.captured_at_local,
+          verified: f.verified,
+          width_px: f.width_px ?? null,
+          height_px: f.height_px ?? null,
+          event_id: null,
+        });
+      })
+      .catch((err: Error) => toast.error(err.message));
+  }, []);
 
   const setFilters = useCallback(
     (next: LabelsFilterState) => {
@@ -174,11 +218,6 @@ export function FilesTab({
     [setSearchParams],
   );
 
-  const { data: project } = useQuery({
-    queryKey: ["project", projectId],
-    queryFn: () => projectsApi.get(projectId),
-  });
-
   // "all" is the page default: every file, empty or not.
   const empty = filters.empty ?? "all";
 
@@ -189,8 +228,14 @@ export function FilesTab({
       site_ids: filters.site_ids,
       date_from: filters.date_from,
       date_to: filters.date_to,
+      labels: filters.labels,
       min_confidence: filters.min_confidence,
+      max_confidence: filters.max_confidence,
+      min_label_confidence: filters.min_label_confidence,
+      max_label_confidence: filters.max_label_confidence,
       empty,
+      flagged: filters.flagged,
+      favorited: filters.favorited,
     }),
     [filters, empty],
   );
@@ -220,7 +265,99 @@ export function FilesTab({
     placeholderData: (prev) => prev,
   });
 
+  // Warm the next page while this one is being worked: its list row,
+  // then each file's detail and thumbnail (`warmFiles`). Clicking Next
+  // then paints instantly with the boxes already drawn, instead of a
+  // wall of grey. Skipped while the current page is still the held-over
+  // placeholder, so the prefetch never competes with the fetch the user
+  // is actually waiting on.
+  useEffect(() => {
+    if (!data || isPlaceholderData) return;
+    const nextSkip = (page + 1) * PAGE_SIZE;
+    if (nextSkip >= data.total) return;
+    const nextParams = { ...listParams, skip: nextSkip };
+    queryClient
+      .prefetchQuery({
+        queryKey: ["labels-files", projectId, nextParams],
+        queryFn: () => labelsApi.files(projectId, nextParams),
+      })
+      .then(() => {
+        const next = queryClient.getQueryData<LabelsFilesResponse>([
+          "labels-files",
+          projectId,
+          nextParams,
+        ]);
+        warmFiles(
+          queryClient,
+          (next?.items ?? []).map((i) => i.id),
+        );
+      });
+  }, [data, isPlaceholderData, page, listParams, projectId, queryClient]);
+
   const items = useMemo(() => data?.items ?? [], [data]);
+
+  // The consumption of `lbl_file` (see the comment on `soloItem`).
+  // Lives below the list query because it probes with the very
+  // `listParams` the grid uses; the guard makes reruns harmless once
+  // the param is gone.
+  useEffect(() => {
+    const fid = searchParams.get("lbl_file");
+    if (!fid) return;
+    setSearchParams(
+      (prev) => {
+        const sp = new URLSearchParams(prev);
+        sp.delete("lbl_file");
+        return sp;
+      },
+      { replace: true },
+    );
+    const probe = { ...listParams, skip: 0, limit: 1, find: fid };
+    (async () => {
+      try {
+        let res = await labelsApi.files(projectId, probe);
+        if (
+          res.find_index == null &&
+          (filters.verification ?? "unverified") !== "all"
+        ) {
+          res = await labelsApi.files(projectId, {
+            ...probe,
+            verification: "all",
+          });
+          if (res.find_index != null) {
+            setFilters({ ...filters, verification: "all" });
+          }
+        }
+        if (res.find_index != null) {
+          setPage(Math.floor(res.find_index / PAGE_SIZE));
+          setPendingOpenId(fid);
+        } else {
+          openSolo(fid);
+        }
+      } catch (err) {
+        toast.error((err as Error).message);
+      }
+    })();
+  }, [
+    searchParams,
+    setSearchParams,
+    listParams,
+    filters,
+    setFilters,
+    projectId,
+    openSolo,
+  ]);
+
+  // The page the handoff picked has to land before the viewer can point
+  // at an index in it. If the file is not on the loaded page after all
+  // (its rank moved between the probe and the fetch), show it alone
+  // rather than opening the viewer on a neighbour.
+  useEffect(() => {
+    if (!pendingOpenId || !data || isPlaceholderData) return;
+    const idx = items.findIndex((i) => i.id === pendingOpenId);
+    setPendingOpenId(null);
+    if (idx >= 0) setOpenIndex(idx);
+    else openSolo(pendingOpenId);
+  }, [pendingOpenId, data, isPlaceholderData, items, openSolo]);
 
   // How many the view holds ignoring the checked filter. Only fetched
   // when the grid has come back empty, which is the one moment the
@@ -364,6 +501,8 @@ export function FilesTab({
       // selection moves to the next one, and the progress bar ticks up.
       // Matches the crop grid, which stays quiet on a verify too. Errors
       // still toast.
+      undoStackRef.current.push({ kind: "verify", fileIds: ids });
+      setCanUndo(true);
       advanceAfter(ids);
       refresh();
       // The tiles draw from the file detail, which the verify changed.
@@ -373,6 +512,137 @@ export function FilesTab({
     },
     onError: (err: Error) => toast.error(err.message),
   });
+
+  // ── Bulk box actions, the crop grid's set at file scope ──────────
+  // One mechanism behind X / U / M / R / 1-5 and their buttons: apply a
+  // label to every visible box of the selected files. The tiles already
+  // hold each file's detail in the query cache, so collecting the box
+  // ids costs nothing beyond a cache read; `fetchQuery` covers a tile
+  // whose fetch has not landed yet. Undo mirrors the crop grid's:
+  // Cmd+Z reverts the last action's boxes to the model's own call.
+  const threshold = project?.counting_threshold ?? 0;
+  const { options: labelOptions, isLoading: labelOptionsLoading } =
+    useLabelOptions(project?.classification_model_id ?? null, projectId);
+  const { shortcutLabels } = useShortcutLabels(projectId);
+  const [relabelOpen, setRelabelOpen] = useState(false);
+  // Label entries revert boxes to the model's call; verify entries
+  // undo with an untick (`bulkVerify(ids, false)`), which is verify's
+  // exact inverse: every box unverified, and the next reprocess hands
+  // the rejected ones back to the AI. Same stack, so Cmd+Z walks back
+  // through verifies and relabels in the order they happened.
+  const undoStackRef = useRef<
+    (
+      | { kind: "label"; boxIds: string[]; fileIds: string[] }
+      | { kind: "verify"; fileIds: string[] }
+    )[]
+  >([]);
+  // Fix for keyboard double-fire: the bar's buttons disable while a
+  // mutation is pending, but M/X/2 on the keyboard have no such gate.
+  const bulkBusyRef = useRef(false);
+  const [canUndo, setCanUndo] = useState(false);
+
+  const visibleBoxesOf = useCallback(
+    async (fileIds: string[]) => {
+      const files = await Promise.all(
+        fileIds.map((id) =>
+          queryClient.fetchQuery({
+            queryKey: ["file", id],
+            queryFn: () => filesApi.get(id),
+          }),
+        ),
+      );
+      return files.flatMap((f) =>
+        f.detections.filter((d) => shouldDrawBbox(d, f, threshold)),
+      );
+    },
+    [queryClient, threshold],
+  );
+
+  const applyLabelToSelection = useCallback(
+    async (label: string | null, category: string | undefined) => {
+      const fileIds = [...selected];
+      if (fileIds.length === 0) return;
+      if (bulkBusyRef.current) return;
+      bulkBusyRef.current = true;
+      try {
+        const boxes = await visibleBoxesOf(fileIds);
+        if (boxes.length === 0) {
+          toast.info("No visible boxes in the selection");
+          return;
+        }
+        const boxIds = boxes.map((b) => b.id);
+        await detectionsApi.bulkRelabel(boxIds, label, category);
+        undoStackRef.current.push({ kind: "label", boxIds, fileIds });
+        setCanUndo(true);
+        // Relabelling verifies the boxes, so the files roll up to
+        // verified and leave the default (unverified) view; advance the
+        // selection exactly as a verify does.
+        advanceAfter(fileIds);
+        refresh();
+        for (const id of fileIds) {
+          queryClient.invalidateQueries({ queryKey: ["file", id] });
+        }
+      } catch (err) {
+        toast.error((err as Error).message);
+      } finally {
+        bulkBusyRef.current = false;
+      }
+    },
+    [selected, visibleBoxesOf, advanceAfter, refresh, queryClient],
+  );
+
+  // The selection's majority, from the page cache, for the bar button's
+  // own text; the shared helper keeps the rule identical to the crop
+  // grid's Match majority and the viewer's M.
+  const selectionMajority = useMemo(() => {
+    const boxes = [];
+    for (const id of selected) {
+      const f = queryClient.getQueryData<
+        Awaited<ReturnType<typeof filesApi.get>>
+      >(["file", id]);
+      if (!f) continue;
+      for (const d of f.detections) {
+        if (shouldDrawBbox(d, f, threshold)) boxes.push(d);
+      }
+    }
+    return labelMajority(boxes);
+  }, [selected, threshold, queryClient]);
+
+  const matchMajority = useCallback(async () => {
+    const fileIds = [...selected];
+    if (fileIds.length === 0 || bulkBusyRef.current) return;
+    // The bar button's own text comes from the tile cache
+    // (`selectionMajority`), but the action must not: tiles still
+    // fetching would make that a majority of whatever happened to be
+    // loaded. Fetch the full set (cached tiles cost nothing) and let
+    // `applyLabelToSelection` reuse it from the cache.
+    const boxes = await visibleBoxesOf(fileIds);
+    const mode = labelMajority(boxes);
+    if (!mode) {
+      toast.info("No labels in selection to apply");
+      return;
+    }
+    applyLabelToSelection(mode.label, mode.category);
+  }, [selected, visibleBoxesOf, applyLabelToSelection]);
+
+  const handleUndo = useCallback(async () => {
+    const entry = undoStackRef.current.pop();
+    setCanUndo(undoStackRef.current.length > 0);
+    if (!entry) return;
+    try {
+      if (entry.kind === "verify") {
+        await filesApi.bulkVerify(entry.fileIds, false);
+      } else {
+        await detectionsApi.bulkRevertToOriginal(entry.boxIds);
+      }
+      refresh();
+      for (const id of entry.fileIds) {
+        queryClient.invalidateQueries({ queryKey: ["file", id] });
+      }
+    } catch (err) {
+      toast.error((err as Error).message);
+    }
+  }, [refresh, queryClient]);
 
   // Grid keyboard, matching the crop grid: Escape clears the selection,
   // Enter acts on it. Skipped while the viewer is open, which owns the
@@ -399,11 +669,95 @@ export function FilesTab({
         e.preventDefault();
         anchorRef.current = orderedIds[0] ?? null;
         updateSelection(new Set(orderedIds));
+      } else if (e.key === "z" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        handleUndo();
+      } else if (
+        (e.key === "x" || e.key === "X" || e.key === "Backspace" ||
+          e.key === "Delete") &&
+        !e.ctrlKey && !e.metaKey && selected.size > 0
+      ) {
+        e.preventDefault();
+        applyLabelToSelection("false detection", undefined);
+      } else if (
+        (e.key === "u" || e.key === "U") &&
+        !e.ctrlKey && !e.metaKey && selected.size > 0
+      ) {
+        e.preventDefault();
+        applyLabelToSelection("unknown", undefined);
+      } else if (
+        (e.key === "m" || e.key === "M") &&
+        !e.ctrlKey && !e.metaKey && selected.size > 0
+      ) {
+        e.preventDefault();
+        matchMajority();
+      } else if (
+        (e.key === "r" || e.key === "R") &&
+        !e.ctrlKey && !e.metaKey && selected.size > 0
+      ) {
+        e.preventDefault();
+        setRelabelOpen((v) => !v);
+      } else if (
+        e.key >= "1" && e.key <= "5" &&
+        !e.ctrlKey && !e.metaKey && selected.size > 0
+      ) {
+        const slot = shortcutLabels[parseInt(e.key)];
+        if (slot) {
+          e.preventDefault();
+          applyLabelToSelection(slot.label, slot.category);
+        }
+      } else if (
+        (e.key === "e" || e.key === "E") &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        sort === "events"
+      ) {
+        // Same key as the crop grid: select the first event on this
+        // page that still has an unverified file, whole burst at once,
+        // and bring it into view. A no-op in the other sorts, where
+        // events are not contiguous.
+        e.preventDefault();
+        let i = 0;
+        while (i < items.length) {
+          const eventId = items[i].event_id;
+          let j = i;
+          while (j < items.length && items[j].event_id === eventId) j++;
+          const run = items.slice(i, j);
+          if (run.some((f) => !f.verified)) {
+            const ids = run.map((f) => f.id);
+            anchorRef.current = ids[0];
+            updateSelection(new Set(ids));
+            // The event's divider to the top of the viewport, exactly
+            // where the crop grid's E puts it (`scrollToDetection`
+            // targets the divider row with align "start"), so the two
+            // tabs land the eye in the same place.
+            const divider = document.querySelector(
+              `[data-event-divider="${eventId ?? "none"}"]`,
+            );
+            (divider ?? document.querySelector(`[data-file-id="${ids[0]}"]`))
+              ?.scrollIntoView({ block: "start" });
+            break;
+          }
+          i = j;
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openIndex, selected, clearSelection, markChecked, orderedIds, updateSelection]);
+  }, [
+    openIndex,
+    selected,
+    clearSelection,
+    markChecked,
+    orderedIds,
+    updateSelection,
+    sort,
+    items,
+    handleUndo,
+    applyLabelToSelection,
+    matchMajority,
+    shortcutLabels,
+  ]);
 
   const countNoun =
     empty === "show_only"
@@ -412,21 +766,48 @@ export function FilesTab({
         ? " with detections"
         : "";
 
+  // The "Count detections above" setting, named as a link when the host
+  // can navigate to it (a route in projects mode, a slideout in a
+  // folder run). Shared by the empties callout and the slider's clamp
+  // caption, so the two can never name it differently.
+  const thresholdSettingLink = onEditThreshold ? (
+    <button
+      type="button"
+      onClick={onEditThreshold}
+      className="underline underline-offset-2 hover:no-underline"
+    >
+      Count detections above
+    </button>
+  ) : (
+    "Count detections above"
+  );
+
   return (
     <div className="space-y-4">
       <VerifyFilterBar
         filters={toFilterBarFilters(filters)}
         onChange={(fp) => setFilters(fromFilterBarFilters(fp, filters))}
         projectId={projectId}
+        classificationModelId={project?.classification_model_id ?? null}
         detectionFloor={project?.counting_threshold ?? 0}
         countBy="file"
-        // The list query has no label join, and liked / flagged are
-        // event filters. The Empty select is the one More filter here.
-        showLabels={false}
-        showLikedFlaggedEmpty={false}
+        // Liked / flagged as on Counts, plus the Empty select and the
+        // confidence ranges in More filters. Each range means "at
+        // least one box in it": the Detections rules lifted to files
+        // (see `get_labels_files`). Clamped at the project threshold,
+        // unlike Detections: this surface can never show a
+        // sub-threshold box (Verify signs off what is drawn), so the
+        // slider must not pretend to reach below.
+        showLikedFlaggedEmpty
         showEmpty
         emptyDefault="all"
-        confidenceFloorMode="open"
+        confidenceFloorMode="clamp"
+        clampReason={
+          <>
+            The minimum is your {thresholdSettingLink} setting (
+            {formatConfidencePct(project?.counting_threshold ?? 0)}).
+          </>
+        }
         verificationDefault="unverified"
       />
 
@@ -482,19 +863,7 @@ export function FilesTab({
           A file counts as empty when nothing was found with a detection
           confidence above{" "}
           {formatConfidencePct(project?.counting_threshold ?? floor)}, the
-          threshold set with{" "}
-          {onEditThreshold ? (
-            <button
-              type="button"
-              onClick={onEditThreshold}
-              className="underline underline-offset-2 hover:no-underline"
-            >
-              Count detections above
-            </button>
-          ) : (
-            "Count detections above"
-          )}
-          .
+          threshold set with {thresholdSettingLink}.
         </Callout>
       )}
 
@@ -518,14 +887,6 @@ export function FilesTab({
         />
       ) : (
         <>
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>
-              {total.toLocaleString()} file{total === 1 ? "" : "s"}
-              {countNoun}
-            </span>
-            {isFetching && <Loader2 className="h-4 w-4 animate-spin" />}
-          </div>
-
           <FilesGrid
             // Dimmed while the tiles on screen belong to the previous
             // page, so held-over content never reads as the answer to
@@ -536,110 +897,96 @@ export function FilesTab({
             onSelect={handleSelect}
             detectionThreshold={project?.counting_threshold ?? 0}
             tileSize={tileSize}
+            groupByEvent={sort === "events"}
+            onSelectEvent={(ids) => updateSelection(new Set(ids))}
             onBackgroundClick={clearSelection}
             onOpen={(item: LabelsFileItem) =>
               setOpenIndex(items.findIndex((i) => i.id === item.id))
             }
           />
 
-          {pageCount > 1 && (
-            <div className="flex items-center justify-center gap-3 pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page === 0}
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-              >
-                Previous
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                Page {page + 1} of {pageCount}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= pageCount - 1}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Next
-              </Button>
-            </div>
-          )}
+          {/* Count and paging share one row, the Counts grid's idiom
+              ("Showing 1-50 of 1040 events"). The count used to be its
+              own line above the grid, which duplicated the tab chip a
+              few pixels higher and pushed the tiles down for one
+              number. Always rendered: on a single filtered page,
+              "Showing 1-6 of 6 files with nothing found" is the only
+              place the filter's exact result appears. */}
+          <div className="flex items-center justify-center gap-3 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page === 0}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              Showing {(page * PAGE_SIZE + 1).toLocaleString()}-
+              {(page * PAGE_SIZE + items.length).toLocaleString()}
+              {" of "}
+              {total.toLocaleString()} file{total === 1 ? "" : "s"}
+              {countNoun}
+              {isFetching && " (loading...)"}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= pageCount - 1}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+            </Button>
+          </div>
         </>
       )}
 
-      {selected.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2">
-          <div className="flex items-center gap-3 rounded-full border bg-white px-4 py-2 shadow-lg">
-            <span className="text-sm font-medium">
-              {selected.size} selected
-            </span>
-            <Button
-              size="sm"
-              disabled={markChecked.isPending}
-              onClick={() => setConfirmBulk([...selected])}
-            >
-              <CheckCheck className="mr-1.5 h-4 w-4" />
-              Verify
-            </Button>
-            <button
-              type="button"
-              title="Deselect (Esc)"
-              className="text-muted-foreground hover:text-foreground"
-              onClick={clearSelection}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* The work starts only once the dialog has finished closing. When
-          the verify ran while it was still unmounting, the re-render went
-          through Radix's exit transition, which then never completed:
-          the panel stayed mounted and its scroll lock left `body` at
-          `pointer-events: none`, so the page was unusable until a
-          reload. Let the Action close it, then act. */}
-      <AlertDialog
-        open={confirmBulk !== null}
-        onOpenChange={(open) => {
-          if (!open) setConfirmBulk(null);
+      {/* The Detections grid's bar, verbatim: `performAction` maps each
+          button to this tab's file-scoped implementation (every visible
+          box of the selected files) while the presentation stays one
+          component, so the two grids cannot drift. Verify is immediate,
+          like Enter: the old confirm dialog guarded an irreversible
+          delete that no longer exists (untick a file and the next
+          reprocess hands its rejected boxes back to the AI). */}
+      <BulkActionBar
+        selectedIds={selected}
+        onDeselectAll={clearSelection}
+        labelOptions={labelOptions}
+        labelOptionsLoading={labelOptionsLoading}
+        onActionComplete={() => {}}
+        performAction={(action) => {
+          if (action === "verify") {
+            markChecked.mutate([...selected]);
+          } else if (action === "false") {
+            return applyLabelToSelection("false detection", undefined);
+          } else if (action === "unknown") {
+            return applyLabelToSelection("unknown", undefined);
+          } else {
+            return applyLabelToSelection(
+              action.relabel.label,
+              action.relabel.category,
+            );
+          }
         }}
-      >
-        {/* No exit animation, for the same reason: nothing to wait for
-            means it unmounts at once. */}
-        <AlertDialogContent className="!animate-none">
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Verify {confirmBulk?.length ?? 0} file
-              {confirmBulk?.length === 1 ? "" : "s"}?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              You are saying the boxes you can see are all there is, so
-              weak boxes below your threshold are removed from{" "}
-              {confirmBulk?.length === 1 ? "it" : "them"}. That cannot be
-              undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => confirmBulk && markChecked.mutate(confirmBulk)}
-            >
-              Verify
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onMatchMajority={matchMajority}
+        majorityLabel={
+          selectionMajority ? resolveSpeciesName(selectionMajority) : null
+        }
+        projectId={projectId}
+        relabelOpen={relabelOpen}
+        onRelabelOpenChange={setRelabelOpen}
+        onUndo={handleUndo}
+        canUndo={canUndo}
+      />
 
       <FileDetailModal
         projectId={projectId}
-        items={items}
-        index={openIndex}
-        onIndexChange={setOpenIndex}
-        onClose={closeViewer}
-        onExhausted={continueViewer}
-        loadingMore={loadingMore}
+        items={soloItem ? [soloItem] : items}
+        index={soloItem ? 0 : openIndex}
+        onIndexChange={soloItem ? () => {} : setOpenIndex}
+        onClose={soloItem ? () => setSoloItem(null) : closeViewer}
+        onExhausted={soloItem ? () => setSoloItem(null) : continueViewer}
+        loadingMore={soloItem ? false : loadingMore}
         onChanged={refreshCountsNow}
       />
     </div>
