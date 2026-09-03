@@ -1107,6 +1107,39 @@
           }
         ]
       ]
+    },
+    "SOCAL-IRC-v3-6": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "raven",
+          "confidence": 0.9343268871307373
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "raven",
+            "confidence": 0.9343268871307373
+          },
+          {
+            "label": "bird sp",
+            "confidence": 0.0645042136311531
+          },
+          {
+            "label": "turkey vulture",
+            "confidence": 0.0006007558549754322
+          },
+          {
+            "label": "striped skunk",
+            "confidence": 0.00013080713688395917
+          },
+          {
+            "label": "bobcat",
+            "confidence": 9.230417344952002e-05
+          }
+        ]
+      ]
     }
   }
 }
