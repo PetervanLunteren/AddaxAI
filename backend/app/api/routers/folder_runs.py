@@ -302,6 +302,10 @@ class OutputPreviewRequest(BaseModel):
     # subfolders) in the chosen order.
     separate_group_by: SeparateGroupBy = "flat"
     separate_species_last: bool = False
+    # Blur, mirroring the save request: with blur on a video is written
+    # as its blurred still instead of the container, so the preview's
+    # byte total and filename sample have to follow.
+    anonymise: bool = False
 
 
 class OutputPreviewResponse(BaseModel):
@@ -1035,6 +1039,7 @@ def get_output_preview(
         species_last=(
             payload.separate_species_last if payload else False
         ),
+        videos_as_stills=bool(payload.anonymise) if payload else False,
     )
     return OutputPreviewResponse(**preview.to_dict())
 

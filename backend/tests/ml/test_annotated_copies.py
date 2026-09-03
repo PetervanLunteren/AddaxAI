@@ -270,18 +270,14 @@ def test_multi_placement_writes_to_every_destination(db, tmp_path):
     assert wolf_dst.is_file()
 
 
-def test_video_annotated_best_frame_lands_at_recorded_still(db, tmp_path):
-    """For a video, separation records the best-frame JPEG
-    (``clip_still.jpg``); annotation overwrites that same file with the
-    boxed version. The video container is never written."""
-    project = make_project(db, name="video-anno", counting_threshold=0.5)
-    dep = make_deployment(db, project_id=project.id)
-    # The video file itself doesn't need to exist on disk — we read the
-    # best-frame JPEG.
+def _video_with_best_frame(db, tmp_path, dep_id, *, confidence=0.95):
+    """A video row whose best frame is a real JPEG, with one dog box on
+    that frame. The container need not exist: annotation reads pixels
+    from the best frame only."""
     best_frame = _write_jpeg(tmp_path / "cache" / "frame000001.jpg")
     file = make_file(
         db,
-        deployment_id=dep.id,
+        deployment_id=dep_id,
         file_path=str(tmp_path / "src" / "clip.mp4"),
         file_type="video",
         file_format="mp4",
@@ -293,10 +289,50 @@ def test_video_annotated_best_frame_lands_at_recorded_still(db, tmp_path):
         db,
         file_id=file.id,
         category="animal",
-        confidence=0.95,
+        confidence=confidence,
         label="dog",
         frame_number=1,
     )
+    return file
+
+
+def test_video_annotated_still_lands_beside_the_placed_container(db, tmp_path):
+    """Separation copied the container to ``dog/clip.mp4`` and recorded
+    that path. Annotation writes the boxed best frame beside it as
+    ``dog/clip_still.jpg`` and leaves the container alone. The ``_still``
+    suffix matters: a plain ``.jpg`` swap collides with a photo the camera
+    shot next to the clip."""
+    project = make_project(db, name="video-anno", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    file = _video_with_best_frame(db, tmp_path, dep.id)
+
+    target = tmp_path / "out"
+    placed = target / "dog" / "clip.mp4"
+    placed.parent.mkdir(parents=True, exist_ok=True)
+    placed.write_bytes(b"container-bytes")
+    ctx = _ctx(target, {file.id: [placed]})
+    ctx.record_still(file.id, target / "dog" / "clip_still.jpg")
+    result = write_annotated_copies(
+        db,
+        project.id,
+        ctx,
+        draw_bboxes=True,
+        anonymise=False,
+        media_threshold=0.5,
+    )
+
+    assert result.written_count == 1
+    assert (target / "dog" / "clip_still.jpg").is_file()
+    assert placed.read_bytes() == b"container-bytes"
+    assert not (target / "dog" / "clip.jpg").exists()
+
+
+def test_video_placed_as_a_still_is_annotated_in_place(db, tmp_path):
+    """Blur mode: separation placed the still itself (``clip_still.jpg``),
+    so annotation overwrites that file and never creates a container."""
+    project = make_project(db, name="video-still", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    file = _video_with_best_frame(db, tmp_path, dep.id)
 
     target = tmp_path / "out"
     placed = target / "dog" / "clip_still.jpg"
@@ -313,7 +349,68 @@ def test_video_annotated_best_frame_lands_at_recorded_still(db, tmp_path):
 
     assert result.written_count == 1
     assert placed.is_file()
-    assert not (target / "dog" / "clip.mp4").exists()  # container untouched
+    assert not (target / "dog" / "clip.mp4").exists()
+
+
+def test_placed_video_with_nothing_to_draw_gets_no_still(db, tmp_path):
+    """Deferred mode (``copy_unchanged``): an image with no effect is
+    plain-copied so it is not left missing, but a video's container was
+    copied by separation already, and the still beside it exists only to
+    carry boxes. Nothing to draw, nothing to write."""
+    project = make_project(db, name="video-nodraw", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    # Below the media threshold: the clip is placed (blank, empties on)
+    # but there is no box to draw.
+    file = _video_with_best_frame(db, tmp_path, dep.id, confidence=0.2)
+
+    target = tmp_path / "out"
+    placed = target / "blank" / "clip.mp4"
+    placed.parent.mkdir(parents=True, exist_ok=True)
+    placed.write_bytes(b"container-bytes")
+    ctx = _ctx(target, {file.id: [placed]})
+    ctx.record_still(file.id, target / "blank" / "clip_still.jpg")
+    result = write_annotated_copies(
+        db,
+        project.id,
+        ctx,
+        draw_bboxes=True,
+        anonymise=False,
+        media_threshold=0.5,
+        copy_unchanged=True,
+    )
+
+    assert result.skipped_no_change == 1
+    assert result.written_count == 0
+    assert not (target / "blank" / "clip_still.jpg").exists()
+    assert placed.read_bytes() == b"container-bytes"
+
+
+def test_placed_still_with_nothing_to_blur_is_plain_copied(db, tmp_path):
+    """Blur mode, deferred: the still is a deferred write like an
+    image's. An animal-only clip has nothing to blur, so the best frame
+    is copied to the placed still unchanged rather than left missing."""
+    project = make_project(db, name="video-noblur", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    file = _video_with_best_frame(db, tmp_path, dep.id)
+
+    target = tmp_path / "out"
+    placed = target / "dog" / "clip_still.jpg"
+    placed.parent.mkdir(parents=True, exist_ok=True)
+    ctx = _ctx(target, {file.id: [placed]})
+    result = write_annotated_copies(
+        db,
+        project.id,
+        ctx,
+        draw_bboxes=False,
+        anonymise=True,
+        media_threshold=0.5,
+        copy_unchanged=True,
+    )
+
+    assert result.skipped_no_change == 1
+    assert result.written_count == 0
+    assert placed.is_file()
+    assert not (target / "dog" / "clip.mp4").exists()
 
 
 def test_no_change_skip_when_only_anonymise_and_no_targets(db, tmp_path):
@@ -366,6 +463,9 @@ def test_missing_source_is_skipped(db, tmp_path):
 
     assert result.written_count == 0
     assert result.skipped_missing_source == 1
+    # Listed by path, in separation's words, so the completion dialog
+    # shows the file once whichever module noticed it.
+    assert result.errors == [f"Source file no longer on disk: {file.file_path}"]
 
 
 def test_excluded_label_skips_file(db, tmp_path):
@@ -424,7 +524,7 @@ def test_deferred_separation_writes_each_file_once(db, tmp_path):
 
     sep = separate_into_folders(
         db, project.id, ctx,
-        media_threshold=0.5, mode="copy", group_by="none",
+        media_threshold=0.5, group_by="none",
         include_empty=True, group_events=False,
         place_files=False,
     )
@@ -491,3 +591,83 @@ def test_a_rejected_box_is_not_drawn(db, tmp_path):
 
     assert result.written_count == 1
     assert result.bbox_count == 1
+
+
+def _clip_on_disk(db, tmp_path, dep_id, name, frame_name):
+    """A video whose container exists, with a dog box on its best frame."""
+    src = tmp_path / "src" / name
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_bytes(name.encode())
+    file = make_file(
+        db,
+        deployment_id=dep_id,
+        file_path=str(src),
+        file_type="video",
+        file_format=src.suffix[1:],
+        observation_type="animal",
+        best_frame_number=0,
+        best_frame_path=_write_jpeg(tmp_path / "cache" / frame_name),
+    )
+    make_detection(
+        db, file_id=file.id, category="animal", confidence=0.9, label="dog",
+        frame_number=0,
+    )
+    return file
+
+
+def _separate_then_annotate(db, project_id, tmp_path):
+    """The worker's deferred pairing: separation plans and copies the
+    containers, annotation writes every image."""
+    ctx = OutputContext(output_root=tmp_path / "out")
+    separate_into_folders(
+        db, project_id, ctx, media_threshold=0.5, group_by="flat",
+        place_files=False,
+    )
+    write_annotated_copies(
+        db, project_id, ctx, media_threshold=0.5, draw_bboxes=True,
+        anonymise=False, copy_unchanged=True,
+    )
+    return sorted(p.name for p in (tmp_path / "out" / "dog").iterdir())
+
+
+def test_two_clips_with_one_stem_get_two_stills(db, tmp_path):
+    """``clip.mp4`` and ``clip.MOV`` in one folder are two containers, so
+    they need two stills. Deriving the still's name in annotation from
+    the container's name gave both ``clip_still.jpg`` and the second
+    overwrote the first; separation now allocates the still's name with
+    every other name it hands out."""
+    project = make_project(db, name="two-stems", counting_threshold=0.5)
+    dep = make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "src")
+    )
+    _clip_on_disk(db, tmp_path, dep.id, "clip.mp4", "a.jpg")
+    _clip_on_disk(db, tmp_path, dep.id, "clip.MOV", "b.jpg")
+
+    files = _separate_then_annotate(db, project.id, tmp_path)
+
+    assert files == ["clip.MOV", "clip.mp4", "clip_still.jpg", "clip_still_2.jpg"]
+
+
+def test_a_photo_named_like_a_still_keeps_its_own_copy(db, tmp_path):
+    """A source photo literally called ``clip_still.jpg`` beside
+    ``clip.mp4`` must not share a name with the clip's still: one of the
+    two copies silently replaced the other."""
+    project = make_project(db, name="still-name", counting_threshold=0.5)
+    dep = make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "src")
+    )
+    _clip_on_disk(db, tmp_path, dep.id, "clip.mp4", "a.jpg")
+    photo = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=_write_jpeg(tmp_path / "src" / "clip_still.jpg"),
+        observation_type="animal",
+    )
+    make_detection(
+        db, file_id=photo.id, category="animal", confidence=0.9, label="dog"
+    )
+
+    files = _separate_then_annotate(db, project.id, tmp_path)
+
+    assert len(files) == 3, files
+    assert "clip.mp4" in files and "clip_still.jpg" in files

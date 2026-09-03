@@ -133,10 +133,12 @@ class OutputPreviewResult:
 _ROOT_FILE_CAP = 4
 
 
-def _output_basename(file_type: str, file_path: str) -> str:
-    """The on-disk output name: images keep their name, videos become
-    their best-frame ``<stem>_still.jpg``."""
-    if file_type == "video":
+def _output_basename(
+    file_type: str, file_path: str, videos_as_stills: bool
+) -> str:
+    """The on-disk output name: a file keeps its own name, except a video
+    under ``videos_as_stills``, which becomes ``<stem>_still.jpg``."""
+    if file_type == "video" and videos_as_stills:
         return video_still_name(file_path)
     return Path(file_path).name
 
@@ -152,6 +154,7 @@ def build_output_preview(
     group_events: bool = True,
     group_by: SeparateGroupBy = "flat",
     species_last: bool = False,
+    videos_as_stills: bool = False,
 ) -> OutputPreviewResult:
     """Aggregate the counts the Save step needs for its live preview.
 
@@ -167,6 +170,10 @@ def build_output_preview(
     on-disk layout the run will write: the species / observation folder
     (nested taxonomy, a single species folder, or none) combined with the
     preserved source subfolder in the chosen order.
+
+    ``videos_as_stills`` mirrors the run's blur mode: a video then counts
+    its best-frame JPEG's size and name rather than the container's, so
+    the footer estimate and the filename sample match what is written.
     """
     project = db.get(Project, project_id)
     if project is None:
@@ -278,9 +285,7 @@ def build_output_preview(
         elif row.file_type == "video":
             result.video_count += 1
 
-        # A video is written as its best-frame JPEG, so it contributes
-        # the JPEG's size, not the full container's.
-        written = _written_size(row)
+        written = _written_size(row, videos_as_stills)
         if written is not None:
             result.total_bytes += written
             result.files_with_known_size += 1
@@ -299,6 +304,17 @@ def build_output_preview(
         # add no placements or in-scope counts in the preview either.
         obs_type = obs_type_per_file.get(row.id, "blank")
         if not include_empty and obs_type == "blank":
+            continue
+
+        # Under blur a video is written as its still, and a clip with no
+        # best frame has no still to write: separation skips it, so the
+        # preview must not promise it. It falls into the footer's empty
+        # count, which is what a clip with no visible surface is.
+        if (
+            videos_as_stills
+            and row.file_type == "video"
+            and not row.best_frame_path
+        ):
             continue
 
         result.in_scope_files += 1
@@ -352,23 +368,26 @@ def build_output_preview(
             result.by_media_tree[full] += 1
         elif len(result.root_files) < _ROOT_FILE_CAP:
             result.root_files.append(
-                _output_basename(row.file_type, row.file_path)
+                _output_basename(row.file_type, row.file_path, videos_as_stills)
             )
 
     return result
 
 
-def _written_size(row) -> int | None:
+def _written_size(row, videos_as_stills: bool) -> int | None:
     """Bytes this file contributes to the output footprint.
 
-    Videos are written as their best-frame JPEG, so use that file's size
-    rather than the full container's. Best-effort: an unstattable best
-    frame (slow / unmounted drive) returns ``None`` and the file just
-    drops out of the byte total, like an image with no recorded size.
+    A file contributes its own recorded size. A video under
+    ``videos_as_stills`` is written as its best-frame JPEG, so it
+    contributes that file's size instead; with no best frame nothing is
+    written for it, which is a known size of zero, not an unknown one.
+    Best-effort: an unstattable best frame (slow / unmounted drive)
+    returns ``None`` and the file just drops out of the byte total, like
+    an image with no recorded size.
     """
-    if row.file_type == "video":
+    if row.file_type == "video" and videos_as_stills:
         if not row.best_frame_path:
-            return None
+            return 0
         try:
             return Path(row.best_frame_path).stat().st_size
         except OSError:

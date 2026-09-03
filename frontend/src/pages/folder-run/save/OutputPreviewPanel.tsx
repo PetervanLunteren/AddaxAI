@@ -431,15 +431,18 @@ function SummaryFooter({
   preview: OutputPreview;
   form: UseSaveOutputsFormResult;
 }) {
-  const { separate } = form;
+  const { separate, anonymise } = form;
 
   // Each in-scope file lands in exactly one folder, so the number
   // written equals the in-scope count. Boxes / blur overwrite those
   // same copies in place (and only run when separation is on), so they
   // never add files. Exports + README are small data files, not counted.
   const writtenTotal = separate.enabled ? preview.in_scope_files : 0;
-  // Videos are written as their best-frame JPEG, which in_scope_bytes
-  // already reflects, so this is the real media footprint on disk.
+  // Videos are copied whole (or as their blurred still, which the
+  // backend already accounts for), so this is the real media footprint
+  // on disk. The video count sits beside it because it is what makes a
+  // large number make sense: 300 clips explain 12 GB, 300 photos do not.
+  const videosWritten = separate.enabled ? preview.in_scope_video_count : 0;
   const estimatedBytes = separate.enabled ? preview.in_scope_bytes : 0;
   const partialSize =
     preview.files_with_known_size > 0 &&
@@ -451,7 +454,17 @@ function SummaryFooter({
   const filtered = preview.dropped_by_filter;
   const emptySkipped =
     preview.total_files - filtered - preview.in_scope_files;
+  // One bracket for everything that qualifies the written count. Under
+  // blur a clip is written as its still, and the label says so.
   const reasons: string[] = [];
+  if (videosWritten > 0) {
+    const noun = videosWritten === 1 ? "video" : "videos";
+    reasons.push(
+      `${videosWritten.toLocaleString()} ${noun}${
+        anonymise.enabled ? " as stills" : ""
+      }`,
+    );
+  }
   if (filtered > 0) reasons.push(`${filtered.toLocaleString()} filtered`);
   if (emptySkipped > 0) {
     reasons.push(`${emptySkipped.toLocaleString()} empty`);

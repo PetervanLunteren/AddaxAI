@@ -40,13 +40,16 @@ is placed in one shared folder, the species of the event's most
 confident detection, instead of deciding per file. This keeps a
 sequence together even when a stray frame's own top species differs.
 
-Modes:
-
-- ``copy``: every matching folder gets its own copy of the source.
-- ``move``: the file moves to the **primary** label folder (top
-  confidence) and gets copied into the others. The DB's
-  ``File.file_path`` is rewritten to the new primary location so the
-  verify UI keeps working. Source folder loses the media.
+Copies only, never a move. Legacy AddaxAI offered a move, and there
+used to be an unreachable ``move`` mode here. It is gone on purpose,
+not parked: the worker wipes ``addaxai-media`` before every re-save,
+using the scan-skip marker as its proof of ownership, so a move would
+hand the user's only copy to that wipe. The output folder also
+defaults to the source folder itself, and the source tree is what the
+recognition JSON's relative paths, the detection checkpoint and the
+video-frame cache all hang off. The app promises in the FAQ and on the
+Save step that originals are never moved. A user who wants the source
+gone deletes it themselves, once, after checking the copies.
 
 Grouping:
 
@@ -66,16 +69,33 @@ Collision handling: ``output_root/<label>/IMG_001.jpg`` already
 exists → append ``_2``, ``_3``, … per destination folder until the
 name is unique. Original files are never overwritten.
 
-Videos: a video is represented by its best-frame JPEG
-(``File.best_frame_path``), never the original container. The JPEG is
-copied to ``<dir>/<video_stem>_still.jpg`` so a 200 MB clip becomes a
-~150 KB still (the ``_still`` suffix marks it as a video frame). This
-keeps the output lightweight, lets ``annotated_copies`` draw
-boxes / blur onto that frame, and means a privacy blur is never
-undermined by a full unblurred video sitting next to it. The original
-videos are never touched; the CSV / recognition JSON link back to them
-by path. Videos are always copied (never moved): the best frame is a
-shared cache artefact.
+Videos: a video is copied as the file it is, the whole container under
+its own name, like an image. That is what legacy AddaxAI did and what
+three users asked for in the first week of v7 (2026-09): they sort
+their media into species folders to keep the animal clips apart from
+the junk they delete, and a still is no use for that. Until then a
+video was written as its best-frame JPEG only, for the disk saving and
+so boxes and blur had a picture to land on. Boxes still do: with
+``draw_bboxes`` on, ``annotated_copies`` writes the annotated best
+frame as ``<video_stem>_still.jpg`` beside the copied video (the
+``_still`` suffix keeps it clear of a same-named photo, and the name is
+allocated here with every other name so it cannot collide either). The
+still shows the best frame, and the folder is decided by that same
+frame, so the picture beside the video shows why it is there, except
+for a clip filed by a verified box on another frame, which gets no
+still because its best frame has nothing to draw.
+
+Blur is the one exception, through ``videos_as_stills``: a blurred
+still next to the unblurred video it came from is no anonymisation, so
+with blur on a video is written as its blurred still only. The worker
+passes ``videos_as_stills=anonymise``; nothing else sets it. In that
+mode a video with no best frame on disk is skipped, since there is no
+picture to blur; in normal mode such a video is still copied, and it
+reads ``blank`` unless a verified box speaks for it (no visible
+surface, see "What a file is about" in DEVELOPERS.md).
+
+No EXIF tags are written into video containers (``is_image_path``),
+same as legacy.
 
 Each successful placement is recorded on the shared ``OutputContext``
 so downstream modules (``annotated_copies``, the CSV / XLSX writers)
@@ -114,7 +134,6 @@ from ._output_context import OutputContext
 logger = get_logger(__name__)
 
 
-SeparateMode = Literal["copy", "move"]
 # ``taxonomic`` nests Class > Order > Family > Genus > species; labels
 # with no taxonomy mapping fall to ``Other/<label>/``. ``flat`` collapses
 # to one folder per species label at the root.
@@ -149,7 +168,6 @@ class SeparateFoldersResult:
     """
 
     copied_count: int = 0
-    moved_count: int = 0
     skipped_missing_source: int = 0
     skipped_excluded: int = 0
     renamed_count: int = 0
@@ -158,13 +176,13 @@ class SeparateFoldersResult:
 
     @property
     def written_count(self) -> int:
-        """Total placements across copy and move modes."""
-        return self.copied_count + self.moved_count
+        """Total placements. Kept as its own name because the worker's
+        result payload and the completion dialog read it."""
+        return self.copied_count
 
     def to_dict(self) -> dict:
         return {
             "copied_count": self.copied_count,
-            "moved_count": self.moved_count,
             "written_count": self.written_count,
             "skipped_missing_source": self.skipped_missing_source,
             "skipped_excluded": self.skipped_excluded,
@@ -515,26 +533,6 @@ def _unique_destination(
         counter += 1
 
 
-def _place_primary(
-    source: Path, destination: Path, mode: SeparateMode
-) -> None:
-    """Execute the copy / move for the primary placement.
-
-    Raises ``OSError`` on failure; the caller records and moves on.
-    """
-    if mode == "copy":
-        # copy2 preserves mtime. Important for downstream tools that
-        # read modification time as a proxy for capture time.
-        shutil.copy2(source, destination)
-    elif mode == "move":
-        # shutil.move falls back to copy+delete across filesystems.
-        # The DB rewrite happens after a successful move so partial
-        # failures leave the DB consistent with what's on disk.
-        shutil.move(str(source), str(destination))
-    else:
-        raise ValueError(f"unsupported separate_folders mode: {mode!r}")
-
-
 def video_still_name(video_path: str | Path) -> str:
     """Output filename for a video: its best frame as ``<stem>_still.jpg``.
 
@@ -547,23 +545,21 @@ def video_still_name(video_path: str | Path) -> str:
 
 
 def _media_source(
-    file: File, mode: SeparateMode
-) -> tuple[Path | None, str, SeparateMode]:
-    """Resolve the on-disk source, output filename, and effective mode.
+    file: File, videos_as_stills: bool
+) -> tuple[Path | None, str]:
+    """Resolve the on-disk source and the output filename for one file.
 
-    Images use their own file under their original name and honour the
-    requested copy / move mode. Videos are represented by their
-    best-frame JPEG, named ``<video_stem>.jpg``, and are always copied
-    (the best frame is a shared cache artefact that must not be moved).
-    Returns ``(None, "", mode)`` for a video with no best frame on file.
+    Images and, normally, videos are their own file under their own
+    name. With ``videos_as_stills`` a video is its best-frame JPEG,
+    named ``<video_stem>_still.jpg``; ``(None, "")`` when that frame is
+    not on file, since there is then no picture to write.
     """
-    if file.file_type == "video":
+    if file.file_type == "video" and videos_as_stills:
         if not file.best_frame_path:
-            return None, "", mode
-        out_name = video_still_name(file.file_path)
-        return Path(file.best_frame_path), out_name, "copy"
+            return None, ""
+        return Path(file.best_frame_path), video_still_name(file.file_path)
     p = Path(file.file_path)
-    return p, p.name, mode
+    return p, p.name
 
 
 def build_deployment_folders(db: Session, project_id: str) -> dict[str, str]:
@@ -599,7 +595,6 @@ def separate_into_folders(
     ctx: OutputContext,
     *,
     media_threshold: float,
-    mode: SeparateMode = "copy",
     group_by: SeparateGroupBy = "taxonomic",
     include_empty: bool = True,
     excluded_label_ids: frozenset[str] | None = None,
@@ -607,6 +602,7 @@ def separate_into_folders(
     group_events: bool = True,
     species_last: bool = False,
     place_files: bool = True,
+    videos_as_stills: bool = False,
     progress_cb: Callable[[int, int], None] | None = None,
 ) -> SeparateFoldersResult:
     """Reorganise every file in the project into subdirectories under
@@ -620,8 +616,9 @@ def separate_into_folders(
     land in their fixed observation-type folder. ``group_events`` keeps
     every file of a burst in one folder, the event's main species.
 
-    ``mode`` is ``copy`` / ``move`` for images; videos are always copied
-    as their best-frame JPEG.
+    Every placement is a copy. ``videos_as_stills`` writes each video as
+    its best-frame JPEG instead of the container (the blur case, see
+    the module docstring).
 
     ``species_last`` flips the layering: instead of
     ``<species>/<source subfolder>/`` the file lands at
@@ -652,8 +649,11 @@ def separate_into_folders(
     destination this function planned, so copying the bytes here first
     would just be overwritten. In deferred mode the placement is still
     computed, the folder is created, the name is reserved, and ``ctx`` is
-    recorded, but ``_place_primary`` and the EXIF write are skipped. The
-    counts are unchanged, so the completion summary reads the same.
+    recorded, but the copy and the EXIF write are skipped. The counts are
+    unchanged, so the completion summary reads the same. A video
+    container is the exception and is always copied here: that module
+    only writes JPEGs, so it can put a still beside the video but never
+    the video itself.
     """
     project = db.get(Project, project_id)
     if project is None:
@@ -702,9 +702,7 @@ def separate_into_folders(
             # worker throttles these before they reach the WebSocket.
             if progress_cb is not None:
                 progress_cb(i, total)
-            # Videos copy their best-frame JPEG, not the container; images
-            # copy themselves. file_mode forces copy for videos.
-            source, out_name, file_mode = _media_source(file, mode)
+            source, out_name = _media_source(file, videos_as_stills)
             if source is None:
                 result.skipped_missing_source += 1
                 result.errors.append(
@@ -768,35 +766,50 @@ def separate_into_folders(
             dest, renamed = _unique_destination(dest_dir, out_name, reserved)
             reserved.add(dest)
 
-            # Move always writes here (annotated_copies reads the moved
-            # path). Copy writes here only when not deferred; when deferred,
-            # annotated_copies writes the real bytes at ``dest``.
-            if place_files or file_mode == "move":
+            # A container gets its annotated still beside it later, and
+            # that name has to be unique too: two clips with one stem and
+            # different extensions, or a photo the camera named like a
+            # still, would otherwise overwrite it. The name is allocated
+            # here, where every name this run hands out is known, and
+            # recorded for annotated_copies to read.
+            is_container = not is_image_path(dest)
+            still: Path | None = None
+            if is_container:
+                still, _ = _unique_destination(
+                    dest_dir, video_still_name(dest.name), reserved
+                )
+                reserved.add(still)
+
+            # Deferred mode hands the write to annotated_copies, which
+            # only writes JPEGs: an image it re-encodes or plain-copies to
+            # ``dest``, a video container it cannot write at all. So the
+            # container is copied here whatever ``place_files`` says.
+            if place_files or is_container:
                 try:
-                    _place_primary(source, dest, file_mode)
+                    # copy2 preserves mtime. Important for downstream tools
+                    # that read modification time as a proxy for capture
+                    # time.
+                    shutil.copy2(source, dest)
                 except OSError as e:
-                    result.errors.append(f"Failed to {file_mode} {source}: {e}")
+                    result.errors.append(f"Failed to copy {source}: {e}")
                     logger.exception(
-                        f"separate_folders: {file_mode} failed for {source}"
+                        f"separate_folders: copy failed for {source}"
                     )
                     continue
 
-            if file_mode == "move":
-                file.file_path = str(dest)
-                db.commit()
-                result.moved_count += 1
-            else:
-                result.copied_count += 1
+            result.copied_count += 1
             result.by_label[folder] += 1
             if renamed:
                 result.renamed_count += 1
             ctx.record(file.id, dest)
+            if still is not None:
+                ctx.record_still(file.id, still)
 
             # Silent EXIF when the placement is an image format that
-            # carries EXIF (videos write best-frame JPEGs, so they do
-            # too). Skipped in deferred mode: ``annotated_copies`` writes
-            # the file and stamps the same tag set. When it also draws /
-            # blurs it overwrites this anyway.
+            # carries EXIF (a video still is one; a video container is
+            # not, and gets no tags). Skipped in deferred mode:
+            # ``annotated_copies`` writes the file and stamps the same tag
+            # set. When it also draws / blurs it overwrites this anyway.
             if place_files and is_image_path(dest):
                 tag_set = build_tag_set(
                     db,
@@ -819,9 +832,9 @@ def separate_into_folders(
         progress_cb(total, total)
 
     logger.info(
-        f"separate_folders: project={project_id} mode={mode} "
+        f"separate_folders: project={project_id} "
         f"group_by={group_by} group_events={group_events} "
-        f"species_last={species_last} "
+        f"species_last={species_last} videos_as_stills={videos_as_stills} "
         f"written={result.written_count} renamed={result.renamed_count} "
         f"missing={result.skipped_missing_source} "
         f"excluded={result.skipped_excluded}"

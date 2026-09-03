@@ -16,10 +16,12 @@ Effect composition (applies in this order):
 
 Destination resolution (via ``OutputContext``):
 
-- Separation ran: write to every path the file was placed at. A
-  multi-species file lands in N label folders, so the annotated image
-  ends up in N folders too. Videos write the annotated best frame to
-  ``<sibling>.jpg`` next to each video destination.
+- Separation ran: write to the path the file was placed at. For an
+  image that is the copy itself, overwritten with the annotated
+  version. For a video, separation copied the container and the
+  annotated best frame goes beside it as ``<video_stem>_still.jpg``.
+  Under ``videos_as_stills`` (the blur case) separation placed the
+  still itself, and this module overwrites that.
 - Separation did not run: write to a fresh destination under
   ``output_root`` (``<original_name>`` for images, ``<stem>.jpg`` for
   videos). Collision-suffixed to avoid clobbering an existing file.
@@ -34,14 +36,12 @@ on the (now-overwritten) separated copy.
 
 Source-vs-destination semantics:
 
-- Images: source is ``File.file_path`` (post-separation for ``move``
-  mode, original for ``copy`` / no-separation). Effects are computed
-  on the source pixels and saved to the destination.
+- Images: source is ``File.file_path``, the original. Effects are
+  computed on the source pixels and saved to the destination.
 - Videos: source is the per-video best-frame JPEG
-  (``File.best_frame_path``). That path is unaffected by separation
-  (the best frame lives inside ``.addaxai/projects/...``). The
-  annotated JPEG is saved alongside the video destination, NOT
-  written into the video container itself.
+  (``File.best_frame_path``), which lives inside ``.addaxai/projects/...``
+  and is unaffected by separation. The annotated JPEG is saved beside
+  the copied video, never written into the container itself.
 """
 
 from __future__ import annotations
@@ -74,6 +74,7 @@ from ._visualisation_style import (
     detection_color,
     render_metrics,
 )
+from .separate_folders import video_still_name
 
 logger = get_logger(__name__)
 
@@ -150,8 +151,6 @@ def _fallback_destination_name(file: File) -> str:
     """Filename for the no-separation case. Image keeps its name;
     video's annotated best frame uses ``<stem>_still.jpg``."""
     if file.file_type == "video":
-        from .separate_folders import video_still_name
-
         return video_still_name(file.file_path)
     return Path(file.file_path).name
 
@@ -173,14 +172,6 @@ def _unique_destination(target_dir: Path, name: str) -> tuple[Path, bool]:
         counter += 1
 
 
-def _video_jpeg_sibling(video_path: Path) -> Path:
-    """For a separated video at ``<dir>/video.mp4`` we want the
-    annotated best frame at ``<dir>/video.jpg``. The video destination
-    already has a unique name (separation collision-suffixed it), so
-    swapping the suffix produces a unique JPEG sibling too."""
-    return video_path.with_suffix(".jpg")
-
-
 def _resolve_destinations(
     file: File,
     ctx: OutputContext,
@@ -188,16 +179,18 @@ def _resolve_destinations(
 ) -> list[Path]:
     """Where to write annotated copies for one file.
 
-    Returns the post-separation placements (one per label folder),
-    or a single freshly allocated path under ``output_root`` when
-    separation did not place the file. Videos always end up at a
-    ``.jpg`` sibling of the video destination.
+    Returns the post-separation placement, or a freshly allocated path
+    under ``output_root`` when separation did not place the file. For a
+    placed video container, separation also allocated the still's name
+    beside it (unique like every other name it hands out) and recorded
+    it on the context; that is where the annotated frame goes. No still
+    recorded means separation placed the still itself (blur mode), which
+    is then overwritten in place.
     """
     resolved = ctx.resolved_for(file.id)
     if resolved:
-        if file.file_type == "video":
-            return [_video_jpeg_sibling(p) for p in resolved]
-        return resolved
+        still = ctx.still_for(file.id)
+        return [still] if still is not None else resolved
 
     name = _fallback_destination_name(file)
     dest, renamed = _unique_destination(ctx.output_root, name)
@@ -576,7 +569,18 @@ def write_annotated_copies(
                 if copy_unchanged:
                     dests = ctx.resolved_for(file.id)
                     source = _source_for(file)
-                    if dests and source is not None and source.exists():
+                    # A video placed as its container was copied by
+                    # separation itself; the still beside it exists to
+                    # carry boxes or a blur, so with nothing to draw there
+                    # is nothing to write. A placed still (blur mode) is a
+                    # deferred write like an image's, and is copied.
+                    placed_container = ctx.still_for(file.id) is not None
+                    if (
+                        dests
+                        and not placed_container
+                        and source is not None
+                        and source.exists()
+                    ):
                         tag_set = build_tag_set(
                             db,
                             file,
@@ -608,6 +612,13 @@ def write_annotated_copies(
             source = _source_for(file)
             if source is None or not source.exists():
                 result.skipped_missing_source += 1
+                # Same wording as separation, so the completion dialog can
+                # list each file once whichever module noticed first.
+                result.errors.append(
+                    f"Video has no best frame on disk: {file.file_path}"
+                    if source is None
+                    else f"Source file no longer on disk: {source}"
+                )
                 continue
 
             try:

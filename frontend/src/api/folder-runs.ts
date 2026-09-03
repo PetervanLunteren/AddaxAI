@@ -112,7 +112,6 @@ export type SeparateGroupBy = "taxonomic" | "flat" | "none";
 /** Per-module summary from the save-outputs endpoint. */
 export interface SeparateFoldersResult {
   copied_count: number;
-  moved_count: number;
   written_count: number;
   skipped_missing_source: number;
   skipped_excluded: number;
@@ -205,6 +204,9 @@ export interface OutputPreview {
 }
 
 export interface OutputPreviewRequest {
+  /** Blur on: a video is written as its blurred still instead of the
+   * clip, so the byte estimate and the filename sample follow. */
+  anonymise?: boolean;
   /** Media-output confidence, mirroring the save request so the
    * previewed counts match what the save will write. */
   media_threshold?: number;

@@ -107,6 +107,9 @@ export function FolderRunSaveStep() {
   const groupEvents = form.separate.groupEvents;
   const groupBy = form.separate.groupBy;
   const speciesLast = form.separate.speciesLast;
+  // Blur writes a video as its blurred still instead of the clip, so the
+  // byte estimate and the filename sample change with it.
+  const anonymise = form.separate.enabled && form.anonymise.enabled;
   const excluded = excludedLabelIds(
     form.separate,
     form.labelTree?.all_leaf_ids ?? [],
@@ -129,10 +132,12 @@ export function FolderRunSaveStep() {
       speciesLast,
       excluded,
       mediaThreshold,
+      anonymise,
     ],
     queryFn: () =>
       folderRunsApi.getOutputPreview(runId!, {
         media_threshold: mediaThreshold,
+        anonymise,
         include_empty: includeEmpty,
         name_mode: nameMode,
         group_events: groupEvents,
@@ -186,7 +191,7 @@ export function FolderRunSaveStep() {
             data exports. */}
         <GroupCard
           title="Save copies of your media"
-          caption="Your media sorted into folders. Videos are written as best-frame images."
+          caption="Your images and videos sorted into folders. Copies only, your originals stay where they are."
           enabled={form.separate.enabled}
           onEnabledChange={(v) =>
             form.setSeparate({ ...form.separate, enabled: v })

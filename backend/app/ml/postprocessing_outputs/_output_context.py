@@ -39,10 +39,24 @@ class OutputContext:
     # placed the file. Multiple entries only for multi-species files
     # that landed in more than one label folder.
     resolved_paths: dict[str, list[Path]] = field(default_factory=dict)
+    # file_id -> the name allocated for a video's annotated still beside
+    # its placed container. Allocated by ``separate_folders`` together
+    # with every other name it hands out, so it cannot collide with a
+    # photo or a second clip; read by ``annotated_copies``. Absent for
+    # images and for a video placed as its still (blur mode).
+    still_paths: dict[str, Path] = field(default_factory=dict)
 
     def record(self, file_id: str, path: Path) -> None:
         """Append one destination path for ``file_id``."""
         self.resolved_paths.setdefault(file_id, []).append(path)
+
+    def record_still(self, file_id: str, path: Path) -> None:
+        """Remember where ``file_id``'s annotated still may be written."""
+        self.still_paths[file_id] = path
+
+    def still_for(self, file_id: str) -> Path | None:
+        """The still beside a placed container, or ``None``."""
+        return self.still_paths.get(file_id)
 
     def resolved_for(self, file_id: str) -> list[Path] | None:
         """Destinations separation placed the file at, or ``None`` when

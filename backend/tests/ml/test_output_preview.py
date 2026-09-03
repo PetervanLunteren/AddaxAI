@@ -453,3 +453,71 @@ def test_a_rejected_box_never_names_a_folder(db):
     preview = build_output_preview(db, project.id, media_threshold=0.5)
 
     assert preview.by_media_tree == {"blank": 1, "dog": 1}
+
+
+def test_video_counts_its_own_size_unless_written_as_a_still(db, tmp_path):
+    """A video is copied whole, so the footer estimate counts the
+    container. In blur mode it is written as its best-frame JPEG, and the
+    estimate follows: that file's size, and its ``_still.jpg`` name in the
+    root-file sample."""
+    project = make_project(db, name="prev-video-bytes")
+    dep = make_deployment(db, project_id=project.id)
+    frame = tmp_path / "frame.jpg"
+    frame.write_bytes(b"x" * 100)
+    make_file(
+        db,
+        deployment_id=dep.id,
+        file_path="/cam/clip.mp4",
+        file_type="video",
+        file_format="mp4",
+        observation_type="blank",
+        size_bytes=5000,
+        best_frame_number=0,
+        best_frame_path=str(frame),
+    )
+
+    whole = build_output_preview(
+        db, project.id, media_threshold=0.5, group_by="none"
+    )
+    assert whole.in_scope_bytes == 5000
+    assert whole.root_files == ["clip.mp4"]
+
+    stills = build_output_preview(
+        db, project.id, media_threshold=0.5, group_by="none",
+        videos_as_stills=True,
+    )
+    assert stills.in_scope_bytes == 100
+    assert stills.root_files == ["clip_still.jpg"]
+
+
+def test_blur_preview_does_not_promise_a_clip_with_no_best_frame(db):
+    """Under blur a video is written as its still. A clip with no best
+    frame has no still to write, so separation skips it: the preview must
+    leave it out of the written count, and count its output size as a
+    known zero rather than an unknown that flags the estimate as partial.
+    Copied whole (no blur), the same clip is in scope like any other."""
+    project = make_project(db, name="prev-no-frame")
+    dep = make_deployment(db, project_id=project.id)
+    make_file(
+        db,
+        deployment_id=dep.id,
+        file_path="/cam/clip.mp4",
+        file_type="video",
+        file_format="mp4",
+        observation_type="blank",
+        size_bytes=5000,
+        best_frame_number=None,
+        best_frame_path=None,
+    )
+
+    whole = build_output_preview(db, project.id, media_threshold=0.5)
+    assert whole.in_scope_files == 1
+    assert whole.in_scope_bytes == 5000
+
+    stills = build_output_preview(
+        db, project.id, media_threshold=0.5, videos_as_stills=True
+    )
+    assert stills.in_scope_files == 0
+    assert stills.in_scope_video_count == 0
+    assert stills.files_with_known_size == 1
+    assert stills.total_bytes == 0

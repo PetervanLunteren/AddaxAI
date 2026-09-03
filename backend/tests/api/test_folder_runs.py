@@ -305,6 +305,39 @@ def test_output_preview_honours_excluded_label_ids(client, db):
     assert data["by_media_tree"] == {}
 
 
+def test_output_preview_anonymise_reaches_the_estimate(client, db, tmp_path):
+    """``anonymise`` must be declared on the request schema. Pydantic drops
+    a field it does not know without a word (the `run_readme` story), and
+    the footer would then quote the container size for a save that writes
+    blurred stills."""
+    from tests.conftest import make_deployment, make_file, make_project
+
+    project = make_project(db, name="preview-blur", mode="folder_run")
+    dep = make_deployment(db, project_id=project.id)
+    frame = tmp_path / "frame.jpg"
+    frame.write_bytes(b"x" * 100)
+    make_file(
+        db,
+        deployment_id=dep.id,
+        file_path="/cam/clip.mp4",
+        file_type="video",
+        file_format="mp4",
+        observation_type="blank",
+        size_bytes=5000,
+        best_frame_number=0,
+        best_frame_path=str(frame),
+    )
+    url = f"/api/folder-runs/{project.id}/output-preview"
+
+    whole = client.post(url, json={"include_empty": True})
+    assert whole.status_code == 200
+    assert whole.json()["in_scope_bytes"] == 5000
+
+    blurred = client.post(url, json={"include_empty": True, "anonymise": True})
+    assert blurred.status_code == 200
+    assert blurred.json()["in_scope_bytes"] == 100
+
+
 def test_output_preview_404_for_research_project(client, db):
     research = make_project(db, name="research-preview", mode="research")
 

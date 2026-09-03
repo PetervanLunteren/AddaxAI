@@ -290,13 +290,13 @@ export function MediaBody({
         checked={visualise.enabled}
         onChange={(v) => setVisualise({ enabled: v })}
         label="Draw detection boxes"
-        caption="Boxes and labels on each file"
+        caption="Boxes and labels drawn on each image. A video gets a still image with the boxes next to it, the video itself is not changed"
       />
       <CaptionedCheckbox
         checked={anonymise.enabled}
         onChange={(v) => setAnonymise({ enabled: v })}
         label="Blur people and vehicles"
-        caption="People and vehicles blurred on each file"
+        caption="People and vehicles blurred on each image. A video cannot be blurred, so it is saved as a blurred still image only"
       />
     </div>
   );
@@ -584,24 +584,11 @@ export function CompletionDialog({
  * flat list. Returns an empty array when nothing went wrong, which
  * is the case the completion screen optimises for: no banner. */
 function collectIssues(result: SaveOutputsResult): string[] {
-  const out: string[] = [];
-
-  // Friendly "couldn't find these files" summary per module that
-  // reports missing sources separately. Surfacing this matters because
-  // it usually means the user's source folder moved or was edited
-  // between analysis and save.
-  const missing =
-    (result.separate_folders?.skipped_missing_source ?? 0) +
-    (result.annotated_copies?.skipped_missing_source ?? 0);
-  if (missing > 0) {
-    out.push(
-      `${missing.toLocaleString()} source file${
-        missing === 1 ? "" : "s"
-      } could not be found on disk.`,
-    );
-  }
-
-  // Per-module errors[] — actual exceptions during write.
+  // Per-module errors[], one line per file. A missing source is listed
+  // by path here by both media modules, so there is no separate count
+  // line: it repeated what the path lines already say. Deduplicated,
+  // because separation and annotation both notice the same missing
+  // file in the same words.
   const all = [
     ...(result.separate_folders?.errors ?? []),
     ...(result.annotated_copies?.errors ?? []),
@@ -610,9 +597,7 @@ function collectIssues(result: SaveOutputsResult): string[] {
     ...(result.xlsx?.errors ?? []),
     ...(result.run_readme?.errors ?? []),
   ];
-  out.push(...all);
-
-  return out;
+  return Array.from(new Set(all));
 }
 
 function IssuesPanel({ issues }: { issues: string[] }) {

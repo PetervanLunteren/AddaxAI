@@ -147,17 +147,17 @@ async def process_save_outputs_job(job_id: str) -> None:
             payload.get("separate_folders") or draw_bboxes or anonymise
         )
         if media_active:
-            # Rebuild the media tree from scratch. A save always places
-            # copies (mode="copy" below), so the tree holds nothing the
-            # user can lose, and without this every retry of a failed
-            # save re-copies each file under a `_2` / `_3` name (the
+            # Rebuild the media tree from scratch. A save only ever
+            # places copies, so the tree holds nothing the user can
+            # lose, and without this every retry of a failed save
+            # re-copies each file under a `_2` / `_3` name (the
             # destinations from the earlier attempt already exist), and
             # a re-save with different grouping interleaves the old
             # layout with the new one. The marker check is the
             # ownership proof: a folder we did not stamp is left alone.
-            # If a "move" file mode ever becomes reachable, this wipe
-            # must not run for it — the moved originals would live in
-            # this tree.
+            # This wipe is one of the reasons there is no move mode: the
+            # moved originals would live in this tree, and the next save
+            # would delete them (see the separate_folders docstring).
             owned = (media_root / OUTPUT_DIR_MARKER).is_file()
             if owned:
                 if not safe_rmtree(media_root):
@@ -302,7 +302,6 @@ async def process_save_outputs_job(job_id: str) -> None:
                         project.id,
                         ctx,
                         media_threshold=media_threshold,
-                        mode="copy",
                         group_by=payload.get(
                             "separate_group_by", "flat"
                         ),
@@ -320,8 +319,13 @@ async def process_save_outputs_job(job_id: str) -> None:
                         # When annotated_copies also runs it re-encodes /
                         # copies the bytes straight to these destinations,
                         # so writing them here first would just be
-                        # overwritten. Defer the physical write to it.
+                        # overwritten. Defer the physical write to it
+                        # (video containers are copied here regardless).
                         place_files=not (draw_bboxes or anonymise),
+                        # Blur is the one case a video is written as a
+                        # still only: a blurred frame beside the unblurred
+                        # clip would be no anonymisation at all.
+                        videos_as_stills=anonymise,
                         progress_cb=cb,
                     ).to_dict()
                 if m == "annotated_copies":

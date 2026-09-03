@@ -238,47 +238,6 @@ def test_separate_unknown_project_raises(db, tmp_path):
         , media_threshold=0.5)
 
 
-def test_move_relocates_file_and_rewrites_db(db, tmp_path):
-    """Move mode is the destructive variant: source is gone, the DB's
-    File.file_path now points at the destination so the verify UI
-    keeps working."""
-    project = make_project(db, name="sep-move")
-    dep = make_deployment(db, project_id=project.id)
-    src_path = _make_source(tmp_path, "IMG_M01.jpg", b"original-bytes")
-    file = make_file(
-        db,
-        deployment_id=dep.id,
-        file_path=src_path,
-        observation_type="blank",
-    )
-    file_id = file.id
-
-    target = tmp_path / "out"
-    ctx = _ctx(target)
-    result = separate_into_folders(db, project.id, ctx, mode="move", media_threshold=0.5)
-
-    # File moved on disk: source gone, destination present.
-    assert not Path(src_path).exists()
-    moved_to = target / "blank" / "IMG_M01.jpg"
-    assert moved_to.is_file()
-    assert moved_to.read_bytes() == b"original-bytes"
-
-    # Result counters reflect a move.
-    assert result.moved_count == 1
-    assert result.copied_count == 0
-    assert result.written_count == 1
-
-    # Context records the moved location.
-    assert ctx.resolved_for(file_id) == [moved_to]
-
-    # DB has been rewritten so the verify UI keeps working post-move.
-    db.expire_all()
-    from app.models import File as FileModel
-
-    refreshed = db.get(FileModel, file_id)
-    assert refreshed.file_path == str(moved_to)
-
-
 # ---------------------------------------------------------------------
 # Single-destination placement
 # ---------------------------------------------------------------------

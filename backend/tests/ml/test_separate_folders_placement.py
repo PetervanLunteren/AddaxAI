@@ -3,7 +3,8 @@
 - Single-destination placement: every file lands in its main-species folder.
 - ``group_events``: keeps a burst together under the event's main species.
 - The uniform label filter dropping excluded person / vehicle files.
-- Videos written as their best-frame JPEG.
+- Videos copied as the file they are, and as their best-frame JPEG only
+  under ``videos_as_stills`` (the blur case).
 
 The ``output_preview`` mirror is checked for the same scenarios so the live
 preview never disagrees with the real run.
@@ -282,27 +283,36 @@ def test_preview_counts_one_placement(db):
     assert preview.by_media_tree == {"other/dog": 1}
 
 
-def test_video_copied_as_best_frame_jpeg(db, tmp_path):
-    """A video is written as its best-frame JPEG (``<stem>_still.jpg``),
-    not the original container — never the full .MP4."""
-    project = make_project(db, name="vid", counting_threshold=0.5)
-    dep = make_deployment(db, project_id=project.id)
-    frame = tmp_path / "cache" / "frame.jpg"
-    frame.parent.mkdir(parents=True)
-    frame.write_bytes(b"best-frame-bytes")
-    f = make_file(
+def _video_on_disk(db, tmp_path, dep_id, name, *, best_frame=True):
+    """A video whose container exists on disk (``source/<name>``), with a
+    best-frame JPEG in the cache when ``best_frame`` is set."""
+    src = _make_source(tmp_path, name, b"container-bytes")
+    frame_path = None
+    if best_frame:
+        frame = tmp_path / "cache" / f"{Path(name).stem}.jpg"
+        frame.parent.mkdir(parents=True, exist_ok=True)
+        frame.write_bytes(b"best-frame-bytes")
+        frame_path = str(frame)
+    return make_file(
         db,
-        deployment_id=dep.id,
-        file_path="/no/such/CLIP01.MP4",  # need not exist on disk
+        deployment_id=dep_id,
+        file_path=src,
         file_type="video",
         file_format="mp4",
-        best_frame_number=0,
-        best_frame_path=str(frame),
+        best_frame_number=0 if best_frame else None,
+        best_frame_path=frame_path,
         observation_type="animal",
     )
-    # On the best frame: json_pipeline derives best_frame_path *from*
-    # best_frame_number, so a video can never have one without the other,
-    # and only that frame's detections describe the JPEG being written.
+
+
+def test_video_is_copied_as_the_file_it_is(db, tmp_path):
+    """A video is copied whole, under its own name, like an image. Until
+    2026-09 it was written as its best-frame JPEG only; three users asked
+    for the clips themselves, to sort them into species folders the way
+    legacy AddaxAI did. The original is untouched."""
+    project = make_project(db, name="vid", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    f = _video_on_disk(db, tmp_path, dep.id, "CLIP01.MP4")
     make_detection(
         db, file_id=f.id, confidence=0.9, label="deer", frame_number=0
     )
@@ -311,33 +321,91 @@ def test_video_copied_as_best_frame_jpeg(db, tmp_path):
     result = separate_into_folders(db, project.id, _ctx(target), media_threshold=0.5)
 
     assert result.copied_count == 1
-    jpeg = target / "other" / "deer" / "CLIP01_still.jpg"
-    assert jpeg.is_file()
-    assert jpeg.read_bytes() == b"best-frame-bytes"
+    clip = target / "other" / "deer" / "CLIP01.MP4"
+    assert clip.read_bytes() == b"container-bytes"
+    assert not (target / "other" / "deer" / "CLIP01_still.jpg").exists()
+    assert Path(f.file_path).read_bytes() == b"container-bytes"
+
+
+def test_video_is_copied_even_when_writes_are_deferred(db, tmp_path):
+    """``place_files=False`` hands the writes to annotated_copies, which
+    only writes JPEGs. The container is copied here anyway, or nothing
+    downstream could ever put the video on disk."""
+    project = make_project(db, name="vid-deferred", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    f = _video_on_disk(db, tmp_path, dep.id, "CLIP01.MP4")
+    make_detection(
+        db, file_id=f.id, confidence=0.9, label="deer", frame_number=0
+    )
+
+    target = tmp_path / "out"
+    ctx = _ctx(target)
+    result = separate_into_folders(
+        db, project.id, ctx, media_threshold=0.5, place_files=False
+    )
+
+    clip = target / "other" / "deer" / "CLIP01.MP4"
+    assert result.copied_count == 1
+    assert clip.read_bytes() == b"container-bytes"
+    assert ctx.resolved_for(f.id) == [clip]
+    # The still's name is allocated here too, so annotation cannot
+    # collide with a photo or a second clip when it writes it.
+    assert ctx.still_for(f.id) == clip.with_name("CLIP01_still.jpg")
+
+
+def test_blur_writes_a_video_as_its_still_only(db, tmp_path):
+    """``videos_as_stills`` (the blur case): the best frame is written as
+    ``<stem>_still.jpg`` and the container is not copied, or the blurred
+    still would sit beside the unblurred clip it came from."""
+    project = make_project(db, name="vid-stills", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    f = _video_on_disk(db, tmp_path, dep.id, "CLIP01.MP4")
+    make_detection(
+        db, file_id=f.id, confidence=0.9, label="deer", frame_number=0
+    )
+
+    target = tmp_path / "out"
+    result = separate_into_folders(
+        db, project.id, _ctx(target), media_threshold=0.5, videos_as_stills=True
+    )
+
+    assert result.copied_count == 1
+    still = target / "other" / "deer" / "CLIP01_still.jpg"
+    assert still.read_bytes() == b"best-frame-bytes"
     assert not (target / "other" / "deer" / "CLIP01.MP4").exists()
 
 
-def test_video_without_best_frame_is_skipped(db, tmp_path):
-    """A video with no best frame on file is skipped, not copied as the
-    raw container."""
+def test_video_without_best_frame(db, tmp_path):
+    """No best frame means no visible surface, so the clip reads blank:
+    copied under ``blank/`` when empties are on, skipped when they are
+    off. In stills mode there is no picture to write at all, so it is
+    skipped and reported as a missing source."""
     project = make_project(db, name="vid-nobf", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
-    f = make_file(
-        db,
-        deployment_id=dep.id,
-        file_path="/no/such/CLIP02.MP4",
-        file_type="video",
-        file_format="mp4",
-        best_frame_path=None,
-        observation_type="animal",
-    )
+    f = _video_on_disk(db, tmp_path, dep.id, "CLIP02.MP4", best_frame=False)
     make_detection(db, file_id=f.id, confidence=0.9, label="deer")
 
-    target = tmp_path / "out"
-    result = separate_into_folders(db, project.id, _ctx(target), media_threshold=0.5)
+    with_empties = separate_into_folders(
+        db, project.id, _ctx(tmp_path / "out1"),
+        media_threshold=0.5, group_by="flat", include_empty=True,
+    )
+    assert with_empties.copied_count == 1
+    assert (tmp_path / "out1" / "blank" / "CLIP02.MP4").is_file()
 
-    assert result.copied_count == 0
-    assert result.skipped_missing_source == 1
+    without = separate_into_folders(
+        db, project.id, _ctx(tmp_path / "out2"),
+        media_threshold=0.5, group_by="flat", include_empty=False,
+    )
+    assert without.copied_count == 0
+    assert without.skipped_missing_source == 0
+
+    stills = separate_into_folders(
+        db, project.id, _ctx(tmp_path / "out3"),
+        media_threshold=0.5, group_by="flat", include_empty=True,
+        videos_as_stills=True,
+    )
+    assert stills.copied_count == 0
+    assert stills.skipped_missing_source == 1
 
 
 # ---------------------------------------------------------------------
@@ -493,9 +561,10 @@ def test_preview_drops_excluded_person(db):
 
 
 def test_video_is_filed_by_its_best_frame_not_another_frame(db, tmp_path):
-    """The bug this gate fixes. The JPEG written here IS the best frame, so
-    deciding its folder from a box on another frame files a picture under a
-    label that picture does not show. Best frame holds a person; frame 50
+    """The bug this gate fixes. A video is summarised by its best frame
+    everywhere (its card, its row in the Files export, the still beside its
+    copy), so deciding its folder from a box on another frame files it under
+    a label none of those show. Best frame holds a person; frame 50
     holds a more confident animal called red fox. The copy must land in
     `person/`, and the preview must say the same thing."""
     project = make_project(db, name="vid-frame", counting_threshold=0.5)
@@ -507,7 +576,7 @@ def test_video_is_filed_by_its_best_frame_not_another_frame(db, tmp_path):
     f = make_file(
         db,
         deployment_id=dep.id,
-        file_path="/no/such/CLIP02.MP4",
+        file_path=_make_source(tmp_path, "CLIP02.MP4"),
         file_type="video",
         file_format="mp4",
         best_frame_number=3,
@@ -533,7 +602,7 @@ def test_video_is_filed_by_its_best_frame_not_another_frame(db, tmp_path):
     )
 
     assert result.copied_count == 1
-    assert (target / "person" / "CLIP02_still.jpg").is_file()
+    assert (target / "person" / "CLIP02.MP4").is_file()
     assert not (target / "red-fox").exists()
 
     preview = build_output_preview(
@@ -543,7 +612,7 @@ def test_video_is_filed_by_its_best_frame_not_another_frame(db, tmp_path):
 
 
 def test_video_whose_best_frame_is_empty_reads_blank(db, tmp_path):
-    """Nothing passes on the frame being written, so the copy is a blank,
+    """Nothing passes on the frame that summarises the clip, so the copy is a blank,
     not a red fox. With "copy empties" off it is skipped entirely. Either
     way the off-frame box is still in the data exports."""
     project = make_project(db, name="vid-empty", counting_threshold=0.5)
@@ -554,7 +623,7 @@ def test_video_whose_best_frame_is_empty_reads_blank(db, tmp_path):
     f = make_file(
         db,
         deployment_id=dep.id,
-        file_path="/no/such/CLIP03.MP4",
+        file_path=_make_source(tmp_path, "CLIP03.MP4"),
         file_type="video",
         file_format="mp4",
         best_frame_number=3,
@@ -577,7 +646,7 @@ def test_video_whose_best_frame_is_empty_reads_blank(db, tmp_path):
     )
 
     assert result.copied_count == 1
-    assert (target / "blank" / "CLIP03_still.jpg").is_file()
+    assert (target / "blank" / "CLIP03.MP4").is_file()
     assert not (target / "red-fox").exists()
 
     skipped = separate_into_folders(
@@ -594,9 +663,9 @@ def test_video_whose_best_frame_is_empty_reads_blank(db, tmp_path):
 def test_event_grouping_uses_each_videos_best_frame(db, tmp_path):
     """`group_events` keeps a burst in one folder, and that folder is
     decided by build_event_primary_labels. It must count only boxes that
-    exist as pictures: a video is copied to disk as its best frame, so an
-    off-frame box naming the burst's folder files every still in it under
-    a label none of them show. Caught by an end-to-end run, not by the
+    exist as pictures: a video is summarised by its best frame, so an
+    off-frame box naming the burst's folder files every clip in it under
+    a label none of their stills show. Caught by an end-to-end run, not by the
     audit, because grouping is on by default."""
     project = make_project(db, name="ev-frame", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
@@ -611,7 +680,7 @@ def test_event_grouping_uses_each_videos_best_frame(db, tmp_path):
         f = make_file(
             db,
             deployment_id=dep.id,
-            file_path=f"/no/such/EV{i}.MP4",
+            file_path=_make_source(tmp_path, f"EV{i}.MP4"),
             file_type="video",
             file_format="mp4",
             best_frame_number=3,
