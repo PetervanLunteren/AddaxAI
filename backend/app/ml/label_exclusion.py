@@ -33,7 +33,7 @@ logger = get_logger(__name__)
 # hand copies: `NON_LABEL_CLASSES` in `frontend/src/lib/detection-utils.ts`
 # and the SQL list in `app/ml/inference/similarity_script.py`.
 NON_LABEL_CLASSES = frozenset({
-    "bait", "blank", "empty", "false detection", "none", "vide",
+    "bait", "blank", "empty", "false detection", "non-animal", "none", "vide",
 })
 
 def is_a_real_detection() -> ColumnElement[bool]:

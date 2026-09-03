@@ -153,10 +153,10 @@ def test_it_never_becomes_a_counted_observation(client, db):
 
 
 def test_every_non_label_class_behaves_the_same(client, db):
-    """`bait`, `blank`, `empty`, `none` and `vide` say the same thing as
+    """`bait`, `blank`, `empty`, `non-animal`, `none` and `vide` say the same thing as
     `false detection`, and the ingest skip already treats them as one
     set. Read time must not pick favourites."""
-    for word in ("bait", "blank", "empty", "none", "vide"):
+    for word in ("bait", "blank", "empty", "non-animal", "none", "vide"):
         project, f = _scaffold(db)
         det = make_detection(db, file_id=f.id, category="animal", confidence=0.9)
         db.commit()

@@ -31,6 +31,7 @@ export const NON_LABEL_CLASSES = new Set([
   "blank",
   "empty",
   "false detection",
+  "non-animal",
   "none",
   "vide",
 ]);

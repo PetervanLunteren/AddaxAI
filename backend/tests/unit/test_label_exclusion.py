@@ -22,7 +22,9 @@ from tests.conftest import (
 
 def test_non_label_classes_complete():
     """All expected non-label classes are present."""
-    expected = {"bait", "blank", "empty", "false detection", "none", "vide"}
+    expected = {
+        "bait", "blank", "empty", "false detection", "non-animal", "none", "vide",
+    }
     assert NON_LABEL_CLASSES == expected
 
 

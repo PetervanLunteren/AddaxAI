@@ -223,7 +223,7 @@ def _build_query(
         clauses.append(
             "(d.confidence >= ? OR (d.verified = 1 AND (d.label IS NULL"
             " OR lower(d.label) NOT IN"
-            " ('bait','blank','empty','false detection','none','vide'))))"
+            " ('bait','blank','empty','false detection','non-animal','none','vide'))))"
         )
         params.append(filters["project_floor"])
 
