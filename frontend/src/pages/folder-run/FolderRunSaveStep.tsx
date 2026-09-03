@@ -170,7 +170,11 @@ export function FolderRunSaveStep() {
         title="Save outputs"
         caption="Pick what to write to disk and where to save it."
       />
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+      {/* pb-24 keeps the last card clear of the sticky bar below, the same
+          clearance the Labels step gives it. Without it the bar overlaps
+          the media card whenever the bar's natural position falls under
+          the viewport edge. */}
+      <div className="grid gap-6 pb-24 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
       <div className="space-y-6">
         <OutputFolderField form={form} />
 
