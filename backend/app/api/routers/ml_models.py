@@ -200,7 +200,7 @@ async def get_model_status(model_id: str) -> ModelStatusResponse:
 
 
 @router.post("/models/{model_id}/prepare", response_model=ModelPrepareResponse)
-async def prepare_model(model_id: str) -> ModelPrepareResponse:
+async def prepare_model(model_id: str, request: Request) -> ModelPrepareResponse:
     """
     Prepare model by downloading weights and building environment.
 
@@ -223,7 +223,9 @@ async def prepare_model(model_id: str) -> ModelPrepareResponse:
         # Register worker to start when frontend sends "ready" over WebSocket
         ws_manager.register_start(
             task_id,
-            lambda mid=model_id, m=manifest, tid=task_id: _prepare_model_task(mid, m, tid),
+            lambda mid=model_id, m=manifest, tid=task_id, st=request.app.state: (
+                _prepare_model_task(mid, m, tid, st)
+            ),
         )
 
         return ModelPrepareResponse(
@@ -246,7 +248,7 @@ async def prepare_model(model_id: str) -> ModelPrepareResponse:
 
 
 @router.post("/models/{model_id}/prepare-weights", response_model=ModelPrepareResponse)
-async def prepare_model_weights(model_id: str) -> ModelPrepareResponse:
+async def prepare_model_weights(model_id: str, request: Request) -> ModelPrepareResponse:
     """
     Download model weights only (without building environment).
 
@@ -265,7 +267,9 @@ async def prepare_model_weights(model_id: str) -> ModelPrepareResponse:
         # Register worker to start when frontend sends "ready" over WebSocket
         ws_manager.register_start(
             task_id,
-            lambda mid=model_id, m=manifest, tid=task_id: _prepare_weights_task(mid, m, tid),
+            lambda mid=model_id, m=manifest, tid=task_id, st=request.app.state: (
+                _prepare_weights_task(mid, m, tid, st)
+            ),
         )
 
         return ModelPrepareResponse(
@@ -357,11 +361,7 @@ async def update_model(model_id: str, request: Request) -> ModelUpdateResponse:
         # GET /api/ml/updates serves a snapshot taken at startup that lives
         # until the next launch, so drop the row we just fixed or a window
         # reload offers an update that already happened.
-        state = getattr(request.app.state, "model_updates", None)
-        if isinstance(state, dict) and state.get("drifted_models"):
-            state["drifted_models"] = [
-                m for m in state["drifted_models"] if m.get("model_id") != model_id
-            ]
+        _forget_model_update(request.app.state, "drifted_models", model_id)
 
     # Nothing invalidates the ManifestManager cache on purpose: manifest.json
     # is owned by the catalog, is not part of any HF repo, and is in
@@ -417,7 +417,23 @@ async def prepare_model_environment(model_id: str) -> ModelPrepareResponse:
         ) from None
 
 
-async def _prepare_model_task(model_id: str, manifest, task_id: str) -> None:
+def _forget_model_update(app_state, key: str, model_id: str) -> None:
+    """Drop ``model_id`` from one list of the ``/api/ml/updates`` snapshot.
+
+    That snapshot is taken at startup and lives until the next launch, so
+    a model that was just installed (``new_models``) or refreshed
+    (``drifted_models``) has to be taken out by hand, or a window reload
+    announces it again. ``app_state`` may be None (tests, a task started
+    without a request); then there is nothing to forget.
+    """
+    state = getattr(app_state, "model_updates", None) if app_state is not None else None
+    if isinstance(state, dict) and state.get(key):
+        state[key] = [m for m in state[key] if m.get("model_id") != model_id]
+
+
+async def _prepare_model_task(
+    model_id: str, manifest, task_id: str, app_state=None
+) -> None:
     """
     Background task to prepare model (weights + environment).
 
@@ -559,6 +575,7 @@ async def _prepare_model_task(model_id: str, manifest, task_id: str) -> None:
         )
 
         logger.info(f"Model {model_id} prepared successfully")
+        _forget_model_update(app_state, "new_models", model_id)
 
     except JobCancelledError:
         logger.info(f"Model preparation for {model_id} cancelled")
@@ -580,7 +597,9 @@ async def _prepare_model_task(model_id: str, manifest, task_id: str) -> None:
         clear_cancel(task_id)
 
 
-async def _prepare_weights_task(model_id: str, manifest, task_id: str) -> None:
+async def _prepare_weights_task(
+    model_id: str, manifest, task_id: str, app_state=None
+) -> None:
     """
     Background task to download model weights only.
 
@@ -626,6 +645,7 @@ async def _prepare_weights_task(model_id: str, manifest, task_id: str) -> None:
         )
 
         logger.info(f"Weights for {model_id} downloaded successfully")
+        _forget_model_update(app_state, "new_models", model_id)
 
     except JobCancelledError:
         logger.info(f"Weights download for {model_id} cancelled")
@@ -924,7 +944,11 @@ def get_model_taxonomy(model_id: str):
         500: If taxonomy.csv parsing fails
     """
     from app.core.config import get_settings
-    from app.ml.taxonomy_parser import get_all_leaf_classes, parse_taxonomy_csv
+    from app.ml.taxonomy_parser import (
+        drop_non_label_leaves,
+        get_all_leaf_classes,
+        parse_taxonomy_csv,
+    )
 
     settings = get_settings()
     manifest_mgr, _, _ = _get_managers()
@@ -954,7 +978,7 @@ def get_model_taxonomy(model_id: str):
         )
 
     try:
-        tree = parse_taxonomy_csv(taxonomy_path)
+        tree = drop_non_label_leaves(parse_taxonomy_csv(taxonomy_path))
         all_classes = get_all_leaf_classes(tree)
 
         return {"tree": tree, "all_classes": all_classes}

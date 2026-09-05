@@ -138,6 +138,20 @@ export function satisfiesMinVersion(
 }
 
 /**
+ * Is this a released build, as opposed to a dev tree ("0.0.0-dev") or a
+ * bundle whose VERSION file could not be read ("0.0.0+unknown")? Both
+ * placeholders have major 0, which no release ever had. The catalog's
+ * `min_app_version` gate only applies to releases: applying it to a dev
+ * build would disable every model in the picker, since every entry
+ * requires at least 7.0.1.
+ */
+export function isReleaseBuild(version: string | null): boolean {
+  if (!version) return false;
+  const parsed = parseVersion(version);
+  return parsed !== null && parsed.major > 0;
+}
+
+/**
  * Render a version for display. Real versions get a "v" prefix; the
  * "(dev)" and "(unknown)" placeholders carry their own brackets and
  * render as-is, so the UI never shows "v(dev)".

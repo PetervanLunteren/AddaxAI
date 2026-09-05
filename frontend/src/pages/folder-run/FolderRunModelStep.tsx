@@ -457,6 +457,19 @@ export function FolderRunModelStep() {
     enabled: hasClassifier,
   });
 
+  // Switching models drops the exclusions the new model does not know.
+  // Without this the default SpeciesNet geofence (1,800+ names) followed
+  // the run into every other model and its promoted project. Mirrors
+  // CreateProjectDialog and SettingsPage.
+  useEffect(() => {
+    if (!hasClassifier || !taxonomy?.all_classes) return;
+    const current = form.getValues("excluded_classes") ?? [];
+    const valid = current.filter((c) => taxonomy.all_classes.includes(c));
+    if (valid.length !== current.length) {
+      form.setValue("excluded_classes", valid, { shouldDirty: true });
+    }
+  }, [classificationModelId, taxonomy, hasClassifier, form]);
+
   // Same query (and cache entry) as LabelSelectionField uses internally.
   // Needed here to know whether the selected classifier is geofenced,
   // which makes the country choice a required field on submit.

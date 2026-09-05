@@ -9,8 +9,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import { modelsApi } from "@/api/models";
-import { api } from "@/lib/api-client";
 import { formatVersion, satisfiesMinVersion } from "@/lib/version";
+import { useAppVersion } from "@/hooks/useAppVersion";
 import {
   Sheet,
   SheetContent,
@@ -56,15 +56,7 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
     enabled: open && !!modelId && modelId !== "none",
   });
 
-  // Running app version, served by /health. Backed by the repo-root
-  // VERSION file (see backend/app/__init__.py). Cached for the session
-  // since the value can't change without a backend restart.
-  const { data: health } = useQuery({
-    queryKey: ["health"],
-    queryFn: () => api.get<{ version: string }>("/health"),
-    staleTime: Infinity,
-  });
-  const currentVersion = health?.version ?? null;
+  const currentVersion = useAppVersion();
 
   // Find the selected model
   const model = [...(classificationModels || []), ...(detectionModels || []), ...(embeddingModels || [])].find(

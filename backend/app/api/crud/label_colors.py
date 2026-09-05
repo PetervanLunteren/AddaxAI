@@ -38,6 +38,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.api.crud.event import present_label_rows
+from app.ml.label_exclusion import is_non_label
 from app.ml.taxonomy_db import BUILTIN_MODEL_ID
 from app.models import Project
 from app.models.label_taxonomy import LabelTaxonomy
@@ -61,6 +62,15 @@ CATEGORY_COLORS: dict[str, str] = {
 }
 # Unknown categories, mirroring the "bad" red fallback of category_color.
 DEFAULT_CATEGORY_COLOR = "#882000"
+
+# A box a person rejected (X, or a relabel to a non-label class such as
+# "false detection" or a model's "non-animal") still passes the scope
+# rule when it sat above the threshold, so it is "present". It is not a
+# species: giving it a palette slot shifted every real species by one
+# colour the moment someone pressed X. It keeps the same neutral grey
+# the frontend uses for a label the map does not know
+# (UNKNOWN_SPECIES_COLOR in frontend/src/utils/species-colors.ts).
+REJECTED_LABEL_COLOR = "#6b7280"
 
 SPECIES_PALETTE: tuple[str, ...] = (
     "#882000",
@@ -149,6 +159,9 @@ def assign_label_colors(db: Session, project_id: str) -> dict[str, str]:
             color = CATEGORY_COLORS.get(row.name.lower(), DEFAULT_CATEGORY_COLOR)
             colors[row.id] = color
             colors[row.name.lower()] = color
+        elif is_non_label(row.name):
+            colors[row.id] = REJECTED_LABEL_COLOR
+            colors[row.name.lower()] = REJECTED_LABEL_COLOR
         else:
             species.append(row)
 

@@ -259,3 +259,35 @@ def test_variant_column_absent_changes_nothing(tmp_path):
     panthera = _find(felidae["children"], "Panthera")
     leaf = _find(panthera["children"], "P. pardus")
     assert not leaf["children"]
+
+
+def test_drop_non_label_leaves_removes_blank_classes_and_empty_groups(tmp_path):
+    """A model's "blank" or "non-animal" class never reaches the database, so
+    the species selection and the relabel picker must not offer it. The
+    leaf goes, and so does a group that held nothing else; real species and
+    their groups are untouched."""
+    from app.ml.taxonomy_parser import drop_non_label_leaves
+
+    csv_path = _write_csv(tmp_path, [
+        "leopard,mammalia,carnivora,felidae,panthera,pardus",
+        "non-animal,,,,,",
+        "blank,,,,,",
+    ])
+    tree = drop_non_label_leaves(parse_taxonomy_csv(csv_path))
+
+    assert get_all_leaf_classes(tree) == ["leopard"]
+    # The taxonomy-less group that only held the two non-label classes is gone.
+    assert [node["id"] for node in tree] == ["class:mammalia"] or all(
+        "other" not in node["id"].lower() for node in tree
+    )
+
+
+def test_drop_non_label_leaves_leaves_a_clean_tree_alone(tmp_path):
+    from app.ml.taxonomy_parser import drop_non_label_leaves
+
+    csv_path = _write_csv(tmp_path, [
+        "leopard,mammalia,carnivora,felidae,panthera,pardus",
+        "bird,aves,,,,",
+    ])
+    tree = parse_taxonomy_csv(csv_path)
+    assert drop_non_label_leaves(tree) == tree

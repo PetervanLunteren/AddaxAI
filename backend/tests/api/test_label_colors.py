@@ -10,6 +10,7 @@ crops needs to notice the odd one out.
 from app.api.crud.event import get_filter_options
 from app.api.crud.label_colors import (
     CATEGORY_COLORS,
+    REJECTED_LABEL_COLOR,
     SPECIES_PALETTE,
     assign_label_colors,
     fallback_color,
@@ -225,3 +226,28 @@ def test_builtin_category_rows_keep_the_category_colour_and_take_no_slot(db):
 
     assert colors[person.id] == colors["person"] == CATEGORY_COLORS["person"]
     assert colors[blackbird.id] == SPECIES_PALETTE[0]
+
+
+def test_rejected_labels_keep_a_neutral_colour_and_take_no_slot(db):
+    """A box a person rejected above the threshold is still "present" (the
+    grid keeps showing the verdict), but it is not a species. It used to
+    take the first palette slot and shift every real species by one colour
+    the moment someone pressed X or relabelled to a model's "non-animal"."""
+    rejected = LabelTaxonomy(
+        classification_model_id=MODEL_ID, name="non-animal", level="unknown"
+    )
+    db.add(rejected)
+    db.flush()
+    rat, brown_rat, mouse, fox, blackbird = _rodents_and_others(db)
+    project = _project_with(
+        db, (rejected, 0.9, True), (blackbird, 0.9, False), (fox, 0.9, False)
+    )
+
+    colors = assign_label_colors(db, project.id)
+
+    assert colors[rejected.id] == colors["non-animal"] == REJECTED_LABEL_COLOR
+    assert REJECTED_LABEL_COLOR not in SPECIES_PALETTE
+    # The two real species still start at the top of the palette, in
+    # taxonomic order: aves before mammalia.
+    assert colors[blackbird.id] == SPECIES_PALETTE[0]
+    assert colors[fox.id] == SPECIES_PALETTE[1]

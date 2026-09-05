@@ -1617,6 +1617,14 @@ def build_camtrap_dp_tables(
                 },
             )
 
+        # A box a person rejected (X, or a relabel to a non-label class such
+        # as a model's "non-animal") is not an observation. Camtrap DP has
+        # no place for it: the row would read observationType "animal" with
+        # "false detection" as its scientificName. Dropping it here also
+        # lets a file whose only box was rejected take the blank row below,
+        # which is what its observation_type already says.
+        detections = [(d, t) for d, t in detections if not is_non_label(d.label)]
+
         # The boxes about to be written are the honest test for "is this
         # file blank". This used to also short-circuit on the stored
         # `observation_type == "blank"`, which was near-equivalent while

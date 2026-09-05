@@ -358,3 +358,47 @@ def test_updates_does_not_mutate_the_startup_snapshot(client):
         client.get("/api/ml/updates")
 
     assert state["drifted_envs"] == [{"env_name": "addaxai-base"}]
+
+
+# --- the /api/ml/updates snapshot -------------------------------------------
+
+
+def test_forget_model_update_drops_only_that_model():
+    """The startup snapshot lives until the next launch, so both the update
+    route (drifted_models) and a finished prepare (new_models) take their
+    model out of it, or a window reload announces it again."""
+    from types import SimpleNamespace
+
+    from app.api.routers.ml_models import _forget_model_update
+
+    state = SimpleNamespace(
+        model_updates={
+            "new_models": [{"model_id": "A"}, {"model_id": "B"}],
+            "drifted_models": [{"model_id": "A"}],
+        }
+    )
+    _forget_model_update(state, "new_models", "A")
+    assert state.model_updates["new_models"] == [{"model_id": "B"}]
+    assert state.model_updates["drifted_models"] == [{"model_id": "A"}]
+
+    # Nothing to forget: no snapshot yet, or no state at all.
+    _forget_model_update(SimpleNamespace(), "new_models", "A")
+    _forget_model_update(None, "new_models", "A")
+
+
+def test_prepare_model_hands_the_app_state_to_the_task(client, mock_managers):
+    mock_manifest, _, _ = mock_managers
+    manifest = MagicMock()
+    manifest.model_id = "test-model"
+    mock_manifest.get_model.return_value = manifest
+    with patch("app.api.routers.ml_models.ws_manager") as ws, patch(
+        "app.api.routers.ml_models._prepare_model_task"
+    ) as task:
+        task.return_value = MagicMock()
+        resp = client.post("/api/ml/models/test-model/prepare")
+        assert resp.status_code == 200
+        start = ws.register_start.call_args.args[1]
+        start()
+    # (model_id, manifest, task_id, app_state): the snapshot lives on app.state.
+    assert task.call_args.args[0] == "test-model"
+    assert hasattr(task.call_args.args[3], "model_updates") or task.call_args.args[3] is not None

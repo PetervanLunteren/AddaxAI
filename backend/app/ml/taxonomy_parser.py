@@ -318,6 +318,29 @@ def parse_taxonomy_csv(csv_path: Path) -> list[TaxonomyNode]:
     return to_taxonomy_nodes(sorted_tree, 1)
 
 
+def drop_non_label_leaves(tree: list[TaxonomyNode]) -> list[TaxonomyNode]:
+    """
+    Remove the leaves that are non-label classes, and any group left empty.
+
+    A model's "blank", "empty" or "non-animal" class never reaches the
+    database (the ingest skips it, see app.ml.label_exclusion), so it has
+    no business in the species selection or the relabel picker: excluding
+    it does nothing, and relabelling to it is what the X key already does.
+    """
+    from app.ml.label_exclusion import is_non_label
+
+    kept: list[TaxonomyNode] = []
+    for node in tree:
+        if not node["children"]:
+            if not is_non_label(node["id"]):
+                kept.append(node)
+            continue
+        children = drop_non_label_leaves(node["children"])
+        if children:
+            kept.append({**node, "children": children})
+    return kept
+
+
 def get_all_leaf_classes(tree: list[TaxonomyNode]) -> list[str]:
     """
     Extract all leaf node (model_class) IDs from tree.

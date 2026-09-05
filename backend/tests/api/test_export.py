@@ -2377,3 +2377,66 @@ def test_files_export_carries_the_favourite_and_flag_marks(client, db):
     by_id = {r[headers.index("mediaID")]: r for r in media}
     assert by_id[marked.id][headers.index("favorite")] == "true"
     assert by_id[plain.id][headers.index("favorite")] == ""
+
+
+def test_export_camtrap_dp_drops_rejected_boxes(client, db):
+    """A rejected box (X, or a relabel to a model's non-label class such as
+    "non-animal") sits above the threshold and is verified, so it is in
+    scope. Camtrap DP has no place for it: it used to become a media-level
+    row with observationType "animal" and scientificName "Non-animal". The
+    file whose only box was rejected takes the blank row instead, and a
+    file with a real box beside the rejected one keeps just the real one."""
+    project, _site, deployment = _build_simple_project(db)
+    only_rejected = make_file(
+        db,
+        deployment_id=deployment.id,
+        captured_at_local=datetime(2024, 6, 15, 9, 0, 0),
+        observation_type="blank",
+    )
+    make_detection(
+        db,
+        file_id=only_rejected.id,
+        category="animal",
+        confidence=0.9,
+        label="non-animal",
+        verified=True,
+        classification_method="human",
+    )
+    mixed = make_file(
+        db,
+        deployment_id=deployment.id,
+        captured_at_local=datetime(2024, 6, 15, 10, 0, 0),
+    )
+    make_detection(
+        db,
+        file_id=mixed.id,
+        category="animal",
+        confidence=0.9,
+        label="false detection",
+        verified=True,
+        classification_method="human",
+    )
+    make_detection(
+        db, file_id=mixed.id, category="animal", confidence=0.9, label="deer"
+    )
+    db.commit()
+
+    resp = _run_camtrap_dp_export(client, db, project.id)
+    assert resp.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        rows = list(csv.reader(io.StringIO(zf.read("observations.csv").decode())))
+    header, body = rows[0], rows[1:]
+    media_id, level, obs_type, sci = (
+        header.index("mediaID"),
+        header.index("observationLevel"),
+        header.index("observationType"),
+        header.index("scientificName"),
+    )
+    names = {r[sci].lower() for r in body}
+    assert "non-animal" not in names and "false detection" not in names
+
+    for_only = [r for r in body if r[media_id] == only_rejected.id]
+    assert [r[obs_type] for r in for_only] == ["blank"]
+
+    for_mixed = [r for r in body if r[media_id] == mixed.id and r[level] == "media"]
+    assert len(for_mixed) == 1 and for_mixed[0][obs_type] == "animal"

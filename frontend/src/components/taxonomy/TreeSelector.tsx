@@ -297,8 +297,13 @@ export function TreeSelector({
   const counterText = useMemo(() => {
     const totalCategories = allLeafIds.size;
     if (mode === "exclusion") {
-      const includedCount = totalCategories - selectedIds.size;
-      const suffix = selectedIds.size > 0 ? ` (${selectedIds.size} excluded)` : "";
+      // Count only exclusions this tree knows. A model switch can leave the
+      // previous model's names in the list until the form prunes them, and
+      // subtracting those read "-1839 of 18". Same rule as
+      // LabelSelectionField's "X of Y included" caption.
+      const excludedHere = [...selectedIds].filter((id) => allLeafIds.has(id)).length;
+      const includedCount = totalCategories - excludedHere;
+      const suffix = excludedHere > 0 ? ` (${excludedHere} excluded)` : "";
       return `Currently included ${includedCount} of ${totalCategories}${suffix}`;
     }
     const selectedCount = selectedIds.size;
