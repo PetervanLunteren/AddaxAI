@@ -77,7 +77,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 # `video_iter` and `scoring` live next to this script. Python adds the
 # script's directory to sys.path automatically, so a flat import works
 # in the subprocess (which has no app.* on its path).
-from scoring import choose_frame_number  # noqa: E402
+from scoring import choose_frame_number, representative_frames  # noqa: E402
 from video_iter import (  # noqa: E402
     iter_wanted_frames,
     open_video,
@@ -368,6 +368,10 @@ def _process_video_group(
     for orig_idx, item in video_items:
         items_by_frame[int(item["frame_number"])].append((orig_idx, item))
 
+    # One still per track at its representative frame, written in the
+    # same walk as the crops. Empty for a run without tracking.
+    rep_frames = representative_frames(scoring_dets)
+
     # Nothing to classify on this clip, so the thumbnail is the only
     # reason to touch it: go straight to that one frame instead of
     # walking to it. Worth having because this is the common case, not a
@@ -379,7 +383,7 @@ def _process_video_group(
     # `results` and `per_crop_progress` are only ever driven by
     # `video_items`, which is empty here, so there is no bookkeeping to
     # do. Any failure falls through to the walk below unchanged.
-    if not items_by_frame:
+    if not items_by_frame and not rep_frames:
         cap = open_video(video_path)
         if cap is not None:
             try:
@@ -438,7 +442,7 @@ def _process_video_group(
         # container can advertise more frames than it yields, so the
         # chosen frame may never arrive; frame 0 always does if the
         # video opened at all.
-        wanted = set(items_by_frame.keys()) | {best_frame_number, 0}
+        wanted = set(items_by_frame.keys()) | {best_frame_number, 0} | rep_frames
 
         chosen_pixels: Image.Image | None = None
         first_pixels: Image.Image | None = None
@@ -461,6 +465,17 @@ def _process_video_group(
                 chosen_pixels = pil_image
             if frame_num == 0:
                 first_pixels = pil_image
+            if frame_num in rep_frames and best_frame_dest_dir is not None:
+                try:
+                    write_best_frame(
+                        pil_image, best_frame_dest_dir / f"frame{frame_num:06d}.jpg"
+                    )
+                except Exception as e:
+                    print(
+                        f"[Worker] Failed to write track frame {frame_num} for "
+                        f"{video_path}: {e}",
+                        file=sys.stderr, flush=True,
+                    )
 
         # In batch mode, flush leftover crops before we finish (so
         # failures in classify_batch propagate before we report success).

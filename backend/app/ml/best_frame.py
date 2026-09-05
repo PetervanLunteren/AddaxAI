@@ -41,7 +41,7 @@ from PIL import Image
 from app.core.job_cancellation import JobCancelledError, is_cancel_requested
 from app.core.logging_config import get_logger
 from app.core.media_types import VIDEO_EXTENSIONS
-from app.ml.inference.scoring import choose_frame_number
+from app.ml.inference.scoring import choose_frame_number, representative_frames
 from app.ml.inference.video_iter import (
     iter_wanted_frames,
     open_video,
@@ -197,11 +197,62 @@ def select_best_frames_streaming(
                     f"for {absolute}: {e}"
                 )
 
+            # One still per track at its representative frame, beside the
+            # best frame and under the same name scheme, so a track whose
+            # representative is the best frame shares the file.
+            wanted = representative_frames(
+                img_entry.get("detections") or []
+            ) - {best_frame_number}
+            try:
+                _write_track_frames(absolute, wanted, dest.parent)
+            except Exception as e:
+                logger.warning(
+                    f"select_best_frames_streaming: failed to write track "
+                    f"frames for {absolute}: {e}"
+                )
+
         if progress_callback:
             progress_callback(done, total)
 
     with open(json_path, "w") as f:
         json.dump(data, f, indent=2)
+
+
+def _write_track_frames(video_path: Path, frames: set[int], dest_dir: Path) -> None:
+    """Write `frame{N:06d}.jpg` for each wanted frame of one video.
+
+    Seeks to each frame first (a track's frames are few and far apart,
+    and one seek is worth about 55 walked frames), then walks once for
+    any frame a seek could not verify. A frame that never arrives is
+    simply not written; the ingest then leaves the track's `frame_path`
+    NULL.
+    """
+    if not frames:
+        return
+    cap = open_video(video_path)
+    if cap is None:
+        return
+    missing: set[int] = set()
+    try:
+        total_frames = int(cap.get(_import_cv2().CAP_PROP_FRAME_COUNT))
+        for frame_number in sorted(frames):
+            pixels = read_frame_by_seek(cap, frame_number, total_frames)
+            if pixels is None:
+                missing.add(frame_number)
+                continue
+            write_best_frame(pixels, dest_dir / f"frame{frame_number:06d}.jpg")
+    finally:
+        cap.release()
+    if not missing:
+        return
+    cap = open_video(video_path)
+    if cap is None:
+        return
+    try:
+        for frame_number, pil_image in iter_wanted_frames(cap, missing, video_path):
+            write_best_frame(pil_image, dest_dir / f"frame{frame_number:06d}.jpg")
+    finally:
+        cap.release()
 
 
 def _import_cv2():

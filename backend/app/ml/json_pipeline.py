@@ -27,6 +27,7 @@ from app.core.logging_config import get_logger
 from app.core.media_types import VIDEO_EXTENSIONS
 from app.ml.detection_visibility import visible_detections
 from app.ml.inference.base import PipelineResult
+from app.ml.inference.scoring import summarise_tracks
 from app.ml.json_utils import (
     build_classification_category_descriptions,
     extract_animal_detections,
@@ -34,7 +35,7 @@ from app.ml.json_utils import (
 from app.ml.observation_type import derive_observation_type
 from app.ml.progress import ProgressTicker
 from app.ml.results_json import iter_images, read_top_level_object
-from app.models import Deployment, File, Project
+from app.models import Deployment, Detection, File, Project, Track
 from app.utils.media_dates import (
     date_from_exif_dict,
     extract_image_date,
@@ -467,6 +468,9 @@ def load_json_to_database(
             # The file's created Detection records, for the threshold-aware
             # observation_type derivation after the loop.
             file_detection_records: list = []
+            # (JSON box, its row) for every box the tracker followed; the
+            # track rows are made from these once the file's boxes exist.
+            tracked_records: list[tuple[dict, Detection]] = []
 
             # Create Detection records. `detections or []` keeps the loop
             # safe even if `loadable_images` filtering above is bypassed
@@ -541,6 +545,8 @@ def load_json_to_database(
 
                 detection_record = detection_crud.create_detection(db, detection_data)
                 file_detection_records.append(detection_record)
+                if det.get("track_id") is not None:
+                    tracked_records.append((det, detection_record))
 
                 # Update detection with classification data if present
                 if label:
@@ -574,6 +580,14 @@ def load_json_to_database(
                         detection_record.common_name = (
                             category.capitalize()
                         )
+
+            if tracked_records:
+                _link_tracks(
+                    db,
+                    file_record,
+                    tracked_records,
+                    _af / "video_frames" / relative_file,
+                )
 
             # Set observation_type from the file's *trusted, visible*
             # detections (over threshold; verified is always False at
@@ -649,6 +663,47 @@ def load_json_to_database(
     except Exception as e:
         logger.error(f"Failed to load JSON to database: {e}", exc_info=True)
         raise RuntimeError(f"Database load failed: {e}") from e
+
+
+def _link_tracks(
+    db: Session,
+    file_record: File,
+    tracked: list[tuple[dict, Detection]],
+    frames_dir: Path,
+) -> None:
+    """Create or refresh the file's track rows and point its boxes at them.
+
+    One row per `track_id` in the JSON, keyed by `(file, track_key)` so a
+    re-ingest onto an existing file finds its rows again instead of
+    tripping the unique constraint. The numbers come from
+    `summarise_tracks`, the same reading of the JSON the frame passes
+    decoded the representative frame from. `frame_path` is set only when
+    that JPEG is on disk: a frame that would not decode leaves NULL and
+    the card renders without a picture, rather than pointing at a file
+    that is not there.
+    """
+    summaries = summarise_tracks([det for det, _ in tracked])
+    existing = {
+        t.track_key: t
+        for t in db.query(Track).filter(Track.file_id == file_record.id).all()
+    }
+    rows: dict[int, Track] = {}
+    for key, summary in summaries.items():
+        track = existing.get(key)
+        if track is None:
+            track = Track(file_id=file_record.id, track_key=key)
+            db.add(track)
+        track.start_frame = summary.start_frame
+        track.end_frame = summary.end_frame
+        track.frame_count = summary.frame_count
+        track.max_confidence = summary.max_confidence
+        track.representative_frame_number = summary.representative_frame_number
+        frame_path = frames_dir / f"frame{summary.representative_frame_number:06d}.jpg"
+        track.frame_path = str(frame_path) if frame_path.is_file() else None
+        rows[key] = track
+    db.flush()  # ids for the boxes below
+    for det, record in tracked:
+        record.track_id = rows[int(det["track_id"])].id
 
 
 def load_json_to_database_owned_session(
@@ -782,6 +837,10 @@ async def run_classification_on_json(
                 "frame_number": int(det["frame_number"]),
                 "conf": float(det.get("conf", 0.0)),
                 "bbox": det["bbox"],
+                # Carried so the worker can decode each track's
+                # representative frame in the same walk; None for a run
+                # without tracking.
+                "track_id": det.get("track_id"),
             }
             for det in (img_info.get("detections") or [])
             if det.get("frame_number") is not None

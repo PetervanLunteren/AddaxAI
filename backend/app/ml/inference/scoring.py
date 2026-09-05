@@ -192,3 +192,68 @@ def choose_frame_number(
     if best_key is not None:
         return int(best_key)
     return max(0, total_frames // 2)
+
+
+class TrackSummary:
+    """What the ingest stores per track and what the frame passes decode.
+
+    A plain class rather than a dataclass so the module stays importable
+    by the py3.8 classifier subprocess without extra imports.
+    """
+
+    def __init__(self, start_frame: int, end_frame: int, frame_count: int,
+                 max_confidence: float, representative_frame_number: int) -> None:
+        self.start_frame = start_frame
+        self.end_frame = end_frame
+        self.frame_count = frame_count
+        self.max_confidence = max_confidence
+        self.representative_frame_number = representative_frame_number
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, TrackSummary) and vars(self) == vars(other)
+
+    def __repr__(self) -> str:
+        return f"TrackSummary({vars(self)})"
+
+
+def summarise_tracks(detections: list[dict]) -> dict[int, TrackSummary]:
+    """
+    One summary per track id found on a video's detections.
+
+    `detections` is the video's detection list from the run's JSON; boxes
+    without a `track_id` (a run without tracking, a drawn box) are
+    ignored. The representative frame is the frame of the track's
+    highest-confidence box, SharkTrack's choice: it is usually the
+    clearest view of the animal. Ties go to the earliest frame, so the
+    choice is stable across re-reads of the same JSON.
+
+    Pure and pixel-free like `choose_frame_number`, so the ingest, the
+    no-classifier frame pass and the classifier subprocess all agree on
+    which frame stands for a track.
+    """
+    by_track: dict[int, list[tuple[int, float]]] = defaultdict(list)
+    for det in detections:
+        track_id = det.get("track_id")
+        frame_number = det.get("frame_number")
+        if track_id is None or frame_number is None:
+            continue
+        by_track[int(track_id)].append((int(frame_number), float(det.get("conf", 0.0))))
+
+    summaries: dict[int, TrackSummary] = {}
+    for track_id, boxes in by_track.items():
+        frames = [f for f, _ in boxes]
+        best_conf = max(c for _, c in boxes)
+        representative = min(f for f, c in boxes if c == best_conf)
+        summaries[track_id] = TrackSummary(
+            start_frame=min(frames),
+            end_frame=max(frames),
+            frame_count=len(set(frames)),
+            max_confidence=best_conf,
+            representative_frame_number=representative,
+        )
+    return summaries
+
+
+def representative_frames(detections: list[dict]) -> set[int]:
+    """The frames the frame passes must decode for a video's tracks."""
+    return {s.representative_frame_number for s in summarise_tracks(detections).values()}

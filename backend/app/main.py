@@ -227,7 +227,7 @@ async def _reclaim_legacy_video_frames() -> None:
     move on. We never block startup on this.
     """
     from app.db.base import get_session_factory
-    from app.models import File
+    from app.models import File, Track
 
     def _run() -> dict[str, int]:
         session_factory = get_session_factory()
@@ -252,6 +252,13 @@ async def _reclaim_legacy_video_frames() -> None:
                 # `.addaxai/projects/<pid>/video_frames/<rel_video>/`.
                 # `bf.parent` is that per-video directory.
                 keep_filenames.setdefault(bf.parent, set()).add(bf.name)
+            # A tracked video also keeps one still per track, under the
+            # same folder and name scheme as its best frame.
+            for (frame_path,) in (
+                db.query(Track.frame_path).filter(Track.frame_path.isnot(None)).all()
+            ):
+                fp = Path(frame_path)
+                keep_filenames.setdefault(fp.parent, set()).add(fp.name)
 
             for video_dir, keep_names in keep_filenames.items():
                 if not video_dir.exists():
