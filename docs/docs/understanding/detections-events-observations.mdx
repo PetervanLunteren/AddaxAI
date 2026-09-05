@@ -23,6 +23,10 @@ You only see the other frames when you play the clip. The boxes and labels there
 
 Nothing is thrown away. The Detections export still has one row per box, on every frame that was checked. The Files export has one row per video, describing the single frame that stands for it.
 
+### Tracked videos
+
+Long videos work differently when [Track animals across frames](../guides/underwater-videos.mdx) is on. AddaxAI then follows each animal through the clip, and every animal it followed is one card on the Labels page, shown at the frame where the AI saw it best. What you do with that card, a species, a verified tick, a rejection, applies to every frame the animal was followed through. The count per species is still the most animals visible together in one frame, now taken over the whole clip, and the Counts page shows you that frame.
+
 ## Event
 
 Files from the same camera, taken close together in time. AddaxAI groups them for you. So if a deer walks past and the camera fires 12 times in one minute, that is one event, not 12.

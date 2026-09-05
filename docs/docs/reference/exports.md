@@ -69,6 +69,9 @@ One row per species per event, with the count. Each row is one [observation](../
 | `scientific_name` | Scientific name for display |
 | `common_name` | Common name for display |
 | `count` | Number of individuals. Your confirmed number if you set one, otherwise the AI's highest number seen in a single photo |
+| `max_n_frame` | For a video, the frame the AI's count was made on. Empty for a photo and for a row you added by hand |
+| `max_n_time` | The camera-local time of that frame or photo. Empty for a row you added by hand |
+| `first_arrival_time` | When the species was first seen in the event, camera-local time. Empty when the files carry no capture time |
 | `sex` | female or male, if you set it. Empty means unknown |
 | `life_stage` | adult, subadult or juvenile, if you set it |
 | `behavior` | What the animals were doing, if you set it, for example foraging |
