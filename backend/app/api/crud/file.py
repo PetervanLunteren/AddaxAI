@@ -9,7 +9,7 @@ from typing import NamedTuple
 from sqlalchemy import Integer, and_, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.crud.detection import mark_detections_false
+from app.api.crud.detection import expand_to_tracks, mark_detections_false
 from app.api.crud.event_observation import (
     get_event_ids_for_files,
     recalculate_max_n_for_events,
@@ -520,7 +520,7 @@ def get_file_with_detections(db: Session, file_id: str) -> File | None:
     """
     return (
         db.query(File)
-        .options(joinedload(File.detections))
+        .options(joinedload(File.detections), joinedload(File.tracks))
         .filter(File.id == file_id)
         .first()
     )
@@ -633,9 +633,12 @@ def set_file_verified(db: Session, file: File, verified: bool) -> None:
     their ``results.json`` boxes again, and an unverify hands them back
     to the machine on the next reprocess.
 
-    Scoped to the visible frame, which for a video is its best frame plus
-    verified boxes on any frame. Boxes on frames nobody saw are neither
-    rejected nor verified. A video with no best frame has no visible
+    Scoped to the visible frame, which for a video is its best frame, the
+    representative frame of each of its tracks, plus verified boxes on
+    any frame. A verdict on a track's representative box is a verdict on
+    the animal, so it reaches every box of that track, as the X key and
+    relabel do. Boxes on frames nobody saw are neither rejected nor
+    verified. A video with no best frame and no tracks has no visible
     surface, so verifying it sets the flag and touches no boxes.
 
     Unverifying clears every box on the file, drawn ones included.
@@ -659,10 +662,19 @@ def set_file_verified(db: Session, file: File, verified: bool) -> None:
             )
             .all()
         )
-        mark_detections_false(db, weak)
+        weak_ids = expand_to_tracks(db, [d.id for d in weak])
+        mark_detections_false(
+            db, db.query(Detection).filter(Detection.id.in_(weak_ids)).all()
+        )
+        db.flush()
+        visible_ids = [
+            det_id
+            for (det_id,) in db.query(Detection.id)
+            .filter(on_frame, Detection.verified == False)  # noqa: E712
+            .all()
+        ]
         db.query(Detection).filter(
-            on_frame,
-            Detection.verified == False,  # noqa: E712
+            Detection.id.in_(expand_to_tracks(db, visible_ids))
         ).update(
             {"verified": True, "verified_at_utc": now},
             synchronize_session=False,

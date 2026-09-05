@@ -114,3 +114,48 @@ def test_get_or_create_crop_returns_none_off_the_best_frame(db, tmp_path):
 
     assert get_or_create_crop(on_best.id, 200, db) is not None
     assert get_or_create_crop(off_best.id, 200, db) is None
+
+
+def test_a_tracks_representative_box_crops_from_the_tracks_still(db, tmp_path):
+    """A tracked video has one still per track beside the best frame. The
+    box on a track's representative frame crops from that still; the
+    track's other boxes have no picture, like any off-frame box."""
+    from tests.conftest import make_track
+
+    best = _jpeg(tmp_path, "frame000024.jpg")
+    still = _jpeg(tmp_path, "frame000300.jpg")
+    dep = make_deployment(db, project_id=make_project(db).id)
+    f = make_file(
+        db,
+        deployment_id=dep.id,
+        file_type="video",
+        file_format="mp4",
+        file_path="/fake/clip.mp4",
+        best_frame_number=24,
+        best_frame_path=str(best),
+    )
+    track = make_track(
+        db, file_id=f.id, start_frame=270, end_frame=330,
+        representative_frame_number=300, frame_path=str(still),
+    )
+    on_still = make_detection(db, file_id=f.id, frame_number=300, track_id=track.id)
+    sibling = make_detection(db, file_id=f.id, frame_number=330, track_id=track.id)
+    db.commit()
+
+    assert _resolve_image_path(f, on_still) == still
+    assert _resolve_image_path(f, sibling) is None
+
+
+def test_a_representative_box_whose_still_never_decoded_has_no_crop(db, tmp_path):
+    from tests.conftest import make_track
+
+    dep = make_deployment(db, project_id=make_project(db).id)
+    f = make_file(
+        db, deployment_id=dep.id, file_type="video", file_format="mp4",
+        file_path="/fake/clip.mp4", best_frame_number=24,
+    )
+    track = make_track(db, file_id=f.id, representative_frame_number=300, frame_path=None)
+    d = make_detection(db, file_id=f.id, frame_number=300, track_id=track.id)
+    db.commit()
+
+    assert _resolve_image_path(f, d) is None

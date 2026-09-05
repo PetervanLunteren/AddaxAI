@@ -96,3 +96,20 @@ def test_a_verified_low_confidence_box_still_reports_verified(client, db):
     det = client.get(f"/api/files/{f.id}").json()["detections"][0]
     assert det["confidence"] == 0.03
     assert det["verified"] is True
+
+
+def test_file_detections_carry_their_track_id(client, db):
+    """The card and the player read `track_id` to know which boxes belong
+    to one animal. Required on the wire like `verified` and `job_id`."""
+    from tests.conftest import make_track
+
+    f = _file_with_detections(db)
+    track = make_track(db, file_id=f.id)
+    make_detection(db, file_id=f.id, frame_number=60, track_id=track.id)
+    make_detection(db, file_id=f.id, frame_number=60)
+    db.commit()
+
+    resp = client.get(f"/api/files/{f.id}")
+    assert resp.status_code == 200
+    by_track = {det["track_id"] for det in resp.json()["detections"]}
+    assert by_track == {track.id, None}

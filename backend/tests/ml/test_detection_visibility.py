@@ -168,3 +168,76 @@ def test_sql_and_python_select_the_same_detections(db):
             )
         }
     assert joined == every_file
+
+
+# ── Tracks ───────────────────────────────────────────────────────────
+
+
+def test_a_tracks_representative_box_is_visible_and_its_siblings_are_not(db):
+    """A tracked video has one still per track, at the track's
+    representative frame, so that one box has a card. The track's other
+    boxes are reached through it (the cascade), not shown."""
+    from tests.conftest import make_track
+
+    project = make_project(db)
+    dep = make_deployment(db, project_id=project.id)
+    f = _video(db, dep.id, best_frame_number=3)
+    track = make_track(db, file_id=f.id, start_frame=30, end_frame=90,
+                       representative_frame_number=60)
+    before = make_detection(db, file_id=f.id, frame_number=30, track_id=track.id)
+    card = make_detection(db, file_id=f.id, frame_number=60, track_id=track.id)
+    after = make_detection(db, file_id=f.id, frame_number=90, track_id=track.id)
+    on_best = make_detection(db, file_id=f.id, frame_number=3)
+    db.commit()
+
+    assert visible_detections(f, [before, card, after, on_best]) == [card, on_best]
+
+    scoped = set(
+        db.execute(
+            select(Detection.id)
+            .where(Detection.file_id == f.id)
+            .where(on_visible_frame_of(f))
+        ).scalars()
+    )
+    assert scoped == {card.id, on_best.id}
+
+
+def test_the_two_lanes_agree_on_a_tracked_video(db):
+    """The parity pin again, for the track branch, including a video with
+    no best frame at all, whose only picture is a track's still."""
+    from tests.conftest import make_track
+
+    project = make_project(db)
+    dep = make_deployment(db, project_id=project.id)
+    tracked = _video(db, dep.id, best_frame_number=3)
+    t = make_track(db, file_id=tracked.id, representative_frame_number=60)
+    make_detection(db, file_id=tracked.id, frame_number=30, track_id=t.id)
+    make_detection(db, file_id=tracked.id, frame_number=60, track_id=t.id)
+    make_detection(db, file_id=tracked.id, frame_number=3)
+    make_detection(db, file_id=tracked.id, frame_number=7)
+    frameless = _video(db, dep.id, best_frame_number=None)
+    t2 = make_track(db, file_id=frameless.id, representative_frame_number=45)
+    make_detection(db, file_id=frameless.id, frame_number=45, track_id=t2.id)
+    make_detection(db, file_id=frameless.id, frame_number=15, track_id=t2.id)
+    db.commit()
+
+    for f in (tracked, frameless):
+        rows = db.execute(select(Detection).where(Detection.file_id == f.id)).scalars().all()
+        scoped = set(
+            db.execute(
+                select(Detection.id)
+                .where(Detection.file_id == f.id)
+                .where(on_visible_frame_of(f))
+            ).scalars()
+        )
+        joined = set(
+            db.execute(
+                select(Detection.id)
+                .join(File, File.id == Detection.file_id)
+                .where(File.id == f.id)
+                .where(on_visible_frame())
+            ).scalars()
+        )
+        in_memory = {d.id for d in visible_detections(f, rows)}
+        assert scoped == in_memory == joined, f.best_frame_number
+    assert len(in_memory) == 1  # the frameless video shows its one card

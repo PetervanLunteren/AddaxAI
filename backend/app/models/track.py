@@ -81,6 +81,11 @@ class Track(Base):
         Index("idx_tracks_file", "file_id"),
     )
 
+    @property
+    def has_frame(self) -> bool:
+        """Whether the representative frame's JPEG was written."""
+        return self.frame_path is not None
+
     def __repr__(self) -> str:
         return (
             f"<Track(id={self.id}, file_id={self.file_id}, key={self.track_key}, "

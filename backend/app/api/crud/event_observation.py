@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
 from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
-from app.models import Deployment, Detection, Event, File, Project
+from app.models import Deployment, Detection, Event, File, Project, Track
 from app.models.event import event_files
 from app.models.event_observation import EventObservation
 
@@ -147,9 +147,16 @@ def calculate_max_n_for_event(
             File.file_type,
             File.best_frame_number,
             func.max(Detection.verified).label("any_verified"),
+            # True when this frame carries the representative box of a
+            # track of this species: that box has a card, so the species
+            # is reviewable and may spawn a row (see the gate below).
+            func.max(Track.representative_frame_number == Detection.frame_number).label(
+                "any_representative"
+            ),
         )
         .join(File, File.id == Detection.file_id)
         .join(event_files, event_files.c.file_id == File.id)
+        .outerjoin(Track, Track.id == Detection.track_id)
         .filter(event_files.c.event_id == event_id)
         .filter(_threshold_clause(counting_threshold))
         .filter(is_a_real_detection())
@@ -197,11 +204,13 @@ def calculate_max_n_for_event(
             seeds[key] = r
 
     # A video species is only suggested if it appears on the video's best
-    # frame (the canonical, user-cleanable view) or was verified on some
-    # frame. Non-best-frame-only labels are per-frame classifier noise the
-    # user can't see or clean in the Labels step, so they must not spawn
-    # spurious species rows. Images are never gated (every image detection
-    # is visible and cleanable).
+    # frame (the canonical, user-cleanable view), on the representative
+    # frame of one of its tracks (one card per track on the Labels page),
+    # or was verified on some frame. Other non-best-frame labels are
+    # per-frame classifier noise the user can't see or clean in the Labels
+    # step, so they must not spawn spurious species rows. Images are never
+    # gated (every image detection is visible and cleanable). Hand copy of
+    # the rule in ml/detection_visibility.py, kept here to keep the grouping.
     allowed_video_keys: dict[str, set[str]] = defaultdict(set)
     for r in counts:
         if r.file_type != "video":
@@ -211,7 +220,7 @@ def calculate_max_n_for_event(
             r.best_frame_number is not None
             and r.frame_number == r.best_frame_number
         )
-        if on_best or r.any_verified:
+        if on_best or r.any_verified or r.any_representative:
             allowed_video_keys[r.file_id].add(key)
 
     # Find MaxN per taxonomy_id (or label string as fallback key). The

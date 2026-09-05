@@ -566,6 +566,24 @@ export interface DetectionResponse {
   frame_number: number | null;
   verified: boolean;
   verified_at_utc: string | null;
+  /** The track this box belongs to when the video was analysed with
+   * tracking on; null for images, untracked videos and drawn boxes. A
+   * verdict on any box of a track reaches them all. */
+  track_id: string | null;
+}
+
+/** One animal a tracker followed through a video. The box on
+ * `representative_frame_number` is the track's card; `has_frame` says
+ * that frame's still exists (`/image?frame=`). */
+export interface TrackResponse {
+  id: string;
+  track_key: number;
+  start_frame: number;
+  end_frame: number;
+  frame_count: number;
+  max_confidence: number;
+  representative_frame_number: number;
+  has_frame: boolean;
 }
 
 export interface FileResponse {
@@ -596,6 +614,9 @@ export interface FileResponse {
 
 export interface FileWithDetections extends FileResponse {
   detections: DetectionResponse[];
+  /** The animals a tracker followed through this video; empty for images
+   * and untracked videos. */
+  tracks: TrackResponse[];
   /** The camera (subfolder) of a paired deployment this file came from.
    * Null for unpaired deployments and root-level files. */
   camera?: string | null;

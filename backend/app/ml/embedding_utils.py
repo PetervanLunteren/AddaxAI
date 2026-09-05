@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 
 import numpy as np
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.logging_config import get_logger
 from app.db.sql_params import iter_id_chunks
@@ -17,6 +17,24 @@ from app.models import Detection, File
 from app.models.detection_embedding import DetectionEmbedding
 
 logger = get_logger(__name__)
+
+
+def _video_still_for(det: Detection, file: File) -> str | None:
+    """The JPEG a video box has pixels in: the best frame, or the track's
+    representative frame when this is the box that stands for its track.
+    None for every other frame, which has no picture to embed or crop."""
+    if det.frame_number is None:
+        return None
+    if file.best_frame_number == det.frame_number and file.best_frame_path:
+        return file.best_frame_path
+    track = det.track
+    if (
+        track is not None
+        and det.frame_number == track.representative_frame_number
+        and track.frame_path
+    ):
+        return track.frame_path
+    return None
 
 
 def build_embedding_input(
@@ -56,6 +74,7 @@ def build_embedding_input(
     detections = (
         db.query(Detection, File)
         .join(File, Detection.file_id == File.id)
+        .options(joinedload(Detection.track))
         .filter(File.deployment_id == deployment_id)
         .filter(threshold_or_verified(min_confidence))
         .all()
@@ -77,15 +96,10 @@ def build_embedding_input(
             continue
 
         if file.file_type == "video":
-            if (
-                det.frame_number is None
-                or file.best_frame_number is None
-                or det.frame_number != file.best_frame_number
-                or not file.best_frame_path
-            ):
+            image_path = _video_still_for(det, file)
+            if image_path is None:
                 skipped_non_best_frame += 1
                 continue
-            image_path = file.best_frame_path
         else:
             image_path = file.file_path
 

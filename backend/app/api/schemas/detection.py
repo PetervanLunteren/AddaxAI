@@ -145,6 +145,9 @@ class DetectionResponse(DetectionBase):
     job_id: str | None
     verified: bool = False
     verified_at_utc: datetime | None = None
+    # The track this box belongs to; null for images, untracked videos
+    # and drawn boxes. A verdict on any box of a track reaches them all.
+    track_id: str | None = None
     created_at_utc: datetime
 
     model_config = {"from_attributes": True}  # Enable ORM mode for SQLAlchemy models

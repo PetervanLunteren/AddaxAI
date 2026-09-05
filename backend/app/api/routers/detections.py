@@ -238,15 +238,20 @@ def verify_detection(
     if not detection:
         raise HTTPException(status_code=404, detail="Detection not found")
 
-    detection.verified = body.verified
-    detection.verified_at_utc = datetime.now(UTC) if body.verified else None
+    # The whole track: a verdict on the card is a verdict on the animal.
+    ids = detection_crud.expand_to_tracks(db, [detection_id])
+    now = datetime.now(UTC) if body.verified else None
+    db.query(Detection).filter(Detection.id.in_(ids)).update(
+        {"verified": body.verified, "verified_at_utc": now},
+        synchronize_session="fetch",
+    )
     file_crud.recompute_file_verified(db, [detection.file_id])
     db.commit()
     # Verifying makes a detection "pass" regardless of confidence, which can
     # flip the file's observation_type (it counts over-threshold OR verified).
     file_crud.recalculate_observation_type(db, detection.file_id)
     db.refresh(detection)
-    _recalculate_max_n(db, [detection_id])
+    _recalculate_max_n(db, ids)
     return detection
 
 
@@ -255,29 +260,30 @@ def bulk_verify_detections(
     body: BulkVerifyRequest,
     db: Session = Depends(get_db),
 ):
-    """Bulk verify/unverify detections (max 500)."""
+    """Bulk verify/unverify detections (max 500), whole tracks included."""
+    ids = detection_crud.expand_to_tracks(db, body.detection_ids)
     now = datetime.now(UTC) if body.verified else None
     updated = (
         db.query(Detection)
-        .filter(Detection.id.in_(body.detection_ids))
+        .filter(Detection.id.in_(ids))
         .update(
             {"verified": body.verified, "verified_at_utc": now},
             synchronize_session="fetch",
         )
     )
-    file_crud.recompute_file_verified_for_detections(db, body.detection_ids)
+    file_crud.recompute_file_verified_for_detections(db, ids)
     db.commit()
     # Verifying can flip observation_type (verified detections always pass),
     # so re-derive it for every touched file.
     file_ids = {
         fid
         for (fid,) in db.query(Detection.file_id)
-        .filter(Detection.id.in_(body.detection_ids))
+        .filter(Detection.id.in_(ids))
         .all()
     }
     for fid in file_ids:
         file_crud.recalculate_observation_type(db, fid)
-    _recalculate_max_n(db, body.detection_ids)
+    _recalculate_max_n(db, ids)
     return {"updated_count": updated}
 
 
@@ -295,7 +301,7 @@ def bulk_dismiss_detections(
     """
     updated = (
         db.query(Detection)
-        .filter(Detection.id.in_(body.detection_ids))
+        .filter(Detection.id.in_(detection_crud.expand_to_tracks(db, body.detection_ids)))
         .update(
             {"suggestion_dismissed": body.dismissed},
             synchronize_session="fetch",
@@ -310,16 +316,18 @@ def bulk_relabel_detections(
     body: BulkRelabelRequest,
     db: Session = Depends(get_db),
 ):
-    """Bulk relabel detections (max 500). Sets classification_method='human'."""
+    """Bulk relabel detections (max 500), whole tracks included. Sets
+    classification_method='human'."""
     # Nothing asked for is nothing done, not a missing row. Answered before
     # the query so the code below can assume a non-empty list (it reads
     # `detections[0]` to resolve the taxonomy). Matches bulk-verify.
     if not body.detection_ids:
         return {"updated_count": 0}
 
+    ids = detection_crud.expand_to_tracks(db, body.detection_ids)
     detections = (
         db.query(Detection)
-        .filter(Detection.id.in_(body.detection_ids))
+        .filter(Detection.id.in_(ids))
         .all()
     )
     if not detections:
@@ -389,7 +397,7 @@ def bulk_relabel_detections(
         det.verified = True
         det.verified_at_utc = datetime.now(UTC)
 
-    file_crud.recompute_file_verified_for_detections(db, body.detection_ids)
+    file_crud.recompute_file_verified_for_detections(db, ids)
     db.commit()
 
     # Recalculate observation types for affected files. Relabel always
@@ -399,7 +407,7 @@ def bulk_relabel_detections(
     for fid in file_ids:
         file_crud.recalculate_observation_type(db, fid)
 
-    _recalculate_max_n(db, body.detection_ids)
+    _recalculate_max_n(db, ids)
     return {"updated_count": len(detections)}
 
 
@@ -430,7 +438,7 @@ def bulk_revert_to_original(
 
     detections = (
         db.query(Detection)
-        .filter(Detection.id.in_(body.detection_ids))
+        .filter(Detection.id.in_(detection_crud.expand_to_tracks(db, body.detection_ids)))
         .all()
     )
     if not detections:

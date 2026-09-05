@@ -132,7 +132,10 @@ LEFT JOIN sites s ON s.id = dep.site_id
 WHERE dep.project_id = ?
   AND (f.file_type != 'video'
        OR d.frame_number = f.best_frame_number
-       OR d.verified = 1)"""
+       OR d.verified = 1
+       OR EXISTS (SELECT 1 FROM tracks t
+                  WHERE t.id = d.track_id
+                    AND t.representative_frame_number = d.frame_number))"""
 
 # Similarity / suggestions path: needs the embedding vector, so the base
 # table is detection_embeddings (only embedded detections appear).

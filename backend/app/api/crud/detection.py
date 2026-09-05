@@ -415,6 +415,28 @@ def _resolve_detection_taxonomy(
 FALSE_DETECTION = "false detection"
 
 
+def expand_to_tracks(db: Session, detection_ids: list[str]) -> list[str]:
+    """The given ids plus every box that shares a track with one of them.
+
+    A verdict on a track's card is a verdict on the animal, so X, relabel,
+    verify and dismiss reach every frame the tracker followed it through.
+    Boxes without a track (images, untracked videos, drawn boxes) come
+    back unchanged. Order: the input first, then the siblings.
+    """
+    if not detection_ids:
+        return []
+    track_ids = select(Detection.track_id).where(
+        Detection.id.in_(detection_ids), Detection.track_id.isnot(None)
+    )
+    siblings = [
+        det_id
+        for (det_id,) in db.query(Detection.id)
+        .filter(Detection.track_id.in_(track_ids))
+        .all()
+    ]
+    return list(dict.fromkeys([*detection_ids, *siblings]))
+
+
 def mark_detections_false(db: Session, detections: list[Detection]) -> None:
     """Reject boxes the way the X key does. No commit.
 

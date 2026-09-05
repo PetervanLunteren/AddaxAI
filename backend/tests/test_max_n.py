@@ -1436,3 +1436,42 @@ def test_update_camera_offsets_shifts_one_subfolder_and_regroups(db):
     )
     assert len(_events(db, station.id)) == 2
     assert project.postprocessing_settings_hash is None
+
+
+def test_video_species_on_a_tracks_representative_frame_is_allowed(db):
+    """A tracked video has one card per track, on the track's
+    representative frame, so a species that appears there is reviewable
+    and spawns a row even when it never touches the best frame. Its MaxN
+    is still the peak across every frame."""
+    from app.models import Detection
+    from tests.conftest import make_track
+
+    project = make_project(db, counting_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, files = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+        {
+            "file_type": "video",
+            "best_frame_number": 5,
+            "detections": [
+                {"label": "leopard", "frame_number": 5},        # best frame
+                {"label": "hammerhead", "frame_number": 300},   # a track's card
+                {"label": "hammerhead", "frame_number": 330},
+                {"label": "hammerhead", "frame_number": 330},
+                {"label": "carnivora", "frame_number": 12},     # untracked noise
+            ],
+        },
+    ])
+    video = files[0]
+    track = make_track(db, file_id=video.id, start_frame=300, end_frame=330,
+                       representative_frame_number=300)
+    for det in db.query(Detection).filter(Detection.file_id == video.id):
+        if det.label == "hammerhead":
+            det.track_id = track.id
+    db.flush()
+
+    obs = {o.label: o.max_n for o in calculate_max_n_for_event(db, ev.id, 0.5)}
+    db.flush()
+
+    assert obs == {"leopard": 1, "hammerhead": 2}

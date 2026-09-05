@@ -15,6 +15,7 @@ from PIL import Image, ImageFilter
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
+from app.ml.embedding_utils import _video_still_for
 from app.models import Detection, File
 
 logger = get_logger(__name__)
@@ -109,10 +110,9 @@ def _resolve_image_path(file: File, detection: Detection) -> Path | None:
     those detections are meant to be seen.
     """
     if file.file_type == "video":
-        if detection.frame_number != file.best_frame_number:
-            return None
-        if file.best_frame_path:
-            p = Path(file.best_frame_path)
+        still = _video_still_for(detection, file)
+        if still:
+            p = Path(still)
             if p.exists():
                 return p
         return None

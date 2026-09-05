@@ -23,6 +23,7 @@ import {
   getDetectionColor,
   getDetectionDisplayName,
   shouldDrawBbox,
+  stillFrameFor,
 } from "../../lib/detection-utils";
 import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
 import { FrameThumbnail } from "./FrameThumbnail";
@@ -476,6 +477,10 @@ export function DetectionDetailModal({
 
   const imgW = fileData?.width_px || 1;
   const imgH = fileData?.height_px || 1;
+  // A track's card shows the frame its representative box is on, which
+  // has its own still; every other detection shows the file's default.
+  const stillFrame =
+    fileData && fullDetection ? stillFrameFor(fileData, fullDetection) : undefined;
 
   return (
     <VerifyDetailShell
@@ -550,7 +555,11 @@ export function DetectionDetailModal({
                 </div>
               ) : (
                 <img
-                  src={`${API_BASE_URL}/api/files/${detection.file_id}/image`}
+                  src={
+                    stillFrame == null
+                      ? `${API_BASE_URL}/api/files/${detection.file_id}/image`
+                      : `${API_BASE_URL}/api/files/${detection.file_id}/image?frame=${stillFrame}`
+                  }
                   alt="Source image"
                   draggable={false}
                   className="max-w-full max-h-full object-contain"
@@ -589,7 +598,7 @@ export function DetectionDetailModal({
                 // focused box stays the accent. Same rule as the Files
                 // viewer: every rendered photo shows every visible box.
                 const otherBoxes = (fileData?.detections ?? [])
-                  .filter((d) => shouldDrawBbox(d, fileData!, detectionThreshold))
+                  .filter((d) => shouldDrawBbox(d, fileData!, detectionThreshold, stillFrame))
                   .filter((d) => d.id !== fullDetection.id);
 
                 return (

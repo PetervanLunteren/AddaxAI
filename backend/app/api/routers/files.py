@@ -284,6 +284,13 @@ def get_file_image(
             "(in-memory resize). Omit for the original file."
         ),
     ),
+    frame: int | None = Query(
+        None,
+        description=(
+            "Videos only: serve the still of this frame instead of the best "
+            "frame. Only a track's representative frame has one."
+        ),
+    ),
     db: Session = Depends(get_db),
 ):
     """
@@ -316,13 +323,33 @@ def get_file_image(
         # always reaches this endpoint, because a video with no visible
         # surface has no passing detection and so sits in the Empties
         # tab, one tile per clip.
-        if not file.best_frame_path:
+        if frame is not None and frame != file.best_frame_number:
+            # A track's representative frame: the one other kind of still
+            # a video has. Any other frame number has no picture, and
+            # saying so beats serving the best frame under a wrong label.
+            still = next(
+                (
+                    t.frame_path
+                    for t in file.tracks
+                    if t.representative_frame_number == frame and t.frame_path
+                ),
+                None,
+            )
+            if still is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"This video has no still for frame {frame}.",
+                )
+            source_path = Path(still)
+            source_media_type = "image/jpeg"
+        elif not file.best_frame_path:
             raise HTTPException(
                 status_code=404,
                 detail="This video could not be decoded, so it has no frame to show.",
             )
-        source_path = Path(file.best_frame_path)
-        source_media_type = "image/jpeg"
+        else:
+            source_path = Path(file.best_frame_path)
+            source_media_type = "image/jpeg"
     else:
         source_path = Path(file.file_path)
         source_media_type = f"image/{file.file_format}"

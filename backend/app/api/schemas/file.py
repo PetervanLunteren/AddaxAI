@@ -45,6 +45,31 @@ class DetectionResponse(BaseModel):
     frame_number: int | None = None
     verified: bool
     job_id: str | None
+    # Required like the two above: a missing value must fail here, not
+    # arrive as undefined and read as "untracked".
+    track_id: str | None
+
+    class Config:
+        from_attributes = True
+
+
+class TrackResponse(BaseModel):
+    """One animal a tracker followed through a video (models/track.py).
+
+    What the viewers need to place a track in time and to know which
+    frame has a picture: the box on `representative_frame_number` is the
+    track's card, and `frame_path` being set means that frame's JPEG
+    exists (the image endpoint serves it with `?frame=`).
+    """
+
+    id: str
+    track_key: int
+    start_frame: int
+    end_frame: int
+    frame_count: int
+    max_confidence: float
+    representative_frame_number: int
+    has_frame: bool
 
     class Config:
         from_attributes = True
@@ -92,6 +117,9 @@ class FileWithDetections(FileResponse):
     """File with detections response schema."""
 
     detections: list[DetectionResponse]
+    # The animals a tracker followed through this video; empty for images
+    # and untracked videos.
+    tracks: list[TrackResponse] = []
     # The camera (subfolder name) this file came from, for files of a
     # paired-cameras deployment. None otherwise, and for root-level files.
     camera: str | None = None

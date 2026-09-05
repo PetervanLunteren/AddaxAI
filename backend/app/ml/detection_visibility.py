@@ -8,7 +8,13 @@ folder run writes. Images have no frames, so every image detection is
 visible.
 
     a video detection is visible only when
-    Detection.frame_number == File.best_frame_number
+    Detection.frame_number == File.best_frame_number,
+    or it is the representative box of its track
+
+A tracked video has one more still per track, at the frame of the
+track's highest-confidence box (`Track.representative_frame_number`,
+written by the same pass as the best frame), so that box has a picture
+too and is the card the person reviews the whole track through.
 
 Verified detections are the exception and pass on any frame. A human
 decision must never end up out of reach, which is the same escape hatch
@@ -65,10 +71,38 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Protocol, TypeVar
 
-from sqlalchemy import or_
+from sqlalchemy import and_, exists, or_
 from sqlalchemy.sql.elements import ColumnElement
 
-from app.models import Detection, File
+from app.models import Detection, File, Track
+
+
+def on_representative_frame() -> ColumnElement[bool]:
+    """The box that stands for its track: the one on the track's
+    representative frame. A correlated EXISTS, so it drops into any query
+    that has ``Detection`` without asking the caller to join ``tracks``.
+    False for every untracked box."""
+    return exists().where(
+        and_(
+            Track.id == Detection.track_id,
+            Track.representative_frame_number == Detection.frame_number,
+        )
+    )
+
+
+def on_pixel_surface() -> ColumnElement[bool]:
+    """The frames that have a JPEG: an image, a video's best frame, or a
+    track's representative frame. Verified boxes elsewhere are visible
+    but have no picture, which is why the embedding paths use this and
+    not ``on_visible_frame``. Needs ``File`` joined to ``Detection``."""
+    return or_(
+        File.file_type == "image",
+        and_(
+            File.file_type == "video",
+            Detection.frame_number == File.best_frame_number,
+        ),
+        on_representative_frame(),
+    )
 
 
 def on_visible_frame() -> ColumnElement[bool]:
@@ -81,6 +115,7 @@ def on_visible_frame() -> ColumnElement[bool]:
         File.file_type != "video",
         Detection.frame_number == File.best_frame_number,
         Detection.verified == True,  # noqa: E712
+        on_representative_frame(),
     )
 
 
@@ -100,16 +135,25 @@ def on_visible_frame_of(file: File) -> ColumnElement[bool]:
     if file.file_type != "video":
         return Detection.file_id == file.id
     if file.best_frame_number is None:
-        return Detection.verified == True  # noqa: E712
+        return or_(
+            Detection.verified == True,  # noqa: E712
+            on_representative_frame(),
+        )
     return or_(
         Detection.frame_number == file.best_frame_number,
         Detection.verified == True,  # noqa: E712
+        on_representative_frame(),
     )
+
+
+class _Track(Protocol):
+    representative_frame_number: int
 
 
 class _FramedDetection(Protocol):
     frame_number: int | None
     verified: bool
+    track: _Track | None
 
 
 _D = TypeVar("_D", bound=_FramedDetection)
@@ -134,5 +178,10 @@ def visible_detections(file: File, detections: Iterable[_D]) -> list[_D]:
     return [
         det
         for det in detections
-        if det.verified or (best is not None and det.frame_number == best)
+        if det.verified
+        or (best is not None and det.frame_number == best)
+        or (
+            det.track is not None
+            and det.frame_number == det.track.representative_frame_number
+        )
     ]

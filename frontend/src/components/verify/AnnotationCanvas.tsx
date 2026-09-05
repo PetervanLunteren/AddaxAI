@@ -56,6 +56,10 @@ interface AnnotationCanvasProps {
   /** Shift+wheel steps to the previous/next frame instead of zooming.
    *  `delta` is the wheel deltaY (negative = up/previous). */
   onScrubFrame?: (delta: number) => void;
+  /** Videos: show this frame's still instead of the best frame (a
+   *  track's representative frame, see `stillFrameFor`). Boxes drawn
+   *  and shown follow the frame on screen. */
+  frameNumber?: number;
   /** View-only: boxes render but are not interactive (no drag / select /
    *  relabel), so a drag anywhere pans the zoomed image. Used by the Counts
    *  modal, where label/box editing lives on the Labels page. */
@@ -91,6 +95,7 @@ export function AnnotationCanvas({
   onMutated,
   onCreated,
   onScrubFrame,
+  frameNumber,
   readOnly,
   imageFilter,
   defaultCategory,
@@ -119,7 +124,10 @@ export function AnnotationCanvas({
   const [isPanning, setIsPanning] = useState(false);
   const lastPanPosRef = useRef({ x: 0, y: 0 });
 
-  const imageUrl = `/api/files/${file.id}/image`;
+  const imageUrl =
+    frameNumber == null
+      ? `/api/files/${file.id}/image`
+      : `/api/files/${file.id}/image?frame=${frameNumber}`;
   const imgWidth = file.width_px || 1;
   const imgHeight = file.height_px || 1;
 
@@ -128,7 +136,7 @@ export function AnnotationCanvas({
   // observations (no bbox) never draw. `shouldDrawBbox` centralises
   // both gates.
   const filteredDetections = file.detections.filter((d) =>
-    shouldDrawBbox(d, file, detectionThreshold),
+    shouldDrawBbox(d, file, detectionThreshold, frameNumber),
   );
 
   // Update stage size based on container. Defined before the image-load
@@ -351,7 +359,9 @@ export function AnnotationCanvas({
         bbox_height: Math.max(0, Math.min(1, normH)),
         label: defaultLabel,
         frame_number:
-          file.file_type === "video" ? file.best_frame_number ?? null : null,
+          file.file_type === "video"
+            ? frameNumber ?? file.best_frame_number ?? null
+            : null,
       });
     },
     onSuccess: (created) => {

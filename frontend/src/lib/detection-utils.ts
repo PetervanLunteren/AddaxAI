@@ -83,15 +83,36 @@ export function passesDrawFilter(
 }
 
 /**
+ * The frame whose still shows this detection, when it is not the best
+ * frame: a track's representative frame, which has its own JPEG
+ * (`/image?frame=N`). `undefined` means the file's default picture (the
+ * best frame, or the photo itself), which is also the answer for a
+ * verified box on a frame nobody has a picture of.
+ */
+export function stillFrameFor(
+  file: { file_type: string; best_frame_number: number | null; tracks?: { representative_frame_number: number; has_frame: boolean }[] },
+  detection: { frame_number: number | null },
+): number | undefined {
+  if (file.file_type !== "video" || detection.frame_number == null) return undefined;
+  if (detection.frame_number === file.best_frame_number) return undefined;
+  const track = file.tracks?.find(
+    (t) => t.representative_frame_number === detection.frame_number && t.has_frame,
+  );
+  return track ? detection.frame_number : undefined;
+}
+
+/**
  * Whether a detection should render as a bounding box on a given file's
  * visible image.
  *
  * Two gates: `passesDrawFilter` above, then the video rule. For videos
- * the detection must be on the frame the JPEG actually renders (the
- * best frame). Non-best-frame AI detections still exist in the data and
- * surface in the verification list, but they must not paint onto the
- * canvas of an unrelated frame — that is the crop-service bug in
- * another costume, and it looks perfectly fine until the subject moves.
+ * the detection must be on the frame the JPEG actually renders: the
+ * best frame by default, or `frameNumber` when the surface shows
+ * another still (a track's representative frame, see `stillFrameFor`).
+ * Non-best-frame AI detections still exist in the data and surface in
+ * the verification list, but they must not paint onto the canvas of an
+ * unrelated frame — that is the crop-service bug in another costume,
+ * and it looks perfectly fine until the subject moves.
  *
  * No rule here reads who drew a box. A drawn box is verified at
  * confidence 1.0, so it passes like any confirmed box; one the person
@@ -115,6 +136,7 @@ export function shouldDrawBbox<
   detection: D,
   file: { file_type: string; best_frame_number: number | null },
   detectionThreshold: number,
+  frameNumber?: number,
 ): detection is D & {
   bbox_x: number;
   bbox_y: number;
@@ -123,8 +145,9 @@ export function shouldDrawBbox<
 } {
   if (!passesDrawFilter(detection, detectionThreshold)) return false;
   if (detection.bbox_x === null) return false;
-  if (file.file_type === "video" && file.best_frame_number != null) {
-    return detection.frame_number === file.best_frame_number;
+  if (file.file_type === "video") {
+    const shown = frameNumber ?? file.best_frame_number;
+    if (shown != null) return detection.frame_number === shown;
   }
   return true;
 }

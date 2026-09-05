@@ -160,7 +160,9 @@ def get_unprocessed_count(
     were analysed under different classification gates: whatever the
     historical gate was, an un-embedded detection shows up here.
     """
-    from sqlalchemy import and_, exists, or_
+    from sqlalchemy import and_, exists
+
+    from app.ml.detection_visibility import on_pixel_surface
 
     project = db.query(Project).filter(Project.id == project_id).first()
     embedding_model_id = project.embedding_model_id if project else None
@@ -170,13 +172,7 @@ def get_unprocessed_count(
         return {"count": 0}
 
     has_bbox = Detection.bbox_x.isnot(None)
-    on_embeddable_surface = or_(
-        File.file_type == "image",
-        and_(
-            File.file_type == "video",
-            Detection.frame_number == File.best_frame_number,
-        ),
-    )
+    on_embeddable_surface = on_pixel_surface()
     has_embedding = exists().where(
         and_(
             DetectionEmbedding.detection_id == Detection.id,
@@ -383,16 +379,11 @@ def get_label_stats(
     # and similarity search anyway, so we leave them out of the
     # "missing embeddings" count — otherwise the banner would chase a
     # population that `/embed-now` is deliberately designed to skip.
-    from sqlalchemy import and_, exists, or_
+    from sqlalchemy import and_, exists
+
+    from app.ml.detection_visibility import on_pixel_surface
     has_bbox = Detection.bbox_x.isnot(None)
-    on_embeddable_surface = or_(
-        File.file_type == "image",
-        and_(
-            File.file_type == "video",
-            Detection.frame_number == File.best_frame_number,
-        ),
-    )
-    embeddable_clause = and_(has_bbox, on_embeddable_surface)
+    embeddable_clause = and_(has_bbox, on_pixel_surface())
 
     # Only detections at or above the classification gate (or verified)
     # are SUPPOSED to be embedded — MegaDetector runs untresholded, so
