@@ -103,6 +103,13 @@ NON_WILDLIFE_CLASSES = NON_LABEL_CLASSES | frozenset({
     "human", "homo_sapiens", "vehicle",
 })
 
+# The detector categories that are not wildlife. A species label on a
+# box of any other category ("animal", "fish", "elasmobranch") leaves the
+# category as the detector said it; on one of these it moves the box to
+# the wildlife category the picker sent. Categories, not labels: see
+# NON_WILDLIFE_CLASSES for the label side.
+NON_WILDLIFE_CATEGORIES = frozenset({"person", "vehicle"})
+
 
 def filter_classifications(
     classifications: list[list],

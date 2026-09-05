@@ -60,8 +60,11 @@ CATEGORY_COLORS: dict[str, str] = {
     "person": "#ff8945",
     "vehicle": "#71b7ba",
 }
-# Unknown categories, mirroring the "bad" red fallback of category_color.
-DEFAULT_CATEGORY_COLOR = "#882000"
+# Any other category is wildlife by another detector's name ("fish",
+# "elasmobranch") and takes the animal colour, mirroring getCategoryColor
+# in the frontend. It used to be the "bad" red, which read as an error on
+# every box of a detector that is not MegaDetector.
+DEFAULT_CATEGORY_COLOR = CATEGORY_COLORS["animal"]
 
 # A box a person rejected (X, or a relabel to a non-label class such as
 # "false detection" or a model's "non-animal") still passes the scope

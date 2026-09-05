@@ -25,6 +25,7 @@ from app.api.schemas.detection import (
     DetectionUpdate,
 )
 from app.db.base import get_db
+from app.ml.label_exclusion import NON_WILDLIFE_CATEGORIES
 from app.models import Detection, File
 from app.services.crop_service import get_or_create_crop, invalidate_crop_cache
 
@@ -386,7 +387,16 @@ def bulk_relabel_detections(
             det.label_taxonomy_id = new_taxonomy_id
             det.scientific_name = new_scientific_name if body.label else None
             det.common_name = new_common_name if body.label else None
-        if body.category is not None:
+        # A species label says what the animal is, not what the detector
+        # called the box: the category stays the detector's ("animal",
+        # "fish", "elasmobranch"). The picker sends "animal" beside every
+        # species, which would have renamed a shark's box. Only a person
+        # or vehicle box moves to the wildlife category with the label,
+        # and a category-only relabel (to person, to vehicle) still applies.
+        if body.category is not None and (
+            not (label_provided and body.label)
+            or det.category in NON_WILDLIFE_CATEGORIES
+        ):
             det.category = body.category
         # Apply builtin taxonomy for category-only relabels
         if builtin_taxonomy_id and not det.label:

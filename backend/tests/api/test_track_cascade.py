@@ -183,3 +183,31 @@ def test_boxes_without_a_track_are_left_alone(client, db):
     db.expire_all()
     assert loose.label == "nurse shark"
     assert all(b.label is None for b in boxes["one"] + boxes["two"])
+
+
+def test_a_species_label_keeps_the_detectors_category(client, db):
+    """The picker sends "animal" beside every species label. That must
+    not rename an elasmobranch box: the category is the detector's. A
+    person box does move to the wildlife category with the label, and a
+    category-only relabel still applies."""
+    _, video, _, _, boxes = _tracked_video(db)
+    person = make_detection(db, file_id=video.id, frame_number=60, category="person")
+    db.commit()
+
+    client.post(
+        "/api/detections/bulk-relabel",
+        json={"detection_ids": [boxes["one"][1].id], "label": "nurse shark",
+              "category": "animal"},
+    )
+    client.post(
+        "/api/detections/bulk-relabel",
+        json={"detection_ids": [person.id], "label": "nurse shark", "category": "animal"},
+    )
+    client.post(
+        "/api/detections/bulk-relabel",
+        json={"detection_ids": [boxes["loose"][0].id], "category": "vehicle"},
+    )
+    db.expire_all()
+    assert all(b.category == "elasmobranch" and b.label == "nurse shark" for b in boxes["one"])
+    assert (person.category, person.label) == ("animal", "nurse shark")
+    assert boxes["loose"][0].category == "vehicle"

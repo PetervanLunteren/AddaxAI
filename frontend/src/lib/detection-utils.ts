@@ -163,17 +163,18 @@ export function getDetectionDisplayName(detection: {
   return resolveSpeciesName(detection);
 }
 
-/** Get color for a detection category. */
+/** Get color for a detection category. Any category that is not person
+ *  or vehicle is wildlife by another detector's name ("fish",
+ *  "elasmobranch") and takes the animal colour; the backend's
+ *  CATEGORY_COLORS mirrors this. */
 export function getCategoryColor(category: string): string {
   switch (category) {
-    case "animal":
-      return "#0f6064"; // teal brand
     case "person":
       return "#ff8945"; // orange
     case "vehicle":
       return "#71b7ba"; // light teal
     default:
-      return "#882000"; // dark red
+      return "#0f6064"; // teal brand, the animal colour
   }
 }
 
