@@ -46,6 +46,10 @@ dependencies:
     # refuses that container with "older format" and a newer one may move
     # the checkpoint metadata again.
     - rfdetr==1.10.0
+    # What rfdetr 1.10.0 resolved on the first build (2026-09-05), pinned so
+    # every machine builds the same env; rfdetr itself only sets floors.
+    - transformers==5.16.1
+    - supervision==0.30.2
 
     # Helps Windows pip use the system certificate store (matches the
     # legacy AddaxAI Windows build workflow). Last so it doesn't hold

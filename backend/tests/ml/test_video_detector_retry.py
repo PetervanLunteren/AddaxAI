@@ -106,3 +106,52 @@ def test_second_access_violation_surfaces_the_error(
             confidence_threshold=0.005,
         )
     assert len(calls) == 2
+
+
+def test_tracking_writes_the_file_list_and_runs_the_tracking_script(
+    model, tmp_path, monkeypatch
+):
+    """With tracking on the detector runs tracking_script.py on an
+    explicit file list (the worker's scan), not process_video on the
+    folder."""
+    import json
+
+    output_json = tmp_path / "video_results.json"
+    commands: list[list[str]] = []
+
+    def fake_stream(command, env, progress_callback, job_id):
+        commands.append(command)
+        output_json.write_text("{}")
+        return 0
+
+    monkeypatch.setattr(model, "_stream_process", fake_stream)
+    videos = [tmp_path / "a.mp4", tmp_path / "sub" / "b.MP4"]
+
+    model.detect_videos_to_json(
+        video_folder=tmp_path,
+        output_json=output_json,
+        fps=3.0,
+        confidence_threshold=0.005,
+        tracking=True,
+        detector_runtime="ultralytics",
+        video_files=videos,
+    )
+
+    (command,) = commands
+    assert command[2].endswith("tracking_script.py")
+    assert "megadetector.detection.process_video" not in command
+    file_list = tmp_path / "video_results_files.json"
+    assert json.loads(file_list.read_text()) == [str(p) for p in videos]
+    assert str(file_list) in command
+
+
+def test_tracking_without_videos_is_a_configuration_error(model, tmp_path):
+    with pytest.raises(ValueError):
+        model.detect_videos_to_json(
+            video_folder=tmp_path,
+            output_json=tmp_path / "out.json",
+            fps=3.0,
+            confidence_threshold=0.005,
+            tracking=True,
+            video_files=[],
+        )

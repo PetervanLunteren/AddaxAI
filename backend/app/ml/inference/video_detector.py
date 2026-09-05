@@ -11,6 +11,7 @@ Uses MegaDetector's built-in process_video module (matches streamlit-AddaxAI exa
 Created by Claude Code on 2026-01-07
 """
 
+import json
 import re
 import subprocess
 from collections.abc import Callable
@@ -75,6 +76,47 @@ def _build_process_video_cmd(
     return command
 
 
+def _build_tracking_cmd(
+    *,
+    python_path: Path,
+    model_path: Path,
+    video_folder: Path,
+    file_list_json: Path,
+    output_json: Path,
+    fps: float,
+    detector_runtime: str,
+    image_size: int | None,
+    augment: bool,
+) -> list[str]:
+    """Assemble the ``tracking_script`` command line, the tracking-on twin
+    of ``_build_process_video_cmd``. The script takes an explicit file
+    list rather than walking the folder, so the videos it reads are
+    exactly the ones the worker's scan admitted (the media filter, and
+    never a previous run's output folders).
+
+    ``-P`` keeps the script's own directory off ``sys.path``: it holds
+    ``megadetector.py``, the app's wrapper, which Python would otherwise
+    find before the megadetector package."""
+    command = [
+        str(python_path),
+        "-P",
+        str(Path(__file__).parent / "tracking_script.py"),
+        str(model_path),
+        str(video_folder),
+        str(file_list_json),
+        str(output_json),
+        "--fps",
+        str(fps),
+        "--detector_runtime",
+        detector_runtime,
+    ]
+    if image_size is not None:
+        command += ["--image_size", str(image_size)]
+    if augment:
+        command.append("--augment")
+    return command
+
+
 class VideoDetectionModel:
     """
     MegaDetector video detection wrapper.
@@ -125,6 +167,9 @@ class VideoDetectionModel:
         augment: bool = False,
         progress_callback: Callable[[str, float], None] | None = None,
         job_id: str | None = None,
+        tracking: bool = False,
+        detector_runtime: str = "megadetector",
+        video_files: list[Path] | None = None,
     ) -> Path:
         """
         Run MegaDetector on videos using process_video module.
@@ -132,6 +177,12 @@ class VideoDetectionModel:
         Calls megadetector.detection.process_video which handles frame extraction
         and detection internally. Outputs JSON in correct format with frame_rate
         and frames_processed fields.
+
+        With ``tracking`` on, runs ``tracking_script.py`` instead: the same
+        sampling, the detector named by ``detector_runtime``, BoT-SORT
+        over the sampled frames, and only tracked boxes in the JSON, each
+        with a ``track_id``. ``video_files`` is then the explicit list the
+        script reads (the worker's scan).
 
         Args:
             video_folder: Folder containing video files
@@ -150,25 +201,48 @@ class VideoDetectionModel:
         Raises:
             RuntimeError: If video detection fails
         """
-        # Convert FPS to time_sample parameter
-        # fps=2.0 → extract every 0.5 seconds → time_sample=0.5
-        time_sample = 1.0 / fps
+        if tracking:
+            if not video_files:
+                raise ValueError("tracking needs the list of videos to read")
+            file_list_json = output_json.with_name(output_json.stem + "_files.json")
+            file_list_json.parent.mkdir(parents=True, exist_ok=True)
+            with open(file_list_json, "w") as f:
+                json.dump([str(p) for p in video_files], f)
+            logger.info(
+                f"Running video detection and tracking on {len(video_files)} "
+                f"videos at {fps} FPS ({detector_runtime})"
+            )
+            command = _build_tracking_cmd(
+                python_path=self.python_path,
+                model_path=self.model_path,
+                video_folder=video_folder,
+                file_list_json=file_list_json,
+                output_json=output_json,
+                fps=fps,
+                detector_runtime=detector_runtime,
+                image_size=image_size,
+                augment=augment,
+            )
+        else:
+            # Convert FPS to time_sample parameter
+            # fps=2.0 → extract every 0.5 seconds → time_sample=0.5
+            time_sample = 1.0 / fps
 
-        logger.info(
-            f"Running video detection on {video_folder} at {fps} FPS "
-            f"(time_sample={time_sample})"
-        )
+            logger.info(
+                f"Running video detection on {video_folder} at {fps} FPS "
+                f"(time_sample={time_sample})"
+            )
 
-        command = _build_process_video_cmd(
-            python_path=self.python_path,
-            model_path=self.model_path,
-            video_folder=video_folder,
-            output_json=output_json,
-            time_sample=time_sample,
-            confidence_threshold=confidence_threshold,
-            image_size=image_size,
-            augment=augment,
-        )
+            command = _build_process_video_cmd(
+                python_path=self.python_path,
+                model_path=self.model_path,
+                video_folder=video_folder,
+                output_json=output_json,
+                time_sample=time_sample,
+                confidence_threshold=confidence_threshold,
+                image_size=image_size,
+                augment=augment,
+            )
 
         logger.info(f"Running command: {' '.join(command)}")
 

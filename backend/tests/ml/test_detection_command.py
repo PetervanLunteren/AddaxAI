@@ -143,3 +143,44 @@ def test_image_cmd_resume_alone_does_nothing():
     must not emit a flag MegaDetector would reject."""
     cmd = _image_cmd(resume=True)
     assert "--resume_from_checkpoint" not in cmd
+
+
+# --- tracking -----------------------------------------------------------
+
+
+def _tracking_cmd(**overrides) -> list[str]:
+    from app.ml.inference.video_detector import _build_tracking_cmd
+
+    kwargs = dict(
+        python_path=Path("python"),
+        model_path=Path("sharktrack.pt"),
+        video_folder=Path("videos"),
+        file_list_json=Path("files.json"),
+        output_json=Path("out.json"),
+        fps=3.0,
+        detector_runtime="ultralytics",
+        image_size=None,
+        augment=False,
+    )
+    kwargs.update(overrides)
+    return _build_tracking_cmd(**kwargs)
+
+
+def test_tracking_cmd_runs_the_script_with_the_file_list_and_runtime():
+    cmd = _tracking_cmd()
+    # -P keeps the script's directory (which holds the app's own
+    # megadetector.py) off sys.path, so the megadetector package wins.
+    assert cmd[1:3] == ["-P", cmd[2]] and cmd[2].endswith("tracking_script.py")
+    # Positional: model, folder, file list, output.
+    assert cmd[3:7] == ["sharktrack.pt", "videos", "files.json", "out.json"]
+    assert cmd[cmd.index("--fps") + 1] == "3.0"
+    assert cmd[cmd.index("--detector_runtime") + 1] == "ultralytics"
+    assert "--image_size" not in cmd
+    assert "--augment" not in cmd
+
+
+def test_tracking_cmd_carries_the_optional_detection_flags():
+    cmd = _tracking_cmd(image_size=1024, augment=True, detector_runtime="megadetector")
+    assert cmd[cmd.index("--image_size") + 1] == "1024"
+    assert "--augment" in cmd
+    assert cmd[cmd.index("--detector_runtime") + 1] == "megadetector"

@@ -422,7 +422,8 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         lambda _vd=video_detector,
                         _fp=folder_path,
                         _vjp=video_json_path,
-                        _jid=job_id: _vd.detect_videos_to_json(
+                        _jid=job_id,
+                        _vf=video_files: _vd.detect_videos_to_json(
                             video_folder=_fp,
                             output_json=_vjp,
                             fps=project.video_fps,
@@ -431,6 +432,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                             augment=project.detection_augment,
                             progress_callback=sync_video_detection_progress,
                             job_id=_jid,
+                            tracking=project.video_tracking,
+                            detector_runtime=det_manifest.detector_runtime,
+                            video_files=_vf,
                         ),
                     )
 
