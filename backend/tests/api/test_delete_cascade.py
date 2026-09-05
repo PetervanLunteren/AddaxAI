@@ -312,7 +312,8 @@ def test_purge_empties_the_leaves_before_their_parents(db):
     db.commit()
 
     assert order.index("detection_embeddings") < order.index("detections")
-    assert order.index("detections") < order.index("files")
+    assert order.index("detections") < order.index("tracks")
+    assert order.index("tracks") < order.index("files")
     assert order.index("event_observations") < order.index("events")
     assert order.index("event_files") < order.index("events")
     assert order.index("events") < order.index("files")

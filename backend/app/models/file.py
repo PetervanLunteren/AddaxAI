@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from .deployment import Deployment
     from .detection import Detection
     from .event import Event
+    from .track import Track
 
 
 FileType = Literal["image", "video", "frame"]
@@ -146,6 +147,15 @@ class File(Base):
     )
     source_video: Mapped["File | None"] = relationship(
         "File", remote_side="File.id", foreign_keys=[source_video_id]
+    )
+    # The animals a tracker followed through this video; empty for images
+    # and for videos analysed without tracking. passive_deletes=True as
+    # for detections: the DB owns the cascade.
+    tracks: Mapped[list["Track"]] = relationship(
+        "Track",
+        back_populates="file",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
     # Indexes for common queries

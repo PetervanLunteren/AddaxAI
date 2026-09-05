@@ -46,7 +46,7 @@ def test_delete_cascades_are_passive() -> None:
     )
     # Guard the guard: if the walk stops finding relationships, the rule is
     # silently unenforced.
-    assert checked == 8, (
-        f"expected 8 delete-orphan cascades backed by ON DELETE CASCADE, "
+    assert checked == 9, (
+        f"expected 9 delete-orphan cascades backed by ON DELETE CASCADE, "
         f"found {checked}. If you added or removed one, update this count."
     )

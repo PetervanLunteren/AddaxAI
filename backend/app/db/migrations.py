@@ -278,11 +278,7 @@ def schema_problems(engine: Engine) -> list[str]:
     for table_name, table in Base.metadata.tables.items():
         if table_name not in live_tables:
             continue  # already reported as a missing table
-        live = {
-            (col, (fk["options"].get("ondelete") or "").upper())
-            for fk in inspector.get_foreign_keys(table_name)
-            for col in fk["constrained_columns"]
-        }
+        live = _live_foreign_key_actions(engine, table_name)
         for fk in table.foreign_keys:
             if (fk.parent.name, (fk.ondelete or "").upper()) not in live:
                 problems.append(
@@ -290,3 +286,25 @@ def schema_problems(engine: Engine) -> list[str]:
                     f"ON DELETE {fk.ondelete or '(no action)'}"
                 )
     return problems
+
+
+def _live_foreign_key_actions(engine, table_name: str) -> set[tuple[str, str]]:
+    """``{(column, ON DELETE action)}`` for every foreign key on a live table.
+
+    Read from ``PRAGMA foreign_key_list``, which is what SQLite enforces,
+    rather than from the inspector, which parses the stored CREATE TABLE
+    text and drops the action of a column-level ``REFERENCES`` clause.
+    That is the shape ``ALTER TABLE ... ADD COLUMN ... REFERENCES`` leaves
+    behind (``detections.track_id``), so the inspector would refuse a
+    healthy database. ``NO ACTION`` maps to the empty string the model
+    side uses for an unset ``ondelete``.
+    """
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        rows = conn.execute(text(f"PRAGMA foreign_key_list({table_name})")).all()
+    live: set[tuple[str, str]] = set()
+    for row in rows:
+        column, on_delete = row[3], (row[6] or "").upper()
+        live.add((column, "" if on_delete == "NO ACTION" else on_delete))
+    return live

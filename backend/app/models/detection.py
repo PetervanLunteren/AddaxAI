@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from .file import File
     from .job import Job
     from .label_taxonomy import LabelTaxonomy
+    from .track import Track
 
 
 class Detection(Base):
@@ -94,6 +95,15 @@ class Detection(Base):
     # Video-specific field (None for images, frame index for videos)
     frame_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # The track this box belongs to when the video was analysed with
+    # tracking on; NULL for images, for videos analysed without a tracker,
+    # and for boxes a person drew. SET NULL rather than CASCADE: a track
+    # row never goes on its own outside the purge, and a box must not
+    # vanish because its track did. See models/track.py.
+    track_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("tracks.id", ondelete="SET NULL"), nullable=True
+    )
+
     # Detection-level verification
     verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     verified_at_utc: Mapped[datetime | None] = mapped_column(
@@ -122,6 +132,7 @@ class Detection(Base):
     label_taxonomy: Mapped["LabelTaxonomy | None"] = relationship(
         "LabelTaxonomy", back_populates="detections"
     )
+    track: Mapped["Track | None"] = relationship("Track", back_populates="detections")
     # passive_deletes=True: the DB owns the cascade (see DEVELOPERS.md,
     # "Deleting analysis data"). Embedding vectors are multi-KB blobs, so
     # loading them just to delete them is what pushed a large re-run to
@@ -145,6 +156,9 @@ class Detection(Base):
         Index("idx_detections_frame_number", "frame_number"),
         Index("idx_detections_verified", "verified"),
         Index("idx_detections_original_label", "original_label"),
+        # Child key of the SET NULL FK to tracks: the purge deletes tracks
+        # in bulk and SQLite has to find each track's boxes.
+        Index("idx_detections_track", "track_id"),
     )
 
     def __repr__(self) -> str:

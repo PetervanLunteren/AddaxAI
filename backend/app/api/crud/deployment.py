@@ -27,6 +27,7 @@ from app.models import (
     EventObservation,
     File,
     Site,
+    Track,
     event_files,
 )
 
@@ -336,6 +337,9 @@ def purge_deployment_data(db: Session, deployment_ids: Select) -> list[tuple[str
             ),
         ),
         ("detections", delete(Detection).where(Detection.file_id.in_(file_ids))),
+        # After detections: their SET NULL foreign key would otherwise be
+        # walked for every track row deleted.
+        ("tracks", delete(Track).where(Track.file_id.in_(file_ids))),
         (
             "event_observations",
             delete(EventObservation).where(EventObservation.event_id.in_(event_ids)),

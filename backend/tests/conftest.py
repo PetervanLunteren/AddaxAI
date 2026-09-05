@@ -45,6 +45,7 @@ from app.models.file import File
 from app.models.job import Job
 from app.models.project import Project
 from app.models.site import Site
+from app.models.track import Track
 
 # Crash early if an ambient env var (a developer's shell export of
 # ADDAXAI_USER_DATA_DIR, ADDAXAI_DATABASE_URL, or ADDAXAI_MODELS_DIR)
@@ -273,6 +274,36 @@ def make_detection(
     )
     defaults.update(kw)
     obj = Detection(**defaults)
+    db.add(obj)
+    db.flush()
+    return obj
+
+
+def make_track(
+    db: Session,
+    *,
+    file_id: str,
+    track_key: int = 1,
+    start_frame: int = 30,
+    end_frame: int = 90,
+    representative_frame_number: int = 60,
+    **kw,
+) -> Track:
+    """One tracked animal in a video. Frames default to a short track
+    whose representative frame sits in the middle, so a test can put a
+    box on it, before it and after it."""
+    defaults = dict(
+        id=str(uuid.uuid4()),
+        file_id=file_id,
+        track_key=track_key,
+        start_frame=start_frame,
+        end_frame=end_frame,
+        frame_count=3,
+        max_confidence=0.9,
+        representative_frame_number=representative_frame_number,
+    )
+    defaults.update(kw)
+    obj = Track(**defaults)
     db.add(obj)
     db.flush()
     return obj

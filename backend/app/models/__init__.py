@@ -12,6 +12,7 @@ from .job import Job
 from .label_taxonomy import LabelTaxonomy
 from .project import Project
 from .site import Site
+from .track import Track
 
 __all__ = [
     "AuditLog",
@@ -26,5 +27,6 @@ __all__ = [
     "Project",
     "Site",
     "LabelTaxonomy",
+    "Track",
     "event_files",
 ]
