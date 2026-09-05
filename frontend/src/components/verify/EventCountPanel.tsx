@@ -30,6 +30,7 @@ import { cn } from "../../lib/utils";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
+import { formatCameraTime } from "../../lib/datetime";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
 import { getSpeciesColor } from "../../utils/species-colors";
 import { getCategoryColor } from "../../lib/detection-utils";
@@ -60,6 +61,19 @@ interface EventCountPanelProps {
   onConfirm: () => void;
   labelOptions: LabelOption[];
   labelOptionsLoading: boolean;
+  /** Show the frame the AI counted this row's MaxN on (the modal owns the
+   *  file switch and the video seek). Absent when the panel has no viewer. */
+  onShowMaxN?: (obs: EventObservationItem) => void;
+}
+
+/** "12:41:05" in the camera's clock, seconds included: a peak in a
+ *  90-minute clip is a moment, not a minute. */
+function clock(iso: string): string {
+  return formatCameraTime(
+    iso,
+    { hour: "2-digit", minute: "2-digit", second: "2-digit" },
+    "en-GB",
+  );
 }
 
 export function EventCountPanel({
@@ -71,6 +85,7 @@ export function EventCountPanel({
   onConfirm,
   labelOptions,
   labelOptionsLoading,
+  onShowMaxN,
 }: EventCountPanelProps) {
   // Repaint when the project's colour map lands or changes.
   useSpeciesColorsVersion();
@@ -428,6 +443,31 @@ export function EventCountPanel({
                 </Button>
               </span>
             </div>
+            {/* Where and when the AI counted this row's MaxN, with a jump
+                to that frame. Only AI rows have one; a human-only row was
+                never counted on a frame. */}
+            {obs.max_n > 0 && obs.max_n_file_id && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="truncate">
+                  MaxN {obs.max_n}
+                  {obs.max_n_time && ` at ${clock(obs.max_n_time)}`}
+                  {obs.first_arrival_time &&
+                    obs.first_arrival_time !== obs.max_n_time &&
+                    ` · first seen ${clock(obs.first_arrival_time)}`}
+                </span>
+                {onShowMaxN && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onShowMaxN(obs)}
+                    title="Show the frame this count was made on"
+                    className="shrink-0 underline underline-offset-2 hover:no-underline"
+                  >
+                    Show
+                  </button>
+                )}
+              </div>
+            )}
             {/* Line 2: what the individuals on this row are. Empty means
                 unknown and is sent as null. Native selects: three per row,
                 no portal, and their own arrow keys stay their own. */}

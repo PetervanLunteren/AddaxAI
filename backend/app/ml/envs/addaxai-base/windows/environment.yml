@@ -70,6 +70,12 @@ dependencies:
     # nothing (beta report 2026-07-30).
     - yolov9pip==0.0.4
     - ultralytics==8.3.177
+    # BoT-SORT's assignment solver, for "Track animals across frames" with
+    # MegaDetector. ultralytics does not depend on it and pip installs it
+    # the first time a tracker runs, which fails on a machine that is
+    # offline after setup. This line is the one change to this file for
+    # tracking; it changes the YAML hash and offers existing users a rebuild.
+    - lap==0.5.12
     # albumentations arrives through yolov9pip and pulls albucore, which
     # requires stringzilla. stringzilla 5.1.2 shipped without a cp311
     # win_amd64 wheel (every other python and platform combination has

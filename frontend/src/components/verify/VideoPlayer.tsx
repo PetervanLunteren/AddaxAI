@@ -49,6 +49,10 @@ interface VideoPlayerProps {
    *  always records the boxes, because an annotated video is the one
    *  thing it produces that the file on disk is not. */
   boxesHidden?: boolean;
+  /** Jump to a frame and pause there (the Counts page's "Show" for the
+   *  frame a MaxN was counted on). The nonce lets the same frame be
+   *  asked for twice in a row. */
+  seekRequest?: { frame: number; nonce: number } | null;
 }
 
 /** Browser-playable video formats. */
@@ -184,6 +188,7 @@ export function VideoPlayer({
   autoExport,
   onAutoExportConsumed,
   boxesHidden,
+  seekRequest,
 }: VideoPlayerProps) {
   // Repaint when the project's colour map lands or changes.
   useSpeciesColorsVersion();
@@ -321,6 +326,27 @@ export function VideoPlayer({
     if (!video) return;
     video.play().catch(() => {});
   }, [videoUrl]);
+
+  // Jump to the requested frame and pause there, so the boxes of that
+  // frame stay on screen. Waits for the metadata when the video is not
+  // ready yet (a fresh mount, which is the usual case: the modal switches
+  // to the player and asks for the frame in the same render).
+  useEffect(() => {
+    if (!seekRequest) return;
+    const video = videoRef.current;
+    if (!video) return;
+    const seek = () => {
+      video.pause();
+      video.currentTime = seekRequest.frame / frameRate;
+      setCurrentFrame(seekRequest.frame);
+    };
+    if (video.readyState >= 1) {
+      seek();
+      return;
+    }
+    video.addEventListener("loadedmetadata", seek, { once: true });
+    return () => video.removeEventListener("loadedmetadata", seek);
+  }, [seekRequest, frameRate, videoUrl]);
 
   // ── Video export ────────────────────────────────────────────────
   // Records the video with canvas-rendered overlays to an MP4 (or WebM

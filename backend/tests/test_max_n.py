@@ -1471,7 +1471,9 @@ def test_video_species_on_a_tracks_representative_frame_is_allowed(db):
             det.track_id = track.id
     db.flush()
 
-    obs = {o.label: o.max_n for o in calculate_max_n_for_event(db, ev.id, 0.5)}
+    rows = calculate_max_n_for_event(db, ev.id, 0.5)
     db.flush()
 
-    assert obs == {"leopard": 1, "hammerhead": 2}
+    assert {o.label: o.max_n for o in rows} == {"leopard": 1, "hammerhead": 2}
+    # The frame each MaxN was counted on rides along for the Counts page.
+    assert {o.label: o.max_n_frame_number for o in rows} == {"leopard": 5, "hammerhead": 330}

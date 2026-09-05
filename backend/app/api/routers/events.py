@@ -32,6 +32,7 @@ from app.db.base import get_db
 from app.models import Project
 from app.models.event_observation import EventObservation
 from app.utils.datetime_serialization import set_active_project_timezone
+from app.utils.media_dates import frame_time
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
@@ -353,8 +354,11 @@ async def get_event(
         site_name = event.deployment.site.name
 
     max_n_frames = event_obs_crud.get_max_n_frames(db, event_id)
+    first_seen = event_obs_crud.first_arrival_by_species(
+        db, event_id, event.deployment.project.counting_threshold
+    )
     observations = [
-        _obs_item(obs)
+        _obs_item(obs, first_seen.get(obs.label_taxonomy_id or obs.label))
         for obs in event_obs_crud.list_event_observations(db, event_id)
     ]
 
@@ -393,9 +397,13 @@ def _camera_name(file_path: str, deployment) -> str | None:
     return parts[0] if len(parts) > 1 else None
 
 
-def _obs_item(obs: EventObservation) -> EventObservationItem:
+def _obs_item(
+    obs: EventObservation, first_arrival: datetime | None = None
+) -> EventObservationItem:
     """Build one count-list item, resolving display names from the
-    taxonomy (common_name / scientific_name) when present."""
+    taxonomy (common_name / scientific_name) when present. `first_arrival`
+    is when the species was first seen in the event, from
+    `first_arrival_by_species`; None when unknown."""
     tax = obs.label_taxonomy
     return EventObservationItem(
         id=obs.id,
@@ -409,6 +417,14 @@ def _obs_item(obs: EventObservation) -> EventObservationItem:
         sex=obs.sex,
         life_stage=obs.life_stage,
         behavior=obs.behavior,
+        max_n_file_id=obs.max_n_file_id,
+        max_n_frame_number=obs.max_n_frame_number,
+        max_n_time=(
+            frame_time(obs.max_n_file, obs.max_n_frame_number)
+            if obs.max_n_file_id
+            else None
+        ),
+        first_arrival_time=first_arrival,
     )
 
 

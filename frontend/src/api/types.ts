@@ -704,6 +704,11 @@ export interface MaxNFrame {
   max_n: number;
   /** Human-authoritative count (`human_count` if set, else `max_n`). */
   effective_count: number;
+  /** The frame of the file the MaxN was counted on and the camera-local
+   * time it stands for; both null for a photo and for rows from before
+   * the frame was recorded. */
+  max_n_frame_number: number | null;
+  max_n_time: string | null;
 }
 
 /** One cohort row of an event's count list (the Counts-page count editor).
@@ -722,6 +727,13 @@ export interface EventObservationItem {
   sex: string | null;
   life_stage: string | null;
   behavior: string | null;
+  /** Where and when the AI's MaxN was counted (file, frame for a video,
+   * camera-local time) and when the species was first seen in the event.
+   * All null on a human-only row; times null without capture times. */
+  max_n_file_id: string | null;
+  max_n_frame_number: number | null;
+  max_n_time: string | null;
+  first_arrival_time: string | null;
 }
 
 /** Partial update of a row's demographics: a missing key leaves the field

@@ -1046,6 +1046,13 @@ _OBSERVATIONS_HEADERS = [
     # The human-confirmed count, falling back to the AI's count when the
     # event isn't confirmed.
     "count",
+    # Where and when the AI counted its MaxN: the frame of the file (blank
+    # for a photo) and the wall-clock time that frame stands for, and when
+    # the species was first seen in the event. Blank on human-only rows
+    # and when the files carry no capture time.
+    "max_n_frame",
+    "max_n_time",
+    "first_arrival_time",
     # What a person recorded about the individuals on this row, blank
     # when unknown. One species can have several rows in an event (4 adult
     # males, 2 juveniles); the species total is their sum.
@@ -1088,11 +1095,22 @@ def build_observation_rows(
     if deployment_ids is not None:
         query = query.filter(Deployment.id.in_(deployment_ids))
 
+    from app.api.crud.event_observation import first_arrival_by_species
+    from app.utils.media_dates import frame_time
+
+    # First arrivals are per event and species; one query per event.
+    first_arrivals: dict[str, dict[str | None, datetime]] = {}
+
     rows: list[list[Any]] = []
     for obs, event, deployment, taxonomy in query.all():
         count = obs.effective_count
         if count <= 0:
             continue
+        if event.id not in first_arrivals:
+            first_arrivals[event.id] = first_arrival_by_species(
+                db, event.id, project.counting_threshold
+            )
+        first_seen = first_arrivals[event.id].get(obs.label_taxonomy_id or obs.label)
         rows.append(
             [
                 event.id,
@@ -1105,6 +1123,14 @@ def build_observation_rows(
                 (taxonomy.scientific_name if taxonomy else "") or "",
                 (taxonomy.common_name if taxonomy else "") or "",
                 count,
+                obs.max_n_frame_number if obs.max_n_frame_number is not None else "",
+                _iso_datetime(
+                    frame_time(obs.max_n_file, obs.max_n_frame_number)
+                    if obs.max_n_file_id
+                    else None,
+                    tz_name,
+                ),
+                _iso_datetime(first_seen, tz_name),
                 obs.sex or "",
                 obs.life_stage or "",
                 obs.behavior or "",

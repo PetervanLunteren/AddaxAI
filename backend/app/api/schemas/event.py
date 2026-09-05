@@ -19,6 +19,16 @@ class MaxNFrame(BaseModel):
     max_n: int
     # Human-authoritative count (`human_count` if set, else `max_n`).
     effective_count: int
+    # The frame of the file the MaxN was counted on, and the wall-clock
+    # time it stands for; both null for images and rows from before the
+    # frame was recorded. Time is camera local, serialized like every
+    # other observational datetime.
+    max_n_frame_number: int | None = None
+    max_n_time: datetime | None = None
+
+    @field_serializer("max_n_time")
+    def _serialize_max_n_time(self, value: datetime | None) -> str | None:
+        return serialize_local_datetime(value)
 
 
 class EventSummary(BaseModel):
@@ -86,6 +96,18 @@ class EventObservationItem(BaseModel):
     sex: str | None
     life_stage: str | None
     behavior: str | None
+    # Where and when the AI's MaxN was counted: the file, its frame (null
+    # for a photo) and the wall-clock time; and when the species was
+    # first seen in the event. All null on a human-only row, and the
+    # times null when the files carry no capture time.
+    max_n_file_id: str | None = None
+    max_n_frame_number: int | None = None
+    max_n_time: datetime | None = None
+    first_arrival_time: datetime | None = None
+
+    @field_serializer("max_n_time", "first_arrival_time")
+    def _serialize_times(self, value: datetime | None) -> str | None:
+        return serialize_local_datetime(value)
 
 
 class EventWithFiles(BaseModel):

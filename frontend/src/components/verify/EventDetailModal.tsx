@@ -47,6 +47,7 @@ import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import type {
   EventFilterParams,
+  EventObservationItem,
   EventWithFiles,
   FileWithDetections,
 } from "../../api/types";
@@ -509,6 +510,34 @@ export function EventDetailModal({
     setViewMode("video");
   }, []);
 
+  // The Counts panel's "Show": go to the file the MaxN was counted on and,
+  // for a video, to that frame. A video the browser cannot play keeps its
+  // still and says when the peak was, which beats a seek that never lands.
+  const [seekRequest, setSeekRequest] = useState<{ frame: number; nonce: number } | null>(null);
+  const showMaxN = useCallback(
+    (obs: EventObservationItem) => {
+      const index = files.findIndex((f) => f.id === obs.max_n_file_id);
+      if (index < 0) return;
+      setAutoPlay(false);
+      setSelectedFileIndex(index);
+      const file = files[index];
+      if (file.file_type === "video" && obs.max_n_frame_number != null) {
+        if (isPlayableVideo(file)) {
+          setSeekRequest({ frame: obs.max_n_frame_number, nonce: Date.now() });
+          setViewMode("video");
+          return;
+        }
+        toast.info(
+          obs.max_n_time
+            ? `This video can't be played in the app. The peak was at ${formatCameraTime(obs.max_n_time, { hour: "2-digit", minute: "2-digit", second: "2-digit" }, "en-GB")}.`
+            : "This video can't be played in the app.",
+        );
+      }
+      setViewMode("frame");
+    },
+    [files],
+  );
+
   // The loop: advance one frame each tick, wrapping to the start. Flash the
   // restart cue on the wrap (last frame -> 0), not on the first pass.
   useEffect(() => {
@@ -772,6 +801,7 @@ export function EventDetailModal({
                     autoExport={pendingVideoExport}
                     onAutoExportConsumed={() => setPendingVideoExport(false)}
                     boxesHidden={boxesHidden}
+                    seekRequest={seekRequest}
                   />
                 ) : currentFile.file_type === "video" &&
                   !(autoPlay && files.length > 1) ? (
@@ -975,6 +1005,7 @@ export function EventDetailModal({
                 onConfirm={handleConfirmAndAdvance}
                 labelOptions={labelOptions}
                 labelOptionsLoading={labelOptionsLoading}
+                onShowMaxN={showMaxN}
               />
             )}
 

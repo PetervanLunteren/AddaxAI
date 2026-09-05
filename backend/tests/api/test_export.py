@@ -2440,3 +2440,23 @@ def test_export_camtrap_dp_drops_rejected_boxes(client, db):
 
     for_mixed = [r for r in body if r[media_id] == mixed.id and r[level] == "media"]
     assert len(for_mixed) == 1 and for_mixed[0][obs_type] == "animal"
+
+
+def test_export_observations_carry_the_max_n_frame_and_times(client, db):
+    """Three columns after `count`: the frame the MaxN was counted on
+    (blank for a photo), the wall-clock time it stands for, and when the
+    species was first seen in the event. A human-only cohort has no AI
+    frame, so its frame and MaxN time are blank."""
+    project, _ev = _deer_event_with_cohorts(db)
+    resp = client.get(f"/api/projects/{project.id}/export/observations?format=csv")
+    headers, *rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
+    i = headers.index("count")
+    assert headers[i + 1 : i + 4] == ["max_n_frame", "max_n_time", "first_arrival_time"]
+    ai_row, cohort_row = rows
+    # Photos: no frame, but the MaxN photo's time and a first arrival.
+    assert ai_row[i + 1] == ""
+    assert ai_row[i + 2] != "" and ai_row[i + 3] != ""
+    # The split-off cohort is human-only: no AI frame, no MaxN time, same
+    # first arrival as the species it belongs to.
+    assert cohort_row[i + 1] == "" and cohort_row[i + 2] == ""
+    assert cohort_row[i + 3] == ai_row[i + 3]

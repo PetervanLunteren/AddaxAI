@@ -14,6 +14,7 @@ cohorts".
 import uuid
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, func, text
@@ -24,6 +25,7 @@ from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
 from app.models import Deployment, Detection, Event, File, Project, Track
 from app.models.event import event_files
 from app.models.event_observation import EventObservation
+from app.utils.media_dates import frame_time
 
 logger = get_logger(__name__)
 
@@ -242,6 +244,7 @@ def calculate_max_n_for_event(
                 "count": r.det_count,
                 "conf_sum": r.conf_sum,
                 "file_id": r.file_id,
+                "frame_number": r.frame_number,
                 "category": r.category,
                 "label": r.eff_label,
                 "taxonomy_id": r.label_taxonomy_id,
@@ -270,6 +273,7 @@ def calculate_max_n_for_event(
             category=data["category"],
             max_n=data["count"],
             max_n_file_id=data["file_id"],
+            max_n_frame_number=data["frame_number"],
             **_human_layer(seed),
         )
         db.add(obs)
@@ -461,10 +465,53 @@ def get_max_n_frames(db: Session, event_id: str) -> list[dict]:
             "max_n": row.max_n,
             "effective_count": total_by_key[_species_key(row)],
             "label_taxonomy_id": row.label_taxonomy_id,
+            "max_n_frame_number": row.max_n_frame_number,
+            "max_n_time": frame_time(row.max_n_file, row.max_n_frame_number),
         }
         for row in rows
         if row.max_n_file_id is not None
     ]
+
+
+def first_arrival_by_species(
+    db: Session, event_id: str, counting_threshold: float
+) -> dict[str | None, datetime]:
+    """When each species was first seen in the event, keyed like the
+    observation rows (`label_taxonomy_id`, else the label).
+
+    The earliest passing, real box of the species over the event's files:
+    for a photo that is the photo's time, for a video the frame's time
+    (file time plus frame over frame rate). Every box counts, not only the
+    visible ones, because the first frame a tracker saw the animal is
+    rarely the frame its card shows. Derived on request; nothing stored.
+    Species with no timed file are absent.
+    """
+    rows = (
+        db.query(
+            Detection.label_taxonomy_id,
+            func.coalesce(Detection.label, Detection.category).label("eff_label"),
+            Detection.frame_number,
+            File.captured_at_local,
+            File.frame_rate,
+        )
+        .join(File, File.id == Detection.file_id)
+        .join(event_files, event_files.c.file_id == File.id)
+        .filter(event_files.c.event_id == event_id)
+        .filter(_threshold_clause(counting_threshold))
+        .filter(is_a_real_detection())
+        .all()
+    )
+    first: dict[str | None, datetime] = {}
+    for r in rows:
+        if r.captured_at_local is None:
+            continue
+        seen = r.captured_at_local
+        if r.frame_number is not None and r.frame_rate:
+            seen = seen + timedelta(seconds=r.frame_number / r.frame_rate)
+        key = r.label_taxonomy_id or r.eff_label
+        if key not in first or seen < first[key]:
+            first[key] = seen
+    return first
 
 
 def _row(

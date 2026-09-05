@@ -66,6 +66,11 @@ class EventObservation(Base):
         ForeignKey("files.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # The frame of that file the MaxN was counted on. NULL for images
+    # (one frame each), for human-only rows and for rows written before
+    # the column existed. Its wall-clock time is derived where shown:
+    # file time plus frame over frame rate (utils.media_dates.frame_time).
+    max_n_frame_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Human-set count of individuals for this species in the event. When
     # not null it overrides `max_n` for stats and exports (the effective
     # count is `human_count` if set, else `max_n`), letting a verifier

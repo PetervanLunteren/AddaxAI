@@ -10,7 +10,7 @@ stores.
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import exiftool
@@ -29,6 +29,21 @@ logger = get_logger(__name__)
 # settings. The marker is case-insensitive; the separator is strictly `-`, and
 # the block must end the filename stem.
 _ADDAXAI_FILENAME_RE = re.compile(r"addaxai-(\d{8})-(\d{6})$", re.IGNORECASE)
+
+
+def frame_time(file, frame_number: int | None) -> datetime | None:
+    """The wall-clock time a frame of a video stands for: the file's
+    capture time plus the frame's offset at the file's frame rate. An
+    image is its own single frame. None when the file has no capture
+    time; a video frame with no known frame rate falls back to the file
+    time. Derived, never stored, so the date adjustments that rewrite
+    file times keep it right for free.
+    """
+    if file is None or file.captured_at_local is None:
+        return None
+    if frame_number is None or not file.frame_rate:
+        return file.captured_at_local
+    return file.captured_at_local + timedelta(seconds=frame_number / file.frame_rate)
 
 
 def parse_addaxai_filename_datetime(filename: str) -> datetime | None:

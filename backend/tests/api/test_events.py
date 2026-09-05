@@ -1005,3 +1005,73 @@ def test_get_event_labels_files_with_their_camera_for_paired_deployments(client,
     db.commit()
     data = client.get(f"/api/events/{ev2.id}").json()
     assert data["files"][0]["camera"] is None
+
+
+def test_event_detail_carries_where_and_when_the_max_n_was_counted(client, db):
+    """The Counts page jumps a video to its MaxN frame and shows the time
+    it stands for, plus when the species was first seen in the event.
+    All derived from the frame and the file time; a photo has no frame."""
+    from datetime import datetime
+
+    from sqlalchemy import insert
+
+    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.models.event import event_files
+    from tests.conftest import (
+        make_deployment,
+        make_detection,
+        make_file,
+        make_project,
+        make_site,
+    )
+
+    project = make_project(db, timezone="UTC", counting_threshold=0.2)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    video = make_file(
+        db, deployment_id=dep.id, file_type="video", file_format="mp4",
+        file_path="/fake/clip.mp4", frame_rate=30.0, best_frame_number=60,
+        captured_at_local=datetime(2026, 6, 1, 9, 0, 0),
+    )
+    photo = make_file(
+        db, deployment_id=dep.id, file_path="/fake/photo.jpg",
+        captured_at_local=datetime(2026, 6, 1, 9, 5, 0),
+    )
+    event = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2026, 6, 1, 9)
+    )
+    for seq, f in enumerate((video, photo), start=10):
+        db.execute(
+            insert(event_files).values(event_id=event.id, file_id=f.id, sequence_number=seq)
+        )
+    # Shark: two at frame 900 (30 s in), one at frame 60. First seen at frame 60.
+    for frame in (60, 900, 900):
+        make_detection(
+            db, file_id=video.id, frame_number=frame, label="shark", category="elasmobranch"
+        )
+    # Fox on the photo only.
+    make_detection(db, file_id=photo.id, label="fox")
+    db.flush()
+    calculate_max_n_for_event(db, event.id, 0.2)
+    db.commit()
+
+    resp = client.get(f"/api/events/{event.id}")
+    assert resp.status_code == 200
+    by_label = {o["label"]: o for o in resp.json()["observations"]}
+
+    shark = by_label["shark"]
+    assert shark["max_n"] == 2
+    assert shark["max_n_file_id"] == video.id
+    assert shark["max_n_frame_number"] == 900
+    assert shark["max_n_time"].startswith("2026-06-01T09:00:30")
+    assert shark["first_arrival_time"].startswith("2026-06-01T09:00:02")
+
+    fox = by_label["fox"]
+    assert fox["max_n_file_id"] == photo.id
+    assert fox["max_n_frame_number"] is None
+    assert fox["max_n_time"].startswith("2026-06-01T09:05:00")
+    assert fox["first_arrival_time"].startswith("2026-06-01T09:05:00")
+
+    frames = {m["label"]: m for m in resp.json()["max_n_frames"]}
+    assert frames["shark"]["max_n_frame_number"] == 900
+    assert frames["shark"]["max_n_time"].startswith("2026-06-01T09:00:30")
