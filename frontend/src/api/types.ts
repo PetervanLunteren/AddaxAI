@@ -840,6 +840,10 @@ export interface ModelInfo {
   full_image_cls?: boolean;
   /** Picture of what the model expects to see, shown in the info sheet. */
   example_image_url?: string | null;
+  /** Detection models: choosing this detector switches "Track animals
+   *  across frames" on and sets the video frame rate to the tracker's
+   *  default. Set on the underwater detectors. */
+  tracking_recommended?: boolean;
   /** Geographic region the cls model is trained for. Drives the
    *  grouping in classification dropdowns. `null` for detection /
    *  embedding models, and for any cls manifest not yet annotated. */

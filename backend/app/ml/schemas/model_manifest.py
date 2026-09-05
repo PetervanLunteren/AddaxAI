@@ -93,6 +93,21 @@ class ModelManifest(BaseModel):
     # baited tray) so a user can compare it with their own photos.
     example_image_url: str | None = None
 
+    # Detection-specific
+    # Which loader the tracking script uses for the weights. "megadetector"
+    # goes through the megadetector package, which reads MegaDetector .pt
+    # files and RF-DETR .pth files (the Community Fish Detector) and
+    # carries their class names. "ultralytics" loads a plain ultralytics
+    # checkpoint such as SharkTrack directly, because the megadetector
+    # package forces the three MegaDetector classes onto any YOLO .pt it
+    # does not know, which would turn a shark into "animal".
+    detector_runtime: Literal["megadetector", "ultralytics"] = "megadetector"
+    # Choosing this detector switches "Track animals across frames" on and
+    # sets the video frame rate to the tracker's default. Set for the
+    # underwater detectors, whose clips are long and whose review is per
+    # track; MegaDetector leaves the user's own choice alone.
+    tracking_recommended: bool = False
+
     # Embedding-specific
     embedding_dim: int | None = None  # 384, 768, or 1024
     input_size: int | None = None  # e.g., 224

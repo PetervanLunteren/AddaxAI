@@ -49,7 +49,7 @@ def model(tmp_path, monkeypatch):
     monkeypatch.setattr(md_module, "cuda_guard_overrides", lambda env_manager: {})
     model_path = tmp_path / "md.pt"
     model_path.write_bytes(b"weights")
-    return MegaDetectorV1000(model_path, _FakeEnvManager())
+    return MegaDetectorV1000(model_path, _FakeEnvManager(), env_name="addaxai-base")
 
 
 @pytest.fixture

@@ -1,0 +1,53 @@
+name: env-marine
+# The environment for the underwater detectors: SharkTrack (an ultralytics
+# YOLOv8 checkpoint) and the Community Fish Detector (RF-DETR through the
+# megadetector package). Kept apart from env-addaxai-base on purpose: the
+# rfdetr package brings transformers 5 and supervision with it, and a
+# change to the base YAML would offer every existing user a rebuild of an
+# environment they use for camera traps. Only a machine that prepares a
+# marine model builds this one.
+#
+# conda-forge only, for the same reasons as the base env: one host to pass
+# TLS, and no Anaconda commercial terms.
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    # CUDA torch wheels from the pytorch.org cu128 index, the same pins as
+    # the base env so the GPU guard's verdict applies to both.
+    - --extra-index-url https://download.pytorch.org/whl/cu128
+    - torch==2.8.0+cu128
+    - torchvision==0.23.0+cu128
+
+    # Utility packages the detectors and the tracker script read.
+    - requests
+    - pillow
+    - tqdm
+    - huggingface_hub
+
+    # MegaDetector package: loads RF-DETR .pth files (rfdetr_detector.py)
+    # and MegaDetector .pt files alike, and writes the JSON the app reads.
+    - setuptools<82  # yolov5 needs pkg_resources, removed in setuptools 82
+    # Prebuilt wheel for megadetector's ultralytics-yolov5 dependency; see
+    # the base env for why it cannot be a download.
+    - ultralytics-yolov5 @ https://huggingface.co/Addax-Data-Science/pip-wheels/resolve/main/ultralytics_yolov5-0.1.1-py3-none-any.whl#sha256=d532e62d6d7cd6c7381e4453810f31f10fd269cf9f237494bc570e74168dc2e1
+    - megadetector==10.0.24
+    # ultralytics loads SharkTrack's weights and carries the BoT-SORT
+    # tracker the tracking script runs for every detector.
+    - ultralytics==8.3.177
+    # BoT-SORT's assignment solver. ultralytics does not depend on it and
+    # tries to pip install it the first time a tracker runs, which fails on
+    # a machine that is offline after setup, so it is pinned here.
+    - lap==0.5.12
+    # RF-DETR runtime for the Community Fish Detector. 1.10.0 is the version
+    # the 2026-07-06 CFD container was re-issued for; an older release
+    # refuses that container with "older format" and a newer one may move
+    # the checkpoint metadata again.
+    - rfdetr==1.10.0
+
+    # Helps Windows pip use the system certificate store (matches the
+    # legacy AddaxAI Windows build workflow). Last so it doesn't hold
+    # up the rest of the install if its index trips.
+    - pip-system-certs

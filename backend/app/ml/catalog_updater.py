@@ -61,6 +61,7 @@ _DRIFT_CHECKED_ENVS: tuple[str, ...] = (
     "pywildlife",
     "tensorflow-v1",
     "tensorflow-v2",
+    "marine",
 )
 
 

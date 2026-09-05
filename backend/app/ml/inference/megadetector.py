@@ -147,13 +147,19 @@ class MegaDetectorV1000(DetectionModel):
         "3": "vehicle",
     }
 
-    def __init__(self, model_path: Path, env_manager: EnvironmentManager):
+    def __init__(
+        self, model_path: Path, env_manager: EnvironmentManager, *, env_name: str
+    ):
         """
         Initialize MegaDetector.
 
         Args:
             model_path: Path to .pt model file
             env_manager: Environment manager for accessing conda environments
+            env_name: The catalog's `env` for this detector ("addaxai-base",
+                "marine"), the same field classifiers already pick their
+                environment from. Detection used to be pinned to the base
+                env here, which is what kept every detector in one YAML.
 
         Raises:
             FileNotFoundError: If model file doesn't exist
@@ -167,7 +173,7 @@ class MegaDetectorV1000(DetectionModel):
 
         # Verify environment exists
         try:
-            self.python_path = env_manager.get_python("env-addaxai-base")
+            self.python_path = env_manager.get_python(f"env-{env_name}")
             logger.info(f"MegaDetector using Python: {self.python_path}")
         except Exception as e:
             raise RuntimeError(f"Failed to get Python environment: {e}") from e

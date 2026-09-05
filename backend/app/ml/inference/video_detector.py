@@ -86,13 +86,17 @@ class VideoDetectionModel:
     - Handles everything internally (no manual frame extraction needed)
     """
 
-    def __init__(self, model_path: Path, env_manager: EnvironmentManager):
+    def __init__(
+        self, model_path: Path, env_manager: EnvironmentManager, *, env_name: str
+    ):
         """
         Initialize video detection model.
 
         Args:
             model_path: Path to .pt model file
             env_manager: Environment manager for accessing conda environments
+            env_name: The catalog's `env` for this detector, as for
+                `MegaDetectorV1000`.
 
         Raises:
             FileNotFoundError: If model file doesn't exist
@@ -106,7 +110,7 @@ class VideoDetectionModel:
 
         # Verify environment exists
         try:
-            self.python_path = env_manager.get_python("env-addaxai-base")
+            self.python_path = env_manager.get_python(f"env-{env_name}")
             logger.info(f"VideoDetectionModel using Python: {self.python_path}")
         except Exception as e:
             raise RuntimeError(f"Failed to get Python environment: {e}") from e

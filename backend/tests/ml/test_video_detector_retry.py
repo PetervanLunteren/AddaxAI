@@ -37,7 +37,7 @@ def model(tmp_path, monkeypatch):
     )
     model_path = tmp_path / "md.pt"
     model_path.write_bytes(b"weights")
-    return VideoDetectionModel(model_path, _FakeEnvManager())
+    return VideoDetectionModel(model_path, _FakeEnvManager(), env_name="addaxai-base")
 
 
 def test_access_violation_retries_once_with_ffmpeg_deprioritised(

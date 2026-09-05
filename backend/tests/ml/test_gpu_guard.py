@@ -268,7 +268,7 @@ def test_megadetector_spawn_env_carries_override(monkeypatch, tmp_path):
     output_path = tmp_path / "results.json"
 
     env_manager = SimpleNamespace(get_python=lambda name: Path("/fake/python"))
-    detector = MegaDetectorV1000(model_path, env_manager)
+    detector = MegaDetectorV1000(model_path, env_manager, env_name="addaxai-base")
 
     captured = {}
 

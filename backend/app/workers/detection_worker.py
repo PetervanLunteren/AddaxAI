@@ -83,7 +83,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
     # Load detection model
     det_manifest = manifest_manager.get_model(detection_model_id)
     det_model_path = model_storage.get_model_file(det_manifest)
-    detection_model = MegaDetectorV1000(det_model_path, env_manager)
+    detection_model = MegaDetectorV1000(
+        det_model_path, env_manager, env_name=det_manifest.env
+    )
 
     # Load classification model (if configured)
     classification_model = None
@@ -390,7 +392,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     # Create video detection model
                     from app.ml.inference.video_detector import VideoDetectionModel
 
-                    video_detector = VideoDetectionModel(det_model_path, env_manager)
+                    video_detector = VideoDetectionModel(
+                        det_model_path, env_manager, env_name=det_manifest.env
+                    )
 
                     # Create sync progress wrapper for executor thread
                     loop = asyncio.get_event_loop()
