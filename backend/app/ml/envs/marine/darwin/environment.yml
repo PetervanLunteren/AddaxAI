@@ -14,6 +14,11 @@ channels:
 dependencies:
   - python=3.11
   - pip
+  # ffmpeg decodes the videos for the tracking script, with the platform's
+  # hardware decoder (VideoToolbox, D3D11, VAAPI) when there is one. OpenCV's
+  # own hardware path dropped to software for whole stretches of a 4K HEVC
+  # BRUVS clip (190 ms a frame); this one held 8 ms a frame throughout.
+  - ffmpeg
   - pip:
     # Utility packages the detectors and the tracker script read.
     - requests

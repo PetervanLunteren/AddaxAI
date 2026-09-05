@@ -125,6 +125,9 @@ def test_tracking_writes_the_file_list_and_runs_the_tracking_script(
         return 0
 
     monkeypatch.setattr(model, "_stream_process", fake_stream)
+    monkeypatch.setattr(
+        "app.ml.inference.video_detector.resolve_ffmpeg", lambda env: "/env/bin/ffmpeg"
+    )
     videos = [tmp_path / "a.mp4", tmp_path / "sub" / "b.MP4"]
 
     model.detect_videos_to_json(
@@ -143,6 +146,7 @@ def test_tracking_writes_the_file_list_and_runs_the_tracking_script(
     file_list = tmp_path / "video_results_files.json"
     assert json.loads(file_list.read_text()) == [str(p) for p in videos]
     assert str(file_list) in command
+    assert command[command.index("--ffmpeg") + 1] == "/env/bin/ffmpeg"
 
 
 def test_tracking_without_videos_is_a_configuration_error(model, tmp_path):

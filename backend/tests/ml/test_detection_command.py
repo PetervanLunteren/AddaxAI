@@ -159,6 +159,7 @@ def _tracking_cmd(**overrides) -> list[str]:
         output_json=Path("out.json"),
         fps=3.0,
         detector_runtime="ultralytics",
+        ffmpeg_path="/env/bin/ffmpeg",
         image_size=None,
         augment=False,
     )
@@ -175,6 +176,7 @@ def test_tracking_cmd_runs_the_script_with_the_file_list_and_runtime():
     assert cmd[3:7] == ["sharktrack.pt", "videos", "files.json", "out.json"]
     assert cmd[cmd.index("--fps") + 1] == "3.0"
     assert cmd[cmd.index("--detector_runtime") + 1] == "ultralytics"
+    assert cmd[cmd.index("--ffmpeg") + 1] == "/env/bin/ffmpeg"
     assert "--image_size" not in cmd
     assert "--augment" not in cmd
 

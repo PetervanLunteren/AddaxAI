@@ -7,13 +7,21 @@ the underwater detectors) with no ``app.*`` imports, like
 ``classification_worker.py``. It is started with ``python -P`` so its
 own directory stays off ``sys.path`` (that directory holds the app's
 ``megadetector.py``, which would shadow the megadetector package), and
-it loads the sibling ``video_iter`` (frame walking, the Bushnell frame-0
-rule) by file path instead. Everything the app knows about the run comes
+it loads the sibling ``video_iter`` (its ``open_video``, for the header
+read) by file path instead. Everything the app knows about the run comes
 in on the command line; everything it learns goes out in the JSON.
 
-Per video: walk the sampled frames (``stride = round(native_fps / fps)``,
-the same sampling ``process_video`` uses), run the detector on each,
-hand the boxes to BoT-SORT, and keep the tracker's output. Only boxes
+Per video: decode the sampled frames through an ffmpeg pipe (``stride =
+round(native_fps / fps)``, the same sampling ``process_video`` uses),
+run the detector on each, hand the boxes to BoT-SORT, and keep the
+tracker's output. ffmpeg rather than OpenCV because it gets the
+platform's hardware decoder and scales the frame down in the same pass:
+on a 4K HEVC BRUVS clip OpenCV's software decode cost 140 to 220 ms a
+frame in the busy parts and its hardware path silently dropped to
+software for whole stretches, where ffmpeg with VideoToolbox held 8 ms a
+frame throughout (measured 2026-09-06). The frames arrive at most
+``DECODE_WIDTH`` wide, which every detector here downsizes further
+anyway, and every box is normalised, so the source size never matters. Only boxes
 that belong to a surviving track are written: the tracker's own
 thresholds are the storage floor, so a 90-minute reef video does not
 write hundreds of thousands of noise rows nobody can address. Frame
@@ -47,6 +55,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -68,9 +77,7 @@ def _load_video_iter():
     return module
 
 
-_video_iter = _load_video_iter()
-iter_wanted_frames = _video_iter.iter_wanted_frames
-open_video = _video_iter.open_video
+open_video = _load_video_iter().open_video
 
 # --- SharkTrack's BoT-SORT parameters (trackers/tracker_3fps.yaml) ---------
 TRACK_HIGH_THRESH = 0.4
@@ -83,6 +90,9 @@ TRACK_BUFFER_SECONDS = 2.0
 DETECT_CONF = TRACK_LOW_THRESH
 DETECT_IOU = 0.5
 ULTRALYTICS_DEFAULT_IMAGE_SIZE = 640
+# Frames are decoded at most this wide. The 640 and 1024 px detectors
+# downsize from here, and the tracker's motion step works on half of it.
+DECODE_WIDTH = 1280
 
 # --- SharkTrack's false-positive filter (supplement S3) ---------------------
 FILTER_MIN_LIFE_SECONDS = 1.0
@@ -137,9 +147,9 @@ class _UltralyticsDetector:
         self.device = _device()
         print(f"PTDetector using device {self.device}", flush=True)
 
-    def detect(self, image: Image.Image) -> np.ndarray:
+    def detect(self, frame_bgr: np.ndarray) -> np.ndarray:
         result = self.model.predict(
-            image,
+            frame_bgr,
             conf=DETECT_CONF,
             iou=DETECT_IOU,
             imgsz=self.image_size,
@@ -173,8 +183,10 @@ class _MegaDetectorDetector:
         self.image_size = image_size
         self.augment = augment
 
-    def detect(self, image: Image.Image) -> np.ndarray:
-        width, height = image.size
+    def detect(self, frame_bgr: np.ndarray) -> np.ndarray:
+        height, width = frame_bgr.shape[:2]
+        # The package takes PIL in RGB, like the app's own image path.
+        image = Image.fromarray(np.ascontiguousarray(frame_bgr[:, :, ::-1]))
         result = self.detector.generate_detections_one_image(
             image,
             image_id="frame",
@@ -205,10 +217,84 @@ def _load_detector(runtime: str, model_path: Path, image_size: int | None, augme
 # --- Pure helpers (unit tested) ---------------------------------------------
 
 
+def sampling_stride(native_fps: float, fps: float) -> int:
+    """Every n-th source frame, ``round(native / fps)``, as ``process_video``
+    samples; every frame when either rate is unknown."""
+    return max(1, round(native_fps / fps)) if native_fps > 0 and fps > 0 else 1
+
+
 def sampled_frames(frame_count: int, native_fps: float, fps: float) -> list[int]:
     """The frame indices ``process_video`` would sample: 0, stride, 2*stride..."""
-    stride = max(1, round(native_fps / fps)) if native_fps > 0 and fps > 0 else 1
-    return list(range(0, max(0, frame_count), stride))
+    return list(range(0, max(0, frame_count), sampling_stride(native_fps, fps)))
+
+
+def decode_size(width: int, height: int, max_width: int = DECODE_WIDTH) -> tuple[int, int]:
+    """The frame size ffmpeg is asked for: at most ``max_width`` wide, the
+    aspect kept, both sides even (what the encoder-side scaler needs and
+    what makes the raw frame size exact)."""
+    if width <= 0 or height <= 0:
+        return (0, 0)
+    out_w = min(width, max_width)
+    out_h = round(height * out_w / width)
+    return (out_w - out_w % 2, max(2, out_h - out_h % 2))
+
+
+def ffmpeg_decode_cmd(
+    ffmpeg: str, video: Path, stride: int, out_w: int, out_h: int
+) -> list[str]:
+    """The pipe: every ``stride``-th source frame, scaled, as raw BGR.
+
+    ``select`` keeps frames by source index, so output frame ``i`` is
+    source frame ``i * stride``, the same numbering ``process_video``
+    writes; ``-fps_mode passthrough`` stops ffmpeg from duplicating
+    frames to fill the timeline. ``-hwaccel auto`` takes the platform's
+    hardware decoder and falls back to software without a word.
+    """
+    return [
+        ffmpeg,
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-hwaccel", "auto",
+        "-i", str(video),
+        "-vf", f"select=not(mod(n\\,{stride})),scale={out_w}:{out_h}",
+        "-fps_mode", "passthrough",
+        "-f", "rawvideo",
+        "-pix_fmt", "bgr24",
+        "-",
+    ]
+
+
+def ffmpeg_frames(ffmpeg: str, video: Path, stride: int, out_w: int, out_h: int):
+    """Yield ``(frame_number, frame_bgr)`` for every sampled frame ffmpeg
+    hands back, in order. Stops at the end of the stream; a decoder
+    error after some frames ends the video there, with its message on
+    stderr, rather than pretending the rest was empty."""
+    frame_bytes = out_w * out_h * 3
+    proc = subprocess.Popen(
+        ffmpeg_decode_cmd(ffmpeg, video, stride, out_w, out_h),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert proc.stdout is not None
+    index = 0
+    try:
+        while True:
+            chunk = proc.stdout.read(frame_bytes)
+            if len(chunk) < frame_bytes:
+                break
+            frame = np.frombuffer(chunk, dtype=np.uint8).reshape(out_h, out_w, 3)
+            yield index * stride, frame
+            index += 1
+    finally:
+        proc.stdout.close()
+        stderr = proc.stderr.read().decode(errors="replace").strip() if proc.stderr else ""
+        code = proc.wait()
+        if code != 0 or stderr:
+            print(
+                f"ffmpeg exit {code} on {video.name} after {index} frames: {stderr[-500:]}",
+                file=sys.stderr, flush=True,
+            )
 
 
 def normalise_track_rows(
@@ -290,21 +376,34 @@ def write_results(
 # --- The run -----------------------------------------------------------------
 
 
-def _video_frame_counts(videos: list[Path]) -> dict[Path, tuple[float, int]]:
-    """``(native_fps, frame_count)`` per video, for the progress total and
-    the sampling stride. A video that will not open maps to ``(0, 0)``."""
+def gmc_downscale(frame_width: int) -> int:
+    """How much BoT-SORT's camera-motion step shrinks the frame before
+    looking for features: to about 960 px wide, never less than the
+    tracker's own default of 2. On the full 4K frame the step cost 70 ms
+    a sample; the transform it finds is scaled back by this factor, so
+    the boxes it corrects are still in full-frame coordinates."""
+    return max(2, round(frame_width / 960)) if frame_width > 0 else 2
+
+
+def _video_frame_counts(videos: list[Path]) -> dict[Path, tuple[float, int, int, int]]:
+    """``(native_fps, frame_count, width, height)`` per video, for the
+    progress total, the sampling stride and the decode size. Read through
+    OpenCV, which is cheap for the header. A video that will not open
+    maps to ``(0, 0, 0, 0)``."""
     import cv2
 
-    counts: dict[Path, tuple[float, int]] = {}
+    counts: dict[Path, tuple[float, int, int, int]] = {}
     for path in videos:
         cap = open_video(path)
         if cap is None:
-            counts[path] = (0.0, 0)
+            counts[path] = (0.0, 0, 0, 0)
             continue
         try:
             counts[path] = (
                 float(cap.get(cv2.CAP_PROP_FPS)),
                 int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
+                int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
             )
         finally:
             cap.release()
@@ -314,38 +413,33 @@ def _video_frame_counts(videos: list[Path]) -> dict[Path, tuple[float, int]]:
 def track_video(
     detector,
     tracker_args: SimpleNamespace,
+    ffmpeg: str,
     path: Path,
     fps: float,
     native_fps: float,
-    frame_count: int,
+    size: tuple[int, int],
     progress: tqdm,
 ) -> tuple[list[int], list[dict]]:
-    """Walk one video's sampled frames through the detector and a fresh
+    """Run one video's sampled frames through the detector and a fresh
     tracker. Returns the frames actually decoded and the surviving boxes."""
     from ultralytics.engine.results import Boxes
     from ultralytics.trackers import BOTSORT
+    from ultralytics.trackers.utils.gmc import GMC
 
-    wanted = set(sampled_frames(frame_count, native_fps, fps))
+    stride = sampling_stride(native_fps, fps)
+    out_w, out_h = decode_size(*size)
     tracker = BOTSORT(tracker_args)
+    tracker.gmc = GMC(method=tracker_args.gmc_method, downscale=gmc_downscale(out_w))
     processed: list[int] = []
     boxes_out: list[dict] = []
-    cap = open_video(path)
-    if cap is None:
-        return processed, boxes_out
-    try:
-        for frame_number, image in iter_wanted_frames(cap, wanted, path):
-            processed.append(frame_number)
-            width, height = image.size
-            detections = detector.detect(image)
-            # BoT-SORT wants the frame for its camera-motion compensation,
-            # as BGR like everything cv2 hands it.
-            frame_bgr = np.asarray(image)[:, :, ::-1]
-            tracked = tracker.update(Boxes(detections, (height, width)), frame_bgr)
-            if len(tracked):
-                boxes_out.extend(normalise_track_rows(tracked, width, height, frame_number))
-            progress.update(1)
-    finally:
-        cap.release()
+    for frame_number, frame_bgr in ffmpeg_frames(ffmpeg, path, stride, out_w, out_h):
+        processed.append(frame_number)
+        detections = detector.detect(frame_bgr)
+        # BoT-SORT wants the frame for its camera-motion compensation.
+        tracked = tracker.update(Boxes(detections, (out_h, out_w)), frame_bgr)
+        if len(tracked):
+            boxes_out.extend(normalise_track_rows(tracked, out_w, out_h, frame_number))
+        progress.update(1)
     return processed, filter_tracks(boxes_out, fps)
 
 
@@ -368,6 +462,7 @@ def main() -> int:
     )
     parser.add_argument("--image_size", type=int, default=None)
     parser.add_argument("--augment", action="store_true")
+    parser.add_argument("--ffmpeg", required=True, help="path to the ffmpeg binary")
     args = parser.parse_args()
 
     with open(args.file_list) as f:
@@ -375,19 +470,22 @@ def main() -> int:
     detector = _load_detector(args.detector_runtime, args.model, args.image_size, args.augment)
     tracker_args = _tracker_args(args.fps)
     counts = _video_frame_counts(videos)
-    total_frames = sum(len(sampled_frames(n, native, args.fps)) for native, n in counts.values())
+    total_frames = sum(
+        len(sampled_frames(n, native, args.fps)) for native, n, _w, _h in counts.values()
+    )
 
     images: list[dict] = []
     with tqdm(total=total_frames, unit="frame", desc="Tracking", file=sys.stdout,
               mininterval=1.0, dynamic_ncols=False) as progress:
         for path in videos:
             relative = str(path.relative_to(args.video_folder))
-            native_fps, frame_count = counts[path]
-            if frame_count <= 0:
+            native_fps, frame_count, width, height = counts[path]
+            if frame_count <= 0 or width <= 0:
                 images.append(failure_entry(relative))
                 continue
             processed, boxes = track_video(
-                detector, tracker_args, path, args.fps, native_fps, frame_count, progress
+                detector, tracker_args, args.ffmpeg, path, args.fps, native_fps,
+                (width, height), progress,
             )
             if not processed:
                 images.append(failure_entry(relative))

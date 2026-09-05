@@ -26,6 +26,7 @@ from app.core.logging_config import get_logger
 from app.core.subprocess_group import popen_group
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.gpu_guard import cuda_guard_overrides
+from app.utils.ffmpeg_bin import resolve_ffmpeg
 from app.utils.subprocess_env import clean_python_env
 
 logger = get_logger(__name__)
@@ -85,6 +86,7 @@ def _build_tracking_cmd(
     output_json: Path,
     fps: float,
     detector_runtime: str,
+    ffmpeg_path: str,
     image_size: int | None,
     augment: bool,
 ) -> list[str]:
@@ -109,6 +111,8 @@ def _build_tracking_cmd(
         str(fps),
         "--detector_runtime",
         detector_runtime,
+        "--ffmpeg",
+        ffmpeg_path,
     ]
     if image_size is not None:
         command += ["--image_size", str(image_size)]
@@ -149,6 +153,7 @@ class VideoDetectionModel:
 
         self.model_path = model_path
         self.env_manager = env_manager
+        self.env_name = env_name
 
         # Verify environment exists
         try:
@@ -220,6 +225,7 @@ class VideoDetectionModel:
                 output_json=output_json,
                 fps=fps,
                 detector_runtime=detector_runtime,
+                ffmpeg_path=resolve_ffmpeg(self.env_name),
                 image_size=image_size,
                 augment=augment,
             )

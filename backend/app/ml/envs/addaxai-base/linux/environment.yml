@@ -18,6 +18,9 @@ dependencies:
   # installers do not bundle exiftool and fresh machines do not have
   # it on PATH; the backend resolves it from this env (exiftool_bin.py).
   - exiftool
+  # ffmpeg decodes the videos for "Track animals across frames" with the
+  # platform's hardware decoder; see the marine env for the numbers.
+  - ffmpeg
   - pip:
     # CUDA torch wheels installed from the pytorch.org cu128 index so
     # GPU acceleration is available out of the box, including RTX
