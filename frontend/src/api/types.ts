@@ -40,6 +40,7 @@ export interface ProjectCreate {
   timezone?: string | null;
   video_fps: number;
   media_filter: MediaFilter;
+  video_tracking: boolean;
   counting_threshold: number;
   classification_gate: number;
   event_smoothing: boolean;
@@ -71,6 +72,7 @@ export interface ProjectUpdate {
   timezone?: string | null;
   video_fps?: number | null;
   media_filter?: MediaFilter | null;
+  video_tracking?: boolean | null;
   counting_threshold?: number | null;
   classification_gate?: number | null;
   event_smoothing?: boolean | null;
@@ -104,6 +106,7 @@ export interface ProjectResponse {
   timezone: string | null;
   video_fps: number;
   media_filter: MediaFilter;
+  video_tracking: boolean;
   counting_threshold: number;
   classification_gate: number;
   event_smoothing: boolean;

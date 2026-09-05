@@ -65,6 +65,7 @@ import {
 
 import { useTaskProgress } from "../hooks/useTaskProgress";
 import { useReprocessSummary } from "../hooks/useReprocessSummary";
+import { useTrackingForDetector } from "../hooks/useTrackingForDetector";
 import {
   Tooltip,
   TooltipContent,
@@ -126,6 +127,7 @@ const settingsSchema = z.object({
   timezone: z.string(),
   video_fps: z.number().min(0.1).max(10),
   media_filter: z.enum(["all", "images", "videos"]),
+  video_tracking: z.boolean(),
   detection_augment: z.boolean(),
   detection_image_size: z.number().int().nullable(),
   counting_threshold: z.number().min(0).max(1),
@@ -229,6 +231,7 @@ export default function SettingsPage() {
       timezone: "",
       video_fps: 1.0,
       media_filter: "all",
+      video_tracking: false,
       detection_augment: false,
       detection_image_size: null,
       counting_threshold: DEFAULT_COUNTING_THRESHOLD,
@@ -269,6 +272,7 @@ export default function SettingsPage() {
         timezone: project.timezone ?? "",
         video_fps: project.video_fps,
         media_filter: project.media_filter,
+        video_tracking: project.video_tracking,
         detection_augment: project.detection_augment,
         detection_image_size: project.detection_image_size,
         counting_threshold: project.counting_threshold,
@@ -293,6 +297,11 @@ export default function SettingsPage() {
   const fullImageCls =
     classificationModels.find((m) => m.model_id === classificationModelId)
       ?.full_image_cls === true;
+  useTrackingForDetector(
+    form,
+    detectionModelId,
+    detectionModels.find((m) => m.model_id === detectionModelId),
+  );
   const labelCaption = useLabelSelectionCaption(
     classificationModelId && classificationModelId !== "none" ? classificationModelId : "",
   );
@@ -720,6 +729,7 @@ export default function SettingsPage() {
         timezone: project.timezone ?? "",
         video_fps: project.video_fps,
         media_filter: project.media_filter,
+        video_tracking: project.video_tracking,
         detection_augment: project.detection_augment,
         detection_image_size: project.detection_image_size,
         counting_threshold: project.counting_threshold,
@@ -1136,6 +1146,35 @@ export default function SettingsPage() {
                           </SelectContent>
                         </Select>
                         <FormMessage />
+                    </SettingRow>
+                  )}
+                />
+
+                {/* Tracking (inference-time) */}
+                <FormField
+                  control={form.control}
+                  name="video_tracking"
+                  render={({ field }) => (
+                    <SettingRow
+                      label="Track animals across frames"
+                      isCustom={changedAdvanced.includes("video_tracking")}
+                      disabled={fullImageCls}
+                      description={
+                        fullImageCls ? (
+                          SETTING_CAPTIONS.fullImageClassifier
+                        ) : (
+                          <>
+                            {SETTING_CAPTIONS.videoTracking} Applies to new
+                            analyses only.
+                          </>
+                        )
+                      }
+                    >
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                      <FormMessage />
                     </SettingRow>
                   )}
                 />

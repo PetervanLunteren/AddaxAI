@@ -125,6 +125,15 @@ class Project(Base):
     video_fps: Mapped[float] = mapped_column(
         Float, nullable=False, default=1.0  # Frames per second to extract
     )
+    # Follow each animal through a video (BoT-SORT over the sampled frames)
+    # so the Labels page shows one card per tracked animal and MaxN reads
+    # the peak across every frame. Inference-time like video_fps: decides
+    # what a NEW analysis writes, never read by postprocessing. Off by
+    # default; the form switches it on when a detector whose catalog entry
+    # says tracking_recommended is chosen (the underwater detectors).
+    video_tracking: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
 
     # Which media the detector runs on: "all" | "images" | "videos".
     # Inference-time, like video_fps: it decides what a NEW analysis reads off

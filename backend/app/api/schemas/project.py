@@ -104,6 +104,14 @@ class ProjectBase(BaseModel):
             "applies to future analyses only, never retroactively"
         ),
     )
+    video_tracking: bool = Field(
+        default=False,
+        description=(
+            "Follow each animal through a video with a tracker, so the "
+            "Labels page shows one card per tracked animal. Inference-time: "
+            "applies to future analyses only"
+        ),
+    )
 
     # Detection and processing settings
     counting_threshold: float = Field(
@@ -248,6 +256,7 @@ class ProjectUpdate(BaseModel):
         return _validate_iana_timezone(v)
     video_fps: float | None = Field(None, ge=0.1, le=10.0)
     media_filter: MediaFilter | None = None
+    video_tracking: bool | None = None
     counting_threshold: float | None = Field(None, ge=0.0, le=1.0)
     classification_gate: float | None = Field(None, ge=0.01, le=1.0)
     event_smoothing: bool | None = None

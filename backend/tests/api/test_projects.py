@@ -722,3 +722,23 @@ def test_a_long_list_that_leaves_a_class_is_not_excluding_all(client, db):
         json={"excluded_classes": ["fox", "zebra", "lion", "okapi"]},
     )
     assert resp.status_code == 200, resp.text
+
+
+def test_video_tracking_is_off_unless_switched_on(client):
+    """Tracking is inference-time like video_fps: a new project starts with
+    it off, an update switches it, and the response carries it so the forms
+    can seed from the project row. Like video_fps and media_filter it is
+    set through PATCH, which is how both forms write their settings."""
+    resp = client.post("/api/projects", json={"name": "bruv"})
+    assert resp.status_code == 201
+    project = resp.json()
+    assert project["video_tracking"] is False
+
+    resp = client.patch(
+        f"/api/projects/{project['id']}", json={"video_tracking": True}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["video_tracking"] is True
+
+    resp = client.get(f"/api/projects/{project['id']}")
+    assert resp.json()["video_tracking"] is True

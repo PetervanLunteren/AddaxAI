@@ -125,6 +125,14 @@ export function ProjectSettingsModal({
             <p className="text-sm text-gray-900">{project.video_fps} FPS</p>
           </div>
 
+          {/* Tracking */}
+          <div>
+            <p className="text-sm font-medium text-gray-700 mb-1">Track animals across frames</p>
+            <p className="text-sm text-gray-900">
+              {project.video_tracking ? "On" : "Off"}
+            </p>
+          </div>
+
           {/* Detection image size */}
           <div>
             <p className="text-sm font-medium text-gray-700 mb-1">Detection image size</p>
