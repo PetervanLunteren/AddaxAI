@@ -65,7 +65,13 @@ def get_detections_by_job(db: Session, job_id: str) -> list[Detection]:
 
 def create_detection(db: Session, detection: DetectionCreate) -> Detection:
     """
-    Create a single detection.
+    Create a single detection. Flushed, not committed: the caller commits
+    when its unit of work is complete.
+
+    The ingest calls this once per box. A commit here expired every
+    object in the session each time, which is quadratic in the boxes of
+    a file: a tracked hour of video (12,700 boxes on one file) spent 17
+    minutes in 81 million attribute expirations.
 
     Crashes if database constraint violated (e.g., invalid file_id).
     This is intentional - we want to surface errors immediately.
@@ -84,8 +90,7 @@ def create_detection(db: Session, detection: DetectionCreate) -> Detection:
         frame_number=detection.frame_number,
     )
     db.add(db_detection)
-    db.commit()
-    db.refresh(db_detection)
+    db.flush()
     return db_detection
 
 
