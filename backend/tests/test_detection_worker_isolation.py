@@ -268,3 +268,29 @@ async def test_cancel_still_aborts_the_whole_queue(db, tmp_path, monkeypatch):
     # user can re-run them without re-adding the folders.
     assert statuses == ["completed", "pending", "pending"]
     assert db.get(type(job), job.id).status == "cancelled"
+
+
+# ── Which detectors may run which media ─────────────────────────────
+
+
+def test_an_ultralytics_detector_always_tracks_and_refuses_images(db):
+    """SharkTrack loads through ultralytics and has no MegaDetector path:
+    `process_video` would force MegaDetector's classes onto it and fail
+    every batch (it did, for an hour, on a real run). Its videos take the
+    tracking script whatever the switch says; a run that would hand it
+    images is refused before anything starts."""
+    from types import SimpleNamespace
+
+    from app.workers.detection_worker import _video_tracking_for
+
+    shark = SimpleNamespace(detector_runtime="ultralytics", friendly_name="SharkTrack")
+    md = SimpleNamespace(detector_runtime="megadetector", friendly_name="MegaDetector")
+    off = make_project(db, video_tracking=False)
+    on = make_project(db, video_tracking=True)
+
+    assert _video_tracking_for(off, shark, has_images=False) is True
+    assert _video_tracking_for(on, shark, has_images=False) is True
+    assert _video_tracking_for(off, md, has_images=True) is False
+    assert _video_tracking_for(on, md, has_images=True) is True
+    with pytest.raises(RuntimeError, match="analyses videos only"):
+        _video_tracking_for(off, shark, has_images=True)

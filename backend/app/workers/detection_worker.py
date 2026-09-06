@@ -42,6 +42,31 @@ from app.utils.fs_hidden import mkdir_hidden_addaxai
 logger = get_logger(__name__)
 
 
+def _video_tracking_for(project, det_manifest, has_images: bool) -> bool:
+    """Whether this run's videos go through the tracking script.
+
+    The project's own switch, or forced on for a detector that loads
+    through ultralytics (SharkTrack). That detector has no MegaDetector
+    path: `process_video` would force MegaDetector's three classes onto
+    it and fail every batch, and the image detector has no ultralytics
+    branch at all. So its videos always take the tracking script, and a
+    run that would hand it images is refused up front rather than
+    analysed into nothing.
+    """
+    ultralytics_only = getattr(det_manifest, "detector_runtime", None) == "ultralytics"
+    if ultralytics_only and has_images:
+        raise RuntimeError(
+            f"{det_manifest.friendly_name} analyses videos only. Set 'Media "
+            "to analyse' to videos, or pick another detector for the images."
+        )
+    if ultralytics_only and not project.video_tracking:
+        logger.info(
+            f"{det_manifest.friendly_name} runs through the tracker; tracking "
+            "switched on for this run"
+        )
+    return bool(project.video_tracking or ultralytics_only)
+
+
 async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list[str], db) -> None:
     """
     Process multiple queue entries sequentially within one job.
@@ -267,6 +292,10 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         f"{len(media_filter_skipped)} file(s) in {folder_path}"
                     )
 
+                video_tracking = _video_tracking_for(
+                    project, det_manifest, bool(image_files) and not full_image_cls
+                )
+
                 if not video_files and not image_files:
                     # Two different situations, and only one is the user's
                     # mistake. If the filter dropped files there WAS media here,
@@ -423,7 +452,8 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         _fp=folder_path,
                         _vjp=video_json_path,
                         _jid=job_id,
-                        _vf=video_files: _vd.detect_videos_to_json(
+                        _vf=video_files,
+                        _tracking=video_tracking: _vd.detect_videos_to_json(
                             video_folder=_fp,
                             output_json=_vjp,
                             fps=project.video_fps,
@@ -432,7 +462,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                             augment=project.detection_augment,
                             progress_callback=sync_video_detection_progress,
                             job_id=_jid,
-                            tracking=project.video_tracking,
+                            tracking=_tracking,
                             detector_runtime=det_manifest.detector_runtime,
                             video_files=_vf,
                         ),
@@ -922,7 +952,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     if result.skipped_video_failures:
                         logger.warning(
                             f"Skipped {len(result.skipped_video_failures)} "
-                            "video(s) that MegaDetector could not decode"
+                            "video(s) that the detector could not decode"
                         )
                         warning_entries.extend(
                             {
@@ -1122,6 +1152,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 # full-image classifier) would leave a stale one behind.
                 for intermediate in [
                     video_json_path,
+                    # The file list the tracking script read (see
+                    # `detect_videos_to_json`), beside its results.
+                    video_json_path.with_name(video_json_path.stem + "_files.json"),
                     image_json_path,
                     artifacts_folder / ckpt.META_FILE,
                     artifacts_folder / ckpt.CHECKPOINT_FILE,

@@ -782,6 +782,9 @@ def list_detection_models() -> list[ModelInfo]:
             citation=getattr(manifest, "citation", None),
             license=getattr(manifest, "license", None),
             min_app_version=manifest.min_app_version,
+            tracking_recommended=bool(
+                getattr(manifest, "tracking_recommended", False)
+            ),
             default_batch_size_gpu=det_gpu,
             default_batch_size_cpu=det_cpu,
         )
