@@ -1095,22 +1095,23 @@ def build_observation_rows(
     if deployment_ids is not None:
         query = query.filter(Deployment.id.in_(deployment_ids))
 
-    from app.api.crud.event_observation import first_arrival_by_species
+    from app.api.crud.event_observation import first_arrivals
     from app.utils.media_dates import frame_time
 
-    # First arrivals are per event and species; one query per event.
-    first_arrivals: dict[str, dict[str | None, datetime]] = {}
+    # When each species was first seen, per event, in one query for the
+    # whole export.
+    first_seen_by_event = first_arrivals(
+        db, project.counting_threshold, project_id=project.id, deployment_ids=deployment_ids
+    )
 
     rows: list[list[Any]] = []
     for obs, event, deployment, taxonomy in query.all():
         count = obs.effective_count
         if count <= 0:
             continue
-        if event.id not in first_arrivals:
-            first_arrivals[event.id] = first_arrival_by_species(
-                db, event.id, project.counting_threshold
-            )
-        first_seen = first_arrivals[event.id].get(obs.label_taxonomy_id or obs.label)
+        first_seen = first_seen_by_event.get(event.id, {}).get(
+            obs.label_taxonomy_id or obs.label
+        )
         rows.append(
             [
                 event.id,

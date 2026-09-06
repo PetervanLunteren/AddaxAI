@@ -14,7 +14,7 @@ cohorts".
 import uuid
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import delete, func, text
@@ -473,45 +473,78 @@ def get_max_n_frames(db: Session, event_id: str) -> list[dict]:
     ]
 
 
-def first_arrival_by_species(
-    db: Session, event_id: str, counting_threshold: float
-) -> dict[str | None, datetime]:
-    """When each species was first seen in the event, keyed like the
-    observation rows (`label_taxonomy_id`, else the label).
+def first_arrivals(
+    db: Session,
+    counting_threshold: float,
+    *,
+    event_id: str | None = None,
+    project_id: str | None = None,
+    deployment_ids: list[str] | None = None,
+) -> dict[str, dict[str | None, datetime]]:
+    """When each species was first seen, per event: ``{event_id: {key:
+    time}}`` with the key as the observation rows use it
+    (`label_taxonomy_id`, else the label).
 
     The earliest passing, real box of the species over the event's files:
     for a photo that is the photo's time, for a video the frame's time
-    (file time plus frame over frame rate). Every box counts, not only the
-    visible ones, because the first frame a tracker saw the animal is
-    rarely the frame its card shows. Derived on request; nothing stored.
-    Species with no timed file are absent.
+    (`frame_time`). Every box counts, not only the visible ones, because
+    the first frame a tracker saw the animal is rarely the frame its card
+    shows. One grouped query for the whole scope (an event, or a project's
+    events, optionally limited to some deployments): the earliest frame
+    per file and species, which is a handful of rows per event however
+    many boxes a video holds. Derived on request; nothing stored. Species
+    with no timed file are absent.
     """
-    rows = (
+    effective_label = func.coalesce(Detection.label, Detection.category)
+    query = (
         db.query(
+            event_files.c.event_id,
             Detection.label_taxonomy_id,
-            func.coalesce(Detection.label, Detection.category).label("eff_label"),
-            Detection.frame_number,
+            effective_label.label("eff_label"),
             File.captured_at_local,
             File.frame_rate,
+            func.min(Detection.frame_number).label("frame_number"),
         )
         .join(File, File.id == Detection.file_id)
         .join(event_files, event_files.c.file_id == File.id)
-        .filter(event_files.c.event_id == event_id)
         .filter(_threshold_clause(counting_threshold))
         .filter(is_a_real_detection())
-        .all()
+        .group_by(
+            event_files.c.event_id,
+            Detection.file_id,
+            Detection.label_taxonomy_id,
+            effective_label,
+            File.captured_at_local,
+            File.frame_rate,
+        )
     )
-    first: dict[str | None, datetime] = {}
-    for r in rows:
-        if r.captured_at_local is None:
+    if event_id is not None:
+        query = query.filter(event_files.c.event_id == event_id)
+    if project_id is not None:
+        query = query.join(Event, Event.id == event_files.c.event_id).join(
+            Deployment, Deployment.id == Event.deployment_id
+        )
+        query = query.filter(Deployment.project_id == project_id)
+        if deployment_ids is not None:
+            query = query.filter(Deployment.id.in_(deployment_ids))
+
+    first: dict[str, dict[str | None, datetime]] = defaultdict(dict)
+    for r in query.all():
+        seen = frame_time(r, r.frame_number)
+        if seen is None:
             continue
-        seen = r.captured_at_local
-        if r.frame_number is not None and r.frame_rate:
-            seen = seen + timedelta(seconds=r.frame_number / r.frame_rate)
         key = r.label_taxonomy_id or r.eff_label
-        if key not in first or seen < first[key]:
-            first[key] = seen
+        per_event = first[r.event_id]
+        if key not in per_event or seen < per_event[key]:
+            per_event[key] = seen
     return first
+
+
+def first_arrival_by_species(
+    db: Session, event_id: str, counting_threshold: float
+) -> dict[str | None, datetime]:
+    """`first_arrivals` for one event: ``{key: time}``."""
+    return first_arrivals(db, counting_threshold, event_id=event_id).get(event_id, {})
 
 
 def _row(
