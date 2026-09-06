@@ -354,9 +354,9 @@ async def get_event(
         site_name = event.deployment.site.name
 
     max_n_frames = event_obs_crud.get_max_n_frames(db, event_id)
-    first_seen = event_obs_crud.first_arrival_by_species(
-        db, event_id, event.deployment.project.counting_threshold
-    )
+    first_seen = event_obs_crud.first_arrivals(
+        db, event.deployment.project.counting_threshold, event_id=event_id
+    ).get(event_id, {})
     observations = [
         _obs_item(obs, first_seen.get(obs.label_taxonomy_id or obs.label))
         for obs in event_obs_crud.list_event_observations(db, event_id)
@@ -403,7 +403,7 @@ def _obs_item(
     """Build one count-list item, resolving display names from the
     taxonomy (common_name / scientific_name) when present. `first_arrival`
     is when the species was first seen in the event, from
-    `first_arrival_by_species`; None when unknown."""
+    `first_arrivals`; None when unknown."""
     tax = obs.label_taxonomy
     return EventObservationItem(
         id=obs.id,

@@ -540,13 +540,6 @@ def first_arrivals(
     return first
 
 
-def first_arrival_by_species(
-    db: Session, event_id: str, counting_threshold: float
-) -> dict[str | None, datetime]:
-    """`first_arrivals` for one event: ``{key: time}``."""
-    return first_arrivals(db, counting_threshold, event_id=event_id).get(event_id, {})
-
-
 def _row(
     db: Session, event_observation_id: str, event_id: str | None
 ) -> EventObservation | None:

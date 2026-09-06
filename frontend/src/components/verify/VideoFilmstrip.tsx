@@ -12,14 +12,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { filesApi } from "../../api/files";
-
-/** Seconds -> "m:ss", or null when the video has no known frame rate. */
-function formatClock(seconds: number | null): string | null {
-  if (seconds == null) return null;
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
+import { formatClipPosition } from "../../lib/datetime";
 
 interface VideoFilmstripProps {
   fileId: string;
@@ -57,7 +50,9 @@ export function VideoFilmstrip({ fileId }: VideoFilmstripProps) {
       style={{ gridAutoRows: "1fr" }}
     >
       {frames.map((frame) => {
-        const clock = formatClock(frame.time_seconds);
+        // No clock when the video has no known frame rate.
+        const clock =
+          frame.time_seconds == null ? null : formatClipPosition(frame.time_seconds);
         return (
           <div
             key={frame.frame_number}

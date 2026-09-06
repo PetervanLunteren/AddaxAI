@@ -165,3 +165,17 @@ export function formatTimeOffset(seconds: number): string {
   const mm = totalMin % 60;
   return mm ? `+${h}h${mm}m` : `+${h}h`;
 }
+
+/**
+ * A position in a clip as a clock, "1:21:05" or "0:45": minutes and
+ * seconds always, hours only when there are any. Shared by the filmstrip
+ * frame labels and the detection detail's "N in".
+ */
+export function formatClipPosition(seconds: number): string {
+  const total = Math.floor(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const ms = `${h ? String(m).padStart(2, "0") : m}:${String(s).padStart(2, "0")}`;
+  return h ? `${h}:${ms}` : ms;
+}
