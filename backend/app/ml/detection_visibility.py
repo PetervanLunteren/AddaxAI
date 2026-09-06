@@ -7,19 +7,25 @@ the Labels grid, not on an event card, not in the annotated still a
 folder run writes. Images have no frames, so every image detection is
 visible.
 
-    a video detection is visible only when
+    an untracked video detection is visible only when
     Detection.frame_number == File.best_frame_number,
-    or it is the representative box of its track
+    a tracked one only on its track's representative frame
 
 A tracked video has one more still per track, at the frame of the
 track's highest-confidence box (`Track.representative_frame_number`,
 written by the same pass as the best frame), so that box has a picture
-too and is the card the person reviews the whole track through.
+too and is the card the person reviews the whole track through. It is
+the track's only card: a sibling box that happens to sit on the file's
+best frame is the same animal, so it must not become a second card.
 
-Verified detections are the exception and pass on any frame. A human
-decision must never end up out of reach, which is the same escape hatch
-`calculate_max_n_for_event` uses to let a species verified on some frame
-into the counts.
+Verified untracked detections are the exception and pass on any frame.
+A human decision must never end up out of reach, which is the same
+escape hatch `calculate_max_n_for_event` uses to let a species verified
+on some frame into the counts. A tracked box needs no such hatch: a
+verdict on one box reaches the whole track (`expand_to_tracks`), so the
+card on the representative frame always carries it. Letting verified
+tracked boxes through would turn every frame of a verified track into a
+row of its own, in the grid counts and the detection exports.
 
 **Two things must apply this: anything that counts detections for the
 user, and anything that decides what the media outputs contain.**
@@ -90,15 +96,21 @@ def on_representative_frame() -> ColumnElement[bool]:
     )
 
 
+def _untracked() -> ColumnElement[bool]:
+    return Detection.track_id.is_(None)
+
+
 def on_pixel_surface() -> ColumnElement[bool]:
-    """The frames that have a JPEG: an image, a video's best frame, or a
-    track's representative frame. Verified boxes elsewhere are visible
-    but have no picture, which is why the embedding paths use this and
-    not ``on_visible_frame``. Needs ``File`` joined to ``Detection``."""
+    """The frames that have a JPEG and stand for the box: an image, an
+    untracked box on the video's best frame, or a track's representative
+    frame. Verified boxes elsewhere are visible but have no picture,
+    which is why the embedding paths use this and not
+    ``on_visible_frame``. Needs ``File`` joined to ``Detection``."""
     return or_(
         File.file_type == "image",
         and_(
             File.file_type == "video",
+            _untracked(),
             Detection.frame_number == File.best_frame_number,
         ),
         on_representative_frame(),
@@ -113,8 +125,13 @@ def on_visible_frame() -> ColumnElement[bool]:
     """
     return or_(
         File.file_type != "video",
-        Detection.frame_number == File.best_frame_number,
-        Detection.verified == True,  # noqa: E712
+        and_(
+            _untracked(),
+            or_(
+                Detection.frame_number == File.best_frame_number,
+                Detection.verified == True,  # noqa: E712
+            ),
+        ),
         on_representative_frame(),
     )
 
@@ -136,12 +153,17 @@ def on_visible_frame_of(file: File) -> ColumnElement[bool]:
         return Detection.file_id == file.id
     if file.best_frame_number is None:
         return or_(
-            Detection.verified == True,  # noqa: E712
+            and_(_untracked(), Detection.verified == True),  # noqa: E712
             on_representative_frame(),
         )
     return or_(
-        Detection.frame_number == file.best_frame_number,
-        Detection.verified == True,  # noqa: E712
+        and_(
+            _untracked(),
+            or_(
+                Detection.frame_number == file.best_frame_number,
+                Detection.verified == True,  # noqa: E712
+            ),
+        ),
         on_representative_frame(),
     )
 
@@ -178,10 +200,9 @@ def visible_detections(file: File, detections: Iterable[_D]) -> list[_D]:
     return [
         det
         for det in detections
-        if det.verified
-        or (best is not None and det.frame_number == best)
-        or (
-            det.track is not None
-            and det.frame_number == det.track.representative_frame_number
+        if (
+            det.frame_number == det.track.representative_frame_number
+            if det.track is not None
+            else det.verified or (best is not None and det.frame_number == best)
         )
     ]

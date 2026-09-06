@@ -9,6 +9,7 @@ pins that they select the same detections.
 from sqlalchemy import select
 
 from app.ml.detection_visibility import (
+    on_pixel_surface,
     on_visible_frame,
     on_visible_frame_of,
     visible_detections,
@@ -241,3 +242,61 @@ def test_the_two_lanes_agree_on_a_tracked_video(db):
         in_memory = {d.id for d in visible_detections(f, rows)}
         assert scoped == in_memory == joined, f.best_frame_number
     assert len(in_memory) == 1  # the frameless video shows its one card
+
+
+def test_a_verified_tracked_box_is_still_only_its_card(db):
+    """Verifying a card verifies the whole track, so every frame of the
+    track is verified. That must not turn each frame into a card or an
+    export row of its own: a tracked box is visible on its
+    representative frame and nowhere else, verified or not."""
+    from tests.conftest import make_track
+
+    project = make_project(db)
+    dep = make_deployment(db, project_id=project.id)
+    f = _video(db, dep.id, best_frame_number=3)
+    track = make_track(db, file_id=f.id, start_frame=30, end_frame=90,
+                       representative_frame_number=60)
+    boxes = [
+        make_detection(db, file_id=f.id, frame_number=n, track_id=track.id, verified=True)
+        for n in (30, 60, 90)
+    ]
+    db.commit()
+
+    assert visible_detections(f, boxes) == [boxes[1]]
+    scoped = set(
+        db.execute(
+            select(Detection.id)
+            .where(Detection.file_id == f.id)
+            .where(on_visible_frame_of(f))
+        ).scalars()
+    )
+    assert scoped == {boxes[1].id}
+
+
+def test_a_tracked_box_on_the_best_frame_is_not_a_second_card(db):
+    """The best frame of a tracked video often holds a box of a track
+    whose card sits on another frame. Same animal, one card: the best
+    frame clause is for untracked boxes only."""
+    from tests.conftest import make_track
+
+    project = make_project(db)
+    dep = make_deployment(db, project_id=project.id)
+    f = _video(db, dep.id, best_frame_number=3)
+    track = make_track(db, file_id=f.id, start_frame=3, end_frame=60,
+                       representative_frame_number=60)
+    on_best = make_detection(db, file_id=f.id, frame_number=3, track_id=track.id)
+    card = make_detection(db, file_id=f.id, frame_number=60, track_id=track.id)
+    drawn = make_detection(db, file_id=f.id, frame_number=3, verified=True)
+    db.commit()
+
+    assert visible_detections(f, [on_best, card, drawn]) == [card, drawn]
+    for clause in (on_visible_frame_of(f), on_visible_frame(), on_pixel_surface()):
+        scoped = set(
+            db.execute(
+                select(Detection.id)
+                .join(File, File.id == Detection.file_id)
+                .where(Detection.file_id == f.id)
+                .where(clause)
+            ).scalars()
+        )
+        assert scoped == {card.id, drawn.id}
