@@ -92,3 +92,40 @@ def test_deleting_a_track_keeps_its_boxes(db):
         select(Detection.track_id).where(Detection.id == box.id)
     ).one()
     assert row.track_id is None
+
+
+def test_the_file_detail_loads_its_collections_without_multiplying_them(db):
+    """`get_file_with_detections` once joined both collections onto the
+    file row: boxes times tracks. A tracked hour of video (12,000 boxes,
+    700 tracks) came back as 8 million rows and took the process down.
+    Two IN-selects instead: three statements, however big the video."""
+    from sqlalchemy import event
+
+    from app.api.crud.file import get_file_with_detections
+
+    video = _video(db)
+    tracks = [
+        make_track(db, file_id=video.id, track_key=k, representative_frame_number=60 * k)
+        for k in (1, 2)
+    ]
+    for track in tracks:
+        for frame in (30, 60, 90):
+            make_detection(db, file_id=video.id, frame_number=frame, track_id=track.id)
+    video_id = video.id
+    db.commit()
+    db.expunge_all()
+
+    statements: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    engine = db.get_bind()
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        loaded = get_file_with_detections(db, video_id)
+        assert len(loaded.detections) == 6 and len(loaded.tracks) == 2
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+    assert len(statements) == 3, statements
+    assert all(" JOIN " not in sql.upper() for sql in statements)

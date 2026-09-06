@@ -7,7 +7,7 @@ from datetime import UTC, datetime, time
 from typing import NamedTuple
 
 from sqlalchemy import Integer, and_, func, or_, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.crud.detection import expand_to_tracks, mark_detections_false
 from app.api.crud.event_observation import (
@@ -508,19 +508,16 @@ def get_label_progress(
 
 
 def get_file_with_detections(db: Session, file_id: str) -> File | None:
-    """
-    Get file by ID with detections loaded.
+    """File by id with its detections and tracks loaded.
 
-    Args:
-        db: Database session
-        file_id: File ID
-
-    Returns:
-        File with detections or None if not found
+    Two separate IN-queries, never two joined loads: joining both
+    collections onto the file row multiplies them (a tracked video with
+    12,000 boxes and 700 tracks came back as 8 million rows and took the
+    process down).
     """
     return (
         db.query(File)
-        .options(joinedload(File.detections), joinedload(File.tracks))
+        .options(selectinload(File.detections), selectinload(File.tracks))
         .filter(File.id == file_id)
         .first()
     )
