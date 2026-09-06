@@ -448,12 +448,12 @@ export function EventCountPanel({
                 never counted on a frame. */}
             {obs.max_n > 0 && obs.max_n_file_id && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="truncate">
+                <span className="min-w-0">
                   MaxN {obs.max_n}
                   {obs.max_n_time && ` at ${clock(obs.max_n_time)}`}
                   {obs.first_arrival_time &&
                     obs.first_arrival_time !== obs.max_n_time &&
-                    ` · first seen ${clock(obs.first_arrival_time)}`}
+                    `, first ${clock(obs.first_arrival_time)}`}
                 </span>
                 {onShowMaxN && (
                   <button

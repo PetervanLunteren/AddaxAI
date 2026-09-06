@@ -17,7 +17,7 @@
 
 import type { ReactNode } from "react";
 
-import { FormDescription, FormLabel } from "../ui/form";
+import { FormDescription, FormItem, FormLabel } from "../ui/form";
 import { Badge } from "../ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -37,10 +37,13 @@ export function SettingRow({
   disabled?: boolean;
   children: ReactNode;
 }) {
+  // FormItem, not a div: it mints the id that pairs this row's label with
+  // its control. Without it every row shares one id and a screen reader
+  // calls every select on the page by the first row's label.
   return (
-    <div
+    <FormItem
       className={cn(
-        "grid grid-cols-2 items-center gap-8 py-6",
+        "grid grid-cols-2 items-center gap-8 space-y-0 py-6",
         // pointer-events-none as well as the fieldset: Radix triggers and
         // the "Model details" link do not obey a disabled fieldset.
         disabled && "opacity-50 pointer-events-none",
@@ -64,6 +67,6 @@ export function SettingRow({
       <fieldset disabled={disabled} className="min-w-0 space-y-2">
         {children}
       </fieldset>
-    </div>
+    </FormItem>
   );
 }

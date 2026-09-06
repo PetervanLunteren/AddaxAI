@@ -325,7 +325,7 @@ export function EventDetailModal({
     setRelabelDetectionId(null);
   }, [eventId, event?.id]);
 
-  const files = event?.files ?? [];
+  const files = useMemo(() => event?.files ?? [], [event?.files]);
   const currentFile = files[selectedFileIndex] as
     | FileWithDetections
     | undefined;

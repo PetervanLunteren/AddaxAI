@@ -741,9 +741,9 @@ export function FileDetailModal({
                   the kept frame is simply the middle one. */}
               {item.file_type === "video" && (
                 <div className="pt-1 text-muted-foreground/80">
-                  The AI checked the whole clip. This is the one frame
-                  AddaxAI kept, so you are judging this frame, and a box
-                  you draw is saved on it.
+                  The AI checked the whole clip. This is the clip's main
+                  frame: judge the clip on it, and a box you draw is
+                  saved on it.
                   {playable && " Press P or the play button to watch the clip."}
                 </div>
               )}

@@ -78,6 +78,16 @@ interface DetectionDetailModalProps {
   labelOptionsLoading?: boolean;
 }
 
+/** "1:01:05" for a position in a clip, hours only when there are any. */
+function clipOffset(seconds: number): string {
+  const total = Math.round(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const ms = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return h ? `${h}:${ms}` : ms;
+}
+
 export function DetectionDetailModal({
   detection,
   open,
@@ -680,9 +690,16 @@ export function DetectionDetailModal({
                     <FileLocation
                       filePath={fileData.file_path}
                       suffix={
+                        // The grid summary has no frame number; the full
+                        // row does, once the file has loaded.
                         fileData.file_type === "video" &&
-                        detection.frame_number != null && (
-                          <span> · frame {detection.frame_number}</span>
+                        fullDetection?.frame_number != null && (
+                          <span>
+                            {" "}· frame {fullDetection.frame_number}
+                            {fileData.frame_rate
+                              ? ` · ${clipOffset(fullDetection.frame_number / fileData.frame_rate)} in`
+                              : ""}
+                          </span>
                         )
                       }
                     />
