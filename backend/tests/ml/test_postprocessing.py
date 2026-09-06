@@ -199,7 +199,8 @@ def test_smoothing_strength_passed_to_subprocess(db):
 
     project_mock = _make_project_mock(
         smoothing_strength="aggressive",
-        classification_model_id=None,
+        # Smoothing needs a classifier to reconcile; without one it is skipped.
+        classification_model_id="CLS-TEST",
         excluded_classes=[],
         taxonomic_rollup=False,
         counting_threshold=0.5,
@@ -341,7 +342,8 @@ def test_smoothing_failure_returns_rollup_results(db):
         json_path = f.name
 
     project_mock = _make_project_mock(
-        classification_model_id=None,
+        # Smoothing needs a classifier to reconcile; without one it is skipped.
+        classification_model_id="CLS-TEST",
         excluded_classes=[],
         taxonomic_rollup=False,
         counting_threshold=0.5,
@@ -401,7 +403,8 @@ def test_smoothing_failure_is_reported_to_the_user(db):
         json_path = f.name
 
     project_mock = _make_project_mock(
-        classification_model_id=None,
+        # Smoothing needs a classifier to reconcile; without one it is skipped.
+        classification_model_id="CLS-TEST",
         excluded_classes=[],
         taxonomic_rollup=False,
         counting_threshold=0.5,
@@ -442,7 +445,8 @@ def test_successful_smoothing_reports_no_warning(db):
         json_path = f.name
 
     project_mock = _make_project_mock(
-        classification_model_id=None,
+        # Smoothing needs a classifier to reconcile; without one it is skipped.
+        classification_model_id="CLS-TEST",
         excluded_classes=[],
         taxonomic_rollup=False,
         event_smoothing=False,  # nothing to smooth, so nothing to warn about

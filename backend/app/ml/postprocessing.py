@@ -369,6 +369,13 @@ def run_postprocessing_for_deployment(
     # (possibly rolled-up) results as-is — no subprocess needed.
     if not project.event_smoothing:
         return md_results
+    # Smoothing reconciles the classifier's species across an event. With
+    # no classifier there is nothing to smooth, and the smoother would only
+    # trip over a detector whose categories are not MegaDetector's (it
+    # looks up "animal" by name and SharkTrack calls its class elasmobranch).
+    if not project.classification_model_id:
+        logger.info("No classification model, skipping event smoothing")
+        return md_results
 
     # Package events for the smoother. Uses the same clustering primitive
     # as the UI's Event rows, so the smoother sees the same boundaries.

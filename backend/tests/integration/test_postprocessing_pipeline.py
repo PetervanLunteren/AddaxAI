@@ -285,6 +285,8 @@ def test_label_exclusion_applied_before_smoothing(deployment_scaffold):
     # Set up project with exclusion
     s["project"].excluded_classes = ["lion"]
     s["project"].event_smoothing = True
+    # Smoothing needs a classifier to reconcile; without one it is skipped.
+    s["project"].classification_model_id = "CLS-TEST"
     s["project"].taxonomic_rollup = False
     s["project"].independence_interval = 1800
     s["project"].counting_threshold = 0.5
@@ -795,3 +797,29 @@ def test_an_unticked_files_rejected_boxes_reprocess_cleanly(deployment_scaffold)
     db.refresh(weak)
     assert weak.label == "zebra", "the machine's call is restored"
     assert weak.verified is False
+
+
+def test_smoothing_is_skipped_without_a_classifier(deployment_scaffold):
+    """Smoothing reconciles classifier labels across an event. With no
+    classifier there is nothing to smooth, and the smoother would only
+    trip over a detector whose class is not "animal" (SharkTrack's
+    elasmobranch raised KeyError inside MegaDetector)."""
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    _load_basic_images(s)
+    s["project"].classification_model_id = None
+    s["project"].event_smoothing = True
+    db.flush()
+
+    with (
+        patch("app.ml.postprocessing.popen_group") as popen,
+        patch("app.ml.postprocessing._find_classification_model_dir", return_value=None),
+    ):
+        run_postprocessing_for_deployment(
+            deployment_id=s["deployment"].id,
+            json_path=s["artifacts"] / "results.json",
+            deployment_folder=deploy_dir,
+            project=s["project"],
+            db=db,
+        )
+    popen.assert_not_called()
