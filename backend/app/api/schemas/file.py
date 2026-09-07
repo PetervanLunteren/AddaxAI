@@ -91,6 +91,9 @@ class FileResponse(BaseModel):
     best_frame_number: int | None = None
     best_frame_path: str | None = None
     frame_rate: float | None = None
+    # Clip length, stored at ingest for videos; None for images and for
+    # videos analysed before it was stored.
+    duration_seconds: float | None = None
     observation_type: str = "unclassified"
     verified: bool = False
     verified_at_utc: datetime | None = None

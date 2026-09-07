@@ -30,6 +30,8 @@ import {
 import { SpotlightDim } from "./SpotlightDim";
 import type { FileWithDetections, DetectionResponse } from "../../api/types";
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
+import { trackRows } from "../../lib/track-utils";
+import { TrackTimeline, type TimelineMarker } from "./TrackTimeline";
 interface VideoPlayerProps {
   file: FileWithDetections;
   detectionThreshold: number;
@@ -53,6 +55,14 @@ interface VideoPlayerProps {
    *  frame a MaxN was counted on). The nonce lets the same frame be
    *  asked for twice in a row. */
   seekRequest?: { frame: number; nonce: number } | null;
+  /** The animal the person is looking at: its boxes keep the normal
+   *  style, every other box dims. Null dims nothing. */
+  selectedTrackId?: string | null;
+  /** A bar on the timeline was clicked. The player has already jumped to
+   *  the track's representative frame; the owner records the choice. */
+  onSelectTrack?: (trackId: string) => void;
+  /** Per species, the frame its MaxN was counted on (the Counts modal). */
+  markers?: TimelineMarker[];
 }
 
 /** Browser-playable video formats. */
@@ -62,6 +72,8 @@ const PLAYABLE_FORMATS = new Set(["mp4", "m4v", "mov", "webm"]);
 const HOLD_FRAMES = 5;
 /** Frames over which the overlay fades from full to zero (after the hold). */
 const FADE_FRAMES = 25;
+/** Opacity factor for the boxes of every other track while one is selected. */
+const OTHER_TRACK_DIM = 0.25;
 
 /** Check whether a file's video format is browser-playable. */
 export function isPlayableVideo(file: FileWithDetections): boolean {
@@ -189,12 +201,19 @@ export function VideoPlayer({
   onAutoExportConsumed,
   boxesHidden,
   seekRequest,
+  selectedTrackId = null,
+  onSelectTrack,
+  markers,
 }: VideoPlayerProps) {
   // Repaint when the project's colour map lands or changes.
   useSpeciesColorsVersion();
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [currentFrame, setCurrentFrame] = useState<number>(0);
+  // The clip's length in frames: what the timeline draws its bars over.
+  // The stored length (ingest) is there at once; the element's own
+  // duration replaces it once the metadata is in.
+  const [metadataFrames, setMetadataFrames] = useState(0);
   const [displayWidth, setDisplayWidth] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
   // Export progress, driven by playback position (recording runs at 1x, so
@@ -207,6 +226,8 @@ export function VideoPlayer({
   const videoFileId = sourceVideoId ?? file.id;
   const videoUrl = `${API_BASE_URL}/api/files/${videoFileId}/video`;
   const frameRate = file.frame_rate || 30;
+  const durationFrames =
+    metadataFrames || (file.duration_seconds ? Math.round(file.duration_seconds * frameRate) : 0);
   const imgW = file.width_px || 1;
   const imgH = file.height_px || 1;
 
@@ -276,6 +297,9 @@ export function VideoPlayer({
     return lastDetectionsRef.current;
   }, [currentFrame, detectionsByFrame]);
 
+  const dimFor = (det: DetectionResponse) =>
+    selectedTrackId != null && det.track_id !== selectedTrackId ? OTHER_TRACK_DIM : 1;
+
   // Full opacity for HOLD_FRAMES, then linearly fade to 0 over FADE_FRAMES
   const framesSinceMatch = Math.max(0, currentFrame - lastMatchFrameRef.current);
   const overlayOpacity =
@@ -312,6 +336,29 @@ export function VideoPlayer({
     }
   }, [frameRate]);
 
+  /** Jump to a frame and pause there, so that frame's boxes stay on
+   *  screen. The `seekRequest` prop and the timeline both come here. */
+  const seekTo = useCallback(
+    (frame: number) => {
+      const video = videoRef.current;
+      if (!video) return;
+      video.pause();
+      video.currentTime = frame / frameRate;
+      setCurrentFrame(frame);
+    },
+    [frameRate],
+  );
+
+  const rows = useMemo(() => trackRows(file.tracks ?? [], detections), [file.tracks, detections]);
+  const handleSelectTrack = useCallback(
+    (trackId: string) => {
+      const row = rows.find((r) => r.track.id === trackId);
+      if (row) seekTo(row.track.representative_frame_number);
+      onSelectTrack?.(trackId);
+    },
+    [rows, seekTo, onSelectTrack],
+  );
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -335,18 +382,14 @@ export function VideoPlayer({
     if (!seekRequest) return;
     const video = videoRef.current;
     if (!video) return;
-    const seek = () => {
-      video.pause();
-      video.currentTime = seekRequest.frame / frameRate;
-      setCurrentFrame(seekRequest.frame);
-    };
+    const seek = () => seekTo(seekRequest.frame);
     if (video.readyState >= 1) {
       seek();
       return;
     }
     video.addEventListener("loadedmetadata", seek, { once: true });
     return () => video.removeEventListener("loadedmetadata", seek);
-  }, [seekRequest, frameRate, videoUrl]);
+  }, [seekRequest, seekTo, videoUrl]);
 
   // ── Video export ────────────────────────────────────────────────
   // Records the video with canvas-rendered overlays to an MP4 (or WebM
@@ -500,11 +543,11 @@ export function VideoPlayer({
   }, [autoExport, startExport, onAutoExportConsumed]);
 
   return (
-    <div className="relative w-full h-full flex items-center justify-center">
+    <div className="relative w-full h-full flex flex-col items-center justify-center">
       {/* Video + SVG overlay container */}
       <div
         ref={containerRef}
-        className="relative max-w-full max-h-full"
+        className="relative max-w-full min-h-0 flex-1"
         style={{ aspectRatio: imgW / imgH }}
       >
         <video
@@ -514,6 +557,9 @@ export function VideoPlayer({
           controls
           controlsList="nodownload"
           className="w-full h-full object-contain"
+          onLoadedMetadata={(e) =>
+            setMetadataFrames(Math.round(e.currentTarget.duration * frameRate))
+          }
           onPlay={handlePlay}
           onPause={handlePause}
           onSeeked={handleSeeked}
@@ -567,7 +613,7 @@ export function VideoPlayer({
               }))}
             />
 
-            {/* Bounding boxes */}
+            {/* Bounding boxes. With a track selected, the others dim. */}
             {currentDetections.map((det) => {
               const pill = computePillLayout(det);
               return (
@@ -581,7 +627,7 @@ export function VideoPlayer({
                   fill="none"
                   stroke={pill.color}
                   strokeWidth={BBOX_STROKE_WIDTH * s}
-                  opacity={BBOX_OPACITY}
+                  opacity={BBOX_OPACITY * dimFor(det)}
                 />
               );
             })}
@@ -601,7 +647,11 @@ export function VideoPlayer({
               );
 
               return (
-                <g key={`label-${det.id}`} transform={`translate(${x}, ${pillY}) scale(${s})`}>
+                <g
+                  key={`label-${det.id}`}
+                  transform={`translate(${x}, ${pillY}) scale(${s})`}
+                  opacity={dimFor(det)}
+                >
                   <rect
                     x={0}
                     y={0}
@@ -638,7 +688,17 @@ export function VideoPlayer({
           </svg>
         )}
       </div>
-
+      {rows.length > 0 && (
+        <TrackTimeline
+          rows={rows}
+          durationFrames={durationFrames}
+          currentFrame={currentFrame}
+          selectedTrackId={selectedTrackId}
+          markers={markers}
+          onSelectTrack={handleSelectTrack}
+          onSeek={seekTo}
+        />
+      )}
     </div>
   );
 }

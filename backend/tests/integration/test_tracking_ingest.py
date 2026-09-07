@@ -6,6 +6,8 @@ into one `tracks` row per video and links the boxes; a run without
 tracking leaves every `track_id` NULL and makes no rows.
 """
 
+import pytest
+
 from app.ml.json_pipeline import load_json_to_database
 from app.models import Detection, File, Track
 
@@ -86,6 +88,9 @@ def test_tracked_boxes_become_track_rows(deployment_scaffold):
     assert by_frame[600].track_id == tracks[3].id
     # Categories pass through untranslated.
     assert {d.category for d in boxes} == {"elasmobranch"}
+    # The clip's length, from the last sampled frame at the frame rate:
+    # what the card's span bar and the timeline are drawn over.
+    assert video.duration_seconds == pytest.approx((600 + 1) / 30.0)
 
 
 def test_a_run_without_tracking_makes_no_track_rows(deployment_scaffold):

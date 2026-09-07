@@ -19,6 +19,8 @@ import { eventsApi } from "../../api/events";
 import { projectsApi } from "../../api/projects";
 import { API_BASE_URL } from "../../lib/api-client";
 import { formatCameraDate, formatCameraTime, formatClipPosition } from "../../lib/datetime";
+import { trackPath } from "../../lib/track-utils";
+import { TrackSpan } from "./TrackTimeline";
 import {
   getDetectionColor,
   getDetectionDisplayName,
@@ -260,13 +262,18 @@ export function DetectionDetailModal({
   const openInFiles = useCallback(() => {
     if (!detection) return;
     onOpenChange(false);
+    // A track card hands its track along, so the viewer opens the clip on
+    // that animal rather than on the best frame.
+    const trackId = fileData?.detections.find((d) => d.id === detection.detection_id)?.track_id;
     setSearchParams((prev) => {
       const sp = new URLSearchParams(prev);
       sp.set("view", "files");
       sp.set("lbl_file", detection.file_id);
+      if (trackId) sp.set("lbl_track", trackId);
+      else sp.delete("lbl_track");
       return sp;
     });
-  }, [detection, onOpenChange, setSearchParams]);
+  }, [detection, fileData, onOpenChange, setSearchParams]);
 
   /** The rail's Download: the crop this modal is about, saved as a
    *  file. The whole annotated photo lives one "Open in files view"
@@ -607,6 +614,9 @@ export function DetectionDetailModal({
                 const otherBoxes = (fileData?.detections ?? [])
                   .filter((d) => shouldDrawBbox(d, fileData!, detectionThreshold, stillFrame))
                   .filter((d) => d.id !== fullDetection.id);
+                const trail = fullDetection.track_id
+                  ? trackPath(fileData?.detections ?? [], fullDetection.track_id)
+                  : [];
 
                 return (
                   <svg
@@ -630,6 +640,31 @@ export function DetectionDetailModal({
                     ))}
                     {/* Spotlight dim overlay */}
                     <path fillRule="evenodd" d={spotlightPath} fill={DIM_FILL} />
+                    {/* The animal's path through the clip: its box centres
+                        over the track, joined, the card's own frame marked.
+                        Only a tracked box has one. */}
+                    {trail.length > 1 && (
+                      <g data-testid="track-trail" opacity={0.9}>
+                        <polyline
+                          points={trail.map((pt) => `${pt.x * imgW},${pt.y * imgH}`).join(" ")}
+                          fill="none"
+                          stroke={pill.color}
+                          strokeWidth={BBOX_STROKE_WIDTH * s * 0.75}
+                          strokeDasharray={`${4 * s} ${4 * s}`}
+                        />
+                        {trail.map((pt) => (
+                          <circle
+                            key={pt.frame}
+                            cx={pt.x * imgW}
+                            cy={pt.y * imgH}
+                            r={(pt.frame === fullDetection.frame_number ? 5 : 2.5) * s}
+                            fill={pill.color}
+                            stroke={pt.frame === fullDetection.frame_number ? "white" : "none"}
+                            strokeWidth={s}
+                          />
+                        ))}
+                      </g>
+                    )}
 
                     {/* Rounded bbox */}
                     <rect
@@ -705,6 +740,18 @@ export function DetectionDetailModal({
                       {formatCameraTime(detection.captured_at_local, { hour: "2-digit", minute: "2-digit" }, "en-GB")}
                       {detection.site_name && ` · ${detection.site_name}`}
                     </div>
+                    {/* Where in the clip this animal was. */}
+                    {fullDetection?.track_id && (() => {
+                      const track = fileData.tracks.find((t) => t.id === fullDetection.track_id);
+                      return track ? (
+                        <TrackSpan
+                          track={track}
+                          frameRate={fileData.frame_rate}
+                          durationSeconds={fileData.duration_seconds}
+                          color={getDetectionColor(fullDetection)}
+                        />
+                      ) : null;
+                    })()}
                     <div>
                       <button
                         type="button"

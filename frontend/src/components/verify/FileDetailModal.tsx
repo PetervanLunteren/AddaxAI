@@ -87,6 +87,7 @@ import { useShortcutLabels } from "../../hooks/useShortcutLabels";
 import { Button } from "../ui/button";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
+import { representativeBox } from "../../lib/track-utils";
 import { ViewerToolRail } from "./ViewerToolRail";
 import { useFileTriage, useImageAdjust } from "./viewer-tools";
 import { labelMajority } from "./label-majority";
@@ -113,6 +114,11 @@ interface FileDetailModalProps {
   /** Something about this file changed. Fires immediately so the
    *  progress bar keeps up; the grid itself waits for the close. */
   onChanged: () => void;
+  /** Opened from a track's card: start the clip paused on that track's
+   *  frame with the track selected, so the animal the person was
+   *  looking at is the one on screen. Ignored when the file has no such
+   *  track or cannot be played. */
+  openTrackId?: string | null;
 }
 
 /** The keyboard hint on a button. */
@@ -139,6 +145,7 @@ export function FileDetailModal({
   onExhausted,
   loadingMore,
   onChanged,
+  openTrackId = null,
 }: FileDetailModalProps) {
   const queryClient = useQueryClient();
   const [drawMode, setDrawMode] = useState(false);
@@ -149,6 +156,9 @@ export function FileDetailModal({
   // One-shot: Download clicked from frame view mounts the player and
   // runs the annotated-video export once the clip is playable.
   const [pendingVideoExport, setPendingVideoExport] = useState(false);
+  // Where the player should jump: the track picked on the timeline, or
+  // the track this viewer was opened for.
+  const [seekRequest, setSeekRequest] = useState<{ frame: number; nonce: number } | null>(null);
   // The mounted surface's export: annotated PNG from the canvas,
   // recorded annotated MP4 from the player. Only one is mounted at a
   // time, so one ref serves both (as in `EventDetailModal`).
@@ -235,6 +245,36 @@ export function FileDetailModal({
 
   // The list row is what the grid last fetched; the file query is live.
   const isVerified = file?.verified ?? item?.verified ?? false;
+
+  // The selected box's track, for the player's highlight. Selecting a
+  // bar on the timeline selects that track's representative box, so
+  // the usual actions reach the whole animal through the cascade.
+  const selectedTrackId = useMemo(
+    () => file?.detections.find((d) => d.id === selectedDetectionId)?.track_id ?? null,
+    [file, selectedDetectionId],
+  );
+  const selectTrack = useCallback(
+    (trackId: string) => {
+      const track = file?.tracks.find((t) => t.id === trackId);
+      const box = track && file ? representativeBox(file.detections, track) : undefined;
+      setSelectedDetectionId(box?.id ?? null);
+    },
+    [file],
+  );
+  // Opened from a card: once the file is in, start on that track. Once
+  // per file and track, so paging away and back does not re-seek.
+  const openedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!file || !openTrackId) return;
+    const key = `${file.id}:${openTrackId}`;
+    if (openedFor.current === key) return;
+    openedFor.current = key;
+    const track = file.tracks.find((t) => t.id === openTrackId);
+    if (!track || !isPlayableVideo(file)) return;
+    selectTrack(track.id);
+    setViewMode("video");
+    setSeekRequest({ frame: track.representative_frame_number, nonce: Date.now() });
+  }, [file, openTrackId, selectTrack]);
 
   const playable = !!file && isPlayableVideo(file);
 
@@ -652,6 +692,9 @@ export function FileDetailModal({
                 autoExport={pendingVideoExport}
                 onAutoExportConsumed={() => setPendingVideoExport(false)}
                 boxesHidden={boxesHidden}
+                seekRequest={seekRequest}
+                selectedTrackId={selectedTrackId}
+                onSelectTrack={selectTrack}
               />
             ) : (
               <AnnotationCanvas

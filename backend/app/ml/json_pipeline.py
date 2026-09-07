@@ -444,6 +444,16 @@ def load_json_to_database(
                     best_frame_path=best_frame_path,
                     frame_rate=frame_rate,
                     frames_processed=frames_processed,
+                    # Both pipelines sample to the end of the clip, so the
+                    # last processed frame is the clip's length to within
+                    # one sampling step. The card's track span bar and the
+                    # timeline read it; a file without it shows spans as
+                    # text only.
+                    duration_seconds=(
+                        (max(frames_processed) + 1) / frame_rate
+                        if frames_processed and frame_rate
+                        else None
+                    ),
                 )
                 db.add(file_record)
                 db.flush()  # Get file_record.id

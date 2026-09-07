@@ -601,6 +601,9 @@ export interface FileResponse {
   best_frame_number: number | null;
   best_frame_path: string | null;
   frame_rate: number | null;
+  /** Clip length in seconds, stored at ingest; null for images and for
+   *  videos analysed before it was stored. */
+  duration_seconds: number | null;
   observation_type: ObservationType;
   verified: boolean;
   verified_at_utc: string | null;

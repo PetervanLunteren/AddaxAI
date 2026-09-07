@@ -189,6 +189,9 @@ export function FilesTab({
   // does not reopen it.
   const [soloItem, setSoloItem] = useState<LabelsFileItem | null>(null);
   const [pendingOpenId, setPendingOpenId] = useState<string | null>(null);
+  // The track a card handed over with the file (`lbl_track`); the viewer
+  // opens the clip on it. Cleared with the viewer.
+  const [pendingTrackId, setPendingTrackId] = useState<string | null>(null);
   const openSolo = useCallback((fid: string) => {
     filesApi
       .get(fid)
@@ -303,10 +306,12 @@ export function FilesTab({
   useEffect(() => {
     const fid = searchParams.get("lbl_file");
     if (!fid) return;
+    setPendingTrackId(searchParams.get("lbl_track"));
     setSearchParams(
       (prev) => {
         const sp = new URLSearchParams(prev);
         sp.delete("lbl_file");
+        sp.delete("lbl_track");
         return sp;
       },
       { replace: true },
@@ -392,6 +397,7 @@ export function FilesTab({
   }, [projectId, queryClient]);
   const closeViewer = useCallback(() => {
     setOpenIndex(null);
+    setPendingTrackId(null);
     if (listDirtyRef.current) {
       listDirtyRef.current = false;
       queryClient.invalidateQueries({ queryKey: ["labels-files", projectId] });
@@ -984,10 +990,11 @@ export function FilesTab({
         items={soloItem ? [soloItem] : items}
         index={soloItem ? 0 : openIndex}
         onIndexChange={soloItem ? () => {} : setOpenIndex}
-        onClose={soloItem ? () => setSoloItem(null) : closeViewer}
-        onExhausted={soloItem ? () => setSoloItem(null) : continueViewer}
+        onClose={soloItem ? () => { setSoloItem(null); setPendingTrackId(null); } : closeViewer}
+        onExhausted={soloItem ? () => { setSoloItem(null); setPendingTrackId(null); } : continueViewer}
         loadingMore={soloItem ? false : loadingMore}
         onChanged={refreshCountsNow}
+        openTrackId={pendingTrackId}
       />
     </div>
   );

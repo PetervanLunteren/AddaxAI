@@ -321,6 +321,7 @@ export function EventDetailModal({
     // busiest frame.
     setSelectedFileIndex(autoPlayRef.current ? 0 : bestIdx);
     setViewMode("frame");
+    setSelectedTrackId(null);
     setPendingVideoExport(false);
     setRelabelDetectionId(null);
   }, [eventId, event?.id]);
@@ -514,6 +515,20 @@ export function EventDetailModal({
   // for a video, to that frame. A video the browser cannot play keeps its
   // still and says when the peak was, which beats a seek that never lands.
   const [seekRequest, setSeekRequest] = useState<{ frame: number; nonce: number } | null>(null);
+  // The track picked on the timeline; the player dims the others.
+  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
+  // MaxN markers for the focused video: one per species row, at the
+  // frame its count was made on. A Counts thing, so only this modal
+  // passes them to the player.
+  const markers = useMemo(
+    () =>
+      (event?.max_n_frames ?? [])
+        .filter(
+          (m) => m.file_id === currentFile?.id && m.max_n_frame_number != null && m.label != null,
+        )
+        .map((m) => ({ frame: m.max_n_frame_number as number, label: m.label as string })),
+    [event?.max_n_frames, currentFile?.id],
+  );
   const showMaxN = useCallback(
     (obs: EventObservationItem) => {
       const index = files.findIndex((f) => f.id === obs.max_n_file_id);
@@ -802,6 +817,9 @@ export function EventDetailModal({
                     onAutoExportConsumed={() => setPendingVideoExport(false)}
                     boxesHidden={boxesHidden}
                     seekRequest={seekRequest}
+                    selectedTrackId={selectedTrackId}
+                    onSelectTrack={setSelectedTrackId}
+                    markers={markers}
                   />
                 ) : currentFile.file_type === "video" &&
                   !(autoPlay && files.length > 1) ? (

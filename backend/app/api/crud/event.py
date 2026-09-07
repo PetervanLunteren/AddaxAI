@@ -1021,6 +1021,7 @@ def get_event_with_files(db: Session, event_id: str) -> Event | None:
     event = (
         db.query(Event)
         .options(selectinload(Event.files).selectinload(File.detections))
+        .options(selectinload(Event.files).selectinload(File.tracks))
         .options(joinedload(Event.deployment).joinedload(Deployment.site))
         .filter(Event.id == event_id)
         .first()

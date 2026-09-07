@@ -77,6 +77,56 @@ def test_get_event_with_files(client, db):
     assert len(data["files"]) == 1
 
 
+def test_get_event_carries_the_videos_tracks_without_a_query_per_file(client, db):
+    """The Counts modal's timeline reads each file's tracks off the event
+    response. They load with the files, not one lazy query per file."""
+    from sqlalchemy import event as sa_event
+
+    from app.api.crud.event import get_event_with_files
+    from tests.conftest import make_detection, make_file, make_track
+
+    p = make_project(db)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    ev = make_event_with_files(
+        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12, 0)
+    )
+    video = make_file(
+        db, deployment_id=d.id, file_type="video", file_format="mp4",
+        file_path="/fake/clip.mp4", frame_rate=30.0, best_frame_number=60,
+    )
+    track = make_track(db, file_id=video.id, track_key=1, representative_frame_number=60)
+    make_detection(db, file_id=video.id, frame_number=60, track_id=track.id)
+    from sqlalchemy import insert
+
+    from app.models.event import event_files
+    db.execute(insert(event_files).values(event_id=ev.id, file_id=video.id, sequence_number=9))
+    db.commit()
+    ev_id, video_id = ev.id, video.id
+    db.expunge_all()
+
+    statements: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    engine = db.get_bind()
+    sa_event.listen(engine, "before_cursor_execute", record)
+    try:
+        loaded = get_event_with_files(db, ev_id)
+        tracks_by_file = {f.id: [t.track_key for t in f.tracks] for f in loaded.files}
+    finally:
+        sa_event.remove(engine, "before_cursor_execute", record)
+    assert tracks_by_file[video_id] == [1]
+    # event (+deployment, site), files, detections, tracks: four selects.
+    assert len(statements) == 4, statements
+
+    resp = client.get(f"/api/events/{ev_id}")
+    assert resp.status_code == 200
+    wire = {f["id"]: f for f in resp.json()["files"]}
+    assert [t["track_key"] for t in wire[video_id]["tracks"]] == [1]
+
+
 def test_get_event_files_same_second_sort_alphabetically(client, db):
     # Burst shots often share one second-resolution EXIF timestamp; the
     # filmstrip must then fall back to the sequential camera filenames.
