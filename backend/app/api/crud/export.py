@@ -37,7 +37,7 @@ from app.api.crud.export_formats import slugify
 from app.core.logging_config import get_logger
 from app.core.observation_attributes import LIFE_STAGES, SEXES
 from app.db.sql_params import iter_id_chunks
-from app.ml.detection_visibility import visible_detections
+from app.ml.detection_visibility import on_visible_frame
 from app.ml.label_exclusion import is_non_label, threshold_or_verified
 from app.ml.observation_type import strongest_passing_detection
 from app.ml.taxonomic_rank import species_binomial
@@ -280,10 +280,20 @@ def get_scoped_detection_rows(
     *,
     extra_excluded: list[str] | None = None,
     deployment_ids: list[str] | None = None,
+    every_frame: bool = False,
 ) -> list[Row[Any]]:
     """
     Return every (File, Detection, Deployment, Site, LabelTaxonomy) row
     in scope for ``project``.
+
+    Only boxes the user can reach, by default: the visibility rule
+    (`ml/detection_visibility.py`) sits in the join, so a video's
+    off-frame boxes never leave the database. That is what the tables and
+    the map show, and it is what keeps a tracked hour of video (12,700
+    boxes, 700 reachable) from loading 12,700 ORM rows to write 700.
+    ``every_frame=True`` keeps every stored box; CamTrap DP is the one
+    export built for other software rather than a person, and its
+    per-box rows must not drop a frame.
 
     LEFT JOIN on Detection: keeps files with zero in-scope detections so
     the caller can emit a blank row.
@@ -326,7 +336,11 @@ def get_scoped_detection_rows(
         .outerjoin(Site, Deployment.site_id == Site.id)
         .outerjoin(
             Detection,
-            and_(Detection.file_id == File.id, threshold_clause),
+            and_(
+                Detection.file_id == File.id,
+                threshold_clause,
+                *([] if every_frame else [on_visible_frame()]),
+            ),
         )
         .outerjoin(
             LabelTaxonomy, LabelTaxonomy.id == Detection.label_taxonomy_id
@@ -627,15 +641,7 @@ def build_detection_rows(
         deployment_id = deployment.id if deployment is not None else ""
         event = event_map.get(file_obj.id)
         event_id = event.id if event else ""
-        shown = {
-            d.id
-            for d in visible_detections(
-                file_obj, [det for det, _tax in detections]
-            )
-        }
         for detection, taxonomy in detections:
-            if detection.id not in shown:
-                continue
             rows.append(
                 [
                     detection.id,
@@ -993,8 +999,9 @@ def _strongest_species_cells(
     that a box with no species still names itself: ``Person``, ``Vehicle``,
     ``Animal``, per ``resolve_label_names``.
     """
-    visible = visible_detections(file_obj, [det for det, _tax in detections])
-    best = strongest_passing_detection(visible, project.counting_threshold)
+    best = strongest_passing_detection(
+        [det for det, _tax in detections], project.counting_threshold
+    )
     if best is None:
         # Nothing passed, so there is no box to describe. Blank, never 0.0:
         # a zero would read as "the detector scored nothing" and would
@@ -1228,14 +1235,8 @@ def build_summary_rows(
 
     for file_obj, _deployment, _site, detections in grouped:
         event = event_map.get(file_obj.id)
-        shown = {
-            d.id
-            for d in visible_detections(
-                file_obj, [det for det, _tax in detections]
-            )
-        }
         for detection, taxonomy in detections:
-            if detection.id not in shown or is_non_label(detection.label):
+            if is_non_label(detection.label):
                 continue
             key = _summary_key(detection.category, detection.label)
             if key not in name_cells:
@@ -1355,12 +1356,9 @@ def build_spatial_layers(
         file_obj, detection, deployment, site, _taxonomy = row
         deployments_seen[deployment.id] = deployment
         site_by_deployment[deployment.id] = site
-        # Count only what the user can reach, so a map bubble agrees with
-        # the Labels grid and detections.csv. The shared query keeps every
-        # frame for the CamTrap builder, so the gate belongs here rather
-        # than in the SQL. One box at a time is the honest reuse of the
-        # list helper: it cannot drift from the rule the rest applies.
-        if detection is not None and visible_detections(file_obj, [detection]):
+        # Only what the user can reach, so a map bubble agrees with the
+        # Labels grid and detections.csv: the scoped query is gated.
+        if detection is not None:
             det_count_by_dep[deployment.id] += 1
 
     # Include project deployments that had no in-scope files (so the

@@ -47,7 +47,7 @@ async def process_camtrap_export_job(job_id: str) -> None:
         job_crud.update_job_status(db, job_id, "running")
         await ws_manager.send_progress(job_id, "Building tables...", 0.0)
 
-        scoped = export_crud.get_scoped_detection_rows(db, project)
+        scoped = export_crud.get_scoped_detection_rows(db, project, every_frame=True)
         (
             deps_rows,
             media_rows,
