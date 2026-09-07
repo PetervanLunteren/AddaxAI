@@ -51,11 +51,13 @@ def test_non_label_ids_no_matches():
 # ---------- build_excluded_class_ids (used by postprocessing) ----------
 
 def test_build_excluded_includes_both():
-    """Includes both NON_LABEL and user exclusions."""
-    cats = {"1": "lion", "2": "blank", "3": "zebra"}
+    """Includes both NON_LABEL and user exclusions, matched without
+    regard to case, as the rollup matches the same exclusions."""
+    cats = {"1": "Lion", "2": "Blank", "3": "zebra"}
     result = build_excluded_class_ids(cats, ["lion"])
     assert "1" in result  # user excluded
     assert "2" in result  # NON_LABEL
+    assert "3" not in result
 
 
 # ---------- should_skip_detection ----------
@@ -119,6 +121,15 @@ def test_filter_classifications_no_renormalization():
     classifications = [["1", 0.65], ["2", 0.28], ["3", 0.07]]
     result = filter_classifications(classifications, {"2"})
     assert result == [["1", 0.65], ["3", 0.07]]
+
+
+def test_filter_classifications_empties_below_the_scale_minimum():
+    """A 99% excluded class leaves 0.3% behind: below what any slider can
+    show, so the box is unclassified rather than labelled with a guess."""
+    from app.ml.label_exclusion import filter_classifications
+
+    assert filter_classifications([["1", 0.99], ["2", 0.003]], {"1"}) == []
+    assert filter_classifications([["1", 0.9], ["2", 0.01]], {"1"}) == [["2", 0.01]]
 
 
 def test_filter_classifications_sorted_descending():

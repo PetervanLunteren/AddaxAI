@@ -20,6 +20,7 @@ as raw ground truth.
 from sqlalchemy import and_, func, or_
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.core.confidence import CONFIDENCE_SCALE_MIN
 from app.core.logging_config import get_logger
 from app.models import Detection
 
@@ -139,6 +140,10 @@ def filter_classifications(
     Remove excluded labels from classifications.
 
     Remaining confidences keep their raw values (no renormalization).
+    A list whose best remaining class scores below ``CONFIDENCE_SCALE_MIN``
+    empties: v6 renormalised such a leftover to 100%, which dressed a
+    guess as a certainty, and keeping it raw hands out labels at 0.3%
+    that no slider can reach. Unclassified is the honest answer there.
 
     Args:
         classifications: List of [class_id, confidence] pairs
@@ -161,6 +166,8 @@ def filter_classifications(
         return []
 
     remaining.sort(key=lambda x: x[1], reverse=True)
+    if remaining[0][1] < CONFIDENCE_SCALE_MIN:
+        return []
     return remaining
 
 
@@ -184,25 +191,17 @@ def build_excluded_class_ids(
     if not class_categories:
         return set()
 
-    # Build name -> [class_ids] lookup (lowercase for NON_LABEL_CLASSES matching)
-    name_to_ids: dict[str, list[str]] = {}
+    # Names compare lowercase throughout, as the rollup does with the
+    # same exclusions; an exact match here would silently skip a class
+    # whose model spells it with a capital.
     name_lower_to_ids: dict[str, list[str]] = {}
     for cls_id, name in class_categories.items():
-        name_to_ids.setdefault(name, []).append(cls_id)
         name_lower_to_ids.setdefault(name.lower(), []).append(cls_id)
 
     excluded_class_ids: set[str] = set()
-
-    # Always exclude non-label classes (case-insensitive)
-    for non_label in NON_LABEL_CLASSES:
-        for cls_id in name_lower_to_ids.get(non_label, []):
+    for name in [*NON_LABEL_CLASSES, *(excluded_labels or [])]:
+        for cls_id in name_lower_to_ids.get(name.lower(), []):
             excluded_class_ids.add(str(cls_id))
-
-    # Exclude user-configured labels (exact match)
-    if excluded_labels:
-        for label_name in excluded_labels:
-            for cls_id in name_to_ids.get(label_name, []):
-                excluded_class_ids.add(str(cls_id))
 
     return excluded_class_ids
 

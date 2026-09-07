@@ -37,4 +37,4 @@ Two things follow from the three steps above. Your own corrections are never tou
 
 Steps 2 and 3 are project settings. You can turn rollup off, and you can make smoothing milder or stronger or turn it off. Step 1 always runs.
 
-Rollup also decides what happens to species you left out of your selection. With rollup on, a photo the model reads as a species you excluded is moved up to the nearest group you did allow, with the model's full confidence. With rollup off, the excluded species are simply dropped and the next best species from your selection becomes the label, at the score the model gave it.
+Rollup also decides what happens to species you left out of your selection. With rollup on, a photo the model reads as a species you excluded is moved up to the nearest group you did allow, with the model's full confidence. With rollup off, the excluded species are simply dropped and the next best species from your selection becomes the label, at the score the model gave it. If that score is below 1%, the animal stays unlabelled instead.

@@ -47,6 +47,14 @@ MD_OUTPUT_CONFIDENCE_THRESHOLD = 0.01
 DEFAULT_CLASSIFICATION_GATE = 0.1
 DEFAULT_COUNTING_THRESHOLD = 0.2
 
+# CONFIDENCE_SCALE_MIN — the lowest score any confidence slider can show
+# (the frontend constant of the same name in confidence-slider.tsx).
+# Also the floor for the class that takes over after an exclusion with
+# rollup off: a 99% cat with every felid excluded leaves "snowshoe hare
+# 0.3%" as the best remaining class, and a label nobody can even filter
+# for is worse than an honest unclassified box.
+CONFIDENCE_SCALE_MIN = 0.01
+
 # ROLLUP_THRESHOLD — the confidence below which taxonomic rollup rolls a
 # species call up the tree (species -> genus -> family -> ...). Fixed
 # policy, not a preference: it is never user-facing or per-project, and
