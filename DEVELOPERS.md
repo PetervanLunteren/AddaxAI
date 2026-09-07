@@ -44,7 +44,7 @@ logger.info("User clicked button", { buttonId: "create-project" });
 logger.error("API call failed", { endpoint: "/api/projects", error: err.message });
 ```
 
-**Log retention:** Automatic rotation at 33MB per file, keeps 3 backups (100MB total, ~7 days).
+**Log retention:** Automatic rotation at 33MB per file, keeps 3 backups (100MB total, ~7 days). The root logger sits at DEBUG for the beta, and that week only holds if the chatty third-party loggers stay pinned in `setup_logging`: SQLAlchemy at WARNING (one line per query stalled the server) and Pillow at INFO (one line per EXIF tag per image was 87% of a tester's log and rolled the file over in a day). Pin a new firehose there rather than lowering the root.
 
 ## Database migrations
 
