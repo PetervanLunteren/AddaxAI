@@ -46,6 +46,7 @@ from app.ml.inference.video_iter import (
     iter_wanted_frames,
     open_video,
     read_frame_by_seek,
+    read_wanted_frames,
     write_best_frame,
 )
 
@@ -219,40 +220,11 @@ def select_best_frames_streaming(
 
 
 def _write_track_frames(video_path: Path, frames: set[int], dest_dir: Path) -> None:
-    """Write `frame{N:06d}.jpg` for each wanted frame of one video.
-
-    Seeks to each frame first (a track's frames are few and far apart,
-    and one seek is worth about 55 walked frames), then walks once for
-    any frame a seek could not verify. A frame that never arrives is
-    simply not written; the ingest then leaves the track's `frame_path`
-    NULL.
-    """
-    if not frames:
-        return
-    cap = open_video(video_path)
-    if cap is None:
-        return
-    missing: set[int] = set()
-    try:
-        total_frames = int(cap.get(_import_cv2().CAP_PROP_FRAME_COUNT))
-        for frame_number in sorted(frames):
-            pixels = read_frame_by_seek(cap, frame_number, total_frames)
-            if pixels is None:
-                missing.add(frame_number)
-                continue
-            write_best_frame(pixels, dest_dir / f"frame{frame_number:06d}.jpg")
-    finally:
-        cap.release()
-    if not missing:
-        return
-    cap = open_video(video_path)
-    if cap is None:
-        return
-    try:
-        for frame_number, pil_image in iter_wanted_frames(cap, missing, video_path):
-            write_best_frame(pil_image, dest_dir / f"frame{frame_number:06d}.jpg")
-    finally:
-        cap.release()
+    """Write `frame{N:06d}.jpg` for each wanted frame of one video. A
+    frame that never arrives is simply not written; the ingest then
+    leaves the track's `frame_path` NULL."""
+    for frame_number, pil_image in read_wanted_frames(video_path, frames):
+        write_best_frame(pil_image, dest_dir / f"frame{frame_number:06d}.jpg")
 
 
 def _import_cv2():

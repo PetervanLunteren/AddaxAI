@@ -234,6 +234,47 @@ def iter_wanted_frames(
         frame_number += 1
 
 
+def read_wanted_frames(
+    video_path: Path | str, wanted: set[int]
+) -> Iterator[tuple[int, Image.Image]]:
+    """
+    Yield `(frame_number, PIL.Image)` for each frame in `wanted`, a few
+    frames scattered over a long video: one seek per frame first, then
+    one sequential walk for any frame a seek could not verify (see
+    `read_frame_by_seek`). A frame that never arrives is simply not
+    yielded. Yields nothing when the video cannot be opened.
+
+    The track stills and the filmstrip both read this way. Walking an
+    hour of video for nine frames took five minutes; seeking takes
+    seconds.
+    """
+    if not wanted:
+        return
+    cap = open_video(video_path)
+    if cap is None:
+        return
+    missing: set[int] = set()
+    try:
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        for frame_number in sorted(wanted):
+            image = read_frame_by_seek(cap, frame_number, total_frames)
+            if image is None:
+                missing.add(frame_number)
+                continue
+            yield frame_number, image
+    finally:
+        cap.release()
+    if not missing:
+        return
+    cap = open_video(video_path)
+    if cap is None:
+        return
+    try:
+        yield from iter_wanted_frames(cap, missing, video_path)
+    finally:
+        cap.release()
+
+
 def sample_indices(total: int, count: int) -> list[int]:
     """
     Evenly-spaced frame indices from [0, total). Used by the filmstrip

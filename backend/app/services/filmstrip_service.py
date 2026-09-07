@@ -6,15 +6,11 @@ video so the counts modal can show a gallery instead of a single best
 frame. Nothing is persisted to disk: frames are decoded on request and the
 result is cached in memory (a filmstrip is immutable per video file).
 
-Reuses the decode primitives in `app.ml.inference.video_iter` so sampling
-and decoding behave exactly like the rest of the pipeline. It walks with
-`iter_wanted_frames` rather than seeking to each frame, which is the right
-call for a 9-frame sample: a seek costs about 55 walked frames, so seeking
-9 times only wins on clips longer than ~500 frames. That does leave a
-30-second clip decoding roughly its whole length for 9 frames. The
-in-memory cache and the frontend's prefetch hide the cost in normal use,
-and switching to seeks above a length threshold is a real optimisation
-nobody has needed yet.
+Reuses the decode primitives in `app.ml.inference.video_iter`, so sampling
+and decoding behave exactly like the rest of the pipeline: a seek per
+frame, then one walk for whatever a seek could not verify. It used to
+walk the whole video instead, which decoded an hour of footage for nine
+frames and never came back on a BRUV drop.
 """
 
 from __future__ import annotations
@@ -29,7 +25,7 @@ import cv2
 from PIL import Image
 
 from app.core.logging_config import get_logger
-from app.ml.inference.video_iter import iter_wanted_frames, open_video, sample_indices
+from app.ml.inference.video_iter import open_video, read_wanted_frames, sample_indices
 
 logger = get_logger(__name__)
 
@@ -66,29 +62,29 @@ def build_filmstrip(
         return ()
     try:
         total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        wanted = sample_indices(total, FILMSTRIP_FRAME_COUNT)
-        if not wanted:
-            return ()
-
-        frames: list[FilmstripFrameData] = []
-        for num, pil in iter_wanted_frames(cap, set(wanted), file_path):
-            if pil.mode != "RGB":
-                pil = pil.convert("RGB")
-            if pil.width > FILMSTRIP_MAX_WIDTH:
-                ratio = FILMSTRIP_MAX_WIDTH / pil.width
-                pil = pil.resize(
-                    (FILMSTRIP_MAX_WIDTH, int(pil.height * ratio)), Image.LANCZOS
-                )
-            buf = io.BytesIO()
-            pil.save(buf, format="JPEG", quality=FILMSTRIP_JPEG_QUALITY)
-            b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-            frames.append(
-                FilmstripFrameData(
-                    frame_number=num,
-                    time_seconds=(num / frame_rate) if frame_rate else None,
-                    image=f"data:image/jpeg;base64,{b64}",
-                )
-            )
-        return tuple(frames)
     finally:
         cap.release()
+    wanted = sample_indices(total, FILMSTRIP_FRAME_COUNT)
+    if not wanted:
+        return ()
+
+    frames: list[FilmstripFrameData] = []
+    for num, pil in read_wanted_frames(file_path, set(wanted)):
+        if pil.mode != "RGB":
+            pil = pil.convert("RGB")
+        if pil.width > FILMSTRIP_MAX_WIDTH:
+            ratio = FILMSTRIP_MAX_WIDTH / pil.width
+            pil = pil.resize(
+                (FILMSTRIP_MAX_WIDTH, int(pil.height * ratio)), Image.LANCZOS
+            )
+        buf = io.BytesIO()
+        pil.save(buf, format="JPEG", quality=FILMSTRIP_JPEG_QUALITY)
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        frames.append(
+            FilmstripFrameData(
+                frame_number=num,
+                time_seconds=(num / frame_rate) if frame_rate else None,
+                image=f"data:image/jpeg;base64,{b64}",
+            )
+        )
+    return tuple(frames)
