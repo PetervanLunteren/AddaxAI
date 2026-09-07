@@ -235,14 +235,17 @@ def _build_query(
         clauses.append("d.confidence <= ?")
         params.append(filters["max_confidence"])
 
-    # NULL label_confidence is excluded automatically by the comparison —
-    # SQLite treats `NULL >= 0.0` as NULL, which a `WHERE` rejects.
+    # Hand-written copy of `classification_score_in_range` in
+    # app/ml/label_exclusion.py (no app.* imports here): the range is a
+    # filter on classified boxes only, so an unclassified box (NULL
+    # score) passes it. A bare `>=` would reject it, since SQLite treats
+    # `NULL >= 0.0` as NULL. Keep the two in step.
     if filters.get("min_label_confidence") is not None:
-        clauses.append("d.label_confidence >= ?")
+        clauses.append("(d.label_confidence IS NULL OR d.label_confidence >= ?)")
         params.append(filters["min_label_confidence"])
 
     if filters.get("max_label_confidence") is not None:
-        clauses.append("d.label_confidence <= ?")
+        clauses.append("(d.label_confidence IS NULL OR d.label_confidence <= ?)")
         params.append(filters["max_label_confidence"])
 
     if filters.get("category"):

@@ -193,6 +193,35 @@ def test_metadata_load_applies_project_floor(sort_db):
     assert low_unverified.id not in ids
 
 
+def test_metadata_load_lets_unclassified_boxes_through_the_classification_range(
+    sort_db,
+):
+    """The classification range filters classified boxes only. A box the
+    classifier never scored has nothing to compare and passes both
+    bounds; the bare SQL comparison used to reject it, hiding every
+    unclassified box the moment the slider left its floor. Hand-written
+    twin of `classification_score_in_range` in app.ml.label_exclusion."""
+    db_path, s = sort_db
+    p = make_project(s)
+    dep = make_deployment(s, project_id=p.id)
+    weak = _detection_in_event(
+        s, dep.id, event_id="e1", start=datetime(2024, 1, 1, 12),
+    )
+    weak.label, weak.label_confidence = "dog", 0.3
+    unclassified = _detection_in_event(
+        s, dep.id, event_id="e2", start=datetime(2024, 1, 2, 12),
+    )
+    s.commit()
+
+    ids, _, _ = _load_metadata(db_path, p.id, {"min_label_confidence": 0.5})
+    assert unclassified.id in ids
+    assert weak.id not in ids
+
+    ids, _, _ = _load_metadata(db_path, p.id, {"max_label_confidence": 0.2})
+    assert unclassified.id in ids
+    assert weak.id not in ids
+
+
 def test_sort_caps_to_newest_and_reports_uncapped_total(sort_db):
     """Over the cap, do_sort loads the newest `cap` by capture time and
     reports the uncapped total (no error)."""

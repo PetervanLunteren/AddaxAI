@@ -610,9 +610,10 @@ def test_confidence_range_selects_files_by_a_single_matching_box(client, db):
 
 
 def test_classification_range_selects_by_a_single_box_too(client, db):
-    """Label-confidence bounds join the same one-box-matches-all rule,
-    and a box the classifier never named (NULL score) can never satisfy
-    a bound, mirroring the Detections grid."""
+    """Label-confidence bounds join the same one-box-matches-all rule.
+    The range filters classified boxes only: a box the classifier never
+    named (NULL score) passes both bounds, mirroring the Detections
+    grid, so the unnamed file stays listed whatever the range."""
     p, d, (sure, unsure, unnamed) = _project_with_files(db, 3)
     make_detection(
         db, file_id=sure.id, confidence=0.9,
@@ -626,10 +627,10 @@ def test_classification_range_selects_by_a_single_box_too(client, db):
     db.commit()
 
     got = _files(client, p.id, min_label_confidence=0.8)
-    assert [i["id"] for i in got["items"]] == [sure.id]
+    assert {i["id"] for i in got["items"]} == {sure.id, unnamed.id}
 
     got = _files(client, p.id, max_label_confidence=0.5)
-    assert [i["id"] for i in got["items"]] == [unsure.id]
+    assert {i["id"] for i in got["items"]} == {unsure.id, unnamed.id}
 
     # No bounds: the unnamed box's file is simply a file like any other.
     assert _files(client, p.id)["total"] == 3

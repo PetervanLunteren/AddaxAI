@@ -93,6 +93,33 @@ def threshold_or_verified(threshold) -> ColumnElement[bool]:
     )
 
 
+def classification_score_in_range(
+    min_score: float | None, max_score: float | None
+) -> ColumnElement[bool]:
+    """The classification confidence range, in one place.
+
+    It is a filter on the classifier's score, so it applies to classified
+    boxes only: a box the classifier never scored has nothing to compare
+    and passes, at both ends. In SQL a NULL fails every comparison, so
+    the plain ``label_confidence >= min`` hid every unclassified box the
+    moment the slider left its floor, with nothing on screen saying so.
+    A user with 733 unclassified moose could reach them only with the
+    handle parked exactly on the floor (2026-09-06). Those boxes are the
+    ones a person most needs to find and label by hand; whoever wants
+    them out has the "Animal" leaf in the label filter for that.
+
+    Call it only when at least one bound is set. The similarity sort
+    worker keeps a hand-written SQL copy (``similarity_script.py``, no
+    ``app.*`` imports there) — keep the two in step.
+    """
+    bounds = []
+    if min_score is not None:
+        bounds.append(Detection.label_confidence >= min_score)
+    if max_score is not None:
+        bounds.append(Detection.label_confidence <= max_score)
+    return or_(Detection.label_confidence.is_(None), and_(*bounds))
+
+
 # Non-wildlife classes: real detections that are not wild animals.
 # Superset of NON_LABEL_CLASSES, adding every human and vehicle class
 # name found across the model zoo. Used by wildlife-only statistics

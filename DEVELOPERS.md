@@ -476,7 +476,7 @@ copy (no `app.*` on its path); it is marked at both ends.
 **When adding a new query that touches detections**, check whether the result is user-facing. If yes, call the helper. If you skip this, detection counts and filter options will be inconsistent with what the user sees in the verification grid.
 
 **Three exceptions where the helper does not apply:**
-1. **User-driven confidence range filters** (e.g. a max_confidence ceiling). When a user explicitly sets a confidence range, respect it literally. The override only applies to the project's threshold floor, not to user-specified ceilings.
+1. **User-driven confidence range filters** (e.g. a max_confidence ceiling). When a user explicitly sets a confidence range, respect it literally. The override only applies to the project's threshold floor, not to user-specified ceilings. The classification confidence range is different again: it is a filter on the classifier's score, so it applies to classified boxes only and an unclassified box passes it at both ends (`classification_score_in_range` in `ml/label_exclusion.py`, with the sort worker's SQL copy). A bare `label_confidence >= min` hid every unclassified box the moment the slider left its floor, and those are exactly the boxes a person needs to find to label by hand.
 2. **Per-file detection lists** (`crud/detection.py`). These serve the file detail view where the caller controls what to show. Not tied to the project threshold.
 3. **The anonymise blur** (`annotated_copies.py`) keeps the plain threshold-or-verified clause on purpose: privacy costs are asymmetric, so a person box a reviewer waved off is still blurred.
 

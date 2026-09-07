@@ -17,7 +17,11 @@ from app.api.crud.event_observation import (
 from app.api.schemas.file import FileUpdate
 from app.core.confidence import effective_floor
 from app.ml.detection_visibility import on_visible_frame, on_visible_frame_of
-from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
+from app.ml.label_exclusion import (
+    classification_score_in_range,
+    is_a_real_detection,
+    threshold_or_verified,
+)
 from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
@@ -249,13 +253,15 @@ def get_labels_files(
         box_filters.append(Detection.confidence >= min_confidence)
     if max_confidence is not None:
         box_filters.append(Detection.confidence <= max_confidence)
-    # Classifier-score range. NULL label_confidence fails the comparison
-    # in SQL, so unclassified boxes are excluded automatically once a
-    # bound is set, the same behaviour as the Detections sort worker.
-    if min_label_confidence is not None:
-        box_filters.append(Detection.label_confidence >= min_label_confidence)
-    if max_label_confidence is not None:
-        box_filters.append(Detection.label_confidence <= max_label_confidence)
+    # Classifier-score range: classified boxes only, an unclassified box
+    # passes it (see `classification_score_in_range`), the same as the
+    # Detections sort worker.
+    if min_label_confidence is not None or max_label_confidence is not None:
+        box_filters.append(
+            classification_score_in_range(
+                min_label_confidence, max_label_confidence
+            )
+        )
     if box_filters:
         query = query.filter(passing.where(*box_filters).exists())
 

@@ -209,7 +209,10 @@ def test_events_filter_label_confidence_range(client, db):
     assert ev_low.id not in ids
 
 
-def test_events_filter_label_confidence_excludes_null(client, db):
+def test_events_filter_label_confidence_keeps_unclassified(client, db):
+    """The classification range filters classified boxes only. A box the
+    classifier never scored passes it at both ends: it used to fail the
+    SQL comparison and vanish the moment the slider left its floor."""
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
@@ -230,11 +233,18 @@ def test_events_filter_label_confidence_excludes_null(client, db):
     db.commit()
 
     resp = client.get(
-        f"/api/events?project_id={p.id}&min_label_confidence=0.0"
+        f"/api/events?project_id={p.id}&min_label_confidence=0.5"
     )
     ids = [row["id"] for row in resp.json()]
-    assert classified.id in ids
-    assert unclassified.id not in ids
+    assert classified.id not in ids
+    assert unclassified.id in ids
+
+    resp = client.get(
+        f"/api/events?project_id={p.id}&max_label_confidence=0.2"
+    )
+    ids = [row["id"] for row in resp.json()]
+    assert classified.id not in ids
+    assert unclassified.id in ids
 
 
 def test_events_filter_empty_show_only_and_hide(client, db):

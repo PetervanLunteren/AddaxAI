@@ -16,7 +16,10 @@ from sqlalchemy.orm import Session, aliased, joinedload
 from app.core.logging_config import get_logger
 from app.db.sql_params import iter_id_chunks
 from app.ml.detection_visibility import on_visible_frame, visible_detections
-from app.ml.label_exclusion import threshold_or_verified
+from app.ml.label_exclusion import (
+    classification_score_in_range,
+    threshold_or_verified,
+)
 from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
@@ -201,9 +204,9 @@ def _apply_event_filters(
     sense that it contains at least one flagged file.
 
     `min_label_confidence` / `max_label_confidence` filter on the
-    classifier score (Detection.label_confidence). NULL classifications
-    are excluded automatically when the bounds are set (correct
-    behaviour: a NULL cannot satisfy a range).
+    classifier score (Detection.label_confidence) through
+    `classification_score_in_range`: classified boxes only, an
+    unclassified box passes the range.
 
     `project_floor` is the project's `counting_threshold`, applied via
     `threshold_or_verified` (the global override rule). `min_confidence`
@@ -259,13 +262,11 @@ def _apply_event_filters(
             label_subq = label_subq.where(Detection.confidence >= min_confidence)
         if max_confidence is not None:
             label_subq = label_subq.where(Detection.confidence <= max_confidence)
-        if min_label_confidence is not None:
+        if min_label_confidence is not None or max_label_confidence is not None:
             label_subq = label_subq.where(
-                Detection.label_confidence >= min_label_confidence
-            )
-        if max_label_confidence is not None:
-            label_subq = label_subq.where(
-                Detection.label_confidence <= max_label_confidence
+                classification_score_in_range(
+                    min_label_confidence, max_label_confidence
+                )
             )
         query = query.filter(exists(label_subq))
     elif (
@@ -288,13 +289,11 @@ def _apply_event_filters(
             conf_subq = conf_subq.where(Detection.confidence >= min_confidence)
         if max_confidence is not None:
             conf_subq = conf_subq.where(Detection.confidence <= max_confidence)
-        if min_label_confidence is not None:
+        if min_label_confidence is not None or max_label_confidence is not None:
             conf_subq = conf_subq.where(
-                Detection.label_confidence >= min_label_confidence
-            )
-        if max_label_confidence is not None:
-            conf_subq = conf_subq.where(
-                Detection.label_confidence <= max_label_confidence
+                classification_score_in_range(
+                    min_label_confidence, max_label_confidence
+                )
             )
         query = query.filter(exists(conf_subq))
 
