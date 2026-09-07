@@ -41,9 +41,10 @@ export function representativeBox(
 /**
  * One row per track, grouped by species and sorted by start frame
  * within a species. The label comes off the representative box (its
- * label, else the detector's category); the verdict is "verified" when
- * every box of the track is, "rejected" when the representative box
- * carries a non-label, "unverified" otherwise.
+ * label, else the detector's category, and the category again once the
+ * track is rejected); the verdict is "verified" when every box of the
+ * track is, "rejected" when the representative box carries a non-label,
+ * "unverified" otherwise.
  */
 export function trackRows(
   tracks: TrackResponse[],
@@ -61,16 +62,23 @@ export function trackRows(
     const boxes = boxesByTrack.get(track.id) ?? [];
     const rep = representativeBox(boxes, track) ?? boxes[0];
     if (!rep) continue;
-    const verdict: TrackVerdict = isNonLabel(rep.label)
+    const rejected = isNonLabel(rep.label);
+    // A rejected track has no species any more, so its row is the
+    // detector's category: the hollow bar sits beside the animals it was
+    // taken for, instead of in a "False detection" row of its own.
+    const named = rejected
+      ? { ...rep, label: null, label_taxonomy_id: null, common_name: null, scientific_name: null }
+      : rep;
+    const verdict: TrackVerdict = rejected
       ? "rejected"
       : boxes.every((d) => d.verified)
         ? "verified"
         : "unverified";
     rows.push({
       track,
-      label: rep.label ?? rep.category,
-      displayLabel: getDetectionDisplayName(rep),
-      color: getDetectionColor(rep),
+      label: named.label ?? named.category,
+      displayLabel: getDetectionDisplayName(named),
+      color: getDetectionColor(named),
       verdict,
     });
   }
