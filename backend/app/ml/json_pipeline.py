@@ -34,6 +34,7 @@ from app.ml.json_utils import (
 from app.ml.observation_type import derive_observation_type
 from app.ml.progress import ProgressTicker
 from app.ml.results_json import iter_images, read_top_level_object
+from app.ml.taxonomy_db import clear_classification
 from app.models import Deployment, File, Project
 from app.utils.media_dates import (
     date_from_exif_dict,
@@ -563,17 +564,12 @@ def load_json_to_database(
                             detection_record.scientific_name = resolved[1]
                             detection_record.common_name = resolved[2]
 
-                # Set builtin taxonomy ID for unclassified detections
-                if not label and builtin_taxonomy_ids:
-                    builtin_tid = builtin_taxonomy_ids.get(category)
-                    if builtin_tid:
-                        detection_record.label_taxonomy_id = builtin_tid
-                        detection_record.scientific_name = (
-                            category.capitalize()
-                        )
-                        detection_record.common_name = (
-                            category.capitalize()
-                        )
+                # An unclassified detection carries its category's
+                # builtin taxonomy row, one rule with every other writer.
+                if not label:
+                    clear_classification(
+                        detection_record, builtin_taxonomy_ids or {}
+                    )
 
             # Set observation_type from the file's *trusted, visible*
             # detections (over threshold; verified is always False at

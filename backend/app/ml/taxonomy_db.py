@@ -256,6 +256,32 @@ def ensure_builtin_labels(db: Session) -> dict[str, str]:
     return existing
 
 
+def clear_classification(
+    detection: Detection, builtin_ids: dict[str, str]
+) -> None:
+    """
+    Leave a detection with no species and its category's builtin row.
+
+    One rule for every writer that clears a label: the ingest, the
+    postprocessing update and its exclusion sweep, revert to AI, a drawn
+    box without a label, and a PATCH that empties one. The label filter
+    tree and "Select all" match on ``label_taxonomy_id``, so a box left
+    with no row is counted in the Detections tab and shown in the grid
+    but absent from the filter that would find it: no "Animal" leaf and
+    no hint that anything is hidden. That is how a user with 733 such
+    boxes read "no Animal option" (2026-09-06). ``builtin_ids`` is
+    ``ensure_builtin_labels(db)``. A category the builtins do not know
+    (a detector emitting ``shark``) gets no row, as before.
+    """
+    detection.label = None
+    detection.label_confidence = None
+    tid = builtin_ids.get(detection.category) if detection.category else None
+    detection.label_taxonomy_id = tid
+    name = detection.category.capitalize() if tid else None
+    detection.scientific_name = name
+    detection.common_name = name
+
+
 def batch_resolve_taxonomy_ids(
     label_names: list[str],
     model_id: str | None,

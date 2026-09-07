@@ -423,6 +423,7 @@ def bulk_revert_to_original(
     """
     from app.api.crud.detection import _resolve_detection_taxonomy
     from app.ml.taxonomic_rollup import resolve_label_names
+    from app.ml.taxonomy_db import clear_classification, ensure_builtin_labels
     from app.models.label_taxonomy import LabelTaxonomy
 
     if not body.detection_ids:
@@ -436,6 +437,7 @@ def bulk_revert_to_original(
     if not detections:
         raise HTTPException(status_code=404, detail="No detections found")
 
+    builtin_ids = ensure_builtin_labels(db)
     reverted: list[dict] = []
     for det in detections:
         orig = det.original_label
@@ -450,11 +452,7 @@ def bulk_revert_to_original(
             det.common_name = common
             det.classification_method = "machine"
         else:
-            det.label = None
-            det.label_confidence = None
-            det.label_taxonomy_id = None
-            det.scientific_name = None
-            det.common_name = None
+            clear_classification(det, builtin_ids)
             det.classification_method = None
         det.verified = False
         det.verified_at_utc = None

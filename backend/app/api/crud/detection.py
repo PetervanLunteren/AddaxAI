@@ -231,23 +231,11 @@ def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection
             db_detection.scientific_name,
         ) = resolve_label_names(data.label, tax, data.category)
     else:
-        # Unclassified (MD-only) — share the builtin taxonomy row so
-        # this detection gets the same color as the MD-produced ones.
-        from app.ml.taxonomy_db import BUILTIN_MODEL_ID
-        from app.models.label_taxonomy import LabelTaxonomy
+        # Unclassified (MD-only): the builtin row of its category, so it
+        # shares the colour of the machine boxes and sits in the filter.
+        from app.ml.taxonomy_db import clear_classification, ensure_builtin_labels
 
-        builtin = (
-            db.query(LabelTaxonomy)
-            .filter(
-                LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID,
-                LabelTaxonomy.name == data.category,
-            )
-            .first()
-        )
-        if builtin:
-            db_detection.label_taxonomy_id = builtin.id
-            db_detection.common_name = builtin.common_name
-            db_detection.scientific_name = builtin.scientific_name
+        clear_classification(db_detection, ensure_builtin_labels(db))
 
     db.commit()
     db.refresh(db_detection)
@@ -276,15 +264,15 @@ def update_detection(db: Session, detection_id: str, update: DetectionUpdate) ->
         detection.bbox_height = update.bbox_height
     if "label" in update.model_fields_set:
         detection.label = update.label
-        detection.label_taxonomy_id = _resolve_detection_taxonomy(
-            db, detection, update.label
-        )
         detection.classification_method = "human"
-        # Resolve both names from the taxonomy row (single source of truth).
         if update.label:
             from app.ml.taxonomic_rollup import resolve_label_names
             from app.models.label_taxonomy import LabelTaxonomy
 
+            detection.label_taxonomy_id = _resolve_detection_taxonomy(
+                db, detection, update.label
+            )
+            # Resolve both names from the taxonomy row (single source of truth).
             tax = (
                 db.query(LabelTaxonomy).get(detection.label_taxonomy_id)
                 if detection.label_taxonomy_id
@@ -294,33 +282,20 @@ def update_detection(db: Session, detection_id: str, update: DetectionUpdate) ->
                 detection.common_name,
                 detection.scientific_name,
             ) = resolve_label_names(update.label, tax, detection.category)
-        else:
-            detection.scientific_name = None
-            detection.common_name = None
-        # A human-assigned label has no model softmax score, so stamp 1.0
-        # (matches bulk relabel) rather than leaving the replaced label's
-        # stale score. Cleared label -> no confidence. An explicit
-        # label_confidence in the payload still overrides below.
-        detection.label_confidence = 1.0 if update.label else None
-    # When category changes to a builtin (person/vehicle/animal) without a
-    # label, resolve taxonomy from the category so scientific_name and the FK
-    # are set correctly.
-    if update.category and not detection.label:
-        from app.ml.taxonomy_db import BUILTIN_MODEL_ID
-        from app.models.label_taxonomy import LabelTaxonomy
+            # A human-assigned label has no model softmax score, so stamp 1.0
+            # (matches bulk relabel) rather than leaving the replaced label's
+            # stale score. An explicit label_confidence in the payload still
+            # overrides below.
+            detection.label_confidence = 1.0
+    # A cleared label, or a category change on an unlabelled box, leaves
+    # the detection on its category's builtin row (no confidence, names
+    # from the category), the same rule as every other writer.
+    if not detection.label and (
+        "label" in update.model_fields_set or update.category is not None
+    ):
+        from app.ml.taxonomy_db import clear_classification, ensure_builtin_labels
 
-        builtin = (
-            db.query(LabelTaxonomy)
-            .filter(
-                LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID,
-                LabelTaxonomy.name == update.category,
-            )
-            .first()
-        )
-        if builtin:
-            detection.label_taxonomy_id = builtin.id
-            detection.common_name = builtin.common_name
-            detection.scientific_name = builtin.scientific_name
+        clear_classification(detection, ensure_builtin_labels(db))
     if update.label_confidence is not None:
         detection.label_confidence = update.label_confidence
 

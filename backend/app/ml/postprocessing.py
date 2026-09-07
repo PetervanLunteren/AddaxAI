@@ -517,7 +517,10 @@ def update_database_from_smoothed_results(
     Returns:
         Dict with counts: {updated, unchanged, errors}
     """
+    from app.ml.taxonomy_db import clear_classification, ensure_builtin_labels
+
     class_names = smoothed_results.get("classification_categories", {})
+    builtin_ids = ensure_builtin_labels(db)
 
     # Build lookup: (file_path, bbox_key, frame_number) -> Detection record.
     # Post-2026-05 every detection points directly at its parent file row
@@ -660,11 +663,14 @@ def update_database_from_smoothed_results(
                         new_common = format_common_name(new_label)
 
                 if db_det.label != new_label or db_det.label_confidence != new_confidence:
-                    db_det.label = new_label
-                    db_det.label_confidence = new_confidence
-                    db_det.scientific_name = new_scientific
-                    db_det.common_name = new_common
-                    db_det.label_taxonomy_id = new_taxonomy_id
+                    if new_label is None:
+                        clear_classification(db_det, builtin_ids)
+                    else:
+                        db_det.label = new_label
+                        db_det.label_confidence = new_confidence
+                        db_det.scientific_name = new_scientific
+                        db_det.common_name = new_common
+                        db_det.label_taxonomy_id = new_taxonomy_id
                     updated += 1
                     changed_file_ids.add(db_det.file_id)
                 else:
@@ -689,11 +695,7 @@ def update_database_from_smoothed_results(
                 det.label_taxonomy_id
                 and det.label_taxonomy_id in excluded_taxonomy_ids
             ):
-                det.label = None
-                det.label_confidence = None
-                det.scientific_name = None
-                det.common_name = None
-                det.label_taxonomy_id = None
+                clear_classification(det, builtin_ids)
                 changed_file_ids.add(det.file_id)
                 swept += 1
     elif excluded_classes:
@@ -702,11 +704,7 @@ def update_database_from_smoothed_results(
             if det.verified:
                 continue
             if det.label and det.label.lower() in excluded_lower:
-                det.label = None
-                det.label_confidence = None
-                det.scientific_name = None
-                det.common_name = None
-                det.label_taxonomy_id = None
+                clear_classification(det, builtin_ids)
                 changed_file_ids.add(det.file_id)
                 swept += 1
     updated += swept

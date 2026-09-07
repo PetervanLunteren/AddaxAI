@@ -937,13 +937,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         deployment.warnings = warning_entries
                         db.commit()
 
-                    # Defensive fallback: link any detections that weren't
-                    # resolved inline (should be a no-op)
-                    try:
-                        link_detections_to_taxonomy(project_id, db)
-                    except Exception as e:
-                        logger.warning(f"Failed to link detections to taxonomy: {e}")
-
                 # ============================================================
                 # PHASE 7: Postprocessing (exclusion + rollup + smoothing)
                 # This is the single code path for all label processing.
@@ -1022,6 +1015,15 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         )
                         deployment.warnings = combined
                         db.commit()
+
+                # Safety net: link any detection phase 6 or 7 left without
+                # a taxonomy row. Every writer resolves its row inline, so
+                # this should be a no-op; it runs after phase 7 because a
+                # pass before it could not see what phase 7 wrote.
+                try:
+                    link_detections_to_taxonomy(project_id, db)
+                except Exception as e:
+                    logger.warning(f"Failed to link detections to taxonomy: {e}")
 
                 # ============================================================
                 # PHASE 8: Embedding (DINOv2) — fatal if configured

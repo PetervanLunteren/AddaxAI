@@ -442,6 +442,40 @@ def test_the_raw_reload_drops_excluded_classes_the_same_way(
         assert det.label_confidence == pytest.approx(0.2)
 
 
+def test_a_box_left_unclassified_keeps_its_animal_row_and_stays_filterable(
+    deployment_scaffold,
+):
+    """Excluding every class the model offered leaves the box with no
+    species, and it must then carry the builtin "Animal" row: the label
+    filter matches on taxonomy id, so a box with none is shown in the
+    grid and counted in the tab but missing from the tree and from
+    "Select all". A user with 733 such boxes read that as "no Animal
+    option" and had no way to find them."""
+    from app.api.crud.label_tree import build_label_filter_tree
+    from app.ml.taxonomy_db import ensure_builtin_labels
+
+    s = deployment_scaffold
+    db = s["db"]
+    json_path = _load_basic_images(s)
+    animal_row = ensure_builtin_labels(db)["animal"]
+
+    reload_raw_classifications_from_json(
+        s["deployment"].id, json_path, s["deploy_dir"], db,
+        excluded_classes=["lion", "zebra", "giraffe"],
+    )
+
+    dets = db.query(Detection).all()
+    assert len(dets) == 3
+    for det in dets:
+        assert det.label is None
+        assert det.label_confidence is None
+        assert det.label_taxonomy_id == animal_row
+        assert det.common_name == "Animal"
+
+    tree = build_label_filter_tree(s["project"].id, db, count_by="detection")
+    assert animal_row in tree["all_leaf_ids"]
+
+
 def test_reload_raw_classifications(deployment_scaffold):
     """After smoothing, reload_raw_classifications_from_json() reverts to raw values."""
     s = deployment_scaffold

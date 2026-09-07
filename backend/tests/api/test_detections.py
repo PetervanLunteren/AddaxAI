@@ -519,3 +519,50 @@ def test_drawing_a_box_takes_the_photo_out_of_the_empties(client, db):
 
     after = client.get(f"/api/projects/{project_id}/labels/files", params=show_only).json()
     assert after["total"] == 0
+
+
+def test_clearing_a_label_leaves_the_builtin_animal_row(client, db):
+    """A PATCH that empties the label must not empty the taxonomy id: the
+    label filter matches on that id, so a box without one is counted and
+    shown but unreachable through "Select all" or the Animal leaf."""
+    from app.ml.taxonomy_db import ensure_builtin_labels
+
+    animal_row = ensure_builtin_labels(db)["animal"]
+    f = _setup_file(db)
+    det = make_detection(db, file_id=f.id, label="deer", label_confidence=0.6)
+
+    resp = client.patch(f"/api/detections/{det.id}", json={"label": None})
+    assert resp.status_code == 200
+
+    db.refresh(det)
+    assert det.label is None
+    assert det.label_confidence is None
+    assert det.label_taxonomy_id == animal_row
+    assert det.common_name == "Animal"
+
+
+def test_revert_without_an_original_label_leaves_the_builtin_animal_row(
+    client, db
+):
+    """Undo on a box the model never labelled goes back to unclassified,
+    on its category's builtin row rather than on no row at all."""
+    from app.ml.taxonomy_db import ensure_builtin_labels
+
+    animal_row = ensure_builtin_labels(db)["animal"]
+    f = _setup_file(db)
+    det = make_detection(
+        db, file_id=f.id, label="deer", original_label=None, verified=True
+    )
+
+    resp = client.post(
+        "/api/detections/bulk-revert-to-original",
+        json={"detection_ids": [det.id]},
+    )
+    assert resp.status_code == 200
+    reverted = resp.json()["reverted"][0]
+    assert reverted["label"] is None
+    assert reverted["label_taxonomy_id"] == animal_row
+
+    db.refresh(det)
+    assert det.label_taxonomy_id == animal_row
+    assert det.verified is False
