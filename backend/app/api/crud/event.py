@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, time
 
 from sqlalchemy import Integer, delete, exists, func, insert, select, text
-from sqlalchemy.orm import Session, aliased, joinedload
+from sqlalchemy.orm import Session, aliased, joinedload, selectinload
 
 from app.core.logging_config import get_logger
 from app.db.sql_params import iter_id_chunks
@@ -814,7 +814,7 @@ def get_events_by_project(
         sort_key, Event.id, descending=descending, nulls_last=nulls_last,
     )
     events = (
-        query.options(joinedload(Event.files).joinedload(File.detections))
+        query.options(selectinload(Event.files).selectinload(File.detections))
         .order_by(*order_clauses)
         .offset(skip)
         .limit(limit)
@@ -1013,10 +1013,14 @@ def get_events_by_project(
 def get_event_with_files(db: Session, event_id: str) -> Event | None:
     """
     Get event with all files and their detections, ordered by sequence_number.
+
+    Files and detections load as IN-selects, never joined onto the event
+    row: joined, a tracked hour of video (12,700 boxes) took 30 seconds
+    to come back, and the events list did the same per page.
     """
     event = (
         db.query(Event)
-        .options(joinedload(Event.files).joinedload(File.detections))
+        .options(selectinload(Event.files).selectinload(File.detections))
         .options(joinedload(Event.deployment).joinedload(Deployment.site))
         .filter(Event.id == event_id)
         .first()

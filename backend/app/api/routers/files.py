@@ -8,6 +8,7 @@ import io
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse as FastAPIFileResponse
 from fastapi.responses import Response
 from PIL import Image
@@ -157,7 +158,9 @@ async def get_file(
     Raises:
         HTTPException: If file not found
     """
-    file = file_crud.get_file_with_detections(db, file_id)
+    # Loaded in a worker thread: a tracked video is thousands of boxes,
+    # and on the event loop that held every other request meanwhile.
+    file = await run_in_threadpool(file_crud.get_file_with_detections, db, file_id)
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 

@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -238,7 +239,9 @@ async def list_events(
         sort=sort, seed=seed,
     )
     _apply_project_threshold(filters, project_id, db)
-    return event_crud.get_events_by_project(
+    # The page's boxes load in a worker thread (see `get_event`).
+    return await run_in_threadpool(
+        event_crud.get_events_by_project,
         db, project_id, skip=skip, limit=limit, **filters,
     )
 
@@ -324,8 +327,15 @@ async def get_event(
     event_id: str,
     db: Session = Depends(get_db),
 ):
-    """Get event with all files and detections."""
-    event = event_crud.get_event_with_files(db, event_id)
+    """Get event with all files and detections.
+
+    The load runs in a worker thread: an hour of tracked video is
+    thousands of boxes, and done on the event loop it held every other
+    request, `/health` included, until it finished. The route itself
+    stays async because the timezone context it sets below has to be set
+    on the loop's context for the serializer to see it.
+    """
+    event = await run_in_threadpool(event_crud.get_event_with_files, db, event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
