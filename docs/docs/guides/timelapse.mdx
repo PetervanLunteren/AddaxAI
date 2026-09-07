@@ -9,7 +9,7 @@ import TutorialVideo from "@site/src/components/TutorialVideo";
 
 Timelapse is a separate program for reviewing camera trap photos. It runs on Windows only, and you can get it from [its download page](https://timelapse.ucalgary.ca/download/). AddaxAI writes a recognition file that Timelapse reads, so you can go through the AI results inside Timelapse.
 
-Only a folder run makes this file. Timelapse needs one fixed folder, with the recognition file sitting next to the photos. A folder run is exactly that. A project can hold many folders in different places that move over time, so it does not fit.
+Timelapse needs the recognition file inside the folder it reads. AddaxAI writes it there when you analyse that folder, subfolders included, with a folder run. Then you import that file into Timelapse, as described below. A project does not fit: it can hold many folders in different places that move over time.
 
 ## Video tutorial
 
@@ -21,7 +21,7 @@ Prefer to watch? This video shows the round trip from Timelapse to AddaxAI and b
 
 1. **Start AddaxAI on your folder.** Two ways:
 
-   - **From Timelapse:** choose Recognitions > AddaxAI Image Recognizer > Run AddaxAI recognizer on a folder. AddaxAI opens "Analyse a folder" with that folder already filled in.
+   - **From Timelapse:** choose Recognitions > AddaxAI Image Recognizer > Run AddaxAI recognizer on a folder. AddaxAI opens "Analyse a folder" with that folder already filled in. By default AddaxAI also writes the recognition file where Timelapse expects it.
 
      <img src="/img/timelapse-recognitions-menu.webp" alt="The AddaxAI recognizer in Timelapse's Recognitions menu" style={{maxWidth: '560px', width: '100%', display: 'block'}} />
 
@@ -31,7 +31,7 @@ Prefer to watch? This video shows the round trip from Timelapse to AddaxAI and b
 
 2. **Run the folder analysis as normal.** Nothing here is Timelapse-specific. See [analyse a folder](./analyse-a-folder.mdx).
 
-3. **Save the recognition file.** In the save step, turn on JSON, the recognition file for Timelapse. AddaxAI writes the file next to your photos by default. Best to leave it there.
+3. **Save the recognition file.** In the save step, check that JSON, the recognition file for Timelapse, is on. AddaxAI writes the file next to your photos. Leave both as they are.
 
    <img src="/img/save-recognition-file.webp" alt="The JSON recognition file option in the save step" style={{maxWidth: '560px', width: '100%', display: 'block'}} />
 
