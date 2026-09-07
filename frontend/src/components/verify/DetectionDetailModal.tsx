@@ -553,6 +553,13 @@ export function DetectionDetailModal({
                     This picture can't be found on disk
                   </p>
                 </div>
+              ) : !fileData ? (
+                // The still to show depends on the file's tracks
+                // (`stillFrameFor`), so nothing is drawn until the file has
+                // loaded. Drawing early showed the best frame, without any
+                // box, and then swapped to the right frame: the wrong
+                // picture for as long as a big video takes to arrive.
+                <div className="px-16 py-24 text-white/50">Loading...</div>
               ) : (
                 <img
                   src={
