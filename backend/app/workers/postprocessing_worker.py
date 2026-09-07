@@ -124,24 +124,6 @@ async def process_postprocessing_job(job_id: str) -> None:
 
         logger.info(f"Processing {total} deployments for project {project.name}")
 
-        # Resolve classification model dir and taxonomy CSV
-        taxonomy_csv = None
-        cls_model_dir = None
-        if project.classification_model_id:
-            from app.core.config import get_settings
-
-            settings = get_settings()
-            cls_model_dir = (
-                settings.models_dir / "cls"
-                / project.classification_model_id
-            )
-            if cls_model_dir.exists():
-                _tax = cls_model_dir / "taxonomy.csv"
-                if _tax.exists():
-                    taxonomy_csv = _tax
-            else:
-                cls_model_dir = None
-
         # Snapshot label counts before processing
         before_counts = _get_label_counts(db, project_id)
 
@@ -255,13 +237,6 @@ async def process_postprocessing_job(job_id: str) -> None:
                         project,
                         db,
                     )
-                    # Load taxonomy for scientific_name formatting
-                    pp_taxonomy = None
-                    if taxonomy_csv and taxonomy_csv.exists():
-                        from app.ml.taxonomic_rollup import load_taxonomy_lookup
-
-                        pp_taxonomy = load_taxonomy_lookup(taxonomy_csv)
-
                     # Resolve label names to taxonomy IDs
                     from app.ml.taxonomy_db import batch_resolve_taxonomy_ids
 
@@ -280,13 +255,12 @@ async def process_postprocessing_job(job_id: str) -> None:
                         _dep_id=deployment.id,
                         _sm=smoothed,
                         _fp=folder_path,
-                        _ptax=pp_taxonomy,
                         _exc=project.excluded_classes,
                         _exc_tax=excluded_tax_ids,
                         _n2i=pp_name_to_id,
                     ):
                         return update_database_from_smoothed_results(
-                            _dep_id, _sm, _fp, db, _ptax,
+                            _dep_id, _sm, _fp, db,
                             excluded_classes=_exc,
                             excluded_taxonomy_ids=_exc_tax,
                             taxonomy_name_to_id=_n2i,
@@ -294,40 +268,17 @@ async def process_postprocessing_job(job_id: str) -> None:
 
                     result = await loop.run_in_executor(None, _apply_smoothed)
                 else:
-                    # Build excluded_names and geofence keys for rollup
-                    excluded_names = frozenset(
-                        n.lower()
-                        for n in (project.excluded_classes or [])
-                    )
-                    geo_keys = None
-                    if cls_model_dir and project.country_code:
-                        try:
-                            from app.ml.geofence import (
-                                get_allowed_taxonomy_keys,
-                            )
-
-                            geo_keys = get_allowed_taxonomy_keys(
-                                cls_model_dir,
-                                project.country_code,
-                                project.state_code,
-                            )
-                        except FileNotFoundError:
-                            pass
+                    # Smoothing and rollup both off: the raw JSON minus
+                    # the excluded classes is the result.
                     def _reload_raw(
                         _dep_id=deployment.id,
                         _jp=json_path,
                         _fp=folder_path,
                         _exc=project.excluded_classes,
-                        _tax_csv=taxonomy_csv,
-                        _exc_names=excluded_names,
-                        _geo=geo_keys,
                     ):
                         return reload_raw_classifications_from_json(
                             _dep_id, _jp, _fp, db,
                             excluded_classes=_exc,
-                            taxonomy_csv_path=_tax_csv,
-                            excluded_names=_exc_names,
-                            allowed_taxonomy_keys=_geo,
                         )
 
                     result = await loop.run_in_executor(None, _reload_raw)

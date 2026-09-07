@@ -272,36 +272,38 @@ def is_non_label_detection(
 def apply_label_exclusion_to_results(
     md_results: dict,
     excluded_labels: list[str] | None = None,
-    taxonomy_lookup: dict[str, dict[str, str]] | None = None,
+    *,
+    rollup_handles_exclusion: bool = False,
 ) -> dict:
     """
     Apply label exclusion to a full MegaDetector JSON results dict (in place).
 
-    Used in the postprocessing path (Phase 7).
+    Used in the postprocessing path (Phase 7), before smoothing.
 
-    When taxonomy is available, this is a no-op: the classification lists
-    stay untouched. Excluded species are handled by the geofence-aware
-    rollup in apply_taxonomic_rollup_to_results(), which preserves the
-    model's strong signal and redirects it to allowed ancestors (matching
-    the official SpeciesNet API behavior).
+    With ``rollup_handles_exclusion`` this is a no-op: the classification
+    lists stay untouched so the geofence-aware rollup in
+    apply_taxonomic_rollup_to_results() can redirect an excluded top-1 to
+    its nearest allowed ancestor with the model's full confidence
+    landscape (matching the official SpeciesNet API). The caller sets it
+    only when rollup is on and a taxonomy is available; nothing else
+    handles an excluded top-1, so deferring without a rollup to defer to
+    means the label is later erased instead of replaced.
 
-    When taxonomy is NOT available (fallback), user-excluded and NON_LABEL
-    classes are removed from classification lists.
-
-    Note: the Phase 6 DB load path (json_pipeline.py) uses
-    filter_and_rollup_classifications() directly for label assignment.
+    Otherwise user-excluded and NON_LABEL classes are removed from every
+    classification list. The next best included class becomes the
+    top-1, at its own score (no renormalisation), and a list that empties
+    leaves the detection unclassified.
 
     Args:
         md_results: Full MegaDetector JSON dict (modified in place)
         excluded_labels: Optional list of label names to exclude
-        taxonomy_lookup: Optional taxonomy lookup dict
+        rollup_handles_exclusion: True when taxonomic rollup will run
+            on these results and owns the excluded classes.
 
     Returns:
         The modified dict (same reference as input)
     """
-    if taxonomy_lookup:
-        # Rollup handles excluded species with geofence awareness.
-        # Do not filter here to preserve the full confidence landscape.
+    if rollup_handles_exclusion:
         return md_results
 
     class_categories = md_results.get("classification_categories", {})

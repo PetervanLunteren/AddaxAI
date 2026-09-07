@@ -133,34 +133,14 @@ def test_filter_classifications_sorted_descending():
 
 # ---------- apply_label_exclusion_to_results ----------
 
-_FELIDAE = {
-    "class": "mammalia", "order": "carnivora",
-    "family": "felidae",
-}
-_TAXONOMY = {
-    "lion": {**_FELIDAE, "genus": "panthera", "species": "leo"},
-    "tiger": {**_FELIDAE, "genus": "panthera", "species": "tigris"},
-    "bobcat": {**_FELIDAE, "genus": "lynx", "species": "rufus"},
-    "fox": {
-        "class": "mammalia", "order": "carnivora",
-        "family": "canidae", "genus": "vulpes", "species": "vulpes",
-    },
-    "zebra": {
-        "class": "mammalia", "order": "perissodactyla",
-        "family": "equidae", "genus": "equus", "species": "quagga",
-    },
-}
 _CATS = {
     "1": "lion", "2": "bobcat", "3": "fox",
     "4": "zebra", "5": "blank", "6": "tiger",
 }
 
 
-def test_apply_label_exclusion_noop_when_taxonomy():
-    """With taxonomy, apply_label_exclusion_to_results is a no-op."""
-    from app.ml.label_exclusion import apply_label_exclusion_to_results
-
-    md_results = {
+def _one_detection_results() -> dict:
+    return {
         "classification_categories": dict(_CATS),
         "images": [{
             "detections": [{
@@ -170,16 +150,36 @@ def test_apply_label_exclusion_noop_when_taxonomy():
             }],
         }],
     }
+
+
+def test_apply_label_exclusion_noop_when_rollup_handles_it():
+    """When rollup owns exclusion the lists stay untouched for Path A."""
+    from app.ml.label_exclusion import apply_label_exclusion_to_results
+
+    md_results = _one_detection_results()
     original_cls = [
         list(c)
         for c in md_results["images"][0]["detections"][0]["classifications"]
     ]
     apply_label_exclusion_to_results(
-        md_results, excluded_labels=["lion"], taxonomy_lookup=_TAXONOMY
+        md_results, excluded_labels=["lion"], rollup_handles_exclusion=True
     )
     assert (
         md_results["images"][0]["detections"][0]["classifications"]
         == original_cls
+    )
+
+
+def test_apply_label_exclusion_drops_excluded_and_keeps_next_best_score():
+    """Without rollup the excluded top-1 and the non-label class go, and
+    the next best included class leads at its own score, not inflated."""
+    from app.ml.label_exclusion import apply_label_exclusion_to_results
+
+    md_results = _one_detection_results()
+    apply_label_exclusion_to_results(md_results, excluded_labels=["lion"])
+    assert (
+        md_results["images"][0]["detections"][0]["classifications"]
+        == [["4", 0.10]]
     )
 
 

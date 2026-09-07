@@ -998,7 +998,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         final_json_path,
                         folder_path,
                         classification_model_id,
-                        cls_model_dir,
                         taxonomy_name_to_id,
                         job_id=job_id,
                         progress_callback=sync_postprocessing_progress,
@@ -1399,7 +1398,6 @@ def _run_postprocessing_owned_session(
     json_path: Path,
     deployment_folder: Path,
     classification_model_id: str | None,
-    cls_model_dir: Path | None,
     taxonomy_name_to_id: dict | None,
     job_id: str | None = None,
     progress_callback: Callable[[int, int], None] | None = None,
@@ -1431,7 +1429,6 @@ def _run_postprocessing_owned_session(
         run_postprocessing_for_deployment,
         update_database_from_smoothed_results,
     )
-    from app.ml.taxonomic_rollup import load_taxonomy_lookup
     from app.ml.taxonomy_db import batch_resolve_taxonomy_ids
     from app.models import Project
     from app.models.label_taxonomy import LabelTaxonomy
@@ -1447,13 +1444,6 @@ def _run_postprocessing_owned_session(
             job_id=job_id,
             warnings=warnings,
         )
-
-        # Taxonomy for scientific_name formatting.
-        pp_tax = None
-        if classification_model_id and cls_model_dir:
-            taxonomy_csv = cls_model_dir / "taxonomy.csv"
-            if taxonomy_csv.exists():
-                pp_tax = load_taxonomy_lookup(taxonomy_csv)
 
         # Resolve excluded_classes to taxonomy UUIDs.
         excluded_tax_ids: set[str] | None = None
@@ -1478,7 +1468,7 @@ def _run_postprocessing_owned_session(
         )
 
         return update_database_from_smoothed_results(
-            deployment_id, smoothed, deployment_folder, db, pp_tax,
+            deployment_id, smoothed, deployment_folder, db,
             excluded_classes=project.excluded_classes,
             excluded_taxonomy_ids=excluded_tax_ids,
             taxonomy_name_to_id=pp_name_to_id,

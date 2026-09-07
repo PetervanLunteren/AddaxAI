@@ -13,6 +13,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from app.ml.json_pipeline import load_json_to_database
 from app.ml.postprocessing import (
     build_smoother_input,
@@ -344,6 +346,100 @@ def test_label_exclusion_applied_before_smoothing(deployment_scaffold):
             for cls_id, _ in det.get("classifications", []):
                 label_name = data["classification_categories"].get(str(cls_id))
                 assert label_name != "lion", "Excluded label should be filtered out"
+
+
+_TAXONOMY_CSV = (
+    "model_class,class,order,family,genus,species\n"
+    "lion,mammalia,carnivora,felidae,panthera,leo\n"
+    "zebra,mammalia,perissodactyla,equidae,equus,quagga\n"
+    "giraffe,mammalia,artiodactyla,giraffidae,giraffa,camelopardalis\n"
+)
+
+
+def _postprocess_with_lion_excluded(s: dict, *, rollup: bool) -> None:
+    """Phase 7 against a model that ships a taxonomy.csv, with "lion"
+    excluded and smoothing off, written to the database the way the
+    workers do it. Every loaded detection reads lion 0.7, zebra 0.2,
+    giraffe 0.1, so the excluded class is the top-1 everywhere."""
+    db = s["db"]
+    json_path = _load_basic_images(s)
+
+    model_dir = s["tmp_path"] / "cls-model"
+    model_dir.mkdir()
+    (model_dir / "taxonomy.csv").write_text(_TAXONOMY_CSV)
+
+    project = s["project"]
+    project.excluded_classes = ["lion"]
+    project.event_smoothing = False
+    project.taxonomic_rollup = rollup
+    db.flush()
+
+    with patch(
+        "app.ml.postprocessing._find_classification_model_dir",
+        return_value=model_dir,
+    ):
+        results = run_postprocessing_for_deployment(
+            deployment_id=s["deployment"].id,
+            json_path=json_path,
+            deployment_folder=s["deploy_dir"],
+            project=project,
+            db=db,
+        )
+    update_database_from_smoothed_results(
+        s["deployment"].id, results, s["deploy_dir"], db,
+        excluded_classes=["lion"],
+    )
+
+
+def test_an_excluded_top1_becomes_the_next_best_class_when_rollup_is_off(
+    deployment_scaffold,
+):
+    """With rollup off, nothing else can redirect an excluded top-1, so
+    the plain filter must run even though the model ships a taxonomy.
+    Before this, a taxonomy.csv made the filter defer to a rollup that
+    never ran, the excluded label reached the database, and the final
+    sweep erased it: 736 of 799 moose lost their label in one run."""
+    _postprocess_with_lion_excluded(deployment_scaffold, rollup=False)
+
+    dets = deployment_scaffold["db"].query(Detection).all()
+    assert len(dets) == 3
+    for det in dets:
+        assert det.label == "zebra"
+        # Its own score, not renormalised to 1.0 like v6 did.
+        assert det.label_confidence == pytest.approx(0.2)
+
+
+def test_an_excluded_top1_rolls_up_when_rollup_is_on(deployment_scaffold):
+    """With rollup on, the filter stays out of the way and Path A takes
+    the excluded lion to the family its confidence supports."""
+    _postprocess_with_lion_excluded(deployment_scaffold, rollup=True)
+
+    dets = deployment_scaffold["db"].query(Detection).all()
+    assert len(dets) == 3
+    for det in dets:
+        assert det.label == "felidae"
+        assert det.label_confidence == pytest.approx(0.7)
+
+
+def test_the_raw_reload_drops_excluded_classes_the_same_way(
+    deployment_scaffold,
+):
+    """Smoothing and rollup both off take the raw-reload path. It applies
+    the same rule: excluded classes go, the next best included class
+    stays at its own score, and nothing rolls up."""
+    s = deployment_scaffold
+    json_path = _load_basic_images(s)
+
+    reload_raw_classifications_from_json(
+        s["deployment"].id, json_path, s["deploy_dir"], s["db"],
+        excluded_classes=["lion"],
+    )
+
+    dets = s["db"].query(Detection).all()
+    assert len(dets) == 3
+    for det in dets:
+        assert det.label == "zebra"
+        assert det.label_confidence == pytest.approx(0.2)
 
 
 def test_reload_raw_classifications(deployment_scaffold):
