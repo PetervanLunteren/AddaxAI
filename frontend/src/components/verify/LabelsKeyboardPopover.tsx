@@ -3,9 +3,10 @@
  *
  * Renders its own toolbar icon trigger (Keyboard) so it sits inline
  * with the other utility icons in the verify toolbar. Takes the list of
- * shortcuts to show, because Detections and Files have different ones, and
- * renders the user-configurable label slots (1-5) alongside only when a
- * tab has them. Files does not: labels there are set on the box, in the viewer.
+ * shortcuts to show, because Detections and Files have different ones,
+ * and renders the user-configurable number-key label slots alongside.
+ * Both tabs pass them: the Files grid answers the same keys, and a
+ * keypad user who works there could not find where to set them.
  *
  * Only grid shortcuts are listed, in both tabs. The detail views label
  * their own keys on the buttons that use them, so repeating them here
@@ -18,6 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { VERIFY_TOOLBAR_ICON_CLASS } from "./VerifyToolbar";
 import { LabelPicker } from "./LabelPicker";
 import type { LabelOption } from "../../hooks/useLabelOptions";
+import { SHORTCUT_SLOTS } from "../../hooks/useShortcutLabels";
 import type { Shortcut } from "./shortcuts";
 
 interface LabelSlots {
@@ -34,7 +36,7 @@ interface LabelsKeyboardPopoverProps {
   shortcuts: readonly Shortcut[];
   /** Closing line, e.g. what happens to the selection after an action. */
   footer: string;
-  /** The configurable 1-5 label slots. Omitted by tabs without labels. */
+  /** The configurable number-key label slots. Omitted by tabs without labels. */
   labelSlots?: LabelSlots;
 }
 
@@ -81,7 +83,7 @@ export function LabelsKeyboardPopover({
           </div>
           {labelSlots && (
             <div>
-              {[1, 2, 3, 4, 5].map((n) => (
+              {SHORTCUT_SLOTS.map((n) => (
                 <div key={n} className="flex items-center text-xs gap-3 h-7">
                   <ShortcutKey keys={String(n)} />
                   <span>Change selected to</span>

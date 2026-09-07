@@ -722,3 +722,47 @@ def test_a_long_list_that_leaves_a_class_is_not_excluding_all(client, db):
         json={"excluded_classes": ["fox", "zebra", "lion", "okapi"]},
     )
     assert resp.status_code == 200, resp.text
+
+
+def test_a_folder_run_inherits_the_slots_last_used_with_its_model(client, db):
+    """Every folder run is its own project, so its number-key labels
+    started empty on every site a keypad user processed with the same
+    model. Setting the model copies the slots of the most recent run on
+    that model, and only when the run has none of its own."""
+    slots = {"1": {"value": "moose", "label": "moose", "category": "animal"}}
+    older = make_project(
+        db, mode="folder_run", classification_model_id="BC-WEM-v4",
+        shortcut_labels={"1": {"value": "elk", "label": "elk", "category": "animal"}},
+    )
+    newer = make_project(
+        db, mode="folder_run", classification_model_id="BC-WEM-v4",
+        shortcut_labels=slots,
+    )
+    other_model = make_project(
+        db, mode="folder_run", classification_model_id="EUR-DF-v1-4",
+        shortcut_labels={"1": {"value": "fox", "label": "fox", "category": "animal"}},
+    )
+    db.commit()
+    assert older.id != newer.id and other_model.id != newer.id
+
+    run = make_project(db, mode="folder_run")
+    resp = client.patch(
+        f"/api/projects/{run.id}", json={"classification_model_id": "BC-WEM-v4"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["shortcut_labels"] == slots
+
+    # A run that already set its own slots keeps them on a model change.
+    own = {"2": {"value": "wolf", "label": "wolf", "category": "animal"}}
+    resp = client.patch(f"/api/projects/{run.id}", json={"shortcut_labels": own})
+    resp = client.patch(
+        f"/api/projects/{run.id}", json={"classification_model_id": "EUR-DF-v1-4"}
+    )
+    assert resp.json()["shortcut_labels"] == own
+
+    # A research project never inherits: its species list is its own.
+    research = make_project(db)
+    resp = client.patch(
+        f"/api/projects/{research.id}", json={"classification_model_id": "BC-WEM-v4"}
+    )
+    assert resp.json()["shortcut_labels"] == {}

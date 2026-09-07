@@ -205,9 +205,44 @@ def update_project(db: Session, project_id: str, project: ProjectUpdate) -> Proj
     for field, value in update_data.items():
         setattr(db_project, field, value)
 
+    # A folder run inherits the number-key labels last used with its
+    # classification model. Every run is its own project, so without
+    # this the slots start empty on every site a keypad user processes
+    # with the same model (v6 kept them globally). The labels belong to
+    # the model's taxonomy, so the copy is valid for any run on that
+    # model. Only when the run has none of its own yet: a slot the user
+    # set is never overwritten.
+    if (
+        db_project.mode == "folder_run"
+        and update_data.get("classification_model_id")
+        and not db_project.shortcut_labels
+    ):
+        db_project.shortcut_labels = _last_shortcut_labels_for_model(
+            db, db_project.classification_model_id, exclude_project_id=project_id
+        )
+
     db.commit()
     db.refresh(db_project)
     return db_project
+
+
+def _last_shortcut_labels_for_model(
+    db: Session, classification_model_id: str, *, exclude_project_id: str
+) -> dict:
+    """The slots of the most recently updated folder run on this model
+    that has any, or an empty dict."""
+    row = (
+        db.query(Project.shortcut_labels)
+        .filter(
+            Project.mode == "folder_run",
+            Project.classification_model_id == classification_model_id,
+            Project.id != exclude_project_id,
+            Project.shortcut_labels != {},
+        )
+        .order_by(Project.updated_at_utc.desc())
+        .first()
+    )
+    return dict(row[0]) if row and row[0] else {}
 
 
 def _purge_project_data(db: Session, project_id: str) -> list[tuple[str, int]]:

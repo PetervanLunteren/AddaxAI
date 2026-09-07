@@ -29,7 +29,10 @@ import { filesApi } from "../../api/files";
 import { labelsApi } from "../../api/labels";
 import { projectsApi } from "../../api/projects";
 import { useLabelOptions } from "../../hooks/useLabelOptions";
-import { useShortcutLabels } from "../../hooks/useShortcutLabels";
+import {
+  shortcutSlotFromKey,
+  useShortcutLabels,
+} from "../../hooks/useShortcutLabels";
 import { shouldDrawBbox } from "../../lib/detection-utils";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
 import { labelMajority } from "./label-majority";
@@ -91,7 +94,7 @@ const FILES_SHORTCUTS: readonly Shortcut[] = [
   ["U", "Mark unknown (unidentifiable)"],
   ["R", "Relabel"],
   ["M", "Relabel to most common"],
-  ["1 - 5", "Apply a saved label"],
+  ["1 - 9", "Apply a saved label"],
   [`${MOD} + Z`, "Undo last label action"],
   ["Esc", "Deselect"],
   // Viewer only.
@@ -514,7 +517,7 @@ export function FilesTab({
   });
 
   // ── Bulk box actions, the crop grid's set at file scope ──────────
-  // One mechanism behind X / U / M / R / 1-5 and their buttons: apply a
+  // One mechanism behind X / U / M / R / number keys and their buttons: apply a
   // label to every visible box of the selected files. The tiles already
   // hold each file's detail in the query cache, so collecting the box
   // ids costs nothing beyond a cache read; `fetchQuery` covers a tile
@@ -523,7 +526,7 @@ export function FilesTab({
   const threshold = project?.counting_threshold ?? 0;
   const { options: labelOptions, isLoading: labelOptionsLoading } =
     useLabelOptions(project?.classification_model_id ?? null, projectId);
-  const { shortcutLabels } = useShortcutLabels(projectId);
+  const { shortcutLabels, updateShortcutLabels } = useShortcutLabels(projectId);
   const [relabelOpen, setRelabelOpen] = useState(false);
   // Label entries revert boxes to the model's call; verify entries
   // undo with an untick (`bulkVerify(ids, false)`), which is verify's
@@ -697,11 +700,8 @@ export function FilesTab({
       ) {
         e.preventDefault();
         setRelabelOpen((v) => !v);
-      } else if (
-        e.key >= "1" && e.key <= "5" &&
-        !e.ctrlKey && !e.metaKey && selected.size > 0
-      ) {
-        const slot = shortcutLabels[parseInt(e.key)];
+      } else if (shortcutSlotFromKey(e) !== null && selected.size > 0) {
+        const slot = shortcutLabels[shortcutSlotFromKey(e)!];
         if (slot) {
           e.preventDefault();
           applyLabelToSelection(slot.label, slot.category);
@@ -836,6 +836,13 @@ export function FilesTab({
           <LabelsKeyboardPopover
             shortcuts={FILES_SHORTCUTS}
             footer="After verifying, the next file is selected, so you can keep going."
+            labelSlots={{
+              shortcutLabels,
+              onShortcutLabelsChange: updateShortcutLabels,
+              labelOptions,
+              labelOptionsLoading,
+              projectId,
+            }}
           />
           <LabelsSettings tileSize={tileSize} onTileSizeChange={setTileSize} />
           <div className="ml-2">

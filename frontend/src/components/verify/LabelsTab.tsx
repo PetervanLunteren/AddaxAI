@@ -56,7 +56,10 @@ import {
 } from "./labels-filters";
 import { nextAfterActed, selectOnClick } from "./grid-selection";
 import { labelMajority, type LabelMajority } from "./label-majority";
-import { useShortcutLabels } from "../../hooks/useShortcutLabels";
+import {
+  shortcutSlotFromKey,
+  useShortcutLabels,
+} from "../../hooks/useShortcutLabels";
 import { GridEmptyState } from "./GridEmptyState";
 import { CropGrid } from "./CropGrid";
 import type { CropGridHandle } from "./CropGrid";
@@ -457,7 +460,7 @@ export function LabelsTab({
     queryFn: () => projectsApi.get(projectId),
   });
 
-  // The 1 to 5 slots, shared with the Files viewer.
+  // The number-key slots, shared with the Files viewer.
   const { shortcutLabels, updateShortcutLabels } = useShortcutLabels(projectId);
 
   // Stats query — embedded-detection counts for the missing-embeddings
@@ -1201,7 +1204,7 @@ export function LabelsTab({
       }
 
       // "E" selects the first event that still needs work, so the bulk
-      // shortcuts above (Enter, M, R, X, 1-5) can act on the whole event.
+      // shortcuts above (Enter, M, R, X, number keys) can act on the whole event.
       // Only meaningful in "By event" sort, where each event's crops are
       // contiguous; a no-op in other sorts.
       if (
@@ -1229,8 +1232,8 @@ export function LabelsTab({
         return;
       }
 
-      if (e.key >= "1" && e.key <= "5" && !e.ctrlKey && !e.metaKey) {
-        const slot = parseInt(e.key);
+      if (shortcutSlotFromKey(e) !== null) {
+        const slot = shortcutSlotFromKey(e)!;
         const label = shortcutLabels[slot];
         if (!label || selectedIds.size === 0) return;
         e.preventDefault();

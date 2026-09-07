@@ -21,7 +21,7 @@
  * answer, which only pays off while drawing several of one thing.
  *
  * The label actions are the Detections grid's, with one scope rule: R,
- * X, U and the saved labels 1 to 5 act on the selected box, and on every
+ * X, U and the saved number-key labels act on the selected box, and on every
  * visible box when none is selected. The same rule decides what happens
  * next: a whole-picture action is the verdict, so it signs the file off
  * and advances in the same press (like the Detections viewer); a
@@ -83,7 +83,11 @@ import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import { shouldDrawBbox } from "../../lib/detection-utils";
 import { basename } from "../../lib/path-utils";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
-import { useShortcutLabels } from "../../hooks/useShortcutLabels";
+import {
+  SHORTCUT_SLOTS,
+  shortcutSlotFromKey,
+  useShortcutLabels,
+} from "../../hooks/useShortcutLabels";
 import { Button } from "../ui/button";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
@@ -215,7 +219,7 @@ export function FileDetailModal({
   const { options: labelOptions, isLoading: labelOptionsLoading } =
     useLabelOptions(project?.classification_model_id ?? null, projectId);
 
-  // The 1 to 5 slots, the same project-wide ones the Detections grid
+  // The number-key slots, the same project-wide ones the Detections grid
   // uses; set or changed from either place.
   const { shortcutLabels, updateShortcutLabels } = useShortcutLabels(projectId);
   const pinnedOptions = useMemo<PinnedOption[]>(
@@ -387,7 +391,7 @@ export function FileDetailModal({
    *
    *  `advance`: a whole-picture action (no box selected) is a complete
    *  verdict, so it signs the file off and moves on in the same press,
-   *  like the Detections viewer's X/U/1-5 - X,Enter,X,Enter becomes
+   *  like the Detections viewer's X/U/number keys - X,Enter,X,Enter becomes
    *  X,X. A selected-box action stays: that user is mid-file, editing
    *  box by box, and yanking them forward would break exactly the flow
    *  the selection exists for. The verify is the same idempotent PATCH
@@ -555,9 +559,9 @@ export function FileDetailModal({
       } else if (key === "m") {
         e.preventDefault();
         matchMajority();
-      } else if (e.key >= "1" && e.key <= "5" && !e.metaKey && !e.ctrlKey) {
+      } else if (shortcutSlotFromKey(e) !== null) {
         e.preventDefault();
-        applyShortcut(parseInt(e.key));
+        applyShortcut(shortcutSlotFromKey(e)!);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -609,7 +613,7 @@ export function FileDetailModal({
   if (!item) return null;
 
   const noBoxes = visibleBoxes.length === 0;
-  const freeSlot = [1, 2, 3, 4, 5].find((n) => !shortcutLabels[n]);
+  const freeSlot = SHORTCUT_SLOTS.find((n) => !shortcutLabels[n]);
 
   return (
     <VerifyDetailShell
@@ -834,14 +838,14 @@ export function FileDetailModal({
                 <Kbd>R</Kbd>
               </Button>
 
-              {/* The saved labels, the same 1 to 5 slots as the
+              {/* The saved labels, the same number-key slots as the
                   Detections grid, as split buttons: the body applies the
                   slot's label (the key does the same), the chevron
                   segment opens the label search that changes it. Only
                   the set slots show, plus one row to fill the next free
                   slot; changes are saved on the project, so both tabs
                   see them. */}
-              {[1, 2, 3, 4, 5]
+              {SHORTCUT_SLOTS
                 .filter((n) => shortcutLabels[n])
                 .map((n) => (
                   <div key={n} className="flex w-full">
