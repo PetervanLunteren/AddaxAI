@@ -143,15 +143,16 @@ def test_bulk_verify_dismiss_and_undo_reach_the_track(client, db):
 
 
 def test_a_file_sign_off_reaches_the_tracks_it_could_see(client, db):
-    """Signing the video off verifies the boxes on its visible surface
-    (best frame, representative frames, drawn box) and, through them,
-    every box of those tracks. A weak representative is rejected with
-    its whole track. The file then rolls up to verified, which it could
-    not while sibling boxes stayed unverified."""
+    """Signing the video off is a verdict on the frame the Files viewer
+    shows, the best frame: every box on it is verified, a weak one is
+    rejected, and through a box that belongs to a track the verdict
+    reaches every box of that track. A track with no box on that frame
+    is untouched: one click on a frame with seven sharks must not sign
+    off the seven hundred the person never saw."""
     project, video, _, two, boxes = _tracked_video(db, counting_threshold=0.5)
-    # Track two's boxes are weak: its representative sits below the
-    # threshold, so the sign-off rejects the track.
-    for b in boxes["two"]:
+    # Track one's boxes are weak and its middle box sits on the best
+    # frame, so the sign-off rejects the whole track.
+    for b in boxes["one"]:
         b.confidence = 0.3
     db.commit()
 
@@ -159,9 +160,11 @@ def test_a_file_sign_off_reaches_the_tracks_it_could_see(client, db):
     assert resp.status_code == 200
 
     db.expire_all()
-    assert all(b.verified for b in boxes["one"])
-    assert all(b.verified and b.label == "false detection" for b in boxes["two"])
+    assert all(b.verified and b.label == "false detection" for b in boxes["one"])
     assert boxes["loose"][0].verified
+    # Track two lives on frames 300 to 360, which nobody saw.
+    assert not any(b.verified for b in boxes["two"])
+    assert all(b.label is None for b in boxes["two"])
     assert db.get(File, video.id).verified is True
 
     # And back: unverify clears every box of the file, tracks included.
