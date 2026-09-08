@@ -226,6 +226,16 @@ Continue is only offered when the detection settings (detector, image size, augm
 
 </FaqItem>
 
+<FaqItem id="i-deleted-the-addaxai-files-from-my-folder-but-it-still-says-already-analysed" q="I deleted the AddaxAI files from my folder, but it still says the folder is already analysed">
+
+That is expected. The results of a folder run live in the AddaxAI database, not in your folder. The files the app writes next to your photos (the tables, the recognition file for Timelapse, the media copies) are copies made from that database, so deleting them does not delete the run. When you pick the same folder again, the app finds the run and opens it.
+
+That is useful more often than not. Click "Skip analysis" to open the stored results, and save the outputs again from the save step. The recognition file is back in seconds, without running the AI again. Click "Re-run analysis" to throw the stored results away and start over.
+
+To forget the run completely, open "Analyse a folder", click "Show recent runs" before picking a folder, and delete the run there.
+
+</FaqItem>
+
 ## Getting help
 
 <FaqItem id="something-went-wrong-or-i-found-a-bug" q="Something went wrong, or I found a bug">
