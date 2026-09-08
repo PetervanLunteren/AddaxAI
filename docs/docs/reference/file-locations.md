@@ -13,7 +13,7 @@ Wherever you put them. AddaxAI never moves, changes or deletes your originals, i
 
 ## 2. Results next to your photos
 
-Inside each analysed folder AddaxAI writes a hidden `.addaxai` folder. It holds the raw model output and, for videos, one frame per clip. You never have to open it, and there is nothing in there a normal user should need. AddaxAI uses it to redo work after you change a setting, without running the AI again.
+Inside each analysed folder AddaxAI writes a hidden `.addaxai` folder. It holds the raw model output and, for videos, one cover frame per clip plus a small crop of each animal the AI followed. You never have to open it, and there is nothing in there a normal user should need. AddaxAI uses it to redo work after you change a setting, without running the AI again.
 
 A folder run also saves its own output next to your photos by default: the tables, the recognition file for Timelapse, and a text file describing the run. Those are yours to move, copy or delete, nothing depends on them. See [exports](./exports.md).
 

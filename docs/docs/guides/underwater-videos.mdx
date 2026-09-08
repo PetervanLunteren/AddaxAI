@@ -5,7 +5,7 @@ title: Underwater videos
 
 # Underwater videos
 
-AddaxAI can analyse long underwater videos such as baited remote underwater video stations (BRUVS), the standard tool for surveying sharks, rays and reef fish. The difference from a camera trap clip is length: a drop runs 60 to 90 minutes and animals swim in and out the whole time. Looking at one frame per video would miss most of it, so for these videos AddaxAI follows each animal through the clip instead.
+AddaxAI can analyse long underwater videos such as baited remote underwater video stations (BRUVS), the standard tool for surveying sharks, rays and reef fish. The difference from a camera trap clip is length: a drop runs 60 to 90 minutes and animals swim in and out the whole time. AddaxAI follows each animal through every video it analyses, so a drop is reviewed animal by animal, however long it is.
 
 ## Which models
 
@@ -16,18 +16,20 @@ Two detectors are made for underwater footage. Both find animals; neither names 
 | SharkTrack | Sharks and rays | Trained on footage from 25 locations worldwide. Small and fast, runs on a laptop without a GPU at roughly half an hour per hour of video. Varini et al. 2024. |
 | Community Fish Detector | Any fish | Trained on 17 open datasets from reefs, rivers, lakes and labs, so it works in most water. Three sizes: nano is the fast one, small and medium see more and are several times slower without a GPU. Varini, Morris and contributors. |
 
-Pick one in the setup step or in the project settings, as you would MegaDetector. Both are downloaded on first use, together with their own analysis environment. SharkTrack analyses videos only: a folder that also holds photos is refused until you set "Media to analyse" to videos or pick another detector for the photos. SharkTrack always tracks, whatever the switch says.
+Pick one in the setup step or in the project settings, as you would MegaDetector. Both are downloaded on first use, together with their own analysis environment. SharkTrack analyses videos only: a folder that also holds photos is refused until you set "Media to analyse" to videos or pick another detector for the photos.
 
-## Track animals across frames
+## Frame rate
 
-Choosing either model switches on "Track animals across frames" and sets the video frame rate to 3 frames per second. Tracking means the AI follows each animal from frame to frame and remembers it as one animal, so a shark that circles the bait for two minutes is one card to review, not two hundred. It runs the detector on every sampled frame, so an hour of video takes longer than it would at one frame per second. You can switch tracking on for any detector, including MegaDetector on camera trap clips, if you want counts of animals walking through; it is off by default there.
+AddaxAI checks a video a few frames per second and follows each animal from one checked frame to the next, so a shark that circles the bait for two minutes is one card to review, not two hundred. The default is 2 frames per second. A higher rate follows fast animals better and takes proportionally longer; below about 1 frame per second a fast animal can split into several detections, and an animal out of sight for more than 2 seconds counts as a new one when it comes back. The setting is in the advanced settings of the setup step and of the project settings.
+
+For the underwater detectors a filter also drops tracks that last under a second or barely move unless the detector was confident, which removes most of the floating debris and algae in turbid water. MegaDetector runs without it, so a resting animal on a camera trap is never dropped.
 
 ## What you get
 
-- **Labels page.** One card per animal the AI followed, shown at the frame where it saw that animal best. Give the card a species with the label picker, tick it, or press X if it is algae, debris or a fish you do not want. Whatever you decide applies to every frame of that animal. The category filter shows the detector's own class, elasmobranch or fish.
-- **Counts page.** One event per drop, one row per species with its MaxN: the most individuals visible together in one frame, taken over the whole video. Each row says when that count was reached and when the species was first seen. Show jumps the player to the frame the count was made on. Confirm or change the number as you would for a camera trap event.
-- **Watching an animal.** From a card, "Open in files view" opens the clip on that animal with a timeline of every track underneath; the Counts page shows the same timeline with the MaxN frames marked. See [check the labels](./check-labels.mdx) and [confirm the counts](./confirm-counts.mdx).
-- **Exports.** The Counts table gains three columns: `max_n_frame`, `max_n_time` and `first_arrival_time`. See [exports](../reference/exports.md).
+- **Labels page.** One card per animal the AI followed, shown at the frame where it saw that animal best. Give the card a species with the label picker, tick it, or press X if it is algae, debris or a fish you do not want. Whatever you decide applies to every frame of that animal. The category filter shows the detector's own class, elasmobranch or fish. In Files, a drop opens on its cover with a timeline of every animal underneath; Verify there signs off every animal in the drop.
+- **Counts page.** One event per drop, one row per species with its MaxN: the most individuals visible together in one frame, taken over the whole video. Each row says when that count was reached and when the species was first seen. Show puts the frame the count was made on on screen. Confirm or change the number as you would for a camera trap event; an animal the AI missed is added here.
+- **Watching an animal.** From a card, "Open in files view" lands on that animal's frame with the animal selected; the timeline under the picture and under the player has one bar per animal, and the Counts page shows the same timeline with the MaxN frames marked. See [check the labels](./check-labels.mdx) and [confirm the counts](./confirm-counts.mdx).
+- **Exports.** The Counts table has `max_n_frame`, `max_n_time` and `first_arrival_time`; the Detections table says which animal each box belongs to; the Camtrap DP export writes one observation per animal. See [exports](../reference/exports.md).
 
 ## Setting up the folders
 
@@ -35,7 +37,7 @@ Put the videos of one drop in one folder and add that folder as one deployment. 
 
 ## Things to know
 
-- Videos in a format the browser cannot play (some AVI files) are analysed and reviewed like any other. Every card and every count still shows a picture, only the play button and the jump to the count's frame are unavailable.
+- Videos in a format the browser cannot play (some AVI files) are analysed and reviewed like any other. Every card, every bar on the timeline and every count still shows its frame; only playback itself is unavailable.
 - The dashboard's rates per 100 trap nights read a 90 minute drop as one trap night. They are made for camera traps; use the Counts page and the Counts export for underwater work.
 - The AI counts one animal per track. An animal that leaves the picture and comes back is followed again as a new track; that does not change the count, because the count is per frame.
 

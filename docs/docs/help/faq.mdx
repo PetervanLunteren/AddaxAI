@@ -92,7 +92,7 @@ No. AddaxAI runs on any computer. It is faster with an NVIDIA GPU or Apple Silic
 
 It depends on your hardware, on how many files you have, and on whether they are photos or videos. A machine with an NVIDIA GPU or Apple Silicon is many times faster than one without.
 
-For real numbers per hardware type, see the [MegaDetector benchmark timings](https://github.com/agentmorris/MegaDetector/blob/main/megadetector.md#benchmark-timings). Those numbers are for the detection model only. The classification model and the embedding model add time on top, but the benchmarks still give a good indication. Video is slower than photos, because AddaxAI takes several frames out of every clip and runs the models on each one.
+For real numbers per hardware type, see the [MegaDetector benchmark timings](https://github.com/agentmorris/MegaDetector/blob/main/megadetector.md#benchmark-timings). Those numbers are for the detection model only. The classification model and the embedding model add time on top, but the benchmarks still give a good indication. Video is slower than photos, because AddaxAI checks a frame every half second by default and runs the models on each one, then follows each animal through them. A lower frame rate in the advanced settings is the lever.
 
 </FaqItem>
 

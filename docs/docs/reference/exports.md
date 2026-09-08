@@ -25,9 +25,9 @@ All five tables hold the same set of detections, and it is the same set the app 
 
 Anything below your [counting threshold](../understanding/confidence-and-verification.md) is left out, unless you verified it yourself. A detection you verified always stays in, whatever it scored, because your decision outranks the score.
 
-For videos, only the frame AddaxAI saved is included. A video is analysed frame by frame, but only one frame is kept as a picture, so a box on any other frame has no image you could ever look at. Those boxes are left out of the tables rather than listed as animals you cannot find.
+For videos, one row per animal the AI followed: its box on the frame where the AI saw it best, the same box its card shows. The other boxes of that animal, one per checked frame, are not separate detections and are left out of the tables rather than listed as animals you cannot find.
 
-If you do want every box on every frame, use the recognition file described at the end of this page. That one is complete on purpose.
+If you do want every box on every frame, use the recognition file described at the end of this page. That one is complete on purpose, and it says which animal each box belongs to.
 
 ## Summary
 
@@ -101,6 +101,7 @@ One row per box. Use it when you care about individual boxes. Blank files do not
 | `scientific_name` | Scientific name |
 | `common_name` | Common name |
 | `frame_number` | Frame index for videos, empty for photos |
+| `track_id` | Which animal in the clip the box belongs to, the tracker's own number within that video. Empty for photos |
 | `bbox_x`, `bbox_y` | Top left corner of the box, 0 to 1 |
 | `bbox_width`, `bbox_height` | Size of the box, 0 to 1 |
 
@@ -127,7 +128,7 @@ One row per photo or video, whether or not anything was found.
 | `camera_model` | Camera model, from EXIF `Model`, read once during analysis |
 | `ambient_temperature` | Temperature at capture, from EXIF `AmbientTemperature`, read once during analysis. The standard says degrees Celsius, but camera trap thermometers are rough, so treat it as indicative |
 | `camera_serial` | The camera's serial number, from EXIF `BodySerialNumber`, read once during analysis. Useful to confirm which physical camera took the file |
-| `observation_type` | What the file holds, taken from its strongest box: the one you verified yourself, or else the one the detector scored highest. For a video, only boxes on the one frame AddaxAI saved count. The value is whatever the detector called it, so animal, person or vehicle for MegaDetector, or blank when no box passed |
+| `observation_type` | What the file holds, taken from its strongest box: the one you verified yourself, or else the one the detector scored highest. For a video the boxes are its animals, one per track, whatever frame each was seen best on. The value is whatever the detector called it, so animal, person or vehicle for MegaDetector, or blank when no box passed |
 | `detection_confidence` | How sure the detector was there is something there, for that same box. A verified box counts whatever its score, so this can sit below your [counting threshold](../understanding/confidence-and-verification.md) |
 | `classification_label` | The species of that same strongest box, not the most confident species on the file. Empty for a person, a vehicle, or an animal that was never classified |
 | `classification_confidence` | Score for that species. Always 1.0 when a human set the label. Empty when there is no species |
@@ -189,3 +190,5 @@ Projects can also export Camtrap DP, a standard format for camera trap data. It 
 For models that predict below species level (adult or juvenile fox, for example), `scientificName` always carries the real species name. The variant goes into `lifeStage` (adult, subadult, juvenile) or `sex` (female, male) when it fits those fields, and into `observationComments` otherwise.
 
 What you set on the Counts page goes into the same fields: `sex`, `lifeStage` and `behavior` per row, and your note on the event into `observationComments` of each of its rows. Unknown stays empty. A favourite file gets `favorite` set to true in the media table.
+
+A video is one media row, and each animal the AI followed through it is one media-level observation: `eventStart` and `eventEnd` are the seconds the animal was on screen, the box is the one from the frame it was seen best on, `individualID` names the animal within the clip, and `observationTags` carries the frame numbers (`frameStart`, `frameEnd`, `bboxFrame`, `frameRate`), since the standard has no field for them. The event-level row per species carries the count, MaxN or your own number, with `countMethod:MaxN` and the file and frame the MaxN was made on in its tags.
