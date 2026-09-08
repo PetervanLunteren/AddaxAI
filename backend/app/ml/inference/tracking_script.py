@@ -203,7 +203,14 @@ class _MegaDetectorDetector:
         # call; PTDetector takes it per call. Give both what they read.
         options = {"image_size": image_size} if image_size else None
         self.detector = load_detector(str(model_path), detector_options=options)
-        self.categories = {str(k): str(v) for k, v in self.detector.detection_categories.items()}
+        # RF-DETR carries its class names on the detector; a MegaDetector
+        # .pt has the package's fixed three.
+        from megadetector.detection.run_detector import DEFAULT_DETECTOR_LABEL_MAP
+
+        categories = (
+            getattr(self.detector, "detection_categories", None) or DEFAULT_DETECTOR_LABEL_MAP
+        )
+        self.categories = {str(k): str(v) for k, v in categories.items()}
         self.is_rfdetr = type(self.detector).__name__ == "RFDETRDetector"
         self.image_size = image_size
         self.augment = augment
