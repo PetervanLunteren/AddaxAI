@@ -156,7 +156,8 @@ def synthesize_full_image_video_json(
     `process_video` we fake the JSON it would have produced: sample
     frames at the same rate MegaDetector uses (`every_n_frames =
     round(frame_rate / fps)`), number them by absolute frame index, and
-    stamp a `[0, 0, 1, 1]` conf-1.0 detection on each. The existing video
+    stamp a `[0, 0, 1, 1]` conf-1.0 detection on each, all on one track so
+    the clip is one card like any tracked video. The existing video
     classification phase then classifies each whole frame unchanged.
 
     Videos that cannot be opened or have no decodable frames get
@@ -199,6 +200,10 @@ def synthesize_full_image_video_json(
                     "conf": 1.0,
                     "bbox": list(_FULL_FRAME_BBOX),
                     "frame_number": frame_number,
+                    # One track per clip: every video box has a track, so
+                    # the clip gets one card, on its first frame (ties in
+                    # confidence go to the earliest frame).
+                    "track_id": 1,
                 }
                 for frame_number in sampled
             ],

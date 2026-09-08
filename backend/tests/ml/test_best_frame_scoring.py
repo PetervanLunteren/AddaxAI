@@ -295,6 +295,23 @@ def test_classifier_off_path_writes_only_the_chosen_frame(tmp_path, make_video):
     assert written == ["frame000015.jpg"]
 
 
+def test_tracked_boxes_add_no_stills_beside_the_cover(tmp_path, make_video):
+    """A track's card is a crop the tracking script wrote; this pass
+    writes the cover and nothing else, whatever the tracks."""
+    video = tmp_path / "clip.mp4"
+    make_video(video, total_frames=40, fps=10)
+    out = tmp_path / "detection_video.json"
+    dets = [_det("1", 0.50, 5), _det("1", 0.90, 15), _det("1", 0.60, 25)]
+    for i, det in enumerate(dets):
+        det["track_id"] = i + 1
+    _write_json(out, "clip.mp4", dets)
+
+    select_best_frames_streaming(out, tmp_path, tmp_path / "frames")
+
+    written = sorted(p.name for p in (tmp_path / "frames" / "clip.mp4").glob("*.jpg"))
+    assert written == ["frame000015.jpg"]
+
+
 def test_result_is_identical_when_the_seek_is_refused(
     tmp_path, make_video, monkeypatch
 ):

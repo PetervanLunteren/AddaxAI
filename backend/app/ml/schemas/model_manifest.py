@@ -102,11 +102,13 @@ class ModelManifest(BaseModel):
     # package forces the three MegaDetector classes onto any YOLO .pt it
     # does not know, which would turn a shark into "animal".
     detector_runtime: Literal["megadetector", "ultralytics"] = "megadetector"
-    # Choosing this detector switches "Track animals across frames" on and
-    # sets the video frame rate to the tracker's default. Set for the
-    # underwater detectors, whose clips are long and whose review is per
-    # track; MegaDetector leaves the user's own choice alone.
-    tracking_recommended: bool = False
+    # Run SharkTrack's false-positive filter after tracking: a track that
+    # lasts under a second or barely moves is dropped unless its best box
+    # scored 0.7 or more. Tuned on underwater footage, where it removes
+    # 40% of the false boxes at almost no cost; set for the underwater
+    # detectors only, because on a camera trap it would delete a resting
+    # animal.
+    track_filter: bool = False
 
     # Embedding-specific
     embedding_dim: int | None = None  # 384, 768, or 1024

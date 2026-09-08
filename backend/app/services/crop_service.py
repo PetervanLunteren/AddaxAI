@@ -4,91 +4,28 @@ Crop service - generates and caches detection crop thumbnails.
 Crops the source image at the detection's bounding box, expands to a
 square with context padding, and resizes to a thumbnail. When the crop
 extends beyond the image, the overflow is filled with a blurred edge
-extension so the bbox stays centered. Cached in an in-memory LRU.
+extension so the bbox stays centered. The geometry lives in
+`app/ml/inference/crop_box.py`, shared with the tracking script, which
+cuts a track's card the same way while it decodes the video. Cached in
+an in-memory LRU.
 """
 
 import io
 from collections import OrderedDict
 from pathlib import Path
 
-from PIL import Image, ImageFilter
+from PIL import Image
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
 from app.ml.embedding_utils import _video_still_for
+from app.ml.inference.crop_box import compute_expanded_crop_region, crop_with_blur_fill
 from app.models import Detection, File
 
 logger = get_logger(__name__)
 
 _MAX_CACHE_ENTRIES = 2000
 _cache: OrderedDict[str, bytes] = OrderedDict()
-
-_BLUR_RADIUS = 30
-
-
-def compute_expanded_crop_region(
-    bbox_x: float,
-    bbox_y: float,
-    bbox_w: float,
-    bbox_h: float,
-    img_w: int,
-    img_h: int,
-    padding: float = 0.10,
-) -> tuple[int, int, int, int]:
-    """Compute square crop region centered on bbox with padding.
-
-    Returns (left, top, right, bottom) in pixel coords. Values may be
-    negative or exceed image dimensions — the caller handles overflow
-    with blurred edge fill.
-    """
-    bx, by = bbox_x * img_w, bbox_y * img_h
-    bw, bh = bbox_w * img_w, bbox_h * img_h
-
-    max_side = max(bw, bh)
-    pad = max_side * padding
-    crop_side = max_side + 2 * pad
-
-    cx, cy = bx + bw / 2, by + bh / 2
-    left = cx - crop_side / 2
-    top = cy - crop_side / 2
-
-    return int(left), int(top), int(left + crop_side), int(top + crop_side)
-
-
-def _crop_with_blur_fill(
-    img: Image.Image, left: int, top: int, right: int, bottom: int
-) -> Image.Image:
-    """Crop a region from the image, filling out-of-bounds areas with blurred edge."""
-    img_w, img_h = img.size
-    crop_w = right - left
-    crop_h = bottom - top
-
-    # Fast path: entirely within bounds
-    if left >= 0 and top >= 0 and right <= img_w and bottom <= img_h:
-        return img.crop((left, top, right, bottom))
-
-    # Clamp to valid region
-    valid_left = max(0, left)
-    valid_top = max(0, top)
-    valid_right = min(img_w, right)
-    valid_bottom = min(img_h, bottom)
-
-    if valid_right <= valid_left or valid_bottom <= valid_top:
-        return img.crop((0, 0, min(crop_w, img_w), min(crop_h, img_h)))
-
-    # Stretch the valid region to fill the full canvas, then blur heavily.
-    # This gives the overflow areas natural image colors instead of
-    # replicating edge pixels (which copies black info bars on camera traps).
-    valid_crop = img.crop((valid_left, valid_top, valid_right, valid_bottom))
-    canvas = valid_crop.resize((crop_w, crop_h), Image.BILINEAR)
-    canvas = canvas.filter(ImageFilter.GaussianBlur(radius=_BLUR_RADIUS))
-
-    # Paste sharp original on top
-    paste_x = valid_left - left
-    paste_y = valid_top - top
-    canvas.paste(valid_crop, (paste_x, paste_y))
-
-    return canvas
 
 
 def _resolve_image_path(file: File, detection: Detection) -> Path | None:
@@ -176,7 +113,7 @@ def get_or_create_crop(detection_id: str, size: int, db: Session) -> bytes | Non
             logger.warning(f"Invalid crop bbox for detection {detection_id}")
             return None
 
-        crop = _crop_with_blur_fill(img, left, top, right, bottom)
+        crop = crop_with_blur_fill(img, left, top, right, bottom)
         crop = crop.resize((size, size), Image.LANCZOS)
 
         buf = io.BytesIO()

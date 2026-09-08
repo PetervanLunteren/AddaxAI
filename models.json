@@ -105,7 +105,7 @@
         "info_url": "https://www.fvarini.com/sharktrack",
         "min_app_version": "7.7.0",
         "detector_runtime": "ultralytics",
-        "tracking_recommended": true
+        "track_filter": true
       },
       {
         "model_id": "CFD-RFDETR-NANO-640-2026-07-06",
@@ -120,7 +120,7 @@
         "info_url": "https://github.com/filippovarini/community-fish-detector",
         "min_app_version": "7.7.0",
         "detector_runtime": "megadetector",
-        "tracking_recommended": true
+        "track_filter": true
       },
       {
         "model_id": "CFD-RFDETR-SMALL-1024-2026-07-06",
@@ -135,7 +135,7 @@
         "info_url": "https://github.com/filippovarini/community-fish-detector",
         "min_app_version": "7.7.0",
         "detector_runtime": "megadetector",
-        "tracking_recommended": true
+        "track_filter": true
       },
       {
         "model_id": "CFD-RFDETR-MEDIUM-1024-2026-07-06",
@@ -150,7 +150,7 @@
         "info_url": "https://github.com/filippovarini/community-fish-detector",
         "min_app_version": "7.7.0",
         "detector_runtime": "megadetector",
-        "tracking_recommended": true
+        "track_filter": true
       }
     ],
     "cls": [

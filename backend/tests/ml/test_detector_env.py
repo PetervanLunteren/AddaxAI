@@ -70,19 +70,19 @@ def _manifest(**overrides) -> ModelManifest:
     return ModelManifest(**fields)
 
 
-def test_manifest_detector_fields_default_to_megadetector_without_tracking():
+def test_manifest_detector_fields_default_to_megadetector_without_the_filter():
     """Every shipped MegaDetector entry predates these fields, so the
     defaults must describe MegaDetector: loaded by the megadetector
-    package, tracking left to the user."""
+    package, no shark false-positive filter."""
     m = _manifest()
     assert m.detector_runtime == "megadetector"
-    assert m.tracking_recommended is False
+    assert m.track_filter is False
 
 
-def test_manifest_accepts_the_ultralytics_runtime():
-    m = _manifest(detector_runtime="ultralytics", tracking_recommended=True)
+def test_manifest_accepts_the_ultralytics_runtime_and_the_filter():
+    m = _manifest(detector_runtime="ultralytics", track_filter=True)
     assert m.detector_runtime == "ultralytics"
-    assert m.tracking_recommended is True
+    assert m.track_filter is True
 
 
 def test_manifest_rejects_an_unknown_runtime():

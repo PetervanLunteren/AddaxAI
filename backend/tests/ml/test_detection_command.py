@@ -8,8 +8,8 @@ so the flag logic is isolated here where it can be tested directly.
 
 from pathlib import Path
 
+from app.core.confidence import DEFAULT_COUNTING_THRESHOLD, MD_OUTPUT_CONFIDENCE_THRESHOLD
 from app.ml.inference.megadetector import _build_run_detector_batch_cmd
-from app.ml.inference.video_detector import _build_process_video_cmd
 
 
 def _image_cmd(**overrides) -> list[str]:
@@ -25,21 +25,6 @@ def _image_cmd(**overrides) -> list[str]:
     )
     kwargs.update(overrides)
     return _build_run_detector_batch_cmd(**kwargs)
-
-
-def _video_cmd(**overrides) -> list[str]:
-    kwargs = dict(
-        python_path=Path("python"),
-        model_path=Path("model.pt"),
-        video_folder=Path("videos"),
-        output_json=Path("out.json"),
-        time_sample=0.5,
-        confidence_threshold=0.005,
-        image_size=None,
-        augment=False,
-    )
-    kwargs.update(overrides)
-    return _build_process_video_cmd(**kwargs)
 
 
 # --- images -------------------------------------------------------------
@@ -80,30 +65,6 @@ def test_image_cmd_batch_size_unchanged_by_new_flags():
     assert cmd[cmd.index("--image_size") + 1] == "2560"
     assert "--augment" in cmd
     assert cmd[-3:] == ["model.pt", "files.json", "out.json"]
-
-
-# --- videos -------------------------------------------------------------
-
-
-def test_video_cmd_defaults_add_no_inference_flags():
-    cmd = _video_cmd()
-    assert "--image_size" not in cmd
-    assert "--augment" not in cmd
-    # Base process_video flags are still present.
-    assert "megadetector.detection.process_video" in cmd
-    assert cmd[cmd.index("--json_confidence_threshold") + 1] == "0.005"
-
-
-def test_video_cmd_image_size_and_augment():
-    cmd = _video_cmd(image_size=2560, augment=True)
-    assert cmd[cmd.index("--image_size") + 1] == "2560"
-    assert "--augment" in cmd
-
-
-def test_video_cmd_augment_only():
-    cmd = _video_cmd(augment=True)
-    assert "--image_size" not in cmd
-    assert cmd[-1] == "--augment"
 
 
 # --- checkpoints ----------------------------------------------------------
@@ -157,9 +118,11 @@ def _tracking_cmd(**overrides) -> list[str]:
         video_folder=Path("videos"),
         file_list_json=Path("files.json"),
         output_json=Path("out.json"),
+        crops_dir=Path("frames"),
         fps=3.0,
         detector_runtime="ultralytics",
         ffmpeg_path="/env/bin/ffmpeg",
+        track_filter=False,
         image_size=None,
         augment=False,
     )
@@ -177,12 +140,27 @@ def test_tracking_cmd_runs_the_script_with_the_file_list_and_runtime():
     assert cmd[cmd.index("--fps") + 1] == "3.0"
     assert cmd[cmd.index("--detector_runtime") + 1] == "ultralytics"
     assert cmd[cmd.index("--ffmpeg") + 1] == "/env/bin/ffmpeg"
+    assert cmd[cmd.index("--crops_dir") + 1] == "frames"
+    assert "--track_filter" not in cmd
     assert "--image_size" not in cmd
     assert "--augment" not in cmd
 
 
-def test_tracking_cmd_carries_the_optional_detection_flags():
-    cmd = _tracking_cmd(image_size=1024, augment=True, detector_runtime="megadetector")
+def test_tracking_cmd_carries_the_apps_confidence_floors():
+    """The tracker's floors are the app's own constants, the same for
+    every detector: a track starts at the default counting threshold and
+    keeps boxes down to the storage floor. They travel on the command
+    line so the script holds no copy that could drift."""
+    cmd = _tracking_cmd()
+    assert cmd[cmd.index("--track_high_thresh") + 1] == str(DEFAULT_COUNTING_THRESHOLD)
+    assert cmd[cmd.index("--track_low_thresh") + 1] == str(MD_OUTPUT_CONFIDENCE_THRESHOLD)
+
+
+def test_tracking_cmd_carries_the_optional_flags():
+    cmd = _tracking_cmd(
+        image_size=1024, augment=True, detector_runtime="megadetector", track_filter=True
+    )
     assert cmd[cmd.index("--image_size") + 1] == "1024"
     assert "--augment" in cmd
+    assert "--track_filter" in cmd
     assert cmd[cmd.index("--detector_runtime") + 1] == "megadetector"

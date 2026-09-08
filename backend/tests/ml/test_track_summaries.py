@@ -1,15 +1,14 @@
 """`summarise_tracks`: the one place that decides what a track is made of.
 
-The ingest stores these numbers, and both frame passes (the
-no-classifier sweep and the classifier subprocess) decode the
-representative frame it names, so all three must read the JSON the same
-way. Pixel-free like `choose_frame_number`.
+The ingest stores these numbers, and the tracking script keeps the crop
+of the frame it names, so both must read the JSON the same way.
+Pixel-free like `choose_frame_number`.
 """
 
 from app.ml.inference.scoring import (
     TrackSummary,
-    representative_frames,
     summarise_tracks,
+    track_crop_filename,
 )
 
 
@@ -34,7 +33,6 @@ def test_one_summary_per_track_with_the_highest_confidence_frame():
         # A tie on confidence goes to the earliest frame.
         2: TrackSummary(300, 330, 2, 0.4, 300),
     }
-    assert representative_frames(dets) == {60, 300}
 
 
 def test_boxes_without_a_track_are_ignored():
@@ -55,3 +53,10 @@ def test_track_ids_are_read_as_integers():
     """The JSON may carry the id as a string; the row key is an int."""
     got = summarise_tracks([_box(30, 0.5, "7")])
     assert list(got) == [7]
+
+
+def test_the_crop_is_named_by_its_track_key():
+    """`track`, not `frame`, so the startup sweep of stale `frame*.jpg`
+    stills never touches a card."""
+    assert track_crop_filename(7) == "track000007.jpg"
+    assert track_crop_filename("12") == "track000012.jpg"

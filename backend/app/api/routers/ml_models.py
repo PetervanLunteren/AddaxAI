@@ -112,9 +112,6 @@ class ModelInfo(BaseModel):
     # skipped. The UI greys out the detector and its settings on it.
     full_image_cls: bool = False
     example_image_url: str | None = None
-    # Detection models: choosing the detector switches tracking on and
-    # sets the tracker's default frame rate. See ModelManifest.
-    tracking_recommended: bool = False
     # Per-pipeline default batch sizes used when the project leaves the
     # batch_size override unset. Same value for every model in the same
     # pipeline today; comes from app.ml.batch_size constants.
@@ -782,9 +779,6 @@ def list_detection_models() -> list[ModelInfo]:
             citation=getattr(manifest, "citation", None),
             license=getattr(manifest, "license", None),
             min_app_version=manifest.min_app_version,
-            tracking_recommended=bool(
-                getattr(manifest, "tracking_recommended", False)
-            ),
             default_batch_size_gpu=det_gpu,
             default_batch_size_cpu=det_cpu,
         )
@@ -860,9 +854,6 @@ def list_classification_models() -> list[ModelInfo]:
             region=getattr(manifest, "region", None),
             full_image_cls=bool(getattr(manifest, "full_image_cls", False)),
             example_image_url=getattr(manifest, "example_image_url", None),
-            tracking_recommended=bool(
-                getattr(manifest, "tracking_recommended", False)
-            ),
             default_batch_size_gpu=cls_gpu,
             default_batch_size_cpu=cls_cpu,
         )

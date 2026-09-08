@@ -254,6 +254,10 @@ def summarise_tracks(detections: list[dict]) -> dict[int, TrackSummary]:
     return summaries
 
 
-def representative_frames(detections: list[dict]) -> set[int]:
-    """The frames the frame passes must decode for a video's tracks."""
-    return {s.representative_frame_number for s in summarise_tracks(detections).values()}
+def track_crop_filename(track_key: int) -> str:
+    """The crop a track's card is cut from, beside the video's cover
+    frame: ``track000007.jpg``. The tracking script writes it and the
+    ingest looks for it, both through this one name, so neither can
+    drift. ``track`` rather than ``frame`` keeps the crops out of the
+    ``frame*.jpg`` sweep that reclaims stale video stills at startup."""
+    return f"track{int(track_key):06d}.jpg"

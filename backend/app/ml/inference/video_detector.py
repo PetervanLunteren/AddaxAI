@@ -1,14 +1,13 @@
 """
-Video detection model using MegaDetector's process_video module.
+Video detection: every video goes through the tracking script.
 
-Following DEVELOPERS.md principles:
-- Crash early if setup fails
-- Explicit error handling
-- Type hints everywhere
-
-Uses MegaDetector's built-in process_video module (matches streamlit-AddaxAI exactly).
-
-Created by Claude Code on 2026-01-07
+`tracking_script.py` runs in the detector's own environment: the same
+frame sampling MegaDetector's `process_video` used, the detector named by
+the catalog's `detector_runtime`, BoT-SORT over the sampled frames, one
+crop per track, and MegaDetector-shaped JSON with a `track_id` on every
+box. This class builds its command line, streams its progress and
+device into the job, and hands the JSON back. The confidence floors on
+that command line come from `app.core.confidence`, the one source.
 """
 
 import json
@@ -17,6 +16,7 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
+from app.core.confidence import DEFAULT_COUNTING_THRESHOLD, MD_OUTPUT_CONFIDENCE_THRESHOLD
 from app.core.job_cancellation import (
     JobCancelledError,
     is_cancel_requested,
@@ -31,51 +31,6 @@ from app.utils.subprocess_env import clean_python_env
 
 logger = get_logger(__name__)
 
-# Windows exit code 0xC0000005 (access violation). OpenCV's FFmpeg
-# backend dies with it on videos whose pixel format changes mid-stream
-# (Bushnell MJPEG AVIs: frame 0 is yuvj422p, the rest yuvj420p). See
-# "Mixed pixel format videos" in DEVELOPERS.md.
-_WINDOWS_ACCESS_VIOLATION = 3221225477
-
-
-def _build_process_video_cmd(
-    *,
-    python_path: Path,
-    model_path: Path,
-    video_folder: Path,
-    output_json: Path,
-    time_sample: float,
-    confidence_threshold: float,
-    image_size: int | None,
-    augment: bool,
-) -> list[str]:
-    """Assemble the ``process_video`` command line.
-
-    Pure and side-effect free so the flag logic is unit-testable without
-    spawning the subprocess. Optional inference flags (image size, augment)
-    are appended only when set, mirroring the image detector; process_video
-    accepts them as ``--image_size N`` and ``--augment`` (store_true).
-    """
-    command = [
-        str(python_path),
-        "-m",
-        "megadetector.detection.process_video",
-        str(model_path),
-        str(video_folder),
-        "--output_json_file",
-        str(output_json),
-        "--recursive",
-        "--time_sample",
-        str(time_sample),
-        "--json_confidence_threshold",
-        str(confidence_threshold),
-    ]
-    if image_size is not None:
-        command += ["--image_size", str(image_size)]
-    if augment:
-        command.append("--augment")
-    return command
-
 
 def _build_tracking_cmd(
     *,
@@ -84,17 +39,23 @@ def _build_tracking_cmd(
     video_folder: Path,
     file_list_json: Path,
     output_json: Path,
+    crops_dir: Path,
     fps: float,
     detector_runtime: str,
     ffmpeg_path: str,
+    track_filter: bool,
     image_size: int | None,
     augment: bool,
 ) -> list[str]:
-    """Assemble the ``tracking_script`` command line, the tracking-on twin
-    of ``_build_process_video_cmd``. The script takes an explicit file
-    list rather than walking the folder, so the videos it reads are
-    exactly the ones the worker's scan admitted (the media filter, and
-    never a previous run's output folders).
+    """Assemble the ``tracking_script`` command line. The script takes an
+    explicit file list rather than walking the folder, so the videos it
+    reads are exactly the ones the worker's scan admitted (the media
+    filter, and never a previous run's output folders).
+
+    The tracker's floors travel here from ``app.core.confidence``: a
+    track starts at the default counting threshold and keeps boxes down
+    to the storage floor, the same for every detector and the same
+    numbers the rest of the app hides and stores by.
 
     ``-P`` keeps the script's own directory off ``sys.path``: it holds
     ``megadetector.py``, the app's wrapper, which Python would otherwise
@@ -113,7 +74,15 @@ def _build_tracking_cmd(
         detector_runtime,
         "--ffmpeg",
         ffmpeg_path,
+        "--crops_dir",
+        str(crops_dir),
+        "--track_high_thresh",
+        str(DEFAULT_COUNTING_THRESHOLD),
+        "--track_low_thresh",
+        str(MD_OUTPUT_CONFIDENCE_THRESHOLD),
     ]
+    if track_filter:
+        command.append("--track_filter")
     if image_size is not None:
         command += ["--image_size", str(image_size)]
     if augment:
@@ -122,15 +91,7 @@ def _build_tracking_cmd(
 
 
 class VideoDetectionModel:
-    """
-    MegaDetector video detection wrapper.
-
-    Uses megadetector.detection.process_video module which:
-    - Extracts frames automatically (time-based sampling)
-    - Runs detection on frames
-    - Outputs JSON with frame_rate and frames_processed
-    - Handles everything internally (no manual frame extraction needed)
-    """
+    """Runs the tracking script over a deployment's videos."""
 
     def __init__(
         self, model_path: Path, env_manager: EnvironmentManager, *, env_name: str
@@ -164,91 +125,66 @@ class VideoDetectionModel:
 
     def detect_videos_to_json(
         self,
+        *,
         video_folder: Path,
+        video_files: list[Path],
         output_json: Path,
+        crops_dir: Path,
         fps: float,
-        confidence_threshold: float,
+        detector_runtime: str,
+        track_filter: bool,
         image_size: int | None = None,
         augment: bool = False,
         progress_callback: Callable[[str, float], None] | None = None,
         job_id: str | None = None,
-        tracking: bool = False,
-        detector_runtime: str = "megadetector",
-        video_files: list[Path] | None = None,
     ) -> Path:
         """
-        Run MegaDetector on videos using process_video module.
-
-        Calls megadetector.detection.process_video which handles frame extraction
-        and detection internally. Outputs JSON in correct format with frame_rate
-        and frames_processed fields.
-
-        With ``tracking`` on, runs ``tracking_script.py`` instead: the same
-        sampling, the detector named by ``detector_runtime``, BoT-SORT
-        over the sampled frames, and only tracked boxes in the JSON, each
-        with a ``track_id``. ``video_files`` is then the explicit list the
-        script reads (the worker's scan).
+        Detect and track through ``video_files`` (the worker's scan) and
+        write MegaDetector-shaped JSON with a ``track_id`` on every box,
+        plus one crop per track under ``crops_dir``.
 
         Args:
-            video_folder: Folder containing video files
-            output_json: Path to output JSON file
-            fps: Frames per second to extract (converted to time_sample)
-            confidence_threshold: Minimum confidence for detections
-            image_size: Override the detector's long-edge resize size. None
-                means use MegaDetector's model-native default.
-            augment: Run detection with image augmentation (slower, may add
-                false positives). From the project's detection_augment setting.
-            progress_callback: Optional callback(message, progress)
-
-        Returns:
-            Path to output JSON file
+            video_folder: The deployment folder; JSON paths are relative to it.
+            video_files: The videos to read, absolute.
+            output_json: Where the results JSON goes.
+            crops_dir: Root for the track crops (``<crops_dir>/<relative
+                video>/track000007.jpg``), the folder the cover frames use.
+            fps: Sampling rate in frames per second.
+            detector_runtime: ``megadetector`` or ``ultralytics``, from the catalog.
+            track_filter: Run SharkTrack's false-positive filter (catalog flag).
+            image_size: Override the detector's long-edge resize size.
+            augment: Run detection with augmentation.
+            progress_callback: Optional callback(message, progress[, metrics]).
+            job_id: For cancellation.
 
         Raises:
-            RuntimeError: If video detection fails
+            ValueError: No videos to read.
+            RuntimeError: The script failed.
         """
-        if tracking:
-            if not video_files:
-                raise ValueError("tracking needs the list of videos to read")
-            file_list_json = output_json.with_name(output_json.stem + "_files.json")
-            file_list_json.parent.mkdir(parents=True, exist_ok=True)
-            with open(file_list_json, "w") as f:
-                json.dump([str(p) for p in video_files], f)
-            logger.info(
-                f"Running video detection and tracking on {len(video_files)} "
-                f"videos at {fps} FPS ({detector_runtime})"
-            )
-            command = _build_tracking_cmd(
-                python_path=self.python_path,
-                model_path=self.model_path,
-                video_folder=video_folder,
-                file_list_json=file_list_json,
-                output_json=output_json,
-                fps=fps,
-                detector_runtime=detector_runtime,
-                ffmpeg_path=resolve_ffmpeg(self.env_name),
-                image_size=image_size,
-                augment=augment,
-            )
-        else:
-            # Convert FPS to time_sample parameter
-            # fps=2.0 → extract every 0.5 seconds → time_sample=0.5
-            time_sample = 1.0 / fps
-
-            logger.info(
-                f"Running video detection on {video_folder} at {fps} FPS "
-                f"(time_sample={time_sample})"
-            )
-
-            command = _build_process_video_cmd(
-                python_path=self.python_path,
-                model_path=self.model_path,
-                video_folder=video_folder,
-                output_json=output_json,
-                time_sample=time_sample,
-                confidence_threshold=confidence_threshold,
-                image_size=image_size,
-                augment=augment,
-            )
+        if not video_files:
+            raise ValueError("tracking needs the list of videos to read")
+        file_list_json = output_json.with_name(output_json.stem + "_files.json")
+        file_list_json.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_list_json, "w") as f:
+            json.dump([str(p) for p in video_files], f)
+        logger.info(
+            f"Running video detection and tracking on {len(video_files)} "
+            f"videos at {fps} FPS ({detector_runtime})"
+        )
+        command = _build_tracking_cmd(
+            python_path=self.python_path,
+            model_path=self.model_path,
+            video_folder=video_folder,
+            file_list_json=file_list_json,
+            output_json=output_json,
+            crops_dir=crops_dir,
+            fps=fps,
+            detector_runtime=detector_runtime,
+            ffmpeg_path=resolve_ffmpeg(self.env_name),
+            track_filter=track_filter,
+            image_size=image_size,
+            augment=augment,
+        )
 
         logger.info(f"Running command: {' '.join(command)}")
 
@@ -262,26 +198,6 @@ class VideoDetectionModel:
             )
 
             cancelled = is_cancel_requested(job_id) if job_id else False
-            if return_code == _WINDOWS_ACCESS_VIOLATION and not cancelled:
-                # OpenCV's FFmpeg backend takes the whole subprocess down
-                # on a mixed-pixel-format video. Deprioritising FFmpeg
-                # makes cv2 pick MSMF, which decodes those files (with a
-                # slight colour-range shift on the detector's input, the
-                # least sensitive consumer). One retry covers the whole
-                # folder; deployments are single-camera, so a folder that
-                # trips this is all such files anyway.
-                logger.warning(
-                    "Video detection died with an access violation, likely "
-                    "OpenCV's FFmpeg backend on a mixed-pixel-format video "
-                    "(see 'Mixed pixel format videos' in DEVELOPERS.md). "
-                    "Retrying once with OPENCV_VIDEOIO_PRIORITY_FFMPEG=0."
-                )
-                retry_env = dict(base_env)
-                retry_env["OPENCV_VIDEOIO_PRIORITY_FFMPEG"] = "0"
-                return_code = self._stream_process(
-                    command, retry_env, progress_callback, job_id
-                )
-                cancelled = is_cancel_requested(job_id) if job_id else False
 
             # If we were cancelled mid-stream, the process was killed and
             # returned non-zero; surface that as a cancel rather than an
@@ -367,8 +283,8 @@ class VideoDetectionModel:
                             except TypeError:
                                 pass
 
-                    # Parse progress from tqdm output
-                    # Look for patterns like: "45/100" or "Processing video 5/10"
+                    # Parse progress from tqdm output: the script's bar over
+                    # every sampled frame of the run ("45/100").
                     progress_match = re.search(r"(\d+)/(\d+)", line)
                     if progress_match and progress_callback:
                         current, total = map(int, progress_match.groups())
@@ -388,14 +304,14 @@ class VideoDetectionModel:
                             # Send raw line and metrics
                             try:
                                 progress_callback(
-                                    line if metrics else f"Processing video {current}/{total}",
+                                    line if metrics else f"Tracking frame {current}/{total}",
                                     phase_progress,
                                     metrics,
                                 )
                             except TypeError:
                                 # Fallback for callbacks that don't accept metrics
                                 progress_callback(
-                                    f"Processing video {current}/{total}",
+                                    f"Tracking frame {current}/{total}",
                                     phase_progress,
                                 )
                             last_progress = phase_progress

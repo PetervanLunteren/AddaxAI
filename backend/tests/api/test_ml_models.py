@@ -403,24 +403,3 @@ def test_prepare_model_hands_the_app_state_to_the_task(client, mock_managers):
     assert task.call_args.args[0] == "test-model"
     assert hasattr(task.call_args.args[3], "model_updates") or task.call_args.args[3] is not None
 
-
-def test_tracking_recommended_reaches_the_detection_list(client, mock_managers):
-    """The setup form switches tracking on when the chosen detector
-    carries this flag; it only can if the list sends it."""
-    from types import SimpleNamespace
-
-    mock_manifest, _, _ = mock_managers
-    manifest = SimpleNamespace(
-        model_id="SHARK-1",
-        friendly_name="SharkTrack",
-        emoji=None,
-        description="Sharks and rays.",
-        developer=None,
-        info_url=None,
-        min_app_version="7.7.0",
-        tracking_recommended=True,
-    )
-    mock_manifest.get_detection_models.return_value = {"SHARK-1": manifest}
-    resp = client.get("/api/ml/models/detection")
-    assert resp.status_code == 200
-    assert resp.json()[0]["tracking_recommended"] is True
