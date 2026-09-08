@@ -171,6 +171,10 @@ def calculate_max_n_for_event(
             File.file_type,
             File.best_frame_number,
         )
+        # Frame order, so an equal count later in the clip never replaces
+        # the first one: MaxN is taken at its first occurrence, the
+        # convention EventMeasure defaults to.
+        .order_by(Detection.file_id, Detection.frame_number)
         .all()
     )
 
@@ -205,25 +209,17 @@ def calculate_max_n_for_event(
         ):
             seeds[key] = r
 
-    # A video species is only suggested if it appears on the video's best
-    # frame (the canonical, user-cleanable view), on the representative
-    # frame of one of its tracks (one card per track on the Labels page),
-    # or was verified on some frame. Other non-best-frame labels are
-    # per-frame classifier noise the user can't see or clean in the Labels
-    # step, so they must not spawn spurious species rows. Images are never
-    # gated (every image detection is visible and cleanable). Hand copy of
-    # the rule in ml/detection_visibility.py, kept here to keep the grouping.
+    # A video species is only suggested if it has a card: a box on the
+    # representative frame of one of its tracks (one card per track on
+    # the Labels page). Other per-frame labels are classifier noise the
+    # user cannot see or clean in the Labels step, so they must not spawn
+    # spurious species rows. Images are never gated (every image
+    # detection is visible and cleanable). Hand copy of the rule in
+    # ml/detection_visibility.py, kept here to keep the grouping.
     allowed_video_keys: dict[str, set[str]] = defaultdict(set)
     for r in counts:
-        if r.file_type != "video":
-            continue
-        key = r.label_taxonomy_id or r.eff_label
-        on_best = (
-            r.best_frame_number is not None
-            and r.frame_number == r.best_frame_number
-        )
-        if on_best or r.any_verified or r.any_representative:
-            allowed_video_keys[r.file_id].add(key)
+        if r.file_type == "video" and r.any_representative:
+            allowed_video_keys[r.file_id].add(r.label_taxonomy_id or r.eff_label)
 
     # Find MaxN per taxonomy_id (or label string as fallback key). The
     # winning row's `file_id` is stored as max_n_file_id; for videos

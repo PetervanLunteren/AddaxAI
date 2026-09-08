@@ -279,6 +279,38 @@ def make_detection(
     return obj
 
 
+def make_video_box(
+    db: Session,
+    *,
+    file_id: str,
+    frame_number: int,
+    track_key: int | None = None,
+    **kw,
+) -> Detection:
+    """One box on one frame of a video, with the one-frame track every
+    video box has (a drawn box, a legacy box). The box is the track's
+    card, so it is visible; `frame_number` is the frame it sits on."""
+    if track_key is None:
+        last = (
+            db.query(Track.track_key)
+            .filter(Track.file_id == file_id)
+            .order_by(Track.track_key.desc())
+            .first()
+        )
+        track_key = (last[0] if last else 0) + 1
+    track = make_track(
+        db,
+        file_id=file_id,
+        track_key=track_key,
+        start_frame=frame_number,
+        end_frame=frame_number,
+        frame_count=1,
+        representative_frame_number=frame_number,
+        max_confidence=kw.get("confidence", 0.9),
+    )
+    return make_detection(db, file_id=file_id, frame_number=frame_number, track_id=track.id, **kw)
+
+
 def make_track(
     db: Session,
     *,

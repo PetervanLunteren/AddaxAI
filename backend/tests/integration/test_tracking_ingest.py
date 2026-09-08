@@ -6,12 +6,19 @@ into one `tracks` row per video and links the boxes; a run without
 tracking leaves every `track_id` NULL and makes no rows.
 """
 
+from pathlib import Path
+
 import pytest
 
 from app.ml.json_pipeline import load_json_to_database
 from app.models import Detection, File, Track
 
-from .conftest import build_detection_json, create_video_frames, write_json
+from .conftest import (
+    build_detection_json,
+    create_track_crops,
+    create_video_frames,
+    write_json,
+)
 
 
 def _box(frame, conf, track=None, bbox=(0.1, 0.1, 0.2, 0.2)):
@@ -49,9 +56,10 @@ def _load(s, data):
 def test_tracked_boxes_become_track_rows(deployment_scaffold):
     s = deployment_scaffold
     db = s["db"]
-    # The frame passes wrote the best frame and the representative frames
-    # of tracks 1 and 2; track 3's frame never decoded.
-    create_video_frames(s["artifacts"], "videos/clip.mp4", [60, 300])
+    # The cover pass wrote the best frame; the tracking script wrote the
+    # crops of tracks 1 and 2, and track 3's crop failed to write.
+    create_video_frames(s["artifacts"], "videos/clip.mp4", [60])
+    create_track_crops(s["artifacts"], "videos/clip.mp4", [1, 2])
 
     _load(s, _tracked_json([
         _box(30, 0.5, 1),
@@ -70,14 +78,14 @@ def test_tracked_boxes_become_track_rows(deployment_scaffold):
     assert (one.start_frame, one.end_frame, one.frame_count) == (30, 90, 3)
     assert one.max_confidence == 0.9
     assert one.representative_frame_number == 60
-    assert one.frame_path is not None and one.frame_path.endswith("frame000060.jpg")
-    # Same folder and name scheme as the best frame, so they share a file.
-    assert one.frame_path == video.best_frame_path
+    assert one.crop_path is not None and one.crop_path.endswith("track000001.jpg")
+    # Beside the cover frame, in the video's own folder.
+    assert Path(one.crop_path).parent == Path(video.best_frame_path).parent
 
     assert tracks[2].representative_frame_number == 300
-    assert tracks[2].frame_path is not None and tracks[2].frame_path.endswith("frame000300.jpg")
-    # No JPEG on disk: NULL, never a path to a file that is not there.
-    assert tracks[3].frame_path is None
+    assert tracks[2].crop_path is not None and tracks[2].crop_path.endswith("track000002.jpg")
+    # No crop on disk: NULL, never a path to a file that is not there.
+    assert tracks[3].crop_path is None
 
     boxes = db.query(Detection).filter(Detection.file_id == video.id).all()
     assert len(boxes) == 6
@@ -93,7 +101,11 @@ def test_tracked_boxes_become_track_rows(deployment_scaffold):
     assert video.duration_seconds == pytest.approx((600 + 1) / 30.0)
 
 
-def test_a_run_without_tracking_makes_no_track_rows(deployment_scaffold):
+def test_boxes_without_a_track_id_make_no_track_rows(deployment_scaffold):
+    """A results.json from before tracking became the standard: its boxes
+    carry no track id and get no track here (the migration gave the
+    visible ones a one-frame track once; a fresh ingest of such a file
+    keeps them as the invisible rows they are)."""
     s = deployment_scaffold
     db = s["db"]
     create_video_frames(s["artifacts"], "videos/clip.mp4", [60])

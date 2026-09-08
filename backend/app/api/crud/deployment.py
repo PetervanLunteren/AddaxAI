@@ -1119,6 +1119,10 @@ def relink_deployment(
         new_frame_path = _rewrite(f.best_frame_path)
         if new_frame_path is not None:
             f.best_frame_path = new_frame_path
+        for t in f.tracks:
+            new_crop = _rewrite(t.crop_path)
+            if new_crop is not None:
+                t.crop_path = new_crop
 
     deployment.folder_path = str(new_folder)
     deployment.folder_status = "valid"

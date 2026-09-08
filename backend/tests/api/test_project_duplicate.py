@@ -32,7 +32,6 @@ def test_duplicate_copies_settings_sites_and_requeues_deployments(db):
         taxonomic_rollup=False,
         detection_augment=True,
         detection_image_size=1920,
-        video_tracking=True,
     )
     site = make_site(db, project_id=source.id, name="Cam 1")
     make_deployment(
@@ -54,7 +53,6 @@ def test_duplicate_copies_settings_sites_and_requeues_deployments(db):
     assert new.taxonomic_rollup is False
     assert new.detection_augment is True
     assert new.detection_image_size == 1920
-    assert new.video_tracking is True
     # User-chosen fields from the request.
     assert new.name == "Copy A"
     assert new.classification_model_id == "SPECIESNET-v4-0-2-A"

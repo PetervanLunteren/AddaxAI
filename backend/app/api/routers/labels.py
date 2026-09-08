@@ -162,7 +162,7 @@ def get_unprocessed_count(
     """
     from sqlalchemy import and_, exists
 
-    from app.ml.detection_visibility import on_pixel_surface
+    from app.ml.detection_visibility import on_visible_frame
 
     project = db.query(Project).filter(Project.id == project_id).first()
     embedding_model_id = project.embedding_model_id if project else None
@@ -172,7 +172,7 @@ def get_unprocessed_count(
         return {"count": 0}
 
     has_bbox = Detection.bbox_x.isnot(None)
-    on_embeddable_surface = on_pixel_surface()
+    on_embeddable_surface = on_visible_frame()
     has_embedding = exists().where(
         and_(
             DetectionEmbedding.detection_id == Detection.id,
@@ -371,19 +371,17 @@ def get_label_stats(
     # Embeddability gate. A detection is embeddable when:
     #  - it has a bbox (event-level labels are bbox-less and have
     #    no crop to embed), AND
-    #  - it sits on a pixel surface the embedding worker can read:
-    #    images embed unconditionally; video detections only embed when
-    #    they sit on the parent video's best frame (matches
-    #    `build_embedding_input` in embedding_utils.py).
+    #  - it is a card (an image box, or a track's representative box),
+    #    which is what `build_embedding_input` embeds.
     # Non-embeddable detections are invisible to the Labels grid
     # and similarity search anyway, so we leave them out of the
     # "missing embeddings" count — otherwise the banner would chase a
     # population that `/embed-now` is deliberately designed to skip.
     from sqlalchemy import and_, exists
 
-    from app.ml.detection_visibility import on_pixel_surface
+    from app.ml.detection_visibility import on_visible_frame
     has_bbox = Detection.bbox_x.isnot(None)
-    embeddable_clause = and_(has_bbox, on_pixel_surface())
+    embeddable_clause = and_(has_bbox, on_visible_frame())
 
     # Only detections at or above the classification gate (or verified)
     # are SUPPOSED to be embedded — MegaDetector runs untresholded, so

@@ -22,6 +22,7 @@ from tests.conftest import (
     make_file,
     make_job,
     make_project,
+    make_video_box,
 )
 
 
@@ -51,8 +52,9 @@ def _seed_run(db, tmp_path: Path, n_files: int = 2) -> tuple[str, Path]:
 
 
 def _seed_video_run(db, tmp_path: Path) -> tuple[str, Path, Path]:
-    """A folder-run project with one video on disk and a real JPEG best
-    frame holding a person box, so boxes and blur both have work to do.
+    """A folder-run project with one video on disk and a real JPEG cover
+    frame holding a person box (a one-frame track, so a card), so boxes
+    and blur both have work to do.
     Returns (project_id, output_dir, container path)."""
     project = make_project(db, mode="folder_run")
     src_dir = tmp_path / "source"
@@ -75,7 +77,7 @@ def _seed_video_run(db, tmp_path: Path) -> tuple[str, Path, Path]:
         best_frame_number=0,
         best_frame_path=str(frame),
     )
-    make_detection(
+    make_video_box(
         db, file_id=file.id, category="person", confidence=0.9, frame_number=0
     )
     db.commit()

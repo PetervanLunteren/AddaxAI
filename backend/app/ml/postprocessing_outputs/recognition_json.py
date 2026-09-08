@@ -47,7 +47,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app import __version__ as APP_VERSION
 from app.core.logging_config import get_logger
@@ -251,6 +251,7 @@ def write_recognition_json(
         # to the confidence order MegaDetector's image format expects).
         detections = db.execute(
             select(Detection)
+            .options(selectinload(Detection.track))
             .where(Detection.file_id == file.id)
             .order_by(
                 Detection.frame_number.asc(),
@@ -309,6 +310,11 @@ def write_recognition_json(
 
             if det.frame_number is not None:
                 det_entry["frame_number"] = int(det.frame_number)
+            # The track this box belongs to, the tracker's own number
+            # within the clip, so the file reads as the run's own JSON
+            # and re-ingests to the same tracks.
+            if det.track is not None:
+                det_entry["track_id"] = int(det.track.track_key)
 
             det_objs.append(det_entry)
             detection_total += 1

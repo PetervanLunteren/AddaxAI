@@ -520,6 +520,12 @@ def _validate_child_artifacts(
                 f"Child {child.name}: expected best frame {expected} "
                 "missing after copy"
             )
+        for t in f.tracks:
+            if t.crop_path and not Path(t.crop_path).exists():
+                raise SplitError(
+                    f"Child {child.name}: expected track crop {t.crop_path} "
+                    "missing after copy"
+                )
 
 
 def _remove_child_artifacts(children: list[_TargetBucket]) -> None:
@@ -866,6 +872,13 @@ def split_deployment(
                     )
                     if new_bfp is not None:
                         f.best_frame_path = new_bfp
+                for t in f.tracks:
+                    if t.crop_path:
+                        new_crop = _rewrite_frame_path(
+                            t.crop_path, parent_folder, bucket.folder_path, project_id
+                        )
+                        if new_crop is not None:
+                            t.crop_path = new_crop
         db.flush()
 
         _reassign_events(

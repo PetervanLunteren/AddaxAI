@@ -36,6 +36,7 @@ from app.ml.environment_manager import (
 from app.ml.model_storage import ModelStorage
 from app.ml.schemas.model_manifest import ModelManifest
 from app.services import legacy_install
+from app.utils.ffmpeg_bin import APP_ENV
 from app.utils.fs_remove import safe_rmtree
 
 logger = get_logger(__name__)
@@ -66,7 +67,7 @@ _DEFAULT_MODELS: tuple[dict, ...] = (
     },
 )
 
-_REQUIRED_ENV = "addaxai-base"
+_REQUIRED_ENV = APP_ENV
 
 
 class _InstallState:

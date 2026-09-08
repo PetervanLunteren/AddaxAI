@@ -92,6 +92,23 @@ def _with_default_exif(img: dict) -> dict:
     }
 
 
+def create_track_crops(
+    artifacts_folder: Path,
+    video_relative_path: str,
+    track_keys: list[int],
+) -> list[Path]:
+    """Create tiny crop JPEGs in video_frames/{video_dir}/trackNNNNNN.jpg,
+    where the tracking script writes them."""
+    frames_dir = artifacts_folder / "video_frames" / video_relative_path
+    frames_dir.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for key in track_keys:
+        p = frames_dir / f"track{key:06d}.jpg"
+        create_tiny_jpeg(p)
+        paths.append(p)
+    return paths
+
+
 def create_video_frames(
     artifacts_folder: Path,
     video_relative_path: str,

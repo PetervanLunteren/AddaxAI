@@ -25,6 +25,7 @@ Those describe the schema at head; these tests write into the schema as
 it was, where the columns are different.
 """
 
+import sqlalchemy as sa
 from sqlalchemy import text
 
 from tests.db.conftest import insert_row, seed_deployment, upgrade_to
@@ -665,3 +666,79 @@ def test_a1b2c3d4e5f7_allows_two_cohorts_of_one_species(engine):
     assert _scalar(
         engine, "SELECT sex FROM event_observations WHERE id = :i", i=second
     ) == "female"
+
+
+# ---------------------------------------------------------------------------
+# f6a7b8c9d0e2 — every video is tracked
+# ---------------------------------------------------------------------------
+
+
+def test_f6a7b8c9d0e2_gives_legacy_video_boxes_a_track(engine) -> None:
+    """Videos analysed before tracking became the standard join the one
+    rule: every box that was visible under the old rule (on the best
+    frame, or verified anywhere) becomes a one-frame track of its own,
+    so it keeps its card. An unverified box off the best frame stays as
+    it was, an untracked row nothing shows. The switch column goes and
+    the track still column becomes the crop column, nulled: the old
+    values named full frames, not crops.
+    """
+    upgrade_to("e5f6a7b8c9d1")
+
+    with engine.begin() as conn:
+        _, deployment_id = seed_deployment(conn)
+        video_id = insert_row(
+            conn, "files", deployment_id=deployment_id,
+            file_path="/videos/clip.mp4", file_type="video", best_frame_number=30,
+        )
+        photo_id = insert_row(
+            conn, "files", deployment_id=deployment_id,
+            file_path="/photos/a.jpg", file_type="image",
+        )
+        old_track = insert_row(
+            conn, "tracks", file_id=video_id, track_key=1, start_frame=0, end_frame=60,
+            frame_count=3, max_confidence=0.9, representative_frame_number=30,
+            frame_path="/videos/.addaxai/frame000030.jpg",
+        )
+        tracked = insert_row(
+            conn, "detections", file_id=video_id, category="animal", confidence=0.9,
+            frame_number=30, track_id=old_track,
+        )
+        on_cover = insert_row(
+            conn, "detections", file_id=video_id, category="animal", confidence=0.6,
+            frame_number=30,
+        )
+        verified_off = insert_row(
+            conn, "detections", file_id=video_id, category="animal", confidence=0.4,
+            frame_number=200, verified=1,
+        )
+        noise = insert_row(
+            conn, "detections", file_id=video_id, category="animal", confidence=0.3,
+            frame_number=90,
+        )
+        photo_box = insert_row(
+            conn, "detections", file_id=photo_id, category="animal", confidence=0.8,
+        )
+
+    upgrade_to("f6a7b8c9d0e2")
+
+    with engine.connect() as conn:
+        columns = {c["name"] for c in sa.inspect(conn).get_columns("projects")}
+        assert "video_tracking" not in columns
+        track_columns = {c["name"] for c in sa.inspect(conn).get_columns("tracks")}
+        assert "crop_path" in track_columns and "frame_path" not in track_columns
+
+        rows = conn.execute(text(
+            "SELECT d.id, t.track_key, t.start_frame, t.end_frame, t.frame_count, "
+            "t.max_confidence, t.representative_frame_number, t.crop_path "
+            "FROM detections d LEFT JOIN tracks t ON t.id = d.track_id"
+        )).all()
+    by_id = {r[0]: r[1:] for r in rows}
+    # The old track keeps its key; its still path is gone.
+    assert by_id[tracked] == (1, 0, 60, 3, 0.9, 30, None)
+    # The cover box and the verified box each got a one-frame track,
+    # keyed after the existing one.
+    assert by_id[on_cover] == (2, 30, 30, 1, 0.6, 30, None)
+    assert by_id[verified_off] == (3, 200, 200, 1, 0.4, 200, None)
+    # The unverified off-cover box and the photo box got nothing.
+    assert by_id[noise] == (None,) * 7
+    assert by_id[photo_box] == (None,) * 7

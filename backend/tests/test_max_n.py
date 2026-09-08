@@ -27,6 +27,7 @@ from app.api.crud.event_observation import (
 )
 from app.models.event import Event, event_files
 from app.models.event_observation import EventObservation
+from app.models.track import Track
 from tests.conftest import (
     make_deployment,
     make_detection,
@@ -34,6 +35,7 @@ from tests.conftest import (
     make_file,
     make_project,
     make_site,
+    make_track,
 )
 
 
@@ -616,12 +618,14 @@ def test_list_event_observations_order_is_stable_under_count_edits(db):
     assert after == ["cow", "fox"]
 
 
-# ── Video best-frame species gate ───────────────────────────────────────
+# ── Video species gate: one card per track ──────────────────────────────
 #
-# For videos, only species present on the best frame (or verified on some
-# frame) may produce a count row; non-best-frame labels are per-frame
-# classifier noise the user can never see or clean, so they must not spawn
-# spurious species. Images are never gated.
+# Every video box belongs to a track, and a track has one card: its box on
+# the representative frame. A video species may produce a count row only
+# when one of its boxes is a card; the other per-frame labels are
+# classifier noise the user can never see or clean, so they must not
+# spawn spurious species. Once admitted, a species takes its peak count
+# across every frame. Images are never gated.
 
 
 def _make_event_with_frames(db, deployment_id, event_start_local, file_specs):
@@ -629,10 +633,15 @@ def _make_event_with_frames(db, deployment_id, event_start_local, file_specs):
 
     file_specs: list of dicts:
         - file_type: "image" | "video" (default "image")
-        - best_frame_number: int | None (videos)
+        - best_frame_number: int | None (videos, the cover picture only)
         - detections: list of dicts with keys
             label, frame_number (opt), category (opt "animal"),
-            confidence (opt 0.9), verified (opt False)
+            confidence (opt 0.9), verified (opt False),
+            track (opt): boxes of one video sharing a track name share
+                one track, whose card is on the lowest of their frames;
+                a video box without it gets a one-frame track of its
+                own, so it is a card,
+            untracked (opt False): no track at all, so never a card.
     Returns (event, files).
     """
     eid = str(uuid.uuid4())
@@ -665,7 +674,36 @@ def _make_event_with_frames(db, deployment_id, event_start_local, file_specs):
             )
         )
         files.append(f)
+        is_video = fkw["file_type"] == "video"
+        shared: dict[str, Track] = {}
+        next_key = 1
         for d in spec["detections"]:
+            track_id = None
+            if is_video and not d.get("untracked", False):
+                name = d.get("track")
+                if name is not None and name in shared:
+                    track_id = shared[name].id
+                else:
+                    frames = [
+                        x["frame_number"]
+                        for x in spec["detections"]
+                        if name is not None and x.get("track") == name
+                    ] or [d["frame_number"]]
+                    track = make_track(
+                        db,
+                        file_id=f.id,
+                        track_key=next_key,
+                        start_frame=min(frames),
+                        end_frame=max(frames),
+                        frame_count=len(set(frames)),
+                        representative_frame_number=min(frames),
+                        max_confidence=d.get("confidence", 0.9),
+                        crop_path=None,
+                    )
+                    next_key += 1
+                    if name is not None:
+                        shared[name] = track
+                    track_id = track.id
             make_detection(
                 db,
                 file_id=f.id,
@@ -674,13 +712,16 @@ def _make_event_with_frames(db, deployment_id, event_start_local, file_specs):
                 label=d["label"],
                 frame_number=d.get("frame_number"),
                 verified=d.get("verified", False),
+                track_id=track_id,
             )
     db.flush()
     return ev, files
 
 
-def test_video_non_best_frame_label_is_gated_out(db):
-    """A label that only appears on a non-best frame is dropped."""
+def test_video_species_without_a_card_spawns_no_row(db):
+    """A species whose boxes are never a card is dropped: a per-frame
+    label on another frame of a track, and an untracked box, even one on
+    the cover frame."""
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
@@ -688,10 +729,11 @@ def test_video_non_best_frame_label_is_gated_out(db):
     ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
         {
             "file_type": "video",
-            "best_frame_number": 5,
+            "best_frame_number": 12,
             "detections": [
-                {"label": "leopard", "frame_number": 5},     # best frame
-                {"label": "carnivora", "frame_number": 12},  # non-best noise
+                {"label": "leopard", "frame_number": 5, "track": "a"},    # card
+                {"label": "carnivora", "frame_number": 12, "track": "a"}, # same track, cover
+                {"label": "serval", "frame_number": 12, "untracked": True},
             ],
         },
     ])
@@ -699,11 +741,13 @@ def test_video_non_best_frame_label_is_gated_out(db):
     obs = calculate_max_n_for_event(db, ev.id, 0.5)
     db.flush()
 
-    assert {o.label for o in obs} == {"leopard"}  # carnivora gated out
+    assert {o.label for o in obs} == {"leopard"}
 
 
-def test_video_best_frame_species_counts_peak_across_frames(db):
-    """An allowed species still takes its peak count across all frames."""
+def test_admitted_video_species_counts_peak_across_frames(db):
+    """An admitted species takes its peak count across every frame, from
+    every box it has: the card, the same track's other boxes, and boxes
+    with no card of their own."""
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
@@ -713,10 +757,10 @@ def test_video_best_frame_species_counts_peak_across_frames(db):
             "file_type": "video",
             "best_frame_number": 5,
             "detections": [
-                {"label": "leopard", "frame_number": 5},   # best frame: 1
-                {"label": "leopard", "frame_number": 40},  # non-best: 3
-                {"label": "leopard", "frame_number": 40},
-                {"label": "leopard", "frame_number": 40},
+                {"label": "leopard", "frame_number": 5, "track": "a"},   # card: 1
+                {"label": "leopard", "frame_number": 40, "track": "a"},  # frame 40: 3
+                {"label": "leopard", "frame_number": 40, "untracked": True},
+                {"label": "leopard", "frame_number": 40, "untracked": True},
             ],
         },
     ])
@@ -726,11 +770,42 @@ def test_video_best_frame_species_counts_peak_across_frames(db):
 
     assert len(obs) == 1
     assert obs[0].label == "leopard"
-    assert obs[0].max_n == 3  # allowed via best frame, peak across all frames
+    assert obs[0].max_n == 3
+    assert obs[0].max_n_frame_number == 40
 
 
-def test_video_verified_non_best_frame_species_survives(db):
-    """A human-verified species survives even off the best frame."""
+def test_equal_counts_keep_the_first_frame(db):
+    """Two frames with the same count: MaxN is taken at its first
+    occurrence, so the earlier frame is the one recorded."""
+    project = make_project(db, counting_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+
+    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+        {
+            "file_type": "video",
+            "best_frame_number": 0,
+            "detections": [
+                {"label": "leopard", "frame_number": 10, "track": "a"},
+                {"label": "leopard", "frame_number": 10, "track": "b"},
+                {"label": "leopard", "frame_number": 20, "track": "a"},
+                {"label": "leopard", "frame_number": 20, "track": "b"},
+            ],
+        },
+    ])
+
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    assert len(obs) == 1
+    assert obs[0].max_n == 2
+    assert obs[0].max_n_frame_number == 10
+
+
+def test_video_verified_box_off_its_card_does_not_admit_a_species(db):
+    """A verdict is given on the card and reaches the whole track, so a
+    verified box on another frame is not a card and admits nothing: not
+    when it sits on a track, not when it is untracked."""
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
@@ -740,9 +815,9 @@ def test_video_verified_non_best_frame_species_survives(db):
             "file_type": "video",
             "best_frame_number": 5,
             "detections": [
-                {"label": "leopard", "frame_number": 5},
-                # not on best frame, but the human confirmed it:
-                {"label": "serval", "frame_number": 12, "verified": True},
+                {"label": "leopard", "frame_number": 5, "track": "a"},
+                {"label": "serval", "frame_number": 12, "track": "a", "verified": True},
+                {"label": "caracal", "frame_number": 12, "untracked": True, "verified": True},
             ],
         },
     ])
@@ -750,7 +825,7 @@ def test_video_verified_non_best_frame_species_survives(db):
     obs = calculate_max_n_for_event(db, ev.id, 0.5)
     db.flush()
 
-    assert {o.label for o in obs} == {"leopard", "serval"}
+    assert {o.label for o in obs} == {"leopard"}
 
 
 def test_image_multispecies_is_not_gated(db):
@@ -776,24 +851,24 @@ def test_image_multispecies_is_not_gated(db):
 
 
 def test_multi_video_event_gates_per_file(db):
-    """The gate is per video: a species allowed in one video is not
-    rescued for another video where it's only a non-best-frame label."""
+    """The gate is per video: a species with a card in one video is not
+    rescued for another video where it has no card."""
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
     ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
-        {  # video A: leopard on its best frame
+        {  # video A: leopard is a card
             "file_type": "video",
             "best_frame_number": 0,
             "detections": [{"label": "leopard", "frame_number": 0}],
         },
-        {  # video B: cow on best frame, leopard only on a non-best frame
+        {  # video B: cow is a card, leopard is the cow track's later label
             "file_type": "video",
             "best_frame_number": 0,
             "detections": [
-                {"label": "cow", "frame_number": 0},
-                {"label": "leopard", "frame_number": 7},  # gated for B
+                {"label": "cow", "frame_number": 0, "track": "a"},
+                {"label": "leopard", "frame_number": 7, "track": "a"},  # gated for B
             ],
         },
     ])
@@ -808,10 +883,10 @@ def test_multi_video_event_gates_per_file(db):
     assert by_label["cow"] == 1
 
 
-def test_event_card_chips_match_best_frame_gate(db):
-    """Gallery-card chips exclude non-best-frame video noise, same as the
-    count suggestion (the chips are built from raw detections, so they must
-    be gated against the event's EventObservation rows)."""
+def test_event_card_chips_match_the_card_gate(db):
+    """Gallery-card chips exclude video labels that have no card, same as
+    the count suggestion (the chips are built from raw detections, so they
+    must be gated against the event's EventObservation rows)."""
     from app.api.crud.event import get_events_by_project
 
     project = make_project(db, counting_threshold=0.5)
@@ -823,8 +898,8 @@ def test_event_card_chips_match_best_frame_gate(db):
             "file_type": "video",
             "best_frame_number": 5,
             "detections": [
-                {"label": "leopard", "frame_number": 5},     # best frame
-                {"label": "carnivora", "frame_number": 12},  # non-best noise
+                {"label": "leopard", "frame_number": 5, "track": "a"},    # card
+                {"label": "carnivora", "frame_number": 12, "track": "a"}, # noise
             ],
         },
     ])
@@ -1441,11 +1516,8 @@ def test_update_camera_offsets_shifts_one_subfolder_and_regroups(db):
 def test_video_species_on_a_tracks_representative_frame_is_allowed(db):
     """A tracked video has one card per track, on the track's
     representative frame, so a species that appears there is reviewable
-    and spawns a row even when it never touches the best frame. Its MaxN
-    is still the peak across every frame."""
-    from app.models import Detection
-    from tests.conftest import make_track
-
+    and spawns a row even when it never touches the cover frame. Its MaxN
+    is still the peak across every frame, boxes without a card included."""
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
@@ -1455,21 +1527,14 @@ def test_video_species_on_a_tracks_representative_frame_is_allowed(db):
             "file_type": "video",
             "best_frame_number": 5,
             "detections": [
-                {"label": "leopard", "frame_number": 5},        # best frame
-                {"label": "hammerhead", "frame_number": 300},   # a track's card
-                {"label": "hammerhead", "frame_number": 330},
-                {"label": "hammerhead", "frame_number": 330},
-                {"label": "carnivora", "frame_number": 12},     # untracked noise
+                {"label": "leopard", "frame_number": 5},                  # cover, a card
+                {"label": "hammerhead", "frame_number": 300, "track": "h"},  # the track's card
+                {"label": "hammerhead", "frame_number": 330, "track": "h"},
+                {"label": "hammerhead", "frame_number": 330, "untracked": True},
+                {"label": "carnivora", "frame_number": 12, "untracked": True},  # noise
             ],
         },
     ])
-    video = files[0]
-    track = make_track(db, file_id=video.id, start_frame=300, end_frame=330,
-                       representative_frame_number=300)
-    for det in db.query(Detection).filter(Detection.file_id == video.id):
-        if det.label == "hammerhead":
-            det.track_id = track.id
-    db.flush()
 
     rows = calculate_max_n_for_event(db, ev.id, 0.5)
     db.flush()

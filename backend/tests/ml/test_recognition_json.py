@@ -691,3 +691,30 @@ def test_no_failure_entries_when_everything_was_readable(db, tmp_path):
     data = _load_json(tmp_path / "out")
 
     assert all("failure" not in i for i in data["images"])
+
+
+def test_video_track_id_round_trips(db, tmp_path):
+    """Every box of a tracked clip carries the tracker's own number, so
+    the file reads as the run's results.json and re-ingests to the same
+    tracks; an untracked box carries none."""
+    from tests.conftest import make_track
+
+    project = make_project(db, name="rj-track")
+    dep = make_deployment(db, project_id=project.id, folder_path=str(tmp_path / "src"))
+    file = make_file(
+        db, deployment_id=dep.id, file_path=str(tmp_path / "src" / "VID.mp4"),
+        file_type="video", file_format="mp4", observation_type="animal",
+    )
+    track = make_track(db, file_id=file.id, track_key=4, start_frame=0, end_frame=30,
+                       representative_frame_number=0)
+    for frame in (0, 30):
+        make_detection(db, file_id=file.id, category="animal", confidence=0.9,
+                       bbox_x=0.1, bbox_y=0.1, bbox_width=0.3, bbox_height=0.3,
+                       frame_number=frame, track_id=track.id)
+    make_detection(db, file_id=file.id, category="animal", confidence=0.5,
+                   bbox_x=0.5, bbox_y=0.5, bbox_width=0.1, bbox_height=0.1, frame_number=60)
+
+    target = tmp_path / "out"
+    write_recognition_json(db, project.id, target)
+    dets = _load_json(target)["images"][0]["detections"]
+    assert [(d["frame_number"], d.get("track_id")) for d in dets] == [(0, 4), (30, 4), (60, None)]

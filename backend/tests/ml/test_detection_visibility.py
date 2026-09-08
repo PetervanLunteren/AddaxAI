@@ -1,15 +1,15 @@
-"""Tests for the frame-visibility rule.
+"""Tests for the visibility rule.
 
-A video is written to disk as one frame, so only that frame's detections
-have a picture. The rule exists in two forms, a SQL predicate and a Python
-filter, and the last test here is the one that makes having two safe: it
-pins that they select the same detections.
+Every image box is visible. A video box is visible on its track's
+representative frame and nowhere else. The rule exists in two forms, a
+SQL predicate and a Python filter, and the last test here is the one
+that makes having two safe: it pins that they select the same
+detections.
 """
 
 from sqlalchemy import select
 
 from app.ml.detection_visibility import (
-    on_pixel_surface,
     on_visible_frame,
     on_visible_frame_of,
     visible_detections,
@@ -20,10 +20,12 @@ from tests.conftest import (
     make_detection,
     make_file,
     make_project,
+    make_track,
+    make_video_box,
 )
 
 
-def _video(db, deployment_id, best_frame_number):
+def _video(db, deployment_id, best_frame_number=3):
     return make_file(
         db,
         deployment_id=deployment_id,
@@ -47,42 +49,47 @@ def test_every_detection_on_an_image_is_visible(db):
     assert visible_detections(f, [a, b]) == [a, b]
 
 
-def test_only_the_best_frame_is_visible_on_a_video(db):
+def test_a_tracks_representative_box_is_visible_and_its_siblings_are_not(db):
+    """One card per track, on the frame of its best box. The sibling on
+    the cover frame is the same animal, not a second card."""
+    project = make_project(db)
+    dep = make_deployment(db, project_id=project.id)
+    f = _video(db, dep.id, best_frame_number=30)
+    track = make_track(db, file_id=f.id, start_frame=30, end_frame=90,
+                       representative_frame_number=60)
+    on_cover = make_detection(db, file_id=f.id, frame_number=30, track_id=track.id)
+    card = make_detection(db, file_id=f.id, frame_number=60, track_id=track.id)
+    after = make_detection(db, file_id=f.id, frame_number=90, track_id=track.id)
+    db.commit()
+
+    assert visible_detections(f, [on_cover, card, after]) == [card]
+
+
+def test_an_untracked_video_box_is_visible_nowhere(db):
+    """The unverified off-cover boxes of a run analysed before tracking
+    became the standard: rows nothing shows, kept for the reprocess
+    matcher. The cover and a verdict change nothing; a card needs a
+    track."""
     project = make_project(db)
     dep = make_deployment(db, project_id=project.id)
     f = _video(db, dep.id, best_frame_number=3)
-    before = make_detection(db, file_id=f.id, frame_number=1)
-    on_best = make_detection(db, file_id=f.id, frame_number=3)
-    after = make_detection(db, file_id=f.id, frame_number=7)
+    on_cover = make_detection(db, file_id=f.id, frame_number=3)
+    verified = make_detection(db, file_id=f.id, frame_number=7, verified=True)
     db.commit()
 
-    assert visible_detections(f, [before, on_best, after]) == [on_best]
+    assert visible_detections(f, [on_cover, verified]) == []
 
 
-def test_a_verified_detection_is_visible_on_any_frame(db):
-    """A human decision must never end up out of reach. Its thumbnail is
-    missing, which is the honest answer, and CropCard degrades."""
+def test_a_one_frame_track_is_a_card_on_its_frame(db):
+    """A drawn box and a migrated legacy box: one box, one track, one
+    card, on whatever frame it sits."""
     project = make_project(db)
     dep = make_deployment(db, project_id=project.id)
     f = _video(db, dep.id, best_frame_number=3)
-    off_frame = make_detection(db, file_id=f.id, frame_number=7, verified=True)
+    drawn = make_video_box(db, file_id=f.id, frame_number=7, verified=True)
     db.commit()
 
-    assert visible_detections(f, [off_frame]) == [off_frame]
-
-
-def test_a_video_with_no_best_frame_shows_only_verified(db):
-    """Frame extraction can fail, and a re-ingested or legacy row may never
-    have had one. Such a video has no picture at all, so nothing but a human
-    decision survives. The rule must not widen when data is missing."""
-    project = make_project(db)
-    dep = make_deployment(db, project_id=project.id)
-    f = _video(db, dep.id, best_frame_number=None)
-    machine = make_detection(db, file_id=f.id, frame_number=2)
-    human = make_detection(db, file_id=f.id, frame_number=5, verified=True)
-    db.commit()
-
-    assert visible_detections(f, [machine, human]) == [human]
+    assert visible_detections(f, [drawn]) == [drawn]
 
 
 def test_input_order_is_preserved(db):
@@ -91,8 +98,8 @@ def test_input_order_is_preserved(db):
     project = make_project(db)
     dep = make_deployment(db, project_id=project.id)
     f = _video(db, dep.id, best_frame_number=3)
-    first = make_detection(db, file_id=f.id, frame_number=3, confidence=0.4)
-    second = make_detection(db, file_id=f.id, frame_number=3, confidence=0.9)
+    first = make_video_box(db, file_id=f.id, frame_number=3, confidence=0.4)
+    second = make_video_box(db, file_id=f.id, frame_number=3, confidence=0.9)
     db.commit()
 
     assert visible_detections(f, [first, second]) == [first, second]
@@ -106,8 +113,9 @@ def test_sql_and_python_select_the_same_detections(db):
     """The parity pin. The rule has a SQL form for callers that can filter a
     query and a Python form for callers holding a list. Two implementations
     of one rule can drift; this is what stops it. Covers every branch in one
-    fixture set: image, video on and off the best frame, verified off-frame,
-    and a video with no best frame at all."""
+    fixture set: image, a multi-frame track with a sibling on the cover, a
+    one-frame track, untracked boxes on and off the cover, a video with no
+    cover at all."""
     project = make_project(db)
     dep = make_deployment(db, project_id=project.id)
 
@@ -115,188 +123,34 @@ def test_sql_and_python_select_the_same_detections(db):
     make_detection(db, file_id=image.id, confidence=0.9)
     make_detection(db, file_id=image.id, confidence=0.1)
 
-    video = _video(db, dep.id, best_frame_number=3)
-    make_detection(db, file_id=video.id, frame_number=1)
-    make_detection(db, file_id=video.id, frame_number=3)
-    make_detection(db, file_id=video.id, frame_number=7)
-    make_detection(db, file_id=video.id, frame_number=9, verified=True)
-
-    frameless = _video(db, dep.id, best_frame_number=None)
-    make_detection(db, file_id=frameless.id, frame_number=2)
-    make_detection(db, file_id=frameless.id, frame_number=4, verified=True)
-    db.commit()
-
-    for f in (image, video, frameless):
-        # Lane 1: the predicate for a query already scoped to this file.
-        # It carries only the frame clause on the video branches, so the
-        # file_id filter stays.
-        scoped = set(
-            db.execute(
-                select(Detection.id)
-                .where(Detection.file_id == f.id)
-                .where(on_visible_frame_of(f))
-            ).scalars()
-        )
-        # Lane 2: the Python filter over the same rows.
-        in_memory = {
-            d.id
-            for d in visible_detections(
-                f,
-                db.execute(
-                    select(Detection).where(Detection.file_id == f.id)
-                ).scalars().all(),
-            )
-        }
-        assert scoped == in_memory, f.file_type
-
-    # Lane 3: the column form, over every file at once.
-    joined = set(
-        db.execute(
-            select(Detection.id)
-            .join(File, File.id == Detection.file_id)
-            .where(on_visible_frame())
-        ).scalars()
-    )
-    every_file = set()
-    for f in (image, video, frameless):
-        every_file |= {
-            d.id
-            for d in visible_detections(
-                f,
-                db.execute(
-                    select(Detection).where(Detection.file_id == f.id)
-                ).scalars().all(),
-            )
-        }
-    assert joined == every_file
-
-
-# ── Tracks ───────────────────────────────────────────────────────────
-
-
-def test_a_tracks_representative_box_is_visible_and_its_siblings_are_not(db):
-    """A tracked video has one still per track, at the track's
-    representative frame, so that one box has a card. The track's other
-    boxes are reached through it (the cascade), not shown."""
-    from tests.conftest import make_track
-
-    project = make_project(db)
-    dep = make_deployment(db, project_id=project.id)
-    f = _video(db, dep.id, best_frame_number=3)
-    track = make_track(db, file_id=f.id, start_frame=30, end_frame=90,
+    video = _video(db, dep.id, best_frame_number=30)
+    track = make_track(db, file_id=video.id, start_frame=30, end_frame=90,
                        representative_frame_number=60)
-    before = make_detection(db, file_id=f.id, frame_number=30, track_id=track.id)
-    card = make_detection(db, file_id=f.id, frame_number=60, track_id=track.id)
-    after = make_detection(db, file_id=f.id, frame_number=90, track_id=track.id)
-    on_best = make_detection(db, file_id=f.id, frame_number=3)
+    for frame in (30, 60, 90):
+        make_detection(db, file_id=video.id, frame_number=frame, track_id=track.id)
+    make_video_box(db, file_id=video.id, frame_number=200, verified=True)
+    make_detection(db, file_id=video.id, frame_number=30)  # untracked, on the cover
+    make_detection(db, file_id=video.id, frame_number=7, verified=True)  # untracked
+
+    no_cover = _video(db, dep.id, best_frame_number=None)
+    make_detection(db, file_id=no_cover.id, frame_number=2)
+    make_video_box(db, file_id=no_cover.id, frame_number=5)
     db.commit()
 
-    assert visible_detections(f, [before, card, after, on_best]) == [card, on_best]
-
-    scoped = set(
-        db.execute(
-            select(Detection.id)
-            .where(Detection.file_id == f.id)
-            .where(on_visible_frame_of(f))
-        ).scalars()
-    )
-    assert scoped == {card.id, on_best.id}
-
-
-def test_the_two_lanes_agree_on_a_tracked_video(db):
-    """The parity pin again, for the track branch, including a video with
-    no best frame at all, whose only picture is a track's still."""
-    from tests.conftest import make_track
-
-    project = make_project(db)
-    dep = make_deployment(db, project_id=project.id)
-    tracked = _video(db, dep.id, best_frame_number=3)
-    t = make_track(db, file_id=tracked.id, representative_frame_number=60)
-    make_detection(db, file_id=tracked.id, frame_number=30, track_id=t.id)
-    make_detection(db, file_id=tracked.id, frame_number=60, track_id=t.id)
-    make_detection(db, file_id=tracked.id, frame_number=3)
-    make_detection(db, file_id=tracked.id, frame_number=7)
-    frameless = _video(db, dep.id, best_frame_number=None)
-    t2 = make_track(db, file_id=frameless.id, representative_frame_number=45)
-    make_detection(db, file_id=frameless.id, frame_number=45, track_id=t2.id)
-    make_detection(db, file_id=frameless.id, frame_number=15, track_id=t2.id)
-    db.commit()
-
-    for f in (tracked, frameless):
-        rows = db.execute(select(Detection).where(Detection.file_id == f.id)).scalars().all()
-        scoped = set(
-            db.execute(
-                select(Detection.id)
-                .where(Detection.file_id == f.id)
-                .where(on_visible_frame_of(f))
-            ).scalars()
-        )
-        joined = set(
-            db.execute(
+    for f in (image, video, no_cover):
+        dets = db.query(Detection).filter(Detection.file_id == f.id).all()
+        python_ids = {d.id for d in visible_detections(f, dets)}
+        for clause in (on_visible_frame_of(f), on_visible_frame()):
+            stmt = (
                 select(Detection.id)
                 .join(File, File.id == Detection.file_id)
-                .where(File.id == f.id)
-                .where(on_visible_frame())
-            ).scalars()
-        )
-        in_memory = {d.id for d in visible_detections(f, rows)}
-        assert scoped == in_memory == joined, f.best_frame_number
-    assert len(in_memory) == 1  # the frameless video shows its one card
+                .where(Detection.file_id == f.id, clause)
+            )
+            sql_ids = set(db.execute(stmt).scalars().all())
+            assert sql_ids == python_ids, f
 
-
-def test_a_verified_tracked_box_is_still_only_its_card(db):
-    """Verifying a card verifies the whole track, so every frame of the
-    track is verified. That must not turn each frame into a card or an
-    export row of its own: a tracked box is visible on its
-    representative frame and nowhere else, verified or not."""
-    from tests.conftest import make_track
-
-    project = make_project(db)
-    dep = make_deployment(db, project_id=project.id)
-    f = _video(db, dep.id, best_frame_number=3)
-    track = make_track(db, file_id=f.id, start_frame=30, end_frame=90,
-                       representative_frame_number=60)
-    boxes = [
-        make_detection(db, file_id=f.id, frame_number=n, track_id=track.id, verified=True)
-        for n in (30, 60, 90)
-    ]
-    db.commit()
-
-    assert visible_detections(f, boxes) == [boxes[1]]
-    scoped = set(
-        db.execute(
-            select(Detection.id)
-            .where(Detection.file_id == f.id)
-            .where(on_visible_frame_of(f))
-        ).scalars()
-    )
-    assert scoped == {boxes[1].id}
-
-
-def test_a_tracked_box_on_the_best_frame_is_not_a_second_card(db):
-    """The best frame of a tracked video often holds a box of a track
-    whose card sits on another frame. Same animal, one card: the best
-    frame clause is for untracked boxes only."""
-    from tests.conftest import make_track
-
-    project = make_project(db)
-    dep = make_deployment(db, project_id=project.id)
-    f = _video(db, dep.id, best_frame_number=3)
-    track = make_track(db, file_id=f.id, start_frame=3, end_frame=60,
-                       representative_frame_number=60)
-    on_best = make_detection(db, file_id=f.id, frame_number=3, track_id=track.id)
-    card = make_detection(db, file_id=f.id, frame_number=60, track_id=track.id)
-    drawn = make_detection(db, file_id=f.id, frame_number=3, verified=True)
-    db.commit()
-
-    assert visible_detections(f, [on_best, card, drawn]) == [card, drawn]
-    for clause in (on_visible_frame_of(f), on_visible_frame(), on_pixel_surface()):
-        scoped = set(
-            db.execute(
-                select(Detection.id)
-                .join(File, File.id == Detection.file_id)
-                .where(Detection.file_id == f.id)
-                .where(clause)
-            ).scalars()
-        )
-        assert scoped == {card.id, drawn.id}
+    # And the numbers themselves, so the fixture cannot silently shrink.
+    video_dets = db.query(Detection).filter(Detection.file_id == video.id).all()
+    assert len(visible_detections(video, video_dets)) == 2
+    no_cover_dets = db.query(Detection).filter(Detection.file_id == no_cover.id).all()
+    assert len(visible_detections(no_cover, no_cover_dets)) == 1

@@ -92,24 +92,16 @@ class ProjectBase(BaseModel):
 
     # Video processing settings
     video_fps: float = Field(
-        default=1.0,
+        default=2.0,
         ge=0.1,
         le=10.0,
-        description="Frames per second to extract from videos (0.1-10.0)",
+        description="Frames per second the tracker samples from videos (0.1-10.0)",
     )
     media_filter: MediaFilter = Field(
         default="all",
         description=(
             "Which media a new analysis reads off disk. Inference-time: "
             "applies to future analyses only, never retroactively"
-        ),
-    )
-    video_tracking: bool = Field(
-        default=False,
-        description=(
-            "Follow each animal through a video with a tracker, so the "
-            "Labels page shows one card per tracked animal. Inference-time: "
-            "applies to future analyses only"
         ),
     )
 
@@ -256,7 +248,6 @@ class ProjectUpdate(BaseModel):
         return _validate_iana_timezone(v)
     video_fps: float | None = Field(None, ge=0.1, le=10.0)
     media_filter: MediaFilter | None = None
-    video_tracking: bool | None = None
     counting_threshold: float | None = Field(None, ge=0.0, le=1.0)
     classification_gate: float | None = Field(None, ge=0.01, le=1.0)
     event_smoothing: bool | None = None

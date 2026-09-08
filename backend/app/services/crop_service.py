@@ -18,9 +18,10 @@ from PIL import Image
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
-from app.ml.embedding_utils import _video_still_for
+from app.ml.embedding_utils import video_pixels_for
 from app.ml.inference.crop_box import compute_expanded_crop_region, crop_with_blur_fill
 from app.models import Detection, File
+from app.services.video_frame_service import decode_frame_jpeg
 
 logger = get_logger(__name__)
 
@@ -28,36 +29,50 @@ _MAX_CACHE_ENTRIES = 2000
 _cache: OrderedDict[str, bytes] = OrderedDict()
 
 
-def _resolve_image_path(file: File, detection: Detection) -> Path | None:
-    """Resolve the source image to crop this detection from.
+_WHOLE_IMAGE = [0.0, 0.0, 1.0, 1.0]
 
-    Images render from `file.file_path`. Videos render from
-    `file.best_frame_path` (the canonical thumbnail written by the
-    classifier worker or the no-classifier streaming pass). We never
-    fall back to the .mp4 path: that would hand a video file to PIL,
-    which crashes loudly downstream. Returning None lets the caller
-    surface a clean "no thumbnail" state.
 
-    A video detection off the best frame gets None. It is the only frame
-    on disk, so cropping it at a bbox from another frame produces a
-    confident picture of the wrong place: the animal has moved, and the
-    crop shows the leaf litter it left behind. That looked like a working
-    thumbnail for as long as the subject sat still, which is why it went
-    unnoticed. No image is the honest answer; the video player is where
-    those detections are meant to be seen.
+def _resolve_source(
+    file: File, detection: Detection
+) -> tuple[Path | bytes, list[float]] | None:
+    """The picture to cut this detection's card from, and the box in it.
+
+    An image is cropped at the box. A video box is a card only on its
+    track's representative frame; there the picture is the track's
+    stored crop (the whole file), or the cover frame when the card has
+    no crop and sits on it, or, for a card on any other frame (a drawn
+    box, a legacy verified box), that frame decoded on request. Never
+    the video container itself: PIL cannot open it. A box that is not a
+    card gets None, which the caller answers as "no thumbnail": cropping
+    the cover at a box from another moment gave a confident picture of
+    the wrong place.
     """
-    if file.file_type == "video":
-        still = _video_still_for(detection, file)
-        if still:
-            p = Path(still)
-            if p.exists():
-                return p
+    if file.file_type != "video":
+        if file.file_path and Path(file.file_path).exists():
+            return Path(file.file_path), [
+                detection.bbox_x, detection.bbox_y,
+                detection.bbox_width, detection.bbox_height,
+            ]
         return None
-    if file.file_path:
-        p = Path(file.file_path)
-        if p.exists():
-            return p
-    return None
+    track = detection.track
+    if (
+        track is None
+        or detection.frame_number is None
+        or detection.frame_number != track.representative_frame_number
+    ):
+        return None
+    pixels = video_pixels_for(detection, file)
+    if pixels is not None:
+        path, bbox = pixels
+        return (Path(path), bbox) if Path(path).exists() else None
+    if not file.file_path:
+        return None
+    jpeg = decode_frame_jpeg(file.file_path, detection.frame_number, file.frame_rate)
+    if jpeg is None:
+        return None
+    return jpeg, [
+        detection.bbox_x, detection.bbox_y, detection.bbox_width, detection.bbox_height,
+    ]
 
 
 def get_or_create_crop(detection_id: str, size: int, db: Session) -> bytes | None:
@@ -87,33 +102,29 @@ def get_or_create_crop(detection_id: str, size: int, db: Session) -> bytes | Non
     if not file:
         return None
 
-    image_path = _resolve_image_path(file, detection)
-    if not image_path:
+    source = _resolve_source(file, detection)
+    if source is None:
         return None
+    picture, bbox = source
 
     try:
-        img = Image.open(image_path)
+        img = Image.open(picture if isinstance(picture, Path) else io.BytesIO(picture))
         w, h = img.size
 
         if img.mode != "RGB":
             img = img.convert("RGB")
 
-        left, top, right, bottom = compute_expanded_crop_region(
-            detection.bbox_x,
-            detection.bbox_y,
-            detection.bbox_width,
-            detection.bbox_height,
-            w,
-            h,
-        )
-
-        crop_w = right - left
-        crop_h = bottom - top
-        if crop_w <= 0 or crop_h <= 0:
-            logger.warning(f"Invalid crop bbox for detection {detection_id}")
-            return None
-
-        crop = crop_with_blur_fill(img, left, top, right, bottom)
+        if bbox == _WHOLE_IMAGE:
+            # A stored track crop is already the padded square.
+            crop = img
+        else:
+            left, top, right, bottom = compute_expanded_crop_region(*bbox, w, h)
+            crop_w = right - left
+            crop_h = bottom - top
+            if crop_w <= 0 or crop_h <= 0:
+                logger.warning(f"Invalid crop bbox for detection {detection_id}")
+                return None
+            crop = crop_with_blur_fill(img, left, top, right, bottom)
         crop = crop.resize((size, size), Image.LANCZOS)
 
         buf = io.BytesIO()

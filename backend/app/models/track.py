@@ -1,11 +1,13 @@
 """
 Track model: one animal followed through the sampled frames of a video.
 
-Written by the tracker (BoT-SORT in the tracking script) when a project
-runs with `video_tracking` on. A track is the unit of review for a long
-video: the Labels page shows one card per track, at the frame of the
-track's highest-confidence box (`representative_frame_number`), and X,
-relabel and verify on that card reach every box of the track.
+Written by the tracker (BoT-SORT in the tracking script), which every
+video goes through. A track is the unit of review for a video: the
+Labels page shows one card per track, at the frame of the track's
+highest-confidence box (`representative_frame_number`), and X, relabel
+and verify on that card reach every box of the track. Every video box
+has a track: a drawn box is a one-frame track, and so is each visible
+box of a video analysed before tracking became the standard.
 
 The track holds no label and no verdict of its own. Its label is the
 label of its boxes, read from the representative box, and its verdict is
@@ -59,10 +61,12 @@ class Track(Base):
     # The frame of the track's highest-confidence box: the picture the card
     # shows and the still that is written for it (SharkTrack's choice).
     representative_frame_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    # The JPEG of that frame under the deployment's video_frames folder,
-    # written by the same pass that writes the best frame. NULL when the
-    # frame could not be decoded; the card then renders without a picture.
-    frame_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The crop of that box (`track000007.jpg` beside the video's cover
+    # frame), cut by the tracking script while the frame was in memory.
+    # NULL when it was never written: a one-frame track made from a drawn
+    # box or a legacy box, or a crop that failed to write; the card is
+    # then cut from the cover or from a frame decoded on request.
+    crop_path: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at_utc: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
@@ -80,11 +84,6 @@ class Track(Base):
         UniqueConstraint("file_id", "track_key", name="uq_tracks_file_key"),
         Index("idx_tracks_file", "file_id"),
     )
-
-    @property
-    def has_frame(self) -> bool:
-        """Whether the representative frame's JPEG was written."""
-        return self.frame_path is not None
 
     def __repr__(self) -> str:
         return (

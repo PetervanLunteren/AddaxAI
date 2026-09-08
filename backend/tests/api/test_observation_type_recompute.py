@@ -15,6 +15,7 @@ from tests.conftest import (
     make_detection,
     make_file,
     make_project,
+    make_video_box,
 )
 
 
@@ -96,7 +97,8 @@ def _video(db, deployment_id, best_frame_number, stored="animal"):
     )
 
 
-def test_video_off_best_frame_detection_is_blank(db):
+def test_video_untracked_detection_is_blank(db):
+    """An untracked video box has no card, so it is visible nowhere."""
     project = make_project(db, name="vid-off", counting_threshold=0.2)
     dep = make_deployment(db, project_id=project.id)
     f = _video(db, dep.id, best_frame_number=3)
@@ -110,15 +112,16 @@ def test_video_off_best_frame_detection_is_blank(db):
     assert f.observation_type == "blank"
 
 
-def test_video_best_frame_detection_decides(db):
+def test_video_card_decides(db):
+    """The cards decide, not the strongest box overall."""
     project = make_project(db, name="vid-on", counting_threshold=0.2)
     dep = make_deployment(db, project_id=project.id)
     f = _video(db, dep.id, best_frame_number=3, stored="blank")
-    # Stronger, but on a frame nobody can open.
+    # Stronger, but untracked: no card.
     make_detection(
         db, file_id=f.id, category="animal", confidence=0.95, frame_number=7
     )
-    make_detection(
+    make_video_box(
         db, file_id=f.id, category="person", confidence=0.60, frame_number=3
     )
 
@@ -128,12 +131,14 @@ def test_video_best_frame_detection_decides(db):
     assert f.observation_type == "person"
 
 
-def test_video_verified_detection_counts_on_any_frame(db):
-    """The escape hatch: a human decision must never end up out of reach."""
+def test_video_verified_card_counts_on_any_frame(db):
+    """A human decision must never end up out of reach: a verified card
+    counts wherever its frame is, and below the threshold. The cover
+    frame (3) is only the picture."""
     project = make_project(db, name="vid-verified", counting_threshold=0.2)
     dep = make_deployment(db, project_id=project.id)
     f = _video(db, dep.id, best_frame_number=3, stored="blank")
-    make_detection(
+    make_video_box(
         db,
         file_id=f.id,
         category="animal",
@@ -146,6 +151,28 @@ def test_video_verified_detection_counts_on_any_frame(db):
     db.refresh(f)
 
     assert f.observation_type == "animal"
+
+
+def test_video_verified_untracked_detection_stays_blank(db):
+    """An untracked box is invisible even when verified: there is no
+    "verified anywhere" escape hatch, because a verdict reaches every
+    box of a track and would otherwise make every frame a card."""
+    project = make_project(db, name="vid-verified-untracked", counting_threshold=0.2)
+    dep = make_deployment(db, project_id=project.id)
+    f = _video(db, dep.id, best_frame_number=3, stored="animal")
+    make_detection(
+        db,
+        file_id=f.id,
+        category="animal",
+        confidence=0.9,
+        frame_number=3,
+        verified=True,
+    )
+
+    recalculate_observation_type(db, f.id)
+    db.refresh(f)
+
+    assert f.observation_type == "blank"
 
 
 def test_video_without_a_best_frame_is_blank(db):

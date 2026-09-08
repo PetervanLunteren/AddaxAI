@@ -22,6 +22,7 @@ from tests.conftest import (
     make_file,
     make_project,
     make_site,
+    make_video_box,
 )
 
 
@@ -110,10 +111,11 @@ def test_a_verified_weak_box_is_not_empty(client, db):
     assert _empties(client, p.id)["total"] == 0
 
 
-def test_a_box_on_another_video_frame_does_not_rescue_a_file(client, db):
-    """A video is only its best frame. A confident box on a frame that
-    was never written to disk has no card, no crop and no thumbnail, so
-    it cannot answer for the clip."""
+def test_an_untracked_video_box_does_not_rescue_a_file(client, db):
+    """A video is its cards. A confident box with no track has no card,
+    no crop and no thumbnail, so it cannot answer for the clip. A card
+    does, on whatever frame it sits; the cover frame is only the
+    picture."""
     p, d, _ = _project_with_files(db, 0)
     v = make_file(
         db,
@@ -127,7 +129,7 @@ def test_a_box_on_another_video_frame_does_not_rescue_a_file(client, db):
 
     assert _empties(client, p.id)["total"] == 1
 
-    make_detection(db, file_id=v.id, confidence=0.9, frame_number=10)
+    make_video_box(db, file_id=v.id, confidence=0.9, frame_number=42)
     db.commit()
     assert _empties(client, p.id)["total"] == 0
 

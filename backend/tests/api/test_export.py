@@ -25,6 +25,8 @@ from tests.conftest import (
     make_file,
     make_project,
     make_site,
+    make_track,
+    make_video_box,
 )
 
 
@@ -138,7 +140,7 @@ def test_export_detections_csv_happy_path(client, db):
         "classification_method", "is_verified",
         "taxon_class", "taxon_order", "taxon_family", "taxon_genus",
         "taxon_species", "taxon_variant", "scientific_name", "common_name",
-        "frame_number", "bbox_x", "bbox_y", "bbox_width", "bbox_height",
+        "frame_number", "track_id", "bbox_x", "bbox_y", "bbox_width", "bbox_height",
     ]
     cls_i = headers.index("classification_label")
     cat_i = headers.index("detection_category")
@@ -150,6 +152,8 @@ def test_export_detections_csv_happy_path(client, db):
     assert len(data) == 3
     assert all(r[cat_i] != "blank" for r in data)
     assert f_dec.id not in {r[headers.index("file_id")] for r in data}
+    # Photos have no frame and no track.
+    assert all(r[headers.index("track_id")] == "" for r in data)
 
     # Each deer detection keeps its own confidence (no max-aggregation).
     deer = [r for r in data if r[cls_i] == "deer"]
@@ -710,14 +714,14 @@ def test_files_export_follows_the_verified_box(client, db):
     assert _species(headers, by_id[f.id]) == ["red fox", "Vulpes vulpes", "Red fox"]
 
 
-def test_video_exports_describe_only_the_visible_frame(client, db):
-    """One row stands for one video, so it describes the one frame that
-    stands for that video. Here the strongest box overall is a deer on
-    frame 7, which was never written to disk; the frame the user can open
-    holds a person. The row reports the person, and the deer is absent
-    from the detections table too, because a box on a frame nobody can
-    open cannot be seen, filtered to or relabelled. It survives in
-    addaxai-recognitions.json, which is the complete record."""
+def test_video_exports_describe_only_the_cards(client, db):
+    """One row stands for one video, so it describes the cards of that
+    video. Here the strongest box overall is a deer on frame 7 with no
+    track, so no card; the person on frame 3 is a card. The row reports
+    the person, and the deer is absent from the detections table too,
+    because a box without a card cannot be seen, filtered to or
+    relabelled. It survives in addaxai-recognitions.json, which is the
+    complete record."""
     project, _site, deployment = _build_simple_project(db)
     f = make_file(
         db,
@@ -737,7 +741,7 @@ def test_video_exports_describe_only_the_visible_frame(client, db):
         scientific_name="Cervidae",
         common_name="Deer",
     )
-    make_detection(
+    make_video_box(
         db,
         file_id=f.id,
         category="person",
@@ -750,14 +754,14 @@ def test_video_exports_describe_only_the_visible_frame(client, db):
 
     headers, by_id = _files_rows(client, project.id)
     assert _species(headers, by_id[f.id]) == ["", "Person", "Person"]
-    # 0.6 is the person on the saved frame, not the 0.9 deer on frame 7, so
+    # 0.6 is the person card, not the 0.9 untracked deer on frame 7, so
     # the confidence respects visible_detections and not only the strongest
     # box overall. Empty label score: a person carries no species.
     assert _confidences(headers, by_id[f.id]) == ["0.6", ""]
 
-    # The per-box grain agrees: the off-frame deer is not offered as a
-    # species the user could go and correct, because there is no picture
-    # of it anywhere in the app. Only the person on the saved frame is.
+    # The per-box grain agrees: the untracked deer is not offered as a
+    # species the user could go and correct, because there is no card
+    # for it anywhere in the app. Only the person card is.
     resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
     det_rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     det_headers = det_rows[0]
@@ -807,10 +811,11 @@ def test_files_export_video_with_empty_best_frame_reads_blank(client, db):
     assert _ranks(headers, by_id[f.id]) == ["", "", "", "", ""]
 
 
-def test_files_export_verified_box_passes_on_any_frame(client, db):
-    """The escape hatch. A human decision must never be out of reach, so a
-    verified box counts wherever it sits, even though its thumbnail is
-    missing."""
+def test_files_export_card_passes_on_any_frame(client, db):
+    """A card is visible on its track's representative frame, wherever
+    that is. The cover frame is only the clip's picture: a box on it
+    with no track is visible nowhere, while the fox card on frame 7
+    stands for the clip."""
     project, _site, deployment = _build_simple_project(db)
     f = make_file(
         db,
@@ -820,7 +825,7 @@ def test_files_export_verified_box_passes_on_any_frame(client, db):
         best_frame_number=3,
         observation_type="animal",
     )
-    make_detection(
+    make_video_box(
         db,
         file_id=f.id,
         category="animal",
@@ -831,6 +836,7 @@ def test_files_export_verified_box_passes_on_any_frame(client, db):
         scientific_name="Vulpes vulpes",
         common_name="Red fox",
     )
+    # On the cover frame, but untracked: no card.
     make_detection(
         db,
         file_id=f.id,
@@ -1200,7 +1206,7 @@ def test_summary_counts_images_videos_detections_events_individuals(client, db):
     make_detection(db, file_id=img_1.id, confidence=0.8, label="deer")
     make_detection(db, file_id=img_2.id, confidence=0.7, label="deer")
     calculate_max_n_for_event(db, ev_a.id, project.counting_threshold)
-    # Event B: one video, one deer box on its saved frame.
+    # Event B: one video, one deer card.
     ev_b = make_event_with_files(
         db,
         deployment_id=deployment.id,
@@ -1210,7 +1216,7 @@ def test_summary_counts_images_videos_detections_events_individuals(client, db):
     video.file_type = "video"
     video.file_format = "mp4"
     video.best_frame_number = 3
-    make_detection(db, file_id=video.id, confidence=0.9, label="deer", frame_number=3)
+    make_video_box(db, file_id=video.id, confidence=0.9, label="deer", frame_number=3)
     calculate_max_n_for_event(db, ev_b.id, project.counting_threshold)
     db.commit()
 
@@ -1318,14 +1324,14 @@ def test_summary_respects_threshold_and_verified_override(client, db):
     assert set(rows) == {("animal", "badger")}
 
 
-def test_summary_ignores_off_best_frame_video_boxes(client, db):
-    """A box on a frame nobody can open is not a species that was found,
-    same rule as the Detections table."""
+def test_summary_ignores_untracked_video_boxes(client, db):
+    """An untracked box has no card, so it is not a species that was
+    found, same rule as the Detections table."""
     project, _site, deployment = _build_simple_project(db)
     f = make_file(db, deployment_id=deployment.id, file_type="video",
                   file_format="mp4", best_frame_number=3)
     make_detection(db, file_id=f.id, confidence=0.9, label="deer", frame_number=7)
-    make_detection(db, file_id=f.id, category="person", confidence=0.6,
+    make_video_box(db, file_id=f.id, category="person", confidence=0.6,
                    frame_number=3)
     db.commit()
 
@@ -1702,12 +1708,12 @@ def test_export_camtrap_dp_blank_row_for_file_without_detections(client, db):
 
 
 def test_export_camtrap_dp_keeps_boxes_when_the_file_reads_blank(client, db):
-    """Camtrap DP is per box and is the archival export, so it must never
-    drop rows it holds. The blank branch used to also fire on the stored
-    observation_type, which was near-equivalent while that column was
-    derived over every frame. It is not equivalent now: this video reads
-    blank because its best frame is empty, yet it still has a passing box
-    on frame 50, and that box has to reach the archive."""
+    """Camtrap DP writes one observation per track, so it must never
+    drop a card it holds. The blank branch used to also fire on the
+    stored observation_type, which was near-equivalent while that column
+    was derived over every frame. It is not equivalent now: this video's
+    stored type is a stale blank, yet it still has a card on frame 50,
+    and that card has to reach the archive."""
     project, _site, deployment = _build_simple_project(db)
     f = make_file(
         db,
@@ -1718,7 +1724,7 @@ def test_export_camtrap_dp_keeps_boxes_when_the_file_reads_blank(client, db):
         best_frame_number=3,
         observation_type="blank",
     )
-    make_detection(
+    make_video_box(
         db,
         file_id=f.id,
         category="animal",
@@ -2089,11 +2095,11 @@ def test_camtrap_observation_type_translates_raw_categories():
         assert _obs_type_from_category(category) in CAMTRAP_OBSERVATION_TYPES
 
 
-def test_spatial_detection_count_ignores_off_best_frame_boxes(client, db):
-    """A map bubble must count what the Labels grid holds. Only one frame
-    per video is written to disk, so boxes on the other frames have no
-    picture to open; counting them made the deployments layer report 220
-    where detections.csv listed 32."""
+def test_spatial_detection_count_counts_one_card_per_track(client, db):
+    """A map bubble must count what the Labels grid holds. A tracked
+    animal has a box on every sampled frame but one card, on its
+    representative frame; counting every box made the deployments layer
+    report 220 where detections.csv listed 32."""
     project, _site, deployment = _build_simple_project(db)
     video = make_file(
         db,
@@ -2102,10 +2108,14 @@ def test_spatial_detection_count_ignores_off_best_frame_boxes(client, db):
         file_format="mp4",
         best_frame_number=3,
     )
+    track = make_track(
+        db, file_id=video.id, start_frame=3, end_frame=11,
+        representative_frame_number=3,
+    )
     for frame in (3, 7, 11):
         make_detection(
             db, file_id=video.id, category="animal", confidence=0.9,
-            label="fox", frame_number=frame,
+            label="fox", frame_number=frame, track_id=track.id,
         )
     db.commit()
 
@@ -2460,3 +2470,86 @@ def test_export_observations_carry_the_max_n_frame_and_times(client, db):
     # first arrival as the species it belongs to.
     assert cohort_row[i + 1] == "" and cohort_row[i + 2] == ""
     assert cohort_row[i + 3] == ai_row[i + 3]
+
+
+def test_export_camtrap_dp_writes_one_observation_per_track(client, db):
+    """A tracked clip is one media-level observation per track: placed in
+    time by the track's own span inside the clip, identified by
+    individualID, its representative box as the bbox, its frames as
+    tags (the standard has no frame field). The event row per species
+    says the count is MaxN and where it was made."""
+    from app.api.crud.event_observation import calculate_max_n_for_event
+    from tests.conftest import make_track
+
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    ev = make_event_with_files(
+        db,
+        deployment_id=deployment.id,
+        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+    )
+    video = ev.files[0]
+    video.file_type = "video"
+    video.file_format = "mp4"
+    video.frame_rate = 30.0
+    video.best_frame_number = 0
+    track = make_track(db, file_id=video.id, track_key=3, start_frame=60, end_frame=300,
+                       representative_frame_number=150)
+    for frame in (60, 150, 300):
+        make_detection(db, file_id=video.id, frame_number=frame, track_id=track.id,
+                       category="animal", confidence=0.9, label="deer",
+                       bbox_x=0.1, bbox_y=0.1, bbox_width=0.2, bbox_height=0.2)
+    db.flush()
+    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    db.commit()
+
+    resp = _run_camtrap_dp_export(client, db, project.id)
+    assert resp.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        headers, *obs_rows = csv.reader(io.StringIO(zf.read("observations.csv").decode()))
+    h = {name: i for i, name in enumerate(headers)}
+
+    media = [r for r in obs_rows if r[h["observationLevel"]] == "media"]
+    assert len(media) == 1, "one row per track, not one per box"
+    row = media[0]
+    assert row[h["observationID"]] == f"obs-ai-{track.id}"
+    assert row[h["individualID"]] == f"{video.id}_3"
+    assert row[h["count"]] == "1"
+    # 60 and 300 frames at 30 fps: two and ten seconds into the clip.
+    assert row[h["eventStart"]] == "2024-06-15T09:00:02+00:00"
+    assert row[h["eventEnd"]] == "2024-06-15T09:00:10+00:00"
+    assert row[h["observationTags"]] == "frameStart:60|frameEnd:300|bboxFrame:150|frameRate:30.0"
+    assert row[h["bboxX"]] == "0.1"
+
+    event = [r for r in obs_rows if r[h["observationLevel"]] == "event"]
+    assert len(event) == 1
+    assert event[0][h["count"]] == "1"
+    assert event[0][h["observationTags"]] == f"countMethod:MaxN|maxnMediaID:{video.id}|maxnFrame:60"
+
+
+def test_export_detections_csv_carries_the_track_key(client, db):
+    """The detections table names which track a video box belongs to,
+    by the tracker's own number within the clip; a photo's box has none."""
+    from tests.conftest import make_track, make_video_box
+
+    project, _site, deployment = _build_simple_project(db)
+    video = make_file(db, deployment_id=deployment.id, file_type="video", file_format="mp4",
+                      frame_rate=30.0, best_frame_number=0,
+                      captured_at_local=datetime(2024, 6, 15, 9, 0, 0))
+    track = make_track(db, file_id=video.id, track_key=7, start_frame=0, end_frame=30,
+                       representative_frame_number=30)
+    make_detection(db, file_id=video.id, frame_number=0, track_id=track.id, confidence=0.9)
+    make_detection(db, file_id=video.id, frame_number=30, track_id=track.id, confidence=0.9)
+    make_video_box(db, file_id=video.id, frame_number=90, confidence=0.9)
+    photo = make_file(db, deployment_id=deployment.id,
+                      captured_at_local=datetime(2024, 6, 15, 9, 5, 0))
+    make_detection(db, file_id=photo.id, confidence=0.9)
+    db.commit()
+
+    resp = client.get(f"/api/projects/{project.id}/export/detections", params={"format": "csv"})
+    assert resp.status_code == 200
+    headers, *rows = csv.reader(io.StringIO(resp.text))
+    h = {name: i for i, name in enumerate(headers)}
+    by_frame = {r[h["frame_number"]]: r[h["track_id"]] for r in rows}
+    # One row per card: the track's representative box and the one-frame
+    # track, never the sibling on frame 0; the photo's box has no track.
+    assert by_frame == {"30": "7", "90": "8", "": ""}

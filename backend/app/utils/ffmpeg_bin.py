@@ -18,6 +18,11 @@ import shutil
 
 from app.core.config import get_settings
 
+# The environment every install has (setup builds it first). The viewer's
+# on-demand frame decode reads its ffmpeg from here, so it never depends
+# on a project's detector environment still being installed.
+APP_ENV = "addaxai-base"
+
 
 def resolve_ffmpeg(env_name: str) -> str:
     """Absolute path to ffmpeg for ``env-<env_name>``."""

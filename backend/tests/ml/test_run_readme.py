@@ -19,6 +19,7 @@ from tests.conftest import (
     make_detection,
     make_file,
     make_project,
+    make_video_box,
 )
 
 
@@ -99,8 +100,8 @@ def test_readme_carries_run_metadata(db, tmp_path):
 
 def test_readme_top_species_matches_the_summary_table(db, tmp_path):
     """The readme's top species are the Summary sheet's rows, so the two
-    outputs in one folder cannot disagree: a video's off-frame boxes and a
-    box a person marked false count in neither."""
+    outputs in one folder cannot disagree: a video box that is not its
+    track's card and a box a person marked false count in neither."""
     project = make_project(db, name="readme-species-summary", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     img = make_file(
@@ -121,8 +122,13 @@ def test_readme_top_species_matches_the_summary_table(db, tmp_path):
         best_frame_number=3,
         observation_type="animal",
     )
-    make_detection(db, file_id=clip.id, confidence=0.9, label="deer", frame_number=7)
-    make_detection(db, file_id=clip.id, confidence=0.9, label="fox", frame_number=3)
+    # One track: its card is the fox box on frame 3, the deer box on
+    # frame 7 is the same animal on another frame, so not a card.
+    fox = make_video_box(db, file_id=clip.id, confidence=0.9, label="fox", frame_number=3)
+    make_detection(
+        db, file_id=clip.id, confidence=0.9, label="deer", frame_number=7,
+        track_id=fox.track_id,
+    )
 
     target = tmp_path / "out"
     write_run_readme(db, project.id, target, media_threshold=0.5)
@@ -131,7 +137,7 @@ def test_readme_top_species_matches_the_summary_table(db, tmp_path):
 
     assert "false detection" not in section
     assert "deer" in section and "fox" in section
-    # One deer on the image; the clip's deer is on a frame nobody can open.
+    # One deer on the image; the clip's deer is on a frame with no card.
     deer_line = next(line for line in section.splitlines() if "deer" in line)
     assert deer_line.split()[-1] == "1"
 

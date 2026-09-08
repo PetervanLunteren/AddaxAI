@@ -56,10 +56,9 @@ class DetectionResponse(BaseModel):
 class TrackResponse(BaseModel):
     """One animal a tracker followed through a video (models/track.py).
 
-    What the viewers need to place a track in time and to know which
-    frame has a picture: the box on `representative_frame_number` is the
-    track's card, and `frame_path` being set means that frame's JPEG
-    exists (the image endpoint serves it with `?frame=`).
+    What the viewers need to place a track in time: the box on
+    `representative_frame_number` is the track's card, and the image
+    endpoint decodes any frame of the clip with `?frame=`.
     """
 
     id: str
@@ -69,7 +68,6 @@ class TrackResponse(BaseModel):
     frame_count: int
     max_confidence: float
     representative_frame_number: int
-    has_frame: bool
 
     class Config:
         from_attributes = True

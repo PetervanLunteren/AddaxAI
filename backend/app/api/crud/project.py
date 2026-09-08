@@ -37,7 +37,6 @@ _DUPLICATE_SETTINGS_COLUMNS = (
     "timezone",
     "shortcut_labels",
     "video_fps",
-    "video_tracking",
     "counting_threshold",
     "classification_gate",
     "event_smoothing",

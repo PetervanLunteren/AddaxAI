@@ -32,7 +32,13 @@ from app.ml.inference.similarity_script import (
 )
 from app.models.detection_embedding import DetectionEmbedding
 from app.models.event import Event, event_files
-from tests.conftest import make_deployment, make_detection, make_file, make_project
+from tests.conftest import (
+    make_deployment,
+    make_detection,
+    make_file,
+    make_project,
+    make_track,
+)
 
 # do_sort imports its sibling `observation_sort` by bare name (it runs as
 # a subprocess in production, where its own dir is on sys.path[0]). Make
@@ -493,16 +499,18 @@ def test_event_sort_no_embeddings_groups_by_deployment(sort_db):
     assert ids == [d1_new.id, d1_old.id, d2.id]
 
 
-# ── Video detections are gated to the best frame ─────────────────────
-# Only the best frame of a video is written to disk as a JPEG, so a
-# detection on any other sampled frame has no image to crop. The grid used
-# to list all of them and `crop_service` answered every one with the best
-# frame cropped at a bbox from a different moment: a picture of wherever
-# the animal used to be. See tests/test_crop_service.py for the other half.
+# ── Video detections are gated to their track's card ──────────────────
+# Every video box belongs to a track, and a track has one card: its box on
+# the representative frame. The grid used to list every sampled frame's
+# box and `crop_service` answered each with the cover frame cropped at a
+# bbox from a different moment: a picture of wherever the animal used to
+# be. See tests/test_crop_service.py for the other half.
 
 
-def _video_with_detections(session, deployment_id, *, best_frame, frames):
-    """One video file plus a detection on each of `frames`. Returns
+def _video_with_detections(session, deployment_id, *, representative, frames):
+    """One video file with one track over `frames`, its card on
+    `representative`, and a detection of that track on each frame. The
+    cover frame is the first frame, which is not the card. Returns
     {frame_number: detection}."""
     f = make_file(
         session,
@@ -510,30 +518,42 @@ def _video_with_detections(session, deployment_id, *, best_frame, frames):
         file_type="video",
         file_format="mp4",
         file_path=f"/fake/{uuid.uuid4().hex}.mp4",
-        best_frame_number=best_frame,
-        best_frame_path=f"/fake/frame{best_frame:06d}.jpg",
+        best_frame_number=frames[0],
+        best_frame_path=f"/fake/frame{frames[0]:06d}.jpg",
+    )
+    track = make_track(
+        session,
+        file_id=f.id,
+        start_frame=min(frames),
+        end_frame=max(frames),
+        frame_count=len(frames),
+        representative_frame_number=representative,
     )
     out = {}
     for fn in frames:
-        out[fn] = make_detection(session, file_id=f.id, frame_number=fn)
+        out[fn] = make_detection(
+            session, file_id=f.id, frame_number=fn, track_id=track.id
+        )
     session.flush()
     return out
 
 
-def test_metadata_load_drops_video_detections_off_the_best_frame(sort_db):
+def test_metadata_load_keeps_only_the_card_of_a_video_track(sort_db):
+    """A raccoon walking across the scene: MegaDetector fires on every
+    sampled frame and the tracker ties the boxes into one track. The
+    grid shows that track once, on its representative frame; the box on
+    the cover frame is not a second card."""
     db_path, s = sort_db
     p = make_project(s)
     dep = make_deployment(s, project_id=p.id)
-    # A raccoon walking across the scene: MegaDetector fires on every
-    # sampled frame, but only frame 24 exists as a JPEG.
     dets = _video_with_detections(
-        s, dep.id, best_frame=24, frames=[0, 24, 48, 72, 144]
+        s, dep.id, representative=48, frames=[0, 24, 48, 72, 144]
     )
     s.commit()
 
     ids, _, _ = _load_metadata(db_path, p.id, {})
 
-    assert set(ids) == {dets[24].id}
+    assert set(ids) == {dets[48].id}
 
 
 def test_metadata_load_keeps_every_image_detection(sort_db):
@@ -552,21 +572,21 @@ def test_metadata_load_keeps_every_image_detection(sort_db):
     assert set(ids) == {a.id, b.id}
 
 
-def test_metadata_load_keeps_verified_detections_off_the_best_frame(sort_db):
-    """A human decision must never end up out of reach. `rebuild_event_
-    observations` lets a species verified on any frame into the counts, so
-    the grid has to be able to show the card that count came from, even
-    though its thumbnail will be missing."""
+def test_metadata_load_drops_a_verified_box_off_its_tracks_card(sort_db):
+    """A verdict on the card reaches every box of the track, so a
+    verified box on another frame is the same reviewed animal, not a
+    second card. Letting it through would turn every frame of a verified
+    track into a row of its own."""
     db_path, s = sort_db
     p = make_project(s)
     dep = make_deployment(s, project_id=p.id)
-    dets = _video_with_detections(s, dep.id, best_frame=24, frames=[24, 144])
+    dets = _video_with_detections(s, dep.id, representative=24, frames=[24, 144])
     dets[144].verified = True
     s.commit()
 
     ids, _, _ = _load_metadata(db_path, p.id, {})
 
-    assert set(ids) == {dets[24].id, dets[144].id}
+    assert set(ids) == {dets[24].id}
 
 
 def test_order_events_by_similarity_keeps_partial_event_intact(monkeypatch):

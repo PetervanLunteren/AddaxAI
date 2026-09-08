@@ -3,8 +3,9 @@
 - Single-destination placement: every file lands in its main-species folder.
 - ``group_events``: keeps a burst together under the event's main species.
 - The uniform label filter dropping excluded person / vehicle files.
-- Videos copied as the file they are, and as their best-frame JPEG only
-  under ``videos_as_stills`` (the blur case).
+- Videos copied as the file they are, and as their cover-frame JPEG only
+  under ``videos_as_stills`` (the blur case). Their folder comes from
+  their cards (each track's representative box), never another frame.
 
 The ``output_preview`` mirror is checked for the same scenarios so the live
 preview never disagrees with the real run.
@@ -26,6 +27,8 @@ from tests.conftest import (
     make_detection,
     make_file,
     make_project,
+    make_track,
+    make_video_box,
 )
 
 
@@ -313,9 +316,7 @@ def test_video_is_copied_as_the_file_it_is(db, tmp_path):
     project = make_project(db, name="vid", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     f = _video_on_disk(db, tmp_path, dep.id, "CLIP01.MP4")
-    make_detection(
-        db, file_id=f.id, confidence=0.9, label="deer", frame_number=0
-    )
+    make_video_box(db, file_id=f.id, confidence=0.9, label="deer", frame_number=0)
 
     target = tmp_path / "out"
     result = separate_into_folders(db, project.id, _ctx(target), media_threshold=0.5)
@@ -334,9 +335,7 @@ def test_video_is_copied_even_when_writes_are_deferred(db, tmp_path):
     project = make_project(db, name="vid-deferred", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     f = _video_on_disk(db, tmp_path, dep.id, "CLIP01.MP4")
-    make_detection(
-        db, file_id=f.id, confidence=0.9, label="deer", frame_number=0
-    )
+    make_video_box(db, file_id=f.id, confidence=0.9, label="deer", frame_number=0)
 
     target = tmp_path / "out"
     ctx = _ctx(target)
@@ -360,9 +359,7 @@ def test_blur_writes_a_video_as_its_still_only(db, tmp_path):
     project = make_project(db, name="vid-stills", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     f = _video_on_disk(db, tmp_path, dep.id, "CLIP01.MP4")
-    make_detection(
-        db, file_id=f.id, confidence=0.9, label="deer", frame_number=0
-    )
+    make_video_box(db, file_id=f.id, confidence=0.9, label="deer", frame_number=0)
 
     target = tmp_path / "out"
     result = separate_into_folders(
@@ -560,13 +557,15 @@ def test_preview_drops_excluded_person(db):
     assert preview.in_scope_files == 0
 
 
-def test_video_is_filed_by_its_best_frame_not_another_frame(db, tmp_path):
-    """The bug this gate fixes. A video is summarised by its best frame
-    everywhere (its card, its row in the Files export, the still beside its
-    copy), so deciding its folder from a box on another frame files it under
-    a label none of those show. Best frame holds a person; frame 50
-    holds a more confident animal called red fox. The copy must land in
-    `person/`, and the preview must say the same thing."""
+def test_video_is_filed_by_its_cards_not_another_frame(db, tmp_path):
+    """The bug this gate fixes. A video is summarised by its cards
+    everywhere (one per track, on the track's representative frame, the
+    rows in the Files export), so deciding its folder from a box on
+    another frame files it under a label none of those show. One track's
+    card is a person on frame 3; a second track's card is a bushbuck on
+    frame 40, and that track's box on frame 50 is a more confident red
+    fox that nobody can review. The copy must land in `person/`, and the
+    preview must say the same thing."""
     project = make_project(db, name="vid-frame", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     ensure_builtin_labels(db)
@@ -583,16 +582,20 @@ def test_video_is_filed_by_its_best_frame_not_another_frame(db, tmp_path):
         best_frame_path=str(frame),
         observation_type="animal",
     )
-    make_detection(
+    make_video_box(
         db, file_id=f.id, category="person", confidence=0.80, frame_number=3
     )
+    animal = make_track(
+        db, file_id=f.id, track_key=2, start_frame=40, end_frame=50,
+        representative_frame_number=40,
+    )
     make_detection(
-        db,
-        file_id=f.id,
-        category="animal",
-        confidence=0.95,
-        label="red fox",
-        frame_number=50,
+        db, file_id=f.id, confidence=0.70, label="bushbuck", frame_number=40,
+        track_id=animal.id,
+    )
+    make_detection(
+        db, file_id=f.id, confidence=0.95, label="red fox", frame_number=50,
+        track_id=animal.id,
     )
     db.commit()
 
@@ -604,6 +607,7 @@ def test_video_is_filed_by_its_best_frame_not_another_frame(db, tmp_path):
     assert result.copied_count == 1
     assert (target / "person" / "CLIP02.MP4").is_file()
     assert not (target / "red-fox").exists()
+    assert not (target / "bushbuck").exists()
 
     preview = build_output_preview(
         db, project.id, group_by="flat", media_threshold=0.5
@@ -612,9 +616,10 @@ def test_video_is_filed_by_its_best_frame_not_another_frame(db, tmp_path):
 
 
 def test_video_whose_best_frame_is_empty_reads_blank(db, tmp_path):
-    """Nothing passes on the frame that summarises the clip, so the copy is a blank,
-    not a red fox. With "copy empties" off it is skipped entirely. Either
-    way the off-frame box is still in the data exports."""
+    """The clip has no card (its only box is untracked, off the cover),
+    so the copy is a blank, not a red fox. With "copy empties" off it is
+    skipped entirely. Either way the box is still in the recognitions
+    JSON."""
     project = make_project(db, name="vid-empty", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     frame = tmp_path / "cache" / "empty.jpg"
@@ -660,13 +665,13 @@ def test_video_whose_best_frame_is_empty_reads_blank(db, tmp_path):
     assert skipped.copied_count == 0
 
 
-def test_event_grouping_uses_each_videos_best_frame(db, tmp_path):
+def test_event_grouping_uses_each_videos_cards(db, tmp_path):
     """`group_events` keeps a burst in one folder, and that folder is
-    decided by build_event_primary_labels. It must count only boxes that
-    exist as pictures: a video is summarised by its best frame, so an
-    off-frame box naming the burst's folder files every clip in it under
-    a label none of their stills show. Caught by an end-to-end run, not by the
-    audit, because grouping is on by default."""
+    decided by build_event_primary_labels. It must count only cards: a
+    video is summarised by its tracks' representative boxes, so a box on
+    another frame of a track naming the burst's folder files every clip
+    in it under a label none of their cards show. Caught by an end-to-end
+    run, not by the audit, because grouping is on by default."""
     project = make_project(db, name="ev-frame", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
 
@@ -688,13 +693,20 @@ def test_event_grouping_uses_each_videos_best_frame(db, tmp_path):
             observation_type="animal",
         )
         files.append(f)
-        # On the saved frame: bushbuck. Off it, a more confident cattle box
-        # that used to name the whole burst.
-        make_detection(
-            db, file_id=f.id, confidence=0.80, label="bushbuck", frame_number=3
+        # One track: its card on frame 3 says bushbuck. On frame 50 the
+        # same animal is a more confident cattle box, which used to name
+        # the whole burst.
+        track = make_track(
+            db, file_id=f.id, start_frame=3, end_frame=50,
+            representative_frame_number=3,
         )
         make_detection(
-            db, file_id=f.id, confidence=0.95, label="cattle", frame_number=50
+            db, file_id=f.id, confidence=0.80, label="bushbuck", frame_number=3,
+            track_id=track.id,
+        )
+        make_detection(
+            db, file_id=f.id, confidence=0.95, label="cattle", frame_number=50,
+            track_id=track.id,
         )
     _link_event(db, dep.id, [f.id for f in files])
     db.commit()

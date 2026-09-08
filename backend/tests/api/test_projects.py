@@ -582,10 +582,17 @@ def test_re_embed_accepts_min_confidence_override(client, db):
 # ---------------------------------------------------------------------------
 
 
-def _video_with_off_frame_boxes(db):
-    """A project holding one video whose best frame is 3, with one box on
-    that frame and two on frames nobody can open."""
-    from tests.conftest import make_deployment, make_detection, make_file, make_site
+def _video_with_one_track(db):
+    """A project holding one video whose cover picture is frame 3, with
+    one animal tracked over frames 3, 7 and 11. Its card is on frame 7,
+    so the box on the cover is a sibling, not a card."""
+    from tests.conftest import (
+        make_deployment,
+        make_detection,
+        make_file,
+        make_site,
+        make_track,
+    )
 
     p = make_project(db)
     site = make_site(db, project_id=p.id)
@@ -597,50 +604,57 @@ def _video_with_off_frame_boxes(db):
         file_format="mp4",
         best_frame_number=3,
     )
+    track = make_track(
+        db, file_id=f.id, start_frame=3, end_frame=11, representative_frame_number=7,
+    )
     for frame in (3, 7, 11):
         make_detection(
             db, file_id=f.id, confidence=0.9, label="deer", frame_number=frame,
+            track_id=track.id,
         )
     db.flush()
     return p
 
 
-def test_detection_count_ignores_off_best_frame_boxes(client, db):
-    """A video stores boxes on every sampled frame, but only the best frame
-    is written to disk, so the other boxes have no picture to open. Counting
-    them made this endpoint report 220 where the Labels grid held 32, and the
-    reprocess summary built on it promised changes to unreachable boxes."""
-    p = _video_with_off_frame_boxes(db)
+def test_detection_count_counts_one_card_per_track(client, db):
+    """A video stores boxes on every sampled frame, but a track has one
+    card, on its representative frame. Counting every box made this
+    endpoint report 220 where the Labels grid held 32, and the reprocess
+    summary built on it promised changes to unreachable boxes."""
+    p = _video_with_one_track(db)
     resp = client.get(f"/api/projects/{p.id}/detection-count?threshold=0.2")
     assert resp.status_code == 200
     assert resp.json()["count"] == 1
 
 
-def test_label_stats_ignores_off_best_frame_boxes(client, db):
+def test_label_stats_count_one_card_per_track(client, db):
     """Same gate, because these counts drive the "Effect on statistics"
     summary shown after a settings change."""
-    p = _video_with_off_frame_boxes(db)
+    p = _video_with_one_track(db)
     resp = client.get(f"/api/projects/{p.id}/label-stats?threshold=0.2")
     assert resp.status_code == 200
     assert resp.json() == [{"label": "deer", "count": 1}]
 
 
-def test_verified_off_frame_box_still_counts(client, db):
-    """The verified override outranks the frame gate: a human decision must
-    never drop out of the numbers, even on a frame with no picture."""
+def test_a_verified_sibling_box_on_the_cover_is_not_a_second_card(client, db):
+    """The sibling box on the cover frame is the same animal as the card
+    on frame 7, so it stays out of the count even when verified. There
+    is no "verified anywhere" escape hatch: a verdict reaches every box
+    of the track, and letting them through would count every frame of a
+    verified track."""
     from app.models import Detection
 
-    p = _video_with_off_frame_boxes(db)
-    off = (
+    p = _video_with_one_track(db)
+    on_cover = (
         db.query(Detection)
-        .filter(Detection.frame_number == 7)
+        .filter(Detection.frame_number == 3)
         .one()
     )
-    off.verified = True
+    on_cover.verified = True
     db.flush()
 
     resp = client.get(f"/api/projects/{p.id}/detection-count?threshold=0.2")
-    assert resp.json()["count"] == 2
+    assert resp.json()["count"] == 1
 
 
 def test_custom_label_reuses_the_builtin_row(client, db):
@@ -724,21 +738,3 @@ def test_a_long_list_that_leaves_a_class_is_not_excluding_all(client, db):
     assert resp.status_code == 200, resp.text
 
 
-def test_video_tracking_is_off_unless_switched_on(client):
-    """Tracking is inference-time like video_fps: a new project starts with
-    it off, an update switches it, and the response carries it so the forms
-    can seed from the project row. Like video_fps and media_filter it is
-    set through PATCH, which is how both forms write their settings."""
-    resp = client.post("/api/projects", json={"name": "bruv"})
-    assert resp.status_code == 201
-    project = resp.json()
-    assert project["video_tracking"] is False
-
-    resp = client.patch(
-        f"/api/projects/{project['id']}", json={"video_tracking": True}
-    )
-    assert resp.status_code == 200
-    assert resp.json()["video_tracking"] is True
-
-    resp = client.get(f"/api/projects/{project['id']}")
-    assert resp.json()["video_tracking"] is True

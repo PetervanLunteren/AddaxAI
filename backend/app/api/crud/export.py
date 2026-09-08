@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Row, and_, func, or_, select
-from sqlalchemy.orm import Session, defer
+from sqlalchemy.orm import Session, defer, selectinload
 
 from app.api.crud.export_formats import slugify
 from app.core.logging_config import get_logger
@@ -53,6 +53,7 @@ from app.models import (
     event_files,
 )
 from app.utils.datetime_serialization import to_local_iso_with_offset
+from app.utils.media_dates import frame_time
 
 logger = get_logger(__name__)
 
@@ -151,8 +152,11 @@ _FLAT_DETECTION_HEADERS = [
     "taxon_variant",
     "scientific_name",
     "common_name",
-    # Geometry: video frame index, then the normalized [0,1] box.
+    # Geometry: video frame index, the track this box belongs to (the
+    # tracker's own number within the clip, empty for photos), then the
+    # normalized [0,1] box.
     "frame_number",
+    "track_id",
     "bbox_x",
     "bbox_y",
     "bbox_width",
@@ -280,20 +284,18 @@ def get_scoped_detection_rows(
     *,
     extra_excluded: list[str] | None = None,
     deployment_ids: list[str] | None = None,
-    every_frame: bool = False,
 ) -> list[Row[Any]]:
     """
     Return every (File, Detection, Deployment, Site, LabelTaxonomy) row
     in scope for ``project``.
 
-    Only boxes the user can reach, by default: the visibility rule
-    (`ml/detection_visibility.py`) sits in the join, so a video's
-    off-frame boxes never leave the database. That is what the tables and
-    the map show, and it is what keeps a tracked hour of video (12,700
-    boxes, 700 reachable) from loading 12,700 ORM rows to write 700.
-    ``every_frame=True`` keeps every stored box; CamTrap DP is the one
-    export built for other software rather than a person, and its
-    per-box rows must not drop a frame.
+    Only boxes the user can reach: the visibility rule
+    (`ml/detection_visibility.py`) sits in the join, so for a video only
+    each track's card leaves the database. That is what the tables, the
+    map and the CamTrap DP observations show (one row per track), and it
+    is what keeps a tracked hour of video (12,700 boxes, 700 cards) from
+    loading 12,700 ORM rows to write 700. The complete record is
+    ``addaxai-recognitions.json``.
 
     LEFT JOIN on Detection: keeps files with zero in-scope detections so
     the caller can emit a blank row.
@@ -330,7 +332,7 @@ def get_scoped_detection_rows(
         # Without this, SQLite drags ~70k EXIF blobs through the ORDER BY
         # sorter's temp file and hits SQLITE_FULL ("database or disk is full")
         # on large projects even with plenty of free space on the data drive.
-        .options(defer(File.exif_data))
+        .options(defer(File.exif_data), selectinload(Detection.track))
         .select_from(File)
         .join(Deployment, File.deployment_id == Deployment.id)
         .outerjoin(Site, Deployment.site_id == Site.id)
@@ -339,7 +341,7 @@ def get_scoped_detection_rows(
             and_(
                 Detection.file_id == File.id,
                 threshold_clause,
-                *([] if every_frame else [on_visible_frame()]),
+                on_visible_frame(),
             ),
         )
         .outerjoin(
@@ -683,6 +685,7 @@ def _detection_cells(
         detection.scientific_name or "",
         detection.common_name or "",
         detection.frame_number if detection.frame_number is not None else "",
+        detection.track.track_key if detection.track is not None else "",
         _round_or_blank(detection.bbox_x, 6),
         _round_or_blank(detection.bbox_y, 6),
         _round_or_blank(detection.bbox_width, 6),
@@ -1651,12 +1654,8 @@ def build_camtrap_dp_tables(
         detections = [(d, t) for d, t in detections if not is_non_label(d.label)]
 
         # The boxes about to be written are the honest test for "is this
-        # file blank". This used to also short-circuit on the stored
-        # `observation_type == "blank"`, which was near-equivalent while
-        # that column was derived over every frame. It is not equivalent
-        # now: a video whose best frame is empty but which still has
-        # passing boxes on other frames would take the blank branch and
-        # lose every per-box row from an archival export.
+        # file blank": a photo's boxes, or a video's cards (one per
+        # track, the rows the visibility rule lets through).
         if not detections:
             observations_rows.append(
                 _camtrap_blank_row(
@@ -1671,11 +1670,13 @@ def build_camtrap_dp_tables(
             continue
 
         for detection, taxonomy in detections:
-            # Media-level rows are the per-box detections (one row per
-            # bounding box). Box-less species are carried by the
-            # event-level rows emitted after this loop, so skip any here.
+            # Media-level rows: one per box of a photo, one per track of a
+            # video (its card carries the label, the box and the span).
+            # Box-less species are carried by the event-level rows
+            # emitted after this loop, so skip any here.
             if detection.bbox_x is None:
                 continue
+            track = detection.track if file_obj.file_type == "video" else None
             obs_type = _obs_type_from_category(detection.category)
             sci_name = (
                 (_camtrap_taxonomy_name(taxonomy) or "")
@@ -1702,16 +1703,42 @@ def build_camtrap_dp_tables(
                 else ""
             )
 
+            # A track is placed in time by its own span inside the clip
+            # (the standard's temporal window: eventStart/eventEnd inside
+            # the media file), identified by individualID, and carries
+            # its frames as tags, the only place Camtrap DP has for them.
+            if track is not None:
+                obs_id = f"{obs_id_prefix}-{track.id}"
+                obs_start = _iso_datetime(frame_time(file_obj, track.start_frame), tz_name)
+                obs_end = _iso_datetime(frame_time(file_obj, track.end_frame), tz_name)
+                individual = f"{file_obj.id}_{track.track_key}"
+                tags = "|".join(
+                    f"{k}:{v}"
+                    for k, v in (
+                        ("frameStart", track.start_frame),
+                        ("frameEnd", track.end_frame),
+                        ("bboxFrame", track.representative_frame_number),
+                        ("frameRate", file_obj.frame_rate),
+                    )
+                    if v is not None
+                )
+            else:
+                obs_id = f"{obs_id_prefix}-{detection.id}"
+                obs_start = event_start or captured_iso
+                obs_end = event_end or captured_iso
+                individual = ""
+                tags = ""
+
             # Row order must match _CAMTRAP_OBS_HEADERS exactly. One
-            # media-level row per bounding box (observationLevel="media").
+            # media-level row per box or track (observationLevel="media").
             observations_rows.append(
                 [
-                    f"{obs_id_prefix}-{detection.id}",    # observationID
+                    obs_id,                                # observationID
                     deployment.id,                         # deploymentID
                     file_obj.id,                           # mediaID
                     event_id,                              # eventID
-                    event_start or captured_iso,           # eventStart
-                    event_end or captured_iso,             # eventEnd
+                    obs_start,                             # eventStart
+                    obs_end,                               # eventEnd
                     "media",                               # observationLevel
                     obs_type,                              # observationType
                     "",                                    # cameraSetupType
@@ -1720,7 +1747,7 @@ def build_camtrap_dp_tables(
                     life_stage,                            # lifeStage (enum)
                     sex,                                   # sex (enum)
                     "",                                    # behavior
-                    "",                                    # individualID
+                    individual,                            # individualID
                     "",                                    # individualPositionRadius
                     "",                                    # individualPositionAngle
                     "",                                    # individualSpeed
@@ -1732,7 +1759,7 @@ def build_camtrap_dp_tables(
                     classified_by,                         # classifiedBy
                     "",                                    # classificationTimestamp
                     prob,                                  # classificationProbability
-                    "",                                    # observationTags
+                    tags,                                  # observationTags
                     comments,                              # observationComments
                 ]
             )
@@ -1802,11 +1829,19 @@ def _camtrap_event_row(
 
     Order must match _CAMTRAP_OBS_HEADERS exactly. classificationMethod is
     "human" when the count was set by a person, else "machine" (MaxN).
+    The tags say how the machine's count was made and where: MaxN, the
+    most individuals in one frame, with the file and frame it happened
+    on, the way the BRUV manuals record it (the standard has no field).
     """
     method = "human" if obs.human_count is not None else "machine"
     life_stage, sex, behavior, comments = _camtrap_cohort_fields(
         taxonomy, obs, ctx["notes"]
     )
+    tags = ""
+    if obs.max_n > 0:
+        parts = [("countMethod", "MaxN"), ("maxnMediaID", obs.max_n_file_id),
+                 ("maxnFrame", obs.max_n_frame_number)]
+        tags = "|".join(f"{k}:{v}" for k, v in parts if v is not None)
     return [
         f"obs-event-{obs.id}",            # observationID
         ctx["deployment_id"],             # deploymentID
@@ -1834,7 +1869,7 @@ def _camtrap_event_row(
         classified_by,                    # classifiedBy
         "",                               # classificationTimestamp
         "",                               # classificationProbability
-        "",                               # observationTags
+        tags,                             # observationTags
         comments,                         # observationComments
     ]
 

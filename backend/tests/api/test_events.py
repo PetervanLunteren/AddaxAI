@@ -10,6 +10,8 @@ from tests.conftest import (
     make_event_with_files,
     make_project,
     make_site,
+    make_track,
+    make_video_box,
 )
 
 
@@ -628,11 +630,12 @@ def _taxonomy_row(db, model_id, name, **kw):
     return row
 
 
-def test_filter_options_hides_offbestframe_video_labels(db):
+def test_filter_options_hides_video_labels_without_a_card(db):
     """`filter-options` is the flat label list shown when a project has no
     taxonomy tree, so it stands in for the tree and must match it. Left
-    ungated it offered species living only on frames the grid never
-    renders, and picking one returned nothing."""
+    ungated it offered species living only on boxes the grid never
+    renders (an untracked box has no card), and picking one returned
+    nothing."""
     from app.api.crud.event import get_filter_options
     from app.models import File
 
@@ -652,10 +655,11 @@ def test_filter_options_hides_offbestframe_video_labels(db):
     )
     db.add(f)
     db.flush()
-    make_detection(
+    make_video_box(
         db, file_id=f.id, confidence=0.9, label="deer",
         label_taxonomy_id=seen.id, frame_number=10,
     )
+    # Untracked, so visible nowhere.
     make_detection(
         db, file_id=f.id, confidence=0.9, label="chimpanzee",
         label_taxonomy_id=ghost.id, frame_number=150,
@@ -698,10 +702,12 @@ def test_filter_options_keeps_every_image_label(db):
 # ── Verification progress counts only what the grid can show ─────────
 
 
-def _video_event(db, project, frames, best_frame=10, verified_frames=()):
-    """One event holding one video with `best_frame_number=best_frame` and
-    a `deer` detection on each of `frames`. Detections whose frame is in
-    `verified_frames` are marked verified."""
+def _video_event(db, project, frames, card_frame=10, verified_frames=()):
+    """One event holding one video with one `deer` track: a box on each
+    of `frames`, the track's representative frame (its card) being
+    `card_frame`, which must be one of them. Boxes whose frame is in
+    `verified_frames` are marked verified. The cover picture is the same
+    frame; nothing is judged on it."""
     from app.models import File
     from app.models.event import Event
     from app.models.event import event_files as event_files_table
@@ -716,11 +722,20 @@ def _video_event(db, project, frames, best_frame=10, verified_frames=()):
         file_path=f"/fake/{uuid.uuid4().hex}.mp4",
         file_type="video",
         file_format="mp4",
-        best_frame_number=best_frame,
+        best_frame_number=card_frame,
     )
     db.add(f)
     db.flush()
 
+    assert card_frame in frames
+    track = make_track(
+        db,
+        file_id=f.id,
+        start_frame=min(frames),
+        end_frame=max(frames),
+        frame_count=len(frames),
+        representative_frame_number=card_frame,
+    )
     for frame in frames:
         make_detection(
             db,
@@ -729,6 +744,7 @@ def _video_event(db, project, frames, best_frame=10, verified_frames=()):
             label="deer",
             label_taxonomy_id=tax.id,
             frame_number=frame,
+            track_id=track.id,
             verified=frame in verified_frames,
         )
 
@@ -750,12 +766,12 @@ def _video_event(db, project, frames, best_frame=10, verified_frames=()):
     return f, tax
 
 
-def test_verification_stats_count_only_the_best_frame(client, db):
+def test_verification_stats_count_one_card_per_track(client, db):
     """The pill's denominator has to be the population the Labels grid
-    can render. A video stores a detection per sampled frame but only the
-    best frame is renderable, so counting all of them left a video project
-    stuck at 19% with every card on screen already verified, and unable to
-    reach 100% however much work the user did."""
+    can render. A video stores a detection per sampled frame but a track
+    has one card, on its representative frame, so counting all of them
+    left a video project stuck at 19% with every card on screen already
+    verified, and unable to reach 100% however much work the user did."""
     p = make_project(db, classification_model_id="EUR-DF-v1-3")
     _video_event(db, p, frames=[5, 10, 20])
 
@@ -776,19 +792,20 @@ def test_verification_stats_reach_100_percent_when_grid_is_done(client, db):
     assert data["total_detections"] == 1
 
 
-def test_verification_stats_keep_offbestframe_verified_detections(client, db):
-    """Verified detections pass on any frame, so a species a human named
-    on some other frame stays in both halves of the ratio. Dropping it
-    from the numerator would lose the human decision; dropping it from
-    the denominator alone would push the bar above 100%."""
+def test_verification_stats_do_not_count_a_verified_sibling_twice(client, db):
+    """A verified box on another frame of the track is the same animal,
+    not a second card. A verdict on the card reaches every box of the
+    track, so letting verified siblings through would turn every frame
+    of a verified track into a row of its own and push the denominator
+    back up the moment the user did the work."""
     p = make_project(db, classification_model_id="EUR-DF-v1-3")
     _video_event(db, p, frames=[5, 10, 20], verified_frames=(5, 10))
 
     data = client.get(
         f"/api/events/verification-stats?project_id={p.id}"
     ).json()
-    assert data["total_detections"] == 2
-    assert data["verified_detections"] == 2
+    assert data["total_detections"] == 1
+    assert data["verified_detections"] == 1
 
 
 def test_verification_stats_keep_every_image_detection(client, db):
@@ -835,7 +852,7 @@ def test_verification_stats_keep_every_image_detection(client, db):
     assert data["total_detections"] == 3
 
 
-def test_progress_by_label_counts_only_the_best_frame(client, db):
+def test_progress_by_label_counts_one_card_per_track(client, db):
     """The dashboard's per-species rows break down the same population as
     the bar above them, so they carry the same gate."""
     p = make_project(db, classification_model_id="EUR-DF-v1-3")
@@ -1073,6 +1090,8 @@ def test_event_detail_carries_where_and_when_the_max_n_was_counted(client, db):
         make_file,
         make_project,
         make_site,
+        make_track,
+        make_video_box,
     )
 
     project = make_project(db, timezone="UTC", counting_threshold=0.2)
@@ -1094,11 +1113,21 @@ def test_event_detail_carries_where_and_when_the_max_n_was_counted(client, db):
         db.execute(
             insert(event_files).values(event_id=event.id, file_id=f.id, sequence_number=seq)
         )
-    # Shark: two at frame 900 (30 s in), one at frame 60. First seen at frame 60.
-    for frame in (60, 900, 900):
+    # Shark: two at frame 900 (30 s in), one at frame 60. First seen at
+    # frame 60. One shark is tracked from 60 to 900 (its card on 60), a
+    # second one shows up only at 900.
+    long_track = make_track(
+        db, file_id=video.id, track_key=1, start_frame=60, end_frame=900,
+        representative_frame_number=60,
+    )
+    for frame in (60, 900):
         make_detection(
-            db, file_id=video.id, frame_number=frame, label="shark", category="elasmobranch"
+            db, file_id=video.id, frame_number=frame, track_id=long_track.id,
+            label="shark", category="elasmobranch",
         )
+    make_video_box(
+        db, file_id=video.id, frame_number=900, label="shark", category="elasmobranch"
+    )
     # Fox on the photo only.
     make_detection(db, file_id=photo.id, label="fox")
     db.flush()

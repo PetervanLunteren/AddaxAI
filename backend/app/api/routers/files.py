@@ -25,6 +25,7 @@ from app.api.schemas.file import (
 )
 from app.db.base import get_db
 from app.models import Deployment, File, Project
+from app.services.video_frame_service import decode_frame_jpeg
 from app.utils.datetime_serialization import set_active_project_timezone
 
 router = APIRouter(prefix="/api/files", tags=["files"])
@@ -259,14 +260,14 @@ _THUMB_JPEG_QUALITY = 85
 _IMAGE_CACHE_HEADERS = {"Cache-Control": "public, max-age=86400, immutable"}
 
 
-def _render_thumbnail_bytes(source_path: Path) -> bytes:
+def _render_thumbnail_bytes(source: Path | io.BytesIO) -> bytes:
     """Resize an image to thumbnail width and return JPEG bytes.
 
     Done in-memory to avoid filling user_data_dir with cached
     thumbnails (camera-trap projects can have hundreds of thousands of
     files). Browser-level caching via Cache-Control covers repeat views.
     """
-    with Image.open(source_path) as img:
+    with Image.open(source) as img:
         img = img.convert("RGB")
         if img.width > _THUMB_MAX_WIDTH:
             ratio = _THUMB_MAX_WIDTH / img.width
@@ -290,8 +291,8 @@ def get_file_image(
     frame: int | None = Query(
         None,
         description=(
-            "Videos only: serve the still of this frame instead of the best "
-            "frame. Only a track's representative frame has one."
+            "Videos only: decode this frame of the clip instead of serving "
+            "the cover frame. Any frame the clip has."
         ),
     ),
     db: Session = Depends(get_db),
@@ -327,24 +328,20 @@ def get_file_image(
         # surface has no passing detection and so sits in the Empties
         # tab, one tile per clip.
         if frame is not None and frame != file.best_frame_number:
-            # A track's representative frame: the one other kind of still
-            # a video has. Any other frame number has no picture, and
-            # saying so beats serving the best frame under a wrong label.
-            still = next(
-                (
-                    t.frame_path
-                    for t in file.tracks
-                    if t.representative_frame_number == frame and t.frame_path
-                ),
-                None,
-            )
-            if still is None:
+            # Any other frame is decoded on request; nothing per frame is
+            # stored. A frame past the end, or a clip ffmpeg cannot read,
+            # says so rather than serving the cover under a wrong label.
+            jpeg = decode_frame_jpeg(file.file_path, frame, file.frame_rate)
+            if jpeg is None:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"This video has no still for frame {frame}.",
+                    detail=f"Could not decode frame {frame} of this video.",
                 )
-            source_path = Path(still)
-            source_media_type = "image/jpeg"
+            if size == "thumb":
+                jpeg = _render_thumbnail_bytes(io.BytesIO(jpeg))
+            return Response(
+                content=jpeg, media_type="image/jpeg", headers=_IMAGE_CACHE_HEADERS
+            )
         elif not file.best_frame_path:
             raise HTTPException(
                 status_code=404,

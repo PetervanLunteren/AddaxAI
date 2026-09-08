@@ -19,21 +19,25 @@ from app.models.detection_embedding import DetectionEmbedding
 logger = get_logger(__name__)
 
 
-def _video_still_for(det: Detection, file: File) -> str | None:
-    """The JPEG a video box has pixels in: the best frame, or the track's
-    representative frame when this is the box that stands for its track.
-    None for every other frame, which has no picture to embed or crop."""
+def video_pixels_for(det: Detection, file: File) -> tuple[str, list[float]] | None:
+    """The JPEG on disk a video box has pixels in, and the box within it.
+
+    A track's card is the crop the tracking script wrote: the whole
+    file, so the box is the full frame. A card without a crop (a drawn
+    box, a legacy one-frame track, a crop that failed to write) that sits
+    on the video's cover frame is cut from the cover at its own box. Any
+    other card has no picture on disk: the crop service decodes its
+    frame on request, the embedder (a subprocess that cannot) skips it.
+    """
     if det.frame_number is None:
         return None
-    if file.best_frame_number == det.frame_number and file.best_frame_path:
-        return file.best_frame_path
     track = det.track
-    if (
-        track is not None
-        and det.frame_number == track.representative_frame_number
-        and track.frame_path
-    ):
-        return track.frame_path
+    if track is None or det.frame_number != track.representative_frame_number:
+        return None
+    if track.crop_path:
+        return track.crop_path, [0.0, 0.0, 1.0, 1.0]
+    if file.best_frame_number == det.frame_number and file.best_frame_path:
+        return file.best_frame_path, [det.bbox_x, det.bbox_y, det.bbox_width, det.bbox_height]
     return None
 
 
@@ -53,14 +57,11 @@ def build_embedding_input(
     multiplies the per-crop model work. Verified detections always
     embed — a human said the box is real.
 
-    Image detections embed against `File.file_path`. Video detections
-    only embed when their `frame_number` matches the parent video's
-    `best_frame_number`, in which case they embed against
-    `File.best_frame_path`. Non-best-frame video detections are skipped:
-    they are invisible in the verification UI and similarity search
-    anyway, and embedding them would require the streaming-from-video
-    pattern the classifier worker uses, which isn't worth the extra
-    code for a feature nobody can see.
+    Image detections embed against `File.file_path`. A video detection
+    embeds only when it is a track's card (`video_pixels_for`): the
+    track's crop, or the cover frame for a card without one. The other
+    boxes of a track have no card and no picture, and the embedder runs
+    in a subprocess that cannot decode video, so they are skipped.
 
     Args:
         deployment_id: Deployment ID to query detections for
@@ -81,7 +82,7 @@ def build_embedding_input(
     )
 
     entries = []
-    skipped_non_best_frame = 0
+    skipped_no_pixels = 0
     skipped_no_bbox = 0
 
     for det, file in detections:
@@ -95,11 +96,13 @@ def build_embedding_input(
             skipped_no_bbox += 1
             continue
 
+        bbox = [det.bbox_x, det.bbox_y, det.bbox_width, det.bbox_height]
         if file.file_type == "video":
-            image_path = _video_still_for(det, file)
-            if image_path is None:
-                skipped_non_best_frame += 1
+            pixels = video_pixels_for(det, file)
+            if pixels is None:
+                skipped_no_pixels += 1
                 continue
+            image_path, bbox = pixels
         else:
             image_path = file.file_path
 
@@ -112,13 +115,13 @@ def build_embedding_input(
         entries.append({
             "detection_id": det.id,
             "image_path": image_path,
-            "bbox": [det.bbox_x, det.bbox_y, det.bbox_width, det.bbox_height],
+            "bbox": bbox,
         })
 
     logger.info(
         f"Built embedding input: {len(entries)} detections "
         f"({len(detections)} total; "
-        f"{skipped_non_best_frame} video detections off the best frame skipped; "
+        f"{skipped_no_pixels} video boxes without a picture on disk skipped; "
         f"{skipped_no_bbox} event-level observations skipped)"
     )
 

@@ -131,8 +131,6 @@ JOIN deployments dep ON dep.id = f.deployment_id
 LEFT JOIN sites s ON s.id = dep.site_id
 WHERE dep.project_id = ?
   AND (f.file_type != 'video'
-       OR (d.track_id IS NULL
-           AND (d.frame_number = f.best_frame_number OR d.verified = 1))
        OR EXISTS (SELECT 1 FROM tracks t
                   WHERE t.id = d.track_id
                     AND t.representative_frame_number = d.frame_number))"""

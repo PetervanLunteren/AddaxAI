@@ -27,6 +27,7 @@ from tests.conftest import (
     make_detection,
     make_file,
     make_project,
+    make_video_box,
 )
 
 
@@ -594,7 +595,8 @@ def test_a_rejected_box_is_not_drawn(db, tmp_path):
 
 
 def _clip_on_disk(db, tmp_path, dep_id, name, frame_name):
-    """A video whose container exists, with a dog box on its best frame."""
+    """A video whose container exists, with a dog box (a one-frame
+    track, so a card) on its cover frame."""
     src = tmp_path / "src" / name
     src.parent.mkdir(parents=True, exist_ok=True)
     src.write_bytes(name.encode())
@@ -608,7 +610,7 @@ def _clip_on_disk(db, tmp_path, dep_id, name, frame_name):
         best_frame_number=0,
         best_frame_path=_write_jpeg(tmp_path / "cache" / frame_name),
     )
-    make_detection(
+    make_video_box(
         db, file_id=file.id, category="animal", confidence=0.9, label="dog",
         frame_number=0,
     )

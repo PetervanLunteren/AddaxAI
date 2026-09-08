@@ -2,8 +2,8 @@
 
 X, relabel, verify, dismiss and undo on any box of a track reach every
 box the tracker followed the animal through, and a file sign-off does
-the same for the tracks whose representative box it could see. Boxes
-with no track (images, untracked videos, drawn boxes) are untouched.
+the same for every track in the file. Boxes with no track (images, the
+untracked rows of a pre-tracking run) are untouched.
 """
 
 from app.api.crud.detection import expand_to_tracks
@@ -15,12 +15,14 @@ from tests.conftest import (
     make_project,
     make_site,
     make_track,
+    make_video_box,
 )
 
 
 def _tracked_video(db, *, counting_threshold=0.2):
     """A video with two tracks of three boxes each (representative in the
-    middle), plus one untracked box on the best frame and one drawn box."""
+    middle), plus one untracked legacy box on the cover and one drawn box
+    (a one-frame track of its own)."""
     project = make_project(db, counting_threshold=counting_threshold)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
@@ -39,7 +41,7 @@ def _tracked_video(db, *, counting_threshold=0.2):
                                category="elasmobranch") for f in (300, 330, 360)],
         "loose": [make_detection(db, file_id=video.id, frame_number=60,
                                  category="elasmobranch")],
-        "drawn": [make_detection(db, file_id=video.id, frame_number=60, job_id=None,
+        "drawn": [make_video_box(db, file_id=video.id, frame_number=60, job_id=None,
                                  confidence=1.0, verified=True, category="elasmobranch")],
     }
     db.commit()
@@ -142,16 +144,14 @@ def test_bulk_verify_dismiss_and_undo_reach_the_track(client, db):
     assert not any(b.verified for b in boxes["one"])
 
 
-def test_a_file_sign_off_reaches_the_tracks_it_could_see(client, db):
-    """Signing the video off is a verdict on the frame the Files viewer
-    shows, the best frame: every box on it is verified, a weak one is
-    rejected, and through a box that belongs to a track the verdict
-    reaches every box of that track. A track with no box on that frame
-    is untouched: one click on a frame with seven sharks must not sign
-    off the seven hundred the person never saw."""
+def test_a_file_sign_off_reaches_every_track_through_its_card(client, db):
+    """Signing the video off is a verdict on every card the Files viewer
+    shows as a bar: every track's representative box, wherever in the
+    clip it sits. A weak track is rejected, a strong one verified, and
+    through the card the verdict reaches every box of the track. A box
+    with no card (the untracked legacy row) is left alone."""
     project, video, _, two, boxes = _tracked_video(db, counting_threshold=0.5)
-    # Track one's boxes are weak and its middle box sits on the best
-    # frame, so the sign-off rejects the whole track.
+    # Track one's boxes are weak, so the sign-off rejects the whole track.
     for b in boxes["one"]:
         b.confidence = 0.3
     db.commit()
@@ -161,10 +161,10 @@ def test_a_file_sign_off_reaches_the_tracks_it_could_see(client, db):
 
     db.expire_all()
     assert all(b.verified and b.label == "false detection" for b in boxes["one"])
-    assert boxes["loose"][0].verified
-    # Track two lives on frames 300 to 360, which nobody saw.
-    assert not any(b.verified for b in boxes["two"])
+    # Track two lives on frames 300 to 360; its card is a bar like any other.
+    assert all(b.verified for b in boxes["two"])
     assert all(b.label is None for b in boxes["two"])
+    assert not boxes["loose"][0].verified
     assert db.get(File, video.id).verified is True
 
     # And back: unverify clears every box of the file, tracks included.
@@ -214,3 +214,33 @@ def test_a_species_label_keeps_the_detectors_category(client, db):
     assert all(b.category == "elasmobranch" and b.label == "nurse shark" for b in boxes["one"])
     assert (person.category, person.label) == ("animal", "nurse shark")
     assert boxes["loose"][0].category == "vehicle"
+
+
+def test_a_drawn_box_on_a_clip_is_a_one_frame_track(client, db):
+    """Every video box has a track. A box drawn on a clip becomes a
+    track of its own on that frame (its card), and deleting the box
+    takes the empty track with it."""
+    from app.models import Track
+
+    _, video, _, _, _ = _tracked_video(db)
+    resp = client.post(
+        "/api/detections",
+        json={
+            "file_id": video.id, "category": "animal", "frame_number": 60,
+            "bbox_x": 0.5, "bbox_y": 0.5, "bbox_width": 0.1, "bbox_height": 0.1,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    box = db.get(Detection, resp.json()["id"])
+    track = box.track
+    assert track is not None
+    assert (track.start_frame, track.end_frame, track.representative_frame_number) == (60, 60, 60)
+    assert track.frame_count == 1 and track.crop_path is None
+    # A fresh key after the video's own tracks (two from the tracker, one
+    # for the fixture's drawn box).
+    assert track.track_key == 4
+
+    resp = client.delete(f"/api/detections/{box.id}")
+    assert resp.status_code == 204
+    db.expire_all()
+    assert db.get(Track, track.id) is None

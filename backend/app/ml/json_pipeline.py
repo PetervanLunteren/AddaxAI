@@ -27,7 +27,7 @@ from app.core.logging_config import get_logger
 from app.core.media_types import VIDEO_EXTENSIONS
 from app.ml.detection_visibility import visible_detections
 from app.ml.inference.base import PipelineResult
-from app.ml.inference.scoring import summarise_tracks
+from app.ml.inference.scoring import summarise_tracks, track_crop_filename
 from app.ml.json_utils import (
     build_classification_category_descriptions,
     extract_animal_detections,
@@ -686,11 +686,11 @@ def _link_tracks(
     One row per `track_id` in the JSON, keyed by `(file, track_key)` so a
     re-ingest onto an existing file finds its rows again instead of
     tripping the unique constraint. The numbers come from
-    `summarise_tracks`, the same reading of the JSON the frame passes
-    decoded the representative frame from. `frame_path` is set only when
-    that JPEG is on disk: a frame that would not decode leaves NULL and
-    the card renders without a picture, rather than pointing at a file
-    that is not there.
+    `summarise_tracks`, the same reading of the JSON the tracking script
+    kept the crop for. `crop_path` is set only when that crop is on disk
+    (`track_crop_filename`, beside the cover frame): a crop that was not
+    written leaves NULL and the card is cut from a decoded frame instead,
+    rather than pointing at a file that is not there.
     """
     summaries = summarise_tracks([det for det, _ in tracked])
     existing = {
@@ -708,8 +708,8 @@ def _link_tracks(
         track.frame_count = summary.frame_count
         track.max_confidence = summary.max_confidence
         track.representative_frame_number = summary.representative_frame_number
-        frame_path = frames_dir / f"frame{summary.representative_frame_number:06d}.jpg"
-        track.frame_path = str(frame_path) if frame_path.is_file() else None
+        crop_path = frames_dir / track_crop_filename(key)
+        track.crop_path = str(crop_path) if crop_path.is_file() else None
         rows[key] = track
     db.flush()  # ids for the boxes below
     for det, record in tracked:

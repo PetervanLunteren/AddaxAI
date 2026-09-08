@@ -1,31 +1,26 @@
 """Which detections the user can actually see.
 
-A video's detections sit on every sampled frame, but only the best frame
-is written to disk as a JPEG. So the app shows exactly one frame per
-video, and a detection on any other frame has no picture anywhere: not in
-the Labels grid, not on an event card, not in the annotated still a
-folder run writes. Images have no frames, so every image detection is
-visible.
+Images have no frames, so every image detection is visible. A video's
+detections sit on every sampled frame and every one of them belongs to
+a track (the tracker's boxes, a drawn box as a one-frame track, the
+boxes of a video analysed before tracking became the standard, migrated
+into one-frame tracks). The track is the unit of review, and it has one
+card:
 
-    an untracked video detection is visible only when
-    Detection.frame_number == File.best_frame_number,
-    a tracked one only on its track's representative frame
+    a video detection is visible on its track's representative frame
 
-A tracked video has one more still per track, at the frame of the
-track's highest-confidence box (`Track.representative_frame_number`,
-written by the same pass as the best frame), so that box has a picture
-too and is the card the person reviews the whole track through. It is
-the track's only card: a sibling box that happens to sit on the file's
-best frame is the same animal, so it must not become a second card.
-
-Verified untracked detections are the exception and pass on any frame.
-A human decision must never end up out of reach, which is the same
-escape hatch `calculate_max_n_for_event` uses to let a species verified
-on some frame into the counts. A tracked box needs no such hatch: a
-verdict on one box reaches the whole track (`expand_to_tracks`), so the
-card on the representative frame always carries it. Letting verified
-tracked boxes through would turn every frame of a verified track into a
-row of its own, in the grid counts and the detection exports.
+That frame is the one the track's highest-confidence box sits on
+(`Track.representative_frame_number`), the box the tracking script kept
+a crop of. It is the track's only card: a sibling box on any other
+frame, the video's cover frame included, is the same animal, so it must
+not become a second card. A verdict on the card reaches every box of
+the track (`expand_to_tracks`), which is why no "verified anywhere"
+escape hatch exists: letting verified boxes through on other frames
+would turn every frame of a verified track into a row of its own, in
+the grid counts and the detection exports. An untracked video box (an
+unverified box off the cover of a pre-tracking run) is visible nowhere,
+like the sub-threshold noise, and kept only so a reprocess of that run
+still matches its JSON.
 
 **Two things must apply this: anything that counts detections for the
 user, and anything that decides what the media outputs contain.**
@@ -33,30 +28,19 @@ user, and anything that decides what the media outputs contain.**
 Counting without it promises rows the UI cannot show. The label filter
 said "person 62" over a grid holding 4, and offered a "chimpanzee (2)"
 branch that led to a blank screen, because both of those detections live
-on a frame nobody can open.
+on a frame with no card.
 
-Placing without it is the same bug wearing different clothes. A video is
-written to disk as its best-frame JPEG, so deciding its folder, or
-whether to drop it, from a detection on some other frame files a picture
-under a label that picture does not show.
+Placing without it is the same bug wearing different clothes. The still
+beside a copied clip is its cover frame, so deciding its folder from a
+box that is not a card files a picture under a label nobody reviewed.
 
 **The spreadsheet exports apply it; the archival ones do not.**
-`addaxai-detections.csv` and the XLSX detections sheet used to carry
-every box on every frame, on the argument that they are the complete
-record and the user filters them downstream. In practice the file gave
-them nothing to filter *on*: it carries `frame_number` but not the
-video's best frame, so the comparison cannot be made from the file at
-all. What users saw was a species list holding animals they could not
-find, select or relabel anywhere in the app. So these tables now hold
-what the Labels grid holds, in both projects mode and folder runs, which
-also makes them agree with `addaxai-files.csv` and `counts.csv` beside
-them.
-
-The complete record is `addaxai-recognitions.json`, which keeps every
-stored detection with its frame number, and the CamTrap DP export, whose
-per-box rows must not drop a video whose best frame happens to be empty.
-Both are read by other software rather than by a person, which is why
-they keep the boxes with no picture.
+`addaxai-detections.csv` and the XLSX detections sheet hold what the
+Labels grid holds, one row per card, so they agree with
+`addaxai-files.csv` and `counts.csv` beside them. The complete record is
+`addaxai-recognitions.json`, which keeps every stored box with its frame
+and track. The CamTrap DP export writes one observation per track, with
+the track's span and its representative box.
 
 **Two lanes, one rule.** Have a query? Use a predicate. Have the
 detections already in memory? Use `visible_detections`. A parity test
@@ -66,10 +50,9 @@ is what makes having two of them safe.
 Places that cannot use any of these and keep a hand-written copy:
 `calculate_max_n_for_event` filters after the query to keep its grouping,
 `similarity_script` is a subprocess with no `app.*` on its path, and
-`shouldDrawBbox` in the frontend is TypeScript. There are more (`labels.py`
-twice, `embedding_utils`, `crop_service`, `annotated_copies` twice), which
-is itself the argument for reaching for a helper here rather than writing
-a tenth. Keep them in step.
+`shouldDrawBbox` in the frontend is TypeScript (it draws the boxes of
+the frame on screen, which for a card is the representative frame).
+Keep them in step.
 """
 
 from __future__ import annotations
@@ -87,33 +70,12 @@ def on_representative_frame() -> ColumnElement[bool]:
     """The box that stands for its track: the one on the track's
     representative frame. A correlated EXISTS, so it drops into any query
     that has ``Detection`` without asking the caller to join ``tracks``.
-    False for every untracked box."""
+    False for an untracked box."""
     return exists().where(
         and_(
             Track.id == Detection.track_id,
             Track.representative_frame_number == Detection.frame_number,
         )
-    )
-
-
-def _untracked() -> ColumnElement[bool]:
-    return Detection.track_id.is_(None)
-
-
-def on_pixel_surface() -> ColumnElement[bool]:
-    """The frames that have a JPEG and stand for the box: an image, an
-    untracked box on the video's best frame, or a track's representative
-    frame. Verified boxes elsewhere are visible but have no picture,
-    which is why the embedding paths use this and not
-    ``on_visible_frame``. Needs ``File`` joined to ``Detection``."""
-    return or_(
-        File.file_type == "image",
-        and_(
-            File.file_type == "video",
-            _untracked(),
-            Detection.frame_number == File.best_frame_number,
-        ),
-        on_representative_frame(),
     )
 
 
@@ -123,49 +85,21 @@ def on_visible_frame() -> ColumnElement[bool]:
     Combine with the usual threshold-or-verified clause; this one is
     only about *frames*, not confidence.
     """
-    return or_(
-        File.file_type != "video",
-        and_(
-            _untracked(),
-            or_(
-                Detection.frame_number == File.best_frame_number,
-                Detection.verified == True,  # noqa: E712
-            ),
-        ),
-        on_representative_frame(),
-    )
+    return or_(File.file_type != "video", on_representative_frame())
 
 
 def on_visible_frame_of(file: File) -> ColumnElement[bool]:
     """Same rule for a query already scoped to one known ``File``.
 
     Used where the caller holds the ORM object and does not join
-    ``File``, so the frame number is a plain value rather than a column.
-    A video with no best frame has no visible surface beyond whatever a
-    human verified, so only verified detections pass.
-
-    The video branches return **only** the frame clause. A caller that is
-    not otherwise scoped to this file must keep its own
+    ``File``. The video branch returns **only** the frame clause. A
+    caller that is not otherwise scoped to this file must keep its own
     ``Detection.file_id == file.id`` filter; without it a video's
-    detections would be drawn from every file sharing that frame number.
+    detections would be drawn from every file.
     """
     if file.file_type != "video":
         return Detection.file_id == file.id
-    if file.best_frame_number is None:
-        return or_(
-            and_(_untracked(), Detection.verified == True),  # noqa: E712
-            on_representative_frame(),
-        )
-    return or_(
-        and_(
-            _untracked(),
-            or_(
-                Detection.frame_number == file.best_frame_number,
-                Detection.verified == True,  # noqa: E712
-            ),
-        ),
-        on_representative_frame(),
-    )
+    return on_representative_frame()
 
 
 class _Track(Protocol):
@@ -174,7 +108,6 @@ class _Track(Protocol):
 
 class _FramedDetection(Protocol):
     frame_number: int | None
-    verified: bool
     track: _Track | None
 
 
@@ -189,20 +122,16 @@ def visible_detections(file: File, detections: Iterable[_D]) -> list[_D]:
     preserved, because ``strongest_passing_detection`` makes a stable
     order the caller's contract.
 
-    Takes the ``File`` rather than ``is_video`` / ``best_frame_number``
-    keywords on purpose. The ``file_type == "video"`` test is a third of
-    the rule, and passing it in as a flag would hand-copy that third to
-    every call site, which is the duplication this module exists to stop.
+    Takes the ``File`` rather than an ``is_video`` flag on purpose: the
+    ``file_type == "video"`` test is half of the rule, and passing it in
+    would hand-copy that half to every call site, which is the
+    duplication this module exists to stop.
     """
     if file.file_type != "video":
         return list(detections)
-    best = file.best_frame_number
     return [
         det
         for det in detections
-        if (
-            det.frame_number == det.track.representative_frame_number
-            if det.track is not None
-            else det.verified or (best is not None and det.frame_number == best)
-        )
+        if det.track is not None
+        and det.frame_number == det.track.representative_frame_number
     ]

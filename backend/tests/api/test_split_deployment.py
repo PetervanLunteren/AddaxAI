@@ -793,6 +793,43 @@ def test_split_rewrites_best_frame_path(client, db, tmp_path):
     assert Path(reloaded.best_frame_path).exists()
 
 
+def test_split_rewrites_track_crop_paths(client, db, tmp_path):
+    """A track's crop lives beside the cover frame and moves with it."""
+    from tests.conftest import make_track
+
+    root, d = _seed_deployment_with_files(db, tmp_path, {"siteA": 1, "siteB": 1})
+    site_a_file = db.execute(
+        select(File).where(File.file_path.like(f"{root}/siteA/%"))
+    ).scalar_one()
+    site_a_file.file_type = "video"
+    site_a_file.best_frame_number = 42
+    frame_dir = (
+        root / ".addaxai" / "projects" / d.project_id / "video_frames"
+        / Path(site_a_file.file_path).relative_to(root)
+    )
+    frame_dir.mkdir(parents=True, exist_ok=True)
+    (frame_dir / "frame000042.jpg").write_bytes(b"\x00")
+    (frame_dir / "track000002.jpg").write_bytes(b"\x00")
+    site_a_file.best_frame_path = str(frame_dir / "frame000042.jpg")
+    track = make_track(db, file_id=site_a_file.id, track_key=2, start_frame=10, end_frame=90,
+                       representative_frame_number=50, crop_path=str(frame_dir / "track000002.jpg"))
+    db.commit()
+    files = list(db.execute(select(File)).scalars())
+    _seed_parent_results_json(root, d.project_id, files)
+
+    resp = client.post(f"/api/deployments/{d.id}/split", json={"depth": 1})
+    assert resp.status_code == 200, resp.text
+
+    db.expire_all()
+    reloaded = db.get(type(track), track.id)
+    expected = (
+        root / "siteA" / ".addaxai" / "projects" / d.project_id
+        / "video_frames" / Path(site_a_file.file_path).name / "track000002.jpg"
+    )
+    assert reloaded.crop_path == str(expected)
+    assert Path(reloaded.crop_path).exists()
+
+
 # ---------------------------------------------------------------------------
 # Error paths
 # ---------------------------------------------------------------------------

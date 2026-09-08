@@ -33,6 +33,7 @@ from tests.conftest import (
     make_file,
     make_project,
     make_site,
+    make_video_box,
 )
 
 
@@ -113,27 +114,27 @@ def test_verifying_a_file_with_a_passing_box_rejects_the_weak_ones(client, db):
     assert f.verified is True
 
 
-def test_the_verify_write_is_frame_gated(client, db):
-    """A video is judged on its best frame. Boxes on the frames nobody saw
-    are neither rejected nor signed off, strong or weak. Before this the
-    verify write had no frame clause and signed off boxes on frames the
-    person never opened."""
+def test_the_verify_write_reaches_every_card_and_no_other_box(client, db):
+    """A video is judged through its cards, one per track, on whatever
+    frame each sits. A weak card is rejected and a strong one signed
+    off, wherever in the clip it is; a box that is not a card (an
+    untracked legacy row) is neither, whatever its frame."""
     f = _file_in_project(db, file_type="video", best_frame_number=0)
-    on_weak = make_detection(db, file_id=f.id, confidence=0.05, frame_number=0).id
-    on_strong = make_detection(db, file_id=f.id, confidence=0.9, frame_number=0).id
-    off_weak = make_detection(db, file_id=f.id, confidence=0.05, frame_number=7).id
-    off_strong = make_detection(db, file_id=f.id, confidence=0.9, frame_number=7).id
+    card_weak = make_video_box(db, file_id=f.id, confidence=0.05, frame_number=0).id
+    card_strong = make_video_box(db, file_id=f.id, confidence=0.9, frame_number=7).id
+    loose_weak = make_detection(db, file_id=f.id, confidence=0.05, frame_number=0).id
+    loose_strong = make_detection(db, file_id=f.id, confidence=0.9, frame_number=7).id
     db.commit()
 
     _verify(client, f.id)
 
     by_id = {d.id: d for d in _boxes(db, f.id)}
-    _assert_rejected(by_id[on_weak])
-    assert by_id[on_strong].verified is True
-    assert by_id[on_strong].label is None
-    assert by_id[off_weak].verified is False
-    assert by_id[off_weak].label is None
-    assert by_id[off_strong].verified is False
+    _assert_rejected(by_id[card_weak])
+    assert by_id[card_strong].verified is True
+    assert by_id[card_strong].label is None
+    assert by_id[loose_weak].verified is False
+    assert by_id[loose_weak].label is None
+    assert by_id[loose_strong].verified is False
 
 
 def test_verifying_a_file_recomputes_what_it_is_about(client, db):
@@ -208,26 +209,22 @@ def test_reverifying_picks_up_boxes_added_since(client, db):
     assert later.verified is True
 
 
-def test_only_boxes_on_the_frame_the_person_saw_are_rejected(client, db):
-    """A clip reads empty on its best frame alone, and that frame is the
-    only one the app shows. Boxes on the other sampled frames were never
-    on screen, so a verdict about the visible frame is not a verdict
-    about them."""
+def test_only_cards_are_rejected(client, db):
+    """A clip reads empty when its only card is weak. A box that has no
+    card (an untracked legacy row on another frame) was never on screen,
+    so a verdict about the clip is not a verdict about it, however
+    confident it is."""
     f = _file_in_project(db, file_type="video", best_frame_number=0)
-    on_screen = make_detection(
-        db, file_id=f.id, confidence=0.05, frame_number=0
-    ).id
-    off_screen = make_detection(
-        db, file_id=f.id, confidence=0.95, frame_number=7
-    ).id
+    card = make_video_box(db, file_id=f.id, confidence=0.05, frame_number=0).id
+    loose = make_detection(db, file_id=f.id, confidence=0.95, frame_number=7).id
     db.commit()
 
     _verify(client, f.id)
 
     by_id = {d.id: d for d in _boxes(db, f.id)}
-    _assert_rejected(by_id[on_screen])
-    assert by_id[off_screen].label is None
-    assert by_id[off_screen].verified is False
+    _assert_rejected(by_id[card])
+    assert by_id[loose].label is None
+    assert by_id[loose].verified is False
 
 
 def test_a_drawn_box_survives_a_file_verify(client, db):

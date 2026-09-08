@@ -6,9 +6,8 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, time
 from typing import NamedTuple
 
-from sqlalchemy import Integer, and_, false, func, or_, select, true
+from sqlalchemy import Integer, and_, func, or_, select
 from sqlalchemy.orm import Session, selectinload
-from sqlalchemy.sql.elements import ColumnElement
 
 from app.api.crud.detection import expand_to_tracks, mark_detections_false
 from app.api.crud.event_observation import (
@@ -610,17 +609,6 @@ def recompute_file_verified_for_detections(
     recompute_file_verified(db, file_ids)
 
 
-def _on_shown_frame(file: File) -> ColumnElement[bool]:
-    """The boxes on the one frame the Files viewer shows of ``file``:
-    every box of an image, the best-frame boxes of a video, none of a
-    video without a best frame."""
-    if file.file_type != "video":
-        return true()
-    if file.best_frame_number is None:
-        return false()
-    return Detection.frame_number == file.best_frame_number
-
-
 def set_file_verified(db: Session, file: File, verified: bool) -> None:
     """Sign a file off, or take the sign-off back. No commit.
 
@@ -642,14 +630,14 @@ def set_file_verified(db: Session, file: File, verified: bool) -> None:
     their ``results.json`` boxes again, and an unverify hands them back
     to the machine on the next reprocess.
 
-    Scoped to the frame the Files viewer shows, which for a video is its
-    best frame. A box on that frame that belongs to a track is a verdict
-    on the animal, so it reaches every box of that track, as the X key
-    and relabel do. Boxes on frames nobody saw, the other tracks of a
-    long video included, are neither rejected nor verified: one click on
-    a frame with 7 sharks must not sign off 700. A video with no best
-    frame has no visible surface, so verifying it sets the flag and
-    touches no boxes.
+    Scoped to the file's visible surface (`on_visible_frame_of`): every
+    box of a photo, and for a video the card of every track, which is
+    what the Files viewer shows as bars under the cover. A verdict on a
+    card is a verdict on the animal, so it reaches every box of that
+    track, as the X key and relabel do; one Enter on a clip therefore
+    signs off every track in it, and the viewer says how many. That is
+    the same surface `recompute_file_verified` reads, so a sign-off can
+    never be flipped back by the next rollup.
 
     Unverifying clears every box on the file, drawn ones included.
 
@@ -659,7 +647,7 @@ def set_file_verified(db: Session, file: File, verified: bool) -> None:
     """
     threshold = _project_threshold_for_file(db, file)
     now = datetime.now(UTC)
-    on_frame = and_(Detection.file_id == file.id, _on_shown_frame(file))
+    on_frame = and_(Detection.file_id == file.id, on_visible_frame_of(file))
     if verified:
         weak = (
             db.query(Detection)

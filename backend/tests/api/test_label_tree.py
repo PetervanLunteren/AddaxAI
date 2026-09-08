@@ -12,6 +12,8 @@ from tests.conftest import (
     make_file,
     make_project,
     make_site,
+    make_track,
+    make_video_box,
 )
 
 MODEL_ID = "EUR-DF-v1-3"
@@ -411,8 +413,10 @@ def test_rollup_leaf_annotation_disambiguates_collisions(db):
 
 
 def _video_with_frames(db, project, frames):
-    """One video with best_frame_number=10 and a `deer` detection on each
-    of `frames`. Returns (file, taxonomy_row)."""
+    """One video with one `deer` track: a box on each of `frames`, the
+    card (representative frame) on frame 10, which must be one of them.
+    The cover picture is frame 10 too; nothing is judged on it. Returns
+    (file, taxonomy_row)."""
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
     tax = _add_taxonomy(
@@ -425,6 +429,15 @@ def _video_with_frames(db, project, frames):
         file_format="mp4",
         best_frame_number=10,
     )
+    assert 10 in frames
+    track = make_track(
+        db,
+        file_id=f.id,
+        start_frame=min(frames),
+        end_frame=max(frames),
+        frame_count=len(frames),
+        representative_frame_number=10,
+    )
     for frame in frames:
         make_detection(
             db,
@@ -433,16 +446,17 @@ def _video_with_frames(db, project, frames):
             label="deer",
             label_taxonomy_id=tax.id,
             frame_number=frame,
+            track_id=track.id,
         )
     db.flush()
     return f, tax
 
 
-def test_video_counts_only_the_best_frame(db):
+def test_video_counts_one_card_per_track(db):
     """The filter promised counts the grid could not deliver. A 3-frame
-    video with a deer on every frame counted 3, while the Labels grid
-    (best-frame gated) showed 1. On a real 30-second clip that was
-    "person 62" over a grid holding 4."""
+    video with one deer tracked across every frame counted 3, while the
+    Labels grid (one card per track) showed 1. On a real 30-second clip
+    that was "person 62" over a grid holding 4."""
     p = make_project(db, classification_model_id=MODEL_ID)
     _f, tax = _video_with_frames(db, p, [0, 10, 20])
 
@@ -450,11 +464,12 @@ def test_video_counts_only_the_best_frame(db):
     assert result["label_event_counts"]["deer"] == 1
 
 
-def test_offbestframe_only_label_leaves_the_tree(db):
-    """A label living only on frames nobody can open offered a branch
-    that led to a blank grid. It must not be listed at all: the tree is
-    also the universe of labels the Save step can exclude, so a
-    listed-but-unreachable label is worse than a missing one."""
+def test_untracked_only_label_leaves_the_tree(db):
+    """A label living only on boxes without a card (untracked boxes)
+    offered a branch that led to a blank grid. It must not be listed at
+    all: the tree is also the universe of labels the Save step can
+    exclude, so a listed-but-unreachable label is worse than a missing
+    one."""
     p = make_project(db, classification_model_id=MODEL_ID)
     f, _tax = _video_with_frames(db, p, [10])
     ghost = _add_taxonomy(
@@ -478,9 +493,11 @@ def test_offbestframe_only_label_leaves_the_tree(db):
     assert ghost.id not in result["all_leaf_ids"]
 
 
-def test_verified_offbestframe_label_stays_visible(db):
-    """A human looked at that box, so it must stay reachable. Same
-    escape hatch calculate_max_n_for_event uses."""
+def test_verified_untracked_label_still_leaves_the_tree(db):
+    """An untracked box is invisible even when verified. There is no
+    "verified anywhere" escape hatch: a verdict reaches every box of a
+    track, so letting verified boxes through off the card would turn
+    every frame of a verified track into a row of its own."""
     p = make_project(db, classification_model_id=MODEL_ID)
     f, _tax = _video_with_frames(db, p, [10])
     serval = _add_taxonomy(
@@ -499,7 +516,32 @@ def test_verified_offbestframe_label_stays_visible(db):
     db.flush()
 
     result = build_label_filter_tree(p.id, db, count_by="detection")
+    assert "serval" not in result["label_event_counts"]
+    assert serval.id not in result["all_leaf_ids"]
+
+
+def test_a_card_off_the_cover_frame_is_listed(db):
+    """A card is visible on its track's representative frame, wherever
+    that is. The cover frame is only the clip's picture."""
+    p = make_project(db, classification_model_id=MODEL_ID)
+    f, _tax = _video_with_frames(db, p, [10])
+    serval = _add_taxonomy(
+        db, "serval", "species", taxon_genus="leptailurus",
+        taxon_species="serval",
+    )
+    make_video_box(
+        db,
+        file_id=f.id,
+        confidence=0.9,
+        label="serval",
+        label_taxonomy_id=serval.id,
+        frame_number=150,
+    )
+    db.flush()
+
+    result = build_label_filter_tree(p.id, db, count_by="detection")
     assert result["label_event_counts"]["serval"] == 1
+    assert serval.id in result["all_leaf_ids"]
 
 
 def test_image_detections_are_never_gated(db):

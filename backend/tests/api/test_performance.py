@@ -17,7 +17,15 @@ from sqlalchemy.orm import Session
 from app.api.crud import performance as performance_crud
 from app.ml.taxonomic_rank import HIGHER_LEVEL_TAXA, NO_TAXONOMY
 from app.models.label_taxonomy import LabelTaxonomy
-from tests.conftest import make_deployment, make_detection, make_file, make_project, make_site
+from tests.conftest import (
+    make_deployment,
+    make_detection,
+    make_file,
+    make_project,
+    make_site,
+    make_track,
+    make_video_box,
+)
 
 
 def _mk_taxonomy_row(
@@ -502,12 +510,12 @@ def test_performance_endpoint_missing_project_returns_404(db: Session, client) -
     assert resp.status_code == 404
 
 
-def test_off_best_frame_boxes_are_out_of_scope(db: Session) -> None:
-    """A video's boxes live on every sampled frame, but only the best frame
-    is written to disk, so the rest have no picture to open and can never be
-    verified. Counting them inflated the denominator: the footer read "1
-    verified detection of 220 ... 218 not yet verified" over a grid holding
-    32. Same reasoning as the sub-threshold gate beside it."""
+def test_a_video_is_scoped_to_its_cards(db: Session) -> None:
+    """A video's boxes live on every sampled frame, but a track has one
+    card, on its representative frame, and an untracked box has none.
+    Counting every box inflated the denominator: the footer read "1
+    verified detection of 220 ... 218 not yet verified" over a grid
+    holding 32. Same reasoning as the sub-threshold gate beside it."""
     project, _site, deployment, _f = _bootstrap_classified_project(db)
     video = make_file(
         db,
@@ -516,20 +524,30 @@ def test_off_best_frame_boxes_are_out_of_scope(db: Session) -> None:
         file_format="mp4",
         best_frame_number=3,
     )
-    # One verified box on the visible frame, two unreachable ones beside it.
-    make_detection(
+    # One verified leopard card, one lynx tracked over two frames (its
+    # card on frame 7), and an untracked lynx box with no card at all.
+    make_video_box(
         db, file_id=video.id, confidence=0.9, label="leopard",
         original_label="leopard", frame_number=3, verified=True,
+    )
+    lynx = make_track(
+        db, file_id=video.id, track_key=2, start_frame=7, end_frame=11,
+        frame_count=2, representative_frame_number=7,
     )
     for frame in (7, 11):
         make_detection(
             db, file_id=video.id, confidence=0.9, label="lynx",
-            original_label="lynx", frame_number=frame,
+            original_label="lynx", frame_number=frame, track_id=lynx.id,
         )
+    make_detection(
+        db, file_id=video.id, confidence=0.9, label="lynx",
+        original_label="lynx", frame_number=15,
+    )
     db.flush()
 
     result = performance_crud.get_classification_performance(db, project.id)
-    # The two unreachable boxes must not be reported as work still to do.
-    assert result.skipped_unverified == 0
-    # The one box on the visible frame still counts.
+    # The lynx track is one piece of work, its sibling box and the
+    # untracked box none.
+    assert result.skipped_unverified == 1
+    # The verified leopard card is the one scored box.
     assert result.grand_total == 1
