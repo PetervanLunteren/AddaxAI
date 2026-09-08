@@ -31,6 +31,8 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
+import { cardBoxes } from "../../lib/track-utils";
+import { ClipTimeline } from "./TrackTimeline";
 import { ApiError } from "../../lib/api-client";
 import { eventsApi } from "../../api/events";
 import { filesApi } from "../../api/files";
@@ -298,16 +300,21 @@ export function EventDetailModal({
     return { media, when };
   }, [event]);
 
-  // On open or event change, focus the busiest frame: the image (or video
-  // best frame) with the most detections, regardless of species. Gives
-  // multi-species events one unambiguous landing frame.
+  // The track picked on the timeline; the player dims the others.
+  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
+  // The frame shown as a still in frame mode (a bar click, a lane click,
+  // Show on an unplayable clip), keyed by file so paging never shows
+  // one clip's frame under another. Null means the filmstrip.
+  const [still, setStill] = useState<{ fileId: string; frame: number } | null>(null);
+
+  // On open or event change, focus the busiest file: the one with the
+  // most detections (a photo's boxes, a clip's tracks), regardless of
+  // species. Gives multi-species events one unambiguous landing file.
+  // Threshold 0 on purpose: the pick is threshold-blind, as it always
+  // was, and `passesDrawFilter` still leaves rejected boxes out.
   useEffect(() => {
     const fs = event?.files ?? [];
-    const peakCount = (f: FileWithDetections) =>
-      f.file_type === "video" && f.best_frame_number != null
-        ? f.detections.filter((d) => d.frame_number === f.best_frame_number)
-            .length
-        : f.detections.length;
+    const peakCount = (f: FileWithDetections) => cardBoxes(f, 0).length;
     let bestIdx = 0;
     let bestCount = -1;
     fs.forEach((f, i) => {
@@ -322,6 +329,7 @@ export function EventDetailModal({
     setSelectedFileIndex(autoPlayRef.current ? 0 : bestIdx);
     setViewMode("frame");
     setSelectedTrackId(null);
+    setStill(null);
     setPendingVideoExport(false);
     setRelabelDetectionId(null);
   }, [eventId, event?.id]);
@@ -512,11 +520,20 @@ export function EventDetailModal({
   }, []);
 
   // The Counts panel's "Show": go to the file the MaxN was counted on and,
-  // for a video, to that frame. A video the browser cannot play keeps its
-  // still and says when the peak was, which beats a seek that never lands.
+  // for a video, to that frame: the player seeks there, a clip the browser
+  // cannot play shows that frame as a still, decoded on request.
   const [seekRequest, setSeekRequest] = useState<{ frame: number; nonce: number } | null>(null);
-  // The track picked on the timeline; the player dims the others.
-  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
+  const stillFrame = still && still.fileId === currentFile?.id ? still.frame : null;
+  const selectTrack = useCallback(
+    (trackId: string) => {
+      setSelectedTrackId(trackId);
+      const track = currentFile?.tracks.find((t) => t.id === trackId);
+      if (track && currentFile) {
+        setStill({ fileId: currentFile.id, frame: track.representative_frame_number });
+      }
+    },
+    [currentFile],
+  );
   // MaxN markers for the focused video: one per species row, at the
   // frame its count was made on. A Counts thing, so only this modal
   // passes them to the player.
@@ -542,11 +559,8 @@ export function EventDetailModal({
           setViewMode("video");
           return;
         }
-        toast.info(
-          obs.max_n_time
-            ? `This video can't be played in the app. The peak was at ${formatCameraTime(obs.max_n_time, { hour: "2-digit", minute: "2-digit", second: "2-digit" }, "en-GB")}.`
-            : "This video can't be played in the app.",
-        );
+        setStill({ fileId: file.id, frame: obs.max_n_frame_number });
+        setSelectedTrackId(null);
       }
       setViewMode("frame");
     },
@@ -806,7 +820,9 @@ export function EventDetailModal({
                 </div>
               )}
               {currentFile ? (
-                viewMode === "video" && isPlayableVideo(currentFile) ? (
+                <div className="flex h-full w-full flex-col">
+                <div className="relative min-h-0 w-full flex-1">
+                {viewMode === "video" && isPlayableVideo(currentFile) ? (
                   <VideoPlayer
                     file={currentFile}
                     detectionThreshold={detectionThreshold}
@@ -818,15 +834,17 @@ export function EventDetailModal({
                     boxesHidden={boxesHidden}
                     seekRequest={seekRequest}
                     selectedTrackId={selectedTrackId}
-                    onSelectTrack={setSelectedTrackId}
+                    onSelectTrack={selectTrack}
                     markers={markers}
                   />
                 ) : currentFile.file_type === "video" &&
+                  stillFrame == null &&
                   !(autoPlay && files.length > 1) ? (
                   // Video, frame mode: show the time-spaced filmstrip gallery
-                  // (the play overlay below sits on top). Only an actively
+                  // (the play overlay below sits on top) until a bar, the
+                  // lane or Show asks for one frame. Only an actively
                   // flipping cine-loop (autoPlay across >1 file) falls back to
-                  // the best-frame still; a lone video keeps its filmstrip.
+                  // the cover still; a lone video keeps its filmstrip.
                   <VideoFilmstrip fileId={currentFile.id} />
                 ) : (
                   // View-only on the Counts page: boxes show but aren't
@@ -847,8 +865,32 @@ export function EventDetailModal({
                     imageFilter={imageFilter}
                     boxesHidden={boxesHidden}
                     exportFnRef={exportFnRef}
+                    frameNumber={
+                      stillFrame != null && stillFrame !== currentFile.best_frame_number
+                        ? stillFrame
+                        : undefined
+                    }
                   />
-                )
+                )}
+                </div>
+                {/* The clip's tracks as bars under the filmstrip or the
+                    still, with the MaxN markers: the same timeline the
+                    player carries, so an AVI clip shows its detections
+                    and the counted frame too. */}
+                {currentFile.file_type === "video" && viewMode !== "video" && (
+                  <ClipTimeline
+                    file={currentFile}
+                    currentFrame={stillFrame ?? currentFile.best_frame_number ?? 0}
+                    selectedTrackId={selectedTrackId}
+                    markers={markers}
+                    onSelectTrack={selectTrack}
+                    onSeek={(frame) => {
+                      setStill({ fileId: currentFile.id, frame });
+                      setSelectedTrackId(null);
+                    }}
+                  />
+                )}
+                </div>
               ) : (
                 <div className="text-white/50">Loading...</div>
               )}
@@ -1003,9 +1045,11 @@ export function EventDetailModal({
                     to read. */}
                 {currentFile?.file_type === "video" && (
                   <div className="pt-1 text-[11px] leading-snug text-muted-foreground/70">
-                    The AI checks several frames per clip, so labels can
-                    change between them. Only one frame decides the species
-                    and the count.
+                    The AI followed each detection through the clip, so a
+                    label can change between frames while it plays. A
+                    species' count is the most of them on screen at once
+                    during the event; the marker on the timeline is that
+                    moment.
                   </div>
                 )}
               </div>

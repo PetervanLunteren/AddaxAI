@@ -8,8 +8,14 @@
  * the track", "what colour is it" and "is it verified" have one home.
  */
 
-import type { DetectionResponse, TrackResponse } from "../api/types";
-import { getDetectionColor, getDetectionDisplayName, isNonLabel } from "./detection-utils";
+import type { DetectionResponse, FileWithDetections, TrackResponse } from "../api/types";
+import {
+  getDetectionColor,
+  getDetectionDisplayName,
+  isNonLabel,
+  passesDrawFilter,
+  shouldDrawBbox,
+} from "./detection-utils";
 
 export type TrackVerdict = "verified" | "rejected" | "unverified";
 
@@ -87,6 +93,47 @@ export function trackRows(
       a.label.localeCompare(b.label) ||
       a.track.start_frame - b.track.start_frame,
   );
+}
+
+/**
+ * Frames in the clip, for a bar to be a fraction of. The stored length
+ * first; for a file analysed before the length was stored, the end of
+ * its last track, so its detections still get bars (the lane then ends
+ * at the last track rather than at the clip's real end).
+ */
+export function clipDurationFrames(file: {
+  frame_rate: number | null;
+  duration_seconds: number | null;
+  tracks?: { end_frame: number }[];
+}): number {
+  if (file.duration_seconds && file.frame_rate) {
+    return Math.round(file.duration_seconds * file.frame_rate);
+  }
+  const tracks = file.tracks ?? [];
+  return tracks.length ? Math.max(...tracks.map((t) => t.end_frame)) + 1 : 0;
+}
+
+/**
+ * One box per card a person can act on: a photo's boxes, and for a
+ * video every track's representative box (a verdict on it reaches the
+ * whole track through the cascade). The same gates the canvas draws
+ * by. This is what "every detection in the file" means on the Files
+ * tab: the tile chips, the viewer's actions with nothing selected, the
+ * bulk bar and the Counts modal's landing file all read it.
+ */
+export function cardBoxes(
+  file: FileWithDetections,
+  threshold: number,
+): DetectionResponse[] {
+  if (file.file_type !== "video") {
+    return file.detections.filter((d) => shouldDrawBbox(d, file, threshold));
+  }
+  const cards: DetectionResponse[] = [];
+  for (const track of file.tracks ?? []) {
+    const box = representativeBox(file.detections, track);
+    if (box && passesDrawFilter(box, threshold) && box.bbox_x !== null) cards.push(box);
+  }
+  return cards;
 }
 
 /** Box centres of one track in frame order, in image fractions. */

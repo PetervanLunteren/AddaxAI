@@ -83,36 +83,30 @@ export function passesDrawFilter(
 }
 
 /**
- * The frame whose still shows this detection, when it is not the best
- * frame: a track's representative frame, which has its own JPEG
- * (`/image?frame=N`). `undefined` means the file's default picture (the
- * best frame, or the photo itself), which is also the answer for a
- * verified box on a frame nobody has a picture of.
+ * The frame to show this detection on, when it is not the cover frame:
+ * `/image?frame=N` decodes any frame of a clip on request. `undefined`
+ * means the file's default picture (the cover, or the photo itself).
  */
 export function stillFrameFor(
-  file: { file_type: string; best_frame_number: number | null; tracks?: { representative_frame_number: number; has_frame: boolean }[] },
+  file: { file_type: string; best_frame_number: number | null },
   detection: { frame_number: number | null },
 ): number | undefined {
   if (file.file_type !== "video" || detection.frame_number == null) return undefined;
   if (detection.frame_number === file.best_frame_number) return undefined;
-  const track = file.tracks?.find(
-    (t) => t.representative_frame_number === detection.frame_number && t.has_frame,
-  );
-  return track ? detection.frame_number : undefined;
+  return detection.frame_number;
 }
 
 /**
  * Whether a detection should render as a bounding box on a given file's
  * visible image.
  *
- * Two gates: `passesDrawFilter` above, then the video rule. For videos
- * the detection must be on the frame the JPEG actually renders: the
- * best frame by default, or `frameNumber` when the surface shows
- * another still (a track's representative frame, see `stillFrameFor`).
- * Non-best-frame AI detections still exist in the data and surface in
- * the verification list, but they must not paint onto the canvas of an
- * unrelated frame — that is the crop-service bug in another costume,
- * and it looks perfectly fine until the subject moves.
+ * Two gates: `passesDrawFilter` above, then the frame rule. For videos
+ * the detection must be on the frame on screen: the cover frame by
+ * default, or `frameNumber` when the surface shows another frame (a
+ * track's representative frame, see `stillFrameFor`). A clip's other
+ * boxes still exist in the data, but they must not paint onto the
+ * canvas of an unrelated frame: that is the crop-service bug in another
+ * costume, and it looks perfectly fine until the subject moves.
  *
  * No rule here reads who drew a box. A drawn box is verified at
  * confidence 1.0, so it passes like any confirmed box; one the person

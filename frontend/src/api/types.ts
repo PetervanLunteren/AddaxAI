@@ -40,7 +40,6 @@ export interface ProjectCreate {
   timezone?: string | null;
   video_fps: number;
   media_filter: MediaFilter;
-  video_tracking: boolean;
   counting_threshold: number;
   classification_gate: number;
   event_smoothing: boolean;
@@ -72,7 +71,6 @@ export interface ProjectUpdate {
   timezone?: string | null;
   video_fps?: number | null;
   media_filter?: MediaFilter | null;
-  video_tracking?: boolean | null;
   counting_threshold?: number | null;
   classification_gate?: number | null;
   event_smoothing?: boolean | null;
@@ -106,7 +104,6 @@ export interface ProjectResponse {
   timezone: string | null;
   video_fps: number;
   media_filter: MediaFilter;
-  video_tracking: boolean;
   counting_threshold: number;
   classification_gate: number;
   event_smoothing: boolean;
@@ -572,9 +569,9 @@ export interface DetectionResponse {
   track_id: string | null;
 }
 
-/** One animal a tracker followed through a video. The box on
- * `representative_frame_number` is the track's card; `has_frame` says
- * that frame's still exists (`/image?frame=`). */
+/** One detection a tracker followed through a video: an animal, a
+ * person or a vehicle. The box on `representative_frame_number` is the
+ * track's card; `/image?frame=` decodes any frame of the clip. */
 export interface TrackResponse {
   id: string;
   track_key: number;
@@ -583,7 +580,6 @@ export interface TrackResponse {
   frame_count: number;
   max_confidence: number;
   representative_frame_number: number;
-  has_frame: boolean;
 }
 
 export interface FileResponse {
@@ -879,10 +875,6 @@ export interface ModelInfo {
   full_image_cls?: boolean;
   /** Picture of what the model expects to see, shown in the info sheet. */
   example_image_url?: string | null;
-  /** Detection models: choosing this detector switches "Track animals
-   *  across frames" on and sets the video frame rate to the tracker's
-   *  default. Set on the underwater detectors. */
-  tracking_recommended?: boolean;
   /** Geographic region the cls model is trained for. Drives the
    *  grouping in classification dropdowns. `null` for detection /
    *  embedding models, and for any cls manifest not yet annotated. */

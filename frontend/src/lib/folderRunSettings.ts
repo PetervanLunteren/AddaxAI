@@ -42,7 +42,6 @@ export interface PersistedAnalysisSettings {
   classification_gate?: number;
   video_fps?: number;
   media_filter?: MediaFilter;
-  video_tracking?: boolean;
   detection_augment?: boolean;
   detection_image_size?: number | null;
   event_smoothing?: boolean;

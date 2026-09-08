@@ -5,9 +5,12 @@
  * different from the crop grid's: not "is this label right?" but "is
  * this picture right?". So the unit is the file, the sorts are about
  * where a file sits rather than what it looks like, and the verdict is
- * one: Verify means the boxes you can see are all there is. Weak boxes
- * below the threshold are set aside as false detections, the visible
- * ones are signed off, and a box you draw first is one of them.
+ * one: Verify means every detection you can see is checked. For a
+ * photo that is its boxes; for a clip it is every detection the AI
+ * followed through it (one track each, its bars under the picture).
+ * Weak boxes below the threshold are set aside as false detections,
+ * the visible ones are signed off, and a box you draw first is one of
+ * them.
  *
  * The Empty select in More filters narrows to the files where nothing
  * passed the threshold (the old Empties tab) or to the files where
@@ -30,7 +33,7 @@ import { labelsApi } from "../../api/labels";
 import { projectsApi } from "../../api/projects";
 import { useLabelOptions } from "../../hooks/useLabelOptions";
 import { useShortcutLabels } from "../../hooks/useShortcutLabels";
-import { shouldDrawBbox } from "../../lib/detection-utils";
+import { cardBoxes } from "../../lib/track-utils";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
 import { labelMajority } from "./label-majority";
 import { BulkActionBar } from "./BulkActionBar";
@@ -557,9 +560,7 @@ export function FilesTab({
           }),
         ),
       );
-      return files.flatMap((f) =>
-        f.detections.filter((d) => shouldDrawBbox(d, f, threshold)),
-      );
+      return files.flatMap((f) => cardBoxes(f, threshold));
     },
     [queryClient, threshold],
   );
@@ -607,9 +608,7 @@ export function FilesTab({
         Awaited<ReturnType<typeof filesApi.get>>
       >(["file", id]);
       if (!f) continue;
-      for (const d of f.detections) {
-        if (shouldDrawBbox(d, f, threshold)) boxes.push(d);
-      }
+      boxes.push(...cardBoxes(f, threshold));
     }
     return labelMajority(boxes);
   }, [selected, threshold, queryClient]);

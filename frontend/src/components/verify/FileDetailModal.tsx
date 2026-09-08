@@ -8,10 +8,12 @@
  *
  * Every visible box is drawn: above the threshold, or verified. The
  * sub-threshold boxes are not, and that is load-bearing: Verify says
- * "the boxes you can see are all there is", and the backend rejects the
+ * "every detection I can see is checked", and the backend rejects the
  * ones you could not see (marked "false detection", like the X key).
  * Drawing them would make that verdict about a threshold instead of
- * about the picture.
+ * about the picture. For a photo that is its boxes; for a clip it is
+ * every detection the AI followed through it, one track each, shown as
+ * bars under the picture.
  *
  * What you can do. **Verify** signs the file off and moves on; it is one
  * action because it is one decision. Draw a box on an animal the
@@ -21,16 +23,18 @@
  * answer, which only pays off while drawing several of one thing.
  *
  * The label actions are the Detections grid's, with one scope rule: R,
- * X, U and the saved labels 1 to 5 act on the selected box, and on every
- * visible box when none is selected. The same rule decides what happens
- * next: a whole-picture action is the verdict, so it signs the file off
- * and advances in the same press (like the Detections viewer); a
- * selected-box action stays for the next box. Click a box or Tab through them to
- * select one; the buttons say which scope they are in. M relabels every
- * box to the picture's most common label, whatever is selected. Cmd+Z
- * reverts the last label change, as in the grid; a file verify (its own
- * scope of boxes) and a drawn box (no original label to go back to) are
- * not undoable.
+ * X, U and the saved labels 1 to 5 act on the selected detection, and
+ * on every detection in the file when none is selected (`cardBoxes`: a
+ * photo's boxes, a clip's tracks through their cards). The same rule
+ * decides what happens next: a whole-file action is the verdict, so it
+ * signs the file off and advances in the same press (like the
+ * Detections viewer); a selected-box action stays for the next one.
+ * Click a box, Tab through the boxes on screen, or click a bar on a
+ * clip's timeline to select one; the buttons say which scope they are
+ * in. M relabels every detection to the file's most common label,
+ * whatever is selected. Cmd+Z reverts the last label change, as in the
+ * grid; a file verify (its own scope of boxes) and a drawn box (no
+ * original label to go back to) are not undoable.
  *
  * The left rail is the shared `ViewerToolRail`, the same one as the
  * Counts modal: brightness/contrast, hide boxes (B), flag (F), like,
@@ -38,13 +42,16 @@
  * model: the rail is how you look, the right column is what you
  * decide.
  *
- * A playable video can be watched: P or the play button swaps the kept
- * frame for the real clip with each frame's boxes (`VideoPlayer`, the
- * Counts modal's player, which honours B). The keys stay live and keep
- * acting on the kept frame's boxes, the only ones a verdict is about;
- * D returns to the frame and arms the crosshair, because a box can
- * only be drawn there. Download saves the annotated copy: the recorded
- * boxed MP4 for a playable video, the boxed still otherwise.
+ * A clip opens on its cover frame with the timeline of its tracks
+ * under it (`ClipTimeline`). A bar click selects that track's card and
+ * shows the frame it sits on, decoded on request; a click elsewhere on
+ * the lane shows that frame. P or the play button swaps the still for
+ * the real clip at the frame on screen, with each frame's boxes and the
+ * same timeline (`VideoPlayer`, the Counts modal's player, which
+ * honours B). The keys stay live in both modes. D returns to the cover
+ * and arms the crosshair, because a box can only be drawn there.
+ * Download saves the annotated copy: the recorded boxed MP4 for a
+ * playable video, the boxed still otherwise.
  *
  * The file deliberately stays put after a change. An earlier version
  * refetched the list immediately, so a file that stopped matching the
@@ -87,7 +94,8 @@ import { useShortcutLabels } from "../../hooks/useShortcutLabels";
 import { Button } from "../ui/button";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
-import { representativeBox } from "../../lib/track-utils";
+import { cardBoxes, representativeBox } from "../../lib/track-utils";
+import { ClipTimeline } from "./TrackTimeline";
 import { ViewerToolRail } from "./ViewerToolRail";
 import { useFileTriage, useImageAdjust } from "./viewer-tools";
 import { labelMajority } from "./label-majority";
@@ -114,10 +122,9 @@ interface FileDetailModalProps {
   /** Something about this file changed. Fires immediately so the
    *  progress bar keeps up; the grid itself waits for the close. */
   onChanged: () => void;
-  /** Opened from a track's card: start the clip paused on that track's
-   *  frame with the track selected, so the animal the person was
-   *  looking at is the one on screen. Ignored when the file has no such
-   *  track or cannot be played. */
+  /** Opened from a track's card: show that track's frame with the
+   *  track selected, so the detection the person was looking at is the
+   *  one on screen. Ignored when the file has no such track. */
   openTrackId?: string | null;
 }
 
@@ -150,9 +157,15 @@ export function FileDetailModal({
   const queryClient = useQueryClient();
   const [drawMode, setDrawMode] = useState(false);
   const [boxesHidden, setBoxesHidden] = useState(false);
-  // For a playable video: the still (the kept frame, where all editing
-  // happens) or the real clip. The Counts event modal's pattern.
+  // For a playable video: the still or the real clip. The Counts event
+  // modal's pattern.
   const [viewMode, setViewMode] = useState<"frame" | "video">("frame");
+  // The frame the still shows: null is the cover frame; a bar click or a
+  // lane click sets another, decoded on request. Explicit state rather
+  // than derived from the selection, because a lane click shows a frame
+  // without selecting anything, and D must return to the cover without
+  // clearing the selection (drawing happens on the cover).
+  const [shownFrame, setShownFrame] = useState<number | null>(null);
   // One-shot: Download clicked from frame view mounts the player and
   // runs the annotated-video export once the clip is playable.
   const [pendingVideoExport, setPendingVideoExport] = useState(false);
@@ -210,6 +223,8 @@ export function FileDetailModal({
     setRelabelTargets(null);
     setUndoStack([]);
     setViewMode("frame");
+    setShownFrame(null);
+    setSeekRequest(null);
     setPendingVideoExport(false);
   }
   // Closed: forget what this run signed off. An effect, not part of the
@@ -258,25 +273,43 @@ export function FileDetailModal({
       const track = file?.tracks.find((t) => t.id === trackId);
       const box = track && file ? representativeBox(file.detections, track) : undefined;
       setSelectedDetectionId(box?.id ?? null);
+      if (track) setShownFrame(track.representative_frame_number);
     },
     [file],
   );
-  // Opened from a card: once the file is in, start on that track. Once
-  // per file and track, so paging away and back does not re-seek.
+  // A lane click shows a frame and selects nothing, so the scope caption
+  // never names a box that is not on screen.
+  const showFrame = useCallback((frame: number) => {
+    setShownFrame(frame);
+    setSelectedDetectionId(null);
+  }, []);
+  // Opened from a card: once the file is in, show that track. Once per
+  // file and track, so paging away and back does not jump again.
   const openedFor = useRef<string | null>(null);
   useEffect(() => {
     if (!file || !openTrackId) return;
     const key = `${file.id}:${openTrackId}`;
     if (openedFor.current === key) return;
     openedFor.current = key;
-    const track = file.tracks.find((t) => t.id === openTrackId);
-    if (!track || !isPlayableVideo(file)) return;
-    selectTrack(track.id);
-    setViewMode("video");
-    setSeekRequest({ frame: track.representative_frame_number, nonce: Date.now() });
+    if (file.tracks.some((t) => t.id === openTrackId)) selectTrack(openTrackId);
   }, [file, openTrackId, selectTrack]);
 
   const playable = !!file && isPlayableVideo(file);
+  // The cover is the stored picture; any other frame is decoded on
+  // request, so the canvas asks for it by number only when it differs.
+  const frameNumber =
+    file && shownFrame != null && shownFrame !== file.best_frame_number ? shownFrame : undefined;
+  // Watch the clip from the frame on screen.
+  const watch = useCallback(() => {
+    if (shownFrame != null) setSeekRequest({ frame: shownFrame, nonce: Date.now() });
+    setViewMode("video");
+  }, [shownFrame]);
+  // Drawing happens on the cover, so arming the crosshair returns there.
+  const startDrawing = useCallback(() => {
+    setShownFrame(null);
+    setViewMode("frame");
+    setDrawMode(true);
+  }, []);
 
   /** Download: for a playable video always the annotated MP4 (mount the
    *  player if needed and record once it can play); for anything else
@@ -291,27 +324,32 @@ export function FileDetailModal({
     }
   }, [playable]);
 
-  // The boxes the canvas draws, left to right by box centre (top to
-  // bottom for ties), the way a person reads the photo. Storage order
-  // was the detector's confidence order, which jumps around the frame.
-  // Tab walks this list, and "all boxes" means this list.
+  // The boxes the canvas draws on the frame on screen, left to right by
+  // box centre (top to bottom for ties), the way a person reads the
+  // picture. Storage order was the detector's confidence order, which
+  // jumps around the frame. Tab walks this list.
   const visibleBoxes = useMemo(() => {
     if (!file) return [];
     const threshold = project?.counting_threshold ?? 0;
     return file.detections
-      .filter((d) => shouldDrawBbox(d, file, threshold))
+      .filter((d) => shouldDrawBbox(d, file, threshold, frameNumber))
       .sort(
         (a, b) =>
           a.bbox_x + a.bbox_width / 2 - (b.bbox_x + b.bbox_width / 2) ||
           a.bbox_y + a.bbox_height / 2 - (b.bbox_y + b.bbox_height / 2),
       );
-  }, [file, project?.counting_threshold]);
+  }, [file, project?.counting_threshold, frameNumber]);
+  // Every detection in the file: a photo's boxes, a clip's tracks
+  // through their cards. What "none selected" acts on.
+  const cards = useMemo(
+    () => (file ? cardBoxes(file, project?.counting_threshold ?? 0) : []),
+    [file, project?.counting_threshold],
+  );
 
-  // The one scope rule: the selected box, else every visible box.
+  // The one scope rule: the selected box, else every detection in the file.
   const targetIds = useMemo(
-    () =>
-      selectedDetectionId ? [selectedDetectionId] : visibleBoxes.map((d) => d.id),
-    [selectedDetectionId, visibleBoxes],
+    () => (selectedDetectionId ? [selectedDetectionId] : cards.map((d) => d.id)),
+    [selectedDetectionId, cards],
   );
   // The wording rule for the box actions: the button says what it does
   // (verb + result), the card's caption says what they act on, and the
@@ -319,13 +357,15 @@ export function FileDetailModal({
   // Detections bar's texts. Only the majority button carries a scope
   // word ("all"): it is the one action that ignores the selection, and
   // without it it would read like a quick label while acting on more.
+  // A clip's unit is the detection (one track each), a photo's the box.
+  const unit = file?.file_type === "video" ? "detection" : "box";
   const scope =
-    selectedDetectionId || visibleBoxes.length === 1
-      ? "the box"
-      : visibleBoxes.length === 0
-        ? "the boxes"
-        : `all ${visibleBoxes.length} boxes`;
-  const majority = useMemo(() => labelMajority(visibleBoxes), [visibleBoxes]);
+    selectedDetectionId || cards.length === 1
+      ? `the ${unit}`
+      : cards.length === 0
+        ? `the ${unit}s`
+        : `all ${cards.length} ${unit}s`;
+  const majority = useMemo(() => labelMajority(cards), [cards]);
 
   const go = useCallback(
     (delta: number) => {
@@ -365,8 +405,8 @@ export function FileDetailModal({
     onError: (err: Error) => toast.error(err.message),
   });
 
-  /** Enter, and the primary button while the file is unverified: "the
-   *  boxes I see are all there is, done with this one". Sent even when
+  /** Enter, and the primary button while the file is unverified: "every
+   *  detection I see is checked, done with this one". Sent even when
    *  the file already reads verified: the rollup flips that flag once
    *  every visible box is verified, without touching the weak boxes
    *  underneath, and the verify is idempotent, so this is what makes
@@ -471,14 +511,14 @@ export function FileDetailModal({
   /** M: every visible box takes the picture's most common label. Ties
    *  resolve as in the grid, to the label counted first. */
   const matchMajority = useCallback(() => {
-    if (!majority || visibleBoxes.length < 2) return;
+    if (!majority || cards.length < 2) return;
     applyLabel(
-      visibleBoxes.map((d) => d.id),
+      cards.map((d) => d.id),
       majority.label,
       majority.category,
       wholePicture,
     );
-  }, [applyLabel, majority, visibleBoxes, wholePicture]);
+  }, [applyLabel, majority, cards, wholePicture]);
   const applyShortcut = useCallback(
     (slot: number) => {
       const option = shortcutLabels[slot];
@@ -552,21 +592,18 @@ export function FileDetailModal({
         e.preventDefault();
         handleUndo();
       } else if (key === "d") {
-        // Drawing happens on the kept frame, so from the player D goes
-        // back there and arms the crosshair in one press.
+        // Drawing happens on the cover, so from the player or another
+        // frame D goes back there and arms the crosshair in one press.
         e.preventDefault();
-        if (viewMode === "video") {
-          setViewMode("frame");
-          setDrawMode(true);
-        } else {
-          setDrawMode((v) => !v);
-        }
+        if (drawMode) setDrawMode(false);
+        else startDrawing();
       } else if (key === "p") {
-        // The Counts modal's key: a playable video toggles between its
-        // kept frame and the real clip.
+        // The Counts modal's key: a playable video toggles between the
+        // still and the real clip, at the frame on screen.
         if (playable) {
           e.preventDefault();
-          setViewMode((v) => (v === "video" ? "frame" : "video"));
+          if (viewMode === "video") setViewMode("frame");
+          else watch();
         }
       } else if (key === "b") {
         e.preventDefault();
@@ -619,6 +656,8 @@ export function FileDetailModal({
     playable,
     file,
     triage,
+    watch,
+    startDrawing,
   ]);
 
   // The page ran out and the next batch is being fetched. Hold the
@@ -648,7 +687,7 @@ export function FileDetailModal({
 
   if (!item) return null;
 
-  const noBoxes = visibleBoxes.length === 0;
+  const noBoxes = cards.length === 0;
   const freeSlot = [1, 2, 3, 4, 5].find((n) => !shortcutLabels[n]);
 
   return (
@@ -683,7 +722,8 @@ export function FileDetailModal({
       }
       image={
         file ? (
-          <div className="relative h-full w-full">
+          <div className="flex h-full w-full flex-col">
+          <div className="relative min-h-0 w-full flex-1">
             {viewMode === "video" && playable ? (
               <VideoPlayer
                 file={file}
@@ -712,11 +752,12 @@ export function FileDetailModal({
                 defaultLabel={activeLabel?.label ?? undefined}
                 exportFnRef={exportFnRef}
                 imageFilter={imageFilter}
+                frameNumber={frameNumber}
               />
             )}
 
             {/* The Counts modal's play affordance, verbatim: a big
-                center play button over a video's kept frame, and the
+                center play button over a video's still, and the
                 honest chip when the browser cannot play the format.
                 Click-through except the button, so the canvas keeps
                 its clicks. Hidden while drawing: a crosshair with a
@@ -728,7 +769,7 @@ export function FileDetailModal({
                 <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
                   <button
                     type="button"
-                    onClick={() => setViewMode("video")}
+                    onClick={watch}
                     title="Watch this video (P)"
                     className="pointer-events-auto flex h-16 w-16 items-center justify-center rounded-full bg-black/55 ring-1 ring-white/40 transition hover:scale-105 hover:bg-black/75"
                   >
@@ -742,6 +783,20 @@ export function FileDetailModal({
                   </span>
                 </div>
               ))}
+          </div>
+          {/* The clip's tracks as bars under the still, the same
+              timeline the player carries in video mode. A bar selects
+              the track's card and shows its frame; the lane shows any
+              frame. */}
+          {viewMode !== "video" && (
+            <ClipTimeline
+              file={file}
+              currentFrame={shownFrame ?? file.best_frame_number ?? 0}
+              selectedTrackId={selectedTrackId}
+              onSelectTrack={selectTrack}
+              onSeek={showFrame}
+            />
+          )}
           </div>
         ) : (
           <div className="text-white/50">Loading...</div>
@@ -762,31 +817,22 @@ export function FileDetailModal({
                   "No capture time"
                 )}
               </div>
-              {/* Say what is on screen, because it is not the whole clip
-                  and nothing else here admits that.
-
-                  It leads with the detector on purpose. Saying only that
-                  one frame is kept reads as "the AI looked at one frame
-                  and missed the rest", which is the opposite of the
-                  truth: MegaDetector runs over every sampled frame and
-                  the single frame is chosen afterwards, purely because
-                  it is the only one written to disk as a JPEG.
-
-                  The watch offer (the play button, P) shows the whole
-                  clip with each frame's boxes, which is a better basis
-                  for the Verify verdict than one still. The limit that
-                  keeps the caption's last clause: a box can only be
-                  saved on the kept frame (`AnnotationCanvas` stamps
-                  `best_frame_number` on every box it creates), so an
-                  animal seen on another second is recorded by drawing
-                  it on this frame. Worded to hold in every case,
-                  including a clip where nothing was found at all and
-                  the kept frame is simply the middle one. */}
+              {/* Say what is on screen. The cover is the clip's picture
+                  and nothing is judged on it: the detections are the
+                  tracks, one bar each under the picture. It leads with
+                  the detector on purpose, so nobody reads "one frame"
+                  as "the AI looked at one frame". A box can only be
+                  drawn on the cover (`AnnotationCanvas` stamps the frame
+                  on screen on every box it creates, and D returns
+                  there), so that clause stays. Worded to hold for a
+                  clip where nothing was found at all. */}
               {item.file_type === "video" && (
                 <div className="pt-1 text-muted-foreground/80">
-                  The AI checked the whole clip. This is the clip's main
-                  frame: judge the clip on it, and a box you draw is
-                  saved on it.
+                  The AI checked the whole clip. This is the clip's cover,
+                  the picture that stands for it in the grid. A box you
+                  draw is saved on it.
+                  {(file?.tracks.length ?? 0) > 0 &&
+                    " Each detection the AI followed is a bar below; click one to see it on its own frame."}
                   {playable && " Press P or the play button to watch the clip."}
                 </div>
               )}
@@ -804,15 +850,16 @@ export function FileDetailModal({
             {/* Carries the scope so the buttons do not have to: what
                 they act on, and how to narrow it. */}
             <p className="mb-2 text-xs text-muted-foreground">
-              These act on the box you select, with a click or Tab.
-              None selected means all boxes.
+              {file?.file_type === "video"
+                ? "These act on the detection you select: click a box, Tab through them, or click a bar. None selected means every detection in the clip."
+                : "These act on the box you select, with a click or Tab. None selected means all boxes."}
             </p>
             <div className="space-y-1.5">
               <Button
                 variant="outline"
                 size="sm"
                 className="w-full justify-center"
-                onClick={() => setDrawMode((v) => !v)}
+                onClick={() => (drawMode ? setDrawMode(false) : startDrawing())}
               >
                 <SquareDashed className="h-4 w-4 mr-1" />
                 {drawMode ? "Stop drawing" : "Draw a box"}
@@ -825,7 +872,7 @@ export function FileDetailModal({
                 className="w-full justify-center"
                 disabled={noBoxes}
                 onClick={markTargetsFalse}
-                title={`Mark ${scope} as false detections and verify`}
+                title={`Mark ${scope} as false and verify`}
               >
                 <Ban className="h-4 w-4 mr-1" />
                 Mark false
@@ -848,13 +895,13 @@ export function FileDetailModal({
               {/* Whole picture only, whatever is selected: a majority is
                   a statement about the set. Hidden when it cannot mean
                   anything (one box, or no labels). */}
-              {majority && visibleBoxes.length >= 2 && (
+              {majority && cards.length >= 2 && (
                 <Button
                   variant="outline"
                   size="sm"
                   className="w-full justify-center"
                   onClick={matchMajority}
-                  title={`Relabel all ${visibleBoxes.length} boxes to ${majority.common_name ?? majority.label} and verify`}
+                  title={`Relabel all ${cards.length} ${unit}s to ${majority.common_name ?? majority.label} and verify`}
                 >
                   <CheckCheck className="h-4 w-4 mr-1 shrink-0" />
                   <span className="truncate">
@@ -992,6 +1039,11 @@ export function FileDetailModal({
                 : verifyAndAdvance
             }
             disabled={verifying}
+            title={
+              isVerified
+                ? "Unverify: hand every detection in this file back to the AI"
+                : `Verify every ${unit} in this ${file?.file_type === "video" ? "clip" : "photo"} as it is and go to the next file`
+            }
           >
             <Check className="h-4 w-4 mr-1" />
             {isVerified ? "Unverify" : "Verify"}

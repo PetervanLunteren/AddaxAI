@@ -13,10 +13,14 @@
  * belong to the player and its modal. No keyboard handling here.
  */
 
+import { useMemo } from "react";
+
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
 import { cn } from "../../lib/utils";
 import type { TrackRow } from "../../lib/track-utils";
+import { clipDurationFrames, trackRows } from "../../lib/track-utils";
 import { formatClipPosition } from "../../lib/datetime";
+import type { FileWithDetections } from "../../api/types";
 
 export interface TimelineMarker {
   frame: number;
@@ -144,6 +148,49 @@ export function TrackTimeline({
         />
       </div>
     </div>
+  );
+}
+
+/**
+ * The timeline of one clip, from the file itself: rows and clip length
+ * derived here, so the player (video mode) and the two modals (frame
+ * mode) mount the same thing and nothing is computed twice in code.
+ * Nothing is rendered for a clip without tracks. `durationFrames` is
+ * the player's own measured length once it has one; frame mode passes
+ * nothing and the stored length (or the last track) is used.
+ */
+export function ClipTimeline({
+  file,
+  durationFrames,
+  currentFrame,
+  selectedTrackId,
+  markers,
+  onSelectTrack,
+  onSeek,
+}: {
+  file: FileWithDetections;
+  durationFrames?: number;
+  currentFrame: number;
+  selectedTrackId: string | null;
+  markers?: TimelineMarker[];
+  onSelectTrack: (trackId: string) => void;
+  onSeek: (frame: number) => void;
+}) {
+  const rows = useMemo(
+    () => trackRows(file.tracks ?? [], file.detections),
+    [file.tracks, file.detections],
+  );
+  if (rows.length === 0) return null;
+  return (
+    <TrackTimeline
+      rows={rows}
+      durationFrames={durationFrames || clipDurationFrames(file)}
+      currentFrame={currentFrame}
+      selectedTrackId={selectedTrackId}
+      markers={markers}
+      onSelectTrack={onSelectTrack}
+      onSeek={onSeek}
+    />
   );
 }
 

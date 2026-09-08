@@ -30,8 +30,8 @@ import {
 import { SpotlightDim } from "./SpotlightDim";
 import type { FileWithDetections, DetectionResponse } from "../../api/types";
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
-import { trackRows } from "../../lib/track-utils";
-import { TrackTimeline, type TimelineMarker } from "./TrackTimeline";
+import { clipDurationFrames } from "../../lib/track-utils";
+import { ClipTimeline, type TimelineMarker } from "./TrackTimeline";
 interface VideoPlayerProps {
   file: FileWithDetections;
   detectionThreshold: number;
@@ -226,8 +226,7 @@ export function VideoPlayer({
   const videoFileId = sourceVideoId ?? file.id;
   const videoUrl = `${API_BASE_URL}/api/files/${videoFileId}/video`;
   const frameRate = file.frame_rate || 30;
-  const durationFrames =
-    metadataFrames || (file.duration_seconds ? Math.round(file.duration_seconds * frameRate) : 0);
+  const durationFrames = metadataFrames || clipDurationFrames(file);
   const imgW = file.width_px || 1;
   const imgH = file.height_px || 1;
 
@@ -349,14 +348,13 @@ export function VideoPlayer({
     [frameRate],
   );
 
-  const rows = useMemo(() => trackRows(file.tracks ?? [], detections), [file.tracks, detections]);
   const handleSelectTrack = useCallback(
     (trackId: string) => {
-      const row = rows.find((r) => r.track.id === trackId);
-      if (row) seekTo(row.track.representative_frame_number);
+      const track = file.tracks?.find((t) => t.id === trackId);
+      if (track) seekTo(track.representative_frame_number);
       onSelectTrack?.(trackId);
     },
-    [rows, seekTo, onSelectTrack],
+    [file.tracks, seekTo, onSelectTrack],
   );
 
   // Cleanup on unmount
@@ -688,17 +686,15 @@ export function VideoPlayer({
           </svg>
         )}
       </div>
-      {rows.length > 0 && (
-        <TrackTimeline
-          rows={rows}
-          durationFrames={durationFrames}
-          currentFrame={currentFrame}
-          selectedTrackId={selectedTrackId}
-          markers={markers}
-          onSelectTrack={handleSelectTrack}
-          onSeek={seekTo}
-        />
-      )}
+      <ClipTimeline
+        file={file}
+        durationFrames={durationFrames}
+        currentFrame={currentFrame}
+        selectedTrackId={selectedTrackId}
+        markers={markers}
+        onSelectTrack={handleSelectTrack}
+        onSeek={seekTo}
+      />
     </div>
   );
 }

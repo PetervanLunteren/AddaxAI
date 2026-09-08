@@ -57,6 +57,7 @@ import { Button } from "../../components/ui/button";
 import { NextStepRow } from "../../components/ui/next-step-row";
 import { Callout } from "../../components/ui/callout";
 import {
+  ADVANCED_SETTINGS_DEFAULTS,
   MEDIA_FILTER_OPTIONS,
   VIDEO_FPS_OPTIONS,
   advancedNonDefaultKeys,
@@ -123,7 +124,6 @@ import { NoClassifierNotice } from "../../components/models/NoClassifierNotice";
 
 import { useFolderScan } from "../../hooks/useFolderScan";
 import { useTaskProgress } from "../../hooks/useTaskProgress";
-import { useTrackingForDetector } from "../../hooks/useTrackingForDetector";
 
 import {
   loadLastUsedSettings,
@@ -160,7 +160,6 @@ const settingsSchema = z.object({
   embedding_batch_size: z.number().int().min(1).max(256).nullable(),
   video_fps: z.number().min(0.1).max(10),
   media_filter: z.enum(["all", "images", "videos"]),
-  video_tracking: z.boolean(),
   detection_augment: z.boolean(),
   detection_image_size: z.number().int().nullable(),
   classification_gate: z.number().min(0.01).max(1),
@@ -260,9 +259,8 @@ export function FolderRunModelStep() {
       detection_batch_size: null,
       classification_batch_size: null,
       embedding_batch_size: null,
-      video_fps: 1.0,
+      video_fps: ADVANCED_SETTINGS_DEFAULTS.video_fps,
       media_filter: "all",
-      video_tracking: false,
       detection_augment: false,
       detection_image_size: null,
       classification_gate: DEFAULT_CLASSIFICATION_GATE,
@@ -304,7 +302,6 @@ export function FolderRunModelStep() {
       embedding_batch_size: run.project.embedding_batch_size ?? null,
       video_fps: run.project.video_fps,
       media_filter: run.project.media_filter,
-      video_tracking: run.project.video_tracking,
       detection_augment: run.project.detection_augment,
       detection_image_size: run.project.detection_image_size,
       classification_gate: run.project.classification_gate,
@@ -426,7 +423,6 @@ export function FolderRunModelStep() {
   // A full-image classifier skips MegaDetector, so the detector row and
   // the detection settings are greyed out with one caption saying so.
   const fullImageCls = classificationModel?.full_image_cls === true;
-  useTrackingForDetector(form, detectionModelId, detectionModel);
   const embeddingModel = embeddingModels.find(
     (m) => m.model_id === embeddingModelId,
   );
@@ -566,7 +562,6 @@ export function FolderRunModelStep() {
       embedding_batch_size: data.embedding_batch_size,
       video_fps: data.video_fps,
       media_filter: data.media_filter,
-      video_tracking: data.video_tracking,
       detection_augment: data.detection_augment,
       detection_image_size: data.detection_image_size,
       classification_gate: data.classification_gate,
@@ -715,7 +710,6 @@ export function FolderRunModelStep() {
       embedding_batch_size: data.embedding_batch_size,
       video_fps: data.video_fps,
       media_filter: data.media_filter,
-      video_tracking: data.video_tracking,
       detection_augment: data.detection_augment,
       detection_image_size: data.detection_image_size,
       classification_gate: data.classification_gate,
@@ -1292,29 +1286,6 @@ export function FolderRunModelStep() {
                               ))}
                             </SelectContent>
                           </Select>
-                          <FormMessage />
-                        </SettingRow>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="video_tracking"
-                      render={({ field }) => (
-                        <SettingRow
-                          label="Track animals across frames"
-                          isCustom={changedAdvanced.includes("video_tracking")}
-                          disabled={fullImageCls}
-                          description={
-                            fullImageCls
-                              ? SETTING_CAPTIONS.fullImageClassifier
-                              : SETTING_CAPTIONS.videoTracking
-                          }
-                        >
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
                           <FormMessage />
                         </SettingRow>
                       )}

@@ -22,7 +22,8 @@ import { Fragment } from "react";
 
 import { filesApi } from "../../api/files";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
-import { getDetectionColor, shouldDrawBbox } from "../../lib/detection-utils";
+import { getDetectionColor } from "../../lib/detection-utils";
+import { cardBoxes } from "../../lib/track-utils";
 import { basename } from "../../lib/path-utils";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
 import { cn } from "../../lib/utils";
@@ -244,29 +245,28 @@ const FileTile = memo(function FileTile({
   // the tiles; repaint when it lands.
   useSpeciesColorsVersion();
 
-  // One chip per species over the boxes the tile draws (same filter as
-  // FrameThumbnail, so a chip never names an invisible box). Ordered by
-  // how many boxes carry the label, so the dominant species comes first
-  // when the cap cuts the list.
-  const chips: { key: string; name: string; color: string; boxes: number }[] =
+  // One chip per species over the file's detections (`cardBoxes`: a
+  // photo's visible boxes, a clip's tracks through their cards, so a
+  // clip's chip counts animals followed, not boxes). Ordered by count,
+  // so the dominant species comes first when the cap cuts the list.
+  const chips: { key: string; name: string; color: string; count: number }[] =
     [];
   if (file) {
-    for (const d of file.detections) {
-      if (!shouldDrawBbox(d, file, detectionThreshold)) continue;
+    for (const d of cardBoxes(file, detectionThreshold)) {
       const key = (d.label_taxonomy_id || d.label || d.category).toLowerCase();
       const existing = chips.find((c) => c.key === key);
       if (existing) {
-        existing.boxes += 1;
+        existing.count += 1;
       } else {
         chips.push({
           key,
           name: resolveSpeciesName(d),
           color: getDetectionColor(d),
-          boxes: 1,
+          count: 1,
         });
       }
     }
-    chips.sort((a, b) => b.boxes - a.boxes);
+    chips.sort((a, b) => b.count - a.count);
   }
 
   return (
@@ -317,18 +317,16 @@ const FileTile = memo(function FileTile({
           detectionThreshold={detectionThreshold}
           fit="contain"
         />
-        {/* A video reads as a photo here, because the tile is the best
-            frame. Without this, someone scanning a wall of tiles has no
-            way to tell which of them are clips they are seeing one frame
-            of.
+        {/* A video reads as a photo here, because the tile is the clip's
+            cover frame. Without this, someone scanning a wall of tiles
+            has no way to tell which of them are clips.
 
             Words rather than a play triangle, and that is the whole
             point. A filled triangle in a circle means "press me to
             watch" everywhere else on the internet, and this page
             deliberately offers no playback, so the glyph invited a click
             that did nothing (the badge is click-through, so it selected
-            the tile instead). It also said the wrong thing about the
-            feature: the frame is all there is.
+            the tile instead). Playback lives in the viewer.
 
             Top left, not bottom left. Tiles are 4:3 with `contain` and
             camera videos are 16:9, so the picture letterboxes and
@@ -337,14 +335,15 @@ const FileTile = memo(function FileTile({
             mark on it. The top edge has no such gap, and the badge
             cluster already owns the top right.
 
-            The species chips stack under it: what the AI thinks is in
-            the picture, so "verify as is" is an informed action without
-            opening the file. One chip per species in the species
-            colour, text picked for contrast against it. */}
+            The species chips stack under it: what the AI found in the
+            file (for a clip, every detection it followed through it),
+            so "verify as it is" is an informed action without opening
+            the file. One chip per species in the species colour, text
+            picked for contrast against it. */}
         <div className="pointer-events-none absolute top-1 left-1 flex max-w-[calc(100%-2rem)] flex-col items-start gap-0.5">
           {item.file_type === "video" && (
             <span className="rounded bg-black/60 px-1 py-0.5 text-[10px] leading-none text-white">
-              Video · one frame
+              Video
             </span>
           )}
           {chips.slice(0, MAX_CHIPS).map((chip) => (
@@ -356,7 +355,7 @@ const FileTile = memo(function FileTile({
                 color: getContrastTextColor(chip.color),
               }}
             >
-              {chip.boxes > 1 ? `${chip.boxes}× ${chip.name}` : chip.name}
+              {chip.count > 1 ? `${chip.count}× ${chip.name}` : chip.name}
             </span>
           ))}
           {chips.length > MAX_CHIPS && (

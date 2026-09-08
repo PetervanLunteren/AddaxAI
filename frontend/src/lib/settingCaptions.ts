@@ -54,9 +54,7 @@ export const SETTING_CAPTIONS = {
   mediaFilter:
     "Which files the AI looks at. Files left out are not analysed and do not appear in the results. Images and videos is the default.",
   videoFrameRate:
-    "How many frames per second to extract from videos for detection. Higher values find more but take longer. One frame per second is a good default; with tracking on, 3 frames per second is the default.",
-  videoTracking:
-    "Follows each animal through the clip, so you review one card per animal instead of one per frame. Needed for underwater and other long videos, and on by default with those detectors. It runs the detector on every sampled frame, so at 3 frames per second it is about three times slower than the default 1 frame per second. Keep the frame rate at 2 frames per second or more: slower than that, the tracker loses an animal between frames.",
+    "How many frames per second the AI checks in a video. It follows each animal from one checked frame to the next, and the detector runs on every one, so 4 frames per second takes twice as long as 2. Fewer frames are faster but easier to lose an animal between: below about 1 frame per second a fast animal can split into several detections. An animal out of sight for more than 2 seconds counts as a new detection when it comes back. 2 frames per second is the default.",
   independenceInterval:
     "Files at the same camera within this window are merged into one event. The default is 30 minutes.",
   smoothing:

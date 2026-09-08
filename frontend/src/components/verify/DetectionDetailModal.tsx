@@ -756,7 +756,7 @@ export function DetectionDetailModal({
                       <button
                         type="button"
                         onClick={openInFiles}
-                        title="See the whole photo with every box, and verify the file itself"
+                        title="See the whole file with every detection, and verify the file itself"
                         className="underline underline-offset-2 hover:no-underline"
                       >
                         Open in files view
