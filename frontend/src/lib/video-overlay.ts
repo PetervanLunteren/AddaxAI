@@ -30,6 +30,19 @@ export const TRAIL_SECONDS = 3;
 /** Opacity factor for the boxes of every other track while one is selected. */
 export const OTHER_TRACK_DIM = 0.25;
 
+/**
+ * Treat a moment this close to a sampled frame as being on it.
+ *
+ * Seeking to frame N sets `currentTime = N / frameRate`, and reading it
+ * back and multiplying by the rate lands a hair either side of N. A hair
+ * *below* used to lose the box: a track whose sample at N follows a gap
+ * has nothing to draw at N minus an epsilon, so clicking its bar on the
+ * timeline jumped to the animal and showed no box at all. A thousandth
+ * of a frame is thirty microseconds, far below anything a viewer or a
+ * browser clock can resolve.
+ */
+const FRAME_EPSILON = 1e-3;
+
 /** A detection with its bbox fields narrowed: the filter guarantees them. */
 export type BboxedDetection = DetectionResponse & {
   bbox_x: number;
@@ -63,6 +76,10 @@ export interface TrailPoint {
 export interface OverlayFrame {
   boxes: OverlayBox[];
   trail: TrailPoint[];
+  /** The animal the trail belongs to, so a renderer takes its colour
+   *  from the right species rather than from whichever box happens to
+   *  come first. Null when nothing is selected. */
+  trailOf: BboxedDetection | null;
 }
 
 export interface OverlayIndex {
@@ -75,7 +92,7 @@ export interface OverlayIndex {
   step: number;
 }
 
-const EMPTY: OverlayFrame = { boxes: [], trail: [] };
+const EMPTY: OverlayFrame = { boxes: [], trail: [], trailOf: null };
 
 /**
  * Group a file's drawable boxes by track and measure the sampling step.
@@ -171,12 +188,13 @@ export function overlayAt(
 
   const boxes: OverlayBox[] = [];
   let trail: TrailPoint[] = [];
+  let trailOf: BboxedDetection | null = null;
 
   for (const [key, group] of index.tracks) {
-    const i = sampleAtOrBefore(group, frame);
+    const i = sampleAtOrBefore(group, frame + FRAME_EPSILON);
     if (i < 0) continue; // before this track's first sample
     const from = group[i];
-    const elapsed = frame - from.frame_number!;
+    const elapsed = Math.max(0, frame - from.frame_number!);
     if (elapsed >= step) continue; // more than one step past a sample
 
     const next = group[i + 1];
@@ -195,10 +213,11 @@ export function overlayAt(
 
     if (selectedTrackId != null && key === selectedTrackId) {
       trail = trailFor(group, frame, box, TRAIL_SECONDS * (frameRate > 0 ? frameRate : 30));
+      if (trail.length > 0) trailOf = from;
     }
   }
 
-  return { boxes, trail };
+  return { boxes, trail, trailOf };
 }
 
 /**

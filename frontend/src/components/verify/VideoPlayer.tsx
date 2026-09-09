@@ -143,7 +143,7 @@ function drawOverlayFrame(
   // The selected animal's recent path, fading with age. Drawn over the
   // dim and under the boxes, the same order the card modal uses.
   if (overlay.trail.length > 1) {
-    const colour = computePillLayout(dets[0]?.detection ?? overlay.boxes[0].detection).color;
+    const colour = overlay.trailOf ? computePillLayout(overlay.trailOf).color : "#ffffff";
     ctx.lineWidth = BBOX_STROKE_WIDTH * TRAIL_STROKE * scale;
     ctx.strokeStyle = colour;
     for (let i = 1; i < overlay.trail.length; i++) {
@@ -294,6 +294,13 @@ export function VideoPlayer({
   // runs at animation-frame rate.
   const pills = useMemo(
     () => overlay.boxes.map((b) => computePillLayout(b.detection)),
+    [overlay],
+  );
+
+  // The trail takes the selected animal's own colour, not whichever box
+  // happens to be first: with two species on screen those differ.
+  const trailColor = useMemo(
+    () => (overlay.trailOf ? computePillLayout(overlay.trailOf).color : undefined),
     [overlay],
   );
 
@@ -601,7 +608,7 @@ export function VideoPlayer({
                       y1={prev.y * imgH}
                       x2={pt.x * imgW}
                       y2={pt.y * imgH}
-                      stroke={pills[0]?.color}
+                      stroke={trailColor}
                       strokeWidth={BBOX_STROKE_WIDTH * TRAIL_STROKE * s}
                       strokeLinecap="round"
                       opacity={1 - pt.age}
@@ -614,7 +621,7 @@ export function VideoPlayer({
                     cx={pt.x * imgW}
                     cy={pt.y * imgH}
                     r={TRAIL_DOT * s}
-                    fill={pills[0]?.color}
+                    fill={trailColor}
                     opacity={1 - pt.age}
                   />
                 ))}
