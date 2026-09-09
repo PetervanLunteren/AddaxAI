@@ -16,14 +16,22 @@
  * bars under the picture.
  *
  * What you can do. **Verify** signs the file off and moves on; it is one
- * action because it is one decision. Draw a box on an animal the
- * detector missed: arm the crosshair with D or the button, drag, and the
- * species search opens on the new box by itself. Name a species in the
- * Default label card and new boxes take that instead, with nothing to
- * answer, which only pays off while drawing several of one thing.
+ * action because it is one decision. **Mark correct** (V) is the same
+ * verb one scope down: it verifies the selected detection with the
+ * label it already carries and steps to the next one still waiting, so
+ * a clip the detector handled well is a run of single keys rather than
+ * a relabel to the species it already said.
  *
- * The label actions are the Detections grid's, with one scope rule: R,
- * X, U and the saved labels 1 to 5 act on the selected detection, and
+ * Boxes are drawn on photos only. Arm the crosshair with D or the
+ * button, drag, and the species search opens on the new box by itself;
+ * name a species in the Default label card and new boxes take that
+ * instead. A clip has no drawing: a hand-drawn box could only land on
+ * the frame on screen, which on an hour of footage is one frame in ten
+ * thousand, so it could never be how an animal the detector missed gets
+ * recorded. The Counts page is, by typing the number.
+ *
+ * The label actions are the Detections grid's, with one scope rule: V,
+ * R, X, U and the saved labels 1 to 5 act on the selected detection, and
  * on every detection in the file when none is selected (`cardBoxes`: a
  * photo's boxes, a clip's tracks through their cards). The same rule
  * decides what happens next: a whole-file action is the verdict, so it
@@ -48,8 +56,7 @@
  * the lane shows that frame. P or the play button swaps the still for
  * the real clip at the frame on screen, with each frame's boxes and the
  * same timeline (`VideoPlayer`, the Counts modal's player, which
- * honours B). The keys stay live in both modes. D returns to the cover
- * and arms the crosshair, because a box can only be drawn there.
+ * honours B). The keys stay live in both modes.
  * Download saves the annotated copy: the recorded boxed MP4 for a
  * playable video, the boxed still otherwise.
  *
@@ -94,7 +101,11 @@ import { useShortcutLabels } from "../../hooks/useShortcutLabels";
 import { Button } from "../ui/button";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
-import { cardBoxes, representativeBox } from "../../lib/track-utils";
+import {
+  cardBoxes,
+  representativeBox,
+  uncheckedCards,
+} from "../../lib/track-utils";
 import { ClipTimeline } from "./TrackTimeline";
 import { ViewerToolRail } from "./ViewerToolRail";
 import { useFileTriage, useImageAdjust } from "./viewer-tools";
@@ -304,12 +315,12 @@ export function FileDetailModal({
     if (shownFrame != null) setSeekRequest({ frame: shownFrame, nonce: Date.now() });
     setViewMode("video");
   }, [shownFrame]);
-  // Drawing happens on the cover, so arming the crosshair returns there.
-  const startDrawing = useCallback(() => {
-    setShownFrame(null);
-    setViewMode("frame");
-    setDrawMode(true);
-  }, []);
+  /** Boxes are drawn on photos only. A clip is reviewed animal by
+   *  animal, and a box drawn by hand could only ever land on the one
+   *  frame on screen: on an hour of footage at 2 fps that is one frame
+   *  in ten thousand, so it can never be the way an animal the detector
+   *  missed gets recorded. The Counts page is, by typing the number. */
+  const canDraw = file != null && file.file_type !== "video";
 
   /** Download: for a playable video always the annotated MP4 (mount the
    *  player if needed and record once it can play); for anything else
@@ -497,6 +508,58 @@ export function FileDetailModal({
   );
 
   const wholePicture = selectedDetectionId === null;
+  /** V: "the AI got this one right". Verifies what is selected with the
+   *  label it already carries, no search and no dialog, then moves the
+   *  selection to the next card still waiting. Agreeing is the most
+   *  common verdict of all on a clip the detector handled well, and it
+   *  was the one verdict with no key: accepting a track meant relabelling
+   *  it to the species it already said. A drop is now V V V R V X.
+   *
+   *  `bulk-verify` expands to the whole track on the way in, so one
+   *  press stands for every frame the animal was followed through, like
+   *  the other verdicts.
+   *
+   *  With nothing selected the scope is the whole file, and that is what
+   *  Enter already means, so it hands over rather than verifying the
+   *  cards one at a time. Not a shortcut: a file verify also rejects the
+   *  boxes under the threshold, and a card-by-card verify would leave
+   *  them to come back the moment the slider drops, which is the bug
+   *  `set_file_verified` exists to prevent. */
+  const markTargetsCorrect = useCallback(() => {
+    if (wholePicture) {
+      verifyAndAdvance();
+      return;
+    }
+    const id = selectedDetectionId;
+    if (!id) return;
+    const nextUp = file
+      ? uncheckedCards(file, project?.counting_threshold ?? 0).find(
+          (d) => d.id !== id,
+        )
+      : undefined;
+    detectionsApi
+      .bulkVerify([id], true)
+      .then(() => {
+        // Same stack as a relabel: `bulkRevertToOriginal` undoes a human
+        // verify as well as a human label.
+        setUndoStack((s) => [...s, [id]]);
+        // A clip's next card goes through `selectTrack`, so the picture
+        // moves to that animal's own frame exactly as a bar click does.
+        if (nextUp?.track_id) selectTrack(nextUp.track_id);
+        else setSelectedDetectionId(nextUp?.id ?? null);
+        handleCanvasChange();
+      })
+      .catch((err: Error) => toast.error(err.message));
+  }, [
+    wholePicture,
+    verifyAndAdvance,
+    selectedDetectionId,
+    file,
+    project?.counting_threshold,
+    selectTrack,
+    handleCanvasChange,
+  ]);
+
   const markTargetsFalse = useCallback(
     () => applyLabel(targetIds, "false detection", undefined, wholePicture),
     [applyLabel, targetIds, wholePicture],
@@ -591,12 +654,13 @@ export function FileDetailModal({
       } else if (key === "z" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         handleUndo();
-      } else if (key === "d") {
-        // Drawing happens on the cover, so from the player or another
-        // frame D goes back there and arms the crosshair in one press.
+      } else if (key === "v") {
+        e.preventDefault();
+        markTargetsCorrect();
+      } else if (key === "d" && canDraw) {
         e.preventDefault();
         if (drawMode) setDrawMode(false);
-        else startDrawing();
+        else setDrawMode(true);
       } else if (key === "p") {
         // The Counts modal's key: a playable video toggles between the
         // still and the real clip, at the frame on screen.
@@ -657,7 +721,8 @@ export function FileDetailModal({
     file,
     triage,
     watch,
-    startDrawing,
+    canDraw,
+    markTargetsCorrect,
   ]);
 
   // The page ran out and the next batch is being fetched. Hold the
@@ -760,11 +825,10 @@ export function FileDetailModal({
                 center play button over a video's still, and the
                 honest chip when the browser cannot play the format.
                 Click-through except the button, so the canvas keeps
-                its clicks. Hidden while drawing: a crosshair with a
-                play button under it invites a misclick. */}
+                its clicks. No drawing guard: a clip cannot be drawn
+                on, so the crosshair is never over this. */}
             {file.file_type === "video" &&
               viewMode !== "video" &&
-              !drawMode &&
               (playable ? (
                 <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
                   <button
@@ -855,16 +919,41 @@ export function FileDetailModal({
                 : "These act on the box you select, with a click or Tab. None selected means all boxes."}
             </p>
             <div className="space-y-1.5">
+              {/* First, because agreeing is the commonest verdict on a
+                  clip the detector handled well. Same tick as the
+                  Verify button on purpose: one verb, two scopes, told
+                  apart by where they sit and by the primary styling. */}
               <Button
                 variant="outline"
                 size="sm"
                 className="w-full justify-center"
-                onClick={() => (drawMode ? setDrawMode(false) : startDrawing())}
+                disabled={noBoxes}
+                onClick={markTargetsCorrect}
+                title={
+                  selectedDetectionId
+                    ? `Verify ${scope} with the label it already has and go to the next one`
+                    : `Verify every ${unit} in this ${
+                        file?.file_type === "video" ? "clip" : "photo"
+                      } as it is and go to the next file`
+                }
               >
-                <SquareDashed className="h-4 w-4 mr-1" />
-                {drawMode ? "Stop drawing" : "Draw a box"}
-                <Kbd>D</Kbd>
+                <Check className="h-4 w-4 mr-1" />
+                Mark correct
+                <Kbd>V</Kbd>
               </Button>
+
+              {canDraw && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-center"
+                  onClick={() => setDrawMode(!drawMode)}
+                >
+                  <SquareDashed className="h-4 w-4 mr-1" />
+                  {drawMode ? "Stop drawing" : "Draw a box"}
+                  <Kbd>D</Kbd>
+                </Button>
+              )}
 
               <Button
                 variant="outline"
@@ -979,7 +1068,8 @@ export function FileDetailModal({
           {/* Sits with the other cards rather than among the buttons:
               it describes how drawing behaves, it is not a verdict on
               this file. "Ask me each time" is the default and the
-              honest one. */}
+              honest one. Photos only, with the drawing it serves. */}
+          {canDraw && (
           <DetailCard title="Default label">
             <p className="mb-2 text-xs text-muted-foreground">
               Pick a species and every box you draw takes it. Saves
@@ -1012,6 +1102,7 @@ export function FileDetailModal({
               )}
             </div>
           </DetailCard>
+          )}
         </>
       }
       actions={

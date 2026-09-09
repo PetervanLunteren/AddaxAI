@@ -99,7 +99,8 @@ const FILES_SHORTCUTS: readonly Shortcut[] = [
   ["Esc", "Deselect"],
   // Viewer only.
   ["← / →", "Previous / next file"],
-  ["D", "Draw a box"],
+  ["V", "Mark correct, then the next one"],
+  ["D", "Draw a box (photos only)"],
   ["B", "Hide or show the boxes"],
   ["F", "Flag for review"],
   ["P", "Play a video / back to its frame"],

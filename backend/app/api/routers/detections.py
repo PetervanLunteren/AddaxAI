@@ -72,8 +72,20 @@ def create_detection(
     holds ids fetched earlier, so a deployment deleted in the meantime is
     the ordinary way to arrive with a stale one.
     """
-    if db.get(File, data.file_id) is None:
+    file = db.get(File, data.file_id)
+    if file is None:
         raise HTTPException(status_code=404, detail="File not found")
+    # Photos only. A hand-drawn box lands on the one frame on screen, so
+    # on a clip it could never be how a missed animal is recorded: the
+    # Counts page is, by typing the number over the AI's MaxN.
+    if file.file_type == "video":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Boxes cannot be drawn on a video. Correct the number of "
+                "animals on the Counts page instead."
+            ),
+        )
 
     detection = detection_crud.create_human_detection(db, data)
     file_crud.recalculate_observation_type(db, data.file_id)

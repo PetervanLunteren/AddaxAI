@@ -136,6 +136,32 @@ export function cardBoxes(
   return cards;
 }
 
+/**
+ * The cards still waiting for a verdict, in the order they are shown:
+ * a clip's tracks in the timeline's own row order, a photo's boxes in
+ * canvas order. "Mark correct" walks this, so agreeing with the AI on a
+ * whole clip is one key per animal with no reaching for the mouse.
+ *
+ * Reads the verdict from `trackRows`, the same function that colours
+ * the bars, so what the viewer calls unchecked and what the timeline
+ * draws hatched can never drift apart.
+ */
+export function uncheckedCards(
+  file: FileWithDetections,
+  threshold: number,
+): DetectionResponse[] {
+  const cards = cardBoxes(file, threshold);
+  if (file.file_type !== "video") return cards.filter((d) => !d.verified);
+  const byTrack = new Map(cards.map((d) => [d.track_id, d]));
+  const pending: DetectionResponse[] = [];
+  for (const row of trackRows(file.tracks ?? [], file.detections)) {
+    if (row.verdict !== "unverified") continue;
+    const card = byTrack.get(row.track.id);
+    if (card) pending.push(card);
+  }
+  return pending;
+}
+
 /** Box centres of one track in frame order, in image fractions. */
 export function trackPath(
   detections: DetectionResponse[],

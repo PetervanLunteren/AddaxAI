@@ -820,7 +820,7 @@ Pinned by `tests/ml/test_detection_checkpoint.py`, `tests/ml/test_megadetector_r
 
 ## The cover frame (videos)
 
-After video detection (phase 1), one frame number is selected per video as its cover: the picture on the Files tile, the still beside a copied clip in the folder-run output, the surface a box is drawn on, and the frame the Files viewer opens on. **Nothing is judged on it.** A video's detections are its tracks (see "Every video is tracked"), each with its own card on its own frame; the cover is the clip's picture and no more. The algorithm:
+After video detection (phase 1), one frame number is selected per video as its cover: the picture on the Files tile, the still beside a copied clip in the folder-run output, and the frame the Files viewer opens on. **Nothing is judged on it.** A video's detections are its tracks (see "Every video is tracked"), each with its own card on its own frame; the cover is the clip's picture and no more. The algorithm:
 
 1. Score each frame by summing **every** detection's confidence (>= 0.3), whatever its category
 2. Among confidence ties, prefer the largest union bbox area (within 90% of the best)
@@ -870,7 +870,7 @@ Weighting one category above the rest does not encode "animals matter more", it 
 
 **Storage:** `best_frame_path` points to the frame inside `video_frames/`: `{deployment_folder}/.addaxai/video_frames/{video_name}/frame{N:06d}.jpg`, capped at a 1920 px long edge. The `files` table stores `best_frame_number` (0-based index) and `best_frame_path` (absolute path to the JPEG). Both are `NULL` for images. The track crops sit beside it as `track{key:06d}.jpg` (see below).
 
-**Usage:** the cover is the clip's picture wherever a whole-file picture is wanted: the tile, the folder-run still, the drawing surface, a thumbnail. Do not use it to decide what a clip contains; that is what the tracks are for. A frame that is not the cover is decoded on request through `services/video_frame_service.py`.
+**Usage:** the cover is the clip's picture wherever a whole-file picture is wanted: the tile, the folder-run still, a thumbnail. Do not use it to decide what a clip contains; that is what the tracks are for. A frame that is not the cover is decoded on request through `services/video_frame_service.py`.
 
 ### A video box is shown on its track's representative frame, and nowhere else
 
@@ -900,7 +900,9 @@ Every video goes through `ml/inference/tracking_script.py`: the detector on ever
 
 **One rule.** The visibility rule above: a box is visible on its track's representative frame. A track's representative frame is the frame of its highest-confidence box (SharkTrack's choice; ties to the earliest frame), decided by `summarise_tracks` in `scoring.py` from the rounded confidences in the JSON, pixel-free like `choose_frame_number`. The tracking script keeps the crop of that same box while it decodes, comparing the same rounded numbers, so the crop and the card never disagree. `on_representative_frame()` is a correlated EXISTS, so it drops into every query without a new join.
 
-**Every video box has a track.** The tracker's boxes; a box a person draws on a clip (`create_human_detection` makes a one-frame track and `delete_detection` removes it when empty); a full-image classifier's synthesised boxes (`synthesize_full_image_video_json` puts them on one track, so the clip is one card); and the boxes of videos analysed before this change (migration `f6a7b8c9d0e2` gave every box that was visible under the old rule, on the best frame or verified, its own one-frame track). A track made this way has no crop; its card is cut from the cover when it sits on it and from a decoded frame otherwise.
+**Every video box has a track.** The tracker's boxes; a full-image classifier's synthesised boxes (`synthesize_full_image_video_json` puts them on one track, so the clip is one card); and the boxes of videos analysed before this change (migration `f6a7b8c9d0e2` gave every box that was visible under the old rule, on the best frame or verified, its own one-frame track). A track made this way has no crop; its card is cut from the cover when it sits on it and from a decoded frame otherwise.
+
+**Boxes are drawn on photos only.** `POST /api/detections` refuses a video with a 400 that names the Counts page. A hand-drawn box can only land on the frame the person is looking at, and on an hour of footage sampled at 2 fps that is one frame in ten thousand, so it could never be how an animal the detector missed gets recorded: the count is, on the Counts page, where a human number replaces the AI's MaxN everywhere. What this buys is that the video viewer holds no edit mode, so `drawMode`, the crosshair, the D key and the Default label card are all photo-only, and there is no rule about which frame a clip may be drawn on. The one-frame track itself stays: migration `f6a7b8c9d0e2` makes them out of legacy boxes, and released databases hold boxes drawn by hand before this. `delete_detection` still drops a track its last box leaves empty, three lines that stop a direct API delete orphaning a row.
 
 **What is on disk.** Per clip: the cover frame and one crop per track, `track{key:06d}.jpg` beside it, at most 512 px, cut by the tracking script from the decoded frame (1920 px long edge, the cover's own cap) with the crop service's geometry (`ml/inference/crop_box.py`, shared, no `app.*` imports). Nothing per frame. `Track.crop_path` is set by the ingest only when the file is there. Any other frame is decoded on request (`services/video_frame_service.py`, `GET /files/{id}/image?frame=N`). A reef clip with 300 tracks costs about 10 MB, not 120.
 

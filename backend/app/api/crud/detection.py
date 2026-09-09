@@ -10,7 +10,7 @@ Following DEVELOPERS.md principles:
 
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.schemas.detection import (
@@ -18,7 +18,7 @@ from app.api.schemas.detection import (
     DetectionCreateHuman,
     DetectionUpdate,
 )
-from app.models import Deployment, Detection, File, Track
+from app.models import Deployment, Detection, File
 
 
 def get_detection(db: Session, detection_id: str) -> Detection | None:
@@ -199,10 +199,12 @@ def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection
     `update_database_from_smoothed_results`. Left unverified it was the
     one human decision the pipeline was free to overwrite.
 
-    On a video the box becomes a one-frame track of its own, because
-    every video box has a track and the track's representative frame
-    is where the box gets its card; its picture is cut from the cover
-    or decoded on request, no crop is stored.
+    Photos only; the router refuses a video before calling this. A clip
+    is reviewed animal by animal, and a box drawn by hand could only
+    ever land on the single frame on screen: on an hour of footage
+    sampled at 2 fps that is one frame in ten thousand, so it could
+    never be how an animal the detector missed is recorded. The Counts
+    page is, by typing the number over the AI's MaxN.
     """
     now = datetime.now(UTC)
     db_detection = Detection(
@@ -223,7 +225,6 @@ def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection
     )
     db.add(db_detection)
     db.flush()  # populate id so _resolve_detection_taxonomy can find the project
-    _track_for_drawn_box(db, db_detection)
 
     if data.label:
         db_detection.label_taxonomy_id = _resolve_detection_taxonomy(
@@ -340,35 +341,15 @@ def update_detection(db: Session, detection_id: str, update: DetectionUpdate) ->
     return detection
 
 
-def _track_for_drawn_box(db: Session, detection: Detection) -> None:
-    """Give a drawn box on a video its own one-frame track."""
-    file = db.get(File, detection.file_id)
-    if file is None or file.file_type != "video" or detection.frame_number is None:
-        return
-    last_key = (
-        db.query(func.max(Track.track_key)).filter(Track.file_id == file.id).scalar() or 0
-    )
-    track = Track(
-        file_id=file.id,
-        track_key=last_key + 1,
-        start_frame=detection.frame_number,
-        end_frame=detection.frame_number,
-        frame_count=1,
-        max_confidence=detection.confidence,
-        representative_frame_number=detection.frame_number,
-        crop_path=None,
-    )
-    db.add(track)
-    db.flush()
-    detection.track_id = track.id
-
-
 def delete_detection(db: Session, detection_id: str) -> bool:
     """
     Delete a detection.
 
     Returns True if deleted, False if detection doesn't exist. A track
-    left with no boxes (a drawn box on a video) goes with it.
+    left with no boxes goes with it. Nothing in the app deletes a video
+    box any more (boxes are drawn on photos only, and a tracker box is
+    marked false rather than deleted), but the branch is three lines and
+    it is what keeps a direct API delete from leaving an orphan track.
     """
     db_detection = get_detection(db, detection_id)
     if db_detection is None:
