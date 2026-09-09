@@ -185,12 +185,12 @@
       },
       {
         "model_id": "NZI-ADS-v1",
-        "friendly_name": "New Zealand (invasives)",
+        "friendly_name": "New Zealand (invasives a)",
         "emoji": "🇳🇿",
         "env": "pytorch",
         "model_fname": "new_zealand_v1.pt",
-        "description": "Model to identify 17 species or higher-level taxons present in New Zealand. The model was trained on a set of approximately 2 million camera trap images from various projects across the country. These projects were run by multiple organizations and took place in a diverse range of habitats, using a variety of trail camera brands and models. The model has an overall validation accuracy, precision, and recall of 98%. When tested on an out-of-sample test set, the model scored 95%, 96%, and 94%, respectively. The model was designed to expedite the monitoring of New Zealand's invasive species (deer, possum, pig, cat, rodent, and mustelid).",
-        "description_short": "17 classes • Trained on 2M images",
+        "description": "Recommended where the detection of rodents is critical. Model to identify 17 species or higher-level taxons present in New Zealand. The model was trained on a curated set of approximately 2 million camera trap images from various projects across the country. These projects were run by multiple organizations and took place in a diverse range of habitats, using a variety of trail camera brands and models. The model has an overall validation accuracy, precision, and recall of 98%. When tested on an out-of-sample test set, the model scored 95%, 96%, and 94%, respectively. The model was designed to expedite the monitoring of New Zealand's invasive species (deer, possum, pig, cat, rodent, and mustelid).",
+        "description_short": "Best on rodents • 17 classes • DOC New Zealand",
         "developer": "Addax Data Science",
         "owner": "New Zealand Department of Conservation",
         "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
@@ -573,6 +573,21 @@
         "info_url": "https://github.com/Monitoring-Research-IRC/irc-species-classification-model",
         "min_app_version": "7.6.0",
         "region": "americas"
+      },
+      {
+        "model_id": "NZI-ADS-v2",
+        "friendly_name": "New Zealand (invasives b)",
+        "emoji": "🇳🇿",
+        "env": "pytorch",
+        "model_fname": "final-20260606.pt",
+        "description": "Recommended where detection of rodents is less critical. Model to identify 24 species or higher-level taxons present in New Zealand. The model was trained on about 2.1 million camera trap images from projects across the country, run by multiple organizations in a diverse range of habitats and with different camera brands. Compared to model a it adds bat, horse, kakapo, lizard, moth, takahe and a false detection class, and it does a bit better on most species. On rodents it is weaker, because a part of the rodents ends up in the false detection class and those detections are dropped from the results. On the out-of-sample test set the model scored 94.1% accuracy, 94.5% precision and 94.1% recall.",
+        "description_short": "Best overall • 24 classes • DOC New Zealand",
+        "developer": "Addax Data Science",
+        "owner": "New Zealand Department of Conservation",
+        "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        "info_url": "https://www.doc.govt.nz/",
+        "min_app_version": "7.7.0",
+        "region": "oceania"
       }
     ],
     "emb": [

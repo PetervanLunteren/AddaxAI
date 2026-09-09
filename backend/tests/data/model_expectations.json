@@ -1140,6 +1140,39 @@
           }
         ]
       ]
+    },
+    "NZI-ADS-v2": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "other bird",
+          "confidence": 0.9380645155906677
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "other bird",
+            "confidence": 0.9380645155906677
+          },
+          {
+            "label": "kea",
+            "confidence": 0.011342529207468033
+          },
+          {
+            "label": "hedgehog",
+            "confidence": 0.004086953122168779
+          },
+          {
+            "label": "kiwi",
+            "confidence": 0.0037457251455634832
+          },
+          {
+            "label": "takahe",
+            "confidence": 0.0028447615914046764
+          }
+        ]
+      ]
     }
   }
 }
