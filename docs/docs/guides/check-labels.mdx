@@ -38,6 +38,18 @@ Videos work a little different. The AI checks the clip a few frames per second a
 
 In Files, a video's tile shows its cover, one frame the AI picked as the picture for the clip, and reads "Video"; the chips on it count the animals followed. Opening it shows the cover with a timeline underneath: one row per species, one bar per animal. Click a bar to see that animal on its own frame and select it; click anywhere else on the timeline to see that moment. Mark correct, Mark false and Relabel then act on the animal you selected, every frame of it; with nothing selected they act on every animal in the clip. V is the quick one: it accepts the animal with the species the AI gave it and moves to the next one you have not checked, so a clip the AI got right is one key per animal. Verify signs off every animal in the clip, the same way it signs off every box in a photo. Boxes are not drawn on videos: an animal the AI missed is added on the Counts page, where you type the number.
 
+### Checking one animal frame by frame
+
+A card for a video stands for one animal, so a card with a species on it is a statement about the whole animal. Sometimes that is wrong: two fish cross, and the AI carries on following the wrong one. The card cannot show you that, because it is one picture.
+
+The small number in the corner of a video card is how many frames the AI followed that animal for. Click it and the grid fills with those frames instead, oldest first, so you can see whether it stayed the same animal the whole way. Click Back to detections to leave.
+
+Inside there, a label applies to the frames you selected, not to the whole animal. So if the AI followed a shark and then switched to a ray halfway, select the frames that are rays, relabel those, and your counts come out right for both. The card outside still carries the animal's own label, and labelling that still changes the whole animal, as it always did.
+
+You will usually see fewer frames than the number on the badge. The AI keeps some very low confidence boxes that your confidence setting hides, the same as everywhere else in the app. The bar at the top says how many of how many you are looking at.
+
+Do not worry about a label that wobbles from frame to frame. One raccoon walking past a camera was read as raccoon, badger, badger, blank and opossum on five frames in a row, and that is normal. What matters is a clean run of one species followed by a clean run of another, which is the sign that the AI changed animals.
+
 To watch a clip, press P or the play button. The clip opens at the frame you were looking at, with each frame's boxes drawn and the same timeline underneath; the animal you selected keeps its colour while the others fade. From a card in Detections, "Open in files view" lands on that animal's frame with the animal selected.
 
 ## Same in folder runs and projects
