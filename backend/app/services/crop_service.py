@@ -37,15 +37,26 @@ def _resolve_source(
 ) -> tuple[Path | bytes, list[float]] | None:
     """The picture to cut this detection's card from, and the box in it.
 
-    An image is cropped at the box. A video box is a card only on its
-    track's representative frame; there the picture is the track's
-    stored crop (the whole file), or the cover frame when the card has
-    no crop and sits on it, or, for a card on any other frame (a drawn
-    box, a legacy verified box), that frame decoded on request. Never
-    the video container itself: PIL cannot open it. A box that is not a
-    card gets None, which the caller answers as "no thumbnail": cropping
-    the cover at a box from another moment gave a confident picture of
-    the wrong place.
+    An image is cropped at the box. For a video the ladder is, in order:
+
+    1. no track, or no frame number: None. Those rows are visible
+       nowhere (`ml/detection_visibility.py`), like the sub-threshold
+       noise, and a thumbnail would be the only place they surfaced.
+    2. the track's representative frame, its card: the track's stored
+       crop (already the padded square, so the whole file), else the
+       cover frame when the card sits on it, else that frame decoded.
+    3. any other frame of the track: that frame decoded on request, cut
+       at this box. Only the opened track on the Detections tab asks
+       for these.
+
+    Rung 3 must never go through `video_pixels_for`, which returns the
+    track's stored crop whenever there is one: every frame of an animal
+    would then render the same picture, which looks entirely plausible
+    and is wrong. It is the same failure as cropping the cover at a box
+    from another moment, where 31 of 32 tiles of a walking person were
+    the leaf litter they had already left.
+
+    Never the video container itself: PIL cannot open it.
     """
     if file.file_type != "video":
         if file.file_path and Path(file.file_path).exists():
@@ -55,24 +66,22 @@ def _resolve_source(
             ]
         return None
     track = detection.track
-    if (
-        track is None
-        or detection.frame_number is None
-        or detection.frame_number != track.representative_frame_number
-    ):
+    if track is None or detection.frame_number is None:
         return None
-    pixels = video_pixels_for(detection, file)
-    if pixels is not None:
-        path, bbox = pixels
-        return (Path(path), bbox) if Path(path).exists() else None
+    own_bbox = [
+        detection.bbox_x, detection.bbox_y, detection.bbox_width, detection.bbox_height,
+    ]
+    if detection.frame_number == track.representative_frame_number:
+        pixels = video_pixels_for(detection, file)
+        if pixels is not None:
+            path, bbox = pixels
+            return (Path(path), bbox) if Path(path).exists() else None
     if not file.file_path:
         return None
     jpeg = decode_frame_jpeg(file.file_path, detection.frame_number, file.frame_rate)
     if jpeg is None:
         return None
-    return jpeg, [
-        detection.bbox_x, detection.bbox_y, detection.bbox_width, detection.bbox_height,
-    ]
+    return jpeg, own_bbox
 
 
 def get_or_create_crop(detection_id: str, size: int, db: Session) -> bytes | None:

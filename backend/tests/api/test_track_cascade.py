@@ -175,6 +175,65 @@ def test_a_file_sign_off_reaches_every_track_through_its_card(client, db):
     assert not any(b.verified for b in boxes["one"] + boxes["two"] + boxes["loose"])
 
 
+def test_a_verdict_from_any_box_of_a_track_reaches_the_whole_track(client, db):
+    """Today's rule, which the module docstring claims and nothing pinned.
+
+    ``expand_to_tracks`` expands whatever id it is handed, not only the
+    track's card. The Files viewer relies on this: scrubbing off the cover
+    and clicking a box selects that frame's box, and Enter is expected to
+    sign off the animal, not one moment of it. Pinned here so the
+    ``expand_tracks`` opt-out cannot quietly become the default.
+    """
+    _, _, _, _, boxes = _tracked_video(db)
+    off_card = boxes["one"][0]  # frame 30; the card is frame 60
+
+    resp = client.post(
+        "/api/detections/bulk-verify",
+        json={"detection_ids": [off_card.id], "verified": True},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["updated_count"] == 3
+
+    db.expire_all()
+    assert all(b.verified for b in boxes["one"])
+    assert not any(b.verified for b in boxes["two"])
+
+
+def test_expand_tracks_false_keeps_a_verdict_on_the_boxes_named(client, db):
+    """The opt-out the opened track uses.
+
+    Inside an opened track a person judges frames, not the animal, so a
+    verdict must stay on what they picked. That includes the track's own
+    representative box, which is one card among its neighbours there and
+    must not behave differently from them.
+    """
+    _, _, _, _, boxes = _tracked_video(db)
+    off_card, card = boxes["one"][0], boxes["one"][1]
+
+    resp = client.post(
+        "/api/detections/bulk-verify",
+        json={"detection_ids": [off_card.id], "verified": True, "expand_tracks": False},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["updated_count"] == 1
+    db.expire_all()
+    assert off_card.verified and not card.verified and not boxes["one"][2].verified
+
+    # The card itself is no exception inside an opened track.
+    resp = client.post(
+        "/api/detections/bulk-relabel",
+        json={
+            "detection_ids": [card.id],
+            "label": "great hammerhead",
+            "expand_tracks": False,
+        },
+    )
+    assert resp.json()["updated_count"] == 1
+    db.expire_all()
+    assert card.label == "great hammerhead"
+    assert boxes["one"][0].label is None and boxes["one"][2].label is None
+
+
 def test_boxes_without_a_track_are_left_alone(client, db):
     _, _, _, _, boxes = _tracked_video(db)
     loose = boxes["loose"][0]

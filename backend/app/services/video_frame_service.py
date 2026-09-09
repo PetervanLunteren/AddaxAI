@@ -18,6 +18,7 @@ being there.
 from __future__ import annotations
 
 import subprocess
+import threading
 from functools import lru_cache
 from pathlib import Path
 
@@ -32,7 +33,17 @@ logger = get_logger(__name__)
 # The same cap the cover frame gets, so a decoded frame is the size a
 # cover is in the viewer.
 FRAME_LONG_EDGE = 1920
-FRAME_CACHE_SIZE = 64
+# Deep enough to hold a long track while someone scrolls through its
+# frames on the Detections tab without it evicting itself. A cached
+# frame is a JPEG of a couple of hundred KB, so this is tens of MB.
+FRAME_CACHE_SIZE = 256
+# How many frames may be decoding at once. Every decode is one ffmpeg
+# process, and the endpoints that ask for them are sync `def`, so they
+# run in Starlette's threadpool: without a bound, scrolling a long
+# track would take most of that pool and every other request in the app
+# would queue behind video decoding.
+MAX_CONCURRENT_DECODES = 4
+_decode_slots = threading.BoundedSemaphore(MAX_CONCURRENT_DECODES)
 
 
 def frame_seek_cmd(ffmpeg: str, video: Path, frame_number: int, fps: float) -> list[str]:
@@ -95,11 +106,12 @@ def decode_frame_jpeg(
     except RuntimeError as e:
         logger.warning(f"Frame decode: {e}")
         return None
-    result = subprocess.run(
-        frame_seek_cmd(ffmpeg, Path(video_path), frame_number, fps),
-        capture_output=True,
-        check=False,
-    )
+    with _decode_slots:
+        result = subprocess.run(
+            frame_seek_cmd(ffmpeg, Path(video_path), frame_number, fps),
+            capture_output=True,
+            check=False,
+        )
     if result.returncode != 0 or not result.stdout:
         stderr = result.stderr.decode(errors="replace").strip()[-300:]
         logger.warning(

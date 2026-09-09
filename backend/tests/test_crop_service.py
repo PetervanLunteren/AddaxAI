@@ -32,6 +32,12 @@ def _jpeg(tmp_path, name="frame000024.jpg", size=(640, 480), colour=(120, 120, 1
     return path
 
 
+def _jpeg_bytes(size=(640, 480), colour=(120, 120, 120)):
+    buf = io.BytesIO()
+    Image.new("RGB", size, colour).save(buf, "JPEG")
+    return buf.getvalue()
+
+
 def _video(db, tmp_path, best=24):
     cover = _jpeg(tmp_path)
     dep = make_deployment(db, project_id=make_project(db).id)
@@ -72,21 +78,62 @@ def test_a_card_on_the_cover_is_cut_from_the_cover(db, tmp_path):
     assert get_or_create_crop(d.id, 200, db) is not None
 
 
-def test_a_box_that_is_not_a_card_has_no_crop(db, tmp_path):
-    """An untracked box, on the cover or off it, and a track's box on
-    any frame but its representative one: no picture, no crop."""
+def test_a_box_with_no_track_or_no_frame_has_no_crop(db, tmp_path):
+    """Untracked boxes, on the cover or off it, and a box with no frame
+    number: visible nowhere, so no picture and no crop. A thumbnail
+    would be the only surface they ever reached."""
     f, _ = _video(db, tmp_path)
     untracked_on_cover = make_detection(db, file_id=f.id, frame_number=24)
     untracked_off = make_detection(db, file_id=f.id, frame_number=144)
-    track = make_track(db, file_id=f.id, start_frame=270, end_frame=330,
-                       representative_frame_number=300)
-    sibling = make_detection(db, file_id=f.id, frame_number=330, track_id=track.id)
     no_frame = make_detection(db, file_id=f.id, frame_number=None)
     db.flush()
 
-    for d in (untracked_on_cover, untracked_off, sibling, no_frame):
+    for d in (untracked_on_cover, untracked_off, no_frame):
         assert _resolve_source(f, d) is None
         assert get_or_create_crop(d.id, 200, db) is None
+
+
+def test_a_sibling_frame_is_cut_from_its_own_frame_at_its_own_box(db, tmp_path, monkeypatch):
+    """The opened track's cards.
+
+    A box on any frame of a track other than the card decodes that
+    frame and is cut at its own bbox. It must not borrow the track's
+    stored crop: that would render one picture for every frame of the
+    animal, which looks entirely plausible and is wrong.
+    """
+    f, _ = _video(db, tmp_path)
+    crop = _jpeg(tmp_path, "track000001.jpg", size=(300, 300), colour=(200, 30, 30))
+    track = make_track(db, file_id=f.id, start_frame=270, end_frame=330,
+                       representative_frame_number=300, crop_path=str(crop))
+    sibling = make_detection(
+        db, file_id=f.id, frame_number=330, track_id=track.id,
+        bbox_x=0.5, bbox_y=0.25, bbox_width=0.2, bbox_height=0.3,
+    )
+    db.commit()
+
+    frame_bytes = _jpeg_bytes(size=(640, 480), colour=(10, 220, 40))
+    asked: list[tuple] = []
+
+    def fake_decode(path, frame_number, frame_rate):
+        asked.append((path, frame_number, frame_rate))
+        return frame_bytes
+
+    monkeypatch.setattr(crop_service, "decode_frame_jpeg", fake_decode)
+
+    picture, bbox = _resolve_source(f, sibling)
+
+    assert picture == frame_bytes
+    assert bbox == [0.5, 0.25, 0.2, 0.3]
+    assert asked == [(f.file_path, 330, f.frame_rate)]
+
+    out = get_or_create_crop(sibling.id, 200, db)
+    assert out is not None
+    img = Image.open(io.BytesIO(out))
+    assert img.size == (200, 200)
+    # The decoded frame's green, not the stored crop's red. Loose bounds:
+    # the pixels went through JPEG twice.
+    r, g, b = img.convert("RGB").getpixel((100, 100))
+    assert g >= 200 and r <= 40 and b <= 70
 
 
 def test_a_tracks_card_is_the_stored_crop_as_it_is(db, tmp_path):

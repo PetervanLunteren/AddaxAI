@@ -35,6 +35,9 @@ import {
   type LabelsProgressEvent,
 } from "../../api/labels";
 import { detectionsApi } from "../../api/detections";
+import { tracksApi } from "../../api/tracks";
+import type { TrackDetectionsResponse } from "../../api/types";
+import { trackFrameAsCard } from "../../lib/track-utils";
 import { projectsApi } from "../../api/projects";
 import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
@@ -55,6 +58,7 @@ import {
   type LabelsVerification,
 } from "./labels-filters";
 import { nextAfterActed, selectOnClick } from "./grid-selection";
+import { OpenTrackBar } from "./OpenTrackBar";
 import { labelMajority, type LabelMajority } from "./label-majority";
 import { useShortcutLabels } from "../../hooks/useShortcutLabels";
 import { GridEmptyState } from "./GridEmptyState";
@@ -445,6 +449,26 @@ export function LabelsTab({
     };
   }, [selectedIds.size, onSelectionChange]);
 
+  /** The animal whose frames the grid is showing, if one is open.
+   *
+   *  A card in this grid stands for a whole track, and a verdict on it
+   *  reaches every box of the animal. Opening it swaps the grid for the
+   *  frames behind that card, where a verdict acts on what is selected
+   *  instead, so a track that followed two animals can be put right by
+   *  relabelling the half that is wrong.
+   *
+   *  It replaces the list rather than nesting inside it. Nesting would
+   *  put frames inside the event dividers' counts and Select links, tear
+   *  a suggestion cohort in three, and sweep the open track into
+   *  select-all, the E key and relabel-to-majority. The card itself is
+   *  held, not just its id, because every frame borrows its context
+   *  (event, site, deployment, capture time) to render.
+   */
+  const [openTrack, setOpenTrack] = useState<{
+    trackId: string;
+    card: DetectionSummary;
+  } | null>(null);
+
   // Detail sheet
   const [detailDetection, setDetailDetection] = useState<DetectionSummary | null>(null);
 
@@ -456,6 +480,16 @@ export function LabelsTab({
     queryKey: ["project", projectId],
     queryFn: () => projectsApi.get(projectId),
   });
+
+  // What the grid is currently showing at. The slider digs *down* below
+  // the project's threshold rather than raising it, which is the backend's
+  // `effective_floor`; the opened track has to be gated at the same number
+  // or a card visible at a lowered slider would open to nothing.
+  const detectionFloorValue = project?.counting_threshold ?? 0;
+  const effectiveFloor = Math.min(
+    detectionFloorValue,
+    lblFilters.min_confidence ?? detectionFloorValue,
+  );
 
   // The 1 to 5 slots, shared with the Files viewer.
   const { shortcutLabels, updateShortcutLabels } = useShortcutLabels(projectId);
@@ -536,8 +570,33 @@ export function LabelsTab({
     }
   }, [debouncedSortKey, canSort]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The frames behind the open card. Keyed on the floor as well as the
+  // track, so moving the slider while a track is open refetches rather
+  // than showing a stale set.
+  const { data: openTrackData, isLoading: trackLoading } = useQuery({
+    queryKey: ["track-detections", openTrack?.trackId, effectiveFloor],
+    queryFn: ({ signal }) =>
+      tracksApi.detections(openTrack!.trackId, lblFilters.min_confidence, {
+        signal,
+      }),
+    enabled: !!openTrack,
+  });
+
+  const trackFrames = useMemo((): DetectionSummary[] => {
+    if (!openTrack || !openTrackData) return [];
+    return openTrackData.detections.map((row) =>
+      trackFrameAsCard(row, openTrack.card),
+    );
+  }, [openTrack, openTrackData]);
+
   // Flat detection list for selection model
   const allDetections = useMemo((): DetectionSummary[] => {
+    // An open track replaces the list. Its frames are exempt from the
+    // verified filter: you opened one animal to work through it, and
+    // having half its frames vanish as you verify them would leave the
+    // run half done with no way to see what you did.
+    if (openTrack) return trackFrames;
+
     let dets: DetectionSummary[] = sortResult?.detections ?? [];
 
     if (verificationFilter === "unverified") {
@@ -546,7 +605,7 @@ export function LabelsTab({
       dets = dets.filter((d) => d.verified);
     }
     return dets;
-  }, [sortResult, verificationFilter]);
+  }, [sortResult, verificationFilter, openTrack, trackFrames]);
 
   // The grid's visual order, which is what a shift-click range is read
   // from. Also the input to `nextAfterActed`.
@@ -646,6 +705,44 @@ export function LabelsTab({
     [orderedDetectionIds]
   );
 
+  /** Open a card's track, or come back out of one.
+   *
+   *  Both clear the selection: the ids on either side of the swap belong
+   *  to different sets of cards, and carrying a selection across would
+   *  leave keys acting on cards no longer on screen.
+   */
+  /** Whether a verdict should spread to the whole track it lands on.
+   *
+   *  True everywhere except inside an opened track, where the person is
+   *  judging frames rather than the animal. Held in a ref so the seven
+   *  action callbacks below do not each need `openTrack` in their
+   *  dependency array; it is assigned during render, so it cannot be
+   *  stale by the time a key is pressed. */
+  const expandTracksRef = useRef(true);
+  expandTracksRef.current = openTrack === null;
+
+  // `handleActionComplete` is declared further down and reads `openTrack`,
+  // so closing reaches it through a ref rather than reordering the file.
+  const handleActionCompleteRef = useRef<(() => void) | null>(null);
+
+  const openTrackFrames = useCallback(
+    (card: DetectionSummary) => {
+      if (!card.track_id) return;
+      clearSelection();
+      setOpenTrack({ trackId: card.track_id, card });
+    },
+    [clearSelection],
+  );
+
+  const closeTrackFrames = useCallback(() => {
+    clearSelection();
+    setOpenTrack(null);
+    // Actions inside the track skipped the background re-sort, so the
+    // sorted list and the progress counts are behind by however much was
+    // done in there. Catch up once, on the way out.
+    handleActionCompleteRef.current?.();
+  }, [clearSelection]);
+
   // The large view navigates a list pinned when it opens. The grid list
   // drops a crop the moment it is verified (default filter "Unverified",
   // applied server-side on the refetch), so navigating the live list made
@@ -685,8 +782,10 @@ export function LabelsTab({
   const handleActionComplete = useCallback(() => {
     // Re-run the current sort to refresh data. Background: this fires after
     // an in-grid verify/relabel, so it must reconcile without blanking the
-    // grid the user is working in.
-    sortMutation.mutate({ sort: lblSort, background: true });
+    // grid the user is working in. Skipped while a track is open: the grid
+    // is showing that track's frames, not the sorted list, so re-sorting
+    // would be work nobody can see. Closing the track runs it once.
+    if (!openTrack) sortMutation.mutate({ sort: lblSort, background: true });
     invalidateLabelQueries(queryClient);
     // Cohort counts feed the toolbar pill; any relabel / verify path
     // can change which detections still belong in a cohort. Invalidate
@@ -700,7 +799,9 @@ export function LabelsTab({
     // this, stepping back onto a relabelled crop showed the old label on
     // the photo next to the new one on the button.
     queryClient.invalidateQueries({ queryKey: ["file"] });
-  }, [lblSort, queryClient, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lblSort, queryClient, projectId, openTrack]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  handleActionCompleteRef.current = handleActionComplete;
 
   /** Re-embed (Embed now / Process now) finished: the grid renders from
    *  the sort mutation, so query invalidation alone can't show the newly
@@ -720,6 +821,38 @@ export function LabelsTab({
   /** Patch detections in local state without refetching. */
   const patchLocalDetections = useCallback(
     (patchFn: (d: DetectionSummary) => DetectionSummary) => {
+      // An open track's frames are not in `sortResult`; they come from
+      // the track query. Patch that cache instead, or a verdict inside
+      // a track would land on the server and show nothing until the
+      // grid was rebuilt from scratch.
+      if (openTrack) {
+        queryClient.setQueryData<TrackDetectionsResponse>(
+          ["track-detections", openTrack.trackId, effectiveFloor],
+          (prev) =>
+            prev
+              ? {
+                  ...prev,
+                  detections: prev.detections.map((row) => {
+                    // The patch speaks DetectionSummary; the cache holds
+                    // rows. Round-trip through the card shape so one
+                    // patch function serves both.
+                    const patched = patchFn(trackFrameAsCard(row, openTrack.card));
+                    return {
+                      ...row,
+                      label: patched.label,
+                      label_taxonomy_id: patched.label_taxonomy_id,
+                      label_confidence: patched.label_confidence,
+                      common_name: patched.common_name,
+                      scientific_name: patched.scientific_name,
+                      category: patched.category,
+                      verified: patched.verified,
+                      classification_method: patched.classification_method,
+                    };
+                  }),
+                }
+              : prev,
+        );
+      }
       if (sortResult) {
         setSortResult({
           ...sortResult,
@@ -733,7 +866,7 @@ export function LabelsTab({
       // Keep the detail modal in sync
       setDetailDetection((prev) => (prev ? patchFn(prev) : prev));
     },
-    [sortResult]
+    [sortResult, openTrack, queryClient, effectiveFloor]
   );
 
   /** Apply a single-card or bulk action to local state.
@@ -754,7 +887,10 @@ export function LabelsTab({
   const applyDetectionAction = useCallback(
     (ids: string[], patch: (d: DetectionSummary) => DetectionSummary) => {
       const idSet = new Set(ids);
-      if (lblSort === "suggestions") {
+      // The strip-from-the-grid branch is about cohorts, and an open
+      // track has none: its cards are one animal's frames and they stay
+      // put while you work through them.
+      if (lblSort === "suggestions" && !openTrack) {
         setSortResult((prev) =>
           prev
             ? {
@@ -796,7 +932,7 @@ export function LabelsTab({
         },
       });
     },
-    [lblSort, patchLocalDetections, projectId, queryClient],
+    [lblSort, openTrack, patchLocalDetections, projectId, queryClient],
   );
 
   // Same optimistic patch as applyDetectionAction, but also records the
@@ -819,7 +955,10 @@ export function LabelsTab({
     if (stack.length === 0) return;
     const ids = stack[stack.length - 1];
     try {
-      const { reverted } = await detectionsApi.bulkRevertToOriginal(ids);
+      const { reverted } = await detectionsApi.bulkRevertToOriginal(
+        ids,
+        expandTracksRef.current,
+      );
       const byId = new Map(reverted.map((r) => [r.detection_id, r]));
       applyDetectionAction(ids, (d) => {
         const r = byId.get(d.detection_id);
@@ -988,7 +1127,7 @@ export function LabelsTab({
   const handleMarkFalse = useCallback(
     (ids: string[]) => {
       detectionsApi
-        .bulkRelabel(ids, "false detection", undefined)
+        .bulkRelabel(ids, "false detection", undefined, expandTracksRef.current)
         .then(() => {
           applyUndoableAction(ids, (d) => ({
             ...d,
@@ -1034,7 +1173,7 @@ export function LabelsTab({
   const handleMarkUnknown = useCallback(
     (ids: string[]) => {
       detectionsApi
-        .bulkRelabel(ids, "unknown", undefined)
+        .bulkRelabel(ids, "unknown", undefined, expandTracksRef.current)
         .then(() => {
           applyUndoableAction(ids, (d) => ({
             ...d,
@@ -1105,7 +1244,7 @@ export function LabelsTab({
       }
       const { label: modeLabel, category: modeCategory } = mode;
       detectionsApi
-        .bulkRelabel(ids, modeLabel, modeCategory)
+        .bulkRelabel(ids, modeLabel, modeCategory, expandTracksRef.current)
         .then(() => {
           applyUndoableAction(ids, (d) => ({
             ...d,
@@ -1163,7 +1302,7 @@ export function LabelsTab({
         const ids = Array.from(selectedIds);
         import("../../api/detections").then(({ detectionsApi }) => {
           detectionsApi
-            .bulkVerify(ids, true)
+            .bulkVerify(ids, true, expandTracksRef.current)
             .then(() => {
               handleBulkVerify(ids);
             });
@@ -1203,11 +1342,15 @@ export function LabelsTab({
       // "E" selects the first event that still needs work, so the bulk
       // shortcuts above (Enter, M, R, X, 1-5) can act on the whole event.
       // Only meaningful in "By event" sort, where each event's crops are
-      // contiguous; a no-op in other sorts.
+      // contiguous; a no-op in other sorts, and inside an open track,
+      // whose cards are one animal's frames from a single event: "the
+      // next event that needs checking" would select all of them and
+      // mean nothing.
       if (
         (e.key === "e" || e.key === "E") &&
         !e.ctrlKey &&
         !e.metaKey &&
+        !openTrack &&
         resultSort === "events"
       ) {
         e.preventDefault();
@@ -1235,7 +1378,9 @@ export function LabelsTab({
         if (!label || selectedIds.size === 0) return;
         e.preventDefault();
         const ids = Array.from(selectedIds);
-        detectionsApi.bulkRelabel(ids, label.label, label.category).then(() => {
+        detectionsApi
+          .bulkRelabel(ids, label.label, label.category, expandTracksRef.current)
+          .then(() => {
           applyUndoableAction(ids, (d) => ({
             ...d,
             label: label.label ?? label.category,
@@ -1254,7 +1399,7 @@ export function LabelsTab({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds, detailDetection, allDetections, resultSort, handleActionComplete, shortcutLabels, applyUndoableAction, handleMarkFalse, handleMarkUnknown, handleMatchMajority, handleBulkVerify, advanceSelectionAfter, handleUndo]);
+  }, [selectedIds, detailDetection, allDetections, resultSort, openTrack, handleActionComplete, shortcutLabels, applyUndoableAction, handleMarkFalse, handleMarkUnknown, handleMatchMajority, handleBulkVerify, advanceSelectionAfter, handleUndo]);
 
   // Click outside grid to deselect
   useEffect(() => {
@@ -1327,11 +1472,6 @@ export function LabelsTab({
   // gates.
   const classificationGate =
     project?.classification_gate ?? DEFAULT_CLASSIFICATION_GATE;
-  const detectionFloorValue = project?.counting_threshold ?? 0;
-  const effectiveFloor = Math.min(
-    detectionFloorValue,
-    lblFilters.min_confidence ?? detectionFloorValue,
-  );
   const unprocessedRangeMax = Math.min(
     classificationGate,
     lblFilters.max_confidence ?? 1,
@@ -1667,12 +1807,25 @@ export function LabelsTab({
               )}
             </Callout>
           )}
+          {openTrack && (
+            <OpenTrackBar
+              card={openTrack.card}
+              shown={trackFrames.length}
+              tracked={openTrack.card.track_frames ?? 0}
+              fileName={openTrackData?.file_name ?? ""}
+              loading={trackLoading}
+              onClose={closeTrackFrames}
+            />
+          )}
           <CropGrid
             ref={cropGridRef}
             detections={allDetections}
             selectedIds={selectedIds}
             onSelect={handleSelect}
             onDoubleClick={handleCardClick}
+            // Absent while a track is open: its frames are not tracks
+            // themselves, so they carry no badge.
+            onOpenTrack={openTrack ? undefined : openTrackFrames}
             onBackgroundClick={clearSelection}
             onRelabelCohort={relabelCohort}
             onDismissCohort={dismissCohort}
@@ -1684,11 +1837,19 @@ export function LabelsTab({
               // brief window after switching modes, where the old result
               // lingers until the new sort lands, paints the wrong
               // dividers over the old data.
-              resultSort === "suggestions"
-                ? "cohort"
-                : resultSort === "events"
-                  ? "event"
-                  : "none"
+              //
+              // An open track has none at all: its cards are one
+              // animal's frames, all from one file and one event, so
+              // every divider rule would draw a single header over the
+              // lot and the cohort scan would tear them into groups that
+              // mean nothing.
+              openTrack
+                ? "none"
+                : resultSort === "suggestions"
+                  ? "cohort"
+                  : resultSort === "events"
+                    ? "event"
+                    : "none"
             }
           />
         </div>

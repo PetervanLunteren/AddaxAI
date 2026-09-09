@@ -2,11 +2,15 @@
 The geometry of a detection crop: a square around the box with context
 padding, and a blurred fill where the square runs off the picture.
 
-Shared by the crop service (photo cards, cut on request) and the
-tracking script (track cards, cut while the video is decoded), so the
-two kinds of card look the same. The script runs in the detector's own
-environment with no ``app.*`` on its path and loads this module by file
-path, like ``video_iter``: keep it PIL only, with no app imports.
+Shared by the crop service (photo cards, cut on request), the tracking
+script (track cards, cut while the video is decoded) and the two places
+that tell the frontend where the box sits inside a finished crop, so
+every card looks the same and every overlay lands in the same place.
+
+The tracking script runs in the detector's own environment with no
+``app.*`` on its path and loads this module by file path, like
+``video_iter``; the labels script imports it by name as a sibling. Keep
+it PIL only, with no app imports.
 """
 
 from __future__ import annotations
@@ -80,3 +84,34 @@ def crop_with_blur_fill(
     canvas.paste(valid_crop, (paste_x, paste_y))
 
     return canvas
+
+
+def bbox_within_crop(
+    bbox_width: float,
+    bbox_height: float,
+    img_w: int | None,
+    img_h: int | None,
+) -> dict[str, float] | None:
+    """Where the box sits inside the finished crop, as 0-1 fractions.
+
+    The crop is the square ``compute_expanded_crop_region`` cuts, always
+    centred on the box, so the box's own position in the picture does
+    not come into it: only how wide and tall it is against the square.
+    The frontend draws its overlay from this.
+
+    ``None`` when the file's pixel size is unknown, which is the honest
+    answer: without it the square's side cannot be worked out.
+    """
+    if not img_w or not img_h:
+        return None
+    bw = bbox_width * img_w
+    bh = bbox_height * img_h
+    crop_side = max(bw, bh) * 1.2  # the box plus 10% padding on each side
+    if crop_side <= 0:
+        return None
+    return {
+        "x": (crop_side - bw) / 2 / crop_side,
+        "y": (crop_side - bh) / 2 / crop_side,
+        "w": bw / crop_side,
+        "h": bh / crop_side,
+    }

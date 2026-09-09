@@ -11,7 +11,7 @@
  */
 
 import { memo, useState } from "react";
-import { ImageOff } from "lucide-react";
+import { Film, ImageOff } from "lucide-react";
 import { API_BASE_URL } from "../../lib/api-client";
 import {
   getDetectionColor,
@@ -39,10 +39,14 @@ interface CropCardProps {
   selected: boolean;
   onSelect: (detectionId: string, e: React.MouseEvent) => void;
   onDoubleClick?: (detection: DetectionSummary) => void;
+  /** Open this card's track. Absent while a track is already open, so
+   *  its frames carry no badge: opening one would be opening what you
+   *  are already looking at. */
+  onOpenTrack?: (detection: DetectionSummary) => void;
   tileSize?: TileSize;
 }
 
-export const CropCard = memo(function CropCard({ detection, selected, onSelect, onDoubleClick, tileSize = "M" }: CropCardProps) {
+export const CropCard = memo(function CropCard({ detection, selected, onSelect, onDoubleClick, onOpenTrack, tileSize = "M" }: CropCardProps) {
   // Repaint when the project's colour map lands or changes.
   useSpeciesColorsVersion();
   // The shared rule, not the one string: pressing X writes
@@ -128,6 +132,40 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
             {/* Loading shimmer placeholder */}
             <div className="absolute inset-0 bg-gradient-to-r from-muted via-muted-foreground/5 to-muted animate-pulse -z-10" />
           </>
+        )}
+        {/* How many frames the tracker followed this animal for, and the
+            way into them. A photo has no track and shows nothing; a
+            one-frame track has nothing to open.
+
+            The number is the animal's, not the grid's: the tracker keeps
+            boxes below the counting threshold, so opening this usually
+            yields fewer cards than it says. The header above the frames
+            reconciles the two in words, which is honest and costs no
+            second count under the confidence rule in two SQL dialects.
+
+            stopPropagation on both handlers: the card root selects on
+            click, so without it opening a track would also select the
+            card, and shift-open would draw a range. */}
+        {onOpenTrack && (detection.track_frames ?? 0) > 1 && (
+          <button
+            type="button"
+            data-testid="open-track"
+            title={`Followed for ${detection.track_frames} frames. Open them.`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenTrack(detection);
+            }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            className={cn(
+              "absolute bottom-1 left-1 flex items-center gap-1 rounded",
+              "bg-black/60 text-white hover:bg-black/80 focus-visible:outline-none",
+              "focus-visible:ring-2 focus-visible:ring-white/70",
+              isSmall ? "px-1 py-0.5 text-[7px]" : "px-1.5 py-0.5 text-[10px]",
+            )}
+          >
+            <Film className={isSmall ? "h-2 w-2" : "h-2.5 w-2.5"} />
+            {detection.track_frames}
+          </button>
         )}
       </div>
 

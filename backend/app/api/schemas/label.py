@@ -121,6 +121,13 @@ class DetectionSummary(BaseModel):
     # Video detections carry the frame index they came from; image
     # detections expose None.
     frame_number: int | None = None
+    # The animal this card stands for, and how many frames the tracker
+    # followed it through. Both None for an image. `track_frames` drives
+    # the badge that opens the track; it counts what the tracker
+    # followed, which is more than the grid shows, because the tracker
+    # keeps boxes below the counting threshold.
+    track_id: str | None = None
+    track_frames: int | None = None
     # File-level triage marks, for the card's corner badge cluster.
     # Defaulted so older worker rows (mid-deploy) stay parseable.
     file_flagged: bool = False

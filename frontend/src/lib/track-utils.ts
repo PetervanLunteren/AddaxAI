@@ -8,7 +8,13 @@
  * the track", "what colour is it" and "is it verified" have one home.
  */
 
-import type { DetectionResponse, FileWithDetections, TrackResponse } from "../api/types";
+import type {
+  DetectionResponse,
+  DetectionSummary,
+  FileWithDetections,
+  TrackDetectionRow,
+  TrackResponse,
+} from "../api/types";
 import {
   getDetectionColor,
   getDetectionDisplayName,
@@ -181,4 +187,62 @@ export function trackPath(
       y: (d.bbox_y as number) + (d.bbox_height ?? 0) / 2,
     }))
     .sort((a, b) => a.frame - b.frame);
+}
+
+
+/**
+ * One frame of an opened track, shaped as a grid card.
+ *
+ * The Detections grid renders `DetectionSummary`, which the labels
+ * subprocess builds. A frame comes from the track endpoint instead, so
+ * it carries its own label, verdict and crop box but knows nothing
+ * about where it sits in the project. Those context fields are copied
+ * from the card that was opened: every frame of a track is in the same
+ * file, so the same deployment, site, event and capture time.
+ *
+ * `crop_url` is built the way the subprocess builds it, at the same
+ * size, so both kinds of card hit one endpoint and share one browser
+ * cache entry.
+ */
+export function trackFrameAsCard(
+  frame: TrackDetectionRow,
+  parent: DetectionSummary,
+): DetectionSummary {
+  return {
+    detection_id: frame.id,
+    // Every frame of a track is in the same file as the card that opened
+    // it, and the wire type for a detection carries no file id.
+    file_id: parent.file_id,
+    label: frame.label,
+    label_taxonomy_id: frame.label_taxonomy_id,
+    label_confidence: frame.label_confidence,
+    common_name: frame.common_name,
+    scientific_name: frame.scientific_name,
+    confidence: frame.confidence,
+    category: frame.category,
+    verified: frame.verified,
+    classification_method: frame.classification_method,
+    // Similarity and neighbour agreement are properties of a place in
+    // the sorted grid. A frame has no place in it, so it has none.
+    distance_to_centroid: null,
+    similarity: null,
+    neighbor_agreement: null,
+    neighbor_top_label: null,
+    neighbor_top_common_name: null,
+    neighbor_top_scientific_name: null,
+    site_name: parent.site_name,
+    deployment_id: parent.deployment_id,
+    captured_at_local: parent.captured_at_local,
+    event_id: parent.event_id,
+    event_start_local: parent.event_start_local,
+    crop_url: `/api/detections/${frame.id}/crop?size=200`,
+    crop_bbox: frame.crop_bbox,
+    frame_number: frame.frame_number,
+    track_id: frame.track_id,
+    // A frame is not itself a track, so it carries no badge: opening one
+    // would be opening what you are already looking at.
+    track_frames: null,
+    file_flagged: parent.file_flagged,
+    file_favorited: parent.file_favorited,
+  };
 }

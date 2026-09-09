@@ -77,6 +77,9 @@ interface CropGridProps {
   selectedIds: Set<string>;
   onSelect: (detectionId: string, e: React.MouseEvent) => void;
   onDoubleClick?: (detection: DetectionSummary) => void;
+  /** Open a card's track: the grid swaps to that animal's frames. Left
+   *  out while a track is already open, so its frames show no badge. */
+  onOpenTrack?: (detection: DetectionSummary) => void;
   onBackgroundClick?: () => void;
   /** Fires when the user clicks "Relabel all (N)" on a cohort divider.
    * Parent owns the destructive confirm flow and the bulk-relabel
@@ -190,6 +193,7 @@ interface GridCellProps {
   tileSize: TileSize;
   onSelect: (detectionId: string, e: React.MouseEvent) => void;
   onDoubleClick?: (detection: DetectionSummary) => void;
+  onOpenTrack?: (detection: DetectionSummary) => void;
 }
 
 const GridCell = memo(function GridCell({
@@ -198,6 +202,7 @@ const GridCell = memo(function GridCell({
   tileSize,
   onSelect,
   onDoubleClick,
+  onOpenTrack,
 }: GridCellProps) {
   const selected = useSyncExternalStore(
     selectionStore.subscribe,
@@ -212,6 +217,7 @@ const GridCell = memo(function GridCell({
         tileSize={tileSize}
         onSelect={onSelect}
         onDoubleClick={onDoubleClick}
+        onOpenTrack={onOpenTrack}
       />
     </div>
   );
@@ -232,6 +238,7 @@ export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
   selectedIds,
   onSelect,
   onDoubleClick,
+  onOpenTrack,
   onBackgroundClick,
   onRelabelCohort,
   onDismissCohort,
@@ -327,6 +334,19 @@ export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
       if (row.type === "cohort_gap") return COHORT_GAP_HEIGHT;
       return cardHeight;
     },
+    // Measured heights are cached against this key. Without it the
+    // library falls back to the array index, so a list that changes
+    // shape hands every later row the height measured for whatever used
+    // to sit at its position: a 44px divider's height landing on a row
+    // of 380px tiles, until a remeasure settles it. The row's own
+    // identity is stable across those changes; its index is not.
+    getItemKey: (index) => {
+      const row = rows[index];
+      if (row.type === "cards") return `cards:${row.detections[0].detection_id}`;
+      if (row.type === "divider") return `divider:${row.label}`;
+      if (row.type === "cohort_divider") return `cohort:${row.cohort.suggested_label}`;
+      return `gap:${index}`;
+    },
     overscan: 5,
     scrollMargin: listRef.current?.offsetTop ?? 0,
     measureElement: (el) => el.getBoundingClientRect().height,
@@ -375,7 +395,7 @@ export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
         if (row.type === "divider") {
           return (
             <div
-              key={`divider-${virtualRow.index}`}
+              key={virtualRow.key}
               data-index={virtualRow.index}
               ref={virtualizer.measureElement}
               style={{
@@ -414,7 +434,7 @@ export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
           const c = row.cohort;
           return (
             <div
-              key={`cohort-${virtualRow.index}`}
+              key={virtualRow.key}
               data-index={virtualRow.index}
               ref={virtualizer.measureElement}
               style={{
@@ -518,7 +538,7 @@ export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
           // lets each cohort read as a distinct card.
           return (
             <div
-              key={`gap-${virtualRow.index}`}
+              key={virtualRow.key}
               data-index={virtualRow.index}
               ref={virtualizer.measureElement}
               style={{
@@ -540,7 +560,7 @@ export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
         const isLast = row.cohortPos === "last" || row.cohortPos === "only";
         return (
           <div
-            key={virtualRow.index}
+            key={virtualRow.key}
             data-index={virtualRow.index}
             ref={virtualizer.measureElement}
             style={{
@@ -577,6 +597,7 @@ export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
                     tileSize={tileSize}
                     onSelect={onSelect}
                     onDoubleClick={onDoubleClick}
+                    onOpenTrack={onOpenTrack}
                   />
                 ))}
               </div>

@@ -64,10 +64,14 @@ export const detectionsApi = {
     });
   },
 
-  /** Bulk verify/unverify detections (auto-batches in chunks of 500). */
+  /** Bulk verify/unverify detections (auto-batches in chunks of 500).
+   *  `expandTracks` false keeps the verdict on the ids given instead of
+   *  spreading it over their whole track: what an opened track needs,
+   *  where the person is judging frames rather than the animal. */
   bulkVerify: async (
     ids: string[],
-    verified: boolean
+    verified: boolean,
+    expandTracks = true
   ): Promise<{ updated_count: number }> => {
     const chunks = chunkArray(ids, 500);
     const results = await Promise.all(
@@ -75,6 +79,7 @@ export const detectionsApi = {
         api.post<{ updated_count: number }>("/api/detections/bulk-verify", {
           detection_ids: chunk,
           verified,
+          expand_tracks: expandTracks,
         })
       )
     );
@@ -85,7 +90,8 @@ export const detectionsApi = {
   bulkRelabel: async (
     ids: string[],
     label: string | null,
-    category?: string
+    category?: string,
+    expandTracks = true
   ): Promise<{ updated_count: number }> => {
     const chunks = chunkArray(ids, 500);
     const results = await Promise.all(
@@ -94,6 +100,7 @@ export const detectionsApi = {
           detection_ids: chunk,
           label,
           category,
+          expand_tracks: expandTracks,
         })
       )
     );
@@ -105,13 +112,14 @@ export const detectionsApi = {
    *  reverted rows so the caller can patch its grid in place. */
   bulkRevertToOriginal: async (
     ids: string[],
+    expandTracks = true,
   ): Promise<{ reverted: RevertedDetection[] }> => {
     const chunks = chunkArray(ids, 500);
     const results = await Promise.all(
       chunks.map((chunk) =>
         api.post<{ reverted: RevertedDetection[] }>(
           "/api/detections/bulk-revert-to-original",
-          { detection_ids: chunk },
+          { detection_ids: chunk, expand_tracks: expandTracks },
         ),
       ),
     );

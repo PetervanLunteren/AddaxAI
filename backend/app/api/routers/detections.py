@@ -215,6 +215,24 @@ def get_detection_crop(
 # --- Detection verification endpoints ---
 
 
+def _cascade(db: Session, ids: list[str], expand_tracks: bool) -> list[str]:
+    """The ids a verdict acts on.
+
+    A verdict on a card is a verdict on the animal, so by default the
+    given ids grow to every box sharing a track (`expand_to_tracks`).
+    The Detections tab turns that off when a person has opened a track
+    and is judging its frames one by one: there the verdict is about
+    those moments, not about the animal, and it must not spread back
+    over the frames they did not pick. Its own representative frame is
+    one of those cards and behaves like its neighbours.
+
+    The flag defaults to today's behaviour, so a caller that forgets it
+    cascades rather than under-applies, which is the safer direction.
+    """
+    return detection_crud.expand_to_tracks(db, ids) if expand_tracks else ids
+
+
+
 class VerifyRequest(BaseModel):
     verified: bool = True
 
@@ -222,16 +240,19 @@ class VerifyRequest(BaseModel):
 class BulkVerifyRequest(BaseModel):
     detection_ids: list[str] = Field(..., max_length=500)
     verified: bool = True
+    expand_tracks: bool = True
 
 
 class BulkRelabelRequest(BaseModel):
     detection_ids: list[str] = Field(..., max_length=500)
     label: str | None = None
     category: str | None = None
+    expand_tracks: bool = True
 
 
 class BulkRevertRequest(BaseModel):
     detection_ids: list[str] = Field(..., max_length=500)
+    expand_tracks: bool = True
 
 
 class BulkDismissRequest(BaseModel):
@@ -274,7 +295,7 @@ def bulk_verify_detections(
     db: Session = Depends(get_db),
 ):
     """Bulk verify/unverify detections (max 500), whole tracks included."""
-    ids = detection_crud.expand_to_tracks(db, body.detection_ids)
+    ids = _cascade(db, body.detection_ids, body.expand_tracks)
     now = datetime.now(UTC) if body.verified else None
     updated = (
         db.query(Detection)
@@ -337,7 +358,7 @@ def bulk_relabel_detections(
     if not body.detection_ids:
         return {"updated_count": 0}
 
-    ids = detection_crud.expand_to_tracks(db, body.detection_ids)
+    ids = _cascade(db, body.detection_ids, body.expand_tracks)
     detections = (
         db.query(Detection)
         .filter(Detection.id.in_(ids))
@@ -460,7 +481,7 @@ def bulk_revert_to_original(
 
     detections = (
         db.query(Detection)
-        .filter(Detection.id.in_(detection_crud.expand_to_tracks(db, body.detection_ids)))
+        .filter(Detection.id.in_(_cascade(db, body.detection_ids, body.expand_tracks)))
         .all()
     )
     if not detections:

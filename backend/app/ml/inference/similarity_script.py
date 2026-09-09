@@ -36,6 +36,11 @@ from typing import Any
 
 import numpy as np
 
+# Sibling module, imported by name because this script is run by path so
+# its own directory is sys.path[0]. Holds the crop geometry, so the card
+# overlay here and the crop the service cuts cannot drift apart.
+from crop_box import bbox_within_crop
+
 # Two independent limits (see the sort load paths):
 #   MAX_EMBEDDINGS — the FAISS budget: the most embedding vectors held in
 #     RAM and walked. Similarity walks every embedded detection; event sort
@@ -86,6 +91,12 @@ _DETECTION_COLUMNS = """
        d.verified, d.suggestion_dismissed,
        d.classification_method, d.file_id, d.frame_number,
        d.bbox_x, d.bbox_y, d.bbox_width, d.bbox_height,
+       d.track_id,
+       -- How many frames the tracker followed this animal for. Drives the
+       -- badge that opens a track on the Detections tab. Correlated, like
+       -- the event columns: strictly one row per detection.
+       (SELECT t2.frame_count FROM tracks t2 WHERE t2.id = d.track_id)
+           AS track_frames,
        f.deployment_id, f.captured_at_local, f.width_px, f.height_px,
        f.flagged AS file_flagged, f.favorited AS file_favorited,
        s.name AS site_name,
@@ -286,6 +297,13 @@ def _row_to_meta(row: sqlite3.Row) -> dict:
         event_start = str(event_start)
 
     return {
+        # frame_number, track_id and track_frames must be copied here as
+        # well as selected above. frame_number was selected and dropped
+        # for months, so it read as null on the wire the whole time; the
+        # round trip is pinned by tests/ml/test_similarity_summary_fields.
+        "frame_number": row["frame_number"],
+        "track_id": row["track_id"],
+        "track_frames": row["track_frames"],
         "label": row["label"],
         "label_taxonomy_id": row["label_taxonomy_id"],
         "label_confidence": row["label_confidence"],
@@ -559,35 +577,16 @@ def _is_useful_suggestion(
 
 
 def _compute_crop_bbox(meta: dict) -> dict | None:
-    """Compute bbox position within the expanded crop (normalized 0-1).
+    """Where the box sits inside its crop, for the card's overlay.
 
-    The crop is always centered on the bbox (no edge-shifting), matching
-    the blurred-edge-fill behavior in crop_service.py.
+    One line, because the geometry lives in ``crop_box.bbox_within_crop``
+    beside the crop it describes; the track endpoint answers with the
+    same function.
     """
-    img_w = meta.get("width_px")
-    img_h = meta.get("height_px")
-    if not img_w or not img_h:
-        return None
-
-    meta["bbox_x"] * img_w
-    meta["bbox_y"] * img_h
-    bw = meta["bbox_width"] * img_w
-    bh = meta["bbox_height"] * img_h
-
-    max_side = max(bw, bh)
-    pad = max_side * 0.10
-    crop_side = max_side + 2 * pad
-
-    if crop_side <= 0:
-        return None
-
-    # Bbox is always centered: offset = pad / crop_side
-    return {
-        "x": (crop_side - bw) / 2 / crop_side,
-        "y": (crop_side - bh) / 2 / crop_side,
-        "w": bw / crop_side,
-        "h": bh / crop_side,
-    }
+    return bbox_within_crop(
+        meta["bbox_width"], meta["bbox_height"],
+        meta.get("width_px"), meta.get("height_px"),
+    )
 
 
 def _build_summary(
@@ -627,6 +626,8 @@ def _build_summary(
         "crop_url": f"/api/detections/{detection_id}/crop?size=200",
         "crop_bbox": _compute_crop_bbox(meta),
         "frame_number": meta.get("frame_number"),
+        "track_id": meta.get("track_id"),
+        "track_frames": meta.get("track_frames"),
         "file_flagged": meta.get("file_flagged", False),
         "file_favorited": meta.get("file_favorited", False),
     }

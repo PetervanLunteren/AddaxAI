@@ -1009,9 +1009,35 @@ export interface DetectionSummary {
   crop_bbox: CropBbox | null;
   /** Video detections carry their frame index; image detections are null. */
   frame_number: number | null;
+  /** The animal this card stands for. Null for an image. */
+  track_id: string | null;
+  /** How many frames the tracker followed this animal through. Drives the
+   * badge that opens the track. Larger than the number of cards the track
+   * opens to, because the tracker keeps boxes below the counting
+   * threshold and the grid does not show those. */
+  track_frames: number | null;
   /** File-level triage marks, for the card's corner badge cluster. */
   file_flagged: boolean;
   file_favorited: boolean;
+}
+
+/** One frame of a track, as a card in the opened track. `DetectionResponse`
+ *  plus where the box sits inside its finished crop, which the card draws
+ *  its overlay from. */
+export interface TrackDetectionRow extends DetectionResponse {
+  crop_bbox: CropBbox | null;
+}
+
+/** The animal, and the frames of it a person may act on. Fewer rows than
+ *  `track.frame_count`: the tracker keeps boxes below the counting
+ *  threshold and the grid does not show those. */
+export interface TrackDetectionsResponse {
+  file_id: string;
+  file_name: string;
+  frame_rate: number | null;
+  duration_seconds: number | null;
+  track: TrackResponse;
+  detections: TrackDetectionRow[];
 }
 
 export interface SortResponse {
