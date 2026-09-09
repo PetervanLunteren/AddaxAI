@@ -8,8 +8,8 @@
  * **Two renderers, one answer.** What to draw at a given moment comes
  * from `lib/video-overlay.ts` and from nowhere else: the boxes, their
  * interpolated positions between the frames the detector sampled, the
- * dimming of unselected tracks, and the trail behind the selected
- * animal. This file only turns that answer into SVG (for the screen) and
+ * dimming of unselected tracks, and the trail behind each animal.
+ * This file only turns that answer into SVG (for the screen) and
  * into canvas calls (for the recording). The two used to work it out
  * separately and had already drifted, the recording never dimming the
  * other tracks; if you change what appears, change the module, not one
@@ -86,8 +86,10 @@ const PLAYABLE_FORMATS = new Set(["mp4", "m4v", "mov", "webm"]);
 
 /** Width of the trail line, relative to a bbox stroke. */
 const TRAIL_STROKE = 0.75;
-/** Radius of a trail dot, in screen pixels before scaling. */
-const TRAIL_DOT = 2.5;
+/** How much quieter a trail is than its box. Every animal on screen has
+ *  one, so the lines have to stay clearly secondary to the rectangles or
+ *  a busy clip reads as a scribble. */
+const TRAIL_OPACITY = 0.6;
 
 /** Check whether a file's video format is browser-playable. */
 export function isPlayableVideo(file: FileWithDetections): boolean {
@@ -115,7 +117,7 @@ function drawOverlayFrame(
   scale: number,
 ) {
   const dets = overlay.boxes;
-  if (dets.length === 0 && overlay.trail.length === 0) return;
+  if (dets.length === 0) return;
 
   ctx.save();
 
@@ -140,30 +142,24 @@ function drawOverlayFrame(
     ctx.drawImage(dimLayer, 0, 0);
   }
 
-  // The selected animal's recent path, fading with age. Drawn over the
-  // dim and under the boxes, the same order the card modal uses.
-  if (overlay.trail.length > 1) {
-    const colour = overlay.trailOf ? computePillLayout(overlay.trailOf).color : "#ffffff";
-    ctx.lineWidth = BBOX_STROKE_WIDTH * TRAIL_STROKE * scale;
-    ctx.strokeStyle = colour;
-    for (let i = 1; i < overlay.trail.length; i++) {
-      const a = overlay.trail[i - 1];
-      const b = overlay.trail[i];
-      ctx.globalAlpha = 1 - b.age;
+  // Every animal's recent path, in its own colour, fading with age.
+  // Over the dim and under the boxes, the order the card modal uses.
+  ctx.lineWidth = BBOX_STROKE_WIDTH * TRAIL_STROKE * scale;
+  ctx.lineCap = "round";
+  for (const b of dets) {
+    if (b.trail.length < 2) continue;
+    ctx.strokeStyle = computePillLayout(b.detection).color;
+    for (let i = 1; i < b.trail.length; i++) {
+      const from = b.trail[i - 1];
+      const to = b.trail[i];
+      ctx.globalAlpha = (1 - to.age) * TRAIL_OPACITY * b.dim;
       ctx.beginPath();
-      ctx.moveTo(a.x * w, a.y * h);
-      ctx.lineTo(b.x * w, b.y * h);
+      ctx.moveTo(from.x * w, from.y * h);
+      ctx.lineTo(to.x * w, to.y * h);
       ctx.stroke();
     }
-    ctx.fillStyle = colour;
-    for (const pt of overlay.trail.slice(1)) {
-      ctx.globalAlpha = 1 - pt.age;
-      ctx.beginPath();
-      ctx.arc(pt.x * w, pt.y * h, TRAIL_DOT * scale, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
   }
+  ctx.globalAlpha = 1;
 
   // One pill per box, measured once and reused by both passes below.
   const pills = dets.map((b) => computePillLayout(b.detection));
@@ -297,12 +293,6 @@ export function VideoPlayer({
     [overlay],
   );
 
-  // The trail takes the selected animal's own colour, not whichever box
-  // happens to be first: with two species on screen those differ.
-  const trailColor = useMemo(
-    () => (overlay.trailOf ? computePillLayout(overlay.trailOf).color : undefined),
-    [overlay],
-  );
 
   // Two clocks off one time. The timeline's playhead and every seek work
   // in whole frames as before; the overlay needs the fraction, or a box
@@ -595,38 +585,32 @@ export function VideoPlayer({
               boxes={overlay.boxes.map((b) => boxRect(b, imgW, imgH))}
             />
 
-            {/* The selected animal's recent path, fading with age. Over
-                the dim and under the boxes, as in the card modal. */}
-            {overlay.trail.length > 1 && (
-              <g data-testid="video-track-trail">
-                {overlay.trail.slice(1).map((pt, i) => {
-                  const prev = overlay.trail[i];
+            {/* Every animal's recent path, in its own colour, fading with
+                age. Over the dim and under the boxes, as in the card
+                modal. Every animal rather than only the selected one: a
+                trail on one alone reads as "that one is tracked and
+                these are not", when all it means is which one you
+                clicked, and the dimming already says that. */}
+            <g data-testid="video-track-trail">
+              {overlay.boxes.map((b, i) =>
+                b.trail.slice(1).map((pt, j) => {
+                  const prev = b.trail[j];
                   return (
                     <line
-                      key={`trail-${i}`}
+                      key={`trail-${b.detection.id}-${j}`}
                       x1={prev.x * imgW}
                       y1={prev.y * imgH}
                       x2={pt.x * imgW}
                       y2={pt.y * imgH}
-                      stroke={trailColor}
+                      stroke={pills[i].color}
                       strokeWidth={BBOX_STROKE_WIDTH * TRAIL_STROKE * s}
                       strokeLinecap="round"
-                      opacity={1 - pt.age}
+                      opacity={(1 - pt.age) * TRAIL_OPACITY * b.dim}
                     />
                   );
-                })}
-                {overlay.trail.slice(1).map((pt, i) => (
-                  <circle
-                    key={`trail-dot-${i}`}
-                    cx={pt.x * imgW}
-                    cy={pt.y * imgH}
-                    r={TRAIL_DOT * s}
-                    fill={trailColor}
-                    opacity={1 - pt.age}
-                  />
-                ))}
-              </g>
-            )}
+                }),
+              )}
+            </g>
 
             {/* Bounding boxes. With a track selected, the others dim. */}
             {overlay.boxes.map((b, i) => {

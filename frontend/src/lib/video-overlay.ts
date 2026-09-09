@@ -5,7 +5,7 @@
  * carries boxes every fifteenth frame and the overlay has real data for
  * one frame in fifteen. This module fills the gaps: it holds every
  * track's sampled boxes in frame order and answers, for any moment,
- * where each animal's box is and where the selected one has just been.
+ * where each animal's box is and where it has just been.
  *
  * It is the single source of truth for that answer. `VideoPlayer` draws
  * it twice, once as SVG on screen and once on a canvas for the annotated
@@ -24,7 +24,7 @@
 import { passesDrawFilter } from "./detection-utils";
 import type { DetectionResponse } from "../api/types";
 
-/** How much of the track to trail behind the selected animal. */
+/** How much of each track to trail behind the animal. */
 export const TRAIL_SECONDS = 3;
 
 /** Opacity factor for the boxes of every other track while one is selected. */
@@ -63,6 +63,12 @@ export interface OverlayBox {
   height: number;
   /** 1, or `OTHER_TRACK_DIM` when another track is selected. */
   dim: number;
+  /** Where this animal has just been, newest first. Every animal on
+   *  screen has one: a trail only on the selected animal would say
+   *  something about the animal ("this one is tracked, those are not")
+   *  when it only means "this is the one you clicked". The selection is
+   *  already carried by `dim`. */
+  trail: TrailPoint[];
 }
 
 /** One point of the trail, in image fractions. `age` runs 0 at the
@@ -75,11 +81,6 @@ export interface TrailPoint {
 
 export interface OverlayFrame {
   boxes: OverlayBox[];
-  trail: TrailPoint[];
-  /** The animal the trail belongs to, so a renderer takes its colour
-   *  from the right species rather than from whichever box happens to
-   *  come first. Null when nothing is selected. */
-  trailOf: BboxedDetection | null;
 }
 
 export interface OverlayIndex {
@@ -92,7 +93,7 @@ export interface OverlayIndex {
   step: number;
 }
 
-const EMPTY: OverlayFrame = { boxes: [], trail: [], trailOf: null };
+const EMPTY: OverlayFrame = { boxes: [] };
 
 /**
  * Group a file's drawable boxes by track and measure the sampling step.
@@ -158,7 +159,7 @@ function lerp(a: number, b: number, t: number): number {
 }
 
 /**
- * Where every animal's box is at `frame`, and the selected one's trail.
+ * Where every animal's box is at `frame`, and where it has just been.
  *
  * `frame` is fractional: the overlay runs off `video.currentTime`, not
  * off a rounded frame index, or the box would step rather than glide.
@@ -187,10 +188,9 @@ export function overlayAt(
   const step = index.step > 0 ? index.step : 1;
 
   const boxes: OverlayBox[] = [];
-  let trail: TrailPoint[] = [];
-  let trailOf: BboxedDetection | null = null;
+  const trailFrames = TRAIL_SECONDS * (frameRate > 0 ? frameRate : 30);
 
-  for (const [key, group] of index.tracks) {
+  for (const group of index.tracks.values()) {
     const i = sampleAtOrBefore(group, frame + FRAME_EPSILON);
     if (i < 0) continue; // before this track's first sample
     const from = group[i];
@@ -208,21 +208,18 @@ export function overlayAt(
       width: adjacent ? lerp(from.bbox_width, next.bbox_width, t) : from.bbox_width,
       height: adjacent ? lerp(from.bbox_height, next.bbox_height, t) : from.bbox_height,
       dim: selectedTrackId != null && from.track_id !== selectedTrackId ? OTHER_TRACK_DIM : 1,
+      trail: [],
     };
+    box.trail = trailFor(group, frame, box, trailFrames);
     boxes.push(box);
-
-    if (selectedTrackId != null && key === selectedTrackId) {
-      trail = trailFor(group, frame, box, TRAIL_SECONDS * (frameRate > 0 ? frameRate : 30));
-      if (trail.length > 0) trailOf = from;
-    }
   }
 
-  return { boxes, trail, trailOf };
+  return { boxes };
 }
 
 /**
- * The selected animal's path over the last `TRAIL_SECONDS`, newest
- * first, ending at the box on screen so the line meets the animal.
+ * One animal's path over the last `TRAIL_SECONDS`, newest first,
+ * starting at the box on screen so the line meets the animal.
  *
  * The window arrives in frames rather than seconds because the caller
  * already holds the clip's frame rate and this module stays free of
