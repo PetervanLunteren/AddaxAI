@@ -1,18 +1,34 @@
 /**
- * Video player with SVG bounding box overlays synced to the current frame.
+ * Video player with bounding box overlays that follow the animals.
  *
- * Renders an HTML5 <video> element with an SVG overlay that shows
- * detection bounding boxes for the current frame. Used in the
- * verification modal as an alternative to the best-frame AnnotationCanvas.
+ * Renders an HTML5 <video> with an SVG overlay, and can record the same
+ * overlay onto a canvas to produce an annotated MP4. Used in the
+ * verification modals as an alternative to the best-frame AnnotationCanvas.
  *
- * Bbox / label styling is driven by the shared detection-overlay constants
- * so changes in AnnotationCanvas are automatically reflected here.
+ * **Two renderers, one answer.** What to draw at a given moment comes
+ * from `lib/video-overlay.ts` and from nowhere else: the boxes, their
+ * interpolated positions between the frames the detector sampled, the
+ * dimming of unselected tracks, and the trail behind the selected
+ * animal. This file only turns that answer into SVG (for the screen) and
+ * into canvas calls (for the recording). The two used to work it out
+ * separately and had already drifted, the recording never dimming the
+ * other tracks; if you change what appears, change the module, not one
+ * of these.
+ *
+ * Bbox / label styling is driven by the shared detection-overlay
+ * constants so changes in AnnotationCanvas are automatically reflected
+ * here.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE_URL } from "../../lib/api-client";
 import { splitPath } from "../../lib/path-utils";
-import { passesDrawFilter } from "../../lib/detection-utils";
+import {
+  buildOverlayIndex,
+  overlayAt,
+  type OverlayBox,
+  type OverlayFrame,
+} from "../../lib/video-overlay";
 import {
   computePillLayout,
   placePill,
@@ -68,12 +84,10 @@ interface VideoPlayerProps {
 /** Browser-playable video formats. */
 const PLAYABLE_FORMATS = new Set(["mp4", "m4v", "mov", "webm"]);
 
-/** Frames at full opacity before fading starts. */
-const HOLD_FRAMES = 5;
-/** Frames over which the overlay fades from full to zero (after the hold). */
-const FADE_FRAMES = 25;
-/** Opacity factor for the boxes of every other track while one is selected. */
-const OTHER_TRACK_DIM = 0.25;
+/** Width of the trail line, relative to a bbox stroke. */
+const TRAIL_STROKE = 0.75;
+/** Radius of a trail dot, in screen pixels before scaling. */
+const TRAIL_DOT = 2.5;
 
 /** Check whether a file's video format is browser-playable. */
 export function isPlayableVideo(file: FileWithDetections): boolean {
@@ -84,33 +98,26 @@ export function isPlayableVideo(file: FileWithDetections): boolean {
   );
 }
 
-// Detections that paint onto the video canvas always carry a bbox;
-// event-level observations (null bbox) are filtered out upstream and
-// never reach the renderer. This alias narrows the bbox fields so the
-// canvas math doesn't need null guards at every coordinate.
-type BboxedDetection = DetectionResponse & {
-  bbox_x: number;
-  bbox_y: number;
-  bbox_width: number;
-  bbox_height: number;
-};
+/** Image-pixel geometry of one overlay box, for the shared pill placer. */
+function boxRect(b: OverlayBox, w: number, h: number) {
+  return { x: b.x * w, y: b.y * h, width: b.width * w, height: b.height * h };
+}
 
 // ── Canvas overlay drawing (for video export) ─────────────────────
 // Mirrors the SVG overlay rendering using the shared detection-overlay
 // constants, so exported videos match the on-screen appearance.
 
-function drawOverlaysOnCanvas(
+function drawOverlayFrame(
   ctx: CanvasRenderingContext2D,
-  dets: BboxedDetection[],
+  overlay: OverlayFrame,
   w: number,
   h: number,
-  opacity: number,
   scale: number,
 ) {
-  if (dets.length === 0 || opacity <= 0) return;
+  const dets = overlay.boxes;
+  if (dets.length === 0 && overlay.trail.length === 0) return;
 
   ctx.save();
-  ctx.globalAlpha = opacity;
 
   // Spotlight dim: dim everything outside the UNION of the boxes. Built on an
   // offscreen canvas so punching the box holes (destination-out) clears only
@@ -124,49 +131,63 @@ function drawOverlaysOnCanvas(
     dctx.fillStyle = DIM_FILL;
     dctx.fillRect(0, 0, w, h);
     dctx.globalCompositeOperation = "destination-out";
-    for (const det of dets) {
+    for (const b of dets) {
+      const r = boxRect(b, w, h);
       dctx.beginPath();
-      roundedRectPath(
-        dctx,
-        det.bbox_x * w, det.bbox_y * h,
-        det.bbox_width * w, det.bbox_height * h,
-        BBOX_CORNER_RADIUS * scale,
-      );
+      roundedRectPath(dctx, r.x, r.y, r.width, r.height, BBOX_CORNER_RADIUS * scale);
       dctx.fill();
     }
     ctx.drawImage(dimLayer, 0, 0);
   }
 
-  // Bounding boxes
-  for (const det of dets) {
-    const pill = computePillLayout(det);
-    ctx.beginPath();
-    roundedRectPath(
-      ctx,
-      det.bbox_x * w, det.bbox_y * h,
-      det.bbox_width * w, det.bbox_height * h,
-      BBOX_CORNER_RADIUS * scale,
-    );
-    ctx.strokeStyle = pill.color;
-    ctx.lineWidth = BBOX_STROKE_WIDTH * scale;
-    ctx.globalAlpha = opacity * BBOX_OPACITY;
-    ctx.stroke();
-    ctx.globalAlpha = opacity;
+  // The selected animal's recent path, fading with age. Drawn over the
+  // dim and under the boxes, the same order the card modal uses.
+  if (overlay.trail.length > 1) {
+    const colour = computePillLayout(dets[0]?.detection ?? overlay.boxes[0].detection).color;
+    ctx.lineWidth = BBOX_STROKE_WIDTH * TRAIL_STROKE * scale;
+    ctx.strokeStyle = colour;
+    for (let i = 1; i < overlay.trail.length; i++) {
+      const a = overlay.trail[i - 1];
+      const b = overlay.trail[i];
+      ctx.globalAlpha = 1 - b.age;
+      ctx.beginPath();
+      ctx.moveTo(a.x * w, a.y * h);
+      ctx.lineTo(b.x * w, b.y * h);
+      ctx.stroke();
+    }
+    ctx.fillStyle = colour;
+    for (const pt of overlay.trail.slice(1)) {
+      ctx.globalAlpha = 1 - pt.age;
+      ctx.beginPath();
+      ctx.arc(pt.x * w, pt.y * h, TRAIL_DOT * scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   }
+
+  // One pill per box, measured once and reused by both passes below.
+  const pills = dets.map((b) => computePillLayout(b.detection));
+
+  // Bounding boxes. With a track selected, the others dim.
+  dets.forEach((b, i) => {
+    const r = boxRect(b, w, h);
+    ctx.beginPath();
+    roundedRectPath(ctx, r.x, r.y, r.width, r.height, BBOX_CORNER_RADIUS * scale);
+    ctx.strokeStyle = pills[i].color;
+    ctx.lineWidth = BBOX_STROKE_WIDTH * scale;
+    ctx.globalAlpha = BBOX_OPACITY * b.dim;
+    ctx.stroke();
+  });
 
   // Label pills
   ctx.textBaseline = "top";
-  for (const det of dets) {
-    const pill = computePillLayout(det);
+  dets.forEach((b, i) => {
+    const pill = pills[i];
+    ctx.globalAlpha = b.dim;
     const pw = pill.pillWidth * scale;
     const ph = pill.pillHeight * scale;
     const { x, y: pillY } = placePill(
-      {
-        x: det.bbox_x * w,
-        y: det.bbox_y * h,
-        width: det.bbox_width * w,
-        height: det.bbox_height * h,
-      },
+      boxRect(b, w, h),
       { width: pw, height: ph },
       { width: w, height: h },
     );
@@ -184,7 +205,7 @@ function drawOverlaysOnCanvas(
     if (pill.hasLabel) {
       ctx.fillText(pill.labelText, x + TEXT_START_X * scale, pillY + (PILL_PAD_Y + FONT + LINE_GAP) * scale);
     }
-  }
+  });
 
   ctx.restore();
 }
@@ -210,6 +231,10 @@ export function VideoPlayer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [currentFrame, setCurrentFrame] = useState<number>(0);
+  // The same position, unrounded. The overlay interpolates between the
+  // frames the detector sampled, so it needs where we are *between*
+  // native frames; the timeline only needs which frame we are on.
+  const [overlayFrame, setOverlayFrame] = useState<number>(0);
   // The clip's length in frames: what the timeline draws its bars over.
   // The stored length (ingest) is there at once; the element's own
   // duration replaces it once the metadata is in.
@@ -246,75 +271,49 @@ export function VideoPlayer({
 
   const detections = allDetections ?? file.detections;
 
-  // Group detections by frame_number, through the same filter every
-  // other drawing surface uses. `passesDrawFilter` rather than
+  // The clip's boxes, grouped by track and filtered through the same rule
+  // every other drawing surface uses. `passesDrawFilter` rather than
   // `shouldDrawBbox` because this player draws EVERY frame's boxes over
   // the real video on purpose, so the best-frame gate must not apply
   // here — that is the one rule this surface legitimately differs on.
-  //
-  // It used to inline `d.confidence < detectionThreshold` instead, and
-  // so missed both the verified override and the rejected-box rule.
-  // The result was one event modal disagreeing with itself: a box a
-  // human confirmed below the threshold drew on the still and vanished
-  // on play, and a box they rejected did the opposite.
-  const detectionsByFrame = useMemo(() => {
-    const map = new Map<number, BboxedDetection[]>();
-    for (const d of detections) {
-      if (!passesDrawFilter(d, detectionThreshold)) continue;
-      if (d.frame_number == null) continue;
-      const bb = d as BboxedDetection;
-      const existing = map.get(d.frame_number);
-      if (existing) {
-        existing.push(bb);
-      } else {
-        map.set(d.frame_number, [bb]);
-      }
-    }
-    return map;
-  }, [detections, detectionThreshold]);
+  // The filter is applied inside `buildOverlayIndex`, once.
+  const overlayIndex = useMemo(
+    () => buildOverlayIndex(detections, detectionThreshold),
+    [detections, detectionThreshold],
+  );
 
-  // Find detections for the current video frame, persisting the last-seen
-  // detections through frames that have none so boxes don't disappear between
-  // analyzed frames.
-  const lastDetectionsRef = useRef<BboxedDetection[]>([]);
-  const lastMatchFrameRef = useRef<number>(0);
+  // What to draw right now. The one place either renderer asks; the
+  // export loop calls the same function with its own clock.
+  const overlay = useMemo(
+    () => overlayAt(overlayIndex, overlayFrame, frameRate, selectedTrackId),
+    [overlayIndex, overlayFrame, frameRate, selectedTrackId],
+  );
 
-  const currentDetections = useMemo(() => {
-    if (detectionsByFrame.size === 0) return [];
-    let found = detectionsByFrame.get(currentFrame);
-    if (!found) {
-      for (const offset of [1, -1]) {
-        found = detectionsByFrame.get(currentFrame + offset);
-        if (found) break;
-      }
-    }
-    if (found) {
-      lastDetectionsRef.current = found;
-      lastMatchFrameRef.current = currentFrame;
-      return found;
-    }
-    return lastDetectionsRef.current;
-  }, [currentFrame, detectionsByFrame]);
+  // One pill per box, measured once and used by both the rect and its
+  // label below. `computePillLayout` measures text on a canvas, and this
+  // runs at animation-frame rate.
+  const pills = useMemo(
+    () => overlay.boxes.map((b) => computePillLayout(b.detection)),
+    [overlay],
+  );
 
-  const dimFor = (det: DetectionResponse) =>
-    selectedTrackId != null && det.track_id !== selectedTrackId ? OTHER_TRACK_DIM : 1;
+  // Two clocks off one time. The timeline's playhead and every seek work
+  // in whole frames as before; the overlay needs the fraction, or a box
+  // would step from sample to sample instead of gliding between them.
+  const setClocks = useCallback((time: number) => {
+    const exact = time * frameRate;
+    setOverlayFrame(exact);
+    setCurrentFrame(Math.round(exact));
+  }, [frameRate]);
 
-  // Full opacity for HOLD_FRAMES, then linearly fade to 0 over FADE_FRAMES
-  const framesSinceMatch = Math.max(0, currentFrame - lastMatchFrameRef.current);
-  const overlayOpacity =
-    framesSinceMatch <= HOLD_FRAMES
-      ? 1
-      : Math.max(0, 1 - (framesSinceMatch - HOLD_FRAMES) / FADE_FRAMES);
-
-  // Sync frame number from video time using requestAnimationFrame for smooth updates
+  // Sync from video time using requestAnimationFrame for smooth updates
   const syncFrame = useCallback(() => {
     const video = videoRef.current;
     if (video && !video.paused) {
-      const frame = Math.round(video.currentTime * frameRate);
-      setCurrentFrame(frame);
+      setClocks(video.currentTime);
       animFrameRef.current = requestAnimationFrame(syncFrame);
     }
-  }, [frameRate]);
+  }, [setClocks]);
 
   const handlePlay = useCallback(() => {
     animFrameRef.current = requestAnimationFrame(syncFrame);
@@ -323,17 +322,15 @@ export function VideoPlayer({
   const handlePause = useCallback(() => {
     cancelAnimationFrame(animFrameRef.current);
     const video = videoRef.current;
-    if (video) {
-      setCurrentFrame(Math.round(video.currentTime * frameRate));
-    }
-  }, [frameRate]);
+    if (video) setClocks(video.currentTime);
+  }, [setClocks]);
 
   const handleSeeked = useCallback(() => {
     const video = videoRef.current;
     if (video) {
-      setCurrentFrame(Math.round(video.currentTime * frameRate));
+      setClocks(video.currentTime);
     }
-  }, [frameRate]);
+  }, [setClocks]);
 
   /** Jump to a frame and pause there, so that frame's boxes stay on
    *  screen. The `seekRequest` prop and the timeline both come here. */
@@ -344,6 +341,7 @@ export function VideoPlayer({
       video.pause();
       video.currentTime = frame / frameRate;
       setCurrentFrame(frame);
+      setOverlayFrame(frame);
     },
     [frameRate],
   );
@@ -406,29 +404,10 @@ export function VideoPlayer({
     // Label scale for native-resolution canvas (same ratio as live overlay)
     const exportScale = s;
 
-    // Independent detection lookup state for the export
-    let lastDets: BboxedDetection[] = [];
-    let lastMatch = 0;
-
-    const findDets = (frame: number) => {
-      let found = detectionsByFrame.get(frame);
-      if (!found) {
-        for (const offset of [1, -1]) {
-          found = detectionsByFrame.get(frame + offset);
-          if (found) break;
-        }
-      }
-      if (found) {
-        lastDets = found;
-        lastMatch = frame;
-      }
-      const elapsed = frame - lastMatch;
-      const opacity =
-        elapsed <= HOLD_FRAMES
-          ? 1
-          : Math.max(0, 1 - (elapsed - HOLD_FRAMES) / FADE_FRAMES);
-      return { dets: lastDets, opacity };
-    };
+    // No lookup of its own: the recording asks the same question of the
+    // same module the screen does, so the two cannot drift. It used to
+    // carry a private copy of the frame lookup and the fade, and had
+    // already fallen behind (it never dimmed the unselected tracks).
 
     const stream = canvas.captureStream(frameRate);
     const mimeType = "video/mp4;codecs=avc1";
@@ -478,8 +457,6 @@ export function VideoPlayer({
           return;
         }
 
-        const frame = Math.round(video.currentTime * frameRate);
-
         // Progress from playback position. Guard NaN/Infinity duration.
         const dur = video.duration;
         if (dur && Number.isFinite(dur)) {
@@ -490,9 +467,15 @@ export function VideoPlayer({
         // Draw video frame
         ctx.drawImage(video, 0, 0, imgW, imgH);
 
-        // Draw overlays
-        const { dets, opacity } = findDets(frame);
-        drawOverlaysOnCanvas(ctx, dets, imgW, imgH, opacity, exportScale);
+        // Draw overlays: the same answer the screen is showing, from the
+        // recorder's own clock.
+        drawOverlayFrame(
+          ctx,
+          overlayAt(overlayIndex, video.currentTime * frameRate, frameRate, selectedTrackId),
+          imgW,
+          imgH,
+          exportScale,
+        );
 
         requestAnimationFrame(drawFrame);
       };
@@ -512,7 +495,7 @@ export function VideoPlayer({
       video.addEventListener("seeked", onSeeked);
       video.currentTime = 0;
     }
-  }, [imgW, imgH, s, frameRate, detectionsByFrame, file.file_path, isExporting]);
+  }, [imgW, imgH, s, frameRate, overlayIndex, selectedTrackId, file.file_path, isExporting]);
 
   // Register export function for the download button
   useEffect(() => {
@@ -589,10 +572,9 @@ export function VideoPlayer({
           </div>
         )}
 
-        {/* SVG overlay: spotlight + bboxes + labels */}
-        {!boxesHidden && currentDetections.length > 0 && overlayOpacity > 0 && (
+        {/* SVG overlay: spotlight + trail + bboxes + labels */}
+        {!boxesHidden && overlay.boxes.length > 0 && (
           <svg
-            style={{ opacity: overlayOpacity, transition: "opacity 0.05s linear" }}
             className="absolute inset-0 w-full h-full pointer-events-none"
             viewBox={`0 0 ${imgW} ${imgH}`}
             preserveAspectRatio="xMidYMid meet"
@@ -603,52 +585,75 @@ export function VideoPlayer({
               height={imgH}
               rx={BBOX_CORNER_RADIUS * s}
               fill={DIM_FILL}
-              boxes={currentDetections.map((det) => ({
-                x: det.bbox_x * imgW,
-                y: det.bbox_y * imgH,
-                width: det.bbox_width * imgW,
-                height: det.bbox_height * imgH,
-              }))}
+              boxes={overlay.boxes.map((b) => boxRect(b, imgW, imgH))}
             />
 
+            {/* The selected animal's recent path, fading with age. Over
+                the dim and under the boxes, as in the card modal. */}
+            {overlay.trail.length > 1 && (
+              <g data-testid="video-track-trail">
+                {overlay.trail.slice(1).map((pt, i) => {
+                  const prev = overlay.trail[i];
+                  return (
+                    <line
+                      key={`trail-${i}`}
+                      x1={prev.x * imgW}
+                      y1={prev.y * imgH}
+                      x2={pt.x * imgW}
+                      y2={pt.y * imgH}
+                      stroke={pills[0]?.color}
+                      strokeWidth={BBOX_STROKE_WIDTH * TRAIL_STROKE * s}
+                      strokeLinecap="round"
+                      opacity={1 - pt.age}
+                    />
+                  );
+                })}
+                {overlay.trail.slice(1).map((pt, i) => (
+                  <circle
+                    key={`trail-dot-${i}`}
+                    cx={pt.x * imgW}
+                    cy={pt.y * imgH}
+                    r={TRAIL_DOT * s}
+                    fill={pills[0]?.color}
+                    opacity={1 - pt.age}
+                  />
+                ))}
+              </g>
+            )}
+
             {/* Bounding boxes. With a track selected, the others dim. */}
-            {currentDetections.map((det) => {
-              const pill = computePillLayout(det);
+            {overlay.boxes.map((b, i) => {
+              const r = boxRect(b, imgW, imgH);
               return (
                 <rect
-                  key={det.id}
-                  x={det.bbox_x * imgW}
-                  y={det.bbox_y * imgH}
-                  width={det.bbox_width * imgW}
-                  height={det.bbox_height * imgH}
+                  key={b.detection.id}
+                  x={r.x}
+                  y={r.y}
+                  width={r.width}
+                  height={r.height}
                   rx={BBOX_CORNER_RADIUS * s}
                   fill="none"
-                  stroke={pill.color}
+                  stroke={pills[i].color}
                   strokeWidth={BBOX_STROKE_WIDTH * s}
-                  opacity={BBOX_OPACITY * dimFor(det)}
+                  opacity={BBOX_OPACITY * b.dim}
                 />
               );
             })}
 
             {/* Label pills — rendered at screen-pixel sizes via scale(s) */}
-            {currentDetections.map((det) => {
-              const pill = computePillLayout(det);
+            {overlay.boxes.map((b, i) => {
+              const pill = pills[i];
               const { x, y: pillY } = placePill(
-                {
-                  x: det.bbox_x * imgW,
-                  y: det.bbox_y * imgH,
-                  width: det.bbox_width * imgW,
-                  height: det.bbox_height * imgH,
-                },
+                boxRect(b, imgW, imgH),
                 { width: pill.pillWidth * s, height: pill.pillHeight * s },
                 { width: imgW, height: imgH },
               );
 
               return (
                 <g
-                  key={`label-${det.id}`}
+                  key={`label-${b.detection.id}`}
                   transform={`translate(${x}, ${pillY}) scale(${s})`}
-                  opacity={dimFor(det)}
+                  opacity={b.dim}
                 >
                   <rect
                     x={0}

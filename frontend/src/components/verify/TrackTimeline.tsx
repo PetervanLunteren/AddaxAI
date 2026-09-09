@@ -13,7 +13,7 @@
  * belong to the player and its modal. No keyboard handling here.
  */
 
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
 import { cn } from "../../lib/utils";
@@ -158,8 +158,15 @@ export function TrackTimeline({
  * Nothing is rendered for a clip without tracks. `durationFrames` is
  * the player's own measured length once it has one; frame mode passes
  * nothing and the stored length (or the last track) is used.
+ *
+ * Memoised because the player around it now re-renders at
+ * animation-frame rate: its overlay interpolates between the frames the
+ * detector sampled and so runs off fractional time, while this only
+ * ever needs the whole frame the playhead sits on. Without the memo
+ * every track's bars were rebuilt sixty times a second to move a
+ * one-pixel line.
  */
-export function ClipTimeline({
+export const ClipTimeline = memo(function ClipTimeline({
   file,
   durationFrames,
   currentFrame,
@@ -192,7 +199,7 @@ export function ClipTimeline({
       onSeek={onSeek}
     />
   );
-}
+});
 
 /**
  * Where in the clip one track was: a bar over the clip's length and the
