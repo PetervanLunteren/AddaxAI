@@ -160,9 +160,8 @@ def upgrade_to_head() -> None:
     a refusal the user can act on rather than letting a stack trace be
     the whole story.
     """
-    from alembic.util.exc import CommandError
-
     from alembic import command
+    from alembic.util.exc import CommandError
 
     try:
         command.upgrade(_alembic_config(), "head")
@@ -246,10 +245,9 @@ def schema_problems(engine: Engine) -> list[str]:
     everywhere), which makes a lost ON DELETE CASCADE the one way this
     design can orphan or lose rows.
     """
+    import app.models  # noqa: F401  # populates Base.metadata
     from alembic.autogenerate import compare_metadata
     from alembic.migration import MigrationContext
-
-    import app.models  # noqa: F401  # populates Base.metadata
     from app.db.base import Base
 
     problems: list[str] = []
