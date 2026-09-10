@@ -2,7 +2,7 @@
  * Species colours.
  *
  * The backend assigns them (`backend/app/api/crud/label_colors.py`):
- * species present in the project are sorted by taxonomy and walk a
+ * the classes present in the project are sorted by taxonomy and walk a
  * palette ordered so consecutive entries contrast most, which gives
  * look-alike siblings the most different colours. This file only holds
  * the map that `useLabelColors` fetches per project and answers lookups
@@ -10,9 +10,15 @@
  * implementation means the annotated JPEG export and the grid can never
  * disagree.
  *
- * Keys are `label_taxonomy_id` or the label name, matched
- * case-insensitively. A key the map does not know renders neutral grey
- * so a missing map is visible rather than silently plausible.
+ * A class is a species when a classifier named one and the detector's
+ * category when none did, so "animal", "person" and another detector's
+ * "elasmobranch" are looked up here too. The hardcoded category colours
+ * this file used to sit beside are gone.
+ *
+ * Keys are `label_taxonomy_id`, the label name or the category name,
+ * matched case-insensitively. A key the map does not know renders
+ * neutral grey so a missing map is visible rather than silently
+ * plausible.
  */
 import { useSyncExternalStore } from "react";
 import chroma from "chroma-js";

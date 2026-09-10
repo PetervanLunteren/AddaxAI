@@ -4,19 +4,28 @@
  */
 
 import type React from "react";
-import chroma from "chroma-js";
 import { getSpeciesColor } from "../utils/species-colors";
 import { resolveSpeciesName } from "./species-name-mode";
 
-/** Get color for a detection: species color if labeled, category color otherwise.
- *  Uses label_taxonomy_id as the color key when available (matches event label chips). */
+/**
+ * Colour for a detection, from the class that names it.
+ *
+ * That is the species when a classifier named one and the detector's
+ * category otherwise, looked up in the one project colour map either
+ * way (`getSpeciesColor`). The detector's categories are classes like
+ * any other and take a palette slot in the same taxonomic order, so
+ * there is no category table on this side any more. `label_taxonomy_id`
+ * goes first because the map is keyed by it and by name, and the id
+ * cannot collide with anything.
+ */
 export function getDetectionColor(detection: {
   label?: string | null;
   label_taxonomy_id?: string | null;
   category: string;
 }): string {
-  const key = detection.label_taxonomy_id || detection.label;
-  return key ? getSpeciesColor(key) : getCategoryColor(detection.category);
+  return getSpeciesColor(
+    detection.label_taxonomy_id || detection.label || detection.category,
+  );
 }
 
 /**
@@ -157,28 +166,6 @@ export function getDetectionDisplayName(detection: {
   return resolveSpeciesName(detection);
 }
 
-/** Get color for a detection category. Any category that is not person
- *  or vehicle is wildlife by another detector's name ("fish",
- *  "elasmobranch") and takes the animal colour; the backend's
- *  CATEGORY_COLORS mirrors this. */
-export function getCategoryColor(category: string): string {
-  switch (category) {
-    case "person":
-      return "#ff8945"; // orange
-    case "vehicle":
-      return "#71b7ba"; // light teal
-    default:
-      return "#0f6064"; // teal brand, the animal colour
-  }
-}
-
-/** Text color (white or dark) for a category chip whose background is
- *  getCategoryColor(category). Mirrors getContrastTextColor's rule so
- *  category chips read the same way as species chips. */
-export function getCategoryTextColor(category: string): string {
-  const bg = getCategoryColor(category);
-  return chroma.contrast(bg, "white") >= 3 ? "white" : "#1f2937";
-}
 
 /** Get styled badge props for an observation type. */
 export function getObservationBadge(type: string): {

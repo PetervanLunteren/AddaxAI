@@ -1372,6 +1372,31 @@ def present_label_rows(
     )
 
 
+def present_category_rows(db: Session, project_id: str, threshold: float) -> list[str]:
+    """Distinct detector categories the project shows as a class of their own.
+
+    A box with no taxonomy row has nothing but its detector's category to
+    stand for it, so that category is its class ("elasmobranch" from
+    SharkTrack, "fish" from another detector). MegaDetector's own three
+    get a ``__builtin__`` taxonomy row at ingest and arrive through
+    ``present_label_rows`` instead. Same scope as that function, so a
+    class is coloured exactly when the grid can draw it.
+    """
+    threshold_clause = threshold_or_verified(threshold)
+    rows = (
+        db.query(Detection.category)
+        .join(File, File.id == Detection.file_id)
+        .join(Deployment, Deployment.id == File.deployment_id)
+        .filter(Deployment.project_id == project_id)
+        .filter(Detection.label_taxonomy_id.is_(None))
+        .filter(threshold_clause)
+        .filter(on_visible_frame())
+        .distinct()
+        .all()
+    )
+    return [row[0] for row in rows if row[0]]
+
+
 def get_filter_options(db: Session, project_id: str) -> dict:
     """Get available filter options for a project (distinct labels, date range).
 

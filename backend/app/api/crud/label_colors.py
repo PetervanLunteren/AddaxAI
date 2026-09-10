@@ -9,10 +9,15 @@ the failure this module prevents.
 
 The rule:
 
-1. Collect the species present in the project, the same population the
-   label filter offers (threshold-or-verified, visible frame).
+1. Collect the classes present in the project, the same population the
+   label filter offers (threshold-or-verified, visible frame). A class
+   is whatever names the box: its species when a classifier named one,
+   otherwise the detector's category. Where that category comes from
+   makes no difference, so "animal", "person", "vehicle" and
+   "elasmobranch" are classes like any other.
 2. Sort them by taxonomy: class, order, family, genus, species, variant,
-   then name. Siblings end up next to each other.
+   then name. Siblings end up next to each other. A detector category
+   carries no taxonomy, so those sort first as a group, by name.
 3. Walk ``SPECIES_PALETTE``: rank ``i`` gets ``SPECIES_PALETTE[i % 12]``.
 
 The palette is ordered farthest-first, so any two consecutive entries
@@ -37,40 +42,28 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.api.crud.event import present_label_rows
+from app.api.crud.event import present_category_rows, present_label_rows
 from app.ml.label_exclusion import is_non_label
-from app.ml.taxonomy_db import BUILTIN_MODEL_ID
 from app.models import Project
 from app.models.label_taxonomy import LabelTaxonomy
 
 # Twelve colours, ordered farthest-first by CIEDE2000 starting from the
 # brand dark red, generated in OKLCH (lightness 0.45 to 0.74) and then
-# fixed as literals. The three category colours (#0f6064 animal,
-# #ff8945 person, #71b7ba vehicle) were excluded from the candidate pool
-# so a species never looks like an unlabelled box. Consecutive entries
-# are at least 30 apart; the closest pair overall (16) is the last entry
-# against the first, which only meet at the wrap from rank 11 to 12.
-# Unclassified detections carry a ``__builtin__`` taxonomy row named after
-# their category (see ``taxonomy_db.ensure_builtin_taxonomy``). Those are
-# not species: they keep the category colours of ``getCategoryColor`` in
-# ``frontend/src/lib/detection-utils.ts`` and take no palette slot, so a
-# person box is orange on screen and in the export alike.
-CATEGORY_COLORS: dict[str, str] = {
-    "animal": "#0f6064",
-    "person": "#ff8945",
-    "vehicle": "#71b7ba",
-}
-# Any other category is wildlife by another detector's name ("fish",
-# "elasmobranch") and takes the animal colour, mirroring getCategoryColor
-# in the frontend. It used to be the "bad" red, which read as an error on
-# every box of a detector that is not MegaDetector.
-DEFAULT_CATEGORY_COLOR = CATEGORY_COLORS["animal"]
+# fixed as literals. Consecutive entries are at least 30 apart; the
+# closest pair overall (16) is the last entry against the first, which
+# only meet at the wrap from rank 11 to 12.
+#
+# The three MegaDetector categories used to hold fixed colours here and
+# take no palette slot. They were folded in: a class is a class, whether
+# a classifier or a detector named it, and the special case had grown a
+# second copy in the frontend and a third in the export, which disagreed
+# (an "elasmobranch" box drew teal on screen and brand red in the JPEG).
 
 # A box a person rejected (X, or a relabel to a non-label class such as
 # "false detection" or a model's "non-animal") still passes the scope
 # rule when it sat above the threshold, so it is "present". It is not a
-# species: giving it a palette slot shifted every real species by one
-# colour the moment someone pressed X. It keeps the same neutral grey
+# class of its own: giving it a palette slot shifted every real class by
+# one colour the moment someone pressed X. It keeps the same neutral grey
 # the frontend uses for a label the map does not know
 # (UNKNOWN_SPECIES_COLOR in frontend/src/utils/species-colors.ts).
 REJECTED_LABEL_COLOR = "#6b7280"
@@ -112,6 +105,17 @@ def _taxonomic_sort_key(row: LabelTaxonomy) -> tuple[str, ...]:
     )
 
 
+def _category_sort_key(name: str) -> tuple[str, ...]:
+    """The sort key of a class that has no taxonomy row.
+
+    Same shape as ``_taxonomic_sort_key``, with every rank empty, which
+    is what a ``__builtin__`` row already produces. So a detector's
+    categories sort together in front of the classified species, by
+    name, and the two kinds need no separate handling.
+    """
+    return ("",) * 6 + (name,)
+
+
 def _fnv1a(text: str) -> int:
     hash_value = 2166136261
     for ch in text:
@@ -132,45 +136,53 @@ def fallback_color(key: str) -> str:
 
 
 def assign_label_colors(db: Session, project_id: str) -> dict[str, str]:
-    """Colour per species present in the project.
+    """Colour per class present in the project.
 
-    Keyed by both the ``label_taxonomy`` id and the lowercased label
-    name, because the frontend colours by whichever it has at hand.
-    Empty when the project has no labelled detections yet.
+    Keyed by the ``label_taxonomy`` id, the lowercased label name and the
+    lowercased category name, because the frontend colours by whichever
+    it has at hand. Empty when the project has nothing to draw yet.
     """
     project = db.get(Project, project_id)
     if project is None:
         raise ValueError(f"Project {project_id!r} not found")
 
-    present_ids = [
-        row[0]
-        for row in present_label_rows(db, project_id, project.counting_threshold)
-    ]
-    if not present_ids:
-        return {}
-
-    rows = (
-        db.query(LabelTaxonomy)
-        .filter(LabelTaxonomy.id.in_(present_ids))
-        .all()
-    )
-
+    threshold = project.counting_threshold
     colors: dict[str, str] = {}
-    species: list[LabelTaxonomy] = []
-    for row in rows:
-        if row.classification_model_id == BUILTIN_MODEL_ID:
-            color = CATEGORY_COLORS.get(row.name.lower(), DEFAULT_CATEGORY_COLOR)
-            colors[row.id] = color
-            colors[row.name.lower()] = color
-        elif is_non_label(row.name):
-            colors[row.id] = REJECTED_LABEL_COLOR
-            colors[row.name.lower()] = REJECTED_LABEL_COLOR
-        else:
-            species.append(row)
+    # (sort key, every key the frontend or the export might look this
+    # class up by). One list, so classified species and bare detector
+    # categories are ranked together by the same rule.
+    ranked: list[tuple[tuple[str, ...], list[str]]] = []
+    seen: set[str] = set()
 
-    species.sort(key=_taxonomic_sort_key)
-    for rank, row in enumerate(species):
+    present_ids = [row[0] for row in present_label_rows(db, project_id, threshold)]
+    rows = (
+        db.query(LabelTaxonomy).filter(LabelTaxonomy.id.in_(present_ids)).all()
+        if present_ids
+        else []
+    )
+    for row in rows:
+        name = row.name.lower()
+        seen.add(name)
+        if is_non_label(row.name):
+            colors[row.id] = REJECTED_LABEL_COLOR
+            colors[name] = REJECTED_LABEL_COLOR
+            continue
+        ranked.append((_taxonomic_sort_key(row), [row.id, name]))
+
+    for category in present_category_rows(db, project_id, threshold):
+        name = category.lower()
+        # A category that also has a taxonomy row (MegaDetector's three)
+        # is already ranked under that row's name key, and the lookup by
+        # category name lands on it. A second slot would only spend a
+        # colour on the same class twice.
+        if name in seen:
+            continue
+        seen.add(name)
+        ranked.append((_category_sort_key(name), [name]))
+
+    ranked.sort(key=lambda item: item[0])
+    for rank, (_sort_key, keys) in enumerate(ranked):
         color = SPECIES_PALETTE[rank % len(SPECIES_PALETTE)]
-        colors[row.id] = color
-        colors[row.name.lower()] = color
+        for key in keys:
+            colors[key] = color
     return colors

@@ -5,9 +5,8 @@
  * visual styling stays consistent across both views.
  */
 
-import { getCategoryColor } from "./detection-utils";
+import { getDetectionColor } from "./detection-utils";
 import { resolveSpeciesName } from "./species-name-mode";
-import { getSpeciesColor } from "../utils/species-colors";
 import type { DetectionResponse } from "../api/types";
 
 // ── Layout constants ──────────────────────────────────────────────
@@ -89,10 +88,7 @@ export interface PillLayout {
 }
 
 export function computePillLayout(detection: DetectionResponse): PillLayout {
-  const colorKey = detection.label_taxonomy_id || detection.label;
-  const color = colorKey
-    ? getSpeciesColor(colorKey)
-    : getCategoryColor(detection.category);
+  const color = getDetectionColor(detection);
   const hasLabel = !!detection.label;
 
   const categoryText = `${detection.category.charAt(0).toUpperCase() + detection.category.slice(1)} ${(detection.confidence * 100).toFixed(0)}%`;

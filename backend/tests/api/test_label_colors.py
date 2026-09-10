@@ -9,7 +9,6 @@ crops needs to notice the odd one out.
 
 from app.api.crud.event import get_filter_options
 from app.api.crud.label_colors import (
-    CATEGORY_COLORS,
     REJECTED_LABEL_COLOR,
     SPECIES_PALETTE,
     assign_label_colors,
@@ -188,10 +187,7 @@ def test_fallback_is_deterministic_and_from_the_palette():
     assert fallback_color("aardvark") in SPECIES_PALETTE
 
 
-def test_palette_avoids_the_category_colours():
-    """A species must never look like an unlabelled animal, person or
-    vehicle box (#0f6064, #ff8945, #71b7ba)."""
-    assert {"#0f6064", "#ff8945", "#71b7ba"}.isdisjoint(SPECIES_PALETTE)
+def test_palette_is_twelve_distinct_colours():
     assert len(set(SPECIES_PALETTE)) == len(SPECIES_PALETTE) == 12
 
 
@@ -210,10 +206,10 @@ def test_endpoint_404_for_unknown_project(client):
     assert resp.status_code == 404
 
 
-def test_builtin_category_rows_keep_the_category_colour_and_take_no_slot(db):
-    """An unclassified person or vehicle box carries a __builtin__
-    taxonomy row. It is not a species: it keeps the category colour the
-    export uses, and the first palette entry still goes to a real species."""
+def test_a_detector_category_is_a_class_like_any_other(db):
+    """An unclassified person box carries a __builtin__ taxonomy row. It
+    is a class with a palette colour, not a fixed category colour: it has
+    no taxonomy, so it sorts in front of the species and takes rank 0."""
     person = LabelTaxonomy(
         classification_model_id=BUILTIN_MODEL_ID, name="person", level="none"
     )
@@ -224,8 +220,93 @@ def test_builtin_category_rows_keep_the_category_colour_and_take_no_slot(db):
 
     colors = assign_label_colors(db, project.id)
 
-    assert colors[person.id] == colors["person"] == CATEGORY_COLORS["person"]
+    assert colors[person.id] == colors["person"] == SPECIES_PALETTE[0]
+    assert colors[blackbird.id] == SPECIES_PALETTE[1]
+
+
+def _unclassified(db, project, category, confidence=0.9):
+    """One box no classifier ever named, so its detector category is its
+    class. This is every box of a SharkTrack run."""
+    deployment = make_deployment(db, project_id=project.id)
+    f = make_file(db, deployment_id=deployment.id)
+    return make_detection(
+        db, file_id=f.id, category=category, confidence=confidence
+    )
+
+
+def test_a_category_without_a_taxonomy_row_joins_the_palette(db):
+    """Only MegaDetector's three categories get a __builtin__ taxonomy
+    row, so a box from any other detector carries none at all. Its
+    category is still its class and still takes a slot; before this it
+    fell through to a hardcoded teal on screen and a brand red in the
+    export."""
+    rat, brown_rat, mouse, fox, blackbird = _rodents_and_others(db)
+    project = _project_with(db, (blackbird, 0.9, False))
+    _unclassified(db, project, "elasmobranch")
+
+    colors = assign_label_colors(db, project.id)
+
+    # No taxonomy, so it sorts in front of the bird and takes rank 0.
+    assert colors["elasmobranch"] == SPECIES_PALETTE[0]
+    assert colors[blackbird.id] == SPECIES_PALETTE[1]
+
+
+def test_categories_sort_together_in_front_by_name(db):
+    """Two detector categories rank by name, and the species follow."""
+    rat, brown_rat, mouse, fox, blackbird = _rodents_and_others(db)
+    project = _project_with(db, (blackbird, 0.9, False))
+    _unclassified(db, project, "fish")
+    _unclassified(db, project, "elasmobranch")
+
+    colors = assign_label_colors(db, project.id)
+
+    assert colors["elasmobranch"] == SPECIES_PALETTE[0]
+    assert colors["fish"] == SPECIES_PALETTE[1]
+    assert colors[blackbird.id] == SPECIES_PALETTE[2]
+
+
+def test_a_category_whose_boxes_are_all_classified_takes_no_slot(db):
+    """A slot is spent on a class the grid can draw. Once every
+    elasmobranch box carries a species, the category itself is never
+    shown and must not shift the species by one colour."""
+    rat, brown_rat, mouse, fox, blackbird = _rodents_and_others(db)
+    project = _project_with(db, (blackbird, 0.9, False))
+
+    colors = assign_label_colors(db, project.id)
+
+    assert "elasmobranch" not in colors
     assert colors[blackbird.id] == SPECIES_PALETTE[0]
+
+
+def test_a_category_below_the_threshold_takes_no_slot(db):
+    """Same scope as every other class: threshold-or-verified."""
+    rat, brown_rat, mouse, fox, blackbird = _rodents_and_others(db)
+    project = _project_with(db, (blackbird, 0.9, False), threshold=0.5)
+    _unclassified(db, project, "elasmobranch", confidence=0.1)
+
+    colors = assign_label_colors(db, project.id)
+
+    assert "elasmobranch" not in colors
+    assert colors[blackbird.id] == SPECIES_PALETTE[0]
+
+
+def test_a_category_that_also_has_a_taxonomy_row_gets_one_slot(db):
+    """MegaDetector writes a __builtin__ row for "animal", but another
+    detector can report the same category with no row. One class, one
+    colour, not two slots."""
+    animal = LabelTaxonomy(
+        classification_model_id=BUILTIN_MODEL_ID, name="animal", level="none"
+    )
+    db.add(animal)
+    db.flush()
+    rat, brown_rat, mouse, fox, blackbird = _rodents_and_others(db)
+    project = _project_with(db, (animal, 0.9, False), (blackbird, 0.9, False))
+    _unclassified(db, project, "animal")
+
+    colors = assign_label_colors(db, project.id)
+
+    assert colors["animal"] == colors[animal.id] == SPECIES_PALETTE[0]
+    assert colors[blackbird.id] == SPECIES_PALETTE[1]
 
 
 def test_rejected_labels_keep_a_neutral_colour_and_take_no_slot(db):

@@ -33,7 +33,6 @@ import { Textarea } from "../ui/textarea";
 import { formatCameraTime } from "../../lib/datetime";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
 import { getSpeciesColor } from "../../utils/species-colors";
-import { getCategoryColor } from "../../lib/detection-utils";
 import { OBSERVATION_ATTRIBUTES } from "../../lib/observation-attributes";
 import { LabelPicker } from "./LabelPicker";
 import type { LabelOption } from "../../hooks/useLabelOptions";
@@ -350,11 +349,11 @@ export function EventCountPanel({
             category: obs.category,
           });
           // Species colour when the observation names a species, the
-          // category colour for a bare person / vehicle / animal.
-          const speciesKey = obs.label_taxonomy_id || obs.label;
-          const swatch = speciesKey
-            ? getSpeciesColor(speciesKey)
-            : getCategoryColor(obs.category);
+          // its category when nothing named it, which is a class with a
+          // colour of its own like any other.
+          const swatch = getSpeciesColor(
+            obs.label_taxonomy_id || obs.label || obs.category,
+          );
           return (
             <div
               key={obs.id}

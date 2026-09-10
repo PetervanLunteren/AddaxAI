@@ -7,12 +7,11 @@ written to disk looks like what the user sees in the verify grid:
 rounded bounding box outlines and rounded label pills with white
 text on a dark background.
 
-Colours: the category colours mirror ``getCategoryColor`` in
-``frontend/src/lib/detection-utils.ts``. Species colours are not
-computed here at all: ``app.api.crud.label_colors`` assigns them once
-per project and the frontend fetches that same map, so there is one
-implementation and the JPEG on disk matches the grid on screen by
-construction. Callers pass the map into ``detection_color``.
+Colours are not computed here at all: ``app.api.crud.label_colors``
+assigns one per class once per project and the frontend fetches that
+same map, so there is one implementation and the JPEG on disk matches
+the grid on screen by construction. Callers pass the map into
+``detection_color``.
 
 Layout is NOT a fixed-pixel mirror of the frontend. The frontend
 rescales its fixed 10/12px constants to screen pixels at render time
@@ -33,26 +32,6 @@ from dataclasses import dataclass
 
 from app.api.crud.label_colors import fallback_color
 
-# ─────────────────────────────────────────────────────────────────
-# Category colours — canonical map mirrors getCategoryColor() in
-# frontend/src/lib/detection-utils.ts.
-# ─────────────────────────────────────────────────────────────────
-_CATEGORY_RGB: dict[str, tuple[int, int, int]] = {
-    "animal": (15, 96, 100),  # #0f6064
-    "person": (255, 137, 69),  # #ff8945
-    "vehicle": (113, 183, 186),  # #71b7ba
-}
-_DEFAULT_CATEGORY_RGB: tuple[int, int, int] = (136, 32, 0)  # #882000
-
-
-def category_color(category: str) -> tuple[int, int, int]:
-    """Resolve an MD category ("animal" / "person" / "vehicle") to RGB.
-
-    Unknown categories fall back to the brand "bad" red so the
-    surfacing of unexpected category strings is visible in output.
-    """
-    return _CATEGORY_RGB.get(category, _DEFAULT_CATEGORY_RGB)
-
 
 def detection_color(
     label: str | None,
@@ -61,18 +40,21 @@ def detection_color(
 ) -> tuple[int, int, int]:
     """Pick the colour a detection's box and pill dot use.
 
-    Species colour wins when a label exists, exactly like
-    ``getDetectionColor`` in the frontend. ``colors`` is the project's
-    map from ``assign_label_colors``; a label it does not know (one
-    that passes the media threshold but not the project's counting
-    threshold) takes the deterministic fallback. Unlabelled
-    detections use the category colour.
+    The class is the label when a classifier named one and the
+    detector's category otherwise, and both are looked up the same way,
+    exactly like ``getDetectionColor`` in the frontend. ``colors`` is
+    the project's map from ``assign_label_colors``; a class it does not
+    know takes the deterministic fallback, which can only happen for
+    something that passes the media threshold but not the project's
+    counting threshold.
+
+    There is no category table here any more. There used to be, with the
+    three MegaDetector colours and a brand red for anything else, so
+    every unclassified box of a marine run drew red in the JPEG while
+    the grid drew it teal.
     """
-    if label:
-        return _hex_to_rgb(
-            colors.get(label.strip().lower()) or fallback_color(label)
-        )
-    return category_color(category)
+    key = (label or category).strip().lower()
+    return _hex_to_rgb(colors.get(key) or fallback_color(key))
 
 
 def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:

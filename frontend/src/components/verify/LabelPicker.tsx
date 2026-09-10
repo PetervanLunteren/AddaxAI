@@ -12,7 +12,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronsUpDown, Pencil, Plus, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../../lib/utils";
-import { getCategoryColor } from "../../lib/detection-utils";
 import { getSpeciesColor } from "../../utils/species-colors";
 import { projectsApi } from "../../api/projects";
 import { Button } from "../ui/button";
@@ -30,9 +29,10 @@ import type { CustomLabelResponse } from "../../api/types";
 import { invalidateLabelQueries } from "../../lib/invalidate-label-queries";
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
 
-/** Get the dot color for a label option: species color for labels, category color for general. */
+/** The dot colour for a label option: the class that names it, which is
+ *  its species when it has one and the detector's category otherwise. */
 function getLabelDotColor(opt: LabelOption): string {
-  return opt.label ? getSpeciesColor(opt.value) : getCategoryColor(opt.category);
+  return getSpeciesColor(opt.label ? opt.value : opt.category);
 }
 
 /** Clean up a label for display: replace underscores, capitalize first letter. */
