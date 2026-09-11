@@ -34,6 +34,27 @@ from app.utils.subprocess_runner import log_subprocess_failure, stream_with_tail
 
 logger = get_logger(__name__)
 
+# The environment recipes this build ships: one directory per env, a
+# YAML per platform inside it. Not to be confused with
+# `EnvironmentManager.envs_dir`, which is where envs are *installed* in
+# the user's data directory. PyInstaller copies the whole `app` tree, so
+# this resolves the same way frozen as in a checkout.
+ENV_RECIPES_DIR = Path(__file__).parent / "envs"
+
+
+def shipped_env_names() -> list[str]:
+    """The envs this build carries, read off the bundled recipes.
+
+    Derived rather than listed, because a hand-written copy of this went
+    stale silently: the only reader is the "your environment is out of
+    date" notice, so an env missing from the list is simply never checked
+    and nothing anywhere complains.
+    """
+    if not ENV_RECIPES_DIR.is_dir():
+        return []
+    return sorted(p.name for p in ENV_RECIPES_DIR.iterdir() if p.is_dir())
+
+
 # Hidden filename used to record which bundled YAML hash an env was
 # built from. Lives inside the env directory so it gets removed
 # automatically when the env is deleted via _safe_rmtree. Drift
@@ -517,10 +538,8 @@ class EnvironmentManager:
         else:
             raise RuntimeError(f"Unsupported platform: {system}")
 
-        # Path to YAML file in repo
         # backend/app/ml/envs/{env_name}/{platform}/environment.yml
-        backend_root = Path(__file__).parent
-        yaml_path = backend_root / "envs" / env_name / platform_dir / "environment.yml"
+        yaml_path = ENV_RECIPES_DIR / env_name / platform_dir / "environment.yml"
 
         if not yaml_path.exists():
             raise FileNotFoundError(

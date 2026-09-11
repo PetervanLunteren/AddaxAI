@@ -65,3 +65,23 @@ def test_addaxai_base_pins_ultralytics_yolov5_wheel(platform_dir: str) -> None:
     assert any(d.startswith("megadetector==") for d in pip_deps), (
         f"{yaml_path}: megadetector pin missing"
     )
+
+
+def test_drift_is_checked_for_every_env_the_build_ships() -> None:
+    """`shipped_env_names` is what the "your environment is out of date"
+    notice iterates, and it must cover every bundled recipe.
+
+    This used to be a hand-written tuple in `catalog_updater`, which is a
+    silent failure waiting to happen: nothing else reads the list, so an
+    env missing from it is simply never checked and no error appears
+    anywhere. Deriving it from the recipes is the fix; this pins that the
+    two agree, including that the derivation sees every platform's env.
+    """
+    from app.ml.environment_manager import ENV_RECIPES_DIR, shipped_env_names
+
+    assert ENV_RECIPES_DIR == ENVS_DIR
+    on_disk = sorted({p.parent.parent.name for p in ALL_YAMLS})
+    assert shipped_env_names() == on_disk
+    # The marine env is the one a detector introduced; a detector env is
+    # exactly the case the old hand-written list would have missed.
+    assert "marine" in shipped_env_names()

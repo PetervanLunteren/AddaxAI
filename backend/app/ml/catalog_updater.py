@@ -52,19 +52,6 @@ def _validate_catalog(catalog: Any) -> dict[str, Any] | None:
         return None
     return catalog
 
-# Names of envs whose drift we surface in the toast. Kept here rather
-# than in EnvironmentManager because env_manager treats env_name as an
-# opaque parameter; this list tracks which ones the app actually ships.
-_DRIFT_CHECKED_ENVS: tuple[str, ...] = (
-    "addaxai-base",
-    "pytorch",
-    "pywildlife",
-    "tensorflow-v1",
-    "tensorflow-v2",
-    "marine",
-)
-
-
 def find_drifted_envs() -> list[dict[str, str]]:
     """
     Which shipped envs no longer match the YAML this app version carries.
@@ -77,12 +64,15 @@ def find_drifted_envs() -> list[dict[str, str]]:
 
     An env that is not installed, or predates the sentinel, reports
     nothing (`check_yaml_drift` returns None) and is skipped.
+
+    Which envs to ask about comes from the bundled recipes themselves, so
+    adding an env directory is all it takes to have its drift reported.
     """
-    from app.ml.environment_manager import EnvironmentManager
+    from app.ml.environment_manager import EnvironmentManager, shipped_env_names
 
     env_manager = EnvironmentManager()
     drifted: list[dict[str, str]] = []
-    for env_name in _DRIFT_CHECKED_ENVS:
+    for env_name in shipped_env_names():
         try:
             has_drifted = env_manager.check_yaml_drift(env_name)
         except Exception as e:
