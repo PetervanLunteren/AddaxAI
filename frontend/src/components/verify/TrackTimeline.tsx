@@ -1,24 +1,39 @@
 /**
  * The tracks of a clip over its length, under the video player.
  *
- * One row per species, one bar per track in the species colour, styled
- * by verdict: solid when every box is verified, hatched while
- * unverified, hollow when rejected. A playhead follows the player, a
- * marker per species sits at the frame its MaxN was counted on (the
+ * One group per species, and inside a group as many rows as its animals
+ * need to sit beside each other (`packTrackRows`). One bar per animal in
+ * the species colour, styled by verdict: solid when every box is
+ * verified, hatched while unverified, hollow when rejected. The species
+ * is named on the group's first row only. A playhead follows the player,
+ * a marker per species sits at the frame its MaxN was counted on (the
  * Counts modal passes those; the Files viewer passes none). Click a bar
- * to select that animal and jump to it; click the lane elsewhere to
- * seek there. Rows past the height cap scroll.
+ * to select that animal and jump to it; click the lane elsewhere to seek
+ * there. Rows past the height cap scroll, and selecting an animal
+ * scrolls its row into view.
+ *
+ * **Zoom.** Each slider step halves the visible span, and the window
+ * stays centred on the playhead, clamped at the clip's ends. So the
+ * playhead is the scroll position: clicking in the lane moves it, and
+ * playback scrolls the window along. No panning and no horizontal
+ * scrollbar, which is one piece of state rather than two kept in step.
+ * The slider is absent when there is nothing to zoom into, a clip of
+ * `MIN_WINDOW_SECONDS` or less, so a one-frame video still renders the
+ * single row it always did. It exists because packing alone does not
+ * make a long clip clickable: on an 81 minute drop the median track is
+ * one pixel wide and the busiest 90 seconds is 16 pixels of lane
+ * holding 39 animals.
  *
  * Rendering only: which track is selected and where the playhead is
  * belong to the player and its modal. No keyboard handling here.
  */
 
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
 import { cn } from "../../lib/utils";
 import type { TrackRow } from "../../lib/track-utils";
-import { clipDurationFrames, trackRows } from "../../lib/track-utils";
+import { clipDurationFrames, packTrackRows, trackRows } from "../../lib/track-utils";
 import { formatClipPosition } from "../../lib/datetime";
 import type { FileWithDetections } from "../../api/types";
 
@@ -34,6 +49,8 @@ interface TrackTimelineProps {
   currentFrame: number;
   selectedTrackId: string | null;
   markers?: TimelineMarker[];
+  /** The clip's frame rate, for the zoom floor and the span text. */
+  frameRate?: number | null;
   onSelectTrack: (trackId: string) => void;
   onSeek: (frame: number) => void;
 }
@@ -41,6 +58,13 @@ interface TrackTimelineProps {
 /** Rows visible before the lane scrolls. */
 const ROW_CAP = 6;
 const ROW_HEIGHT_PX = 16;
+/** The most the slider zooms in. Below this a step stops being a useful
+ *  amount of footage to look at. */
+const MIN_WINDOW_SECONDS = 5;
+/** A one-frame track is still worth a mark at the widest zoom. */
+const MIN_BAR_PX = 2;
+
+const clamp = (value: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, value));
 
 export function TrackTimeline({
   rows,
@@ -48,92 +72,174 @@ export function TrackTimeline({
   currentFrame,
   selectedTrackId,
   markers = [],
+  frameRate,
   onSelectTrack,
   onSeek,
 }: TrackTimelineProps) {
   useSpeciesColorsVersion();
-  if (rows.length === 0 || durationFrames <= 0) return null;
+  const [zoomStep, setZoomStep] = useState(0);
+  const laneRef = useRef<HTMLDivElement>(null);
 
-  const species: { label: string; displayLabel: string }[] = [];
-  for (const row of rows) {
-    if (!species.some((sp) => sp.label === row.label)) {
-      species.push({ label: row.label, displayLabel: row.displayLabel });
+  const groups = useMemo(() => packTrackRows(rows), [rows]);
+  const totalRows = groups.reduce((n, group) => n + group.rows.length, 0);
+
+  // Each step halves the span; the window is centred on the playhead and
+  // sticks to the clip's ends, so it needs no scroll position of its own.
+  const minWindow = MIN_WINDOW_SECONDS * (frameRate || 30);
+  const maxZoomStep = Math.max(
+    0,
+    Math.ceil(Math.log2(Math.max(1, durationFrames / minWindow))),
+  );
+  const step = clamp(zoomStep, 0, maxZoomStep);
+  const windowFrames = durationFrames / 2 ** step;
+  const windowStart = clamp(
+    currentFrame - windowFrames / 2,
+    0,
+    Math.max(0, durationFrames - windowFrames),
+  );
+
+  // Which row the selected animal sits on, so a selection made elsewhere
+  // (a card in the grid) is never left below the fold.
+  const selectedRow = useMemo(() => {
+    if (!selectedTrackId) return -1;
+    let index = 0;
+    for (const group of groups) {
+      for (const packed of group.rows) {
+        if (packed.some((row) => row.track.id === selectedTrackId)) return index;
+        index += 1;
+      }
     }
-  }
-  const pct = (frame: number) =>
-    `${Math.min(100, Math.max(0, (frame / durationFrames) * 100))}%`;
+    return -1;
+  }, [groups, selectedTrackId]);
+
+  useEffect(() => {
+    const lane = laneRef.current;
+    if (!lane || selectedRow < 0) return;
+    const top = selectedRow * ROW_HEIGHT_PX;
+    if (top < lane.scrollTop) lane.scrollTop = top;
+    else if (top + ROW_HEIGHT_PX > lane.scrollTop + lane.clientHeight) {
+      lane.scrollTop = top + ROW_HEIGHT_PX - lane.clientHeight;
+    }
+  }, [selectedRow]);
+
+  if (totalRows === 0 || durationFrames <= 0) return null;
+
+  const pct = (frame: number) => ((frame - windowStart) / windowFrames) * 100;
+  const windowEnd = windowStart + windowFrames;
+  const inWindow = (frame: number) => frame >= windowStart && frame <= windowEnd;
 
   const seekAt = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const fraction = (e.clientX - rect.left) / rect.width;
-    onSeek(Math.round(Math.min(1, Math.max(0, fraction)) * durationFrames));
+    const fraction = clamp((e.clientX - rect.left) / rect.width, 0, 1);
+    onSeek(Math.round(clamp(windowStart + fraction * windowFrames, 0, durationFrames)));
   };
+
+  const spanText =
+    step === 0
+      ? "whole clip"
+      : frameRate
+        ? `showing ${formatClipPosition(windowFrames / frameRate)}`
+        : `showing ${Math.round(windowFrames)} frames`;
 
   return (
     <div
       className="w-full shrink-0 border-t border-white/10 bg-black/80 text-[11px] text-white/80"
       data-testid="track-timeline"
     >
+      {maxZoomStep > 0 && (
+        <div className="flex items-center gap-2 px-2 py-[3px] text-[10px] text-white/60">
+          <input
+            type="range"
+            min={0}
+            max={maxZoomStep}
+            step={1}
+            value={step}
+            onChange={(e) => setZoomStep(Number(e.target.value))}
+            aria-label="Zoom the timeline"
+            data-testid="timeline-zoom"
+            className="h-1 w-24 cursor-pointer accent-white/80"
+          />
+          <span data-testid="timeline-span">{spanText}</span>
+        </div>
+      )}
       <div
-        className="overflow-y-auto"
+        ref={laneRef}
+        // Horizontal is hidden, not auto: a bar at the very end of the
+        // clip is held to MIN_BAR_PX and so reaches past the lane,
+        // which otherwise grows a horizontal scrollbar and eats a row's
+        // worth of height.
+        className="overflow-y-auto overflow-x-hidden"
         style={{ maxHeight: ROW_CAP * ROW_HEIGHT_PX }}
       >
-        {species.map(({ label, displayLabel }) => (
-          <div key={label} className="flex items-stretch" style={{ height: ROW_HEIGHT_PX }}>
-            <div className="w-28 shrink-0 truncate px-2 leading-4" title={displayLabel}>
-              {displayLabel}
-            </div>
+        {groups.map((group) =>
+          group.rows.map((packed, rowIndex) => (
             <div
-              className="relative flex-1 cursor-pointer"
-              onClick={seekAt}
-              data-testid="track-lane"
+              key={`${group.label}-${rowIndex}`}
+              className="flex items-stretch"
+              style={{ height: ROW_HEIGHT_PX }}
             >
-              {rows
-                .filter((row) => row.label === label)
-                .map((row) => {
-                  const selected = row.track.id === selectedTrackId;
-                  const width = Math.max(
-                    0.3,
-                    ((row.track.end_frame - row.track.start_frame + 1) / durationFrames) * 100,
-                  );
-                  return (
-                    <button
-                      key={row.track.id}
-                      type="button"
-                      title={`${displayLabel}, frames ${row.track.start_frame} to ${row.track.end_frame}`}
-                      data-testid="track-bar"
-                      data-track-id={row.track.id}
-                      data-verdict={row.verdict}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectTrack(row.track.id);
-                      }}
-                      className={cn(
-                        "absolute top-[3px] h-[10px] rounded-sm",
-                        selected && "ring-2 ring-white",
-                      )}
-                      style={{
-                        left: pct(row.track.start_frame),
-                        width: `${width}%`,
-                        ...barStyle(row.color, row.verdict),
-                      }}
-                    />
-                  );
-                })}
-              {markers
-                .filter((m) => m.label === label)
-                .map((m) => (
-                  <span
-                    key={`${m.label}-${m.frame}`}
-                    title={`MaxN at frame ${m.frame}`}
-                    data-testid="maxn-marker"
-                    className="pointer-events-none absolute -top-px h-0 w-0 -translate-x-1/2 border-x-[4px] border-t-[6px] border-x-transparent border-t-white"
-                    style={{ left: pct(m.frame) }}
-                  />
-                ))}
+              <div
+                className="w-28 shrink-0 truncate px-2 leading-4"
+                title={rowIndex === 0 ? group.displayLabel : undefined}
+              >
+                {rowIndex === 0 ? group.displayLabel : ""}
+              </div>
+              <div
+                className="relative flex-1 cursor-pointer"
+                onClick={seekAt}
+                data-testid="track-lane"
+              >
+                {packed
+                  .filter(
+                    (row) =>
+                      row.track.end_frame >= windowStart &&
+                      row.track.start_frame <= windowEnd,
+                  )
+                  .map((row) => {
+                    const selected = row.track.id === selectedTrackId;
+                    const left = Math.max(0, pct(row.track.start_frame));
+                    const right = Math.min(100, pct(row.track.end_frame + 1));
+                    return (
+                      <button
+                        key={row.track.id}
+                        type="button"
+                        title={`${group.displayLabel}, frames ${row.track.start_frame} to ${row.track.end_frame}`}
+                        data-testid="track-bar"
+                        data-track-id={row.track.id}
+                        data-verdict={row.verdict}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectTrack(row.track.id);
+                        }}
+                        className={cn(
+                          "absolute top-[3px] h-[10px] rounded-sm",
+                          selected && "ring-2 ring-white",
+                        )}
+                        style={{
+                          left: `${left}%`,
+                          width: `${Math.max(0, right - left)}%`,
+                          minWidth: MIN_BAR_PX,
+                          ...barStyle(row.color, row.verdict),
+                        }}
+                      />
+                    );
+                  })}
+                {rowIndex === 0 &&
+                  markers
+                    .filter((m) => m.label === group.label && inWindow(m.frame))
+                    .map((m) => (
+                      <span
+                        key={`${m.label}-${m.frame}`}
+                        title={`MaxN at frame ${m.frame}`}
+                        data-testid="maxn-marker"
+                        className="pointer-events-none absolute -top-px h-0 w-0 -translate-x-1/2 border-x-[4px] border-t-[6px] border-x-transparent border-t-white"
+                        style={{ left: `${pct(m.frame)}%` }}
+                      />
+                    ))}
+              </div>
             </div>
-          </div>
-        ))}
+          )),
+        )}
       </div>
       {/* Playhead over every row, in the lane's column (the label
           column is 7rem wide). */}
@@ -142,8 +248,8 @@ export function TrackTimeline({
           className="pointer-events-none absolute bottom-0 w-px bg-white"
           data-testid="playhead"
           style={{
-            left: `calc(7rem + (100% - 7rem) * ${Math.min(1, Math.max(0, currentFrame / durationFrames))})`,
-            height: Math.min(species.length, ROW_CAP) * ROW_HEIGHT_PX,
+            left: `calc(7rem + (100% - 7rem) * ${clamp((currentFrame - windowStart) / windowFrames, 0, 1)})`,
+            height: Math.min(totalRows, ROW_CAP) * ROW_HEIGHT_PX,
           }}
         />
       </div>
@@ -195,6 +301,7 @@ export const ClipTimeline = memo(function ClipTimeline({
       currentFrame={currentFrame}
       selectedTrackId={selectedTrackId}
       markers={markers}
+      frameRate={file.frame_rate}
       onSelectTrack={onSelectTrack}
       onSeek={onSeek}
     />

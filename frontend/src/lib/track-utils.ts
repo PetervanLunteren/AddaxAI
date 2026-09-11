@@ -101,6 +101,53 @@ export function trackRows(
   );
 }
 
+/** One species on the timeline, its animals packed into as few rows as
+ *  they need. */
+export interface TimelineGroup {
+  /** The species key, what the MaxN markers filter on. */
+  label: string;
+  /** The species as the row label prints it. */
+  displayLabel: string;
+  /** Each row holds tracks that never overlap in time. */
+  rows: TrackRow[][];
+}
+
+/**
+ * The timeline's rows: one group per species, and inside a group as
+ * many rows as its animals need to sit beside each other.
+ *
+ * One rule, no tuning: a track goes in the first row whose last track
+ * ends before this one starts, else in a new row. Walking tracks in
+ * start order makes that greedy pass land on the fewest rows there can
+ * be, which is the most animals of that species ever on screen at once.
+ * A clip of 702 sharks needs seven.
+ *
+ * Until 2026-09-11 a species was one row and every one of its tracks
+ * was drawn inside it, so on a shark drop the bars sat on top of each
+ * other: one smear, and a click landed on whichever painted last.
+ *
+ * Ends increase along a row by construction (a track joins only when
+ * the last one ended before it starts), so the last member is the one
+ * to compare against and no scan is needed. `trackRows` already sorts
+ * by label and then by start frame, so this is one linear walk.
+ */
+export function packTrackRows(rows: TrackRow[]): TimelineGroup[] {
+  const groups = new Map<string, TimelineGroup>();
+  for (const row of rows) {
+    let group = groups.get(row.label);
+    if (!group) {
+      group = { label: row.label, displayLabel: row.displayLabel, rows: [] };
+      groups.set(row.label, group);
+    }
+    const fits = group.rows.find(
+      (packed) => packed[packed.length - 1].track.end_frame < row.track.start_frame,
+    );
+    if (fits) fits.push(row);
+    else group.rows.push([row]);
+  }
+  return [...groups.values()];
+}
+
 /**
  * Frames in the clip, for a bar to be a fraction of. The stored length
  * first; for a file analysed before the length was stored, the end of
