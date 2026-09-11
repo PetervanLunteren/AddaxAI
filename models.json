@@ -115,7 +115,7 @@
         "track_filter": true
       },
       {
-        "model_id": "CFD-RFDETR-NANO-640-2026-07-06",
+        "model_id": "CFD-NANO-1-0",
         "friendly_name": "Community Fish Detector nano",
         "env": "marine",
         "model_fname": "cfd-rf-detr-nano-640-2026.02.02.cp-011.20260706-release.pth",
@@ -130,7 +130,7 @@
         "track_filter": true
       },
       {
-        "model_id": "CFD-RFDETR-SMALL-1024-2026-07-06",
+        "model_id": "CFD-SMALL-1-0",
         "friendly_name": "Community Fish Detector small",
         "env": "marine",
         "model_fname": "cfd-rf-detr-small-1024-2026.06.06.cp-016.20260706-release.pth",
@@ -145,7 +145,7 @@
         "track_filter": true
       },
       {
-        "model_id": "CFD-RFDETR-MEDIUM-1024-2026-07-06",
+        "model_id": "CFD-MEDIUM-1-0",
         "friendly_name": "Community Fish Detector medium",
         "env": "marine",
         "model_fname": "cfd-rf-detr-medium-1024-2026.03.24.cp-011.20260706-release.pth",

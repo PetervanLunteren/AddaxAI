@@ -208,9 +208,9 @@ Four `det` entries in `models.json`, weights mirrored to HuggingFace under `Adda
 | model_id | friendly_name | env | model_fname | detector_runtime | tracking_recommended |
 |---|---|---|---|---|---|
 | `SHARKTRACK-1-0` | SharkTrack (sharks and rays) | marine | `sharktrack.pt` | ultralytics | true |
-| `CFD-RFDETR-NANO-640-2026-07-06` | Community Fish Detector nano | marine | `cfd-rf-detr-nano-640-2026.02.02.cp-011.20260706-release.pth` | megadetector | true |
-| `CFD-RFDETR-SMALL-1024-2026-07-06` | Community Fish Detector small | marine | `cfd-rf-detr-small-1024-2026.06.06.cp-016.20260706-release.pth` | megadetector | true |
-| `CFD-RFDETR-MEDIUM-1024-2026-07-06` | Community Fish Detector medium | marine | `cfd-rf-detr-medium-1024-2026.03.24.cp-011.20260706-release.pth` | megadetector | true |
+| `CFD-NANO-1-0` | Community Fish Detector nano | marine | `cfd-rf-detr-nano-640-2026.02.02.cp-011.20260706-release.pth` | megadetector | true |
+| `CFD-SMALL-1-0` | Community Fish Detector small | marine | `cfd-rf-detr-small-1024-2026.06.06.cp-016.20260706-release.pth` | megadetector | true |
+| `CFD-MEDIUM-1-0` | Community Fish Detector medium | marine | `cfd-rf-detr-medium-1024-2026.03.24.cp-011.20260706-release.pth` | megadetector | true |
 
 `description_short` of the 1024 px variants says "Slower on CPU". `min_app_version` is the release that ships increment 1 (7.7.0 if numbering continues from 7.6.0). Weights are versioned by id per the existing rule (a re-upload needs a new id), which the CFD release naming already encodes.
 
