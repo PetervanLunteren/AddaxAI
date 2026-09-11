@@ -1173,6 +1173,39 @@
           }
         ]
       ]
+    },
+    "EUR-DF-v1-5": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "bird",
+          "confidence": 0.9997630715370178
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird",
+            "confidence": 0.9997630715370178
+          },
+          {
+            "label": "cat",
+            "confidence": 4.6643133828183636e-05
+          },
+          {
+            "label": "micromammal",
+            "confidence": 4.101422382518649e-05
+          },
+          {
+            "label": "squirrel",
+            "confidence": 3.509417365421541e-05
+          },
+          {
+            "label": "roe deer",
+            "confidence": 1.083599818230141e-05
+          }
+        ]
+      ]
     }
   }
 }
