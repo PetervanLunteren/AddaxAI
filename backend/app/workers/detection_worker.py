@@ -42,20 +42,6 @@ from app.utils.fs_hidden import mkdir_hidden_addaxai
 logger = get_logger(__name__)
 
 
-def _refuse_images_for(det_manifest, has_images: bool) -> None:
-    """A detector that loads through ultralytics (SharkTrack) has no
-    image path: the image detector has no ultralytics branch, so a run
-    that would hand it images is refused up front rather than analysed
-    into nothing. Videos are fine: every video goes through the tracking
-    script, which loads either runtime."""
-    ultralytics_only = getattr(det_manifest, "detector_runtime", None) == "ultralytics"
-    if ultralytics_only and has_images:
-        raise RuntimeError(
-            f"{det_manifest.friendly_name} analyses videos only. Set 'Media "
-            "to analyse' to videos, or pick another detector for the images."
-        )
-
-
 async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list[str], db) -> None:
     """
     Process multiple queue entries sequentially within one job.
@@ -281,8 +267,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         f"{len(media_filter_skipped)} file(s) in {folder_path}"
                     )
 
-                _refuse_images_for(det_manifest, bool(image_files) and not full_image_cls)
-
                 if not video_files and not image_files:
                     # Two different situations, and only one is the user's
                     # mistake. If the filter dropped files there WAS media here,
@@ -444,7 +428,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                             output_json=_vjp,
                             crops_dir=_crops,
                             fps=project.video_fps,
-                            detector_runtime=det_manifest.detector_runtime,
+                            class_mapping=det_manifest.class_mapping,
                             track_filter=det_manifest.track_filter,
                             image_size=project.detection_image_size,
                             augment=project.detection_augment,
@@ -707,6 +691,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                             checkpoint_frequency=ckpt.checkpoint_frequency(
                                 len(_if), _bs
                             ),
+                            class_mapping=det_manifest.class_mapping,
                             images_done=_done,
                         ),
                     )

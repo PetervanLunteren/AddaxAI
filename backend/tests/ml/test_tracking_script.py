@@ -25,6 +25,26 @@ def test_sampling_matches_process_video():
     assert ts.sampled_frames(frame_count=0, native_fps=30.0, fps=3.0) == []
 
 
+def test_the_catalogs_class_mapping_outranks_the_packages_own_names():
+    """SharkTrack is a plain ultralytics checkpoint, so the megadetector
+    package cannot name its class: left alone it would assert MegaDetector's
+    three, add one, and store every shark as "animal". The catalog's mapping
+    is what the run reports, and it wins over the package's default so the
+    names never depend on the global we set beside it."""
+    md_default = {"1": "animal", "2": "person", "3": "vehicle"}
+
+    # SharkTrack: the catalog decides, ids and names both.
+    assert ts.pick_categories({"0": "elasmobranch"}, None, md_default) == {
+        "0": "elasmobranch"
+    }
+    # RF-DETR names itself, so it is used when the catalog says nothing.
+    assert ts.pick_categories(None, {"0": "fish"}, md_default) == {"0": "fish"}
+    # A MegaDetector .pt has neither, and falls back to the package's three.
+    assert ts.pick_categories(None, None, md_default) == md_default
+    # Whatever the source, the JSON carries strings on both sides.
+    assert ts.pick_categories(None, {0: "fish"}, md_default) == {"0": "fish"}
+
+
 def test_tracker_buffer_scales_with_the_sampling_rate():
     """Two seconds of lost track before it is dropped, at any fps."""
     assert ts._tracker_args(3.0, 0.2, 0.01).track_buffer == 6

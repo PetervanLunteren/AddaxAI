@@ -35,7 +35,20 @@ def test_image_cmd_defaults_add_no_inference_flags():
     assert "--image_size" not in cmd
     assert "--augment" not in cmd
     assert "--batch_size" not in cmd
+    assert "--class_mapping_filename" not in cmd
     # The three trailing entries stay positional (model, file list, output).
+    assert cmd[-3:] == ["model.pt", "files.json", "out.json"]
+
+
+def test_image_cmd_class_mapping_is_only_added_when_asked_for():
+    """The flag switches the package to the model's native, zero-based
+    class indices. A MegaDetector run must never carry it: its output
+    categories would go from 1/2/3 to 0/1/2 and disagree with every
+    stored results.json and with Timelapse."""
+    assert "--class_mapping_filename" not in _image_cmd()
+    cmd = _image_cmd(class_mapping_path=Path("classes.json"))
+    assert cmd[cmd.index("--class_mapping_filename") + 1] == "classes.json"
+    # Still before the positional args.
     assert cmd[-3:] == ["model.pt", "files.json", "out.json"]
 
 
@@ -120,7 +133,7 @@ def _tracking_cmd(**overrides) -> list[str]:
         output_json=Path("out.json"),
         crops_dir=Path("frames"),
         fps=3.0,
-        detector_runtime="ultralytics",
+        class_mapping_path=None,
         ffmpeg_path="/env/bin/ffmpeg",
         track_filter=False,
         image_size=None,
@@ -130,7 +143,7 @@ def _tracking_cmd(**overrides) -> list[str]:
     return _build_tracking_cmd(**kwargs)
 
 
-def test_tracking_cmd_runs_the_script_with_the_file_list_and_runtime():
+def test_tracking_cmd_runs_the_script_with_the_file_list():
     cmd = _tracking_cmd()
     # -P keeps the script's directory (which holds the app's own
     # megadetector.py) off sys.path, so the megadetector package wins.
@@ -138,9 +151,9 @@ def test_tracking_cmd_runs_the_script_with_the_file_list_and_runtime():
     # Positional: model, folder, file list, output.
     assert cmd[3:7] == ["sharktrack.pt", "videos", "files.json", "out.json"]
     assert cmd[cmd.index("--fps") + 1] == "3.0"
-    assert cmd[cmd.index("--detector_runtime") + 1] == "ultralytics"
     assert cmd[cmd.index("--ffmpeg") + 1] == "/env/bin/ffmpeg"
     assert cmd[cmd.index("--crops_dir") + 1] == "frames"
+    assert "--class_mapping" not in cmd
     assert "--track_filter" not in cmd
     assert "--image_size" not in cmd
     assert "--augment" not in cmd
@@ -158,9 +171,12 @@ def test_tracking_cmd_carries_the_apps_confidence_floors():
 
 def test_tracking_cmd_carries_the_optional_flags():
     cmd = _tracking_cmd(
-        image_size=1024, augment=True, detector_runtime="megadetector", track_filter=True
+        image_size=1024,
+        augment=True,
+        track_filter=True,
+        class_mapping_path=Path("classes.json"),
     )
     assert cmd[cmd.index("--image_size") + 1] == "1024"
     assert "--augment" in cmd
     assert "--track_filter" in cmd
-    assert cmd[cmd.index("--detector_runtime") + 1] == "megadetector"
+    assert cmd[cmd.index("--class_mapping") + 1] == "classes.json"

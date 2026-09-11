@@ -72,19 +72,22 @@ def _manifest(**overrides) -> ModelManifest:
 
 def test_manifest_detector_fields_default_to_megadetector_without_the_filter():
     """Every shipped MegaDetector entry predates these fields, so the
-    defaults must describe MegaDetector: loaded by the megadetector
-    package, no shark false-positive filter."""
+    defaults must describe MegaDetector: it names its own classes, and
+    there is no shark false-positive filter."""
     m = _manifest()
-    assert m.detector_runtime == "megadetector"
+    assert m.class_mapping is None
     assert m.track_filter is False
 
 
-def test_manifest_accepts_the_ultralytics_runtime_and_the_filter():
-    m = _manifest(detector_runtime="ultralytics", track_filter=True)
-    assert m.detector_runtime == "ultralytics"
+def test_manifest_accepts_a_class_mapping_and_the_filter():
+    m = _manifest(class_mapping={"0": "elasmobranch"}, track_filter=True)
+    assert m.class_mapping == {"0": "elasmobranch"}
     assert m.track_filter is True
 
 
-def test_manifest_rejects_an_unknown_runtime():
-    with pytest.raises(ValueError):
-        _manifest(detector_runtime="yolo")
+def test_manifest_ignores_a_retired_field():
+    """`detector_runtime` chose between two loaders; there is one now, so
+    an installed manifest.json written before the catalog dropped the
+    field must still parse. The next catalog sync rewrites it away."""
+    m = _manifest(detector_runtime="ultralytics")
+    assert not hasattr(m, "detector_runtime")

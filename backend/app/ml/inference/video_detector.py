@@ -2,8 +2,8 @@
 Video detection: every video goes through the tracking script.
 
 `tracking_script.py` runs in the detector's own environment: the same
-frame sampling MegaDetector's `process_video` used, the detector named by
-the catalog's `detector_runtime`, BoT-SORT over the sampled frames, one
+frame sampling MegaDetector's `process_video` used, the detector loaded
+through the megadetector package, BoT-SORT over the sampled frames, one
 crop per track, and MegaDetector-shaped JSON with a `track_id` on every
 box. This class builds its command line, streams its progress and
 device into the job, and hands the JSON back. The confidence floors on
@@ -26,6 +26,7 @@ from app.core.logging_config import get_logger
 from app.core.subprocess_group import popen_group
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.gpu_guard import cuda_guard_overrides
+from app.ml.inference.class_mapping import write_class_mapping
 from app.utils.ffmpeg_bin import resolve_ffmpeg
 from app.utils.subprocess_env import clean_python_env
 
@@ -41,7 +42,7 @@ def _build_tracking_cmd(
     output_json: Path,
     crops_dir: Path,
     fps: float,
-    detector_runtime: str,
+    class_mapping_path: Path | None,
     ffmpeg_path: str,
     track_filter: bool,
     image_size: int | None,
@@ -70,8 +71,6 @@ def _build_tracking_cmd(
         str(output_json),
         "--fps",
         str(fps),
-        "--detector_runtime",
-        detector_runtime,
         "--ffmpeg",
         ffmpeg_path,
         "--crops_dir",
@@ -81,6 +80,8 @@ def _build_tracking_cmd(
         "--track_low_thresh",
         str(MD_OUTPUT_CONFIDENCE_THRESHOLD),
     ]
+    if class_mapping_path is not None:
+        command += ["--class_mapping", str(class_mapping_path)]
     if track_filter:
         command.append("--track_filter")
     if image_size is not None:
@@ -131,7 +132,7 @@ class VideoDetectionModel:
         output_json: Path,
         crops_dir: Path,
         fps: float,
-        detector_runtime: str,
+        class_mapping: dict[str, str] | None,
         track_filter: bool,
         image_size: int | None = None,
         augment: bool = False,
@@ -150,7 +151,9 @@ class VideoDetectionModel:
             crops_dir: Root for the track crops (``<crops_dir>/<relative
                 video>/track000007.jpg``), the folder the cover frames use.
             fps: Sampling rate in frames per second.
-            detector_runtime: ``megadetector`` or ``ultralytics``, from the catalog.
+            class_mapping: The detector's own class ids and names, from the
+                catalog, for a detector the megadetector package cannot name
+                on its own (SharkTrack). None for everything else.
             track_filter: Run SharkTrack's false-positive filter (catalog flag).
             image_size: Override the detector's long-edge resize size.
             augment: Run detection with augmentation.
@@ -167,9 +170,15 @@ class VideoDetectionModel:
         file_list_json.parent.mkdir(parents=True, exist_ok=True)
         with open(file_list_json, "w") as f:
             json.dump([str(p) for p in video_files], f)
+        # Beside the file list, in the artifacts folder, like it.
+        class_mapping_path = (
+            write_class_mapping(class_mapping, file_list_json.parent)
+            if class_mapping
+            else None
+        )
         logger.info(
             f"Running video detection and tracking on {len(video_files)} "
-            f"videos at {fps} FPS ({detector_runtime})"
+            f"videos at {fps} FPS"
         )
         command = _build_tracking_cmd(
             python_path=self.python_path,
@@ -179,7 +188,7 @@ class VideoDetectionModel:
             output_json=output_json,
             crops_dir=crops_dir,
             fps=fps,
-            detector_runtime=detector_runtime,
+            class_mapping_path=class_mapping_path,
             ffmpeg_path=resolve_ffmpeg(self.env_name),
             track_filter=track_filter,
             image_size=image_size,

@@ -268,24 +268,3 @@ async def test_cancel_still_aborts_the_whole_queue(db, tmp_path, monkeypatch):
     # user can re-run them without re-adding the folders.
     assert statuses == ["completed", "pending", "pending"]
     assert db.get(type(job), job.id).status == "cancelled"
-
-
-# ── Which detectors may run which media ─────────────────────────────
-
-
-def test_an_ultralytics_detector_refuses_images():
-    """SharkTrack loads through ultralytics and the image detector has
-    no ultralytics branch, so a run that would hand it images is
-    refused before anything starts. Videos are fine for every detector:
-    they all go through the tracking script."""
-    from types import SimpleNamespace
-
-    from app.workers.detection_worker import _refuse_images_for
-
-    shark = SimpleNamespace(detector_runtime="ultralytics", friendly_name="SharkTrack")
-    md = SimpleNamespace(detector_runtime="megadetector", friendly_name="MegaDetector")
-
-    assert _refuse_images_for(shark, has_images=False) is None
-    assert _refuse_images_for(md, has_images=True) is None
-    with pytest.raises(RuntimeError, match="analyses videos only"):
-        _refuse_images_for(shark, has_images=True)

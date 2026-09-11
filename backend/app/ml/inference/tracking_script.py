@@ -35,15 +35,24 @@ and the survivors are written when the video is done, one
 ``track000007.jpg`` per track beside the cover frame. No full frame per
 track is ever stored; any other frame is decoded on request.
 
-Two loaders, chosen by the catalog's ``detector_runtime``:
+One loader for every detector: the megadetector package's
+``load_detector``. It reads MegaDetector ``.pt`` files, RF-DETR ``.pth``
+files (the Community Fish Detector) and, given the two things below, a
+plain ultralytics checkpoint such as SharkTrack.
 
-- ``megadetector``: the megadetector package's ``load_detector``, which
-  reads MegaDetector ``.pt`` files and RF-DETR ``.pth`` files (the
-  Community Fish Detector) and carries their class names.
-- ``ultralytics``: a plain ultralytics checkpoint such as SharkTrack,
-  loaded directly, with ``model.names`` as the class map. The
-  megadetector package forces its three classes onto any YOLO ``.pt``
-  it does not know, which would turn a shark into "animal".
+A model the package does not know needs both halves or it is misread,
+silently:
+
+- **Its weights must declare ``model_type`` in the metadata embedded in
+  the ``.pt``** (``add_metadata_to_megadetector_model_file``). Without it
+  the package assumes ``yolov5`` and decodes a YOLOv8 head through the
+  YOLOv5 path, which yields well-formed nonsense: measured confidences
+  around 56,000 and class ids in the tens of thousands, with no error.
+  Dan's own v1000 models carry the same block, ``sorrel`` with
+  ``model_type: ultralytics``, so this is the package's supported path.
+- **Its class names come from the catalog** as ``--class_mapping``, which
+  also switches the package to the model's native class indices instead
+  of asserting MegaDetector's three and adding one.
 
 The confidence floors come in on the command line from the app's own
 constants (``app/core/confidence.py``): a track starts at the default
@@ -99,8 +108,6 @@ _crop_box = _load_sibling("crop_box")
 # from ``app/core/confidence.py``, so the app and the script cannot drift.
 MATCH_THRESH = 0.97
 TRACK_BUFFER_SECONDS = 2.0
-DETECT_IOU = 0.5
-ULTRALYTICS_DEFAULT_IMAGE_SIZE = 640
 # Frames are decoded at most this long on their long edge, the cap the
 # cover frame gets (`video_iter.write_best_frame`), so a track's card
 # cut from a decoded frame matches a card cut from the cover. The
@@ -156,61 +163,35 @@ def _device() -> str:
     return "cpu"
 
 
-class _UltralyticsDetector:
+class _Detector:
     def __init__(
-        self, model_path: Path, image_size: int | None, augment: bool, conf: float
+        self,
+        model_path: Path,
+        image_size: int | None,
+        augment: bool,
+        conf: float,
+        class_mapping: dict[str, str] | None = None,
     ) -> None:
-        from ultralytics import YOLO
-
-        self.model = YOLO(str(model_path))
-        self.categories = {str(k): str(v) for k, v in self.model.names.items()}
-        self.image_size = image_size or ULTRALYTICS_DEFAULT_IMAGE_SIZE
-        self.augment = augment
-        self.conf = conf
-        self.device = _device()
-        print(f"PTDetector using device {self.device}", flush=True)
-
-    def detect(self, frame_bgr: np.ndarray) -> np.ndarray:
-        result = self.model.predict(
-            frame_bgr,
-            conf=self.conf,
-            iou=DETECT_IOU,
-            imgsz=self.image_size,
-            device=self.device,
-            augment=self.augment,
-            verbose=False,
-        )[0]
-        boxes = result.boxes
-        if boxes is None or len(boxes) == 0:
-            return np.zeros((0, 6), dtype=np.float32)
-        return np.concatenate(
-            [
-                boxes.xyxy.cpu().numpy(),
-                boxes.conf.cpu().numpy()[:, None],
-                boxes.cls.cpu().numpy()[:, None],
-            ],
-            axis=1,
-        ).astype(np.float32)
-
-
-class _MegaDetectorDetector:
-    def __init__(
-        self, model_path: Path, image_size: int | None, augment: bool, conf: float
-    ) -> None:
+        from megadetector.detection import run_detector
         from megadetector.detection.run_detector import load_detector
+
+        if class_mapping:
+            # What ``run_detector_batch._load_custom_class_mapping`` does for
+            # the CLI's ``--class_mapping_filename``: use the model's own
+            # class indices instead of asserting MegaDetector's three and
+            # adding one. It has to be set before ``load_detector``, which
+            # copies the value into the detector's options as it builds it.
+            run_detector.USE_MODEL_NATIVE_CLASSES = True
 
         # RF-DETR takes its resolution at load time and refuses it per
         # call; PTDetector takes it per call. Give both what they read.
         options = {"image_size": image_size} if image_size else None
         self.detector = load_detector(str(model_path), detector_options=options)
-        # RF-DETR carries its class names on the detector; a MegaDetector
-        # .pt has the package's fixed three.
-        from megadetector.detection.run_detector import DEFAULT_DETECTOR_LABEL_MAP
-
-        categories = (
-            getattr(self.detector, "detection_categories", None) or DEFAULT_DETECTOR_LABEL_MAP
+        self.categories = pick_categories(
+            class_mapping,
+            getattr(self.detector, "detection_categories", None),
+            run_detector.DEFAULT_DETECTOR_LABEL_MAP,
         )
-        self.categories = {str(k): str(v) for k, v in categories.items()}
         self.is_rfdetr = type(self.detector).__name__ == "RFDETRDetector"
         self.image_size = image_size
         self.augment = augment
@@ -243,17 +224,26 @@ class _MegaDetectorDetector:
         return np.asarray(rows, dtype=np.float32)
 
 
-def _load_detector(
-    runtime: str, model_path: Path, image_size: int | None, augment: bool, conf: float
-):
-    if runtime == "ultralytics":
-        return _UltralyticsDetector(model_path, image_size, augment, conf)
-    if runtime == "megadetector":
-        return _MegaDetectorDetector(model_path, image_size, augment, conf)
-    raise ValueError(f"unknown detector runtime {runtime!r}")
-
-
 # --- Pure helpers (unit tested) ---------------------------------------------
+
+
+def pick_categories(
+    class_mapping: dict[str, str] | None,
+    detector_categories: dict | None,
+    default_map: dict,
+) -> dict[str, str]:
+    """The class ids and names this run reports, in order of authority.
+
+    The catalog's mapping wins where there is one, so the names never
+    depend on the package global we set beside it. Otherwise RF-DETR
+    carries its own names on the detector, and a MegaDetector ``.pt``
+    takes the package's fixed three. Keys and values are strings, since
+    that is what the JSON carries and what ``json_pipeline`` matches on.
+    """
+    return {
+        str(k): str(v)
+        for k, v in (class_mapping or detector_categories or default_map).items()
+    }
 
 
 def sampling_stride(native_fps: float, fps: float) -> int:
@@ -568,7 +558,9 @@ def main() -> int:
         "--fps", type=float, required=True, help="sampling rate in frames per second"
     )
     parser.add_argument(
-        "--detector_runtime", choices=["megadetector", "ultralytics"], required=True
+        "--class_mapping", type=Path, default=None,
+        help="JSON of class id to name, for a detector the megadetector "
+             "package cannot name on its own (see class_mapping.py)",
     )
     parser.add_argument("--image_size", type=int, default=None)
     parser.add_argument("--augment", action="store_true")
@@ -593,9 +585,12 @@ def main() -> int:
 
     with open(args.file_list) as f:
         videos = [Path(p) for p in json.load(f)]
-    detector = _load_detector(
-        args.detector_runtime, args.model, args.image_size, args.augment,
-        args.track_low_thresh,
+    class_mapping = (
+        json.loads(args.class_mapping.read_text()) if args.class_mapping else None
+    )
+    detector = _Detector(
+        args.model, args.image_size, args.augment, args.track_low_thresh,
+        class_mapping=class_mapping,
     )
     tracker_args = _tracker_args(args.fps, args.track_high_thresh, args.track_low_thresh)
     counts = _video_frame_counts(videos)
@@ -635,7 +630,6 @@ def main() -> int:
 
     write_results(args.output_json, images, detector.categories, {
         "detector": args.model.name,
-        "detector_runtime": args.detector_runtime,
         "tracker": "botsort",
         "fps": args.fps,
         "track_high_thresh": args.track_high_thresh,

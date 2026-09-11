@@ -49,28 +49,47 @@ def test_catalog_entry_validates_against_schema(model_key: str, entry: dict):
     ModelManifest(**entry)
 
 
-def test_every_detector_declares_its_classes() -> None:
+def _declared_classes(entry: dict) -> list[str]:
+    """What a detector says it finds, from whichever field carries it."""
+    mapping = entry.get("class_mapping")
+    return list(mapping.values()) if mapping else (entry.get("classes") or [])
+
+
+def test_every_detector_declares_its_classes_in_exactly_one_field() -> None:
     """A detector's classes are the only way the app can say what it finds
     before it has ever been run, which is what the label picker needs: it
     used to offer a hardcoded Animal / Person / Vehicle, so on a SharkTrack
     project the only category you could apply was "animal", overwriting the
     box's real "elasmobranch".
 
-    Lookup and display only. Nothing in the detection or ingest path reads
-    it: a run's own JSON carries the authoritative `detection_categories`,
-    and `json_pipeline` refuses an id that map never declared. So a stale
-    entry here shows a wrong option in a picker, it can never mislabel a
-    stored box.
+    Two fields, and never both, so there is one place to read and nothing
+    to drift. `classes` is lookup and display only, for a model the
+    megadetector package names itself. `class_mapping` is for one it
+    cannot: it is handed to the package as `--class_mapping_filename`, so
+    it also decides the ids the run reports.
     """
     catalog = json.loads(_CATALOG_PATH.read_text())
     for entry in catalog["models"]["det"]:
-        classes = entry.get("classes")
-        assert classes, f"{entry['model_id']} declares no classes"
-        assert all(isinstance(c, str) and c for c in classes), entry["model_id"]
-        assert classes == [c.lower() for c in classes], (
-            f"{entry['model_id']}: classes are matched against "
+        model_id = entry["model_id"]
+        assert "detector_runtime" not in entry, (
+            f"{model_id}: detector_runtime is retired, there is one loader"
+        )
+        has_classes = "classes" in entry
+        has_mapping = "class_mapping" in entry
+        assert has_classes != has_mapping, (
+            f"{model_id} must declare exactly one of classes / class_mapping"
+        )
+        names = _declared_classes(entry)
+        assert names, f"{model_id} declares no classes"
+        assert all(isinstance(c, str) and c for c in names), model_id
+        assert names == [c.lower() for c in names], (
+            f"{model_id}: classes are matched against "
             f"Detection.category, which is stored lowercase"
         )
+        if has_mapping:
+            assert all(k.isdigit() for k in entry["class_mapping"]), (
+                f"{model_id}: class ids are the model's own, starting at zero"
+            )
 
 
 def test_the_declared_classes_match_what_the_detectors_emit() -> None:
@@ -79,14 +98,18 @@ def test_the_declared_classes_match_what_the_detectors_emit() -> None:
     off the megadetector package's own ``DEFAULT_DETECTOR_LABEL_MAP`` for
     the MegaDetectors. Pinned here so a new entry cannot be invented."""
     catalog = json.loads(_CATALOG_PATH.read_text())
-    by_id = {e["model_id"]: e["classes"] for e in catalog["models"]["det"]}
+    by_id = {e["model_id"]: e for e in catalog["models"]["det"]}
     megadetector = ["animal", "person", "vehicle"]
-    for model_id, classes in by_id.items():
+    for model_id, entry in by_id.items():
+        classes = _declared_classes(entry)
         if model_id.startswith(("MD5", "MD1000")):
             assert classes == megadetector, model_id
         elif model_id.startswith("CFD-"):
             assert classes == ["fish"], model_id
         elif model_id.startswith("SHARKTRACK"):
-            assert classes == ["elasmobranch"], model_id
+            # The one model the package cannot name on its own, so its ids
+            # matter as well as its names: index 0 is what the checkpoint
+            # emits once the package is on native classes.
+            assert entry["class_mapping"] == {"0": "elasmobranch"}, model_id
         else:
             pytest.fail(f"{model_id} has no pinned expectation; add one")

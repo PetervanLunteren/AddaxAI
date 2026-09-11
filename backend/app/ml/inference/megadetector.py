@@ -27,6 +27,7 @@ from app.core.subprocess_group import popen_group
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.gpu_guard import cuda_guard_overrides
 from app.ml.inference.base import DetectionModel
+from app.ml.inference.class_mapping import write_class_mapping
 from app.utils.fs_hidden import mkdir_hidden_addaxai
 from app.utils.subprocess_env import clean_python_env
 
@@ -70,6 +71,7 @@ def _build_run_detector_batch_cmd(
     checkpoint_path: Path | None = None,
     checkpoint_frequency: int | None = None,
     resume: bool = False,
+    class_mapping_path: Path | None = None,
 ) -> list[str]:
     """Assemble the ``run_detector_batch`` command line.
 
@@ -86,6 +88,13 @@ def _build_run_detector_batch_cmd(
     its results so far every N images; ``resume`` additionally loads that
     file first and skips the images already in it. See "Resuming an
     interrupted analysis" in DEVELOPERS.md.
+
+    ``class_mapping_path`` is only set for a detector whose catalog entry
+    declares a ``class_mapping`` (see ``inference/class_mapping.py``). It
+    must stay unset for the MegaDetectors: the flag switches the package to
+    the model's native, zero-based class indices, which would turn their
+    output categories from ``1/2/3`` into ``0/1/2`` and disagree with every
+    stored results.json and with Timelapse.
     """
     cmd = [
         str(python_path),
@@ -113,6 +122,9 @@ def _build_run_detector_batch_cmd(
         cmd.insert(-3, str(image_size))
     if augment:
         cmd.insert(-3, "--augment")
+    if class_mapping_path is not None:
+        cmd.insert(-3, "--class_mapping_filename")
+        cmd.insert(-3, str(class_mapping_path))
     if checkpoint_path is not None and checkpoint_frequency is not None:
         cmd.insert(-3, "--checkpoint_frequency")
         cmd.insert(-3, str(checkpoint_frequency))
@@ -302,6 +314,7 @@ class MegaDetectorV1000(DetectionModel):
         checkpoint_path: Path | None = None,
         checkpoint_frequency: int | None = None,
         images_done: int = 0,
+        class_mapping: dict[str, str] | None = None,
     ) -> Path:
         """
         Run MegaDetector and save results directly to JSON file (for JSON-based pipeline).
@@ -329,6 +342,10 @@ class MegaDetectorV1000(DetectionModel):
             images_done: How many of ``image_paths`` the checkpoint already
                 holds. MegaDetector's own progress counts only the remaining
                 images, so this offsets the progress shown to the user.
+            class_mapping: The detector's own class ids and names, from the
+                catalog, for a detector the package cannot name on its own
+                (SharkTrack). None for the MegaDetectors and the RF-DETR
+                fish detectors, which name themselves.
 
         Returns:
             Path to saved detection_results.json file
@@ -375,6 +392,13 @@ class MegaDetectorV1000(DetectionModel):
                 with open(file_list_json, "w") as f:
                     json.dump([str(p) for p in image_paths], f)
 
+                # Beside the file list, and cleaned up with it.
+                class_mapping_path = (
+                    write_class_mapping(class_mapping, temp_path)
+                    if class_mapping
+                    else None
+                )
+
                 resume = checkpoint_path is not None and checkpoint_path.exists()
                 total_images = len(image_paths)
                 # What MegaDetector still has to do. Its tqdm counts these,
@@ -395,6 +419,7 @@ class MegaDetectorV1000(DetectionModel):
                     checkpoint_path=checkpoint_path,
                     checkpoint_frequency=checkpoint_frequency,
                     resume=resume,
+                    class_mapping_path=class_mapping_path,
                 )
 
                 logger.info(f"Running command: {' '.join(cmd)}")

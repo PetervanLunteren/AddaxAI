@@ -743,23 +743,49 @@ def test_a_long_list_that_leaves_a_class_is_not_excluding_all(client, db):
 # --- the label picker's category list -------------------------------------
 
 
-def test_categories_come_from_the_projects_detector(client, db, monkeypatch):
-    """The picker offers what the chosen detector emits, known before a
-    single frame has been analysed."""
+def _patch_manifest(monkeypatch, **fields):
+    """Stand in for the installed manifest of a project's detector."""
     from unittest.mock import Mock
 
     from app.api.routers import projects as projects_router
     from app.ml.schemas.model_manifest import ModelManifest
 
-    project = make_project(db, detection_model_id="SHARKTRACK-1-0")
-    db.commit()
-
     manifest = Mock(spec=ModelManifest)
-    manifest.classes = ["elasmobranch"]
+    manifest.classes = None
+    manifest.class_mapping = None
+    for name, value in fields.items():
+        setattr(manifest, name, value)
     monkeypatch.setattr(
         projects_router, "ManifestManager",
         lambda *a, **k: Mock(get_model=Mock(return_value=manifest)),
     )
+
+
+def test_categories_come_from_the_projects_detector(client, db, monkeypatch):
+    """The picker offers what the chosen detector emits, known before a
+    single frame has been analysed."""
+    project = make_project(db, detection_model_id="MD5A-0-0")
+    db.commit()
+
+    _patch_manifest(monkeypatch, classes=["animal", "person", "vehicle"])
+
+    r = client.get(f"/api/projects/{project.id}/categories")
+
+    assert r.status_code == 200
+    assert r.json() == ["animal", "person", "vehicle"]
+
+
+def test_categories_read_a_class_mapping_when_that_is_what_the_detector_has(
+    client, db, monkeypatch
+):
+    """A detector the megadetector package cannot name declares its
+    classes as a mapping instead of a list, because the ids matter there
+    too. The picker must offer those names, or a SharkTrack project can
+    only apply "animal" and overwrite the box's real category."""
+    project = make_project(db, detection_model_id="SHARKTRACK-1-0")
+    db.commit()
+
+    _patch_manifest(monkeypatch, class_mapping={"0": "elasmobranch"})
 
     r = client.get(f"/api/projects/{project.id}/categories")
 

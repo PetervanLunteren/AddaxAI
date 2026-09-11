@@ -42,7 +42,7 @@ def _run(model, tmp_path, output_json, videos, **overrides):
         output_json=output_json,
         crops_dir=tmp_path / "frames",
         fps=2.0,
-        detector_runtime="megadetector",
+        class_mapping=None,
         track_filter=False,
     )
     kwargs.update(overrides)
@@ -63,7 +63,7 @@ def test_writes_the_file_list_and_runs_the_tracking_script(model, tmp_path, monk
     monkeypatch.setattr(model, "_stream_process", fake_stream)
     videos = [tmp_path / "a.mp4", tmp_path / "sub" / "b.MP4"]
 
-    result = _run(model, tmp_path, output_json, videos, detector_runtime="ultralytics")
+    result = _run(model, tmp_path, output_json, videos)
 
     assert result == output_json
     (command,) = commands
@@ -73,7 +73,38 @@ def test_writes_the_file_list_and_runs_the_tracking_script(model, tmp_path, monk
     assert str(file_list) in command
     assert command[command.index("--ffmpeg") + 1] == "/env/bin/ffmpeg"
     assert command[command.index("--crops_dir") + 1] == str(tmp_path / "frames")
-    assert command[command.index("--detector_runtime") + 1] == "ultralytics"
+    assert "--class_mapping" not in command
+
+
+def test_a_class_mapping_is_written_beside_the_file_list(
+    model, tmp_path, monkeypatch
+):
+    """A detector the megadetector package cannot name (SharkTrack) hands
+    its classes over as a file, the package's own ``--class_mapping``
+    format. It lands beside the file list so it is cleaned up with the
+    run's other artifacts."""
+    output_json = tmp_path / "video_results.json"
+    commands: list[list[str]] = []
+
+    def fake_stream(command, env, progress_callback, job_id):
+        commands.append(command)
+        output_json.write_text("{}")
+        return 0
+
+    monkeypatch.setattr(model, "_stream_process", fake_stream)
+
+    _run(
+        model,
+        tmp_path,
+        output_json,
+        [tmp_path / "a.mp4"],
+        class_mapping={"0": "elasmobranch"},
+    )
+
+    (command,) = commands
+    mapping_path = Path(command[command.index("--class_mapping") + 1])
+    assert mapping_path.parent == output_json.parent
+    assert json.loads(mapping_path.read_text()) == {"0": "elasmobranch"}
 
 
 def test_a_failing_script_is_an_error(model, tmp_path, monkeypatch):
