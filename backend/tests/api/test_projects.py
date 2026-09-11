@@ -738,3 +738,52 @@ def test_a_long_list_that_leaves_a_class_is_not_excluding_all(client, db):
     assert resp.status_code == 200, resp.text
 
 
+
+
+# --- the label picker's category list -------------------------------------
+
+
+def test_categories_come_from_the_projects_detector(client, db, monkeypatch):
+    """The picker offers what the chosen detector emits, known before a
+    single frame has been analysed."""
+    from unittest.mock import Mock
+
+    from app.api.routers import projects as projects_router
+    from app.ml.schemas.model_manifest import ModelManifest
+
+    project = make_project(db, detection_model_id="SHARKTRACK-1-0")
+    db.commit()
+
+    manifest = Mock(spec=ModelManifest)
+    manifest.classes = ["elasmobranch"]
+    monkeypatch.setattr(
+        projects_router, "ManifestManager",
+        lambda *a, **k: Mock(get_model=Mock(return_value=manifest)),
+    )
+
+    r = client.get(f"/api/projects/{project.id}/categories")
+
+    assert r.status_code == 200
+    assert r.json() == ["elasmobranch"]
+
+
+def test_categories_are_empty_when_the_model_is_not_installed(client, db, monkeypatch):
+    """No manifest, no list. The picker then shows the species and any
+    custom labels, and a person who needs a class the detector does not
+    know adds a custom one."""
+    from unittest.mock import Mock
+
+    from app.api.routers import projects as projects_router
+
+    project = make_project(db, detection_model_id="NOT-INSTALLED-1-0")
+    db.commit()
+
+    monkeypatch.setattr(
+        projects_router, "ManifestManager",
+        lambda *a, **k: Mock(get_model=Mock(side_effect=ValueError("unknown"))),
+    )
+
+    r = client.get(f"/api/projects/{project.id}/categories")
+
+    assert r.status_code == 200
+    assert r.json() == []

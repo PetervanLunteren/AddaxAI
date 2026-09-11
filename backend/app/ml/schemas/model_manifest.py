@@ -101,6 +101,16 @@ class ModelManifest(BaseModel):
     # checkpoint such as SharkTrack directly, because the megadetector
     # package forces the three MegaDetector classes onto any YOLO .pt it
     # does not know, which would turn a shark into "animal".
+    # The classes this detector emits ("animal", "person", "vehicle";
+    # "elasmobranch"; "fish"). **Lookup and display only**: nothing in the
+    # detection or ingest path reads it, because the run's own JSON carries
+    # the authoritative `detection_categories` map and `json_pipeline`
+    # refuses an id that map never declared. It exists so the app can say
+    # what a detector finds before it has ever been run, which is what the
+    # label picker needs: it used to offer a hardcoded Animal / Person /
+    # Vehicle, so on a SharkTrack project the only category you could
+    # apply was "animal", overwriting the box's real "elasmobranch".
+    classes: list[str] | None = None
     detector_runtime: Literal["megadetector", "ultralytics"] = "megadetector"
     # Run SharkTrack's false-positive filter after tracking: a track that
     # lasts under a second or barely moves is dropped unless its best box

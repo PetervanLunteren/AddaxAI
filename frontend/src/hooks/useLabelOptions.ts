@@ -2,14 +2,17 @@
  * Hook to build label options for the unified label picker.
  *
  * Fetches labels from the classification model's taxonomy, merges in any
- * project-specific custom labels, and combines them with the detector
- * categories the project actually holds. Each option is annotated with a
- * taxonomy string (e.g. "mammalia > carnivora > felidae") when available.
+ * project-specific custom labels, and combines them with the classes the
+ * project's detector emits. Each option is annotated with a taxonomy
+ * string (e.g. "mammalia > carnivora > felidae") when available.
  *
- * The categories come from the server rather than a constant here. They
- * used to be a hardcoded Animal / Person / Vehicle, so on a SharkTrack
- * project the only category you could apply was "Animal", which
- * overwrote the box's real category of "elasmobranch".
+ * Both halves now come from the chosen models: the species from the
+ * classifier's taxonomy, the categories from the detector's declared
+ * `classes` (`GET /projects/{id}/categories`). The categories used to be
+ * a hardcoded Animal / Person / Vehicle, so on a SharkTrack project the
+ * only category you could apply was "Animal", which overwrote the box's
+ * real category of "elasmobranch". A class the detector does not know is
+ * added as a custom label.
  */
 
 import { useMemo } from "react";
@@ -112,7 +115,7 @@ export function useLabelOptions(
     staleTime: Infinity,
   });
 
-  // The categories this project holds, for the non-species options.
+  // The classes this project's detector emits, for the non-species options.
   const { data: categories } = useQuery({
     queryKey: ["project-categories", projectId],
     queryFn: () => projectsApi.getCategories(projectId),
@@ -135,7 +138,7 @@ export function useLabelOptions(
     (!!projectId && customLoading);
 
   const options = useMemo(() => {
-    // Every category the project holds. On a detection-only project these
+    // Everything the detector can emit. On a detection-only project these
     // are the whole picker; with a classifier the species follow below.
     const result: LabelOption[] = (categories ?? []).map((c) => ({
       ...categoryOption(c),

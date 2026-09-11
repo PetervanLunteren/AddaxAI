@@ -20,7 +20,6 @@ from sqlalchemy.orm import Session
 
 from app.api.crud import project as crud_project
 from app.api.crud.deployment import _delete_deployment_artifacts
-from app.api.crud.event import present_categories
 from app.api.crud.label_colors import assign_label_colors
 from app.api.schemas.project import (
     CustomLabelCreate,
@@ -45,6 +44,7 @@ from app.ml.label_exclusion import (
     is_wildlife_category,
     threshold_or_verified,
 )
+from app.ml.manifest_manager import ManifestManager
 from app.models import Deployment, Detection, Event, File, Job, Project
 from app.models.detection_embedding import DetectionEmbedding
 from app.models.event_observation import EventObservation
@@ -999,13 +999,18 @@ def get_label_colors(
 def get_project_categories(
     project_id: str, db: Session = Depends(get_db)
 ) -> list[str]:
-    """The detector categories this project actually holds.
+    """The classes this project's detector emits.
 
     What the label picker offers beside the species: "animal", "person"
     and "vehicle" on a camera trap run, "elasmobranch" on a SharkTrack
     one. The picker used to hold that list as a constant, so on a marine
     project the only category you could apply was "animal", which
     overwrote the box's real one.
+
+    Read from the model's manifest (`ModelManifest.classes`), so the list
+    is right before a single frame has been analysed. Empty when the
+    model is not installed or declares none; a person who needs a class
+    the detector does not know adds a custom label.
     """
     project = crud_project.get_project(db, project_id)
     if project is None:
@@ -1013,7 +1018,15 @@ def get_project_categories(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project with id '{project_id}' not found",
         )
-    return present_categories(db, project_id, project.counting_threshold)
+    if not project.detection_model_id:
+        return []
+    try:
+        manifest = ManifestManager().get_model(project.detection_model_id)
+    except ValueError:
+        # Not installed, or installed without a manifest. The picker just
+        # shows the species and any custom labels.
+        return []
+    return list(manifest.classes or [])
 
 
 @router.get("/{project_id}/label-taxonomy-map")

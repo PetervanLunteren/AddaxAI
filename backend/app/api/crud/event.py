@@ -1397,35 +1397,6 @@ def present_category_rows(db: Session, project_id: str, threshold: float) -> lis
     return [row[0] for row in rows if row[0]]
 
 
-def present_categories(db: Session, project_id: str, threshold: float) -> list[str]:
-    """Every detector category the project holds, in name order.
-
-    What the label picker offers as the non-species choices. It used to
-    offer a hardcoded Animal / Person / Vehicle, so on a SharkTrack
-    project the only thing you could call a box was "Animal", which
-    overwrote its real category of "elasmobranch".
-
-    Same scope as ``present_label_rows`` and ``present_category_rows``
-    beside it (threshold-or-verified, visible frame), so a category can
-    never be offered that the grid cannot show. Unlike
-    ``present_category_rows`` this one does not skip a category that has
-    a taxonomy row: the picker wants all of them, that one wants only the
-    classes that still need a colour of their own.
-    """
-    threshold_clause = threshold_or_verified(threshold)
-    rows = (
-        db.query(Detection.category)
-        .join(File, File.id == Detection.file_id)
-        .join(Deployment, Deployment.id == File.deployment_id)
-        .filter(Deployment.project_id == project_id)
-        .filter(threshold_clause)
-        .filter(on_visible_frame())
-        .distinct()
-        .all()
-    )
-    return sorted(row[0] for row in rows if row[0])
-
-
 def get_filter_options(db: Session, project_id: str) -> dict:
     """Get available filter options for a project (distinct labels, date range).
 
