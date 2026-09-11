@@ -187,8 +187,8 @@ def test_fallback_is_deterministic_and_from_the_palette():
     assert fallback_color("aardvark") in SPECIES_PALETTE
 
 
-def test_palette_is_twelve_distinct_colours():
-    assert len(set(SPECIES_PALETTE)) == len(SPECIES_PALETTE) == 12
+def test_palette_is_eighteen_distinct_colours():
+    assert len(set(SPECIES_PALETTE)) == len(SPECIES_PALETTE) == 18
 
 
 def test_endpoint_returns_the_map(client, db):

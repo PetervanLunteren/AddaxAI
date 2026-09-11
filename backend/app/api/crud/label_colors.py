@@ -18,12 +18,12 @@ The rule:
 2. Sort them by taxonomy: class, order, family, genus, species, variant,
    then name. Siblings end up next to each other. A detector category
    carries no taxonomy, so those sort first as a group, by name.
-3. Walk ``SPECIES_PALETTE``: rank ``i`` gets ``SPECIES_PALETTE[i % 12]``.
+3. Walk ``SPECIES_PALETTE``: rank ``i`` gets ``SPECIES_PALETTE[i % 18]``.
 
 The palette is ordered farthest-first, so any two consecutive entries
 are far apart perceptually. Sorting siblings next to each other and then
 walking that order is what gives them the most contrasting colours.
-Species 13 onwards share a colour with the species twelve ranks away,
+Class 19 onwards shares a colour with the class eighteen ranks away,
 which is almost never a relative.
 
 Why not hash the label, as before: with ten species present and any
@@ -47,11 +47,25 @@ from app.ml.label_exclusion import is_non_label
 from app.models import Project
 from app.models.label_taxonomy import LabelTaxonomy
 
-# Twelve colours, ordered farthest-first by CIEDE2000 starting from the
-# brand dark red, generated in OKLCH (lightness 0.45 to 0.74) and then
-# fixed as literals. Consecutive entries are at least 30 apart; the
-# closest pair overall (16) is the last entry against the first, which
-# only meet at the wrap from rank 11 to 12.
+# Eighteen colours, ordered farthest-first by CIEDE2000 starting from
+# the brand dark red, generated in OKLCH and then fixed as literals. The
+# recipe is a narrow chroma band (0.13 to 0.15) over a few lightness
+# steps (0.45 to 0.74), which is what keeps them a set rather than a box
+# of highlighters, and it is the real limit on how many there can be.
+#
+# Consecutive entries are at least 30 apart, so two ranks that are
+# adjacent (the species most likely to be confused) never look alike.
+# The closest pair anywhere is 16, rank 8 against rank 15, two salmon
+# tones seven ranks apart.
+#
+# The last six were added on 2026-09-11, keeping the first twelve where
+# they were so no project's colours moved. Every one of them is at least
+# 16 from everything already here, so the palette did not get any less
+# distinct by growing: the closest pair is the same 16 it was at twelve,
+# and the worst step between neighbours improved from 16 to 30, because
+# the weak wrap from the last colour back to the first went away.
+# Rebuilding all of them from scratch scored worse on both counts and
+# would have moved every existing project's colours.
 #
 # The three MegaDetector categories used to hold fixed colours here and
 # take no palette slot. They were folded in: a class is a class, whether
@@ -81,6 +95,12 @@ SPECIES_PALETTE: tuple[str, ...] = (
     "#8059bb",
     "#849b11",
     "#8f2e3d",
+    "#00c3ca",
+    "#d06819",
+    "#008e6a",
+    "#ee8d71",
+    "#0084b2",
+    "#987000",
 )
 
 
