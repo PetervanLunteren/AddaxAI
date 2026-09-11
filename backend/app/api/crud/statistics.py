@@ -34,7 +34,11 @@ from app.api.schemas.statistics import (
     VerificationProgressByLabel,
 )
 from app.ml.detection_visibility import on_visible_frame
-from app.ml.label_exclusion import NON_WILDLIFE_CLASSES, threshold_or_verified
+from app.ml.label_exclusion import (
+    NON_WILDLIFE_CLASSES,
+    is_wildlife_category,
+    threshold_or_verified,
+)
 from app.ml.taxonomic_rank import (
     HIGHER_LEVEL_TAXA,
     NO_TAXONOMY,
@@ -184,7 +188,7 @@ def _rank_display_label(taxonomic_rank: str | None):
         )
 
     label_expr = case(
-        (Detection.category != "animal", Detection.category),
+        (~is_wildlife_category(Detection.category), Detection.category),
         (rank_display.isnot(None), rank_display),
         (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
         else_=literal(NO_TAXONOMY),
@@ -408,13 +412,13 @@ def get_species_distribution(
         # "Most specific": use pre-computed names from label_taxonomy.
         # Falls back to raw label for non-animal or no-taxonomy entries.
         label_expr = case(
-            (EventObservation.category != "animal", EventObservation.category),
+            (~is_wildlife_category(EventObservation.category), EventObservation.category),
             else_=func.coalesce(
                 LabelTaxonomy.scientific_name, EventObservation.label
             ),
         )
         common_expr = case(
-            (EventObservation.category != "animal", EventObservation.category),
+            (~is_wildlife_category(EventObservation.category), EventObservation.category),
             else_=func.coalesce(
                 LabelTaxonomy.common_name, EventObservation.label
             ),
@@ -440,13 +444,13 @@ def get_species_distribution(
                 rank_common = rank_col
 
             label_expr = case(
-                (EventObservation.category != "animal", EventObservation.category),
+                (~is_wildlife_category(EventObservation.category), EventObservation.category),
                 (rank_display.isnot(None), rank_display),
                 (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
                 else_=literal(NO_TAXONOMY),
             )
             common_expr = case(
-                (EventObservation.category != "animal", EventObservation.category),
+                (~is_wildlife_category(EventObservation.category), EventObservation.category),
                 (rank_common.isnot(None), rank_common),
                 (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
                 else_=literal(NO_TAXONOMY),
@@ -670,7 +674,7 @@ def get_activity_pattern(
         if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
             # Filter by display name (matching species distribution output)
             display_label = case(
-                (EventObservation.category != "animal", EventObservation.category),
+                (~is_wildlife_category(EventObservation.category), EventObservation.category),
                 else_=func.coalesce(
                     LabelTaxonomy.scientific_name, EventObservation.label
                 ),
@@ -691,7 +695,7 @@ def get_activity_pattern(
                 else:
                     rank_display = rank_col
                 label_expr = case(
-                    (EventObservation.category != "animal", EventObservation.category),
+                    (~is_wildlife_category(EventObservation.category), EventObservation.category),
                     (rank_display.isnot(None), rank_display),
                     (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
                     else_=literal(NO_TAXONOMY),
@@ -801,7 +805,7 @@ def _event_decimal_hours_for_species(
 
     if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
         display_label = case(
-            (EventObservation.category != "animal", EventObservation.category),
+            (~is_wildlife_category(EventObservation.category), EventObservation.category),
             else_=func.coalesce(
                 LabelTaxonomy.scientific_name, EventObservation.label
             ),
@@ -820,7 +824,7 @@ def _event_decimal_hours_for_species(
             else:
                 rank_display = rank_col
             label_expr = case(
-                (EventObservation.category != "animal", EventObservation.category),
+                (~is_wildlife_category(EventObservation.category), EventObservation.category),
                 (rank_display.isnot(None), rank_display),
                 (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
                 else_=literal(NO_TAXONOMY),
@@ -1110,7 +1114,7 @@ def get_detection_trend(
         if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
             # Filter by display name (matching species distribution output)
             display_label = case(
-                (EventObservation.category != "animal", EventObservation.category),
+                (~is_wildlife_category(EventObservation.category), EventObservation.category),
                 else_=func.coalesce(
                     LabelTaxonomy.scientific_name, EventObservation.label
                 ),
@@ -1131,7 +1135,7 @@ def get_detection_trend(
                 else:
                     rank_display = rank_col
                 label_expr = case(
-                    (EventObservation.category != "animal", EventObservation.category),
+                    (~is_wildlife_category(EventObservation.category), EventObservation.category),
                     (rank_display.isnot(None), rank_display),
                     (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
                     else_=literal(NO_TAXONOMY),

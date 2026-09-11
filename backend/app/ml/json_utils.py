@@ -13,6 +13,7 @@ import csv
 import uuid
 from pathlib import Path
 
+from app.ml.label_exclusion import is_wildlife
 from app.utils.fs_hidden import mkdir_hidden_addaxai
 
 
@@ -35,27 +36,44 @@ def collect_md_failures(md_results: dict) -> list[dict]:
     ]
 
 
-def extract_animal_detections(
+def extract_wildlife_detections(
     md_results: dict, *, min_confidence: float
 ) -> list[tuple[int, int, dict]]:
     """
-    Extract animal detections with their indices for classification.
+    Extract the wildlife detections to classify, with their indices.
 
     ``min_confidence`` is the project's classification gate: MegaDetector
     runs at its 0.01 output cap, so the JSON carries a long
     near-noise tail that must not be classified. Detections below the
-    gate stay in the JSON and the database as raw animal boxes; they
-    are just not sent to the classifier.
+    gate stay in the JSON and the database as raw boxes; they are just
+    not sent to the classifier.
+
+    **Which ids are wildlife comes from the run's own
+    ``detection_categories``**, not from a constant. This used to select
+    the literal category id ``"1"``, MegaDetector's animal, so a
+    SharkTrack run (whose only class is ``elasmobranch``) matched nothing
+    and no box could ever be classified. For MegaDetector the wildlife id
+    is still ``"1"`` and nothing changes.
 
     Args:
-        md_results: MegaDetector JSON results dict
-        min_confidence: gate below which animal detections are skipped
+        md_results: detector JSON results dict
+        min_confidence: gate below which detections are skipped
 
     Returns:
-        List of (image_index, detection_index, detection_dict) tuples.
-        Only detections with category == "1" (animal) at or above the
-        gate.
+        List of (image_index, detection_index, detection_dict) tuples, for
+        wildlife categories at or above the gate.
     """
+    categories = md_results.get("detection_categories")
+    if not categories:
+        # Every detector we run writes this map, and `json_pipeline`
+        # already refuses an id the run never declared. Guessing here
+        # (falling back to MegaDetector's "1") would classify nothing on
+        # a marine run and say nothing about it.
+        raise ValueError(
+            "Detector JSON has no detection_categories; cannot tell which "
+            "categories are wildlife."
+        )
+    wildlife_ids = {cid for cid, name in categories.items() if is_wildlife(name)}
     animals: list[tuple[int, int, dict]] = []
 
     # Failure entries have `detections: null` (see collect_md_failures).
@@ -64,7 +82,7 @@ def extract_animal_detections(
         if img.get("failure"):
             continue
         for det_idx, det in enumerate(img.get("detections") or []):
-            if det.get("category") != "1":  # animal only
+            if det.get("category") not in wildlife_ids:
                 continue
             if float(det.get("conf", 0.0)) < min_confidence:
                 continue

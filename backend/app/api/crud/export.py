@@ -38,7 +38,12 @@ from app.core.logging_config import get_logger
 from app.core.observation_attributes import LIFE_STAGES, SEXES
 from app.db.sql_params import iter_id_chunks
 from app.ml.detection_visibility import on_visible_frame
-from app.ml.label_exclusion import is_non_label, threshold_or_verified
+from app.ml.label_exclusion import (
+    is_non_label,
+    is_wildlife,
+    is_wildlife_category,
+    threshold_or_verified,
+)
 from app.ml.observation_type import strongest_passing_detection
 from app.ml.taxonomic_rank import species_binomial
 from app.models import (
@@ -377,7 +382,7 @@ def get_scoped_detection_rows(
         query = query.where(
             or_(
                 Detection.id.is_(None),
-                Detection.category != "animal",
+                ~is_wildlife_category(Detection.category),
                 Detection.verified.is_(True),
                 ~excluded_match,
             )
@@ -417,8 +422,9 @@ def _group_rows_by_file(
 
 
 def _species_label(detection: Detection, taxonomy: LabelTaxonomy | None) -> str:
-    """Human-readable species name for a detection. Empty for non-animals without a label."""
-    if detection.category != "animal":
+    """Human-readable species name for a detection. A person or vehicle box
+    has no species, so it reads as its category."""
+    if not is_wildlife(detection.category):
         return detection.category
     if detection.scientific_name:
         return detection.scientific_name
@@ -448,7 +454,7 @@ def _scientific_name(
     Latin / scientific name. ``label_taxonomy.scientific_name`` is the single
     source of truth (see MEMORY.md project_taxonomy_scientific_name).
     """
-    if detection.category != "animal":
+    if not is_wildlife(detection.category):
         return ""
     if taxonomy and taxonomy.scientific_name:
         return taxonomy.scientific_name
@@ -1680,11 +1686,11 @@ def build_camtrap_dp_tables(
             obs_type = _obs_type_from_category(detection.category)
             sci_name = (
                 (_camtrap_taxonomy_name(taxonomy) or "")
-                if detection.category == "animal"
+                if is_wildlife(detection.category)
                 else ""
             )
             species_name = _species_label(detection, taxonomy)
-            if detection.category == "animal" and species_name:
+            if is_wildlife(detection.category) and species_name:
                 observed_taxa.setdefault(species_name, (taxonomy, species_name))
 
             obs_id_prefix = "obs-human" if detection.verified else "obs-ai"
@@ -1699,7 +1705,7 @@ def build_camtrap_dp_tables(
                 )
             prob = (
                 round(detection.label_confidence, 6)
-                if detection.category == "animal" and detection.label_confidence is not None
+                if is_wildlife(detection.category) and detection.label_confidence is not None
                 else ""
             )
 
@@ -1786,7 +1792,7 @@ def build_camtrap_dp_tables(
             ctx = events_in_scope[obs.event_id]
             sci_name = _camtrap_taxonomy_name(taxonomy) or (obs.label or "")
             species_name = (taxonomy.name if taxonomy else None) or obs.label
-            if obs.category == "animal" and species_name:
+            if is_wildlife(obs.category) and species_name:
                 observed_taxa.setdefault(species_name, (taxonomy, species_name))
             observations_rows.append(
                 _camtrap_event_row(

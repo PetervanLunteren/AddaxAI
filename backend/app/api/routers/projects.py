@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.api.crud import project as crud_project
 from app.api.crud.deployment import _delete_deployment_artifacts
+from app.api.crud.event import present_categories
 from app.api.crud.label_colors import assign_label_colors
 from app.api.schemas.project import (
     CustomLabelCreate,
@@ -39,7 +40,11 @@ from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.ml.detection_visibility import on_visible_frame
-from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
+from app.ml.label_exclusion import (
+    is_a_real_detection,
+    is_wildlife_category,
+    threshold_or_verified,
+)
 from app.models import Deployment, Detection, Event, File, Job, Project
 from app.models.detection_embedding import DetectionEmbedding
 from app.models.event_observation import EventObservation
@@ -891,7 +896,7 @@ def get_independent_observation_stats(
         .join(Event, Event.id == EventObservation.event_id)
         .join(Deployment, Event.deployment_id == Deployment.id)
         .filter(Deployment.project_id == project_id)
-        .filter(EventObservation.category == "animal")
+        .filter(is_wildlife_category(EventObservation.category))
         .filter(EventObservation.label.isnot(None))
         .group_by(EventObservation.label)
         .order_by(func.sum(EventObservation.effective_count).desc())
@@ -988,6 +993,27 @@ def get_label_colors(
             detail=f"Project with id '{project_id}' not found",
         )
     return assign_label_colors(db, project_id)
+
+
+@router.get("/{project_id}/categories")
+def get_project_categories(
+    project_id: str, db: Session = Depends(get_db)
+) -> list[str]:
+    """The detector categories this project actually holds.
+
+    What the label picker offers beside the species: "animal", "person"
+    and "vehicle" on a camera trap run, "elasmobranch" on a SharkTrack
+    one. The picker used to hold that list as a constant, so on a marine
+    project the only category you could apply was "animal", which
+    overwrote the box's real one.
+    """
+    project = crud_project.get_project(db, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project with id '{project_id}' not found",
+        )
+    return present_categories(db, project_id, project.counting_threshold)
 
 
 @router.get("/{project_id}/label-taxonomy-map")

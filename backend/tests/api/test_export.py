@@ -2553,3 +2553,43 @@ def test_export_detections_csv_carries_the_track_key(client, db):
     # One row per card: the track's representative box and the one-frame
     # track, never the sibling on frame 0; the photo's box has no track.
     assert by_frame == {"30": "7", "90": "8", "": ""}
+
+
+def test_a_marine_detection_exports_its_species_not_its_category(db):
+    """`_species_label` returned the category for anything that was not
+    "animal", so a blacktip on an elasmobranch box exported as
+    "elasmobranch" and its scientific name came out empty."""
+    from app.api.crud.export import _scientific_name, _species_label
+    from app.models import Detection, LabelTaxonomy
+
+    tax = LabelTaxonomy(
+        id=str(uuid.uuid4()),
+        classification_model_id="TEST-MODEL",
+        name="blacktip",
+        level="species",
+        taxon_class="chondrichthyes",
+        taxon_genus="carcharhinus",
+        taxon_species="limbatus",
+        scientific_name="C. limbatus",
+        common_name="Blacktip",
+    )
+    shark = Detection(
+        id=str(uuid.uuid4()),
+        file_id="f",
+        category="elasmobranch",
+        confidence=0.9,
+        label="blacktip",
+        scientific_name="C. limbatus",
+    )
+    person = Detection(
+        id=str(uuid.uuid4()),
+        file_id="f",
+        category="person",
+        confidence=0.9,
+    )
+
+    assert _species_label(shark, tax) == "C. limbatus"
+    assert _scientific_name(shark, tax) == "C. limbatus"
+    # A person box has no species and still reads as its category.
+    assert _species_label(person, None) == "person"
+    assert _scientific_name(person, None) == ""

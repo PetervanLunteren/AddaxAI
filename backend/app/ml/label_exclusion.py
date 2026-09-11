@@ -111,6 +111,43 @@ NON_WILDLIFE_CLASSES = NON_LABEL_CLASSES | frozenset({
 NON_WILDLIFE_CATEGORIES = frozenset({"person", "vehicle"})
 
 
+def is_wildlife(category: str | None) -> bool:
+    """Is this detector category a wild animal?
+
+    The one rule, in one place: **person and vehicle are not wildlife,
+    every other category is.** AddaxAI was written when a detector said
+    only "animal", "person" or "vehicle", so a great many places asked
+    ``category == "animal"`` when they meant this. SharkTrack says
+    "elasmobranch" and the Community Fish Detector says "fish", and under
+    the old test a shark was neither wildlife nor a person: it fell out
+    of the deployment's animal count, out of the dashboard's species
+    bars, and out of the species name in two exports.
+
+    Deliberately a closed list of what is *not* wildlife rather than a
+    list of what is: a detector we have never seen ships a class we
+    cannot enumerate, and counting it as wildlife is the harmless
+    direction. If one ever emits something that is neither (a "boat"),
+    it is one more entry in ``NON_WILDLIFE_CATEGORIES``.
+
+    ``None`` is not wildlife: it is the absence of a detection, not an
+    animal.
+    """
+    return category is not None and category not in NON_WILDLIFE_CATEGORIES
+
+
+def is_wildlife_category(column) -> ColumnElement[bool]:
+    """``is_wildlife`` for a query, over ``Detection.category`` or
+    ``EventObservation.category``.
+
+    Two lanes over one rule, the same shape as ``is_a_real_detection`` /
+    ``is_non_label`` above and as ``ml/detection_visibility.py``. A
+    parity test pins that the two agree, which is what makes having two
+    of them safe. Negate it (``~is_wildlife_category(...)``) for the
+    "this box has no species, show its category" branches.
+    """
+    return and_(column.isnot(None), column.notin_(sorted(NON_WILDLIFE_CATEGORIES)))
+
+
 def filter_classifications(
     classifications: list[list],
     excluded_class_ids: set[str],

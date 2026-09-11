@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.schemas.site import SiteCreate, SiteUpdate
+from app.ml.label_exclusion import is_wildlife_category
 from app.models import Deployment, Project, Site
 from app.utils.timezone_from_coords import tz_from_coords
 
@@ -243,7 +244,7 @@ def get_site_info(db: Session, site_id: str):
                     func.sum(
                         case(
                             (
-                                EventObservation.category == "animal",
+                                is_wildlife_category(EventObservation.category),
                                 EventObservation.effective_count,
                             ),
                             else_=0,
@@ -306,7 +307,7 @@ def get_site_info(db: Session, site_id: str):
                 LabelTaxonomy, LabelTaxonomy.name == EventObservation.label
             )
             .where(Event.deployment_id.in_(deployment_ids))
-            .where(EventObservation.category == "animal")
+            .where(is_wildlife_category(EventObservation.category))
             .where(EventObservation.label.isnot(None))
             .group_by(
                 EventObservation.label,

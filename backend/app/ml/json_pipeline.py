@@ -30,7 +30,7 @@ from app.ml.inference.base import PipelineResult
 from app.ml.inference.scoring import summarise_tracks, track_crop_filename
 from app.ml.json_utils import (
     build_classification_category_descriptions,
-    extract_animal_detections,
+    extract_wildlife_detections,
 )
 from app.ml.observation_type import derive_observation_type
 from app.ml.progress import ProgressTicker
@@ -182,6 +182,7 @@ def load_json_to_database(
         # Build non-label ID set for skip logic
         from app.ml.label_exclusion import (
             build_non_label_class_ids,
+            is_wildlife,
             should_skip_detection,
         )
 
@@ -502,7 +503,7 @@ def load_json_to_database(
                         f"({sorted(detection_categories)})."
                     )
 
-                if category == "animal" and should_skip_detection(
+                if is_wildlife(category) and should_skip_detection(
                     det, non_label_ids,
                 ):
                     skipped_non_label += 1
@@ -809,7 +810,7 @@ async def run_classification_on_json(
     with open(json_path) as f:
         md_results = json.load(f)
 
-    animal_detections = extract_animal_detections(
+    animal_detections = extract_wildlife_detections(
         md_results, min_confidence=classification_gate
     )
 

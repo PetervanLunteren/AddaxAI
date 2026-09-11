@@ -1542,3 +1542,106 @@ def test_video_species_on_a_tracks_representative_frame_is_allowed(db):
     assert {o.label: o.max_n for o in rows} == {"leopard": 1, "hammerhead": 2}
     # The frame each MaxN was counted on rides along for the Counts page.
     assert {o.label: o.max_n_frame_number for o in rows} == {"leopard": 5, "hammerhead": 330}
+
+
+def _event_over(db, deployment_id, video):
+    """One event holding one video, the shape both gate tests need."""
+    from app.models.event import Event
+
+    ev = Event(
+        id=str(uuid.uuid4()),
+        deployment_id=deployment_id,
+        event_start_local=datetime(2024, 1, 1, 12, 0),
+        event_end_local=datetime(2024, 1, 1, 12, 0),
+        file_count=1,
+    )
+    db.add(ev)
+    db.flush()
+    db.execute(
+        insert(event_files).values(
+            event_id=ev.id, file_id=video.id, sequence_number=0
+        )
+    )
+    return ev
+
+
+def test_a_species_a_person_named_on_a_frame_gets_a_row(db):
+    """Relabelling the frames of a merged track that followed a different
+    animal is the documented way to put it right. The card keeps the old
+    species, so on the card test alone the new one had no row anywhere:
+    the verdict lived in the database and in no count."""
+    from app.api.crud.event_observation import calculate_max_n_for_event
+    from tests.conftest import (
+        make_deployment,
+        make_detection,
+        make_file,
+        make_project,
+        make_site,
+        make_track,
+    )
+
+    project = make_project(db, counting_threshold=0.2)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    video = make_file(
+        db, deployment_id=dep.id, file_type="video", file_format="mp4",
+        file_path="/fake/merged.mp4", frame_rate=30.0, best_frame_number=60,
+    )
+    track = make_track(
+        db, file_id=video.id, track_key=1, start_frame=30, end_frame=90,
+        representative_frame_number=60,
+    )
+    # The card, and two frames a person relabelled by hand.
+    make_detection(db, file_id=video.id, frame_number=60, track_id=track.id,
+                   category="elasmobranch", label="elasmobranch", confidence=0.9)
+    for frame in (30, 90):
+        make_detection(
+            db, file_id=video.id, frame_number=frame, track_id=track.id,
+            category="elasmobranch", label="blacktip", confidence=0.9,
+            classification_method="human", verified=True,
+        )
+    event = _event_over(db, dep.id, video)
+    db.commit()
+
+    rows = calculate_max_n_for_event(db, event.id, project.counting_threshold)
+
+    by_label = {r.label: r.max_n for r in rows}
+    assert by_label.get("blacktip") == 1
+    assert by_label.get("elasmobranch") == 1
+
+
+def test_a_per_frame_classifier_label_still_gets_no_row(db):
+    """The other half of the gate: an unverified per-frame reading the
+    person has never seen must not spawn a species row."""
+    from app.api.crud.event_observation import calculate_max_n_for_event
+    from tests.conftest import (
+        make_deployment,
+        make_detection,
+        make_file,
+        make_project,
+        make_site,
+        make_track,
+    )
+
+    project = make_project(db, counting_threshold=0.2)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    video = make_file(
+        db, deployment_id=dep.id, file_type="video", file_format="mp4",
+        file_path="/fake/noisy.mp4", frame_rate=30.0, best_frame_number=60,
+    )
+    track = make_track(
+        db, file_id=video.id, track_key=1, start_frame=30, end_frame=90,
+        representative_frame_number=60,
+    )
+    make_detection(db, file_id=video.id, frame_number=60, track_id=track.id,
+                   category="animal", label="red deer", confidence=0.9)
+    make_detection(db, file_id=video.id, frame_number=30, track_id=track.id,
+                   category="animal", label="roe deer", confidence=0.9,
+                   classification_method="model")
+    event = _event_over(db, dep.id, video)
+    db.commit()
+
+    rows = calculate_max_n_for_event(db, event.id, project.counting_threshold)
+
+    assert {r.label for r in rows} == {"red deer"}

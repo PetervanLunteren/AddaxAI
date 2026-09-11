@@ -8,10 +8,12 @@ Following DEVELOPERS.md principles:
 """
 
 
+from collections.abc import Iterable
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import false, or_, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.api.schemas.detection import (
     DetectionCreate,
@@ -435,26 +437,92 @@ def _resolve_detection_taxonomy(
 FALSE_DETECTION = "false detection"
 
 
-def expand_to_tracks(db: Session, detection_ids: list[str]) -> list[str]:
+def in_expanded_tracks(detection_ids: list[str]) -> ColumnElement[bool]:
     """The given ids plus every box that shares a track with one of them.
 
-    A verdict on a track's card is a verdict on the animal, so X, relabel,
-    verify and dismiss reach every frame the tracker followed it through.
-    Boxes without a track (images, untracked videos, drawn boxes) come
-    back unchanged. Order: the input first, then the siblings.
+    A verdict on a track's card is a verdict on the animal, so X,
+    relabel, verify and dismiss reach every frame the tracker followed it
+    through. Boxes without a track (images, untracked videos, drawn
+    boxes) match themselves and nothing more.
+
+    A criterion rather than a list of ids, because of how much would
+    otherwise reach SQLite as bind parameters. A
+    request carries at most 500 ids, but one card of an 81-minute clip
+    expands to every box of its track, and signing that file off expands
+    to 12,731. SQLite's default ceiling is 32,766 bind parameters (the
+    packaged build carries 3.45, see DEVELOPERS.md), so a long enough
+    drop would fail the whole verdict with "too many SQL variables".
+    Sending the track ids as a subquery keeps the binds at the 500 the
+    request actually carried, whatever the clip holds.
     """
     if not detection_ids:
-        return []
+        return false()
     track_ids = select(Detection.track_id).where(
         Detection.id.in_(detection_ids), Detection.track_id.isnot(None)
     )
-    siblings = [
-        det_id
-        for (det_id,) in db.query(Detection.id)
-        .filter(Detection.track_id.in_(track_ids))
-        .all()
-    ]
-    return list(dict.fromkeys([*detection_ids, *siblings]))
+    return or_(
+        Detection.id.in_(detection_ids),
+        Detection.track_id.in_(track_ids),
+    )
+
+
+def apply_card_labels(db: Session, cards: Iterable[Detection]) -> int:
+    """Carry each card's label to every other box of its track. No commit.
+
+    A verdict on a card is a verdict on the animal, **label included**.
+    Confirming a red deer card whose track holds two frames the
+    classifier read as roe deer used to set ``verified`` on all twelve
+    boxes and leave those two saying roe deer: the app then held, as
+    human-verified truth, a label the person never saw. Verified rows are
+    skipped by smoothing and rollup, so the misread was frozen there, and
+    it reached the recognition JSON and the MaxN gate as a real sighting.
+    ``bulk_relabel_detections`` always wrote its label to the whole track;
+    verify is the path that did not, and this is the half that was
+    missing.
+
+    **A box a person labelled themselves is left alone.** Opening a track
+    and relabelling three frames is how a merged track is put right, so a
+    later verdict on the card must fill in the frames nobody touched and
+    not undo the ones they did. ``classification_method == "human"`` is
+    exactly "a person chose this label": a file sign-off verifies without
+    touching labels, so it cannot be mistaken for one.
+
+    The sibling is written as if the person had relabelled it, because at
+    the level they acted on they did: label, taxonomy, both names,
+    ``label_confidence`` 1.0 and ``classification_method`` "human", the
+    same fields ``bulk_relabel_detections`` writes. ``original_label`` is
+    untouched, so revert-to-original still hands the machine's per-frame
+    labels back.
+
+    Returns the number of boxes changed.
+    """
+    changed = 0
+    for card in cards:
+        if card.track_id is None:
+            continue
+        changed += (
+            db.query(Detection)
+            .filter(
+                Detection.track_id == card.track_id,
+                Detection.id != card.id,
+                or_(
+                    Detection.classification_method.is_(None),
+                    Detection.classification_method != "human",
+                ),
+            )
+            .update(
+                {
+                    "label": card.label,
+                    "label_confidence": 1.0 if card.label else None,
+                    "label_taxonomy_id": card.label_taxonomy_id,
+                    "scientific_name": card.scientific_name,
+                    "common_name": card.common_name,
+                    "classification_method": "human",
+                },
+                synchronize_session=False,
+            )
+        )
+    return changed
 
 
 def mark_detections_false(db: Session, detections: list[Detection]) -> None:

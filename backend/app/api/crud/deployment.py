@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, object_session
 
 from app.api.schemas.deployment import DeploymentCreate, DeploymentUpdate
 from app.core.logging_config import get_logger
+from app.ml.label_exclusion import is_wildlife_category
 from app.models import (
     Deployment,
     Detection,
@@ -633,7 +634,10 @@ def get_deployment_info(db: Session, deployment_id: str):
             func.coalesce(
                 func.sum(
                     case(
-                        (EventObservation.category == "animal", EventObservation.effective_count),
+                        (
+                            is_wildlife_category(EventObservation.category),
+                            EventObservation.effective_count,
+                        ),
                         else_=0,
                     )
                 ),
@@ -696,7 +700,7 @@ def get_deployment_info(db: Session, deployment_id: str):
             LabelTaxonomy, LabelTaxonomy.name == EventObservation.label
         )
         .where(Event.deployment_id == deployment_id)
-        .where(EventObservation.category == "animal")
+        .where(is_wildlife_category(EventObservation.category))
         .where(EventObservation.label.isnot(None))
         .group_by(
             EventObservation.label,

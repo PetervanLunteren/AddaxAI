@@ -6,7 +6,7 @@ the same for every track in the file. Boxes with no track (images, the
 untracked rows of a pre-tracking run) are untouched.
 """
 
-from app.api.crud.detection import expand_to_tracks
+from app.api.crud.detection import in_expanded_tracks
 from app.models import Detection, File
 from tests.conftest import (
     make_deployment,
@@ -53,17 +53,24 @@ def _rows(db, ids):
     return {d.id: d for d in db.query(Detection).filter(Detection.id.in_(ids)).all()}
 
 
-def test_expand_to_tracks_adds_every_sibling_once(db):
+def test_the_cascade_matches_every_sibling_and_nothing_else(db):
     _, _, _, _, boxes = _tracked_video(db)
     card = boxes["one"][1].id
     loose = boxes["loose"][0].id
 
-    expanded = expand_to_tracks(db, [card, loose])
+    matched = {
+        d.id
+        for d in db.query(Detection)
+        .filter(in_expanded_tracks([card, loose]))
+        .all()
+    }
 
-    assert expanded[:2] == [card, loose]
-    assert set(expanded) == {card, loose, *(b.id for b in boxes["one"])}
-    assert len(expanded) == len(set(expanded))
-    assert expand_to_tracks(db, []) == []
+    assert matched == {card, loose, *(b.id for b in boxes["one"])}
+    # No ids, no rows: a criterion that matched everything here would
+    # verify a whole project on an empty request.
+    assert (
+        db.query(Detection).filter(in_expanded_tracks([])).count() == 0
+    )
 
 
 def test_relabel_on_the_card_relabels_the_whole_track(client, db):
@@ -317,3 +324,120 @@ def test_a_box_can_still_be_drawn_on_a_photo(client, db):
     assert resp.status_code == 201, resp.text
     drawn = db.get(Detection, resp.json()["id"])
     assert drawn.verified is True and drawn.track_id is None
+
+
+# --- a card verdict carries its label -------------------------------------
+
+
+def test_verifying_a_card_writes_its_label_over_the_track(client, db):
+    """Confirming an animal applies that species to every frame of it.
+
+    Verifying used to set `verified` and leave each box's own label, so a
+    red deer card whose track held two frames the classifier read as roe
+    deer stored those two as human-verified roe deer, immune to smoothing
+    from then on, and counted as a second species.
+    """
+    _, _, one, _, boxes = _tracked_video(db)
+    card = boxes["one"][1]
+    card.label = "red deer"
+    card.classification_method = "model"
+    boxes["one"][0].label = "roe deer"
+    boxes["one"][0].classification_method = "model"
+    boxes["one"][2].label = "roe deer"
+    boxes["one"][2].classification_method = "model"
+    db.commit()
+
+    r = client.patch(f"/api/detections/{card.id}/verify", json={"verified": True})
+    assert r.status_code == 200
+
+    rows = _rows(db, [b.id for b in boxes["one"]])
+    for box in boxes["one"]:
+        db.refresh(rows[box.id])
+    assert {rows[b.id].label for b in boxes["one"]} == {"red deer"}
+    assert all(rows[b.id].verified for b in boxes["one"])
+    # The siblings now read as a human's call, because at the level the
+    # person acted on they are.
+    assert rows[boxes["one"][0].id].classification_method == "human"
+
+
+def test_a_card_verdict_leaves_a_frame_a_person_labelled(client, db):
+    """Opening a track and relabelling three frames is how a merged track
+    is put right, so a later verdict on the card fills in the frames
+    nobody touched and leaves the ones they did."""
+    _, _, _, _, boxes = _tracked_video(db)
+    card = boxes["one"][1]
+    card.label = "elasmobranch"
+    card.classification_method = "model"
+    mine = boxes["one"][2]
+    mine.label = "blacktip"
+    mine.classification_method = "human"
+    db.commit()
+
+    client.patch(f"/api/detections/{card.id}/verify", json={"verified": True})
+
+    rows = _rows(db, [b.id for b in boxes["one"]])
+    for box in boxes["one"]:
+        db.refresh(rows[box.id])
+    assert rows[mine.id].label == "blacktip"
+    assert rows[boxes["one"][0].id].label == "elasmobranch"
+
+
+def test_unverifying_clears_the_flag_and_no_label(client, db):
+    """Unverify is not an undo of the label; revert-to-original is."""
+    _, _, _, _, boxes = _tracked_video(db)
+    card = boxes["one"][1]
+    card.label = "red deer"
+    db.commit()
+    client.patch(f"/api/detections/{card.id}/verify", json={"verified": True})
+
+    client.patch(f"/api/detections/{card.id}/verify", json={"verified": False})
+
+    rows = _rows(db, [b.id for b in boxes["one"]])
+    for box in boxes["one"]:
+        db.refresh(rows[box.id])
+    assert not any(rows[b.id].verified for b in boxes["one"])
+    assert {rows[b.id].label for b in boxes["one"]} == {"red deer"}
+
+
+def test_signing_a_file_off_carries_each_cards_label(client, db):
+    """One Enter on a clip is a verdict on every card in it, so each track
+    takes its own card's label, not just a verified flag."""
+    _, video, _, _, boxes = _tracked_video(db)
+    boxes["one"][1].label = "red deer"
+    boxes["one"][0].label = "roe deer"
+    boxes["one"][0].classification_method = "model"
+    boxes["two"][1].label = "wild boar"
+    boxes["two"][0].label = "badger"
+    boxes["two"][0].classification_method = "model"
+    db.commit()
+
+    r = client.patch(f"/api/files/{video.id}", json={"verified": True})
+    assert r.status_code == 200
+
+    rows = _rows(db, [b.id for b in boxes["one"] + boxes["two"]])
+    for box in boxes["one"] + boxes["two"]:
+        db.refresh(rows[box.id])
+    assert {rows[b.id].label for b in boxes["one"]} == {"red deer"}
+    assert {rows[b.id].label for b in boxes["two"]} == {"wild boar"}
+
+
+def test_a_frame_verdict_stays_on_that_frame(client, db):
+    """With the cascade off, the person is judging single frames and the
+    frame is the whole of what they acted on."""
+    _, _, _, _, boxes = _tracked_video(db)
+    sibling = boxes["one"][0]
+    boxes["one"][1].label = "red deer"
+    db.commit()
+
+    r = client.post(
+        "/api/detections/bulk-verify",
+        json={"detection_ids": [sibling.id], "verified": True, "expand_tracks": False},
+    )
+    assert r.status_code == 200
+
+    rows = _rows(db, [b.id for b in boxes["one"]])
+    for box in boxes["one"]:
+        db.refresh(rows[box.id])
+    assert rows[sibling.id].verified
+    assert not rows[boxes["one"][1].id].verified
+    assert rows[sibling.id].label is None

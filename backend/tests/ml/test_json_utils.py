@@ -17,10 +17,12 @@ present with value None, so iteration crashes with TypeError. These
 tests pin the defensive iteration that fixes that.
 """
 
+import pytest
+
 from app.ml.json_utils import (
     assign_uuids_to_detection_json,
     collect_md_failures,
-    extract_animal_detections,
+    extract_wildlife_detections,
     trim_classification_results,
 )
 
@@ -46,17 +48,47 @@ def _failed_video(file: str = "corrupt.mp4") -> dict:
     }
 
 
-def test_extract_animal_detections_skips_failure_entries() -> None:
+MD_CATEGORIES = {"1": "animal", "2": "person", "3": "vehicle"}
+SHARKTRACK_CATEGORIES = {"0": "elasmobranch"}
+
+
+def test_extract_wildlife_detections_reads_the_runs_own_categories() -> None:
+    """A detector whose only class is "elasmobranch" must still have its
+    boxes classified. This used to select the literal id "1", so a marine
+    run matched nothing at all."""
+    md = {
+        "detection_categories": SHARKTRACK_CATEGORIES,
+        "images": [
+            {
+                "file": "a.mp4",
+                "detections": [
+                    {"category": "0", "conf": 0.9, "bbox": [0, 0, 0.1, 0.1]},
+                ],
+            },
+        ],
+    }
+    assert len(extract_wildlife_detections(md, min_confidence=0.1)) == 1
+
+
+def test_extract_wildlife_detections_refuses_a_json_without_categories() -> None:
+    """No map, no way to tell wildlife from a person. Refuse rather than
+    silently classify nothing."""
+    with pytest.raises(ValueError, match="detection_categories"):
+        extract_wildlife_detections({"images": []}, min_confidence=0.1)
+
+
+def test_extract_wildlife_detections_skips_failure_entries() -> None:
     """Pre-fix this raised TypeError because `.get('detections', [])`
     returned None and the inner loop tried to iterate None."""
     md = {
+        "detection_categories": MD_CATEGORIES,
         "images": [
             _ok_image("a.jpg"),
             _failed_video("corrupt.mp4"),
             _ok_image("b.jpg"),
         ],
     }
-    animals = extract_animal_detections(md, min_confidence=0.1)
+    animals = extract_wildlife_detections(md, min_confidence=0.1)
     # Both ok images contribute one animal detection each. The corrupt
     # entry contributes nothing and does not raise.
     assert len(animals) == 2
@@ -64,15 +96,22 @@ def test_extract_animal_detections_skips_failure_entries() -> None:
     assert img_indices == {0, 2}
 
 
-def test_extract_animal_detections_handles_top_level_null_images() -> None:
+def test_extract_wildlife_detections_handles_top_level_null_images() -> None:
     """`{"images": null}` should be treated as an empty list, not crash."""
-    assert extract_animal_detections({"images": None}, min_confidence=0.1) == []
-    assert extract_animal_detections({}, min_confidence=0.1) == []
+    empty = {"detection_categories": MD_CATEGORIES, "images": None}
+    assert extract_wildlife_detections(empty, min_confidence=0.1) == []
+    assert (
+        extract_wildlife_detections(
+            {"detection_categories": MD_CATEGORIES}, min_confidence=0.1
+        )
+        == []
+    )
 
 
-def test_extract_animal_detections_ignores_non_animal_categories() -> None:
-    """Sanity: only category '1' is returned."""
+def test_extract_wildlife_detections_ignores_non_animal_categories() -> None:
+    """Only the wildlife category of the run is returned."""
     md = {
+        "detection_categories": MD_CATEGORIES,
         "images": [
             {
                 "file": "a.jpg",
@@ -84,15 +123,16 @@ def test_extract_animal_detections_ignores_non_animal_categories() -> None:
             },
         ],
     }
-    animals = extract_animal_detections(md, min_confidence=0.1)
+    animals = extract_wildlife_detections(md, min_confidence=0.1)
     assert len(animals) == 1
 
 
-def test_extract_animal_detections_applies_classification_gate() -> None:
+def test_extract_wildlife_detections_applies_classification_gate() -> None:
     """Animal detections below the gate are not sent to the classifier.
     MD runs at its 0.01 output cap, so the JSON carries a near-noise tail
     that must be gated here."""
     md = {
+        "detection_categories": MD_CATEGORIES,
         "images": [
             {
                 "file": "a.jpg",
@@ -105,10 +145,10 @@ def test_extract_animal_detections_applies_classification_gate() -> None:
         ],
     }
     # Exactly-at-gate passes; below-gate is skipped.
-    animals = extract_animal_detections(md, min_confidence=0.1)
+    animals = extract_wildlife_detections(md, min_confidence=0.1)
     assert [d["conf"] for _, _, d in animals] == [0.9, 0.1]
     # Lowering the gate brings the tail into classification scope.
-    animals_low = extract_animal_detections(md, min_confidence=0.005)
+    animals_low = extract_wildlife_detections(md, min_confidence=0.005)
     assert len(animals_low) == 3
 
 

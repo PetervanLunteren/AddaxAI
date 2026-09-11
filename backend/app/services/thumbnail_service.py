@@ -14,6 +14,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
+from app.ml.label_exclusion import is_wildlife_category
 from app.models import Deployment, Detection, File, Project
 
 logger = get_logger(__name__)
@@ -108,7 +109,7 @@ def _auto_select_for_project(
         .join(Deployment, File.deployment_id == Deployment.id)
         .filter(
             Deployment.project_id == project.id,
-            Detection.category == "animal",
+            is_wildlife_category(Detection.category),
         )
         .order_by(desc(Detection.confidence))
         .limit(10)

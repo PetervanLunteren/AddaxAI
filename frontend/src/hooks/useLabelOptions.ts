@@ -2,9 +2,14 @@
  * Hook to build label options for the unified label picker.
  *
  * Fetches labels from the classification model's taxonomy, merges in any
- * project-specific custom labels, and combines them with the always-available
- * "person" and "vehicle" options. Each option is annotated with a taxonomy
- * string (e.g. "mammalia > carnivora > felidae") when available.
+ * project-specific custom labels, and combines them with the detector
+ * categories the project actually holds. Each option is annotated with a
+ * taxonomy string (e.g. "mammalia > carnivora > felidae") when available.
+ *
+ * The categories come from the server rather than a constant here. They
+ * used to be a hardcoded Animal / Person / Vehicle, so on a SharkTrack
+ * project the only category you could apply was "Animal", which
+ * overwrote the box's real category of "elasmobranch".
  */
 
 import { useMemo } from "react";
@@ -17,7 +22,9 @@ export interface LabelOption {
   value: string;
   /** Latin display name (e.g., "G. camelopardalis"). Falls back to capitalized value. */
   displayName: string;
-  category: "animal" | "person" | "vehicle";
+  /** The detector's own category. Not a fixed three: a detector emits
+   *  what it emits ("elasmobranch", "fish"). */
+  category: string;
   label: string | null;
   isCustom?: boolean;
   customId?: string;
@@ -25,10 +32,16 @@ export interface LabelOption {
   taxonomyCaption?: string | null;
 }
 
-const GENERAL_OPTIONS: LabelOption[] = [
-  { value: "person", displayName: "Person", category: "person", label: null },
-  { value: "vehicle", displayName: "Vehicle", category: "vehicle", label: null },
-];
+/** A category reads as its own name, the way `getObservationBadge` shows
+ *  one it does not recognise. */
+function categoryOption(category: string): LabelOption {
+  return {
+    value: category,
+    displayName: category.charAt(0).toUpperCase() + category.slice(1),
+    category,
+    label: null,
+  };
+}
 
 /** Resolve a label's display name from the taxonomy map under the active
  *  species-name mode (common vs scientific), with capitalize fallback. */
@@ -99,6 +112,14 @@ export function useLabelOptions(
     staleTime: Infinity,
   });
 
+  // The categories this project holds, for the non-species options.
+  const { data: categories } = useQuery({
+    queryKey: ["project-categories", projectId],
+    queryFn: () => projectsApi.getCategories(projectId),
+    enabled: !!projectId,
+    staleTime: Infinity,
+  });
+
   // Taxonomy fields for all labels (model + custom)
   const {
     data: taxonomyMap,
@@ -114,18 +135,14 @@ export function useLabelOptions(
     (!!projectId && customLoading);
 
   const options = useMemo(() => {
-    const result: LabelOption[] = GENERAL_OPTIONS.map((o) => ({
-      ...o,
-      taxonomyCaption: buildTaxonomyCaption(taxonomyMap?.[o.value]),
+    // Every category the project holds. On a detection-only project these
+    // are the whole picker; with a classifier the species follow below.
+    const result: LabelOption[] = (categories ?? []).map((c) => ({
+      ...categoryOption(c),
+      taxonomyCaption: buildTaxonomyCaption(taxonomyMap?.[c]),
     }));
 
-    if (!hasClassificationModel) {
-      // Detection-only projects: add "animal" alongside "person" and "vehicle"
-      result.push({
-        value: "animal", displayName: "Animal",
-        category: "animal", label: null,
-      });
-    } else if (taxonomy?.all_classes) {
+    if (hasClassificationModel && taxonomy?.all_classes) {
       for (const cls of taxonomy.all_classes) {
         const entry = taxonomyMap?.[cls];
         result.push({
@@ -172,7 +189,7 @@ export function useLabelOptions(
     }
 
     return result;
-  }, [hasClassificationModel, taxonomy, customLabels, taxonomyMap]);
+  }, [hasClassificationModel, taxonomy, customLabels, taxonomyMap, categories]);
 
   return { options, isLoading };
 }

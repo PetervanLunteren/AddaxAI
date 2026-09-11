@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, aliased, joinedload, selectinload
 from app.core.logging_config import get_logger
 from app.db.sql_params import iter_id_chunks
 from app.ml.detection_visibility import on_visible_frame, visible_detections
-from app.ml.label_exclusion import threshold_or_verified
+from app.ml.label_exclusion import is_wildlife_category, threshold_or_verified
 from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
@@ -602,7 +602,7 @@ def _regroup_example(
         db.query(EventObservation)
         .filter(
             EventObservation.event_id == event_id,
-            EventObservation.category == "animal",
+            is_wildlife_category(EventObservation.category),
             EventObservation.label.isnot(None),
         )
         .all()
@@ -1395,6 +1395,35 @@ def present_category_rows(db: Session, project_id: str, threshold: float) -> lis
         .all()
     )
     return [row[0] for row in rows if row[0]]
+
+
+def present_categories(db: Session, project_id: str, threshold: float) -> list[str]:
+    """Every detector category the project holds, in name order.
+
+    What the label picker offers as the non-species choices. It used to
+    offer a hardcoded Animal / Person / Vehicle, so on a SharkTrack
+    project the only thing you could call a box was "Animal", which
+    overwrote its real category of "elasmobranch".
+
+    Same scope as ``present_label_rows`` and ``present_category_rows``
+    beside it (threshold-or-verified, visible frame), so a category can
+    never be offered that the grid cannot show. Unlike
+    ``present_category_rows`` this one does not skip a category that has
+    a taxonomy row: the picker wants all of them, that one wants only the
+    classes that still need a colour of their own.
+    """
+    threshold_clause = threshold_or_verified(threshold)
+    rows = (
+        db.query(Detection.category)
+        .join(File, File.id == Detection.file_id)
+        .join(Deployment, Deployment.id == File.deployment_id)
+        .filter(Deployment.project_id == project_id)
+        .filter(threshold_clause)
+        .filter(on_visible_frame())
+        .distinct()
+        .all()
+    )
+    return sorted(row[0] for row in rows if row[0])
 
 
 def get_filter_options(db: Session, project_id: str) -> dict:

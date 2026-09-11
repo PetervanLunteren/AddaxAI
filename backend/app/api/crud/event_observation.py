@@ -104,10 +104,11 @@ def calculate_max_n_for_event(
     Algorithm:
     1. Count detections per (file, frame, taxonomy) and take the maximum
        count per species (= MaxN). Ties break on summed confidence.
-       For videos, a species only counts if it appears on the video's best
-       frame (or was verified on some frame): non-best-frame labels are
-       per-frame classifier noise the user can't see or clean in the Labels
-       step, so they must not spawn spurious species rows.
+       For videos a species only counts when it has a card (a box on one
+       of its tracks' representative frames) or a person put that label on
+       a frame themselves: any other per-frame label is classifier noise
+       the user can't see or clean in the Labels step, so it must not
+       spawn a spurious species row.
     2. Rebuild the event's `event_observations` rows: one per AI species,
        carrying the human layer of that species' *seed* row (its
        human_count, sex, life stage and behaviour), plus every other
@@ -134,9 +135,9 @@ def calculate_max_n_for_event(
     # collapsing into MaxN=8. For image rows, `frame_number` is NULL and
     # all detections in one file land in a single group (NULL == NULL in
     # GROUP BY semantics), preserving the legacy per-image behaviour.
-    # file_type / best_frame_number / any_verified ride along to gate video
-    # species to the best frame (below). They are constant per file_id, so
-    # adding the two columns to GROUP BY doesn't change the grouping.
+    # file_type / best_frame_number ride along to gate video species
+    # (below). They are constant per file_id, so adding the two columns to
+    # GROUP BY doesn't change the grouping.
     counts = (
         db.query(
             Detection.file_id,
@@ -148,7 +149,10 @@ def calculate_max_n_for_event(
             func.sum(Detection.confidence).label("conf_sum"),
             File.file_type,
             File.best_frame_number,
-            func.max(Detection.verified).label("any_verified"),
+            # True when a person put this label on a frame themselves.
+            # A file sign-off verifies without touching labels, so this
+            # cannot be mistaken for one (see the gate below).
+            func.max(Detection.classification_method == "human").label("any_human"),
             # True when this frame carries the representative box of a
             # track of this species: that box has a card, so the species
             # is reviewable and may spawn a row (see the gate below).
@@ -209,16 +213,25 @@ def calculate_max_n_for_event(
         ):
             seeds[key] = r
 
-    # A video species is only suggested if it has a card: a box on the
-    # representative frame of one of its tracks (one card per track on
-    # the Labels page). Other per-frame labels are classifier noise the
-    # user cannot see or clean in the Labels step, so they must not spawn
-    # spurious species rows. Images are never gated (every image
-    # detection is visible and cleanable). Hand copy of the rule in
+    # A video species is suggested when it has a card (a box on the
+    # representative frame of one of its tracks, one card per track on
+    # the Labels page) **or** when a person put that label on a frame
+    # themselves. Any other per-frame label is classifier noise the user
+    # cannot see or clean in the Labels step, so it must not spawn a
+    # spurious species row. Images are never gated (every image detection
+    # is visible and cleanable). Hand copy of the rule in
     # ml/detection_visibility.py, kept here to keep the grouping.
+    #
+    # The second half is what makes opening a track work. Relabelling the
+    # frames of a merged track that followed a different animal is the
+    # documented way to put it right, and the card keeps the old species,
+    # so on the card test alone the new species had no row anywhere: the
+    # person's verdict lived in the database and in no count. It cannot
+    # let noise through, because confirming a card now writes that card's
+    # label over every frame nobody touched (`apply_card_labels`).
     allowed_video_keys: dict[str, set[str]] = defaultdict(set)
     for r in counts:
-        if r.file_type == "video" and r.any_representative:
+        if r.file_type == "video" and (r.any_representative or r.any_human):
             allowed_video_keys[r.file_id].add(r.label_taxonomy_id or r.eff_label)
 
     # Find MaxN per taxonomy_id (or label string as fallback key). The

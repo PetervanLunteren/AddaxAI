@@ -269,3 +269,61 @@ def test_variants_merge_into_the_binomial_at_species_rank(db):
         taxonomy["adult"].id,
         taxonomy["juvenile"].id,
     }
+
+
+def test_a_marine_species_keeps_its_own_row_and_taxonomy(db):
+    """A detector category that is not "animal" used to collapse every
+    species under it into one bar named after the category, carrying
+    whichever taxonomy id the group happened to hold. A shark project
+    therefore showed one "elasmobranch" bar wearing blacktip's id.
+    """
+    from app.models.label_taxonomy import LabelTaxonomy
+
+    project = make_project(db)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    event = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 3, 1, 8, 0)
+    )
+    tax = LabelTaxonomy(
+        classification_model_id="TEST-MODEL",
+        name="blacktip",
+        level="species",
+        taxon_class="chondrichthyes",
+        scientific_name="C. limbatus",
+        common_name="Blacktip",
+    )
+    db.add(tax)
+    db.flush()
+    named = _add_observation(
+        db, event_id=event.id, label="blacktip", category="elasmobranch"
+    )
+    named.label_taxonomy_id = tax.id
+    _add_observation(
+        db, event_id=event.id, label="elasmobranch", category="elasmobranch"
+    )
+    db.commit()
+
+    rows = stats_crud.get_species_distribution(db, project.id)
+
+    by_species = {r.species: r for r in rows}
+    assert set(by_species) == {"C. limbatus", "elasmobranch"}
+    assert by_species["C. limbatus"].label_taxonomy_ids == [tax.id]
+    assert by_species["elasmobranch"].label_taxonomy_ids == []
+
+
+def test_a_person_row_still_reads_as_its_category(db):
+    """The other half: a person or vehicle box has no species, so it must
+    keep showing its category rather than an empty name."""
+    project = make_project(db)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    event = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 3, 1, 8, 0)
+    )
+    _add_observation(db, event_id=event.id, label=None, category="person")
+    db.commit()
+
+    rows = stats_crud.get_species_distribution(db, project.id)
+
+    assert [r.species for r in rows] == ["person"]

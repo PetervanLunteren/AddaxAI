@@ -42,6 +42,7 @@ user's own files.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -56,11 +57,32 @@ from app.models import Deployment, Detection, File, LabelTaxonomy, Project
 logger = get_logger(__name__)
 
 
-# Detection category id mapping, identical to MegaDetector's convention
-# and to how `json_pipeline._load_to_database` (and the rest of the
-# code) interprets the field.
-_CATEGORY_TO_ID = {"animal": "1", "person": "2", "vehicle": "3"}
-_DETECTION_CATEGORIES = {v: k for k, v in _CATEGORY_TO_ID.items()}
+# MegaDetector's three ids, kept fixed so a file written for a camera
+# trap run reads exactly as it always did and Timelapse is unaffected.
+_MEGADETECTOR_IDS = {"animal": "1", "person": "2", "vehicle": "3"}
+
+
+def _category_ids(categories: Iterable[str]) -> dict[str, str]:
+    """Ids for the categories a project actually holds.
+
+    MegaDetector's three keep their canonical ids; anything else a
+    detector emits ("elasmobranch", "fish") takes the next free number,
+    in name order so the map is stable between runs of the same project.
+
+    This used to be a fixed three-entry constant, and every box of a
+    SharkTrack run therefore had an unknown category and was **dropped**:
+    a marine `addaxai-recognitions.json` held its files with empty
+    detection lists, 12,731 boxes missing from the one export
+    DEVELOPERS.md calls the complete record. `json_pipeline` reads this
+    map back and refuses an id the run never declared, so writing the
+    real categories is also what makes the file re-ingestable.
+    """
+    ids = dict(_MEGADETECTOR_IDS)
+    next_id = 4
+    for name in sorted(set(categories) - set(ids)):
+        ids[name] = str(next_id)
+        next_id += 1
+    return ids
 
 # Output filename. Stays the same across runs so downstream tools that
 # look for one canonical filename keep working.
@@ -241,7 +263,21 @@ def write_recognition_json(
     next_label_id = 1
     taxonomy_id_by_label: dict[str, str] = {}
 
+    # The run's own categories, not a fixed three. Built before the loop
+    # so every box gets an id and the map written at the end describes
+    # exactly what is in the file.
+    category_to_id = _category_ids(
+        db.execute(
+            select(Detection.category)
+            .join(File, File.id == Detection.file_id)
+            .join(Deployment, Deployment.id == File.deployment_id)
+            .where(Deployment.project_id == project_id)
+            .distinct()
+        ).scalars().all()
+    )
+
     images_out: list[dict] = []
+    unplaced: set[str] = set()
     detection_total = 0
     classification_total = 0
 
@@ -261,14 +297,13 @@ def write_recognition_json(
 
         det_objs: list[dict] = []
         for det in detections:
-            category_id = _CATEGORY_TO_ID.get(det.category)
+            category_id = category_to_id.get(det.category)
             if category_id is None:
-                # Unknown category — log and skip rather than emit a
-                # row downstream tools cannot interpret.
-                logger.warning(
-                    f"recognition_json: dropping detection with unknown "
-                    f"category {det.category!r} on file {file.id}"
-                )
+                # Cannot happen: the map is built from these same rows.
+                # Kept as a guard rather than a crash, counted once per
+                # run instead of a log line per box (a marine clip has
+                # 12,731 of them).
+                unplaced.add(det.category)
                 continue
 
             bbox = _bbox_for_detection(det)
@@ -354,6 +389,12 @@ def write_recognition_json(
     # "never looked at".
     images_out.extend(_failure_entries(db, project_id))
 
+    if unplaced:
+        logger.warning(
+            f"recognition_json: {sorted(unplaced)} had no category id and "
+            f"their boxes were dropped"
+        )
+
     classification_categories = {
         cid: name for name, cid in label_to_id.items()
     }
@@ -380,7 +421,7 @@ def write_recognition_json(
 
     output_payload: dict = {
         "images": images_out,
-        "detection_categories": dict(_DETECTION_CATEGORIES),
+        "detection_categories": {v: k for k, v in category_to_id.items()},
         "classification_categories": classification_categories,
     }
     # Mirror results mode: only present when there's taxonomy to describe.

@@ -9,7 +9,11 @@ from typing import NamedTuple
 from sqlalchemy import Integer, and_, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.crud.detection import expand_to_tracks, mark_detections_false
+from app.api.crud.detection import (
+    apply_card_labels,
+    in_expanded_tracks,
+    mark_detections_false,
+)
 from app.api.crud.event_observation import (
     get_event_ids_for_files,
     recalculate_max_n_for_events,
@@ -658,20 +662,25 @@ def set_file_verified(db: Session, file: File, verified: bool) -> None:
             )
             .all()
         )
-        weak_ids = expand_to_tracks(db, [d.id for d in weak])
         mark_detections_false(
-            db, db.query(Detection).filter(Detection.id.in_(weak_ids)).all()
+            db,
+            db.query(Detection)
+            .filter(in_expanded_tracks([d.id for d in weak]))
+            .all(),
         )
         db.flush()
-        visible_ids = [
-            det_id
-            for (det_id,) in db.query(Detection.id)
+        visible_cards = (
+            db.query(Detection)
             .filter(on_frame, Detection.verified == False)  # noqa: E712
             .all()
-        ]
-        db.query(Detection).filter(
-            Detection.id.in_(expand_to_tracks(db, visible_ids))
-        ).update(
+        )
+        visible_ids = [det.id for det in visible_cards]
+        # Signing a clip off is a verdict on every card in it, so each
+        # track takes its card's label, exactly as pressing V on one card
+        # does. Without this a sign-off froze the classifier's per-frame
+        # disagreements as human-verified truth.
+        apply_card_labels(db, visible_cards)
+        db.query(Detection).filter(in_expanded_tracks(visible_ids)).update(
             {"verified": True, "verified_at_utc": now},
             synchronize_session=False,
         )

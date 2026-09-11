@@ -718,3 +718,55 @@ def test_video_track_id_round_trips(db, tmp_path):
     write_recognition_json(db, project.id, target)
     dets = _load_json(target)["images"][0]["detections"]
     assert [(d["frame_number"], d.get("track_id")) for d in dets] == [(0, 4), (30, 4), (60, None)]
+
+
+def test_a_detector_category_we_did_not_hardcode_is_still_written(db, tmp_path):
+    """The category ids used to be a fixed three, so every box of a
+    SharkTrack run had an unknown category and was dropped: a marine
+    recognition file held its videos with empty detection lists, which is
+    the one export DEVELOPERS.md calls the complete record.
+    """
+    project = make_project(db)
+    dep = make_deployment(db, project_id=project.id)
+    f = make_file(db, deployment_id=dep.id, file_path="/fake/drop.mp4")
+    make_detection(db, file_id=f.id, category="elasmobranch", confidence=0.9)
+    make_detection(db, file_id=f.id, category="elasmobranch", confidence=0.4)
+    db.commit()
+
+    write_recognition_json(db, project.id, tmp_path)
+    data = json.loads((tmp_path / RECOGNITION_JSON_FILENAME).read_text())
+
+    written = [d for img in data["images"] for d in (img.get("detections") or [])]
+    assert len(written) == 2
+    # MegaDetector's three keep their canonical ids so an existing file
+    # reads the same; anything else takes the next free number.
+    assert data["detection_categories"] == {
+        "1": "animal",
+        "2": "person",
+        "3": "vehicle",
+        "4": "elasmobranch",
+    }
+    assert {d["category"] for d in written} == {"4"}
+
+
+def test_a_megadetector_run_keeps_the_map_it_always_had(db, tmp_path):
+    """Nothing changes for a camera trap project."""
+    project = make_project(db)
+    dep = make_deployment(db, project_id=project.id)
+    f = make_file(db, deployment_id=dep.id, file_path="/fake/img.jpg")
+    make_detection(db, file_id=f.id, category="animal", confidence=0.9)
+    make_detection(db, file_id=f.id, category="person", confidence=0.8)
+    db.commit()
+
+    write_recognition_json(db, project.id, tmp_path)
+    data = json.loads((tmp_path / RECOGNITION_JSON_FILENAME).read_text())
+
+    assert data["detection_categories"] == {
+        "1": "animal",
+        "2": "person",
+        "3": "vehicle",
+    }
+    written = {
+        d["category"] for img in data["images"] for d in (img.get("detections") or [])
+    }
+    assert written == {"1", "2"}

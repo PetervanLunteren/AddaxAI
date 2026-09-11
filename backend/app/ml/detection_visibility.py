@@ -14,7 +14,7 @@ That frame is the one the track's highest-confidence box sits on
 a crop of. It is the track's only card: a sibling box on any other
 frame, the video's cover frame included, is the same animal, so it must
 not become a second card. A verdict on the card reaches every box of
-the track (`expand_to_tracks`), which is why no "verified anywhere"
+the track (`in_expanded_tracks`), which is why no "verified anywhere"
 escape hatch exists: letting verified boxes through on other frames
 would turn every frame of a verified track into a row of its own, in
 the grid counts and the detection exports. An untracked video box (an

@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.api.crud import detection as detection_crud
 from app.api.crud import file as file_crud
@@ -215,11 +216,11 @@ def get_detection_crop(
 # --- Detection verification endpoints ---
 
 
-def _cascade(db: Session, ids: list[str], expand_tracks: bool) -> list[str]:
+def _cascade(ids: list[str], expand_tracks: bool) -> ColumnElement[bool]:
     """The ids a verdict acts on.
 
     A verdict on a card is a verdict on the animal, so by default the
-    given ids grow to every box sharing a track (`expand_to_tracks`).
+    given ids grow to every box sharing a track (`in_expanded_tracks`).
     The Detections tab turns that off when a person has opened a track
     and is judging its frames one by one: there the verdict is about
     those moments, not about the animal, and it must not spread back
@@ -228,8 +229,15 @@ def _cascade(db: Session, ids: list[str], expand_tracks: bool) -> list[str]:
 
     The flag defaults to today's behaviour, so a caller that forgets it
     cascades rather than under-applies, which is the safer direction.
+
+    Returns a criterion rather than ids: see ``in_expanded_tracks`` for
+    why the expanded ids must not become bind parameters.
     """
-    return detection_crud.expand_to_tracks(db, ids) if expand_tracks else ids
+    return (
+        detection_crud.in_expanded_tracks(ids)
+        if expand_tracks
+        else Detection.id.in_(ids)
+    )
 
 
 
@@ -273,9 +281,14 @@ def verify_detection(
         raise HTTPException(status_code=404, detail="Detection not found")
 
     # The whole track: a verdict on the card is a verdict on the animal.
-    ids = detection_crud.expand_to_tracks(db, [detection_id])
     now = datetime.now(UTC) if body.verified else None
-    db.query(Detection).filter(Detection.id.in_(ids)).update(
+    if body.verified:
+        # Label included, so the track cannot keep a per-frame reading the
+        # person never saw. Unverifying only clears the flag.
+        detection_crud.apply_card_labels(db, [detection])
+    db.query(Detection).filter(
+        detection_crud.in_expanded_tracks([detection_id])
+    ).update(
         {"verified": body.verified, "verified_at_utc": now},
         synchronize_session="fetch",
     )
@@ -285,7 +298,7 @@ def verify_detection(
     # flip the file's observation_type (it counts over-threshold OR verified).
     file_crud.recalculate_observation_type(db, detection.file_id)
     db.refresh(detection)
-    _recalculate_max_n(db, ids)
+    _recalculate_max_n(db, [detection_id])
     return detection
 
 
@@ -295,29 +308,40 @@ def bulk_verify_detections(
     db: Session = Depends(get_db),
 ):
     """Bulk verify/unverify detections (max 500), whole tracks included."""
-    ids = _cascade(db, body.detection_ids, body.expand_tracks)
     now = datetime.now(UTC) if body.verified else None
+    if body.verified and body.expand_tracks:
+        # Each card carries its own label to its own track. Not when the
+        # cascade is off: there the person is judging single frames, and
+        # the frame is the whole of what they acted on.
+        cards = (
+            db.query(Detection)
+            .filter(Detection.id.in_(body.detection_ids))
+            .all()
+        )
+        detection_crud.apply_card_labels(db, cards)
     updated = (
         db.query(Detection)
-        .filter(Detection.id.in_(ids))
+        .filter(_cascade(body.detection_ids, body.expand_tracks))
         .update(
             {"verified": body.verified, "verified_at_utc": now},
             synchronize_session="fetch",
         )
     )
-    file_crud.recompute_file_verified_for_detections(db, ids)
+    # Every sibling is in the card's own file, so the request's own ids
+    # name every file, event and project the verdict touched.
+    file_crud.recompute_file_verified_for_detections(db, body.detection_ids)
     db.commit()
     # Verifying can flip observation_type (verified detections always pass),
     # so re-derive it for every touched file.
     file_ids = {
         fid
         for (fid,) in db.query(Detection.file_id)
-        .filter(Detection.id.in_(ids))
+        .filter(Detection.id.in_(body.detection_ids))
         .all()
     }
     for fid in file_ids:
         file_crud.recalculate_observation_type(db, fid)
-    _recalculate_max_n(db, ids)
+    _recalculate_max_n(db, body.detection_ids)
     return {"updated_count": updated}
 
 
@@ -335,7 +359,7 @@ def bulk_dismiss_detections(
     """
     updated = (
         db.query(Detection)
-        .filter(Detection.id.in_(detection_crud.expand_to_tracks(db, body.detection_ids)))
+        .filter(detection_crud.in_expanded_tracks(body.detection_ids))
         .update(
             {"suggestion_dismissed": body.dismissed},
             synchronize_session="fetch",
@@ -358,10 +382,9 @@ def bulk_relabel_detections(
     if not body.detection_ids:
         return {"updated_count": 0}
 
-    ids = _cascade(db, body.detection_ids, body.expand_tracks)
     detections = (
         db.query(Detection)
-        .filter(Detection.id.in_(ids))
+        .filter(_cascade(body.detection_ids, body.expand_tracks))
         .all()
     )
     if not detections:
@@ -440,7 +463,7 @@ def bulk_relabel_detections(
         det.verified = True
         det.verified_at_utc = datetime.now(UTC)
 
-    file_crud.recompute_file_verified_for_detections(db, ids)
+    file_crud.recompute_file_verified_for_detections(db, body.detection_ids)
     db.commit()
 
     # Recalculate observation types for affected files. Relabel always
@@ -450,7 +473,7 @@ def bulk_relabel_detections(
     for fid in file_ids:
         file_crud.recalculate_observation_type(db, fid)
 
-    _recalculate_max_n(db, ids)
+    _recalculate_max_n(db, body.detection_ids)
     return {"updated_count": len(detections)}
 
 
@@ -481,7 +504,7 @@ def bulk_revert_to_original(
 
     detections = (
         db.query(Detection)
-        .filter(Detection.id.in_(_cascade(db, body.detection_ids, body.expand_tracks)))
+        .filter(_cascade(body.detection_ids, body.expand_tracks))
         .all()
     )
     if not detections:

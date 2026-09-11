@@ -204,6 +204,14 @@ export const projectsApi = {
     api.get<Record<string, string>>(`/api/projects/${projectId}/label-colors`),
 
   /**
+   * The detector categories this project holds ("animal", "person",
+   * "vehicle" on a camera trap run, "elasmobranch" on a SharkTrack one).
+   * What the label picker offers beside the species.
+   */
+  getCategories: (projectId: string) =>
+    api.get<string[]>(`/api/projects/${projectId}/categories`),
+
+  /**
    * Get taxonomy fields for all labels in a project (model + custom)
    */
   getLabelTaxonomyMap: (projectId: string) =>
