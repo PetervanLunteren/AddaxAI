@@ -1007,13 +1007,13 @@ def get_project_categories(
     project the only category you could apply was "animal", which
     overwrote the box's real one.
 
-    Read from the model's manifest, so the list is right before a single
-    frame has been analysed. A detector declares its classes in one of two
-    fields and this is the only place that has to know both: `classes` for
-    a model the megadetector package can name itself, `class_mapping` for
-    one it cannot (see `ml/schemas/model_manifest.py`). Empty when the
-    model is not installed or declares neither; a person who needs a class
-    the detector does not know adds a custom label.
+    Read from the model's manifest `classes`, which every detector
+    declares, so the list is right before a single frame has been analysed.
+    Deliberately not `class_mapping`: that one is about the ids a detector
+    emits and only some models need it, while this endpoint only ever wants
+    the names. Empty when the model is not installed or declares none; a
+    person who needs a class the detector does not know adds a custom
+    label.
     """
     project = crud_project.get_project(db, project_id)
     if project is None:
@@ -1029,8 +1029,6 @@ def get_project_categories(
         # Not installed, or installed without a manifest. The picker just
         # shows the species and any custom labels.
         return []
-    if manifest.class_mapping:
-        return list(manifest.class_mapping.values())
     return list(manifest.classes or [])
 
 

@@ -93,33 +93,37 @@ class ModelManifest(BaseModel):
     # baited tray) so a user can compare it with their own photos.
     example_image_url: str | None = None
 
-    # Detection-specific
+    # Detection-specific. The two fields answer different questions, so a
+    # detector that needs both declares both; the catalog test pins that
+    # they agree.
     #
-    # A detector declares what it finds in exactly one of these two fields.
-    #
-    # `classes` is the plain list for a model the megadetector package can
-    # already name on its own: the MegaDetectors, whose three classes it
-    # knows, and the RF-DETR Community Fish Detector, which carries its
-    # names on the detector object. **Lookup and display only**: nothing in
-    # the detection or ingest path reads it, because the run's own JSON
-    # carries the authoritative `detection_categories` map and
-    # `json_pipeline` refuses an id that map never declared. It exists so
-    # the app can say what a detector finds before it has ever been run,
-    # which is what the label picker needs: it used to offer a hardcoded
-    # Animal / Person / Vehicle, so on a SharkTrack project the only
-    # category you could apply was "animal", overwriting the box's real
-    # "elasmobranch".
+    # `classes`: **what this detector finds.** Every detector declares it.
+    # The catalog test enforces that, not Pydantic, which cannot: this
+    # schema is shared with classifiers and embedders, which have none.
+    # **Lookup and display only**: nothing in the detection or ingest path
+    # reads it, because the run's own JSON carries the authoritative
+    # `detection_categories` map and `json_pipeline` refuses an id that map
+    # never declared. It exists so the app can say what a detector finds
+    # before it has ever been run, which is what the label picker needs: it
+    # used to offer a hardcoded Animal / Person / Vehicle, so on a
+    # SharkTrack project the only category you could apply was "animal",
+    # overwriting the box's real "elasmobranch".
     classes: list[str] | None = None
-    # `class_mapping` is for a model the package cannot name: SharkTrack is
-    # a plain ultralytics checkpoint, and `PTDetector` otherwise asserts
-    # class indices in {0,1,2} and adds one, which would store every shark
-    # as "animal". The ids are the model's own, starting at zero. Unlike
-    # `classes` this one **is** read by the detection path: it is handed to
-    # the package as `--class_mapping_filename`, which also switches it to
-    # the model's native class indices, and it is what lands in the run's
-    # `detection_categories`. The weights must carry a matching
-    # `model_type` in their embedded metadata; see "Every video is tracked"
-    # in DEVELOPERS.md for why, and for what happens when they do not.
+    # `class_mapping`: **which id it emits for each of those classes**, and
+    # only for a model the megadetector package cannot name on its own.
+    # SharkTrack is the case: a plain ultralytics checkpoint, where
+    # `PTDetector` otherwise asserts class indices in {0,1,2} and adds one,
+    # which would store every shark as "animal". The ids are the model's
+    # own, from zero. Unlike `classes` this one **is** read by the detection
+    # path: it is handed to the package as `--class_mapping_filename`, which
+    # also switches it to the model's native class indices, and it is what
+    # lands in the run's `detection_categories`. Omitted by the
+    # MegaDetectors, whose classes the package knows, and by the RF-DETR
+    # fish detectors, which carry their names on the detector object. A
+    # model that sets it must also carry a matching `model_type` in the
+    # metadata embedded in its weights; see "Every detector loads through
+    # the megadetector package" in DEVELOPERS.md for why, and for what
+    # happens when it does not.
     class_mapping: dict[str, str] | None = None
     # Run SharkTrack's false-positive filter after tracking: a track that
     # lasts under a second or barely moves is dropped unless its best box

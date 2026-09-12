@@ -49,24 +49,15 @@ def test_catalog_entry_validates_against_schema(model_key: str, entry: dict):
     ModelManifest(**entry)
 
 
-def _declared_classes(entry: dict) -> list[str]:
-    """What a detector says it finds, from whichever field carries it."""
-    mapping = entry.get("class_mapping")
-    return list(mapping.values()) if mapping else (entry.get("classes") or [])
+def test_every_detector_declares_its_classes() -> None:
+    """One rule: every detector says what it finds, in `classes`.
 
-
-def test_every_detector_declares_its_classes_in_exactly_one_field() -> None:
-    """A detector's classes are the only way the app can say what it finds
-    before it has ever been run, which is what the label picker needs: it
-    used to offer a hardcoded Animal / Person / Vehicle, so on a SharkTrack
-    project the only category you could apply was "animal", overwriting the
-    box's real "elasmobranch".
-
-    Two fields, and never both, so there is one place to read and nothing
-    to drift. `classes` is lookup and display only, for a model the
-    megadetector package names itself. `class_mapping` is for one it
-    cannot: it is handed to the package as `--class_mapping_filename`, so
-    it also decides the ids the run reports.
+    That list is the only way the app can name a detector's classes before
+    it has ever been run, which is what the label picker needs: it used to
+    offer a hardcoded Animal / Person / Vehicle, so on a SharkTrack project
+    the only category you could apply was "animal", overwriting the box's
+    real "elasmobranch". Enforced here rather than by the schema, which is
+    shared with classifiers and embedders that have no classes.
     """
     catalog = json.loads(_CATALOG_PATH.read_text())
     for entry in catalog["models"]["det"]:
@@ -74,22 +65,41 @@ def test_every_detector_declares_its_classes_in_exactly_one_field() -> None:
         assert "detector_runtime" not in entry, (
             f"{model_id}: detector_runtime is retired, there is one loader"
         )
-        has_classes = "classes" in entry
-        has_mapping = "class_mapping" in entry
-        assert has_classes != has_mapping, (
-            f"{model_id} must declare exactly one of classes / class_mapping"
-        )
-        names = _declared_classes(entry)
+        names = entry.get("classes")
         assert names, f"{model_id} declares no classes"
         assert all(isinstance(c, str) and c for c in names), model_id
         assert names == [c.lower() for c in names], (
             f"{model_id}: classes are matched against "
             f"Detection.category, which is stored lowercase"
         )
-        if has_mapping:
-            assert all(k.isdigit() for k in entry["class_mapping"]), (
-                f"{model_id}: class ids are the model's own, starting at zero"
-            )
+
+
+def test_a_class_mapping_agrees_with_the_classes_beside_it() -> None:
+    """`class_mapping` is the second half of the same fact, so the two
+    cannot be allowed to drift: `classes` is what the picker offers, the
+    mapping is what the run actually reports as its categories, and a
+    disagreement would show the user a class their boxes never carry.
+
+    Only a model the megadetector package cannot name needs one, so most
+    detectors have no mapping at all and nothing to check.
+    """
+    catalog = json.loads(_CATALOG_PATH.read_text())
+    checked = 0
+    for entry in catalog["models"]["det"]:
+        mapping = entry.get("class_mapping")
+        if not mapping:
+            continue
+        checked += 1
+        model_id = entry["model_id"]
+        assert all(k.isdigit() for k in mapping), (
+            f"{model_id}: class ids are the model's own, starting at zero"
+        )
+        in_id_order = [mapping[k] for k in sorted(mapping, key=int)]
+        assert entry["classes"] == in_id_order, (
+            f"{model_id}: classes {entry['classes']} disagree with "
+            f"class_mapping {in_id_order}"
+        )
+    assert checked, "no detector declares a class_mapping; did the field move?"
 
 
 def test_the_declared_classes_match_what_the_detectors_emit() -> None:
@@ -101,12 +111,13 @@ def test_the_declared_classes_match_what_the_detectors_emit() -> None:
     by_id = {e["model_id"]: e for e in catalog["models"]["det"]}
     megadetector = ["animal", "person", "vehicle"]
     for model_id, entry in by_id.items():
-        classes = _declared_classes(entry)
+        classes = entry["classes"]
         if model_id.startswith(("MD5", "MD1000")):
             assert classes == megadetector, model_id
         elif model_id.startswith("CFD-"):
             assert classes == ["fish"], model_id
         elif model_id.startswith("SHARKTRACK"):
+            assert classes == ["elasmobranch"], model_id
             # The one model the package cannot name on its own, so its ids
             # matter as well as its names: index 0 is what the checkpoint
             # emits once the package is on native classes.

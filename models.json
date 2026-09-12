@@ -104,6 +104,7 @@
         "friendly_name": "SharkTrack (sharks and rays)",
         "env": "marine",
         "model_fname": "sharktrack.pt",
+        "classes": ["elasmobranch"],
         "class_mapping": {"0": "elasmobranch"},
         "description": "SharkTrack finds sharks and rays in underwater video such as baited remote underwater video stations (BRUVS). It knows one class, elasmobranch, and does not tell species apart: label the species yourself on the Labels page, one card per tracked animal. Trained by Filippo Varini and colleagues on footage from 25 locations worldwide; in the paper it computed species MaxN with 89% accuracy at three unseen sites and cut analysis time by 95%. YOLOv8 nano, 640 px, 6 MB, runs on a laptop CPU at roughly half an hour per hour of video. MIT licence. Turn on 'Track animals across frames' for long underwater videos; it is on by default with this model.",
         "description_short": "Sharks and rays • Runs on a laptop",

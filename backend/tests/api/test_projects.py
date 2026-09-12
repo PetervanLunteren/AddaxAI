@@ -775,17 +775,23 @@ def test_categories_come_from_the_projects_detector(client, db, monkeypatch):
     assert r.json() == ["animal", "person", "vehicle"]
 
 
-def test_categories_read_a_class_mapping_when_that_is_what_the_detector_has(
+def test_categories_come_from_classes_even_when_a_class_mapping_exists(
     client, db, monkeypatch
 ):
-    """A detector the megadetector package cannot name declares its
-    classes as a mapping instead of a list, because the ids matter there
-    too. The picker must offer those names, or a SharkTrack project can
-    only apply "animal" and overwrite the box's real category."""
+    """`classes` is the one field this endpoint reads. A detector the
+    megadetector package cannot name also carries a `class_mapping`, but
+    that answers a different question (which ids it emits) and is for the
+    detection path; the picker only ever wants the names. The catalog test
+    pins that the two agree, so reading either would give the same answer
+    and reading one keeps this endpoint a single line."""
     project = make_project(db, detection_model_id="SHARKTRACK-1-0")
     db.commit()
 
-    _patch_manifest(monkeypatch, class_mapping={"0": "elasmobranch"})
+    _patch_manifest(
+        monkeypatch,
+        classes=["elasmobranch"],
+        class_mapping={"0": "elasmobranch"},
+    )
 
     r = client.get(f"/api/projects/{project.id}/categories")
 
