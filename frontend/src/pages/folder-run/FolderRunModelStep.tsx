@@ -109,6 +109,7 @@ import { DatetimeOffsetModal } from "../../components/analyses/DatetimeOffsetMod
 import { RerunConfirmDialog } from "../../components/folder-run/RerunConfirmDialog";
 import { StepHeader } from "../../components/folder-run/StepHeader";
 import { ClassificationModelGroupedItems } from "../../components/models/ClassificationModelGroupedItems";
+import { ModelSelectItem } from "../../components/models/ModelSelectItem";
 import { ModelInfoSheet } from "../../components/models/ModelInfoSheet";
 import { ModelPreparationErrorView } from "../../components/projects/ModelPreparationErrorView";
 import { ModelPreparationView } from "../../components/projects/ModelPreparationView";
@@ -1128,17 +1129,7 @@ export function FolderRunModelStep() {
                               onShowInfo={() => setShowDetInfo(true)}
                             >
                               {detectionModels.map((m) => (
-                                <SelectItem key={m.model_id} value={m.model_id}>
-                                  {m.emoji} {m.friendly_name}
-                                  {m.description_short && (
-                                    <>
-                                      <br />
-                                      <span className="text-xs text-muted-foreground">
-                                        {m.description_short}
-                                      </span>
-                                    </>
-                                  )}
-                                </SelectItem>
+                                <ModelSelectItem key={m.model_id} model={m} />
                               ))}
                             </ModelSelect>
                             {detectionStatus &&
@@ -1191,17 +1182,7 @@ export function FolderRunModelStep() {
                               {embeddingModels
                                 .filter((m) => m.model_id !== "none")
                                 .map((m) => (
-                                  <SelectItem key={m.model_id} value={m.model_id}>
-                                    {m.emoji} {m.friendly_name}
-                                    {m.description_short && (
-                                      <>
-                                        <br />
-                                        <span className="text-xs text-muted-foreground">
-                                          {m.description_short}
-                                        </span>
-                                      </>
-                                    )}
-                                  </SelectItem>
+                                  <ModelSelectItem key={m.model_id} model={m} />
                                 ))}
                             </ModelSelect>
                             {hasEmbedding &&

@@ -102,6 +102,7 @@ import {
 import { ConfidenceSlider } from "../components/ui/confidence-slider";
 import { SETTING_CAPTIONS } from "../lib/settingCaptions";
 import { ClassificationModelGroupedItems } from "../components/models/ClassificationModelGroupedItems";
+import { ModelSelectItem } from "../components/models/ModelSelectItem";
 import { BatchSizeRow } from "../components/analyses/BatchSizeRow";
 import { ImageSizeRow } from "../components/analyses/ImageSizeRow";
 import { SettingRow } from "../components/analyses/SettingRow";
@@ -810,15 +811,7 @@ export default function SettingsPage() {
                           }}
                         >
                           {detectionModels.map((model) => (
-                            <SelectItem key={model.model_id} value={model.model_id}>
-                              {model.emoji} {model.friendly_name}
-                              {model.description_short && (
-                                <>
-                                  <br />
-                                  <span className="text-xs text-muted-foreground">{model.description_short}</span>
-                                </>
-                              )}
-                            </SelectItem>
+                            <ModelSelectItem key={model.model_id} model={model} />
                           ))}
                         </ModelSelect>
                         <FormMessage />
@@ -928,15 +921,7 @@ export default function SettingsPage() {
                           {embeddingModels
                             .filter((m) => m.model_id !== "none")
                             .map((model) => (
-                            <SelectItem key={model.model_id} value={model.model_id}>
-                              {model.emoji} {model.friendly_name}
-                              {model.description_short && (
-                                <>
-                                  <br />
-                                  <span className="text-xs text-muted-foreground">{model.description_short}</span>
-                                </>
-                              )}
-                            </SelectItem>
+                            <ModelSelectItem key={model.model_id} model={model} />
                           ))}
                         </ModelSelect>
                         <FormMessage />
