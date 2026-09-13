@@ -11,15 +11,15 @@ it loads the sibling ``video_iter`` (its ``open_video``, for the header
 read) by file path instead. Everything the app knows about the run comes
 in on the command line; everything it learns goes out in the JSON.
 
-Per video: decode the sampled frames through an ffmpeg pipe (``stride =
-round(native_fps / fps)``, the same sampling ``process_video`` uses),
-run the detector on each, hand the boxes to BoT-SORT, and keep the
-tracker's output. ffmpeg rather than OpenCV because it gets the
-platform's hardware decoder and scales the frame down in the same pass:
-on a 4K HEVC BRUVS clip OpenCV's software decode cost 140 to 220 ms a
-frame in the busy parts and its hardware path silently dropped to
-software for whole stretches, where ffmpeg with VideoToolbox held 8 ms a
-frame throughout (measured 2026-09-06). The frames arrive at most
+Per video: decode every ``round(native_fps / fps)``-th frame through an
+ffmpeg pipe, run the detector on each, hand the boxes to BoT-SORT, and
+keep the tracker's output. ffmpeg rather than MegaDetector's
+``video_utils`` because it is a separate process that decodes the next
+frame while the detector works on this one, with the platform's
+hardware decoder and the downscale in the same pass: a whole 65 minute
+4K drop took 12.4 minutes against 26.1 through ``video_utils``, at one
+CPU core against three, with the same MaxN (measured 2026-09-13; the
+comparison is in DEVELOPERS.md). The frames arrive at most
 ``DECODE_LONG_EDGE`` on the long edge (the cap the cover frame has, so a
 track's card cut from them keeps the resolution a photo card has), which
 every detector here downsizes further anyway, and every box is
@@ -247,13 +247,14 @@ def pick_categories(
 
 
 def sampling_stride(native_fps: float, fps: float) -> int:
-    """Every n-th source frame, ``round(native / fps)``, as ``process_video``
-    samples; every frame when either rate is unknown."""
+    """Every n-th source frame, ``round(native / fps)``; every frame when
+    either rate is unknown. Not ``process_video``'s ``int``, which took
+    every 9th frame of a 29.97 fps clip at 3 fps."""
     return max(1, round(native_fps / fps)) if native_fps > 0 and fps > 0 else 1
 
 
 def sampled_frames(frame_count: int, native_fps: float, fps: float) -> list[int]:
-    """The frame indices ``process_video`` would sample: 0, stride, 2*stride..."""
+    """The frame indices sampled: 0, stride, 2*stride..."""
     return list(range(0, max(0, frame_count), sampling_stride(native_fps, fps)))
 
 

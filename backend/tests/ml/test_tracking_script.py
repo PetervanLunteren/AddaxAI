@@ -13,10 +13,9 @@ import numpy as np
 from app.ml.inference import tracking_script as ts
 
 
-def test_sampling_matches_process_video():
-    """0, stride, 2*stride ... with stride = round(native / fps), the
-    frame indices process_video writes, so the app cannot tell the two
-    runs apart."""
+def test_sampling_takes_every_stride_th_frame_by_absolute_index():
+    """0, stride, 2*stride ... with stride = round(native / fps), numbered
+    by source frame index as process_video numbered them."""
     assert ts.sampled_frames(frame_count=100, native_fps=30.0, fps=3.0) == list(range(0, 100, 10))
     assert ts.sampled_frames(frame_count=100, native_fps=29.97, fps=1.0) == list(range(0, 100, 30))
     # A rate above native, or an unknown native rate, samples every frame.

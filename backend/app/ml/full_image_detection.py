@@ -154,8 +154,8 @@ def synthesize_full_image_video_json(
     The video analogue of `synthesize_full_image_json`. A full-image
     classifier skips the detector, so instead of running MegaDetector's
     `process_video` we fake the JSON it would have produced: sample
-    frames at the same rate MegaDetector uses (`every_n_frames =
-    round(frame_rate / fps)`), number them by absolute frame index, and
+    frames at the tracking script's rate (every `round(frame_rate / fps)`-th
+    frame), number them by absolute frame index, and
     stamp a `[0, 0, 1, 1]` conf-1.0 detection on each, all on one track so
     the clip is one card like any tracked video. The existing video
     classification phase then classifies each whole frame unchanged.
@@ -178,7 +178,7 @@ def synthesize_full_image_video_json(
         finally:
             cap.release()
 
-        # Mirror MegaDetector: keep frame indices 0, step, 2*step, ...
+        # The tracking script's sampling: frame indices 0, step, 2*step, ...
         # where step = round(native_fps / requested_fps).
         step = (
             max(1, round(frame_rate / fps))
