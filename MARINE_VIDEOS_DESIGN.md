@@ -212,7 +212,7 @@ Four `det` entries in `models.json`, weights mirrored to HuggingFace under `Adda
 | `CFD-SMALL-1-0` | Community Fish Detector small | marine | `cfd-rf-detr-small-1024-2026.06.06.cp-016.20260706-release.pth` | megadetector | true |
 | `CFD-MEDIUM-1-0` | Community Fish Detector medium | marine | `cfd-rf-detr-medium-1024-2026.03.24.cp-011.20260706-release.pth` | megadetector | true |
 
-`description_short` of the 1024 px variants says "Slower on CPU". `min_app_version` is the release that ships increment 1 (7.7.0 if numbering continues from 7.6.0). Weights are versioned by id per the existing rule (a re-upload needs a new id), which the CFD release naming already encodes.
+`description_short` of the 1024 px variants says "Slower on CPU". `min_app_version` is the release that ships increment 1 (7.8.0: 7.7.0 shipped on 2026-09-07 without it). Weights are versioned by id per the existing rule (a re-upload needs a new id), which the CFD release naming already encodes.
 
 ### 5. The tracker script
 

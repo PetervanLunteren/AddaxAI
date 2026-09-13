@@ -112,7 +112,7 @@
         "citation": "https://arxiv.org/abs/2407.20623",
         "license": "https://github.com/filippovarini/sharktrack#readme",
         "info_url": "https://www.fvarini.com/sharktrack",
-        "min_app_version": "7.7.0",
+        "min_app_version": "7.8.0",
         "track_filter": true
       },
       {
@@ -127,7 +127,7 @@
         "citation": "https://github.com/filippovarini/community-fish-detector#citing-this-work",
         "license": "https://www.apache.org/licenses/LICENSE-2.0",
         "info_url": "https://github.com/filippovarini/community-fish-detector",
-        "min_app_version": "7.7.0",
+        "min_app_version": "7.8.0",
         "track_filter": true
       },
       {
@@ -142,7 +142,7 @@
         "citation": "https://github.com/filippovarini/community-fish-detector#citing-this-work",
         "license": "https://www.apache.org/licenses/LICENSE-2.0",
         "info_url": "https://github.com/filippovarini/community-fish-detector",
-        "min_app_version": "7.7.0",
+        "min_app_version": "7.8.0",
         "track_filter": true
       },
       {
@@ -157,7 +157,7 @@
         "citation": "https://github.com/filippovarini/community-fish-detector#citing-this-work",
         "license": "https://www.apache.org/licenses/LICENSE-2.0",
         "info_url": "https://github.com/filippovarini/community-fish-detector",
-        "min_app_version": "7.7.0",
+        "min_app_version": "7.8.0",
         "track_filter": true
       }
     ],

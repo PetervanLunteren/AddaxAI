@@ -64,7 +64,7 @@ def _manifest(**overrides) -> ModelManifest:
         description="x",
         developer="x",
         info_url="https://example.org",
-        min_app_version="7.7.0",
+        min_app_version="7.8.0",
     )
     fields.update(overrides)
     return ModelManifest(**fields)
