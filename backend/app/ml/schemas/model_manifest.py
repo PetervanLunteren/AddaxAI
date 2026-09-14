@@ -92,6 +92,12 @@ class ModelManifest(BaseModel):
     # Meant for models with a specific setup (a drift-fence bucket, a
     # baited tray) so a user can compare it with their own photos.
     example_image_url: str | None = None
+    # The month the developer released this version, "YYYY-MM". Shown in
+    # the model sheet and, by hand, at the end of `description_short`; the
+    # catalog test pins that the two agree. Month precision by decision:
+    # a day is known for most models but not all, and a month is what a
+    # user wants to know at a glance. Empty when nobody could find one.
+    release_date: str | None = None
 
     # Detection-specific. The two fields answer different questions, so a
     # detector that needs both declares both; the catalog test pins that

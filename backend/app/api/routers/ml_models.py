@@ -34,6 +34,7 @@ from app.ml.environment_manager import (
 )
 from app.ml.manifest_manager import ManifestManager
 from app.ml.model_storage import ModelStorage
+from app.ml.schemas.model_manifest import ModelManifest
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/ml", tags=["ML Models"])
@@ -112,6 +113,15 @@ class ModelInfo(BaseModel):
     # skipped. The UI greys out the detector and its settings on it.
     full_image_cls: bool = False
     example_image_url: str | None = None
+    # What a detector finds, from the catalog (`ModelManifest.classes`).
+    # None for classifiers, whose classes come from their taxonomy, and
+    # for embedders.
+    classes: list[str] | None = None
+    # What footage a detector is for: "camera_trap" or "underwater". None
+    # for classifiers and embedders, which declare none.
+    domain: str | None = None
+    # "YYYY-MM" the developer released this version, or None.
+    release_date: str | None = None
     # Per-pipeline default batch sizes used when the project leaves the
     # batch_size override unset. Same value for every model in the same
     # pipeline today; comes from app.ml.batch_size constants.
@@ -134,6 +144,39 @@ _DEFAULT_BATCH_SIZES_BY_TYPE: dict[str, tuple[int, int]] = {
     "classification": (CLASSIFICATION_DEFAULT_GPU, CLASSIFICATION_DEFAULT_CPU),
     "embedding": (EMBEDDING_DEFAULT_GPU, EMBEDDING_DEFAULT_CPU),
 }
+
+
+def _model_info(
+    manifest: ModelManifest,
+    model_type: Literal["detection", "classification", "embedding"],
+) -> ModelInfo:
+    """The wire shape of one catalog entry. One mapping for the three
+    lists, so a field added to the sheet is added here once. A field the
+    type does not carry is None on its manifest and stays None."""
+    gpu, cpu = _DEFAULT_BATCH_SIZES_BY_TYPE[model_type]
+    return ModelInfo(
+        model_id=manifest.model_id,
+        friendly_name=manifest.friendly_name,
+        emoji=manifest.emoji,
+        type=model_type,
+        description=manifest.description or "",
+        description_short=manifest.description_short,
+        developer=manifest.developer,
+        owner=manifest.owner,
+        info_url=manifest.info_url,
+        citation=manifest.citation,
+        license=manifest.license,
+        min_app_version=manifest.min_app_version,
+        embedding_dim=manifest.embedding_dim,
+        region=manifest.region,
+        full_image_cls=manifest.full_image_cls,
+        example_image_url=manifest.example_image_url,
+        classes=manifest.classes,
+        domain=manifest.domain,
+        release_date=manifest.release_date,
+        default_batch_size_gpu=gpu,
+        default_batch_size_cpu=cpu,
+    )
 
 
 @router.get("/models/{model_id}/status", response_model=ModelStatusResponse)
@@ -764,26 +807,7 @@ def list_detection_models() -> list[ModelInfo]:
     manifest_mgr, _, _ = _get_managers()
     models = manifest_mgr.get_detection_models()
 
-    det_gpu, det_cpu = _DEFAULT_BATCH_SIZES_BY_TYPE["detection"]
-    model_list = [
-        ModelInfo(
-            model_id=manifest.model_id,
-            friendly_name=manifest.friendly_name,
-            emoji=manifest.emoji,
-            type="detection",
-            description=manifest.description or "",
-            description_short=getattr(manifest, "description_short", None),
-            developer=manifest.developer,
-            owner=getattr(manifest, "owner", None),
-            info_url=manifest.info_url,
-            citation=getattr(manifest, "citation", None),
-            license=getattr(manifest, "license", None),
-            min_app_version=manifest.min_app_version,
-            default_batch_size_gpu=det_gpu,
-            default_batch_size_cpu=det_cpu,
-        )
-        for manifest in models.values()
-    ]
+    model_list = [_model_info(manifest, "detection") for manifest in models.values()]
 
     # Sort by user-friendly order: MD5A, MD5B first, then MD1000 models by accuracy (best to lowest)
     sort_order = {
@@ -837,28 +861,7 @@ def list_classification_models() -> list[ModelInfo]:
         "europe": 4,
         "oceania": 5,
     }
-    model_list = [
-        ModelInfo(
-            model_id=manifest.model_id,
-            friendly_name=manifest.friendly_name,
-            emoji=manifest.emoji,
-            type="classification",
-            description=manifest.description or "",
-            description_short=getattr(manifest, "description_short", None),
-            developer=manifest.developer,
-            owner=getattr(manifest, "owner", None),
-            info_url=manifest.info_url,
-            citation=getattr(manifest, "citation", None),
-            license=getattr(manifest, "license", None),
-            min_app_version=manifest.min_app_version,
-            region=getattr(manifest, "region", None),
-            full_image_cls=bool(getattr(manifest, "full_image_cls", False)),
-            example_image_url=getattr(manifest, "example_image_url", None),
-            default_batch_size_gpu=cls_gpu,
-            default_batch_size_cpu=cls_cpu,
-        )
-        for manifest in models.values()
-    ]
+    model_list = [_model_info(manifest, "classification") for manifest in models.values()]
     result.extend(
         sorted(
             model_list,
@@ -896,26 +899,7 @@ def list_embedding_models() -> list[ModelInfo]:
     ]
 
     # Add actual embedding models, sorted by embedding_dim (smallest first)
-    model_list = [
-        ModelInfo(
-            model_id=manifest.model_id,
-            friendly_name=manifest.friendly_name,
-            emoji=manifest.emoji,
-            type="embedding",
-            description=manifest.description or "",
-            description_short=getattr(manifest, "description_short", None),
-            developer=manifest.developer,
-            owner=getattr(manifest, "owner", None),
-            info_url=manifest.info_url,
-            citation=getattr(manifest, "citation", None),
-            license=getattr(manifest, "license", None),
-            min_app_version=manifest.min_app_version,
-            embedding_dim=manifest.embedding_dim,
-            default_batch_size_gpu=emb_gpu,
-            default_batch_size_cpu=emb_cpu,
-        )
-        for manifest in models.values()
-    ]
+    model_list = [_model_info(manifest, "embedding") for manifest in models.values()]
 
     result.extend(sorted(model_list, key=lambda m: m.embedding_dim or 0))
 

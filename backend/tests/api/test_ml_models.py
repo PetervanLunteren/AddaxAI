@@ -4,6 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.ml.schemas.model_manifest import ModelManifest
+
 
 @pytest.fixture(autouse=True)
 def mock_managers():
@@ -47,24 +49,28 @@ def test_list_classification_models(client, mock_managers):
     assert data[0]["model_id"] == "none"
 
 
+def _manifest(**fields) -> ModelManifest:
+    """A catalog entry with the required fields filled, the rest as given."""
+    base = dict(
+        model_id="X-1",
+        friendly_name="A model",
+        env="addaxai-base",
+        model_fname="x.pt",
+        description="Does a thing.",
+        developer="Someone",
+        info_url="https://example.org",
+        min_app_version="7.0.1",
+    )
+    return ModelManifest(**{**base, **fields})
+
+
 def test_full_image_classifier_flag_reaches_the_list(client, mock_managers):
     """The UI greys out the detector and its settings on this flag, and
     shows the example picture; both ride on the classification list."""
-    from types import SimpleNamespace
-
     mock_manifest, _, _ = mock_managers
-    manifest = SimpleNamespace(
+    manifest = _manifest(
         model_id="FULL-1",
         friendly_name="Bucket cameras",
-        emoji=None,
-        description="Classifies the whole frame.",
-        description_short=None,
-        developer=None,
-        owner=None,
-        info_url=None,
-        citation=None,
-        license=None,
-        min_app_version="7.0.1",
         region="americas",
         full_image_cls=True,
         example_image_url="https://example.org/bucket.jpg",
@@ -75,6 +81,38 @@ def test_full_image_classifier_flag_reaches_the_list(client, mock_managers):
     model = next(m for m in resp.json() if m["model_id"] == "FULL-1")
     assert model["full_image_cls"] is True
     assert model["example_image_url"] == "https://example.org/bucket.jpg"
+
+
+def test_detector_classes_and_domain_reach_the_list(client, mock_managers):
+    """The model sheet shows what a detector finds and what footage it is
+    for, straight from the catalog: a detector has no taxonomy to ask."""
+    mock_manifest, _, _ = mock_managers
+    manifest = _manifest(
+        model_id="SHARK-1",
+        friendly_name="Sharks",
+        env="marine",
+        classes=["elasmobranch"],
+        domain="underwater",
+        release_date="2024-06",
+    )
+    mock_manifest.get_detection_models.return_value = {"SHARK-1": manifest}
+    resp = client.get("/api/ml/models/detection")
+    assert resp.status_code == 200
+    model = next(m for m in resp.json() if m["model_id"] == "SHARK-1")
+    assert model["classes"] == ["elasmobranch"]
+    assert model["domain"] == "underwater"
+    assert model["release_date"] == "2024-06"
+
+
+def test_a_classifier_carries_no_classes_or_domain(client, mock_managers):
+    """Classifiers name their classes through the taxonomy endpoint and
+    declare no domain; the list says so with null, not an empty list."""
+    mock_manifest, _, _ = mock_managers
+    mock_manifest.get_classification_models.return_value = {"X-1": _manifest(region="global")}
+    resp = client.get("/api/ml/models/classification")
+    model = next(m for m in resp.json() if m["model_id"] == "X-1")
+    assert model["classes"] is None
+    assert model["domain"] is None
 
 
 def test_list_embedding_models(client, mock_managers):

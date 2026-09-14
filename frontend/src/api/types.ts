@@ -875,6 +875,14 @@ export interface ModelInfo {
   full_image_cls?: boolean;
   /** Picture of what the model expects to see, shown in the info sheet. */
   example_image_url?: string | null;
+  /** What a detector finds, from the catalog. `null` for classifiers,
+   *  whose classes come from their taxonomy, and for embedders. */
+  classes?: string[] | null;
+  /** What footage a detector is for: "camera_trap" or "underwater".
+   *  `null` for classifiers and embedders. */
+  domain?: string | null;
+  /** "YYYY-MM" the developer released this version. `null` when unknown. */
+  release_date?: string | null;
   /** Geographic region the cls model is trained for. Drives the
    *  grouping in classification dropdowns. `null` for detection /
    *  embedding models, and for any cls manifest not yet annotated. */

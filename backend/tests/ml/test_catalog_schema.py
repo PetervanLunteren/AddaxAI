@@ -15,6 +15,7 @@ user's machine.
 """
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -137,3 +138,36 @@ def test_the_declared_classes_match_what_the_detectors_emit() -> None:
             assert entry["class_mapping"] == {"0": "elasmobranch"}, model_id
         else:
             pytest.fail(f"{model_id} has no pinned expectation; add one")
+
+
+_MONTHS = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+]
+_RELEASE_DATE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+
+
+def test_release_dates_are_months_and_match_the_caption() -> None:
+    """`release_date` is "YYYY-MM" by decision (month precision for every
+    model, a day is not known for all). The same month is typed by hand
+    at the end of `description_short` so the dropdown shows it at a
+    glance; the two are one fact in two places, so this pins that they
+    agree. A model nobody could date has neither."""
+    catalog = json.loads(_CATALOG_PATH.read_text())
+    dated = 0
+    for models in catalog["models"].values():
+        for entry in models:
+            model_id = entry["model_id"]
+            date = entry.get("release_date")
+            if date is None:
+                continue
+            dated += 1
+            assert _RELEASE_DATE.match(date), f"{model_id}: release_date {date!r} is not YYYY-MM"
+            year, month = date.split("-")
+            words = f"{_MONTHS[int(month) - 1]} {year}"
+            caption = entry.get("description_short") or ""
+            assert caption.endswith(f" • {words}"), (
+                f"{model_id}: description_short {caption!r} does not end with "
+                f"the release month {words!r}"
+            )
+    assert dated >= 40, f"only {dated} models carry a release_date; did the field move?"

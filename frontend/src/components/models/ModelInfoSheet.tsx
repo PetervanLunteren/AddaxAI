@@ -20,6 +20,26 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 
+// The catalog's `domain` values, in words. The same values key the
+// track post-filter (backend `app/ml/track_filter.py`).
+const DOMAIN_LABELS: Record<string, string> = {
+  camera_trap: "Camera trap footage",
+  underwater: "Underwater footage",
+};
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** "2026-03" as "March 2026". Anything else is shown as it is. */
+function formatReleaseMonth(value: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(value);
+  if (!match) return value;
+  const month = MONTHS[Number(match[2]) - 1];
+  return month ? `${month} ${match[1]}` : value;
+}
+
 interface ModelInfoSheetProps {
   modelId: string | null;
   open: boolean;
@@ -49,24 +69,26 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
     enabled: open && !!modelId,
   });
 
-  // Fetch taxonomy to get class count
-  const { data: taxonomy } = useQuery({
-    queryKey: ["taxonomy", modelId],
-    queryFn: () => modelsApi.getTaxonomy(modelId!),
-    enabled: open && !!modelId && modelId !== "none",
-  });
-
-  const currentVersion = useAppVersion();
-
   // Find the selected model
   const model = [...(classificationModels || []), ...(detectionModels || []), ...(embeddingModels || [])].find(
     (m) => m.model_id === modelId
   );
 
+  // A classifier's classes live in its taxonomy.csv; a detector's in
+  // the catalog (`classes`), so the taxonomy is only asked for a
+  // classifier (the endpoint answers 400 for a detector).
+  const { data: taxonomy } = useQuery({
+    queryKey: ["taxonomy", modelId],
+    queryFn: () => modelsApi.getTaxonomy(modelId!),
+    enabled: open && !!modelId && modelId !== "none" && model?.type === "classification",
+  });
+
+  const currentVersion = useAppVersion();
+
   if (!model) return null;
 
-  // Format classes list
-  const classList = taxonomy?.all_classes || [];
+  const classList =
+    model.type === "detection" ? model.classes ?? [] : taxonomy?.all_classes ?? [];
 
   // Normalize class names: remove underscores, all lowercase
   const formatClassName = (className: string) => {
@@ -144,14 +166,40 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
             </>
           )}
 
-          {/* Classes (for classification models) */}
-          {model.type === "classification" && classList.length > 0 && (
+          {/* Classes: what a detector finds, or what a classifier can name */}
+          {classList.length > 0 && (
             <>
               <div>
                 <h3 className="text-sm font-semibold mb-2">
                   Classes ({classList.length})
                 </h3>
                 <p className="text-sm text-gray-700 leading-relaxed">{formattedClasses}</p>
+              </div>
+              <Separator />
+            </>
+          )}
+
+          {/* Made for: the footage a detector was trained on */}
+          {model.domain && (
+            <>
+              <div>
+                <h3 className="text-sm font-semibold mb-2">Made for</h3>
+                <p className="text-sm text-gray-700 leading-relaxed">
+                  {DOMAIN_LABELS[model.domain] ?? model.domain}
+                </p>
+              </div>
+              <Separator />
+            </>
+          )}
+
+          {/* Released: the month the developer published this version */}
+          {model.release_date && (
+            <>
+              <div>
+                <h3 className="text-sm font-semibold mb-2">Released</h3>
+                <p className="text-sm text-gray-700 leading-relaxed">
+                  {formatReleaseMonth(model.release_date)}
+                </p>
               </div>
               <Separator />
             </>
