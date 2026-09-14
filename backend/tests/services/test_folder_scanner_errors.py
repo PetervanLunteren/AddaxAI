@@ -20,6 +20,7 @@ import pytest
 from fastapi import status
 from PIL import Image
 
+from app.services.csv_import_deployments import FOLDER_IS_A_FILE
 from app.services.folder_scanner import count_media_files, scan_folder, walk_media_files
 from app.workers.detection_worker import scan_folder_for_media
 
@@ -135,6 +136,28 @@ def test_preview_folder_endpoint_still_reports_a_genuinely_empty_folder(
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["total_count"] == 0
+
+
+def test_preview_folder_endpoint_calls_a_file_a_file(client, tmp_path):
+    """A dropped video is not a failing drive.
+
+    ``NotADirectoryError`` is an ``OSError``, so without its own branch it
+    fell into the 503 above and a user who dropped one clip on the folder
+    picker read "the drive may have disconnected or be failing", with the
+    real reason only in brackets. The drop zone accepts files (the click
+    path is directory-only), so this is the ordinary first-time mistake.
+    """
+    clip = tmp_path / "MustelidesV2_26.mov"
+    clip.write_bytes(b"not really a video")
+
+    response = client.get(
+        "/api/deployments/preview-folder", params={"path": str(clip)}
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    detail = response.json()["detail"]
+    assert detail == FOLDER_IS_A_FILE
+    assert "drive" not in detail.lower()
 
 
 # The CSV import's own case lives in tests/api/test_deployment_csv_import.py,

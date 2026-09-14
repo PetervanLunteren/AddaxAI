@@ -50,6 +50,7 @@ from app.core.media_types import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from app.db.base import get_db
 from app.services.csv_import_deployments import (
     CAMERA_OFFSETS_NEED_PAIRED,
+    FOLDER_IS_A_FILE,
     check_paired_camera_layout,
 )
 from app.services.folder_scanner import scan_folder
@@ -155,6 +156,18 @@ def preview_folder_path(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Permission denied: {str(e)}",
+        ) from e
+    except NotADirectoryError as e:
+        # A file was dropped on the folder picker (the click path is
+        # directory-only, the drop path takes anything). This is an
+        # OSError too, so it has to be caught before the drive branch
+        # below: a user who dropped a video was told their drive was
+        # failing, with the real reason in brackets. Same wording as the
+        # CSV import, which applies the same rule per row.
+        logger.info(f"Not a folder: {path}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=FOLDER_IS_A_FILE,
         ) from e
     except OSError as e:
         # The folder exists but could not be listed. Reported separately
