@@ -92,7 +92,7 @@ class ProjectBase(BaseModel):
 
     # Video processing settings
     video_fps: float = Field(
-        default=2.0,
+        default=3.0,
         ge=0.1,
         le=10.0,
         description="Frames per second the tracker samples from videos (0.1-10.0)",

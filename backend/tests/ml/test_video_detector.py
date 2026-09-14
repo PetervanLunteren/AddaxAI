@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from app.ml.inference.video_detector import VideoDetectionModel
+from app.ml.track_filter import TRACK_FILTER_BY_DOMAIN
 
 
 class _FakeEnvManager:
@@ -43,7 +44,7 @@ def _run(model, tmp_path, output_json, videos, **overrides):
         crops_dir=tmp_path / "frames",
         fps=2.0,
         class_mapping=None,
-        track_filter=False,
+        track_filter=TRACK_FILTER_BY_DOMAIN["camera_trap"],
     )
     kwargs.update(overrides)
     return model.detect_videos_to_json(**kwargs)

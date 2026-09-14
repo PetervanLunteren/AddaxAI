@@ -5,6 +5,7 @@ from datetime import datetime
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from app.core.confidence import DEFAULT_COUNTING_THRESHOLD
 from app.models.detection import Detection
 from tests.conftest import (
     make_deployment,
@@ -19,7 +20,7 @@ from tests.conftest import (
 
 def test_project_defaults(db):
     p = make_project(db)
-    assert p.counting_threshold == 0.2
+    assert p.counting_threshold == DEFAULT_COUNTING_THRESHOLD
     assert p.classification_gate == 0.1
     assert p.event_smoothing is True
     assert p.taxonomic_rollup is True

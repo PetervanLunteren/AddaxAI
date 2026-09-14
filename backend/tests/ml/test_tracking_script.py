@@ -79,6 +79,22 @@ def test_track_rows_become_normalised_boxes_with_their_track_id():
     assert ts.normalise_track_rows(np.zeros((0, 8)), 10, 10, 0) == []
 
 
+def test_raw_detection_rows_keep_every_box_and_carry_no_track():
+    """--raw_detections_json writes what the detector saw before the
+    tracker chose: the same box shape, no track_id, nothing dropped."""
+    rows = np.array([
+        # x1, y1, x2, y2, conf, cls
+        [100, 50, 300, 150, 0.91, 0],
+        [0, 0, 10, 10, 0.01, 2],  # the storage floor, kept
+    ], dtype=np.float32)
+    boxes = ts.normalise_detection_rows(rows, width=1000, height=500, frame_number=90)
+    assert boxes == [
+        {"category": "0", "conf": 0.91, "bbox": [0.1, 0.1, 0.2, 0.2], "frame_number": 90},
+        {"category": "2", "conf": 0.01, "bbox": [0.0, 0.0, 0.01, 0.02], "frame_number": 90},
+    ]
+    assert ts.normalise_detection_rows(np.zeros((0, 6)), 10, 10, 0) == []
+
+
 def _track(track_id, frames, conf, x=0.1, drift=0.0):
     return [
         {"category": "0", "conf": conf, "bbox": [x + i * drift, 0.4, 0.1, 0.1],
@@ -87,30 +103,49 @@ def _track(track_id, frames, conf, x=0.1, drift=0.0):
     ]
 
 
+UNDERWATER = dict(min_motion=0.08, exempt_conf=0.7)  # SharkTrack's values
+CAMERA_TRAP = dict(min_motion=0.06, exempt_conf=0.5)
+
+
 def test_filter_keeps_confident_tracks_and_moving_long_ones():
-    """SharkTrack's rule at 3 fps, applied only with --track_filter: a
-    track survives when its best box is 0.7 or more, or when it lasts a
-    second (3 sampled frames) and its centre moved at least 8% of the
-    frame."""
+    """SharkTrack's rule at 3 fps with its own values: a track survives
+    when its best box is 0.7 or more, or when it lasts a second (3
+    sampled frames) and its centre moved at least 8% of the frame."""
     confident_but_static = _track(1, [0, 10, 20], conf=0.75)
     long_and_moving = _track(2, [0, 10, 20, 30], conf=0.5, drift=0.05)
     short_and_moving = _track(3, [0, 10], conf=0.5, drift=0.2)
     long_but_static = _track(4, [0, 10, 20, 30], conf=0.5, drift=0.01)
     boxes = confident_but_static + long_and_moving + short_and_moving + long_but_static
 
-    kept = {b["track_id"] for b in ts.filter_tracks(boxes, fps=3.0)}
+    kept = {b["track_id"] for b in ts.filter_tracks(boxes, fps=3.0, **UNDERWATER)}
     assert kept == {1, 2}
+
+
+def test_the_camera_trap_values_keep_a_still_animal_the_underwater_ones_drop():
+    """A resting animal at 0.55 for the whole clip barely moves. Under
+    water that is a false box and goes; on a camera trap it is ordinary
+    and the lower exemption keeps it. The benchmark measured the
+    difference as one resting-animal clip in ten emptied."""
+    resting = _track(1, [0, 10, 20, 30, 40], conf=0.55, drift=0.005)
+    assert ts.filter_tracks(resting, fps=3.0, **UNDERWATER) == []
+    assert {b["track_id"] for b in ts.filter_tracks(resting, fps=3.0, **CAMERA_TRAP)} == {1}
+    # Below the camera-trap exemption a static track still needs 6% of motion.
+    weak_and_static = _track(2, [0, 10, 20, 30, 40], conf=0.4, drift=0.005)
+    assert ts.filter_tracks(weak_and_static, fps=3.0, **CAMERA_TRAP) == []
+    weak_but_walking = _track(3, [0, 10, 20, 30, 40], conf=0.4, drift=0.02)
+    kept = ts.filter_tracks(weak_but_walking, fps=3.0, **CAMERA_TRAP)
+    assert {b["track_id"] for b in kept} == {3}
 
 
 def test_filter_life_is_measured_in_sampled_frames_per_second():
     """One second is one frame at 1 fps and five at 5 fps."""
     two_frames = _track(1, [0, 30], conf=0.5, drift=0.2)
-    assert {b["track_id"] for b in ts.filter_tracks(two_frames, fps=1.0)} == {1}
-    assert ts.filter_tracks(two_frames, fps=5.0) == []
+    assert {b["track_id"] for b in ts.filter_tracks(two_frames, fps=1.0, **UNDERWATER)} == {1}
+    assert ts.filter_tracks(two_frames, fps=5.0, **UNDERWATER) == []
 
 
 def test_filter_on_an_empty_video():
-    assert ts.filter_tracks([], fps=3.0) == []
+    assert ts.filter_tracks([], fps=3.0, **UNDERWATER) == []
 
 
 def test_results_json_has_the_shape_the_ingest_reads(tmp_path):

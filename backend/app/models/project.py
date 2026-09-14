@@ -124,7 +124,7 @@ class Project(Base):
     # Video processing settings. Frames per second the tracker samples;
     # every video is tracked at this rate. Inference-time: decides what a
     # NEW analysis writes, never read by postprocessing.
-    video_fps: Mapped[float] = mapped_column(Float, nullable=False, default=2.0)
+    video_fps: Mapped[float] = mapped_column(Float, nullable=False, default=3.0)
 
     # Which media the detector runs on: "all" | "images" | "videos".
     # Inference-time, like video_fps: it decides what a NEW analysis reads off

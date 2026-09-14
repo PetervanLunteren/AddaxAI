@@ -70,19 +70,18 @@ def _manifest(**overrides) -> ModelManifest:
     return ModelManifest(**fields)
 
 
-def test_manifest_detector_fields_default_to_megadetector_without_the_filter():
-    """Every shipped MegaDetector entry predates these fields, so the
-    defaults must describe MegaDetector: it names its own classes, and
-    there is no shark false-positive filter."""
+def test_manifest_detector_fields_default_to_none():
+    """The schema is shared with classifiers and embedders, so a detector's
+    fields are optional here; the catalog test is what requires them."""
     m = _manifest()
     assert m.class_mapping is None
-    assert m.track_filter is False
+    assert m.domain is None
 
 
-def test_manifest_accepts_a_class_mapping_and_the_filter():
-    m = _manifest(class_mapping={"0": "elasmobranch"}, track_filter=True)
+def test_manifest_accepts_a_class_mapping_and_a_domain():
+    m = _manifest(class_mapping={"0": "elasmobranch"}, domain="underwater")
     assert m.class_mapping == {"0": "elasmobranch"}
-    assert m.track_filter is True
+    assert m.domain == "underwater"
 
 
 def test_manifest_ignores_a_retired_field():

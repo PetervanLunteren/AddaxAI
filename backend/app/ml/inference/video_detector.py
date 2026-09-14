@@ -27,6 +27,7 @@ from app.core.subprocess_group import popen_group
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.gpu_guard import cuda_guard_overrides
 from app.ml.inference.class_mapping import write_class_mapping
+from app.ml.track_filter import TrackFilter
 from app.utils.ffmpeg_bin import resolve_ffmpeg
 from app.utils.subprocess_env import clean_python_env
 
@@ -44,7 +45,7 @@ def _build_tracking_cmd(
     fps: float,
     class_mapping_path: Path | None,
     ffmpeg_path: str,
-    track_filter: bool,
+    track_filter: TrackFilter,
     image_size: int | None,
     augment: bool,
 ) -> list[str]:
@@ -56,7 +57,9 @@ def _build_tracking_cmd(
     The tracker's floors travel here from ``app.core.confidence``: a
     track starts at the default counting threshold and keeps boxes down
     to the storage floor, the same for every detector and the same
-    numbers the rest of the app hides and stores by.
+    numbers the rest of the app hides and stores by. The post-filter's two
+    values are the detector's domain's (``app/ml/track_filter.py``) and
+    always travel: the filter runs for every detector.
 
     ``-P`` keeps the script's own directory off ``sys.path``: it holds
     ``megadetector.py``, the app's wrapper, which Python would otherwise
@@ -79,11 +82,13 @@ def _build_tracking_cmd(
         str(DEFAULT_COUNTING_THRESHOLD),
         "--track_low_thresh",
         str(MD_OUTPUT_CONFIDENCE_THRESHOLD),
+        "--track_filter_motion",
+        str(track_filter.min_motion),
+        "--track_filter_exempt",
+        str(track_filter.exempt_conf),
     ]
     if class_mapping_path is not None:
         command += ["--class_mapping", str(class_mapping_path)]
-    if track_filter:
-        command.append("--track_filter")
     if image_size is not None:
         command += ["--image_size", str(image_size)]
     if augment:
@@ -133,7 +138,7 @@ class VideoDetectionModel:
         crops_dir: Path,
         fps: float,
         class_mapping: dict[str, str] | None,
-        track_filter: bool,
+        track_filter: TrackFilter,
         image_size: int | None = None,
         augment: bool = False,
         progress_callback: Callable[[str, float], None] | None = None,
@@ -154,7 +159,7 @@ class VideoDetectionModel:
             class_mapping: The detector's own class ids and names, from the
                 catalog, for a detector the megadetector package cannot name
                 on its own (SharkTrack). None for everything else.
-            track_filter: Run SharkTrack's false-positive filter (catalog flag).
+            track_filter: The post-filter's values for the detector's domain.
             image_size: Override the detector's long-edge resize size.
             augment: Run detection with augmentation.
             progress_callback: Optional callback(message, progress[, metrics]).

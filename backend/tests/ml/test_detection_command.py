@@ -10,6 +10,7 @@ from pathlib import Path
 
 from app.core.confidence import DEFAULT_COUNTING_THRESHOLD, MD_OUTPUT_CONFIDENCE_THRESHOLD
 from app.ml.inference.megadetector import _build_run_detector_batch_cmd
+from app.ml.track_filter import TRACK_FILTER_BY_DOMAIN, TrackFilter
 
 
 def _image_cmd(**overrides) -> list[str]:
@@ -135,7 +136,7 @@ def _tracking_cmd(**overrides) -> list[str]:
         fps=3.0,
         class_mapping_path=None,
         ffmpeg_path="/env/bin/ffmpeg",
-        track_filter=False,
+        track_filter=TRACK_FILTER_BY_DOMAIN["camera_trap"],
         image_size=None,
         augment=False,
     )
@@ -154,7 +155,6 @@ def test_tracking_cmd_runs_the_script_with_the_file_list():
     assert cmd[cmd.index("--ffmpeg") + 1] == "/env/bin/ffmpeg"
     assert cmd[cmd.index("--crops_dir") + 1] == "frames"
     assert "--class_mapping" not in cmd
-    assert "--track_filter" not in cmd
     assert "--image_size" not in cmd
     assert "--augment" not in cmd
 
@@ -169,14 +169,25 @@ def test_tracking_cmd_carries_the_apps_confidence_floors():
     assert cmd[cmd.index("--track_low_thresh") + 1] == str(MD_OUTPUT_CONFIDENCE_THRESHOLD)
 
 
+def test_tracking_cmd_always_carries_the_domains_filter_values():
+    """The post-filter runs for every detector; the two numbers it turns
+    on are the detector's domain's, never a flag and never a default in
+    the script."""
+    cmd = _tracking_cmd()
+    assert cmd[cmd.index("--track_filter_motion") + 1] == "0.06"
+    assert cmd[cmd.index("--track_filter_exempt") + 1] == "0.5"
+    cmd = _tracking_cmd(track_filter=TrackFilter(min_motion=0.08, exempt_conf=0.7))
+    assert cmd[cmd.index("--track_filter_motion") + 1] == "0.08"
+    assert cmd[cmd.index("--track_filter_exempt") + 1] == "0.7"
+    assert "--track_filter" not in cmd
+
+
 def test_tracking_cmd_carries_the_optional_flags():
     cmd = _tracking_cmd(
         image_size=1024,
         augment=True,
-        track_filter=True,
         class_mapping_path=Path("classes.json"),
     )
     assert cmd[cmd.index("--image_size") + 1] == "1024"
     assert "--augment" in cmd
-    assert "--track_filter" in cmd
     assert cmd[cmd.index("--class_mapping") + 1] == "classes.json"

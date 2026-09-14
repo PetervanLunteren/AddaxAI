@@ -35,6 +35,7 @@ from app.ml.inference.megadetector import MegaDetectorV1000
 from app.ml.json_pipeline import merge_json_files, run_classification_on_json
 from app.ml.manifest_manager import ManifestManager
 from app.ml.model_storage import ModelStorage
+from app.ml.track_filter import track_filter_for
 from app.models import Deployment
 from app.services.folder_scanner import walk_media_files
 from app.utils.fs_hidden import mkdir_hidden_addaxai
@@ -429,7 +430,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                             crops_dir=_crops,
                             fps=project.video_fps,
                             class_mapping=det_manifest.class_mapping,
-                            track_filter=det_manifest.track_filter,
+                            track_filter=track_filter_for(det_manifest),
                             image_size=project.detection_image_size,
                             augment=project.detection_augment,
                             progress_callback=sync_video_detection_progress,

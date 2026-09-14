@@ -2,6 +2,7 @@
 
 from app.api.crud.project import duplicate_project
 from app.api.schemas.project import ProjectDuplicate
+from app.core.confidence import DEFAULT_COUNTING_THRESHOLD
 from app.models import Site
 from app.models.deployment_queue import DeploymentQueue
 
@@ -85,7 +86,7 @@ def test_duplicate_without_settings_uses_defaults(db):
     )
     assert new is not None
     # Default, not the source's 0.9.
-    assert new.counting_threshold == 0.2
+    assert new.counting_threshold == DEFAULT_COUNTING_THRESHOLD
 
 
 def test_duplicate_without_sites_or_deployments(db):

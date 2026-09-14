@@ -36,7 +36,9 @@ export function formatConfidencePct(value: number): string {
 
 export const MD_OUTPUT_CONFIDENCE_THRESHOLD = 0.01;
 export const DEFAULT_CLASSIFICATION_GATE = 0.1;
-export const DEFAULT_COUNTING_THRESHOLD = 0.2;
+// 0.5 since 2026-09-14: measured against human counts on three datasets
+// (see backend/app/core/confidence.py and TRACKING_BENCHMARK_RESULTS.md).
+export const DEFAULT_COUNTING_THRESHOLD = 0.5;
 
 /**
  * Detection-confidence noise advice, shared by every detection slider

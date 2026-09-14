@@ -23,7 +23,7 @@ import type {
 
 export const ADVANCED_SETTINGS_DEFAULTS = {
   detection_model_id: "MD5A-0-0",
-  video_fps: 2.0,
+  video_fps: 3.0,
   media_filter: "all",
   counting_threshold: DEFAULT_COUNTING_THRESHOLD,
   classification_gate: DEFAULT_CLASSIFICATION_GATE,

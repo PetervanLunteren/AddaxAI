@@ -23,7 +23,7 @@ They do different jobs, and it is worth knowing which is which.
 
 Every animal the detector finds is stored, but not every one is sent to the species model. Only boxes above this score get a species, so weaker ones stay as plain "animal". The same score decides which boxes get an embedding, so a box below the gate also stays out of the similarity sort and never gets a suggestion. Raise it to save time on a big folder, or lower it if you think real animals are being missed. This one applies while the AI runs, so changing it only affects new analyses.
 
-### 2. What you see and what gets counted (Count detections above, default 0.2)
+### 2. What you see and what gets counted (Count detections above, default 0.5)
 
 This is the one most people are looking for. Detections below it are hidden from the grid, the charts and the counts. Change it any time: the app just shows more or less, so you can lower it later and see more without running the AI again. Files you verified on the Files tab are the exception, because verifying a file marks its weak boxes as false detections, and those stay hidden at any threshold. Leave it at the default while you check labels.
 

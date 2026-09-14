@@ -317,7 +317,7 @@ export function FileDetailModal({
   }, [shownFrame]);
   /** Boxes are drawn on photos only. A clip is reviewed animal by
    *  animal, and a box drawn by hand could only ever land on the one
-   *  frame on screen: on an hour of footage at 2 fps that is one frame
+   *  frame on screen: on an hour of footage at 3 fps that is one frame
    *  in ten thousand, so it can never be the way an animal the detector
    *  missed gets recorded. The Counts page is, by typing the number. */
   const canDraw = file != null && file.file_type !== "video";

@@ -42,6 +42,30 @@ def _bundled_catalog_path() -> Path | None:
     return None
 
 
+def merge_catalogs(bundled: dict[str, Any], remote: dict[str, Any]) -> dict[str, Any]:
+    """The catalog the app runs on: every model the shipped ``models.json``
+    knows, with the remote entry's fields laid over it, plus every model
+    only the remote knows, as is.
+
+    The remote used to replace the shipped file wholesale, so a field the
+    code required had to exist on ``main`` before the code ran anywhere:
+    on 2026-09-14 a sync from ``main`` rewrote every installed manifest
+    without ``domain`` and every video run failed at ``track_filter_for``.
+    With the shipped entry as the base, a field this build requires is
+    always there for the models it shipped with, while the remote still
+    adds models and updates descriptions, licences and URLs (its value
+    wins on every field both carry). A model added remotely without a
+    field the code needs fails on that model alone, by name.
+    """
+    merged: dict[str, Any] = {"models": {}}
+    for model_type in set(bundled["models"]) | set(remote["models"]):
+        by_id = {e["model_id"]: dict(e) for e in bundled["models"].get(model_type, [])}
+        for entry in remote["models"].get(model_type, []):
+            by_id[entry["model_id"]] = {**by_id.get(entry["model_id"], {}), **entry}
+        merged["models"][model_type] = list(by_id.values())
+    return merged
+
+
 def _validate_catalog(catalog: Any) -> dict[str, Any] | None:
     """The catalog, or None when it is not shaped like one."""
     if not isinstance(catalog, dict) or "models" not in catalog:
@@ -142,7 +166,8 @@ class ModelCatalogUpdater:
                     f"Fetched catalog: {det_count} det, "
                     f"{cls_count} cls, {emb_count} emb models"
                 )
-                return catalog
+                bundled = self._bundled_catalog(quiet=True)
+                return merge_catalogs(bundled, catalog) if bundled else catalog
 
         except urllib.error.URLError as e:
             logger.warning(f"Failed to fetch model catalog (offline or unreachable): {e}")
@@ -153,8 +178,9 @@ class ModelCatalogUpdater:
 
         return self._bundled_catalog()
 
-    def _bundled_catalog(self) -> dict[str, Any] | None:
-        """The catalog shipped with the app, or None if it cannot be read."""
+    def _bundled_catalog(self, quiet: bool = False) -> dict[str, Any] | None:
+        """The catalog shipped with the app, or None if it cannot be read.
+        ``quiet`` for the merge, where reading it is routine, not a fallback."""
         path = _bundled_catalog_path()
         if path is None:
             logger.error("No bundled models.json to fall back on")
@@ -164,7 +190,7 @@ class ModelCatalogUpdater:
         except Exception as e:
             logger.error(f"Failed to read bundled catalog {path}: {e}", exc_info=True)
             return None
-        if catalog is not None:
+        if catalog is not None and not quiet:
             logger.warning(f"Using the model catalog shipped with the app: {path}")
         return catalog
 

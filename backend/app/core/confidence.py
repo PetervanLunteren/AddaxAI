@@ -37,6 +37,18 @@ save step's media confidence, and the labels grid's seeded filter all
 default to it. Below this value most detections are false positives,
 which is also why the grid shows its noise advisory there.
 
+It was 0.2 until 2026-09-14, MegaDetector's own *display* default for
+v5, inherited as the counting floor. The tracking benchmark
+(``TRACKING_BENCHMARK_RESULTS.md``) measured MaxN against human counts
+on three datasets and found 0.2 overcounts everywhere (false boxes) and
+the exact-count peak flat between 0.4 and 0.6 for MD5A: PanAf500 video
+57% to 69%, SA-FARI video 66% to 72%, iWildCam photo sequences 64% to
+71%. 0.5 is one number for every detector by decision; the underwater
+detectors were not measured (SharkTrack starts a track at 0.4 and
+counts human-confirmed tracks without a threshold), and a sweep on
+labelled BRUV clips is the open follow-up. Existing projects keep the
+value they were created with.
+
 A future classification-confidence counting threshold (Dan's third
 knob, ~0.6 for SpeciesNet) gets its constant here when that feature
 is designed; it interacts with taxonomic rollup and is deliberately
@@ -45,7 +57,7 @@ not implemented yet.
 
 MD_OUTPUT_CONFIDENCE_THRESHOLD = 0.01
 DEFAULT_CLASSIFICATION_GATE = 0.1
-DEFAULT_COUNTING_THRESHOLD = 0.2
+DEFAULT_COUNTING_THRESHOLD = 0.5
 
 # ROLLUP_THRESHOLD — the confidence below which taxonomic rollup rolls a
 # species call up the tree (species -> genus -> family -> ...). Fixed

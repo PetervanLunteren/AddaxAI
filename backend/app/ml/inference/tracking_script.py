@@ -60,11 +60,16 @@ counting threshold and keeps boxes down to the storage floor, the same
 for every detector. The association parameters are SharkTrack's (Varini
 et al. 2024, supplement S3): BoT-SORT tuned on underwater footage to
 MOTA 0.77, the buffer scaled with the sampling rate so "two seconds"
-stays two seconds at any fps. SharkTrack's false-positive filter, which
-drops a track shorter than one second or nearly static when its best
-box is under 0.7 (40% of false boxes removed at under 0.08% true
-positive loss, on sharks), runs only with ``--track_filter``: it would
-delete a resting animal on a camera trap.
+stays two seconds at any fps. After tracking, SharkTrack's false-positive
+filter runs for every detector: a track shorter than one second or
+nearly static is dropped unless its best box is confident enough. Its
+two numbers, how little motion counts as static and which confidence
+exempts a track, come in on the command line too, chosen by the data
+domain (``app/ml/track_filter.py``): SharkTrack's own 0.08 / 0.7 under
+water, where a static box is almost always false, and 0.06 / 0.5 on a
+camera trap, where a still animal is ordinary and the benchmark of
+2026-09-14 measured that the stricter pair empties one resting-animal
+clip in ten.
 
 Progress goes to stdout as tqdm lines over every sampled frame of the
 run, which ``VideoDetectionModel._stream_process`` already parses, plus
@@ -120,9 +125,9 @@ TRACK_CROP_MAX_SIDE = 512
 TRACK_CROP_QUALITY = 85
 
 # --- SharkTrack's false-positive filter (supplement S3) ---------------------
+# The motion and exemption values are the domain's and arrive on the
+# command line; the life rule is the same everywhere.
 FILTER_MIN_LIFE_SECONDS = 1.0
-FILTER_MIN_MOTION = 0.08  # of the frame, whichever axis moved more
-FILTER_MAX_CONF = 0.7  # tracks at or above this survive regardless
 
 
 def _tracker_args(fps: float, high: float, low: float) -> SimpleNamespace:
@@ -331,35 +336,59 @@ def ffmpeg_frames(ffmpeg: str, video: Path, stride: int, out_w: int, out_h: int)
             )
 
 
+def _normalised_box(
+    x1: float, y1: float, x2: float, y2: float, conf: float, cls: float,
+    width: int, height: int, frame_number: int,
+) -> dict:
+    """One JSON box with normalised ``[x, y, w, h]``, clamped to the frame."""
+    x1, x2 = max(0.0, min(x1, width)), max(0.0, min(x2, width))
+    y1, y2 = max(0.0, min(y1, height)), max(0.0, min(y2, height))
+    return {
+        "category": str(int(cls)),
+        "conf": round(float(conf), 5),
+        "bbox": [
+            round(x1 / width, 5),
+            round(y1 / height, 5),
+            round((x2 - x1) / width, 5),
+            round((y2 - y1) / height, 5),
+        ],
+        "frame_number": int(frame_number),
+    }
+
+
 def normalise_track_rows(
     rows: np.ndarray, width: int, height: int, frame_number: int
 ) -> list[dict]:
     """BoT-SORT output rows (x1, y1, x2, y2, track_id, conf, cls, idx) to
-    JSON boxes with normalised ``[x, y, w, h]``, clamped to the frame."""
+    JSON boxes with their ``track_id``."""
     boxes = []
     for x1, y1, x2, y2, track_id, conf, cls, _idx in rows.tolist():
-        x1, x2 = max(0.0, min(x1, width)), max(0.0, min(x2, width))
-        y1, y2 = max(0.0, min(y1, height)), max(0.0, min(y2, height))
-        boxes.append({
-            "category": str(int(cls)),
-            "conf": round(float(conf), 5),
-            "bbox": [
-                round(x1 / width, 5),
-                round(y1 / height, 5),
-                round((x2 - x1) / width, 5),
-                round((y2 - y1) / height, 5),
-            ],
-            "frame_number": int(frame_number),
-            "track_id": int(track_id),
-        })
+        box = _normalised_box(x1, y1, x2, y2, conf, cls, width, height, frame_number)
+        box["track_id"] = int(track_id)
+        boxes.append(box)
     return boxes
 
 
-def filter_tracks(boxes: list[dict], fps: float) -> list[dict]:
+def normalise_detection_rows(
+    rows: np.ndarray, width: int, height: int, frame_number: int
+) -> list[dict]:
+    """Detector rows (x1, y1, x2, y2, conf, cls) to JSON boxes without a
+    track: every box the detector reported, before the tracker chose.
+    Written only with ``--raw_detections_json`` (benchmarks replay the
+    tracker offline from these); the app never asks for it."""
+    return [
+        _normalised_box(x1, y1, x2, y2, conf, cls, width, height, frame_number)
+        for x1, y1, x2, y2, conf, cls in rows.tolist()
+    ]
+
+
+def filter_tracks(
+    boxes: list[dict], fps: float, *, min_motion: float, exempt_conf: float
+) -> list[dict]:
     """SharkTrack's post-processing: drop every box of a track that is
     short (under one second of sampled frames) or nearly static (its
-    centre moved under 8% of the frame on both axes) unless its best box
-    scored 0.7 or more."""
+    centre moved under ``min_motion`` of the frame on both axes) unless
+    its best box scored ``exempt_conf`` or more."""
     by_track: dict[int, list[dict]] = {}
     for box in boxes:
         by_track.setdefault(box["track_id"], []).append(box)
@@ -367,14 +396,14 @@ def filter_tracks(boxes: list[dict], fps: float) -> list[dict]:
     keep: set[int] = set()
     for track_id, members in by_track.items():
         max_conf = max(b["conf"] for b in members)
-        if max_conf >= FILTER_MAX_CONF:
+        if max_conf >= exempt_conf:
             keep.add(track_id)
             continue
         frames = {b["frame_number"] for b in members}
         cx = [b["bbox"][0] + b["bbox"][2] / 2 for b in members]
         cy = [b["bbox"][1] + b["bbox"][3] / 2 for b in members]
         motion = max(max(cx) - min(cx), max(cy) - min(cy))
-        if len(frames) >= min_life and motion >= FILTER_MIN_MOTION:
+        if len(frames) >= min_life and motion >= min_motion:
             keep.add(track_id)
     return [b for b in boxes if b["track_id"] in keep]
 
@@ -512,12 +541,15 @@ def track_video(
     native_fps: float,
     size: tuple[int, int],
     progress: tqdm,
-    track_filter: bool,
+    filter_motion: float,
+    filter_exempt: float,
+    raw_out: list[dict] | None = None,
 ) -> tuple[list[int], list[dict], dict[int, tuple[float, int, bytes]]]:
     """Run one video's sampled frames through the detector and a fresh
     tracker. Returns the frames actually decoded, the surviving boxes,
     and the best crop per track (surviving tracks included, the filtered
-    ones too; the caller writes only the survivors)."""
+    ones too; the caller writes only the survivors). ``raw_out``, when
+    given, receives every detector box of every sampled frame."""
     from ultralytics.engine.results import Boxes
     from ultralytics.trackers import BOTSORT
     from ultralytics.trackers.utils.gmc import GMC
@@ -532,6 +564,8 @@ def track_video(
     for frame_number, frame_bgr in ffmpeg_frames(ffmpeg, path, stride, out_w, out_h):
         processed.append(frame_number)
         detections = detector.detect(frame_bgr)
+        if raw_out is not None:
+            raw_out.extend(normalise_detection_rows(detections, out_w, out_h, frame_number))
         # BoT-SORT wants the frame for its camera-motion compensation.
         tracked = tracker.update(Boxes(detections, (out_h, out_w)), frame_bgr)
         if len(tracked):
@@ -539,8 +573,9 @@ def track_video(
             boxes_out.extend(boxes)
             keep_best_crop(best_crops, boxes, frame_bgr, frame_number)
         progress.update(1)
-    if track_filter:
-        boxes_out = filter_tracks(boxes_out, fps)
+    boxes_out = filter_tracks(
+        boxes_out, fps, min_motion=filter_motion, exempt_conf=filter_exempt
+    )
     return processed, boxes_out, best_crops
 
 
@@ -579,8 +614,18 @@ def main() -> int:
         help="boxes down to this confidence extend a track; nothing below is asked for",
     )
     parser.add_argument(
-        "--track_filter", action="store_true",
-        help="drop short or static tracks under 0.7 (SharkTrack's false-positive filter)",
+        "--track_filter_motion", type=float, required=True,
+        help="a track whose centre moved less than this fraction of the frame is "
+             "nearly static (the false-positive filter's motion rule)",
+    )
+    parser.add_argument(
+        "--track_filter_exempt", type=float, required=True,
+        help="a track whose best box reaches this confidence survives the filter",
+    )
+    parser.add_argument(
+        "--raw_detections_json", type=Path, default=None,
+        help="also write every detector box of every sampled frame, untracked, "
+             "in the same shape (for benchmarks that replay the tracker offline)",
     )
     args = parser.parse_args()
 
@@ -600,6 +645,7 @@ def main() -> int:
     )
 
     images: list[dict] = []
+    raw_images: list[dict] = []
     with tqdm(total=total_frames, unit="frame", desc="Tracking", file=sys.stdout,
               mininterval=1.0, dynamic_ncols=False) as progress:
         for path in videos:
@@ -607,13 +653,17 @@ def main() -> int:
             native_fps, frame_count, width, height = counts[path]
             if frame_count <= 0 or width <= 0:
                 images.append(failure_entry(relative))
+                raw_images.append(failure_entry(relative))
                 continue
+            raw_boxes: list[dict] | None = [] if args.raw_detections_json else None
             processed, boxes, best_crops = track_video(
                 detector, tracker_args, args.ffmpeg, path, args.fps, native_fps,
-                (width, height), progress, args.track_filter,
+                (width, height), progress, args.track_filter_motion,
+                args.track_filter_exempt, raw_out=raw_boxes,
             )
             if not processed:
                 images.append(failure_entry(relative))
+                raw_images.append(failure_entry(relative))
                 continue
             write_track_crops(
                 args.crops_dir / relative, best_crops, {b["track_id"] for b in boxes}
@@ -624,19 +674,33 @@ def main() -> int:
                 "frames_processed": processed,
                 "detections": boxes,
             })
+            if raw_boxes is not None:
+                raw_images.append({
+                    "file": relative,
+                    "frame_rate": native_fps,
+                    "frames_processed": processed,
+                    "detections": raw_boxes,
+                })
             # Progress in videos as well, for the log.
             # "of", not "/": the progress parser reads n/N off any line and
             # would count videos instead of frames.
             print(f"Tracked video {len(images)} of {len(videos)}: {relative}", flush=True)
 
-    write_results(args.output_json, images, detector.categories, {
+    info = {
         "detector": args.model.name,
         "tracker": "botsort",
         "fps": args.fps,
         "track_high_thresh": args.track_high_thresh,
         "track_low_thresh": args.track_low_thresh,
-        "track_filter": args.track_filter,
-    })
+        "track_filter_motion": args.track_filter_motion,
+        "track_filter_exempt": args.track_filter_exempt,
+    }
+    write_results(args.output_json, images, detector.categories, info)
+    if args.raw_detections_json:
+        write_results(
+            args.raw_detections_json, raw_images, detector.categories,
+            {**info, "tracker": None, "raw": True},
+        )
     return 0
 
 

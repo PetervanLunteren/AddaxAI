@@ -74,6 +74,19 @@ def test_every_detector_declares_its_classes() -> None:
         )
 
 
+def test_every_detector_declares_its_domain() -> None:
+    """Every detector says what footage it is for, `camera_trap` or
+    `underwater`, and the value matches the model: the track post-filter
+    takes its two numbers from it (`app/ml/track_filter.py`). Enforced
+    here like `classes`, since the schema is shared with classifiers."""
+    catalog = json.loads(_CATALOG_PATH.read_text())
+    for entry in catalog["models"]["det"]:
+        model_id = entry["model_id"]
+        assert "track_filter" not in entry, f"{model_id}: track_filter is retired, domain decides"
+        expected = "underwater" if model_id.startswith(("SHARKTRACK", "CFD-")) else "camera_trap"
+        assert entry.get("domain") == expected, f"{model_id}: domain {entry.get('domain')!r}"
+
+
 def test_a_class_mapping_agrees_with_the_classes_beside_it() -> None:
     """`class_mapping` is the second half of the same fact, so the two
     cannot be allowed to drift: `classes` is what the picker offers, the
