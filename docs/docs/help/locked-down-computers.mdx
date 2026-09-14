@@ -182,10 +182,22 @@ Set `ADDAXAI_HF_TOKEN` to the token. Needs AddaxAI 7.0.14 or newer. It is sent t
 <FaqItem
   id="only-the-models-are-blocked"
   q="Only the models are blocked"
-  summary="Everything downloads except Hugging Face. Copy the models from one prepared computer."
+  summary="Everything downloads except Hugging Face. Download the models once on another network, or copy them from a prepared computer."
 >
 
-If the other addresses are reachable and only `huggingface.co` and `*.hf.co` are blocked, you do not need to copy the whole data folder. Copy only the models.
+If the other addresses are reachable and only `huggingface.co` and `*.hf.co` are blocked, the environment is already installed and only the models are missing. Two ways out.
+
+#### One computer: download the models on another network
+
+Connect to a home network or a phone hotspot and press Try again. The models are a one-time download, and the two default models are about 370 MB together. They stay on the computer afterwards. Back on the work network the app works as before, because analysis runs offline. Only the model update check at start fails, quietly.
+
+Every model you add later needs the same trip, because the models page downloads the same way.
+
+Two things can still stop this. A managed laptop may not let you join another network. And a filter that runs on the computer itself, rather than on the network, blocks on the hotspot too. If it fails there as well, only IT can change it.
+
+#### Many computers: copy the models from one prepared computer
+
+You do not need to copy the whole data folder. Copy only the models.
 
 1. Set `ADDAXAI_USER_DATA_DIR` on every machine, see [environment variables](../reference/environment-variables.mdx).
 2. On one computer that can reach the models, or one that uses [your own mirror](#we-can-only-download-through-our-own-mirror), install AddaxAI and download the models you need.
@@ -203,6 +215,8 @@ The environment still downloads on each machine at first launch. New models and 
 >
 
 Set up one computer that does have access, then copy what it produced onto the others. Nothing on those computers needs to reach the internet.
+
+With a single computer, the prepared computer can be that same one: run the setup once on a home network, and it works on the work network afterwards. That download is several gigabytes, most of it the analysis environment, so a phone hotspot is a poor fit here. The two things that can still stop it are under [only the models are blocked](#only-the-models-are-blocked).
 
 1. Pick a folder that exists on every machine, for example `C:\Apps\AddaxAI-data`, and set `ADDAXAI_USER_DATA_DIR` to it everywhere. See [environment variables](../reference/environment-variables.mdx). The folder has to be the same path on every machine.
 2. On the prepared computer, install AddaxAI and run the setup, or run it from a script as described under [pre-install the models and environments](silent-install.mdx#pre-install-the-models-and-environments).
