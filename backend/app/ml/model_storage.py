@@ -20,7 +20,7 @@ from huggingface_hub.errors import RepositoryNotFoundError
 from app.core.config import get_settings
 from app.core.job_cancellation import JobCancelledError
 from app.core.logging_config import get_logger
-from app.ml.hf_downloader import HuggingFaceRepoDownloader
+from app.ml.hf_downloader import HuggingFaceRepoDownloader, NetworkBlockedError
 from app.ml.schemas.model_manifest import ModelManifest, resolve_hf_repo
 from app.utils.fs_remove import safe_rmtree
 
@@ -293,6 +293,12 @@ class ModelStorage:
             # _clear_downloaded_files.
             logger.info(f"Cleaning up cancelled download at {model_path}")
             _clear_downloaded_files(model_path)
+            raise
+        except NetworkBlockedError:
+            # Already worded for the user and tagged for the wizard; the
+            # generic wrapper below would turn it back into "Download
+            # failed for <repo>", which is what got twelve retries on
+            # 2026-09-11. Same no-cleanup rule as any other failure.
             raise
         except Exception as e:
             # No cleanup on failure, on purpose. Every file is streamed to a

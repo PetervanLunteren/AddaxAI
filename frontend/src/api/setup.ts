@@ -18,10 +18,12 @@ export interface SetupStatus {
   message: string;
   error: string | null;
   /**
-   * Names a failure the UI can offer a specific remedy for. Only
-   * "tls_revocation" today, set when the environment build died because
-   * Windows could not check certificate revocation and the user has not
-   * already accepted skipping it. Null for every ordinary failure.
+   * Names a failure the UI can offer a specific remedy for.
+   * "tls_revocation": the environment build died because Windows could
+   * not check certificate revocation and the user has not already
+   * accepted skipping it. "network_blocked": a model download was
+   * answered with a web filter's block page. Null for every ordinary
+   * failure.
    */
   error_kind: string | null;
   user_data_dir: string;

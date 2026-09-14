@@ -22,10 +22,15 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import requests
 from huggingface_hub import HfApi
-from huggingface_hub.utils import RepositoryNotFoundError, RevisionNotFoundError
+from huggingface_hub.utils import (
+    HfHubHTTPError,
+    RepositoryNotFoundError,
+    RevisionNotFoundError,
+)
 
 from app.core.config import get_settings
 from app.core.job_cancellation import JobCancelledError
@@ -51,6 +56,38 @@ _PARALLEL_CONNECTIONS = 4
 # to a single connection; this gives every file the same, plus the short
 # pause a momentary resolver failure needs.
 _FILE_ATTEMPTS = 3
+
+
+class NetworkBlockedError(RuntimeError):
+    """The network answered a model download with a block page.
+
+    A proxy or web filter that forbids a host answers every request to it
+    with its own HTML page and a 403. HuggingFace never does that: its
+    errors are small JSON bodies, and our repos are public, so it has no
+    reason to refuse them at all. Raised instead of the generic download
+    failure so the setup wizard and the models page can say what is wrong
+    and where the fix is, rather than inviting a retry that cannot
+    succeed. First seen 2026-09-11 on a US state government laptop, where
+    "Download failed for Addax-Data-Science/MD5A-0-0" got twelve retries.
+
+    `str(e)` is written for the user. `host` is the one that was blocked,
+    which is the CDN when only `*.hf.co` is filtered.
+    """
+
+    def __init__(self, host: str) -> None:
+        self.host = host
+        super().__init__(
+            f"Your network blocks {host}, which is where the AI models are "
+            f"downloaded from. Ask your IT team to allow huggingface.co and "
+            f"hf.co, or run this download once on another network, for "
+            f"example a phone hotspot. The models stay on this computer "
+            f"afterwards."
+        )
+
+
+def _is_block_page(status_code: int, content_type: str | None) -> bool:
+    """A 403 carrying HTML is a filter's page, not the hub's answer."""
+    return status_code == 403 and (content_type or "").lower().startswith("text/html")
 
 
 def hf_auth_headers() -> dict[str, str]:
@@ -215,8 +252,16 @@ class HuggingFaceRepoDownloader:
 
             return total_size, files_info
 
-        except (RepositoryNotFoundError, RevisionNotFoundError) as e:
-            raise ValueError(f"Repository not found: {e}") from e
+        except HfHubHTTPError as e:
+            # The block-page check goes first: a filter's 403 is not a
+            # missing repo, whatever subclass the hub client picked for it.
+            response = e.response
+            if _is_block_page(response.status_code, response.headers.get("content-type")):
+                host = urlsplit(str(response.url)).hostname or self.endpoint
+                raise NetworkBlockedError(host) from e
+            if isinstance(e, RepositoryNotFoundError | RevisionNotFoundError):
+                raise ValueError(f"Repository not found: {e}") from e
+            raise RuntimeError(f"Error fetching repository info: {e}") from e
         except Exception as e:
             raise RuntimeError(f"Error fetching repository info: {e}") from e
 
@@ -340,6 +385,12 @@ class HuggingFaceRepoDownloader:
                 self.measure_download_speed(start_time, downloaded)
                 return True
 
+            except NetworkBlockedError:
+                # Retrying a filter is pointless, and the caller needs the
+                # typed error, not False. Nothing was written: the page is
+                # detected before the first chunk.
+                temp_file_path.unlink(missing_ok=True)
+                raise
             except Exception as e:
                 # Un-count what this attempt wrote before dropping it, or the
                 # retry counts those bytes twice and the progress bar runs
@@ -385,6 +436,10 @@ class HuggingFaceRepoDownloader:
         """
         downloaded = 0
         with self.session.get(file_url, stream=True, timeout=self.timeout) as response:
+            # The files redirect to a CDN, so this is the one place a filter
+            # that allows huggingface.co but blocks *.hf.co shows up.
+            if _is_block_page(response.status_code, response.headers.get("content-type")):
+                raise NetworkBlockedError(urlsplit(response.url).hostname or file_url)
             response.raise_for_status()
             with open(temp_file_path, "wb") as f:
                 for chunk in response.iter_content(chunk_size=self.chunk_size):
@@ -621,6 +676,11 @@ class HuggingFaceRepoDownloader:
                                 successful_downloads += 1
                             else:
                                 failed_downloads += 1
+                        except NetworkBlockedError:
+                            # Same shape as a cancel: stop scheduling and
+                            # let the typed error reach the caller.
+                            executor.shutdown(wait=False, cancel_futures=True)
+                            raise
                         except Exception as e:
                             logger.error(
                                 f"Unexpected error downloading "
@@ -685,6 +745,13 @@ class HuggingFaceRepoDownloader:
             # Cancelled mid-download; let the caller clean up the partial
             # directory and report cancellation rather than failure.
             logger.info(f"Download of {repo_id} cancelled")
+            raise
+        except NetworkBlockedError as e:
+            # Not a download failure the caller can retry, so it does not
+            # become False like the rest.
+            logger.error(f"Download of {repo_id} blocked by the network: {e}")
+            if progress_callback:
+                progress_callback(f"Download failed: {e}", 0.0)
             raise
         except Exception as e:
             logger.error(f"Download failed: {e}", exc_info=True)

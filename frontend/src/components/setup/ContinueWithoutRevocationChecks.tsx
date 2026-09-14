@@ -15,10 +15,11 @@ import { useState } from "react";
 import { ExternalLink, Loader2, ShieldOff } from "lucide-react";
 import { Button } from "../ui/button";
 import { setupApi } from "../../api/setup";
+import { LOCKED_DOWN_HELP_URL } from "./LockedDownHelp";
 
 /** The help page section explaining both fixes and how to undo this one. */
 export const REVOCATION_HELP_URL =
-  "https://docs.addaxai.com/docs/help/locked-down-computers#certificate-errors-during-setup";
+  `${LOCKED_DOWN_HELP_URL}#certificate-errors-during-setup`;
 
 interface ContinueWithoutRevocationChecksProps {
   /** Restart the build. Runs after the choice is recorded. */

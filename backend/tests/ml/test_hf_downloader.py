@@ -5,13 +5,21 @@ plus the per-file retry that keeps one transient failure from failing a
 whole repo download.
 """
 
+import io
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import httpx
 import pytest
+import requests
+from huggingface_hub.utils import HfHubHTTPError
 
-from app.ml.hf_downloader import _FILE_ATTEMPTS, HuggingFaceRepoDownloader
+from app.ml.hf_downloader import (
+    _FILE_ATTEMPTS,
+    HuggingFaceRepoDownloader,
+    NetworkBlockedError,
+)
 
 REPO_FILES = [
     "README.md",
@@ -257,3 +265,116 @@ def test_token_travels_on_the_file_downloads_too(
     downloader = HuggingFaceRepoDownloader()
     assert downloader.session.headers["Authorization"] == "Bearer secret"
     assert downloader.api.token == "secret"
+
+
+# ---------------------------------------------------------------------------
+# A network that answers with a block page.
+#
+# The 2026-09-11 shape: a US state network's web filter answered every call
+# to huggingface.co with a 403 and a 101 KB HTML page. The hub never does
+# that (its errors are small JSON bodies, and our repos are public), so the
+# pair of status and content type is the whole signal.
+
+
+def _hub_error(status: int, content_type: str) -> HfHubHTTPError:
+    url = "https://huggingface.co/api/models/Addax-Data-Science/MD5A-0-0/tree/main"
+    response = httpx.Response(
+        status,
+        headers={"content-type": content_type},
+        request=httpx.Request("GET", url),
+    )
+    return HfHubHTTPError(f"{status} error", response=response)
+
+
+def test_a_block_page_on_the_listing_is_reported_as_blocked(
+    downloader: HuggingFaceRepoDownloader,
+) -> None:
+    with patch.object(
+        downloader.api,
+        "list_repo_files",
+        side_effect=_hub_error(403, "text/html; charset=utf-8"),
+    ):
+        with pytest.raises(NetworkBlockedError) as exc:
+            downloader.get_repo_info("Addax-Data-Science/MD5A-0-0")
+
+    assert exc.value.host == "huggingface.co"
+    # Written for the user, and names the host so IT gets it verbatim.
+    assert "blocks huggingface.co" in str(exc.value)
+
+
+def test_a_json_403_from_the_hub_is_an_ordinary_failure(
+    downloader: HuggingFaceRepoDownloader,
+) -> None:
+    """The hub's own refusals are JSON. Those keep the generic wording:
+    sending someone to IT over a gated repo points them the wrong way."""
+    with patch.object(
+        downloader.api,
+        "list_repo_files",
+        side_effect=_hub_error(403, "application/json; charset=utf-8"),
+    ):
+        with pytest.raises(RuntimeError) as exc:
+            downloader.get_repo_info("Addax-Data-Science/MD5A-0-0")
+
+    assert not isinstance(exc.value, NetworkBlockedError)
+
+
+def _block_page_response(url: str) -> requests.Response:
+    r = requests.Response()
+    r.status_code = 403
+    r.headers["content-type"] = "text/html; charset=utf-8"
+    r.url = url
+    r._content = b"<html>Blocked by policy</html>"
+    # A real response carries its socket here; leaving the `with` block
+    # closes it, and a None crashes that close before our error surfaces.
+    r.raw = io.BytesIO(b"")
+    return r
+
+
+def test_a_block_page_on_a_file_is_not_retried(
+    downloader: HuggingFaceRepoDownloader, tmp_path: Path
+) -> None:
+    """The files redirect to *.hf.co, so a filter that allows huggingface.co
+    and blocks the CDN shows up here and nowhere else. Three attempts with a
+    pause between them would only delay the same page."""
+    cdn = "https://cdn-lfs.hf.co/repos/x/md_v5a.0.0.pt"
+    with (
+        patch.object(
+            downloader.session, "get", return_value=_block_page_response(cdn)
+        ) as mock_get,
+        patch("app.ml.hf_downloader.time.sleep") as mock_sleep,
+    ):
+        with pytest.raises(NetworkBlockedError) as exc:
+            downloader.download_file(_info(), tmp_path)
+
+    assert exc.value.host == "cdn-lfs.hf.co"
+    assert mock_get.call_count == 1
+    mock_sleep.assert_not_called()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_download_repo_raises_when_the_listing_is_blocked(
+    downloader: HuggingFaceRepoDownloader, tmp_path: Path
+) -> None:
+    """False is what every other failure returns, and it is what turned the
+    typed error back into "Download failed for <repo>"."""
+    with patch.object(
+        downloader, "get_repo_info", side_effect=NetworkBlockedError("huggingface.co")
+    ):
+        with pytest.raises(NetworkBlockedError):
+            downloader.download_repo("Addax-Data-Science/MD5A-0-0", tmp_path)
+
+
+def test_download_repo_raises_when_a_file_is_blocked(
+    downloader: HuggingFaceRepoDownloader, tmp_path: Path
+) -> None:
+    """A file download runs in the executor, so its error surfaces through
+    the future and has to be re-raised rather than counted as one failure."""
+    files = [_info(), {**_info(), "path": "taxonomy.csv"}]
+    with (
+        patch.object(downloader, "get_repo_info", return_value=(10, files)),
+        patch.object(
+            downloader, "download_file", side_effect=NetworkBlockedError("cdn-lfs.hf.co")
+        ),
+    ):
+        with pytest.raises(NetworkBlockedError):
+            downloader.download_repo("Addax-Data-Science/MD5A-0-0", tmp_path)

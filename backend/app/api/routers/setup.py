@@ -33,6 +33,7 @@ from app.ml.environment_manager import (
     TlsRevocationCheckError,
     allow_revocation_skip,
 )
+from app.ml.hf_downloader import NetworkBlockedError
 from app.ml.model_storage import ModelStorage
 from app.ml.schemas.model_manifest import ModelManifest
 from app.services import legacy_install
@@ -151,7 +152,9 @@ class SetupStatus(BaseModel):
     error: str | None
     # "tls_revocation" when the build died because Windows could not check
     # certificate revocation and the user has not accepted skipping it.
-    # The wizard uses this to offer that choice; None otherwise.
+    # The wizard uses this to offer that choice. "network_blocked" when a
+    # model download was answered with a web filter's block page; the
+    # wizard links the matching help section. None otherwise.
     error_kind: str | None
     user_data_dir: str
 
@@ -350,6 +353,11 @@ def _install_env_blocking(force_envs: tuple[str, ...] = ()) -> None:
         # failure.
         logger.error(f"Setup install failed: {e}", exc_info=True)
         _install_state.finish(error=str(e), error_kind="tls_revocation")
+    except NetworkBlockedError as e:
+        # Same idea: the message names the blocked host and the wizard
+        # points at the help section for it, instead of inviting retries.
+        logger.error(f"Setup install failed: {e}", exc_info=True)
+        _install_state.finish(error=str(e), error_kind="network_blocked")
     except Exception as e:
         logger.error(f"Setup install failed: {e}", exc_info=True)
         _install_state.finish(error=str(e))

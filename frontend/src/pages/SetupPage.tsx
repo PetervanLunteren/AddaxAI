@@ -24,6 +24,7 @@ import { Progress } from "../components/ui/progress";
 import { Callout } from "../components/ui/callout";
 import { LogoPlate } from "../components/layout/LogoPlate";
 import { ContinueWithoutRevocationChecks } from "../components/setup/ContinueWithoutRevocationChecks";
+import { LockedDownHelp } from "../components/setup/LockedDownHelp";
 
 const POLL_INTERVAL_MS = 1500;
 
@@ -186,12 +187,20 @@ export default function SetupPage() {
             <Button onClick={() => install.mutate()} className="w-full">
               Try again
             </Button>
-            {/* Only for the one failure plain retrying cannot fix. The
-                backend stops sending this kind once the choice has been
-                made, so the offer never repeats uselessly. */}
-            {showRevocationOptOut && (
+            {/* The revocation opt-out is the one failure with a button of
+                its own, and it links its help section itself. The backend
+                stops sending that kind once the choice has been made, so
+                the offer never repeats uselessly. Every other failure gets
+                the one static line to the locked-down help page: a first
+                launch fails almost only on managed computers and inspected
+                networks, and the page is where the answers are. */}
+            {showRevocationOptOut ? (
               <ContinueWithoutRevocationChecks
                 onRetry={() => install.mutate()}
+              />
+            ) : (
+              <LockedDownHelp
+                errorKind={statusError !== null ? status.error_kind : null}
               />
             )}
           </div>
