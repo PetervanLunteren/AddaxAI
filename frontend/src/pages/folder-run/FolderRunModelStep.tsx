@@ -1631,7 +1631,7 @@ export function FolderRunModelStep() {
                 <NextStepRow
                   icon={ArrowRight}
                   title="Go straight to saving"
-                  description="Keep the labels as they are and save the results or media copies for further analysis."
+                  description="Keep the AI's labels and counts as they are and save the results or media copies for further analysis."
                   disabled={isClosing}
                   onClick={goTo("save")}
                 />

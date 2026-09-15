@@ -31,7 +31,7 @@ from app.core.config import get_settings
 from app.core.logging_config import get_logger
 from app.ml.label_exclusion import threshold_or_verified
 from app.ml.manifest_manager import ManifestManager
-from app.models import Deployment, Detection, File, Project
+from app.models import Deployment, Detection, Event, File, Project
 
 logger = get_logger(__name__)
 
@@ -194,6 +194,28 @@ def _verification_stats(
     return int(verified), int(total)
 
 
+def _count_confirmation_stats(
+    db: Session, project_id: str
+) -> tuple[int, int]:
+    """(confirmed_event_count, total_event_count) for the project: the
+    events whose counts were signed off on the Counts step."""
+    base = (
+        select(func.count(Event.id))
+        .join(Deployment, Event.deployment_id == Deployment.id)
+        .where(Deployment.project_id == project_id)
+    )
+    total = db.scalar(base) or 0
+    confirmed = db.scalar(base.where(Event.confirmed == True)) or 0  # noqa: E712
+    return int(confirmed), int(total)
+
+
+def _ratio(done: int, total: int) -> str:
+    """``done / total (pct)``, or ``0 / 0`` when there is nothing to count."""
+    if total <= 0:
+        return "0 / 0"
+    return f"{done} / {total} ({done / total * 100:.1f}%)"
+
+
 def _section(title: str) -> str:
     return f"\n{title}\n{'-' * len(title)}\n"
 
@@ -233,6 +255,7 @@ def _build_readme_text(
     detection_counts: dict[str, int],
     top_species: list[tuple[str, int]],
     verification: tuple[int, int],
+    count_confirmation: tuple[int, int],
     geofence_summary: str,
     manifest_mgr: ManifestManager,
     media_threshold: float,
@@ -242,6 +265,7 @@ def _build_readme_text(
     string ready to write to disk."""
     image_count, video_count, earliest, latest = file_counts
     verified_files, total_files = verification
+    confirmed_events, total_events = count_confirmation
 
     lines: list[str] = []
     lines.append("=" * 72 + "\n")
@@ -350,17 +374,12 @@ def _build_readme_text(
     else:
         lines.append(_kv("Detections", 0))
 
-    if total_files > 0:
-        pct = (verified_files / total_files) * 100
-        lines.append(
-            _kv(
-                "Files verified",
-                f"{verified_files} / {total_files} "
-                f"({pct:.1f}%)",
-            )
-        )
-    else:
-        lines.append(_kv("Files verified", "0 / 0"))
+    # The two halves of the review work, as the app splits them: labels on
+    # the Labels step, counts on the Counts step.
+    lines.append(_kv("Files verified", _ratio(verified_files, total_files)))
+    lines.append(
+        _kv("Counts confirmed", _ratio(confirmed_events, total_events))
+    )
 
     if top_species:
         lines.append(_section("Top species (by detection count)"))
@@ -424,6 +443,7 @@ def write_run_readme(
     )
     top_species = _top_species(db, project)
     verification = _verification_stats(db, project_id)
+    count_confirmation = _count_confirmation_stats(db, project_id)
     skipped_files = _skipped_files(db, project_id)
 
     settings = get_settings()
@@ -439,6 +459,7 @@ def write_run_readme(
         detection_counts=detection_counts,
         top_species=top_species,
         verification=verification,
+        count_confirmation=count_confirmation,
         geofence_summary=geofence_summary,
         manifest_mgr=manifest_mgr,
         media_threshold=media_threshold,

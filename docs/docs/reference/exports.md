@@ -9,12 +9,12 @@ What is in the files AddaxAI writes. Most of this page covers the columns in the
 
 One limit to know if your project is large: an Excel sheet holds at most 1,048,576 rows, so a table bigger than that cannot be saved as XLSX. AddaxAI tells you when this happens instead of writing a file Excel cannot open. Pick CSV for those projects, it has no row limit.
 
-AddaxAI exports five tables. Which one you want depends on the question you are asking. A folder run has no [sites, no deployments](../understanding/how-a-project-is-organised.mdx) and no confirmed counts, so two of them are projects only.
+AddaxAI exports five tables. Which one you want depends on the question you are asking. A folder run has no [sites and no deployments](../understanding/how-a-project-is-organised.mdx), so the Deployments table is projects only.
 
 | Table | One row is | Use it for | Available in |
 |---|---|---|---|
 | Summary | one species | a quick overview of what was found and how much | Both |
-| Counts | one species in one event | ecological analysis. Start here | Projects |
+| Counts | one species in one event | ecological analysis. Start here | Both |
 | Detections | one box on one photo | model checking, bounding boxes | Both |
 | Files | one photo or video | one label per file, file lists, finding blanks | Both |
 | Deployments | one camera period | effort, trap nights, locations | Projects |
@@ -163,9 +163,9 @@ One row per camera period. This is your effort table.
 
 ## Folder runs
 
-In the three tables a folder run writes, `deployment_id` is dropped because there is no deployment, and `notes` because nothing ever fills it. The Summary keeps `n_images`, `n_videos` and `n_detections` and drops `n_events` and `n_individuals`: those are ecological interpretation, and a folder run has no Counts table to back them.
+In the four tables a folder run writes, `deployment_id` is dropped because there is no deployment, and `notes` because nothing ever fills it. Everything else is the same as in a project, so `event_id` in the Files and Detections tables points at the rows of the Counts table, and the Summary's `n_individuals` is that table's total. In the Excel workbook the sheets come in the same order as in a project, minus Deployments.
 
-`event_id` stays. Files and detections from the same burst share one, so you can still group by visit. What you cannot do is look the event up, because the counts table is projects only. In a project that column points at a row in counts; in a folder run it is only a grouping key.
+One thing to know about the times: a folder run has no timezone setting, so `event_start`, `max_n_time`, `first_arrival_time` and `datetime` carry a `+00:00` offset. The clock values are the camera's own; only the offset is a placeholder.
 
 ## Recognition file (JSON)
 

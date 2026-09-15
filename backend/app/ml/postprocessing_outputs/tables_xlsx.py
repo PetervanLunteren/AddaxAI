@@ -1,12 +1,12 @@
 """Folder-run tabular XLSX output.
 
-One workbook with three sheets, Summary, Files and Detections — the same
-three tables as the folder-run CSV export, in one file. A folder run is "run
-AI without ecological interpretation", so the projects-mode sheets
-(Deployments, Counts) are intentionally absent. The sheets wrap the
-shared ``export_crud`` builders and are trimmed to the same column set
-as the folder-run CSVs; see ``_table_columns`` for which columns and
-why.
+One workbook with four sheets, Summary, Counts, Detections and Files: the
+same four tables as the folder-run CSV export, in one file, in the order
+the projects workbook uses (``export_crud.build_spreadsheet_sheets``). The
+projects-mode Deployments sheet is absent on purpose: a folder run has no
+sites and no real deployment. The sheets wrap the shared ``export_crud``
+builders and are trimmed to the same column set as the folder-run CSVs;
+see ``_table_columns`` for which columns and why.
 
 Writes ``<target_dir>/addaxai-spreadsheet.xlsx``.
 """
@@ -50,8 +50,8 @@ def write_tables_xlsx(
     project_id: str,
     target_dir: Path,
 ) -> TablesXlsxResult:
-    """Write the three-sheet ``addaxai-spreadsheet.xlsx`` (Summary + Files +
-    Detections)."""
+    """Write the four-sheet ``addaxai-spreadsheet.xlsx`` (Summary, Counts,
+    Detections, Files)."""
     project = db.get(Project, project_id)
     if project is None:
         raise ValueError(f"Project {project_id!r} not found")
@@ -75,15 +75,20 @@ def write_tables_xlsx(
         *export_crud.build_summary_rows(db, project, scoped)
     )
     del scoped
+    counts_headers, counts_rows = folder_run_table(
+        *export_crud.build_observation_rows(db, project)
+    )
     files_headers, files_rows = folder_run_table(
         *export_crud.build_files_rows(db, project)
     )
-    # Summary first: a workbook opens on its first sheet, and this is the
-    # one that answers "what was found" (same rule as the projects export).
+    # The projects workbook's order, minus Deployments: Summary first,
+    # because a workbook opens on its first sheet and this is the one that
+    # answers "what was found"; Counts next, the analysis-ready table.
     sheets = [
         ("Summary", summary_headers, summary_rows),
-        ("Files", files_headers, files_rows),
+        ("Counts", counts_headers, counts_rows),
         ("Detections", det_headers, det_rows),
+        ("Files", files_headers, files_rows),
     ]
 
     total_rows = sum(len(rows) for _title, _headers, rows in sheets)

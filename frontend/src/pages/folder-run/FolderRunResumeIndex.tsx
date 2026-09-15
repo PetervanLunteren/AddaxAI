@@ -21,9 +21,9 @@ export function FolderRunResumeIndex() {
     return null;
   }
   // Guard against an unknown persisted step (the backend maps retired
-  // slugs like counts / summary to labels, but an unexpected value
-  // must never land the user on a dead route).
-  const known = ["setup", "labels", "save"];
+  // slugs like summary to counts, but an unexpected value must never
+  // land the user on a dead route).
+  const known = ["setup", "labels", "counts", "save"];
   const step = known.includes(run.step) ? run.step : "labels";
   return <Navigate to={`/folder-runs/${runId}/${step}`} replace />;
 }

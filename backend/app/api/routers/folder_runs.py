@@ -67,7 +67,7 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/folder-runs", tags=["Folder runs"])
 
 
-FolderRunStep = Literal["setup", "labels", "save"]
+FolderRunStep = Literal["setup", "labels", "counts", "save"]
 
 # No cap on the runs returned: the "keep newest per folder" dedupe has to see
 # every run to know which one is newest, so the endpoint scans the whole set
@@ -77,18 +77,15 @@ FolderRunStep = Literal["setup", "labels", "save"]
 # in the UI where it belongs.
 
 # Forward-compat: map retired step slugs so runs persisted under the old
-# names re-attach without failing FolderRunStep validation. The counts
-# and summary steps were removed (folder run = run AI without
-# ecological interpretation; counts live in projects mode), so runs
-# parked there resume on labels, the step right before save. Older
-# renames ("observations", "model", "overview") chain to the same
-# targets.
+# names re-attach without failing FolderRunStep validation. "observations"
+# was renamed to counts; the summary step (dashboard, slug "overview" and
+# later "summary") was removed for good, so a run parked there resumes on
+# counts, the step right before save. "model" was renamed to setup.
 _LEGACY_STEP_MAP: dict[str, str] = {
     "model": "setup",
-    "observations": "labels",
-    "counts": "labels",
-    "overview": "labels",
-    "summary": "labels",
+    "observations": "counts",
+    "overview": "counts",
+    "summary": "counts",
 }
 
 

@@ -16,7 +16,6 @@
  */
 
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   FILTER_DEBOUNCE_MS,
@@ -39,6 +38,7 @@ import {
 import { useFolderRun } from "./FolderRunLayout";
 import { getSpeciesNameMode } from "../../lib/species-name-mode";
 import { JobProgressModal } from "../../components/folder-run/JobProgressModal";
+import { RunGate } from "../../components/folder-run/RunGate";
 import { SaveOutputsProgress } from "../../components/folder-run/SaveOutputsProgress";
 import { StepHeader } from "../../components/folder-run/StepHeader";
 import {
@@ -48,8 +48,7 @@ import {
 import { useTaskProgress } from "../../hooks/useTaskProgress";
 
 export function FolderRunSaveStep() {
-  const navigate = useNavigate();
-  const { runId, run, isLoading } = useFolderRun();
+  const { runId, run } = useFolderRun();
 
   const form = useSaveOutputsForm({
     runId: runId ?? "",
@@ -149,101 +148,90 @@ export function FolderRunSaveStep() {
     staleTime: 30_000,
   });
 
-  if (!runId) {
-    navigate("/folder-runs/new", { replace: true });
-    return null;
-  }
-
-  if (isLoading || !run) {
-    return (
-      <Card>
-        <CardContent className="py-12 text-center text-sm text-muted-foreground">
-          Loading run...
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
-    <>
-      <StepHeader
-        title="Save outputs"
-        caption="Pick what to write to disk and where to save it."
-      />
-      {/* pb-6 puts the same 24px between the last card and the sticky bar
-          as the cards keep between each other. Without it the bar sat flush
-          against the media card; the Labels step's pb-24 read as a hole
-          here, because this page is a stack of cards and that one is a
-          full-height grid. */}
-      <div className="grid gap-6 pb-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
-      <div className="space-y-6">
-        <OutputFolderField form={form} />
+    <RunGate>
+      {(run, runId) => (
+        <>
+          <StepHeader
+            title="Save outputs"
+            caption="Pick what to write to disk and where to save it."
+          />
+          {/* pb-6 puts the same 24px between the last card and the sticky bar
+              as the cards keep between each other. Without it the bar sat flush
+              against the media card; the Labels step's pb-24 read as a hole
+              here, because this page is a stack of cards and that one is a
+              full-height grid. */}
+          <div className="grid gap-6 pb-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+          <div className="space-y-6">
+            <OutputFolderField form={form} />
 
-        {/* Data exports: lightweight, non-destructive, on by default. */}
-        <GroupCard
-          title="Export results"
-          caption="Data tables and the recognition file. Your media is untouched."
-          enabled={form.exportOpts.enabled}
-          onEnabledChange={(v) =>
-            form.setExportOpts({ ...form.exportOpts, enabled: v })
-          }
-        >
-          <ExportBody form={form} />
-        </GroupCard>
+            {/* Data exports: lightweight, non-destructive, on by default. */}
+            <GroupCard
+              title="Export results"
+              caption="Data tables and the recognition file. Your media is untouched."
+              enabled={form.exportOpts.enabled}
+              onEnabledChange={(v) =>
+                form.setExportOpts({ ...form.exportOpts, enabled: v })
+              }
+            >
+              <ExportBody form={form} />
+            </GroupCard>
 
-        {/* Media copies: one feature with folder structure + render
-            options. Off by default (opt-in), so the common run is just
-            data exports. */}
-        <GroupCard
-          title="Save copies of your media"
-          caption="Your images and videos sorted into folders. Copies only, your originals stay where they are."
-          enabled={form.separate.enabled}
-          onEnabledChange={(v) =>
-            form.setSeparate({ ...form.separate, enabled: v })
-          }
-        >
-          <MediaBody form={form} />
-        </GroupCard>
-      </div>
+            {/* Media copies: one feature with folder structure + render
+                options. Off by default (opt-in), so the common run is just
+                data exports. */}
+            <GroupCard
+              title="Save copies of your media"
+              caption="Your images and videos sorted into folders. Copies only, your originals stay where they are."
+              enabled={form.separate.enabled}
+              onEnabledChange={(v) =>
+                form.setSeparate({ ...form.separate, enabled: v })
+              }
+            >
+              <MediaBody form={form} />
+            </GroupCard>
+          </div>
 
-      <OutputPreviewPanel
-        form={form}
-        preview={preview}
-        runName={run.project.name}
-        isLoading={previewLoading}
-      />
+          <OutputPreviewPanel
+            form={form}
+            preview={preview}
+            runName={run.project.name}
+            isLoading={previewLoading}
+          />
 
-      <JobProgressModal
-        open={!!form.jobId}
-        title="Saving outputs"
-        isCancelling={isCancelling}
-        onCancel={() => {
-          setIsCancelling(true);
-          progress.cancel();
-        }}
-      >
-        <SaveOutputsProgress
-          modules={modules}
-          currentModule={currentModule}
-          moduleIndex={moduleIndex}
-          totalModules={totalModules}
-          message={progress.message}
-          phaseProgress={progress.phaseProgress}
-        />
-      </JobProgressModal>
+          <JobProgressModal
+            open={!!form.jobId}
+            title="Saving outputs"
+            isCancelling={isCancelling}
+            onCancel={() => {
+              setIsCancelling(true);
+              progress.cancel();
+            }}
+          >
+            <SaveOutputsProgress
+              modules={modules}
+              currentModule={currentModule}
+              moduleIndex={moduleIndex}
+              totalModules={totalModules}
+              message={progress.message}
+              phaseProgress={progress.phaseProgress}
+            />
+          </JobProgressModal>
 
-      <CompletionDialog
-        runId={runId}
-        runName={run.project.name}
-        form={form}
-      />
-      </div>
+          <CompletionDialog
+            runId={runId}
+            runName={run.project.name}
+            form={form}
+          />
+          </div>
 
-      {/* Outside the grid on purpose: the bar bleeds to the page edges, so
-          it has to sit at the step root rather than inside the options
-          column, where the bleed would align to the column instead. */}
-      <BackSaveBar runId={runId} form={form} />
-    </>
+          {/* Outside the grid on purpose: the bar bleeds to the page edges, so
+              it has to sit at the step root rather than inside the options
+              column, where the bleed would align to the column instead. */}
+          <BackSaveBar runId={runId} form={form} />
+        </>
+      )}
+    </RunGate>
   );
 }
 

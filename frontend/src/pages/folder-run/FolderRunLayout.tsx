@@ -1,7 +1,7 @@
 /**
  * Folder-run stepper layout.
  *
- * Shared chrome for all five folder-run steps: breadcrumbs, header,
+ * Shared chrome for all four folder-run steps: breadcrumbs, header,
  * step progress, and the Outlet that renders the current step. Lives
  * on two URL shapes:
  *
@@ -56,6 +56,7 @@ export function useFolderRun(): FolderRunContextValue {
  * (/folder-runs/new) renders the merged Setup page. */
 function stepFromPath(pathname: string): FolderRunStep {
   if (pathname.endsWith("/labels")) return "labels";
+  if (pathname.endsWith("/counts")) return "counts";
   if (pathname.endsWith("/save")) return "save";
   return "setup";
 }
@@ -89,13 +90,14 @@ export function FolderRunLayout() {
   // verify grid / dashboard / save preview, which sit at this same 7xl
   // width in research-projects mode too. The Setup form keeps its two
   // equal-column rows here as well, just at the wider width.
-  // Wide mode (Labels toolbar toggle) un-caps just the Edit/Labels step
-  // to the full window width. Owned here, above the step, so un-capping
-  // is a plain max-width change: no transform/full-bleed, which would
-  // break the step's fixed/sticky bars (verify, relabel, prev/next).
+  // Wide mode (the toolbar toggle of the Labels and Counts steps) un-caps
+  // that step to the full window width. Owned here, above the step, so
+  // un-capping is a plain max-width change: no transform/full-bleed, which
+  // would break the step's fixed/sticky bars (verify, relabel, prev/next).
   const wideMode = useWideMode();
+  const isReviewStep = currentStep === "labels" || currentStep === "counts";
   const mainMaxWidth =
-    currentStep === "labels" && wideMode.wide ? "max-w-none" : "max-w-7xl";
+    isReviewStep && wideMode.wide ? "max-w-none" : "max-w-7xl";
 
   return (
     <FolderRunContext.Provider value={{ runId, run, isLoading }}>

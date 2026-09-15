@@ -9,8 +9,11 @@
  *
  * - Research projects: wrapped by `pages/CountsPage.tsx`, which adds the
  *   page chrome (header "Counts").
+ * - Folder runs: wrapped by `pages/folder-run/FolderRunCountsStep`, which
+ *   mounts it inside the stepper with a sticky Back / Continue bar.
  *
- * Filter URL state lives in `useSearchParams`, path-agnostic.
+ * Filter URL state lives in `useSearchParams`, path-agnostic so the same
+ * wiring works on `/projects/<id>/counts` and the folder-run step.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

@@ -106,9 +106,13 @@ export const shots: Record<string, Shot> = {
     src: "/img/folder-run-2-labels.webp",
     alt: "Analyse a folder, step 2: check the labels the AI gave",
   },
-  folderRun3Save: {
-    src: "/img/folder-run-3-save.webp",
-    alt: "Analyse a folder, step 3: choose what to save",
+  folderRun3Counts: {
+    src: "/img/folder-run-3-counts.webp",
+    alt: "Analyse a folder, step 3: check the AI's counts",
+  },
+  folderRun4Save: {
+    src: "/img/folder-run-4-save.webp",
+    alt: "Analyse a folder, step 4: choose what to save",
   },
   folderRunSaved: {
     src: "/img/folder-run-saved.webp",

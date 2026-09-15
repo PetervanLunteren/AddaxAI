@@ -5,7 +5,7 @@
  * highlighted, completed steps render with a check mark, upcoming
  * steps are muted.
  *
- * Step ordering is fixed: setup → labels → save.
+ * Step ordering is fixed: setup → labels → counts → save.
  * "Completed" means a step preceding the current one.
  *
  * Direct navigation: before the analysis has run, only the current
@@ -13,7 +13,8 @@
  * unfilled requirements (no models picked, no analysis run) lands the
  * user on a page that can't function. Once analysis has completed
  * (``furthest`` past "setup"), every step functions, so the whole row
- * unlocks and the user can hop freely between Setup, Labels, and Save.
+ * unlocks and the user can hop freely between Setup, Labels, Counts and
+ * Save.
  * When ``furthest`` isn't known yet (e.g. the brand-new-run path before
  * a run id exists) only the current step is interactive.
  */
@@ -31,6 +32,7 @@ interface Step {
 const STEPS: Step[] = [
   { id: "setup", label: "Setup" },
   { id: "labels", label: "Labels" },
+  { id: "counts", label: "Counts" },
   { id: "save", label: "Save" },
 ];
 
@@ -69,7 +71,7 @@ export function StepProgress({
     ? STEPS.length - 1
     : Math.max(currentIndex, furthestIndex);
 
-  // Capped and centered rather than full-width. With only three short
+  // Capped and centered rather than full-width. With only four short
   // steps a full-width row (the max-w-7xl band) stretches the connectors
   // to ~500px each and pins the chips to the far edges, which reads as
   // empty space, not progress. 36rem keeps the chips grouped so the row

@@ -2,9 +2,9 @@
 
 ``tables_csv`` and ``tables_xlsx`` build their rows with the same
 ``export_crud`` builders that back the projects Export page, so the two
-modes stay column-identical by default. A folder run has no sites, one
-synthetic deployment, and no counts table, which leaves two of those
-columns carrying nothing. This module trims them.
+modes stay column-identical by default. A folder run has no sites and one
+synthetic deployment, which leaves two of those columns carrying nothing.
+This module trims them.
 
 The trimming lives here, on the folder-run side, rather than in the
 shared builders. Projects-mode exports therefore cannot regress by
@@ -13,21 +13,17 @@ construction: nothing in this file is reachable from them.
 ``deployment_id`` is dropped. A folder run creates exactly one queue
 entry, which becomes exactly one synthetic deployment (``rerun`` reuses
 it), so the column is the same UUID on every row and points at a table
-the run never exports.
+the run never exports. That holds for the counts table too.
 
 ``notes`` is dropped. ``File.notes`` is writable over the API but no UI
 ever sets it, so the column is always empty.
 
-``n_events`` and ``n_individuals`` are dropped from the summary. Both are
-ecological interpretation, which is what projects mode exists for: the
-individuals column is the Counts table total, and a folder run has no
-Counts table; the events column would be a headline "independent events"
-figure computed from an interval almost no folder-run user sets. What is
-left, images, videos and boxes per species, is what the AI directly
-produced.
+Everything else stays, the Summary's ``n_events`` and ``n_individuals``
+included: a folder run writes the Counts table since its Counts step came
+back (2026-09), so both columns count rows the user can open and check.
 
-``event_id`` is kept: it is the only column that says which files belong
-to the same burst. A key a user can group on is not a figure.
+``event_id`` is kept: it says which files belong to the same burst, and
+it points at the rows of the counts table.
 """
 
 from __future__ import annotations
@@ -35,9 +31,7 @@ from __future__ import annotations
 from typing import Any
 
 # Columns the shared builders emit that say nothing in a folder run.
-OMITTED_COLUMNS = frozenset(
-    {"deployment_id", "notes", "n_events", "n_individuals"}
-)
+OMITTED_COLUMNS = frozenset({"deployment_id", "notes"})
 
 
 def folder_run_table(

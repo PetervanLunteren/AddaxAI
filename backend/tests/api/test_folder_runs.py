@@ -364,15 +364,16 @@ def test_patch_step_persists_and_round_trips(client):
     ).json()
     run_id = created["project"]["id"]
 
-    resp = client.patch(
-        f"/api/folder-runs/{run_id}/step",
-        json={"step": "setup"},
-    )
-    assert resp.status_code == 200
-    assert resp.json()["step"] == "setup"
+    for step in ("setup", "counts"):
+        resp = client.patch(
+            f"/api/folder-runs/{run_id}/step",
+            json={"step": step},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["step"] == step
 
     follow_up = client.get(f"/api/folder-runs/{run_id}").json()
-    assert follow_up["step"] == "setup"
+    assert follow_up["step"] == "counts"
     # The other state keys (source_folder) survive the step update.
     assert (
         follow_up["project"]["folder_run_state"]["source_folder"]
@@ -1003,12 +1004,12 @@ def test_create_sets_counting_threshold_to_counting_default(client):
     assert body["project"]["counting_threshold"] == DEFAULT_COUNTING_THRESHOLD
 
 
-def test_legacy_counts_and_summary_steps_resume_on_labels(client, db):
-    """Runs persisted at the retired counts / summary steps resume on
-    labels: the step right before save in the 3-step flow."""
+def test_legacy_steps_resume_on_counts(client, db):
+    """Runs persisted under the old counts slug, or at the retired summary
+    step, resume on counts: the step right before save."""
     from app.models import Project
 
-    for legacy in ("counts", "summary", "observations", "overview"):
+    for legacy in ("summary", "observations", "overview"):
         resp = client.post(
             "/api/folder-runs",
             json={"source_folder": f"/tmp/legacy-{legacy}"},
@@ -1022,7 +1023,7 @@ def test_legacy_counts_and_summary_steps_resume_on_labels(client, db):
         db.commit()
 
         follow_up = client.get(f"/api/folder-runs/{run_id}")
-        assert follow_up.json()["step"] == "labels", legacy
+        assert follow_up.json()["step"] == "counts", legacy
 
 
 # ----------------------------------------------------------------------

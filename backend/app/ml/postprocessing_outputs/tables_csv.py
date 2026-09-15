@@ -1,22 +1,22 @@
 """Folder-run tabular CSV outputs.
 
-A folder run is "run AI without ecological interpretation", so its data
-export is exactly three tables: a per-species summary (what was found
-and how much of it), a per-file files table (the complete media list,
-including empties) and a per-detection detections table. The
-interpretation tables (deployments with location / effort, and the
-event-level counts) live in projects mode only — a folder run has no
-sites, no real deployment, and no confirmed counts.
+A folder run writes four tables: a per-species summary (what was found
+and how much of it), a per-event counts table (one row per species per
+event, with the count the user confirmed on the Counts step or else the
+AI's MaxN), a per-file files table (the complete media list, including
+empties) and a per-detection detections table. The deployments table
+(location and effort) lives in projects mode only: a folder run has no
+sites and no real deployment.
 
-All three wrap the shared ``export_crud`` builders, so a column added
+All four wrap the shared ``export_crud`` builders, so a column added
 there shows up in projects-mode exports and here automatically. The
 columns that say nothing in a folder run are then trimmed by
 ``_table_columns.folder_run_table``; see that module for which and why.
 
-Writes ``addaxai-summary.csv``, ``addaxai-files.csv`` and
-``addaxai-detections.csv`` under ``target_dir`` (the user's output dir,
-which defaults to the source folder — the prefix keeps the run's files
-grouped between the user's own).
+Writes ``addaxai-summary.csv``, ``addaxai-counts.csv``,
+``addaxai-files.csv`` and ``addaxai-detections.csv`` under ``target_dir``
+(the user's output dir, which defaults to the source folder; the prefix
+keeps the run's files grouped between the user's own).
 """
 
 from __future__ import annotations
@@ -35,13 +35,14 @@ from app.models import Project
 logger = get_logger(__name__)
 
 SUMMARY_FILENAME = "addaxai-summary.csv"
+COUNTS_FILENAME = "addaxai-counts.csv"
 FILES_FILENAME = "addaxai-files.csv"
 DETECTIONS_FILENAME = "addaxai-detections.csv"
 
 
 @dataclass
 class TablesCsvResult:
-    """Summary of the CSV writes (all three tables)."""
+    """Summary of the CSV writes (all four tables)."""
 
     output_paths: list[str] = field(default_factory=list)
     row_count: int = 0
@@ -60,8 +61,8 @@ def write_tables_csv(
     project_id: str,
     target_dir: Path,
 ) -> TablesCsvResult:
-    """Write ``addaxai-summary.csv``, ``addaxai-files.csv`` and
-    ``addaxai-detections.csv``.
+    """Write ``addaxai-summary.csv``, ``addaxai-counts.csv``,
+    ``addaxai-files.csv`` and ``addaxai-detections.csv``.
 
     The data exports are the complete record of the run (no per-call
     species exclusion), so all tables derive from the same project
@@ -101,6 +102,16 @@ def write_tables_csv(
     with open(summary_path, "wb") as f:
         f.write(export_formats.serialize_csv(summary_headers, summary_rows))
 
+    # One row per species per event, the count a person confirmed on the
+    # Counts step or else the AI's MaxN. A handful of rows next to the two
+    # big tables, so it does not move the memory peak described above.
+    counts_headers, counts_rows = folder_run_table(
+        *export_crud.build_observation_rows(db, project)
+    )
+    counts_path = target_dir / COUNTS_FILENAME
+    with open(counts_path, "wb") as f:
+        f.write(export_formats.serialize_csv(counts_headers, counts_rows))
+
     # Same scope as the detections table above, so the two agree: a file
     # whose species columns are empty has no rows in addaxai-detections.csv
     # either. Its own fetch, because the detections row set was released
@@ -114,14 +125,21 @@ def write_tables_csv(
 
     logger.info(
         f"tables_csv: project={project_id} summary={len(summary_rows)} "
-        f"files={len(files_rows)} detections={detection_count}"
+        f"counts={len(counts_rows)} files={len(files_rows)} "
+        f"detections={detection_count}"
     )
 
     return TablesCsvResult(
         output_paths=[
             str(summary_path),
+            str(counts_path),
             str(files_path),
             str(detections_path),
         ],
-        row_count=len(summary_rows) + len(files_rows) + detection_count,
+        row_count=(
+            len(summary_rows)
+            + len(counts_rows)
+            + len(files_rows)
+            + detection_count
+        ),
     )

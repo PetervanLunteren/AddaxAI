@@ -1,9 +1,9 @@
 """Tests for the tables_csv postprocess output module.
 
 The row schemas live in the ``export_crud`` builders and have their own
-coverage there. Here we pin that this wrapper writes all three files
-(``addaxai-summary.csv`` + ``addaxai-files.csv`` +
-``addaxai-detections.csv``) at the right paths, that it trims to the
+coverage there. Here we pin that this wrapper writes all four files
+(``addaxai-summary.csv`` + ``addaxai-counts.csv`` + ``addaxai-files.csv``
++ ``addaxai-detections.csv``) at the right paths, that it trims to the
 folder-run column set, and that ``relative_path`` on the files and
 detections tables is the file's path under its deployment's source folder.
 """
@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from app.ml.postprocessing_outputs.tables_csv import (
+    COUNTS_FILENAME,
     DETECTIONS_FILENAME,
     FILES_FILENAME,
     SUMMARY_FILENAME,
@@ -23,6 +24,7 @@ from app.ml.postprocessing_outputs.tables_csv import (
 from tests.conftest import (
     make_deployment,
     make_detection,
+    make_event_with_files,
     make_file,
     make_project,
 )
@@ -35,7 +37,7 @@ def _write_placeholder(path: Path) -> str:
 
 
 
-def test_writes_all_three_files_at_canonical_paths(db, tmp_path):
+def test_writes_all_four_files_at_canonical_paths(db, tmp_path):
     project = make_project(db, name="csv-basic")
     dep = make_deployment(db, project_id=project.id)
     file = make_file(
@@ -59,26 +61,61 @@ def test_writes_all_three_files_at_canonical_paths(db, tmp_path):
     target = tmp_path / "out"
     result = write_tables_csv(db, project.id, target)
 
-    # Summary + files + detections only: a folder run has no deployments
-    # or counts tables (ecological interpretation lives in projects mode).
+    # Summary + counts + files + detections: a folder run has no
+    # deployments table (no sites, one synthetic deployment).
     assert (target / SUMMARY_FILENAME).is_file()
+    assert (target / COUNTS_FILENAME).is_file()
     assert (target / FILES_FILENAME).is_file()
     assert (target / DETECTIONS_FILENAME).is_file()
     assert (target / DETECTIONS_FILENAME).stat().st_size > 0
-    assert len(result.output_paths) == 3
+    assert len(result.output_paths) == 4
     assert not (target / "addaxai-deployments.csv").exists()
-    assert not (target / "addaxai-counts.csv").exists()
 
     with open(target / SUMMARY_FILENAME, newline="") as f:
         summary = list(csv.DictReader(f))
     assert [r["classification_label"] for r in summary] == ["dog"]
     assert summary[0]["n_images"] == "1"
     assert summary[0]["n_detections"] == "1"
-    # No ecological interpretation in a folder run: no events figure and
-    # no Counts total. Photos, videos and boxes per species only.
-    assert "n_events" not in summary[0]
-    assert "n_individuals" not in summary[0]
-    assert set(summary[0]) >= {"n_images", "n_videos", "n_detections"}
+    # The two count columns stay: they are read off the Counts table the
+    # run writes beside this one.
+    assert set(summary[0]) >= {
+        "n_images", "n_videos", "n_detections", "n_events", "n_individuals",
+    }
+
+
+def test_counts_table_has_one_row_per_observation_without_deployment_id(
+    db, tmp_path
+):
+    """The Counts table carries the number a person confirmed on the Counts
+    step (else the AI's MaxN), one row per species per event, trimmed like
+    the other tables."""
+    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.models import EventObservation
+
+    project = make_project(db, name="csv-counts")
+    dep = make_deployment(db, project_id=project.id)
+    ev = make_event_with_files(
+        db,
+        deployment_id=dep.id,
+        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+    )
+    make_detection(db, file_id=ev.files[0].id, confidence=0.9, label="deer")
+    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    db.flush()
+    obs = db.query(EventObservation).filter_by(event_id=ev.id).one()
+    obs.human_count = 3
+    db.commit()
+
+    target = tmp_path / "out"
+    write_tables_csv(db, project.id, target)
+
+    with open(target / COUNTS_FILENAME, newline="") as f:
+        counts = list(csv.DictReader(f))
+    assert len(counts) == 1
+    assert counts[0]["event_id"] == ev.id
+    assert counts[0]["classification_label"] == "deer"
+    assert counts[0]["count"] == "3"
+    assert "deployment_id" not in counts[0]
 
 
 def test_folder_run_headers_omit_deployment_id_and_notes(db, tmp_path):

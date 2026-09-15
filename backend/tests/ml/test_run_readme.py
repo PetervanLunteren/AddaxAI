@@ -142,6 +142,35 @@ def test_readme_top_species_matches_the_summary_table(db, tmp_path):
     assert deer_line.split()[-1] == "1"
 
 
+def test_readme_reports_counts_confirmed_beside_files_verified(db, tmp_path):
+    """The two halves of the review work, in the same shape: one confirmed
+    event out of two, no files verified."""
+    from datetime import datetime
+
+    from tests.conftest import make_event_with_files
+
+    project = make_project(db, name="readme-counts")
+    dep = make_deployment(db, project_id=project.id)
+    confirmed = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 15, 9, 0, 0)
+    )
+    confirmed.confirmed = True
+    make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 16, 9, 0, 0)
+    )
+    db.commit()
+
+    target = tmp_path / "out"
+    write_run_readme(db, project.id, target, media_threshold=0.5)
+    text = (target / SUMMARY_FILENAME).read_text("utf-8")
+
+    lines = text.splitlines()
+    verified_line = next(line for line in lines if "Files verified" in line)
+    assert verified_line.rstrip().endswith("0 / 2 (0.0%)")
+    confirmed_line = next(line for line in lines if "Counts confirmed" in line)
+    assert confirmed_line.rstrip().endswith("1 / 2 (50.0%)")
+
+
 def test_readme_lists_top_species(db, tmp_path):
     project = make_project(
         db, name="readme-species", counting_threshold=0.5

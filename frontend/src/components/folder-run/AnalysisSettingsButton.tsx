@@ -61,9 +61,10 @@ import {
   SheetTitle,
 } from "../ui/sheet";
 
-// Refining a folder run is label triage, so the summary shows only the
-// Labels diff. Counts are a Counts-step concern and stay in projects mode.
-const FOLDER_RUN_METRICS: SaveMetric[] = ["labels"];
+// The same two cards as the project Settings page: the Labels diff and the
+// Counts diff. A folder run has both review steps, and an interval change
+// only shows up in the Counts card.
+const FOLDER_RUN_METRICS: SaveMetric[] = ["labels", "counts"];
 
 /** The slideout's own form state: the shared retroactive rows plus the
  *  counting threshold, which has no row in ``AnalysisSettingsRows``

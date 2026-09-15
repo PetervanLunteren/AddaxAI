@@ -1,10 +1,11 @@
 /**
  * Labels step (slug `labels`, optional).
  *
- * Per-detection label cleanup via the crop grid. The review-vs-skip
- * choice now lives on the completion modal (see FolderRunModelStep), so
- * this step is just the grid: you land here only if you chose to review.
- * Back returns to setup; Continue PATCHes `step=save` and navigates on.
+ * The first of the two review steps: per-detection label cleanup via the
+ * crop grid. The review-vs-skip choice lives on the completion modal (see
+ * FolderRunModelStep), so this step is just the grid: you land here only
+ * if you chose to review. Back returns to setup; Continue PATCHes
+ * `step=counts` and navigates on to the Counts step.
  */
 
 import { useState } from "react";
@@ -13,8 +14,8 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 
 import { Button } from "../../components/ui/button";
-import { Card, CardContent } from "../../components/ui/card";
 import { AnalysisSettingsButton } from "../../components/folder-run/AnalysisSettingsButton";
+import { RunGate } from "../../components/folder-run/RunGate";
 import { StepActionBar } from "../../components/folder-run/StepActionBar";
 import { StepHeader } from "../../components/folder-run/StepHeader";
 import { LabelsView } from "../../components/verify/LabelsView";
@@ -24,7 +25,7 @@ import { useFolderRun } from "./FolderRunLayout";
 export function FolderRunLabelsStep() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { runId, run, isLoading } = useFolderRun();
+  const { runId } = useFolderRun();
   // Bumped when the analysis panel finishes an apply-and-reprocess, so
   // the grid re-runs its sort onto the new labels (it renders from a
   // mutation, which query invalidation cannot refresh).
@@ -36,78 +37,67 @@ export function FolderRunLabelsStep() {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const advance = useMutation({
-    mutationFn: () => folderRunsApi.updateStep(runId!, "save"),
+    mutationFn: () => folderRunsApi.updateStep(runId!, "counts"),
     onSuccess: (next) => {
       queryClient.setQueryData(["folder-run", runId], next);
-      navigate(`/folder-runs/${runId}/save`);
+      navigate(`/folder-runs/${runId}/counts`);
     },
   });
 
-  if (!runId) {
-    navigate("/folder-runs/new", { replace: true });
-    return null;
-  }
-
-  if (isLoading || !run) {
-    return (
-      <Card>
-        <CardContent className="py-12 text-center text-sm text-muted-foreground">
-          Loading run...
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // The grid. Back returns to setup; Continue advances to Save.
+  // The grid. Back returns to setup; Continue advances to Counts.
   return (
-    <div className="space-y-6 pb-24">
-      <StepHeader
-        title="Check labels"
-        caption="This step is optional. Fix any labels the AI got wrong, or go straight to saving."
-      />
-      <LabelsView
-        projectId={runId}
-        onSelectionChange={setSelectionCount}
-        // No explicit default floor: like projects mode, the grid rests
-        // at the project's counting_threshold (the backend applies it as
-        // the threshold-or-verified floor), so the grid, counts, and
-        // verification pill all measure the same population.
-        refreshSignal={reprocessNonce}
-        // The Files tab note names the threshold and offers to open it.
-        // Here that is the Refine results slideout, so this step holds
-        // its open state and hands the grid a way in.
-        onEditThreshold={() => setSettingsOpen(true)}
-        toolbarExtra={
-          <AnalysisSettingsButton
-            runId={runId}
-            project={run.project}
-            onApplied={() => setReprocessNonce((n) => n + 1)}
-            open={settingsOpen}
-            onOpenChange={setSettingsOpen}
+    <RunGate>
+      {(run, runId) => (
+        <div className="space-y-6 pb-24">
+          <StepHeader
+            title="Check labels"
+            caption="This step is optional. Fix any labels the AI got wrong, or continue to the counts."
           />
-        }
-      />
-      {selectionCount === 0 && (
-        <StepActionBar>
-          <Button
-            variant="outline"
-            onClick={() => navigate(`/folder-runs/${runId}/setup`)}
-            className="gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Button>
-          <Button
-            onClick={() => advance.mutate()}
-            disabled={advance.isPending}
-            size="lg"
-            className="gap-2"
-          >
-            Continue
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        </StepActionBar>
+          <LabelsView
+            projectId={runId}
+            onSelectionChange={setSelectionCount}
+            // No explicit default floor: like projects mode, the grid rests
+            // at the project's counting_threshold (the backend applies it as
+            // the threshold-or-verified floor), so the grid, counts, and
+            // verification pill all measure the same population.
+            refreshSignal={reprocessNonce}
+            // The Files tab note names the threshold and offers to open it.
+            // Here that is the Refine results slideout, so this step holds
+            // its open state and hands the grid a way in.
+            onEditThreshold={() => setSettingsOpen(true)}
+            toolbarExtra={
+              <AnalysisSettingsButton
+                runId={runId}
+                project={run.project}
+                onApplied={() => setReprocessNonce((n) => n + 1)}
+                open={settingsOpen}
+                onOpenChange={setSettingsOpen}
+              />
+            }
+          />
+          {selectionCount === 0 && (
+            <StepActionBar>
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/folder-runs/${runId}/setup`)}
+                className="gap-2"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </Button>
+              <Button
+                onClick={() => advance.mutate()}
+                disabled={advance.isPending}
+                size="lg"
+                className="gap-2"
+              >
+                Continue
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </StepActionBar>
+          )}
+        </div>
       )}
-    </div>
+    </RunGate>
   );
 }

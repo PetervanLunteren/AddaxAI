@@ -1,8 +1,8 @@
 """Tests for the tables_xlsx postprocess output module.
 
 The row schemas are covered by the export-layer tests; this wrapper just
-makes sure one workbook with the Summary, Files and Detections sheets lands
-at the right path, trimmed to the folder-run column set.
+makes sure one workbook with the Summary, Counts, Detections and Files
+sheets lands at the right path, trimmed to the folder-run column set.
 """
 
 from pathlib import Path
@@ -31,7 +31,7 @@ def _write_placeholder(path: Path) -> str:
 
 
 
-def test_writes_three_sheet_workbook(db, tmp_path):
+def test_writes_four_sheet_workbook(db, tmp_path):
     from openpyxl import load_workbook
 
     project = make_project(db, name="xlsx-basic")
@@ -64,24 +64,27 @@ def test_writes_three_sheet_workbook(db, tmp_path):
         assert f.read(4) == _XLSX_MAGIC
 
     wb = load_workbook(output_path)
-    # Summary first: the workbook opens on the sheet that says what was found.
-    assert wb.sheetnames == ["Summary", "Files", "Detections"]
+    # The projects workbook's order minus Deployments: Summary first, the
+    # sheet that says what was found, then the analysis-ready Counts.
+    assert wb.sheetnames == ["Summary", "Counts", "Detections", "Files"]
 
     # Same trimmed column set as the folder-run CSVs.
-    for sheet in ("Files", "Detections"):
+    for sheet in ("Counts", "Files", "Detections"):
         headers = [c.value for c in wb[sheet][1]]
         assert "deployment_id" not in headers
         assert "notes" not in headers
-        assert "file_id" in headers
         assert "event_id" in headers
+    for sheet in ("Files", "Detections"):
+        headers = [c.value for c in wb[sheet][1]]
+        assert "file_id" in headers
 
     summary = list(wb["Summary"].values)
     headers, row = list(summary[0]), list(summary[1])
     assert row[headers.index("classification_label")] == "dog"
     assert row[headers.index("n_images")] == 1
     assert row[headers.index("n_detections")] == 1
-    assert "n_events" not in headers
-    assert "n_individuals" not in headers
+    assert "n_events" in headers
+    assert "n_individuals" in headers
 
 
 def test_files_sheet_keeps_the_species_columns(db, tmp_path):

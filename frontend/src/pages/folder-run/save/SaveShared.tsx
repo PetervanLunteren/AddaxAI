@@ -368,7 +368,7 @@ export function ExportBody({
         checked={exportOpts.spreadsheet}
         onChange={(v) => setExportOpts({ ...exportOpts, spreadsheet: v })}
         label="Spreadsheet"
-        caption="Tables for the species summary, files and detections"
+        caption="Tables for the species summary, counts, detections and files"
       />
       {exportOpts.spreadsheet && (
         <ChildRows>
@@ -538,9 +538,9 @@ export function CompletionDialog({
           {/* Same shape as the projects-mode completion modal: the steps
               that take you somewhere are rows, and "start over" stays in
               the footer. "Turn into a project" is the bridge to projects
-              mode; a folder run deliberately does no ecological
-              interpretation, and this is the one place we point at where
-              that lives. */}
+              mode, for whoever wants to keep working on this folder: sites
+              and effort, dashboards and maps, and a workspace to come back
+              to. */}
           <div className="space-y-2 pt-1">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               What next?
@@ -554,7 +554,7 @@ export function CompletionDialog({
             <NextStepRow
               icon={Sparkles}
               title="Turn into a project"
-              description="Get species counts, dashboards, and maps for this folder."
+              description="Keep working on this folder in a project: add where the camera was, get dashboards, maps and trap-night rates, and come back to it later."
               onClick={() => setPromoteOpen(true)}
             />
           </div>
@@ -648,7 +648,7 @@ export function BackSaveBar({
     <StepActionBar>
       <Button
         variant="outline"
-        onClick={() => navigate(`/folder-runs/${runId}/labels`)}
+        onClick={() => navigate(`/folder-runs/${runId}/counts`)}
         className="gap-2"
       >
         <ArrowLeft className="h-4 w-4" />

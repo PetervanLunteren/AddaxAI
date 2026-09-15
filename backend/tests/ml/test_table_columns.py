@@ -23,9 +23,19 @@ def test_drops_deployment_id_and_notes():
 
 
 def test_omitted_columns_is_the_documented_set():
-    assert OMITTED_COLUMNS == {
-        "deployment_id", "notes", "n_events", "n_individuals",
-    }
+    assert OMITTED_COLUMNS == {"deployment_id", "notes"}
+
+
+def test_keeps_n_events_and_n_individuals():
+    """The Summary's two count columns stay: a folder run writes the Counts
+    table they are read off since its Counts step came back."""
+    headers = ["classification_label", "n_detections", "n_events", "n_individuals"]
+    rows = [["deer", 4, 2, 3]]
+
+    out_headers, out_rows = folder_run_table(headers, rows)
+
+    assert out_headers == headers
+    assert out_rows == rows
 
 
 def test_keeps_event_id():

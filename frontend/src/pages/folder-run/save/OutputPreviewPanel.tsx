@@ -184,6 +184,7 @@ function buildTree({
     if (exportOpts.spreadsheet) {
       if (exportOpts.format === "csv") {
         files.push({ name: "addaxai-summary.csv" });
+        files.push({ name: "addaxai-counts.csv" });
         files.push({ name: "addaxai-files.csv" });
         files.push({ name: "addaxai-detections.csv" });
       } else {
