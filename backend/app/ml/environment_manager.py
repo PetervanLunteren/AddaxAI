@@ -719,22 +719,17 @@ class EnvironmentManager:
             # handler can always read it.)
 
             # Clean up any existing temp directory from previous failed attempts
-            if temp_env_path.exists():
-                logger.warning(f"Removing stale temporary environment at {temp_env_path}")
-                try:
-                    self._safe_rmtree(temp_env_path)
-                except Exception as e:
-                    logger.error(f"Failed to remove stale temp directory: {e}")
-                    # On Windows a killed run can leave the temp dir locked
-                    # (open handle, antivirus scan). Building into a leftover
-                    # half-env is exactly what made a retry stall early, so
-                    # don't reuse it: fall back to a fresh unique temp path.
-                    temp_env_path = (
-                        env_path.parent / f".{env_name}.tmp-{uuid.uuid4().hex[:8]}"
-                    )
-                    logger.warning(
-                        f"Building into a fresh temp path instead: {temp_env_path}"
-                    )
+            if not self._discard_temp_env(temp_env_path, "stale"):
+                # On Windows a killed run can leave the temp dir locked
+                # (open handle, antivirus scan). Building into a leftover
+                # half-env is exactly what made a retry stall early, so
+                # don't reuse it: fall back to a fresh unique temp path.
+                temp_env_path = (
+                    env_path.parent / f".{env_name}.tmp-{uuid.uuid4().hex[:8]}"
+                )
+                logger.warning(
+                    f"Building into a fresh temp path instead: {temp_env_path}"
+                )
 
             # micromamba materialises temp files next to the spec file
             # (pip requirement fragments), so the yaml's directory must be
@@ -899,19 +894,17 @@ class EnvironmentManager:
             # so the user sees "cancelled", not a scary error. Clean the
             # half-built temp env either way.
             if job_id is not None and is_cancel_requested(job_id):
-                if temp_env_path.exists():
-                    self._safe_rmtree(temp_env_path)
+                self._discard_temp_env(temp_env_path, "cancelled")
                 logger.info(f"Environment build for {env_name} cancelled")
                 raise JobCancelledError()
 
             if result.returncode != 0:
-                # Clean up failed temp environment
-                if temp_env_path.exists():
-                    logger.warning(f"Removing failed temporary environment at {temp_env_path}")
-                    self._safe_rmtree(temp_env_path)
                 # Surface the captured tail at ERROR so backend.log holds
                 # the pip stack-trace, not just the libmamba summary line.
+                # This comes before the cleanup on purpose: the cleanup can
+                # fail, and the log must hold the build error regardless.
                 log_subprocess_failure("micromamba create", cmd, result)
+                self._discard_temp_env(temp_env_path, "failed")
                 # Windows could not check whether the download server's
                 # certificate was revoked. Scan the whole captured output,
                 # not the five lines shown below: the schannel line sits
@@ -1001,11 +994,7 @@ class EnvironmentManager:
             # Clean up failed environment - only if rename hasn't happened yet
             # If temp still exists, remove it. If rename happened, remove final location.
             if temp_env_path.exists():
-                logger.warning(f"Cleaning up failed temporary environment at {temp_env_path}")
-                try:
-                    self._safe_rmtree(temp_env_path)
-                except Exception as cleanup_error:
-                    logger.warning(f"Failed to clean up temp environment: {cleanup_error}")
+                self._discard_temp_env(temp_env_path, "failed")
             elif env_path.exists():
                 # Rename happened but something failed after
                 logger.warning(f"Cleaning up failed environment at {env_path}")
@@ -1111,6 +1100,32 @@ class EnvironmentManager:
             return None
 
         return stored != current
+
+    def _discard_temp_env(self, path: Path, why: str) -> bool:
+        """
+        Best-effort removal of a half-built temporary environment.
+
+        Returns True when the path is gone afterwards (or never existed).
+
+        Deliberately swallows, unlike `_safe_rmtree`, because a temp env
+        is removed on the way to reporting something else: a failed build,
+        a cancel, or a stale folder before a fresh build. On Windows the
+        antivirus is often still scanning the files micromamba just wrote,
+        and the delete then fails with WinError 5 on one `.pyd`. Letting
+        that escape replaced the build error on the setup screen with the
+        cleanup error, which names a file and not a cause (beta report,
+        McAfee, 2026-09-10). A folder that survives is harmless: the next
+        build cannot remove it either and moves to a fresh temp path.
+        """
+        if not path.exists():
+            return True
+        logger.warning(f"Removing {why} temporary environment at {path}")
+        try:
+            self._safe_rmtree(path)
+        except Exception as e:
+            logger.warning(f"Could not remove temporary environment {path}: {e}")
+            return False
+        return not path.exists()
 
     def _safe_rmtree(self, path: Path) -> None:
         """

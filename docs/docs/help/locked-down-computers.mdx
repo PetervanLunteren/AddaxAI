@@ -73,6 +73,8 @@ Failed to create environment env-addaxai-base: [WinError 5] Access denied:
 'C:\Users\<your user name>\AddaxAI\envs\env-addaxai-base'
 ```
 
+Up to AddaxAI 7.7.0 the same error can also name one file inside the temporary folder, for example `...\envs\.env-addaxai-base.tmp\DLLs\_ctypes.pyd`. That is the same lock, hit while setup cleans up after a failed download. The real reason the download failed is then only in the log, so send a [diagnostic report](troubleshooting.md) if Try again does not help.
+
 Windows only. The "Access denied" part shows in the language of your Windows, for example "Accès refusé".
 
 #### Why it fails
