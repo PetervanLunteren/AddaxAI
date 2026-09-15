@@ -147,21 +147,29 @@ _MONTHS = [
 _RELEASE_DATE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
 
+# Models whose developer release month nobody could find (2026-09-14):
+# SDZWA distributes through a Box folder without dates, wekaResearch's
+# site names no date, and NZI-ADS-v2 is awaiting its owner's word. A model
+# is either here or dated, so a new entry cannot slip in without a month
+# and a date found later must leave this list.
+_UNDATED = {"PAM-SDZWA-v1", "PAN-SDZWA-v1", "NZS-WEK-v3-03", "NZI-ADS-v2"}
+
+
 def test_release_dates_are_months_and_match_the_caption() -> None:
     """`release_date` is "YYYY-MM" by decision (month precision for every
     model, a day is not known for all). The same month is typed by hand
     at the end of `description_short` so the dropdown shows it at a
     glance; the two are one fact in two places, so this pins that they
-    agree. A model nobody could date has neither."""
+    agree. Every model is dated unless it is in `_UNDATED`."""
     catalog = json.loads(_CATALOG_PATH.read_text())
-    dated = 0
     for models in catalog["models"].values():
         for entry in models:
             model_id = entry["model_id"]
             date = entry.get("release_date")
-            if date is None:
+            if model_id in _UNDATED:
+                assert date is None, f"{model_id}: dated now, remove it from _UNDATED"
                 continue
-            dated += 1
+            assert date is not None, f"{model_id}: no release_date; add one or list it in _UNDATED"
             assert _RELEASE_DATE.match(date), f"{model_id}: release_date {date!r} is not YYYY-MM"
             year, month = date.split("-")
             words = f"{_MONTHS[int(month) - 1]} {year}"
@@ -170,7 +178,6 @@ def test_release_dates_are_months_and_match_the_caption() -> None:
                 f"{model_id}: description_short {caption!r} does not end with "
                 f"the release month {words!r}"
             )
-    assert dated >= 40, f"only {dated} models carry a release_date; did the field move?"
 
 
 def test_example_images_are_few_and_credited() -> None:

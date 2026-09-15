@@ -112,8 +112,9 @@ function prettyRegion(region: string): string {
 }
 
 // Search matches species too, so "wolverine" answers "which models know
-// this animal?" — the question people actually arrive with. Precomputed
-// once because it runs against every row on every keystroke.
+// this animal?" — the question people actually arrive with. A detector's
+// classes and footage domain count the same way. Precomputed once because
+// it runs against every row on every keystroke.
 const HAYSTACK = new Map<string, string>(
   ALL_ROWS.map((r) => [
     `${r.type}-${r.model_id}`,
@@ -124,6 +125,8 @@ const HAYSTACK = new Map<string, string>(
       r.description_short,
       r.description,
       r.region,
+      r.domain ? DOMAIN_LABELS[r.domain] : undefined,
+      ...(r.classes ?? []),
       ...(SPECIES[r.model_id] ?? []).map(prettySpecies),
     ]
       .filter(Boolean)

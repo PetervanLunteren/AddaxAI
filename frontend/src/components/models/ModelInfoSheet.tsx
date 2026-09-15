@@ -47,8 +47,16 @@ interface ModelInfoSheetProps {
 }
 
 export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetProps) {
-  // URLs that did not load; a broken picture is dropped, not shown.
+  // URLs that did not load; a broken picture is dropped, not shown. The
+  // set is cleared when the sheet closes, so a picture that failed once
+  // (a network hiccup) gets another try the next time any model is
+  // opened. The settings page reuses one sheet for three selects, which
+  // is why the reset is tied to closing and not to the component's life.
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+  const handleOpenChange = (next: boolean) => {
+    if (!next) setFailedImages(new Set());
+    onOpenChange(next);
+  };
   // Fetch all classification models to find the selected one
   const { data: classificationModels } = useQuery({
     queryKey: ["models", "classification"],
@@ -109,14 +117,11 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
     ? visibleClassList.charAt(0).toUpperCase() + visibleClassList.slice(1)
     : "";
   const remainingClasses = classNames.length - Math.min(classNames.length, MAX_CLASSES_SHOWN);
-  const formattedClasses = sentenceCased
-    ? remainingClasses > 0
-      ? `${sentenceCased} … +${remainingClasses} more`
-      : `${sentenceCased}.`
-    : "";
+  const formattedClasses =
+    remainingClasses > 0 ? `${sentenceCased} … +${remainingClasses} more` : sentenceCased;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2 text-xl">

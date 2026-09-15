@@ -811,7 +811,8 @@ def list_detection_models() -> list[ModelInfo]:
 
     model_list = [_model_info(manifest, "detection") for manifest in models.values()]
 
-    # Sort by user-friendly order: MD5A, MD5B first, then MD1000 models by accuracy (best to lowest)
+    # Sort by user-friendly order: MD5A, MD5B first, then MD1000 models by
+    # accuracy (best to lowest), then the underwater detectors small to large.
     sort_order = {
         "MD5A-0-0": 0,
         "MD5B-0-0": 1,
@@ -820,6 +821,10 @@ def list_detection_models() -> list[ModelInfo]:
         "MD1000-LARCH-0-0": 4,
         "MD1000-SORREL-0-0": 5,
         "MD1000-SPRUCE-0-0": 6,
+        "SHARKTRACK-1-0": 7,
+        "CFD-NANO-1-0": 8,
+        "CFD-SMALL-1-0": 9,
+        "CFD-MEDIUM-1-0": 10,
     }
     return sorted(model_list, key=lambda m: sort_order.get(m.model_id, 999))
 
