@@ -20,7 +20,7 @@ Version 6 is not maintained. New models and bug fixes only go into the latest ve
 
 ## Version 6 and version 7 are separate
 
-Version 6 and version 7 do not share data, and they install in different places. If you prefer version 6 over version 7, you'll need to uninstall version 7 manually. The steps are [here](../start-here/install.mdx).
+Version 6 and version 7 do not share data, and they install in different places. If you prefer version 6 over version 7, you'll need to uninstall version 7 manually. The steps are [here](../start-here/install.mdx). The other way round, removing version 6 from a computer that runs version 7, is under [start over with a clean install](faq.mdx#how-do-i-start-over-with-a-clean-install).
 
 ## Windows
 
