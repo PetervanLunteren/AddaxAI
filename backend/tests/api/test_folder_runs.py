@@ -497,6 +497,44 @@ def test_lookup_returns_summary_for_existing_run(client, db):
     assert body["verified_detection_count"] == 1
 
 
+def test_lookup_counts_confirmed_leave_out_events_with_nothing_to_count(
+    client, db
+):
+    """The re-run dialog's "counts confirmed" uses the Counts step's own
+    denominator, so an empty event is in neither number."""
+    from datetime import datetime
+
+    from app.models import Project
+    from tests.conftest import (
+        make_deployment,
+        make_detection,
+        make_event_with_files,
+    )
+
+    run_id = client.post(
+        "/api/folder-runs", json={"source_folder": "/tmp/lookup-counts"}
+    ).json()["project"]["id"]
+    threshold = db.get(Project, run_id).counting_threshold
+    dep = make_deployment(db, project_id=run_id, folder_path="/tmp/lookup-counts")
+    confirmed = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 15, 9, 0, 0)
+    )
+    confirmed.confirmed = True
+    make_detection(
+        db, file_id=confirmed.files[0].id, confidence=max(threshold, 0.9), label="deer"
+    )
+    make_event_with_files(  # nothing on it
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 16, 9, 0, 0)
+    )
+    db.commit()
+
+    body = client.get(
+        "/api/folder-runs/lookup", params={"folder": "/tmp/lookup-counts"}
+    ).json()
+    assert body["event_count"] == 1
+    assert body["confirmed_event_count"] == 1
+
+
 def test_lookup_returns_zero_counts_for_freshly_picked_folder(client):
     """A run with no deployment yet still has a valid lookup response —
     counts just sit at zero. Important: a user might pick a folder,

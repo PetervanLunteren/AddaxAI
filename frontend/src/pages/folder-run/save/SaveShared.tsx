@@ -538,9 +538,9 @@ export function CompletionDialog({
           {/* Same shape as the projects-mode completion modal: the steps
               that take you somewhere are rows, and "start over" stays in
               the footer. "Turn into a project" is the bridge to projects
-              mode, for whoever wants to keep working on this folder: sites
-              and effort, dashboards and maps, and a workspace to come back
-              to. */}
+              mode, for whoever wants more than files for this folder: sites
+              and effort, dashboards and maps, and a workspace to keep adding
+              folders to. */}
           <div className="space-y-2 pt-1">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               What next?
@@ -554,7 +554,7 @@ export function CompletionDialog({
             <NextStepRow
               icon={Sparkles}
               title="Turn into a project"
-              description="Keep working on this folder in a project: add where the camera was, get dashboards, maps and trap-night rates, and come back to it later."
+              description="Add where the camera was for dashboards, maps and trap-night rates."
               onClick={() => setPromoteOpen(true)}
             />
           </div>

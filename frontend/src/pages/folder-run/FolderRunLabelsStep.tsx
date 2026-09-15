@@ -86,7 +86,14 @@ export function FolderRunLabelsStep() {
                 Back
               </Button>
               <Button
-                onClick={() => advance.mutate()}
+                // The stored step is the furthest one reached, so a run
+                // that already got to Save keeps it: moving on from here
+                // must not send the next resume back to Counts.
+                onClick={() =>
+                  run.step === "save"
+                    ? navigate(`/folder-runs/${runId}/counts`)
+                    : advance.mutate()
+                }
                 disabled={advance.isPending}
                 size="lg"
                 className="gap-2"

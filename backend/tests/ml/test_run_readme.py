@@ -143,21 +143,28 @@ def test_readme_top_species_matches_the_summary_table(db, tmp_path):
 
 
 def test_readme_reports_counts_confirmed_beside_files_verified(db, tmp_path):
-    """The two halves of the review work, in the same shape: one confirmed
-    event out of two, no files verified."""
+    """The two halves of the review work, in the same shape. Counts
+    confirmed uses the Counts step's own denominator: an event with nothing
+    to count (here the empty third one) is left out, so the file reads
+    1 / 2 where the screen reads 50%, not 1 / 3."""
     from datetime import datetime
 
     from tests.conftest import make_event_with_files
 
-    project = make_project(db, name="readme-counts")
+    project = make_project(db, name="readme-counts", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     confirmed = make_event_with_files(
         db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 15, 9, 0, 0)
     )
     confirmed.confirmed = True
-    make_event_with_files(
+    open_event = make_event_with_files(
         db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 16, 9, 0, 0)
     )
+    make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 17, 9, 0, 0)
+    )
+    for event in (confirmed, open_event):
+        make_detection(db, file_id=event.files[0].id, confidence=0.9, label="deer")
     db.commit()
 
     target = tmp_path / "out"
@@ -166,7 +173,7 @@ def test_readme_reports_counts_confirmed_beside_files_verified(db, tmp_path):
 
     lines = text.splitlines()
     verified_line = next(line for line in lines if "Files verified" in line)
-    assert verified_line.rstrip().endswith("0 / 2 (0.0%)")
+    assert verified_line.rstrip().endswith("0 / 3 (0.0%)")
     confirmed_line = next(line for line in lines if "Counts confirmed" in line)
     assert confirmed_line.rstrip().endswith("1 / 2 (50.0%)")
 

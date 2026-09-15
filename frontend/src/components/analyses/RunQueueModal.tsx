@@ -484,7 +484,7 @@ export function RunQueueModal({
                 sentence promising one is wrong for those users. */}
             {isComplete
               ? mode === "folder-run"
-                ? "Your folder has been analysed. You can review and edit the labels, or go straight to saving."
+                ? "Your folder has been analysed. You can review the labels and the counts, or go straight to saving."
                 : "AddaxAI filled in what it found. You can accept the results as they are, but the AI makes mistakes, so a quick review is recommended."
               : hasCancelled
                 ? mode === "folder-run"

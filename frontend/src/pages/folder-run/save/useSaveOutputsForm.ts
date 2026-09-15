@@ -27,6 +27,7 @@ import { eventsApi } from "../../../api/events";
 import { projectsApi } from "../../../api/projects";
 import type { LabelTreeResponse } from "../../../api/types";
 import { DEFAULT_COUNTING_THRESHOLD } from "../../../lib/confidence";
+import { invalidateProjectData } from "../../../lib/invalidate-project";
 import { isElectron } from "../../../lib/platform";
 import { getSpeciesNameMode } from "../../../lib/species-name-mode";
 import {
@@ -234,6 +235,11 @@ export function useSaveOutputsForm({
     // instead of showing a value nothing was written for.
     onSettled: () => {
       setDraggedThreshold(null);
+      // The backend recalculates MaxN and observation types on a threshold
+      // change, so every cached count and grid is stale: the Counts step
+      // one Back away included. Same refresh the Refine results slideout
+      // does after it applies a change.
+      invalidateProjectData(queryClient, runId);
       queryClient.invalidateQueries({ queryKey: ["folder-run", runId] });
       queryClient.invalidateQueries({
         queryKey: ["folder-run-output-preview"],

@@ -34,6 +34,7 @@ from sqlalchemy import and_, case, distinct, func, select
 from sqlalchemy.orm import Session
 
 from app.api.crud import deployment_queue as crud_queue
+from app.api.crud import event as crud_event
 from app.api.crud import job as job_crud
 from app.api.crud import project as crud_project
 from app.api.schemas.deployment_queue import (
@@ -58,7 +59,6 @@ from app.models import (
     Deployment,
     DeploymentQueue,
     Detection,
-    Event,
     File,
     Project,
 )
@@ -858,18 +858,13 @@ def lookup_folder_run(
         .where(Detection.verified.is_(True))
     ) or 0
     # Count confirmation is the second half of the verification work
-    # (events whose count was confirmed on the Counts page), mirroring the
-    # dashboard's "Labels verified" + "Counts confirmed" split.
-    event_count = db.scalar(
-        select(func.count(Event.id)).where(
-            Event.deployment_id.in_(deployment_ids_subq)
-        )
-    ) or 0
-    confirmed_event_count = db.scalar(
-        select(func.count(Event.id))
-        .where(Event.deployment_id.in_(deployment_ids_subq))
-        .where(Event.confirmed.is_(True))
-    ) or 0
+    # (events whose count was confirmed on the Counts step), mirroring the
+    # dashboard's "Labels verified" + "Counts confirmed" split. Read off
+    # the same helper as the Counts step's progress pill, so an event with
+    # nothing to count is in neither number and the two always agree.
+    event_stats = crud_event.get_event_verification_stats(
+        db, existing.id, project_floor=threshold
+    )
 
     detection_model_name = _friendly_model_name(existing.detection_model_id)
     classification_model_name = _friendly_model_name(
@@ -893,8 +888,8 @@ def lookup_folder_run(
         species_count=species_count,
         verified_file_count=verified_file_count,
         verified_detection_count=verified_detection_count,
-        event_count=event_count,
-        confirmed_event_count=confirmed_event_count,
+        event_count=event_stats["events_total"],
+        confirmed_event_count=event_stats["events_confirmed"],
         detection_resume=_detection_resume(db, existing, folder, image_count),
     )
 

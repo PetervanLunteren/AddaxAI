@@ -26,12 +26,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import __version__ as APP_VERSION
+from app.api.crud.event import get_event_verification_stats
 from app.core.confidence import ROLLUP_THRESHOLD, format_confidence_pct
 from app.core.config import get_settings
 from app.core.logging_config import get_logger
 from app.ml.label_exclusion import threshold_or_verified
 from app.ml.manifest_manager import ManifestManager
-from app.models import Deployment, Detection, Event, File, Project
+from app.models import Deployment, Detection, File, Project
 
 logger = get_logger(__name__)
 
@@ -195,18 +196,17 @@ def _verification_stats(
 
 
 def _count_confirmation_stats(
-    db: Session, project_id: str
+    db: Session, project: Project
 ) -> tuple[int, int]:
     """(confirmed_event_count, total_event_count) for the project: the
-    events whose counts were signed off on the Counts step."""
-    base = (
-        select(func.count(Event.id))
-        .join(Deployment, Event.deployment_id == Deployment.id)
-        .where(Deployment.project_id == project_id)
+    events whose counts were signed off on the Counts step. The same
+    helper and floor as that step's progress pill, so an event with
+    nothing to count is in neither number and the file agrees with the
+    screen."""
+    stats = get_event_verification_stats(
+        db, project.id, project_floor=project.counting_threshold
     )
-    total = db.scalar(base) or 0
-    confirmed = db.scalar(base.where(Event.confirmed == True)) or 0  # noqa: E712
-    return int(confirmed), int(total)
+    return int(stats["events_confirmed"]), int(stats["events_total"])
 
 
 def _ratio(done: int, total: int) -> str:
@@ -443,7 +443,7 @@ def write_run_readme(
     )
     top_species = _top_species(db, project)
     verification = _verification_stats(db, project_id)
-    count_confirmation = _count_confirmation_stats(db, project_id)
+    count_confirmation = _count_confirmation_stats(db, project)
     skipped_files = _skipped_files(db, project_id)
 
     settings = get_settings()

@@ -9,10 +9,10 @@
  *
  * The two cards differentiate on one-off vs persistent, not on camera
  * count (a folder run handles many cameras too). Both review the labels
- * and the counts; a folder run then hands you the files and steps back,
- * while a project asks for where each camera was and uses that location
- * to turn the results into insight (maps, rates, trends), kept in the
- * app to come back to.
+ * and the counts; a folder run then hands you the files for that one
+ * folder, while a project asks for where each camera was and uses that
+ * location to turn the results into insight (maps, rates, trends) that
+ * grows as you add folders.
  *
  * Visual: a full-bleed forest photo (shared with AddaxAI-Connect's
  * login, so the two apps feel related) behind two frosted-glass cards.
@@ -84,7 +84,7 @@ export function HomePage() {
               icon={<FolderOpen className="h-6 w-6" />}
               title="Analyse a folder"
               lead="A quick one-off run. Point at a folder, get results, move on."
-              body="Run the AI, check the labels and the counts if you want, then get files out: detection and count tables, a recognition file for Timelapse, species-separated folders, visualised or blurred images. Nothing to set up, nothing kept in the app."
+              body="Run the AI, check the labels and the counts if you want, then get files out: detection and count tables, a recognition file for Timelapse, species-separated folders, visualised or blurred images. One folder, one pass."
               cta="Start folder analysis"
               onClick={() => navigate("/folder-runs/new")}
             />

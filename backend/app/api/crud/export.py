@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Row, and_, func, or_, select
-from sqlalchemy.orm import Session, defer, selectinload
+from sqlalchemy.orm import Session, defer, joinedload, selectinload
 
 from app.api.crud.export_formats import slugify
 from app.core.logging_config import get_logger
@@ -1105,6 +1105,9 @@ def build_observation_rows(
             LabelTaxonomy,
             LabelTaxonomy.id == EventObservation.label_taxonomy_id,
         )
+        # The MaxN file's time is read per row below; loading it here keeps
+        # that one query, instead of one extra SELECT per counts row.
+        .options(joinedload(EventObservation.max_n_file))
         .filter(Deployment.project_id == project.id)
         .order_by(Event.event_start_local.asc(), Event.id)
     )
