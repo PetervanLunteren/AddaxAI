@@ -127,9 +127,9 @@ def _rename_with_retries(src: Path, dst: Path) -> None:
             f"Windows refused to move the finished environment into place, "
             f"even after {attempts} attempts over "
             f"{sum(_RENAME_WAITS)} seconds ({e}). Another program is "
-            f"holding files in that folder, usually the antivirus. Ask "
-            f"your IT department to add an antivirus exclusion for the "
-            f"AddaxAI folder in your user profile, then try again."
+            f"holding files in that folder, usually the antivirus. Add an "
+            f"antivirus exclusion for the AddaxAI folder in your user "
+            f"profile, or ask your IT department to, then try again."
         ) from e
 
 

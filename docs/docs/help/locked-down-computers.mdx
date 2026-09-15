@@ -93,6 +93,28 @@ Press Try again first. The lock is often gone by the time the build finishes aga
 </FaqItem>
 
 <FaqItem
+  id="antivirus-on-your-own-computer"
+  q="Antivirus on your own computer"
+  summary="Setup fails on a home computer with McAfee, Norton or another antivirus. Windows only."
+>
+
+Setup writes thousands of files to the AddaxAI data folder and runs several programs from it. Antivirus software scans each file as it appears, and holds it while it does. That can stop setup with an "Access denied" error. It can also make analysis slower afterwards.
+
+Windows Security, which comes with Windows, usually lets go fast enough. Other products, McAfee for example, hold files longer.
+
+#### The fix
+
+Exclude the AddaxAI data folder from scanning. By default that is `C:\Users\<your user name>\AddaxAI`. Only this folder needs it. It holds the models and the software they run in, nothing else.
+
+- **Windows Security**: open Virus & threat protection, then Manage settings, then Add or remove exclusions, and add the folder. See [Microsoft's page on exclusions](https://support.microsoft.com/en-us/windows/add-an-exclusion-to-windows-security-811816c0-4dfd-af4a-47e4-c301afe13b26).
+- **McAfee**: the setting is called Excluded files and folders. In some versions it only covers custom and scheduled scans, and real-time scanning cannot skip a folder. Then pause real-time scanning while setup runs, and turn it back on when setup is done. See [McAfee's page on excluding items](https://download.mcafee.com/products/webhelp/5/affid/756/1033/GUID-0A616695-25DF-4D00-850A-1203365F63AB.html).
+- **Another product**: look for a setting named exclusions, exceptions or trusted folders.
+
+Then press Try again.
+
+</FaqItem>
+
+<FaqItem
   id="certificate-errors-during-setup"
   q="Certificate errors during setup"
   summary="CRYPT_E_NO_REVOCATION_CHECK (0x80092012). Windows only. Needs AddaxAI 7.0.12 or newer."
