@@ -37,6 +37,15 @@ def get_default_models_dir() -> Path:
     return get_default_user_data_dir() / "models"
 
 
+# Our relay in front of huggingface.co, for networks that block it. The
+# Worker itself is infra/hf-relay/worker.js, deployed on Peter's
+# Cloudflare account (free plan); this is the address Cloudflare gave it.
+# None turns the fallback off.
+DEFAULT_HF_FALLBACK_ENDPOINT: str | None = (
+    "https://addaxai-models.petervanlunteren.workers.dev"
+)
+
+
 class Settings(BaseSettings):
     """
     Application settings loaded from environment variables.
@@ -109,6 +118,18 @@ class Settings(BaseSettings):
         description="Bearer token for a HuggingFace endpoint that requires auth"
     )
 
+    # The relay for networks that block huggingface.co and *.hf.co
+    # outright (a US state web filter categorised them as "AI content",
+    # 2026-09-11). It is our own Cloudflare Worker, infra/hf-relay/worker.js,
+    # forwarding to huggingface.co and storing nothing. Every download
+    # still goes to HuggingFace first; only a block page (NetworkBlockedError)
+    # sends the same download here, see ModelStorage.download_weights.
+    # None turns the fallback off.
+    hf_fallback_endpoint: str | None = Field(
+        default=DEFAULT_HF_FALLBACK_ENDPOINT,
+        description="Relay tried once when the network blocks huggingface.co",
+    )
+
     # PyTorch wheel index mirror (mainland China). pip has no index
     # priority, so a mirror added through pip.ini competes with the
     # download.pytorch.org entry baked into the env YAMLs and can lose.
@@ -176,6 +197,21 @@ class Settings(BaseSettings):
         cannot cover part of the traffic and quietly miss the rest.
         """
         return (self.hf_endpoint or "https://huggingface.co").rstrip("/")
+
+    @property
+    def hf_fallback_url(self) -> str | None:
+        """
+        The relay to retry a blocked model download through, or None.
+
+        Only when the primary is the real HuggingFace. A mirror or a
+        company repository manager set through ADDAXAI_HF_ENDPOINT is a
+        deliberate choice about where downloads may come from, and a
+        block page from it must not be answered by quietly routing the
+        same download through our relay instead.
+        """
+        if self.hf_endpoint is not None or self.hf_fallback_endpoint is None:
+            return None
+        return self.hf_fallback_endpoint.rstrip("/")
 
     def __init__(self, **kwargs: object) -> None:
         """

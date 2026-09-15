@@ -966,6 +966,16 @@ The recomputed list is returned, never written back into `app.state`: the stored
 
 **Only two of the four calls are fatal on the far end.** `GET /api/models/{repo}/tree/{rev}` (the file listing; huggingface_hub 1.x resolves `list_repo_files` through `list_repo_tree`, not through the older model-info route) and `GET /{repo}/resolve/{rev}/{path}`. `paths-info` only sizes the progress bar, `model_info(files_metadata=True)` only feeds the staleness check, and both are caught and degrade. So a proxy answering those two is enough, which is worth knowing before promising a user their repository manager will work.
 
+### The relay, for networks that block HuggingFace outright
+
+Some web filters forbid `huggingface.co` and `*.hf.co` as a category (a US state laptop on 2026-09-11: "AI content", on every network, hotspot included), and only IT can change that. `infra/hf-relay/worker.js` is our own Cloudflare Worker that forwards requests for the `Addax-Data-Science` repos to huggingface.co, follows the CDN redirect itself and streams the answer back. It stores nothing, so there is no second copy of any model to keep in sync: a fixed `inference.py` on HuggingFace is live through the relay the same second. Its address is `DEFAULT_HF_FALLBACK_ENDPOINT` in `config.py` (`ADDAXAI_HF_FALLBACK_ENDPOINT` overrides it).
+
+`_download_repo_with_relay` in `model_storage.py` is the whole rule. Every download goes to HuggingFace first. Only `NetworkBlockedError`, the block-page signal, sends the same download once through the relay, and only when `Settings.hf_fallback_url` is set, which it is not when the user configured their own mirror through `ADDAXAI_HF_ENDPOINT`: that is where their organisation allows downloads from, and a block page from it must not be answered by routing around it. If the relay is blocked too, the *original* error is raised, so the wizard keeps naming huggingface.co, the host IT has to allow. A plain download failure never reaches the relay.
+
+Not covered, on purpose: the startup staleness check and the catalog's `taxonomy.csv` fetch. Both degrade quietly, and `taxonomy.csv` is in the repo download anyway. A user behind such a filter gets no "update available" notices until IT opens the hosts.
+
+The Worker runs on the free plan (no card; 100,000 requests a day, then it errors until midnight UTC, never a bill). One model download is roughly 15 to 30 requests. Test it locally with `npx wrangler dev --local` in a scratch folder (a `compatibility_date` newer than the local runtime refuses to start), then run the two curl checks from the locked-down docs page against `http://127.0.0.1:8787` and a real `download_repo` with `ADDAXAI_HF_ENDPOINT` pointed at it. Pinned by `tests/ml/test_hf_relay_fallback.py`.
+
 ## The catalog we ship as a fallback
 
 `models.json` is bundled by `backend.spec` and read by `_bundled_catalog_path()` when the remote catalog cannot be fetched. **It is a fallback, not a cache: never write the fetched catalog over it.** That would turn the one file describing what this build shipped with into a copy of whatever upstream said last, and the guarantee it exists to give (an install can always name its own models) with it.

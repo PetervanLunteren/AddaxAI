@@ -70,6 +70,61 @@ def _clear_downloaded_files(model_dir: Path) -> None:
         safe_rmtree(entry)
 
 
+def _download_repo_with_relay(
+    hf_repo: str,
+    model_path: Path,
+    progress_callback: Callable[[str, float], None] | None,
+    should_cancel: Callable[[], bool] | None,
+) -> bool:
+    """
+    Download a repo from HuggingFace, and once more through our relay
+    when the network answered HuggingFace with a block page.
+
+    Everyone downloads from HuggingFace first. The retry is taken only on
+    `NetworkBlockedError`, the one failure a retry against the same host
+    can never fix (a web filter that forbids huggingface.co and *.hf.co,
+    first seen on a US state laptop on 2026-09-11), and only when
+    `Settings.hf_fallback_url` names a relay, which it does not for a
+    user who configured their own mirror. Every other failure keeps the
+    behaviour it had: False from the downloader, or the exception.
+
+    If the relay is blocked as well, the *original* error is raised, so
+    the wizard still tells the user to have IT allow huggingface.co and
+    hf.co, which is the fix, rather than naming a relay host nobody at
+    their IT department has heard of. The relay's own error travels along
+    as the cause for the log.
+    """
+    try:
+        return HuggingFaceRepoDownloader(max_workers=4).download_repo(
+            repo_id=hf_repo,
+            local_dir=model_path,
+            progress_callback=progress_callback,
+            revision="main",
+            should_cancel=should_cancel,
+        )
+    except NetworkBlockedError as blocked:
+        relay = get_settings().hf_fallback_url
+        if relay is None:
+            raise
+        logger.warning(
+            f"{blocked.host} answered with a block page, retrying {hf_repo} "
+            f"through the relay at {relay}"
+        )
+        if progress_callback:
+            progress_callback("Downloading through the AddaxAI relay...", 0.0)
+        try:
+            return HuggingFaceRepoDownloader(max_workers=4, endpoint=relay).download_repo(
+                repo_id=hf_repo,
+                local_dir=model_path,
+                progress_callback=progress_callback,
+                revision="main",
+                should_cancel=should_cancel,
+            )
+        except NetworkBlockedError as relay_blocked:
+            logger.error(f"The relay is blocked too: {relay_blocked.host}")
+            raise blocked from relay_blocked
+
+
 def git_blob_sha1(path: Path) -> str:
     """
     Git blob SHA-1 of a file: sha1(b"blob <bytelen>\\0" + contents).
@@ -258,13 +313,10 @@ class ModelStorage:
             )
 
         try:
-            # Download using multi-threaded downloader
-            downloader = HuggingFaceRepoDownloader(max_workers=4)
-            success = downloader.download_repo(
-                repo_id=hf_repo,
-                local_dir=model_path,
+            success = _download_repo_with_relay(
+                hf_repo,
+                model_path,
                 progress_callback=progress_callback,
-                revision="main",
                 should_cancel=should_cancel,
             )
 

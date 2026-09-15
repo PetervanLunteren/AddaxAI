@@ -106,11 +106,20 @@ def hf_auth_headers() -> dict[str, str]:
 class HuggingFaceRepoDownloader:
     """Multi-threaded HuggingFace repository downloader with adaptive scaling."""
 
-    def __init__(self, max_workers: int = 4, chunk_size: int = 1024 * 1024, timeout: int = 30):
+    def __init__(
+        self,
+        max_workers: int = 4,
+        chunk_size: int = 1024 * 1024,
+        timeout: int = 30,
+        endpoint: str | None = None,
+    ):
         """
         Initialize the Hugging Face repository downloader.
 
         Args:
+            endpoint: Base URL to download from instead of the configured
+                one. ModelStorage passes the relay here when the network
+                answered the configured endpoint with a block page.
             max_workers: Maximum number of concurrent file downloads. This
                 parallelises across FILES; a single big weights file is
                 instead split across connections inside download_file.
@@ -131,7 +140,7 @@ class HuggingFaceRepoDownloader:
         # and the direct download URLs must go through the endpoint, or
         # the mirror only covers half the traffic.
         settings = get_settings()
-        self.endpoint = settings.hf_base_url
+        self.endpoint = (endpoint or settings.hf_base_url).rstrip("/")
         self.api = HfApi(endpoint=self.endpoint, token=settings.hf_token)
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "AddaxAI-HuggingFace-Downloader/1.0"})
