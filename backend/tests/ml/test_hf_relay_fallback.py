@@ -9,8 +9,9 @@ a block page. Four rules, one test each:
 - a block page sends the download to the relay, nothing else does
 - a user who configured their own mirror never reaches the relay
 - no relay configured means the old behaviour, the block propagates
-- a relay that is blocked too raises the *original* error, so the wizard
-  names huggingface.co, the host IT has to allow
+- a relay that cannot help (blocked too, unreachable, over quota, any
+  failure) raises the *original* error, so the wizard names
+  huggingface.co, the host IT has to allow; only a cancel stays a cancel
 """
 
 import json
@@ -20,6 +21,7 @@ from unittest.mock import patch
 import pytest
 
 from app.core.config import Settings
+from app.core.job_cancellation import JobCancelledError
 from app.ml.hf_downloader import HuggingFaceRepoDownloader, NetworkBlockedError
 from app.ml.model_storage import ModelStorage
 from app.ml.schemas.model_manifest import ModelManifest
@@ -172,6 +174,61 @@ def test_a_blocked_relay_raises_the_original_host(model_dir: Path, relay: str) -
     assert info.value.host == "huggingface.co"
     assert isinstance(info.value.__cause__, NetworkBlockedError)
     assert info.value.__cause__.host == relay.removeprefix("https://")
+
+
+@pytest.mark.parametrize(
+    "relay_outcome",
+    [
+        pytest.param(False, id="relay-returns-false"),
+        pytest.param(RuntimeError("Error fetching repository info: 429"), id="relay-over-quota"),
+        pytest.param(RuntimeError("Connection refused"), id="relay-unreachable"),
+    ],
+)
+def test_a_relay_that_cannot_help_raises_the_original_host(
+    model_dir: Path, relay: str, relay_outcome: bool | Exception
+) -> None:
+    """
+    Found by the e2e hunt on 2026-09-15: with the relay unreachable, the
+    wizard fell back to the generic "Download failed for <repo>" with no
+    error_kind, the exact message that got a state laptop twelve retries.
+    Whatever the relay's own problem, the user's problem is still the
+    blocked host, and that is what they must be told.
+    """
+
+    def run(self: HuggingFaceRepoDownloader, **kwargs: object) -> bool:
+        if self.endpoint == "https://huggingface.co":
+            raise NetworkBlockedError("huggingface.co")
+        if isinstance(relay_outcome, Exception):
+            raise relay_outcome
+        return relay_outcome
+
+    with patch.object(HuggingFaceRepoDownloader, "download_repo", autospec=True, side_effect=run):
+        with pytest.raises(NetworkBlockedError) as info:
+            ModelStorage(models_dir=model_dir.parent.parent).download_weights(_manifest())
+
+    assert info.value.host == "huggingface.co"
+    if isinstance(relay_outcome, Exception):
+        assert info.value.__cause__ is relay_outcome
+
+
+def test_a_cancel_during_the_relay_download_is_a_cancel(model_dir: Path, relay: str) -> None:
+    """
+    A cancel must stay a cancel, so `download_weights` runs its cancelled
+    cleanup rather than reporting a blocked network the user never saw.
+    """
+
+    def run(self: HuggingFaceRepoDownloader, **kwargs: object) -> bool:
+        if self.endpoint == "https://huggingface.co":
+            raise NetworkBlockedError("huggingface.co")
+        (model_dir / "weights.pt").write_bytes(b"partial")
+        raise JobCancelledError("stopped")
+
+    with patch.object(HuggingFaceRepoDownloader, "download_repo", autospec=True, side_effect=run):
+        with pytest.raises(JobCancelledError):
+            ModelStorage(models_dir=model_dir.parent.parent).download_weights(_manifest())
+
+    # The cancelled-download rule: files gone, manifest kept.
+    assert sorted(p.name for p in model_dir.iterdir()) == ["manifest.json"]
 
 
 def test_the_relay_downloader_talks_to_the_relay_only(relay: str) -> None:

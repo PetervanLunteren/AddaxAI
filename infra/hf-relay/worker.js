@@ -27,8 +27,11 @@ const UPSTREAM = "https://huggingface.co";
 const ORG = "Addax-Data-Science";
 const ALLOWED_PREFIXES = [`/${ORG}/`, `/api/models/${ORG}/`];
 
-// Hop-by-hop and Cloudflare-added headers that must not be forwarded.
-const STRIP_REQUEST_HEADERS = ["host", "cookie", "cf-connecting-ip", "cf-ray", "cf-visitor", "cf-ipcountry", "x-forwarded-for", "x-forwarded-proto", "x-real-ip"];
+// Headers that must not be forwarded: hop-by-hop and Cloudflare-added ones,
+// and the client's credentials. Our repos are public, so no request here
+// ever needs a token, and a user with HF_TOKEN in their environment must
+// not have it travel through this relay.
+const STRIP_REQUEST_HEADERS = ["host", "cookie", "authorization", "cf-connecting-ip", "cf-ray", "cf-visitor", "cf-ipcountry", "x-forwarded-for", "x-forwarded-proto", "x-real-ip"];
 
 export default {
   async fetch(request) {

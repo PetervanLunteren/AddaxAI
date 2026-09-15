@@ -88,11 +88,14 @@ def _download_repo_with_relay(
     user who configured their own mirror. Every other failure keeps the
     behaviour it had: False from the downloader, or the exception.
 
-    If the relay is blocked as well, the *original* error is raised, so
-    the wizard still tells the user to have IT allow huggingface.co and
-    hf.co, which is the fix, rather than naming a relay host nobody at
-    their IT department has heard of. The relay's own error travels along
-    as the cause for the log.
+    If the relay cannot help either (blocked as well, unreachable, over
+    its daily quota, or any other failure), the *original* error is
+    raised, so the wizard still tells the user to have IT allow
+    huggingface.co and hf.co, which is the fix, rather than a generic
+    "Download failed" or a relay host nobody at their IT department has
+    heard of. The relay's own error travels along as the cause for the
+    log. Only a cancel passes through as itself, so the caller's cleanup
+    for a cancelled download still runs.
     """
     try:
         return HuggingFaceRepoDownloader(max_workers=4).download_repo(
@@ -113,16 +116,23 @@ def _download_repo_with_relay(
         if progress_callback:
             progress_callback("Downloading through the AddaxAI relay...", 0.0)
         try:
-            return HuggingFaceRepoDownloader(max_workers=4, endpoint=relay).download_repo(
+            success = HuggingFaceRepoDownloader(max_workers=4, endpoint=relay).download_repo(
                 repo_id=hf_repo,
                 local_dir=model_path,
                 progress_callback=progress_callback,
                 revision="main",
                 should_cancel=should_cancel,
             )
-        except NetworkBlockedError as relay_blocked:
-            logger.error(f"The relay is blocked too: {relay_blocked.host}")
-            raise blocked from relay_blocked
+        except JobCancelledError:
+            raise
+        except Exception as relay_error:
+            logger.error(f"The relay did not help either: {relay_error}")
+            raise blocked from relay_error
+        if success:
+            return True
+        # download_repo already logged why the relay attempt failed.
+        logger.error(f"The relay could not serve {hf_repo} either")
+        raise blocked
 
 
 def git_blob_sha1(path: Path) -> str:
