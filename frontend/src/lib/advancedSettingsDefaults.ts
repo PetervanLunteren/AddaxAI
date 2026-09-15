@@ -3,11 +3,13 @@
  * Settings page and the folder-run model step so their "Restore defaults"
  * buttons and "is anything non-default?" checks stay in sync.
  *
- * Scope is the tuning params only. The model/species selection (classification
- * model, embedding model, country/state, excluded classes) is a deliberate
- * user choice, not a default, so it is intentionally excluded. Note the
- * The rollup threshold is fixed policy (backend
- * app/core/confidence.py), not a setting, so it is not here.
+ * Scope is the tuning params only. The model/species selection (detection
+ * model, classification model, embedding model, country/state, excluded
+ * classes) is a deliberate user choice, not a default, so it is intentionally
+ * excluded. The detector especially: it decides the data type
+ * (lib/data-type.ts), and restoring it to MegaDetector turned an underwater
+ * run back into a camera trap one. The rollup threshold is fixed policy
+ * (backend app/core/confidence.py), not a setting, so it is not here.
  */
 
 import {
@@ -22,7 +24,6 @@ import type {
 } from "react-hook-form";
 
 export const ADVANCED_SETTINGS_DEFAULTS = {
-  detection_model_id: "MD5A-0-0",
   video_fps: 3.0,
   media_filter: "all",
   counting_threshold: DEFAULT_COUNTING_THRESHOLD,

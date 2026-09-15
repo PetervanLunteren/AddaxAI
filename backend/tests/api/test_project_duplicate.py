@@ -89,6 +89,22 @@ def test_duplicate_without_settings_uses_defaults(db):
     assert new.counting_threshold == DEFAULT_COUNTING_THRESHOLD
 
 
+def test_duplicate_without_settings_keeps_the_detector(db):
+    """The detector decides the data type, so a copy keeps it even when
+    the settings are not copied. Left to the column default, an
+    underwater project came back as a MegaDetector project."""
+    from tests.conftest import make_project
+
+    source = make_project(db, name="Reef", detection_model_id="CFD-NANO-1-0")
+    new = duplicate_project(
+        db,
+        source.id,
+        _params("Reef copy", copy_settings=False, classification_model_id=None),
+    )
+    assert new is not None
+    assert new.detection_model_id == "CFD-NANO-1-0"
+
+
 def test_duplicate_without_sites_or_deployments(db):
     from tests.conftest import make_deployment, make_project, make_site
 

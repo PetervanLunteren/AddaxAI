@@ -88,6 +88,22 @@ def test_every_detector_declares_its_domain() -> None:
         assert entry.get("domain") == expected, f"{model_id}: domain {entry.get('domain')!r}"
 
 
+def test_every_classifier_declares_its_domain_and_embedders_none() -> None:
+    """A classifier says what footage it was trained on, like a detector.
+    The setup forms offer only the classifiers of the chosen data type,
+    and the project API refuses a detector and classifier from different
+    domains, because a camera trap classifier calling a shark "blank"
+    drops the box at ingest. Every classifier today is a camera trap one.
+    Embedders work on any crop and declare none."""
+    catalog = json.loads(_CATALOG_PATH.read_text())
+    for entry in catalog["models"]["cls"]:
+        assert entry.get("domain") == "camera_trap", (
+            f"{entry['model_id']}: domain {entry.get('domain')!r}"
+        )
+    for entry in catalog["models"]["emb"]:
+        assert "domain" not in entry, f"{entry['model_id']}: an embedder has no domain"
+
+
 def test_a_class_mapping_agrees_with_the_classes_beside_it() -> None:
     """`class_mapping` is the second half of the same fact, so the two
     cannot be allowed to drift: `classes` is what the picker offers, the

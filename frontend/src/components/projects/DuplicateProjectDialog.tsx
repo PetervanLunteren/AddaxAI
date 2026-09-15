@@ -28,6 +28,7 @@ import { ClassificationModelGroupedItems } from "../models/ClassificationModelGr
 import { ModelSelect } from "../models/ModelSelect";
 import { NoClassifierNotice } from "../models/NoClassifierNotice";
 import { ModelInfoSheet } from "../models/ModelInfoSheet";
+import { dataTypeOf, loadDataType, modelsForDataType } from "../../lib/data-type";
 import {
   LabelSelectionField,
   toApiCountryCode,
@@ -143,6 +144,17 @@ export function DuplicateProjectDialog({
     queryFn: () => modelsApi.listClassificationModels(),
     enabled: open,
   });
+  const { data: detectionModels = [] } = useQuery({
+    queryKey: ["models", "detection"],
+    queryFn: () => modelsApi.listDetectionModels(),
+    enabled: open,
+  });
+  // A duplicate keeps the source's detector, and with it its data type, so
+  // only classifiers of that type are offered (lib/data-type.ts).
+  const dataType =
+    dataTypeOf(detectionModels.find((m) => m.model_id === source?.detection_model_id)) ??
+    loadDataType();
+  const classifiersForType = modelsForDataType(classificationModels, dataType);
 
   const classificationModelId = form.watch("classification_model_id");
   const excludedClasses = form.watch("excluded_classes");
@@ -267,31 +279,33 @@ export function DuplicateProjectDialog({
                     label={<FormLabel>Classification model</FormLabel>}
                     caption="The AI model that identifies species in your images. Pick one trained for your region."
                   />
-                  <ModelSelect
-                    value={field.value ?? "none"}
-                    onValueChange={(val) =>
-                      field.onChange(val === "none" ? null : val)
-                    }
-                    models={classificationModels}
-                    placeholder="Select classification model"
-                    noneValue="none"
-                    noneLabel="No classification model"
-                    onShowInfo={() => setShowModelInfo(true)}
-                  >
-                    <SelectItem value="none">
-                      ∅ No classification model
-                      <br />
-                      <span className="text-xs text-muted-foreground">
-                        Run animal detector only, identify species manually
-                      </span>
-                    </SelectItem>
-                    <ClassificationModelGroupedItems
-                      models={classificationModels.filter(
-                        (m) => m.model_id !== "none",
-                      )}
-                    />
-                  </ModelSelect>
-                  {!hasClassifier && <NoClassifierNotice />}
+                  {classifiersForType.length === 0 ? (
+                    <NoClassifierNotice noneAvailable />
+                  ) : (
+                    <>
+                      <ModelSelect
+                        value={field.value ?? "none"}
+                        onValueChange={(val) =>
+                          field.onChange(val === "none" ? null : val)
+                        }
+                        models={classificationModels}
+                        placeholder="Select classification model"
+                        noneValue="none"
+                        noneLabel="No classification model"
+                        onShowInfo={() => setShowModelInfo(true)}
+                      >
+                        <SelectItem value="none">
+                          ∅ No classification model
+                          <br />
+                          <span className="text-xs text-muted-foreground">
+                            Run animal detector only, identify species manually
+                          </span>
+                        </SelectItem>
+                        <ClassificationModelGroupedItems models={classifiersForType} />
+                      </ModelSelect>
+                      {!hasClassifier && <NoClassifierNotice />}
+                    </>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}

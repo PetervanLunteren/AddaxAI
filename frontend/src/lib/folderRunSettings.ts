@@ -18,7 +18,9 @@
  *
  * The folder path is deliberately not stored: it's run-specific. Saved on
  * commit (Start analysis / project create), not on every keystroke, so we only
- * remember settings actually used. Missing models are NOT validated here; the
+ * remember settings actually used. The one exception is `data_type`, which is
+ * a preference rather than a run setting: it is written the moment the user
+ * picks it (lib/data-type.ts). Missing models are NOT validated here; the
  * forms' model-status badges flag anything needing setup rather than silently
  * swapping the user's choice.
  */
@@ -29,6 +31,9 @@ import type { MediaFilter } from "../api/types";
 const KEY = "addaxai.folderRun.lastSettings";
 
 export interface PersistedAnalysisSettings {
+  /** "camera_trap" | "underwater". Typed loosely because anything can be
+   *  in localStorage; `loadDataType` in lib/data-type.ts validates it. */
+  data_type?: string;
   detection_model_id?: string;
   classification_model_id?: string | null;
   embedding_model_id?: string | null;

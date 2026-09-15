@@ -141,16 +141,17 @@ class ModelManifest(BaseModel):
     # the megadetector package" in DEVELOPERS.md for why, and for what
     # happens when it does not.
     class_mapping: dict[str, str] | None = None
-    # `domain`: **what footage this detector is for.** Every detector
-    # declares it (the catalog test enforces that, like `classes`). It is
-    # the same word and values the project-level data-domain toggle uses,
-    # and today it decides one thing: the track post-filter's values
-    # (`app/ml/track_filter.py`), which rest on whether a still animal is
-    # ordinary (a camera trap) or almost always a false box (under water).
-    # A plain string on purpose: a value this schema rejected would make
-    # ManifestManager skip the whole model silently; `track_filter_for`
-    # refuses an unknown value by name instead, and the catalog test pins
-    # the values.
+    # `domain`: **what footage this model is for**, `camera_trap` or
+    # `underwater`. Every detector and every classifier declares it (the
+    # catalog test enforces that, like `classes`); embedders work on any
+    # crop and declare none. Three readers: the track post-filter's values
+    # (`app/ml/track_filter.py`, from the detector), the setup forms' "Data
+    # type" toggle, which offers only the models of the chosen type, and
+    # the project API, which refuses a detector and a classifier from
+    # different domains (`routers/projects.py`). A plain string on
+    # purpose: a value this schema rejected would make ManifestManager
+    # skip the whole model silently; `track_filter_for` refuses an unknown
+    # value by name instead, and the catalog test pins the values.
     domain: str | None = None
 
     # Embedding-specific

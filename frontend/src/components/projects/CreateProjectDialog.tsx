@@ -7,7 +7,7 @@
  * - Explicit error handling
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -55,19 +55,31 @@ import {
   useLabelSelectionCaption,
 } from "../taxonomy/LabelSelectionField";
 import { ModelSelect } from "../models/ModelSelect";
+import { ModelSelectItem } from "../models/ModelSelectItem";
 import { toApiModelId } from "@/lib/model-id";
 import { NoClassifierNotice } from "../models/NoClassifierNotice";
+import { DataTypeToggle } from "../models/DataTypeToggle";
 import { FieldHeader } from "../ui/field-header";
+import { Label } from "../ui/label";
 import {
   loadLastUsedSettings,
   saveLastUsedSettings,
 } from "../../lib/folderRunSettings";
+import {
+  applyDataType,
+  DEFAULT_DETECTOR,
+  dataTypeOf,
+  loadDataType,
+  modelsForDataType,
+  savedDataType,
+} from "../../lib/data-type";
+import { SETTING_CAPTIONS } from "../../lib/settingCaptions";
 import { projectDescriptionField } from "./project-form";
 
 const projectSchema = z.object({
   name: z.string().min(1, "Project name is required").max(100, "Name too long"),
   description: projectDescriptionField,
-  detection_model_id: z.literal("MD5A-0-0"),
+  detection_model_id: z.string().min(1, "Detection model is required"),
   classification_model_id: z.string().nullable().optional(),
   embedding_model_id: z.string().nullable(),
   excluded_classes: z.array(z.string()),
@@ -92,11 +104,20 @@ export function CreateProjectDialog({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [imageFile, setImageFile] = useState<File | null>(null);
+  // The details sheet serves the detector and the classifier. The id is
+  // kept apart from `open` so the sheet keeps its content while closing.
   const [showModelInfo, setShowModelInfo] = useState(false);
+  const [infoModelId, setInfoModelId] = useState<string | null>(null);
+  const showInfoFor = (modelId: string | null) => {
+    setInfoModelId(modelId);
+    setShowModelInfo(true);
+  };
 
   // Model preparation state
   type DialogStage = "form" | "preparing" | "error";
   const [stage, setStage] = useState<DialogStage>("form");
+  // Which model the prep overlay is for: the detector or the classifier.
+  const [preparingModelId, setPreparingModelId] = useState<string | null>(null);
   const [preparingTaskId, setPreparingTaskId] = useState<string | null>(null);
   const [preparationError, setPreparationError] = useState<string | null>(null);
   // Always set alongside preparationError, so a kind cannot outlive the
@@ -105,12 +126,18 @@ export function CreateProjectDialog({
     string | undefined
   >(undefined);
 
-  // Fetch available classification models (already sorted alphabetically by backend)
-  const { data: classificationModels = [] } = useQuery({
-    queryKey: ["models", "classification"],
-    queryFn: () => modelsApi.listClassificationModels(),
+  // Fetch available models (already sorted by the backend)
+  const { data: detectionModels = [], isSuccess: detectionModelsLoaded } = useQuery({
+    queryKey: ["models", "detection"],
+    queryFn: () => modelsApi.listDetectionModels(),
     enabled: open,
   });
+  const { data: classificationModels = [], isSuccess: classificationModelsLoaded } =
+    useQuery({
+      queryKey: ["models", "classification"],
+      queryFn: () => modelsApi.listClassificationModels(),
+      enabled: open,
+    });
 
   // Pre-fill the model + species selection from the last analysis (project or
   // folder run) via the shared last-used-settings store. Read once so
@@ -124,7 +151,8 @@ export function CreateProjectDialog({
     defaultValues: {
       name: "",
       description: "",
-      detection_model_id: "MD5A-0-0",
+      detection_model_id:
+        lastSelection?.detection_model_id ?? DEFAULT_DETECTOR[loadDataType()],
       classification_model_id: lastSelection?.classification_model_id ?? null,
       embedding_model_id: lastSelection?.embedding_model_id ?? "DINOV2-VITS14",
       excluded_classes: lastSelection?.excluded_classes ?? [],
@@ -136,6 +164,50 @@ export function CreateProjectDialog({
       taxonomic_rollup: true,
       independence_interval: 1800, // Will be converted from minutes in UI
     },
+  });
+
+  // A new project starts on the saved data type: once both model lists are
+  // in, swap any pre-filled model that does not fit it. Once per opening,
+  // so a toggle click inside the dialog is never undone.
+  const appliedDataTypeRef = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      appliedDataTypeRef.current = false;
+      return;
+    }
+    if (appliedDataTypeRef.current) return;
+    if (!detectionModelsLoaded || !classificationModelsLoaded) return;
+    appliedDataTypeRef.current = true;
+    // Before any choice was made, the pre-filled detector decides.
+    const detector = detectionModels.find(
+      (m) => m.model_id === form.getValues("detection_model_id"),
+    );
+    const target = savedDataType() ?? dataTypeOf(detector);
+    if (!target) return;
+    applyDataType(target, form, {
+      detectors: detectionModels,
+      classifiers: classificationModels,
+    });
+  }, [
+    open,
+    detectionModelsLoaded,
+    classificationModelsLoaded,
+    detectionModels,
+    classificationModels,
+    form,
+  ]);
+
+  const detectionModelId = form.watch("detection_model_id");
+  const detectionModel = detectionModels.find((m) => m.model_id === detectionModelId);
+  // The form's data type is its detector's; the saved choice stands in
+  // until the detector list has loaded.
+  const dataType = dataTypeOf(detectionModel) ?? loadDataType();
+  const classifiersForType = modelsForDataType(classificationModels, dataType);
+
+  const { data: detectionModelStatus } = useQuery({
+    queryKey: ["model-status", detectionModelId],
+    queryFn: () => modelsApi.getModelStatus(detectionModelId),
+    enabled: !!detectionModelId && open,
   });
 
   // Watch classification model changes
@@ -207,7 +279,7 @@ export function CreateProjectDialog({
   const { progress, message, cancel } = useTaskProgress({
     taskId: preparingTaskId,
     onComplete: () => {
-      invalidateModelMetadata(queryClient, classificationModelId);
+      invalidateModelMetadata(queryClient, preparingModelId);
       setPreparingTaskId(null);
       setStage("form");
     },
@@ -253,6 +325,7 @@ export function CreateProjectDialog({
       // in the shared store are left untouched. "none" is normalised to null
       // so the store's canonical "no model" value is null.
       saveLastUsedSettings({
+        detection_model_id: variables.detection_model_id,
         classification_model_id: toApiModelId(variables.classification_model_id),
         embedding_model_id: toApiModelId(variables.embedding_model_id),
         country_code: variables.country_code ?? null,
@@ -276,13 +349,14 @@ export function CreateProjectDialog({
     },
   });
 
-  // Handler for model preparation
-  const handlePrepareModel = async () => {
-    if (!classificationModelId) return;
+  // Handler for model preparation, for the detector or the classifier
+  const handlePrepareModel = async (modelId: string | null | undefined) => {
+    if (!modelId) return;
 
     try {
+      setPreparingModelId(modelId);
       setStage("preparing");
-      const response = await modelsApi.prepareModel(classificationModelId);
+      const response = await modelsApi.prepareModel(modelId);
       setPreparingTaskId(response.task_id);
     } catch (error: any) {
       setPreparationError(error.message || "Failed to start model preparation");
@@ -302,7 +376,7 @@ export function CreateProjectDialog({
   // Handler for retrying after error
   const handleRetryPreparation = () => {
     setPreparationError(null);
-    handlePrepareModel();
+    handlePrepareModel(preparingModelId);
   };
 
   const onSubmit = (data: ProjectCreate) => {
@@ -325,8 +399,10 @@ export function CreateProjectDialog({
     createMutation.mutate(data);
   };
 
-  // Get selected model info for preparation view
-  const selectedModel = classificationModels.find((m) => m.model_id === classificationModelId);
+  // The model the preparation view is about
+  const preparingModel = [...detectionModels, ...classificationModels].find(
+    (m) => m.model_id === preparingModelId,
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -353,6 +429,24 @@ export function CreateProjectDialog({
             <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <TooltipProvider>
+              {/* Data type first: it decides which models the fields
+                  below offer. */}
+              <div className="space-y-2">
+                <FieldHeader
+                  label={<Label>Data type</Label>}
+                  caption={SETTING_CAPTIONS.dataType}
+                />
+                <DataTypeToggle
+                  value={dataType}
+                  onChange={(next) =>
+                    applyDataType(next, form, {
+                      detectors: detectionModels,
+                      classifiers: classificationModels,
+                    })
+                  }
+                />
+              </div>
+
               <FormField
                 control={form.control}
                 name="name"
@@ -399,6 +493,42 @@ export function CreateProjectDialog({
 
               <FormField
                 control={form.control}
+                name="detection_model_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FieldHeader
+                      label={<FormLabel>Detection model</FormLabel>}
+                      caption={SETTING_CAPTIONS.detectionModel}
+                    />
+                    <ModelSelect
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      models={detectionModels}
+                      placeholder="Select detection model"
+                      onShowInfo={() => showInfoFor(field.value)}
+                    >
+                      {modelsForDataType(detectionModels, dataType).map((m) => (
+                        <ModelSelectItem key={m.model_id} model={m} />
+                      ))}
+                    </ModelSelect>
+                    {/* Offered, not required: a detector needs nothing at
+                        creation (the classifier does, for its species
+                        list), and the Analyses page checks every model is
+                        ready before a run. */}
+                    {detectionModelStatus && (
+                      <ModelStatusBadge
+                        status={detectionModelStatus}
+                        onPrepare={() => handlePrepareModel(detectionModelId)}
+                        isPreparing={false}
+                      />
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name="classification_model_id"
                 render={({ field }) => (
                   <FormItem>
@@ -406,39 +536,43 @@ export function CreateProjectDialog({
                       label={<FormLabel>Classification model</FormLabel>}
                       caption="The AI model that identifies species in your images. Pick one trained for your region."
                     />
-                    <ModelSelect
-                      value={field.value ?? "none"}
-                      onValueChange={(val) => field.onChange(val === "none" ? "none" : val)}
-                      models={classificationModels}
-                      placeholder="Select classification model"
-                      noneValue="none"
-                      noneLabel="No classification model"
-                      onShowInfo={() => setShowModelInfo(true)}
-                    >
-                      <SelectItem value="none">
-                        ∅ No classification model
-                        <br />
-                        <span className="text-xs text-muted-foreground">Run animal detector only, identify species manually</span>
-                      </SelectItem>
-                      <ClassificationModelGroupedItems
-                        models={classificationModels.filter((m) => m.model_id !== "none")}
-                      />
-                    </ModelSelect>
+                    {classifiersForType.length === 0 ? (
+                      <NoClassifierNotice noneAvailable />
+                    ) : (
+                      <>
+                        <ModelSelect
+                          value={field.value ?? "none"}
+                          onValueChange={(val) => field.onChange(val === "none" ? "none" : val)}
+                          models={classificationModels}
+                          placeholder="Select classification model"
+                          noneValue="none"
+                          noneLabel="No classification model"
+                          onShowInfo={() => showInfoFor(field.value ?? null)}
+                        >
+                          <SelectItem value="none">
+                            ∅ No classification model
+                            <br />
+                            <span className="text-xs text-muted-foreground">Run animal detector only, identify species manually</span>
+                          </SelectItem>
+                          <ClassificationModelGroupedItems models={classifiersForType} />
+                        </ModelSelect>
 
-                    {/* Field status kept inside the FormItem so it sits tight
-                        to the dropdown (space-y-2) instead of the form's
-                        larger space-y-6 gap. The prep "bar" (model selected)
-                        and the detector-only notice (none selected) share this
-                        slot, so the spacing is the same whether or not the bar
-                        is there. */}
-                    {classificationModelId && modelStatus && (
-                      <ModelStatusBadge
-                        status={modelStatus}
-                        onPrepare={handlePrepareModel}
-                        isPreparing={false}
-                      />
+                        {/* Field status kept inside the FormItem so it sits tight
+                            to the dropdown (space-y-2) instead of the form's
+                            larger space-y-6 gap. The prep "bar" (model selected)
+                            and the detector-only notice (none selected) share this
+                            slot, so the spacing is the same whether or not the bar
+                            is there. */}
+                        {classificationModelId && modelStatus && (
+                          <ModelStatusBadge
+                            status={modelStatus}
+                            onPrepare={() => handlePrepareModel(classificationModelId)}
+                            isPreparing={false}
+                          />
+                        )}
+                        {!hasClassificationModel && <NoClassifierNotice />}
+                      </>
                     )}
-                    {!hasClassificationModel && <NoClassifierNotice />}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -518,10 +652,10 @@ export function CreateProjectDialog({
         )}
 
         {/* Preparing View */}
-        {stage === "preparing" && selectedModel && (
+        {stage === "preparing" && preparingModel && (
           <ModelPreparationView
-            modelName={selectedModel.friendly_name}
-            modelEmoji={selectedModel.emoji}
+            modelName={preparingModel.friendly_name}
+            modelEmoji={preparingModel.emoji}
             progress={progress}
             message={message}
             onCancel={handleCancelPreparation}
@@ -541,7 +675,7 @@ export function CreateProjectDialog({
 
       {/* Model Info Sheet */}
       <ModelInfoSheet
-        modelId={form.watch("classification_model_id")}
+        modelId={infoModelId}
         open={showModelInfo}
         onOpenChange={setShowModelInfo}
       />

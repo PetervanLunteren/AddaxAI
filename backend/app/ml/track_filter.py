@@ -20,9 +20,8 @@ a constant in the tracking script. Nothing marine was measured; the
 underwater values are SharkTrack's published ones.
 
 The domain comes from the detector's catalog entry (``ModelManifest.
-domain``), the same word and values the project-level data-domain
-toggle will use, so a run can never carry a filter its footage did not
-ask for.
+domain``), the same values the setup forms' Data type toggle is keyed
+on, so a run can never carry a filter its footage did not ask for.
 """
 
 from __future__ import annotations

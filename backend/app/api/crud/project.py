@@ -31,8 +31,12 @@ logger = get_logger(__name__)
 # user-chosen fields (name, description, classification model, label selection)
 # are set from the request instead. Omitting these when copy_settings is off
 # lets the model's column defaults apply, matching a fresh project.
+#
+# The detector is not one of them: it decides the project's data type
+# (camera trap or underwater), which a copy always keeps, so it is copied
+# either way. Left to the column default, an underwater project duplicated
+# without its settings came back as a MegaDetector project.
 _DUPLICATE_SETTINGS_COLUMNS = (
-    "detection_model_id",
     "embedding_model_id",
     "timezone",
     "shortcut_labels",
@@ -118,7 +122,8 @@ def duplicate_project(
     """Create a new project from an existing one's structure.
 
     Always copies the user-chosen fields (name, description, classification
-    model, label selection). Copies processing settings when copy_settings,
+    model, label selection) and the source's detector, which decides the
+    data type. Copies processing settings when copy_settings,
     sites when copy_sites, and re-queues the source's deployments for
     reprocessing when copy_deployments. Analyzed results are never copied across
     projects (only the folders are queued). Returns None if the source is
@@ -131,6 +136,7 @@ def duplicate_project(
     new_project = Project(
         name=params.name,
         description=params.description,
+        detection_model_id=source.detection_model_id,
         classification_model_id=params.classification_model_id,
         excluded_classes=list(params.excluded_classes or []),
         country_code=params.country_code,

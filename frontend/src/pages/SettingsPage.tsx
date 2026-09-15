@@ -103,6 +103,16 @@ import { ConfidenceSlider } from "../components/ui/confidence-slider";
 import { SETTING_CAPTIONS } from "../lib/settingCaptions";
 import { ClassificationModelGroupedItems } from "../components/models/ClassificationModelGroupedItems";
 import { ModelSelectItem } from "../components/models/ModelSelectItem";
+import { DataTypeToggle } from "../components/models/DataTypeToggle";
+import { Label } from "../components/ui/label";
+import {
+  applyDataType,
+  type DataType,
+  dataTypeOf,
+  loadDataType,
+  modelsForDataType,
+  switchDropsClassifier,
+} from "../lib/data-type";
 import { BatchSizeRow } from "../components/analyses/BatchSizeRow";
 import { ImageSizeRow } from "../components/analyses/ImageSizeRow";
 import { SettingRow } from "../components/analyses/SettingRow";
@@ -181,8 +191,11 @@ export default function SettingsPage() {
     newThreshold: number;
   } | null>(null);
 
-  // Classification model removal confirmation
+  // Classification model removal confirmation. Also asked when a Data type
+  // switch would drop the classifier; `pendingDataType` is then the type
+  // the confirm applies.
   const [removeClsConfirmOpen, setRemoveClsConfirmOpen] = useState(false);
+  const [pendingDataType, setPendingDataType] = useState<DataType | null>(null);
 
   // Re-embed confirmation + progress state
   const [reEmbedConfirmOpen, setReEmbedConfirmOpen] = useState(false);
@@ -303,6 +316,23 @@ export default function SettingsPage() {
 
   // Check if a classification model is selected
   const hasClassificationModel = !!classificationModelId && classificationModelId !== "none";
+
+  // The project's data type is its detector's; the saved choice only
+  // stands in while the detector is unknown to the catalog.
+  const dataType =
+    dataTypeOf(detectionModels.find((m) => m.model_id === detectionModelId)) ??
+    loadDataType();
+  const classifiersForType = modelsForDataType(classificationModels, dataType);
+  const models = { detectors: detectionModels, classifiers: classificationModels };
+  const handleDataTypeChange = (next: DataType) => {
+    if (next === dataType) return;
+    if (switchDropsClassifier(next, classificationModelId, classificationModels)) {
+      setPendingDataType(next);
+      setRemoveClsConfirmOpen(true);
+      return;
+    }
+    applyDataType(next, form, models);
+  };
 
   // Fetch taxonomy for selected classification model
   const { data: taxonomy } = useQuery({
@@ -786,6 +816,18 @@ export default function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-0 divide-y border-t">
+                {/* Data type: this project's own, read from its detector.
+                    It filters the two model pickers below. */}
+                <div className="grid grid-cols-2 items-center gap-8 py-6">
+                  <div className="space-y-1">
+                    <Label>Data type</Label>
+                    <p className="text-sm text-muted-foreground">
+                      {SETTING_CAPTIONS.dataType}
+                    </p>
+                  </div>
+                  <DataTypeToggle value={dataType} onChange={handleDataTypeChange} />
+                </div>
+
                 {/* Detection Model */}
                 <FormField
                   control={form.control}
@@ -797,7 +839,7 @@ export default function SettingsPage() {
                       description={
                         fullImageCls
                           ? SETTING_CAPTIONS.fullImageClassifier
-                          : "Finds animals, people, and vehicles in each image or video frame. Everything else builds on what it finds."
+                          : SETTING_CAPTIONS.detectionModel
                       }
                     >
                         <ModelSelect
@@ -810,7 +852,7 @@ export default function SettingsPage() {
                             setShowModelInfo(true);
                           }}
                         >
-                          {detectionModels.map((model) => (
+                          {modelsForDataType(detectionModels, dataType).map((model) => (
                             <ModelSelectItem key={model.model_id} model={model} />
                           ))}
                         </ModelSelect>
@@ -841,6 +883,10 @@ export default function SettingsPage() {
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
+                        {classifiersForType.length === 0 ? (
+                          <NoClassifierNotice noneAvailable />
+                        ) : (
+                          <>
                         <ModelSelect
                           value={field.value ?? "none"}
                           onValueChange={(val) => {
@@ -865,11 +911,8 @@ export default function SettingsPage() {
                             <br />
                             <span className="text-xs text-muted-foreground">Run animal detector only, identify species manually</span>
                           </SelectItem>
-                          <ClassificationModelGroupedItems
-                            models={classificationModels.filter((m) => m.model_id !== "none")}
-                          />
+                          <ClassificationModelGroupedItems models={classifiersForType} />
                         </ModelSelect>
-                        <FormMessage />
 
                         {/* Model Status Badge */}
                         {field.value && classificationModelStatus && (
@@ -881,6 +924,9 @@ export default function SettingsPage() {
                         )}
 
                         {!hasClassificationModel && <NoClassifierNotice />}
+                          </>
+                        )}
+                        <FormMessage />
                       </div>
                     </div>
                   )}
@@ -1168,7 +1214,11 @@ export default function SettingsPage() {
                   )}
                 />
 
-                {/* Classification gate (inference-time) */}
+                {/* Classification gate (inference-time). It decides which
+                    boxes are classified and which are embedded, so it only
+                    does nothing when neither model is chosen. */}
+                {(hasClassificationModel ||
+                  (!!embeddingModelId && embeddingModelId !== "none")) && (
                 <FormField
                   control={form.control}
                   name="classification_gate"
@@ -1199,6 +1249,7 @@ export default function SettingsPage() {
                     </SettingRow>
                   )}
                 />
+                )}
 
                 {/* Detection Threshold */}
                 <FormField
@@ -1514,18 +1565,31 @@ export default function SettingsPage() {
         </AlertDialog>
 
         {/* Classification Model Removal Confirmation */}
-        <AlertDialog open={removeClsConfirmOpen} onOpenChange={setRemoveClsConfirmOpen}>
+        <AlertDialog
+          open={removeClsConfirmOpen}
+          onOpenChange={(isOpen) => {
+            setRemoveClsConfirmOpen(isOpen);
+            if (!isOpen) setPendingDataType(null);
+          }}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Remove classification model?</AlertDialogTitle>
               <AlertDialogDescription>
+                {pendingDataType &&
+                  "The chosen classification model is made for another data type, so switching removes it. "}
                 Existing classifications will remain, but no new ones will be generated for future deployments. You can re-enable classification at any time.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction onClick={() => {
-                form.setValue("classification_model_id", "none", { shouldDirty: true });
+                if (pendingDataType) {
+                  applyDataType(pendingDataType, form, models);
+                } else {
+                  form.setValue("classification_model_id", "none", { shouldDirty: true });
+                }
+                setPendingDataType(null);
                 setRemoveClsConfirmOpen(false);
               }}>
                 Remove model

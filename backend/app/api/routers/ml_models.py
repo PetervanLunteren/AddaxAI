@@ -119,8 +119,8 @@ class ModelInfo(BaseModel):
     # None for classifiers, whose classes come from their taxonomy, and
     # for embedders.
     classes: list[str] | None = None
-    # What footage a detector is for: "camera_trap" or "underwater". None
-    # for classifiers and embedders, which declare none.
+    # What footage a detector or classifier is for: "camera_trap" or
+    # "underwater". None for embedders, which work on any crop.
     domain: str | None = None
     # "YYYY-MM" the developer released this version, or None.
     release_date: str | None = None

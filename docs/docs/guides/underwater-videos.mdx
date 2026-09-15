@@ -16,13 +16,13 @@ Two detectors are made for underwater footage. Both find animals; neither names 
 | SharkTrack | Sharks and rays | Trained on footage from 25 locations worldwide. Small and fast, runs on a laptop without a GPU at roughly half an hour per hour of video. Varini et al. 2024. |
 | Community Fish Detector | Any fish | Trained on 17 open datasets from reefs, rivers, lakes and labs, so it works in most water. Three sizes: nano is the fast one, small and medium see more and are several times slower without a GPU. Varini, Morris and contributors. |
 
-Pick one in the setup step or in the project settings, as you would MegaDetector. Both are downloaded on first use, together with their own analysis environment. SharkTrack analyses videos only: a folder that also holds photos is refused until you set "Media to analyse" to videos or pick another detector for the photos.
+Set **Data type** to Underwater at the top of the setup step, the new project dialog or the project settings. The model lists then offer only the underwater detectors, with the Community Fish Detector nano chosen, and no classification model, because none exists for underwater footage yet. AddaxAI remembers the choice for your next analysis. Both detectors are downloaded on first use, together with their own analysis environment. Both also analyse photos.
 
 ## Frame rate
 
-AddaxAI checks a video a few frames per second and follows each animal from one checked frame to the next, so a shark that circles the bait for two minutes is one card to review, not two hundred. The default is 2 frames per second. A higher rate follows fast animals better and takes proportionally longer; below about 1 frame per second a fast animal can split into several detections, and an animal out of sight for more than 2 seconds counts as a new one when it comes back. The setting is in the advanced settings of the setup step and of the project settings.
+AddaxAI checks a video a few frames per second and follows each animal from one checked frame to the next, so a shark that circles the bait for two minutes is one card to review, not two hundred. The default is 3 frames per second. A higher rate follows fast animals better and takes proportionally longer; below about 1 frame per second a fast animal can split into several detections, and an animal out of sight for more than 2 seconds counts as a new one when it comes back. The setting is in the advanced settings of the setup step and of the project settings.
 
-For the underwater detectors a filter also drops tracks that last under a second or barely move unless the detector was confident, which removes most of the floating debris and algae in turbid water. MegaDetector runs without it, so a resting animal on a camera trap is never dropped.
+A filter also drops tracks that last under a second or barely move, unless the detector was confident. For the underwater detectors it is strict, which removes most of the floating debris and algae in turbid water. For MegaDetector it is milder, because a resting animal on a camera trap is ordinary.
 
 ## What you get
 

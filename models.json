@@ -260,7 +260,8 @@
           {"url": "https://huggingface.co/Addax-Data-Science/SPECIESNET-v4-0-2-A/resolve/main/examples/4.jpg", "credit": "Orinoquia Camera Traps (Velez et al.), via LILA BC (CDLA-Permissive)"}
         ],
         "min_app_version": "7.0.1",
-        "region": "global"
+        "region": "global",
+        "domain": "camera_trap"
       },
       {
         "model_id": "EUR-DF-v1-3",
@@ -276,7 +277,8 @@
         "info_url": "https://www.deepfaune.cnrs.fr/en/",
         "release_date": "2025-02",
         "min_app_version": "7.0.1",
-        "region": "europe"
+        "region": "europe",
+        "domain": "camera_trap"
       },
       {
         "model_id": "SAH-DRY-ADS-v1",
@@ -298,7 +300,8 @@
           {"url": "https://huggingface.co/Addax-Data-Science/SAH-DRY-ADS-v1/resolve/main/examples/4.jpg", "credit": "Snapshot Karoo, Snapshot Safari, via LILA BC (CDLA-Permissive)"}
         ],
         "min_app_version": "7.0.1",
-        "region": "africa"
+        "region": "africa",
+        "domain": "camera_trap"
       },
       {
         "model_id": "TERRAI-NEP-v1",
@@ -319,7 +322,8 @@
           {"url": "https://huggingface.co/Addax-Data-Science/TERRAI-NEP-v1/resolve/main/examples/4.jpg", "credit": "WCS Camera Traps, Wildlife Conservation Society, via LILA BC (CDLA-Permissive); sampled by TeraiNet"}
         ],
         "min_app_version": "7.0.1",
-        "region": "asia"
+        "region": "asia",
+        "domain": "camera_trap"
       },
       {
         "model_id": "TAS-BB-v1",
@@ -335,7 +339,8 @@
         "info_url": "https://github.com/zaandahl/mewc",
         "release_date": "2024-05",
         "min_app_version": "7.0.1",
-        "region": "oceania"
+        "region": "oceania",
+        "domain": "camera_trap"
       },
       {
         "model_id": "NAM-ADS-v1",
@@ -357,7 +362,8 @@
           {"url": "https://huggingface.co/Addax-Data-Science/NAM-ADS-v1/resolve/main/examples/4.jpg", "credit": "Desert Lion Conservation Camera Traps, via LILA BC (CDLA-Permissive)"}
         ],
         "min_app_version": "7.0.1",
-        "region": "africa"
+        "region": "africa",
+        "domain": "camera_trap"
       },
       {
         "model_id": "NZI-ADS-v1",
@@ -379,7 +385,8 @@
           {"url": "https://huggingface.co/Addax-Data-Science/NZI-ADS-v1/resolve/main/examples/4.jpg", "credit": "Trail Camera Images of New Zealand Animals, Department of Conservation NZ, via LILA BC (CDLA-Permissive)"}
         ],
         "min_app_version": "7.0.1",
-        "region": "oceania"
+        "region": "oceania",
+        "domain": "camera_trap"
       },
       {
         "model_id": "PAM-SDZWA-v1",
@@ -393,7 +400,8 @@
         "license": "https://opensource.org/license/mit",
         "info_url": "https://github.com/conservationtechlab",
         "min_app_version": "7.0.1",
-        "region": "americas"
+        "region": "americas",
+        "domain": "camera_trap"
       },
       {
         "model_id": "TKM-ADS-v1",
@@ -409,7 +417,8 @@
         "info_url": "https://addaxdatascience.com/",
         "release_date": "2024-07",
         "min_app_version": "7.0.1",
-        "region": "asia"
+        "region": "asia",
+        "domain": "camera_trap"
       },
       {
         "model_id": "KIR-HEX-v1",
@@ -425,7 +434,8 @@
         "info_url": "https://www.osi-panthera.org/",
         "release_date": "2024-07",
         "min_app_version": "7.0.1",
-        "region": "asia"
+        "region": "asia",
+        "domain": "camera_trap"
       },
       {
         "model_id": "SWUSA-SDZWA-v3",
@@ -440,7 +450,8 @@
         "info_url": "https://github.com/conservationtechlab",
         "release_date": "2023-10",
         "min_app_version": "7.0.1",
-        "region": "americas"
+        "region": "americas",
+        "domain": "camera_trap"
       },
       {
         "model_id": "WUSA-SDZWA-v1",
@@ -455,7 +466,8 @@
         "info_url": "https://github.com/conservationtechlab",
         "release_date": "2026-08",
         "min_app_version": "7.0.1",
-        "region": "americas"
+        "region": "americas",
+        "domain": "camera_trap"
       },
       {
         "model_id": "GIF-JAP-v0-2",
@@ -472,7 +484,8 @@
         "info_url": "https://github.com/gifu-wildlife/TrainingMdetClassifire",
         "release_date": "2025-05",
         "min_app_version": "7.0.1",
-        "region": "asia"
+        "region": "asia",
+        "domain": "camera_trap"
       },
       {
         "model_id": "HWI-ADS-v1",
@@ -489,7 +502,8 @@
         "info_url": "https://huggingface.co/Addax-Data-Science/HWI-ADS-v1",
         "release_date": "2026-03",
         "min_app_version": "7.0.1",
-        "region": "americas"
+        "region": "americas",
+        "domain": "camera_trap"
       },
       {
         "model_id": "VIC-ADS-v1",
@@ -506,7 +520,8 @@
         "info_url": "https://www.parks.vic.gov.au/get-into-nature/conservation-and-science/science-and-research",
         "release_date": "2026-02",
         "min_app_version": "7.0.1",
-        "region": "oceania"
+        "region": "oceania",
+        "domain": "camera_trap"
       },
       {
         "model_id": "SBUSA-ADS-v1",
@@ -523,7 +538,8 @@
         "info_url": "https://www.tonation-nsn.gov/natural-resources/wildlife-and-vegetation/",
         "release_date": "2026-01",
         "min_app_version": "7.0.1",
-        "region": "americas"
+        "region": "americas",
+        "domain": "camera_trap"
       },
       {
         "model_id": "AHDRIFT-v1",
@@ -546,7 +562,8 @@
           {"url": "https://huggingface.co/Addax-Data-Science/AHDRIFT-v1/resolve/main/examples/2.jpg", "credit": "Ohio Small Animals dataset, The Ohio State University, via LILA BC (CDLA-Permissive)"},
           {"url": "https://huggingface.co/Addax-Data-Science/AHDRIFT-v1/resolve/main/examples/3.jpg", "credit": "Ohio Small Animals dataset, The Ohio State University, via LILA BC (CDLA-Permissive)"},
           {"url": "https://huggingface.co/Addax-Data-Science/AHDRIFT-v1/resolve/main/examples/4.jpg", "credit": "Ohio Small Animals dataset, The Ohio State University, via LILA BC (CDLA-Permissive)"}
-        ]
+        ],
+        "domain": "camera_trap"
       },
       {
         "model_id": "IND-ADS-v1",
@@ -562,7 +579,8 @@
         "region": "asia",
         "owner": "Wildlife Conservation Trust (WCT) - India",
         "license": "https://creativecommons.org/licenses/by-nc/4.0/deed.en",
-        "info_url": "https://www.wildlifeconservationtrust.org"
+        "info_url": "https://www.wildlifeconservationtrust.org",
+        "domain": "camera_trap"
       },
       {
         "model_id": "ANT-ADS-v1",
@@ -578,7 +596,8 @@
         "region": "oceania",
         "owner": "Charles Darwin University, Territory Natural Resource Management, Warddeken Land Management",
         "license": "https://creativecommons.org/licenses/by-nc/4.0/deed.en",
-        "info_url": "https://www.cdu.edu.au/riel"
+        "info_url": "https://www.cdu.edu.au/riel",
+        "domain": "camera_trap"
       },
           {
       "model_id": "EUR-DF-v1-5",
@@ -594,7 +613,8 @@
       "region": "europe",
       "citation": "https://doi.org/10.1007/s10344-023-01742-7",
       "license": "https://creativecommons.org/licenses/by-sa/4.0/",
-      "info_url": "https://www.deepfaune.cnrs.fr/en/"
+      "info_url": "https://www.deepfaune.cnrs.fr/en/",
+      "domain": "camera_trap"
     },
       {
         "model_id": "EUR-DF-v1-4",
@@ -610,7 +630,8 @@
         "region": "europe",
         "citation": "https://doi.org/10.1007/s10344-023-01742-7",
         "license": "https://creativecommons.org/licenses/by-sa/4.0/",
-        "info_url": "https://www.deepfaune.cnrs.fr/en/"
+        "info_url": "https://www.deepfaune.cnrs.fr/en/",
+        "domain": "camera_trap"
       },
       {
         "model_id": "EUR-DF-v1-2",
@@ -626,7 +647,8 @@
         "region": "europe",
         "citation": "https://doi.org/10.1007/s10344-023-01742-7",
         "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
-        "info_url": "https://www.deepfaune.cnrs.fr/en/"
+        "info_url": "https://www.deepfaune.cnrs.fr/en/",
+        "domain": "camera_trap"
       },
       {
         "model_id": "EUR-DF-v1-1",
@@ -642,7 +664,8 @@
         "region": "europe",
         "citation": "https://doi.org/10.1007/s10344-023-01742-7",
         "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
-        "info_url": "https://www.deepfaune.cnrs.fr/en/"
+        "info_url": "https://www.deepfaune.cnrs.fr/en/",
+        "domain": "camera_trap"
       },
       {
         "model_id": "PAN-SDZWA-v1",
@@ -656,7 +679,8 @@
         "min_app_version": "7.0.1",
         "region": "americas",
         "license": "https://opensource.org/license/mit",
-        "info_url": "https://github.com/conservationtechlab"
+        "info_url": "https://github.com/conservationtechlab",
+        "domain": "camera_trap"
       },
       {
         "model_id": "QLD-WOB-v1",
@@ -678,7 +702,8 @@
         "region": "oceania",
         "owner": "WildObs Australia",
         "license": "https://huggingface.co/datasets/choosealicense/licenses/blob/main/markdown/cc-by-4.0.md",
-        "info_url": "https://wildobs.org.au/"
+        "info_url": "https://wildobs.org.au/",
+        "domain": "camera_trap"
       },
       {
         "model_id": "AWC135-AWC-v1",
@@ -693,7 +718,8 @@
         "min_app_version": "7.0.1",
         "region": "oceania",
         "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
-        "info_url": "https://github.com/Australian-Wildlife-Conservancy-AWC/awc-wildlife-classifier"
+        "info_url": "https://github.com/Australian-Wildlife-Conservancy-AWC/awc-wildlife-classifier",
+        "domain": "camera_trap"
       },
       {
         "model_id": "NZS-WEK-v3-03",
@@ -714,7 +740,8 @@
         "region": "oceania",
         "owner": "New Zealand Department of Conservation",
         "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
-        "info_url": "https://wekaresearch.com/"
+        "info_url": "https://wekaresearch.com/",
+        "domain": "camera_trap"
       },
       {
         "model_id": "NEO-MNCN-v1-0",
@@ -729,7 +756,8 @@
         "min_app_version": "7.0.1",
         "region": "americas",
         "license": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
-        "info_url": "https://github.com/andrewzamp/TropiCam-AI"
+        "info_url": "https://github.com/andrewzamp/TropiCam-AI",
+        "domain": "camera_trap"
       },
       {
         "model_id": "AFR-DFV-v1",
@@ -744,7 +772,8 @@
         "min_app_version": "7.0.1",
         "region": "africa",
         "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
-        "info_url": "https://www.oneforestvision.org"
+        "info_url": "https://www.oneforestvision.org",
+        "domain": "camera_trap"
       },
       {
         "model_id": "AFR-DFV-v2",
@@ -760,7 +789,8 @@
         "region": "africa",
         "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
         "info_url": "https://www.oneforestvision.org",
-        "torch_hub_model": "dinov3_vitb16"
+        "torch_hub_model": "dinov3_vitb16",
+        "domain": "camera_trap"
       },
       {
         "model_id": "CAM-AI4G-v1",
@@ -777,7 +807,8 @@
         "owner": "AI For Good Lab, Microsoft",
         "citation": "https://doi.org/10.5281/zenodo.10041983",
         "license": "https://github.com/microsoft/CameraTraps/blob/main/LICENSE",
-        "info_url": "https://github.com/microsoft/CameraTraps/blob/main/README.md"
+        "info_url": "https://github.com/microsoft/CameraTraps/blob/main/README.md",
+        "domain": "camera_trap"
       },
       {
         "model_id": "SAC-DMO-v1",
@@ -799,7 +830,8 @@
           {"url": "https://huggingface.co/Addax-Data-Science/SAC-DMO-v1/resolve/main/examples/2.jpg", "credit": "California Small Animals dataset, CDFW, via LILA BC (CC BY 4.0); validation images from the model repo"},
           {"url": "https://huggingface.co/Addax-Data-Science/SAC-DMO-v1/resolve/main/examples/3.jpg", "credit": "California Small Animals dataset, CDFW, via LILA BC (CC BY 4.0); validation images from the model repo"},
           {"url": "https://huggingface.co/Addax-Data-Science/SAC-DMO-v1/resolve/main/examples/4.jpg", "credit": "California Small Animals dataset, CDFW, via LILA BC (CC BY 4.0); validation images from the model repo"}
-        ]
+        ],
+        "domain": "camera_trap"
       },
       {
         "model_id": "SOCAL-IRC-v3-6",
@@ -815,7 +847,8 @@
         "info_url": "https://github.com/Monitoring-Research-IRC/irc-species-classification-model",
         "release_date": "2026-07",
         "min_app_version": "7.6.0",
-        "region": "americas"
+        "region": "americas",
+        "domain": "camera_trap"
       },
     {
       "model_id": "NZI-ADS-v2",
@@ -830,7 +863,8 @@
       "license": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
       "info_url": "https://www.doc.govt.nz/",
       "min_app_version": "7.7.0",
-      "region": "oceania"
+      "region": "oceania",
+      "domain": "camera_trap"
     }
     ],
     "emb": [

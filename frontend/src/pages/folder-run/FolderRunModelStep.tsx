@@ -8,13 +8,16 @@
  * start button before the modal opened).
  *
  * Main fields (always visible):
- * - Classification model ("Model details" link + status badge + grouped items)
+ * - Data type (camera trap / underwater), first, before the folder. It
+ *   filters the two model pickers below (lib/data-type.ts)
+ * - Detection model + status badge
+ * - Classification model ("Model details" link + status badge + grouped
+ *   items), or a notice when the data type has no classifier
  * - Label selection (LabelSelectionField with country / state
  *   geofilter), only when a classifier is picked
  *
  * Advanced (collapsed by default; defaults are tuned for the common
  * case):
- * - Detection model + status badge
  * - Detection / classification / embedding batch sizes (BatchSizeRow)
  * - Embedding model + status badge
  * - Video frame rate
@@ -122,6 +125,15 @@ import {
 } from "../../components/taxonomy/LabelSelectionField";
 import { ModelSelect } from "../../components/models/ModelSelect";
 import { NoClassifierNotice } from "../../components/models/NoClassifierNotice";
+import { DataTypeToggle } from "../../components/models/DataTypeToggle";
+import { Label } from "../../components/ui/label";
+import {
+  applyDataType,
+  dataTypeOf,
+  loadDataType,
+  modelsForDataType,
+  savedDataType,
+} from "../../lib/data-type";
 
 import { useFolderScan } from "../../hooks/useFolderScan";
 import { useTaskProgress } from "../../hooks/useTaskProgress";
@@ -340,6 +352,28 @@ export function FolderRunModelStep() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]);
 
+  // Brand-new run: square the restored models with the saved data type
+  // once the model lists are in (the type of a model is in the catalog).
+  // Declared after the restore effect so it runs after it. A resumed run
+  // is left alone: it shows its own type, read from its detector.
+  const hasAppliedDataTypeRef = useRef(false);
+  useEffect(() => {
+    if (runId || hasAppliedDataTypeRef.current) return;
+    if (detectionModelsLoading || classificationModelsLoading) return;
+    hasAppliedDataTypeRef.current = true;
+    // Before any choice was made, the restored detector decides.
+    const detector = detectionModels.find(
+      (m) => m.model_id === form.getValues("detection_model_id"),
+    );
+    const target = savedDataType() ?? dataTypeOf(detector);
+    if (!target) return;
+    applyDataType(target, form, {
+      detectors: detectionModels,
+      classifiers: classificationModels,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, detectionModelsLoading, classificationModelsLoading]);
+
   const folderPath = form.watch("folder_path") || null;
   const detectionModelId = form.watch("detection_model_id");
   const classificationModelId = form.watch("classification_model_id");
@@ -421,6 +455,11 @@ export function FolderRunModelStep() {
   const classificationModel = classificationModels.find(
     (m) => m.model_id === classificationModelId,
   );
+  // The form's data type is its detector's. The saved choice only stands
+  // in while the detector is unknown to the catalog.
+  const dataType = dataTypeOf(detectionModel) ?? loadDataType();
+  const detectorsForType = modelsForDataType(detectionModels, dataType);
+  const classifiersForType = modelsForDataType(classificationModels, dataType);
   // A full-image classifier skips MegaDetector, so the detector row and
   // the detection settings are greyed out with one caption saying so.
   const fullImageCls = classificationModel?.full_image_cls === true;
@@ -911,11 +950,30 @@ export function FolderRunModelStep() {
                     of the divider between them. */}
                 <div>
                 <div className="space-y-0">
+                  {/* Data type first: it decides which models the rows
+                      below offer, so it is answered before anything else. */}
+                  <div className="grid grid-cols-2 items-center gap-8 pb-6 border-b">
+                    <div className="space-y-1">
+                      <Label>Data type</Label>
+                      <p className="text-sm text-muted-foreground">
+                        {SETTING_CAPTIONS.dataType}
+                      </p>
+                    </div>
+                    <DataTypeToggle
+                      value={dataType}
+                      onChange={(next) =>
+                        applyDataType(next, form, {
+                          detectors: detectionModels,
+                          classifiers: classificationModels,
+                        })
+                      }
+                    />
+                  </div>
                   <FormField
                     control={form.control}
                     name="folder_path"
                     render={({ field }) => (
-                      <div className="grid grid-cols-2 items-center gap-8 pb-6 border-b">
+                      <div className="grid grid-cols-2 items-center gap-8 py-6 border-b">
                         <div className="space-y-1">
                           <FormLabel>Folder</FormLabel>
                           <FormDescription className="text-sm">
@@ -978,6 +1036,43 @@ export function FolderRunModelStep() {
                 <div className="space-y-0 divide-y border-b">
                   <FormField
                     control={form.control}
+                    name="detection_model_id"
+                    render={({ field }) => (
+                      <SettingRow
+                        label="Detection model"
+                        disabled={fullImageCls}
+                        description={
+                          fullImageCls
+                            ? SETTING_CAPTIONS.fullImageClassifier
+                            : SETTING_CAPTIONS.detectionModel
+                        }
+                      >
+                        <ModelSelect
+                          value={field.value}
+                          onValueChange={field.onChange}
+                          models={detectionModels}
+                          placeholder="Select detection model"
+                          onShowInfo={() => setShowDetInfo(true)}
+                        >
+                          {detectorsForType.map((m) => (
+                            <ModelSelectItem key={m.model_id} model={m} />
+                          ))}
+                        </ModelSelect>
+                        {detectionStatus &&
+                          detectionStatus.status !== "ready" && (
+                            <ModelStatusBadge
+                              status={detectionStatus}
+                              onPrepare={() => startPrepare(detectionModelId)}
+                              isPreparing={false}
+                            />
+                          )}
+                        <FormMessage />
+                      </SettingRow>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
                     name="classification_model_id"
                     render={({ field }) => (
                       <div className="grid grid-cols-2 items-center gap-8 py-6">
@@ -989,45 +1084,52 @@ export function FolderRunModelStep() {
                           </FormDescription>
                         </div>
                         <div className="space-y-2">
-                          <ModelSelect
-                            value={field.value ?? NO_CLASSIFIER}
-                            onValueChange={(val) =>
-                              field.onChange(
-                                val === NO_CLASSIFIER ? NO_CLASSIFIER : val,
-                              )
-                            }
-                            models={classificationModels}
-                            placeholder="Select classification model"
-                            noneValue={NO_CLASSIFIER}
-                            noneLabel="No classification model"
-                            onShowInfo={() => setShowClsInfo(true)}
-                          >
-                            <SelectItem value={NO_CLASSIFIER}>
-                              ∅ No classification model
-                              <br />
-                              <span className="text-xs text-muted-foreground">
-                                Run animal detector only, identify species
-                                manually
-                              </span>
-                            </SelectItem>
-                            <ClassificationModelGroupedItems
-                              models={classificationModels.filter(
-                                (m) => m.model_id !== "none",
-                              )}
-                            />
-                          </ModelSelect>
-                          {hasClassifier &&
-                            classificationStatus &&
-                            classificationStatus.status !== "ready" && (
-                              <ModelStatusBadge
-                                status={classificationStatus}
-                                onPrepare={() =>
-                                  startPrepare(classificationModelId!)
+                          {/* A data type with no classifier gets the notice
+                              alone: a picker holding only "none" asks a
+                              question with one answer. */}
+                          {classifiersForType.length === 0 ? (
+                            <NoClassifierNotice noneAvailable />
+                          ) : (
+                            <>
+                              <ModelSelect
+                                value={field.value ?? NO_CLASSIFIER}
+                                onValueChange={(val) =>
+                                  field.onChange(
+                                    val === NO_CLASSIFIER ? NO_CLASSIFIER : val,
+                                  )
                                 }
-                                isPreparing={false}
-                              />
-                            )}
-                          {!hasClassifier && <NoClassifierNotice />}
+                                models={classificationModels}
+                                placeholder="Select classification model"
+                                noneValue={NO_CLASSIFIER}
+                                noneLabel="No classification model"
+                                onShowInfo={() => setShowClsInfo(true)}
+                              >
+                                <SelectItem value={NO_CLASSIFIER}>
+                                  ∅ No classification model
+                                  <br />
+                                  <span className="text-xs text-muted-foreground">
+                                    Run animal detector only, identify species
+                                    manually
+                                  </span>
+                                </SelectItem>
+                                <ClassificationModelGroupedItems
+                                  models={classifiersForType}
+                                />
+                              </ModelSelect>
+                              {hasClassifier &&
+                                classificationStatus &&
+                                classificationStatus.status !== "ready" && (
+                                  <ModelStatusBadge
+                                    status={classificationStatus}
+                                    onPrepare={() =>
+                                      startPrepare(classificationModelId!)
+                                    }
+                                    isPreparing={false}
+                                  />
+                                )}
+                              {!hasClassifier && <NoClassifierNotice />}
+                            </>
+                          )}
                           <FormMessage />
                         </div>
                       </div>
@@ -1105,48 +1207,6 @@ export function FolderRunModelStep() {
                       centered between that section's bottom rule and this
                       top rule (its py-4 gives equal space to each). */}
                   <CollapsibleContent className="space-y-0 divide-y border-y mb-4">
-                    <FormField
-                      control={form.control}
-                      name="detection_model_id"
-                      render={({ field }) => (
-                        <SettingRow
-                          label="Detection model"
-                          isCustom={changedAdvanced.includes(
-                            "detection_model_id",
-                          )}
-                          disabled={fullImageCls}
-                          description={
-                            fullImageCls
-                              ? SETTING_CAPTIONS.fullImageClassifier
-                              : "The model that finds animals, people, and vehicles. MegaDetector 5a is the default and works well in most regions."
-                          }
-                        >
-                            <ModelSelect
-                              value={field.value}
-                              onValueChange={field.onChange}
-                              models={detectionModels}
-                              placeholder="Select detection model"
-                              onShowInfo={() => setShowDetInfo(true)}
-                            >
-                              {detectionModels.map((m) => (
-                                <ModelSelectItem key={m.model_id} model={m} />
-                              ))}
-                            </ModelSelect>
-                            {detectionStatus &&
-                              detectionStatus.status !== "ready" && (
-                                <ModelStatusBadge
-                                  status={detectionStatus}
-                                  onPrepare={() =>
-                                    startPrepare(detectionModelId)
-                                  }
-                                  isPreparing={false}
-                                />
-                              )}
-                            <FormMessage />
-                        </SettingRow>
-                      )}
-                    />
-
                     <FormField
                       control={form.control}
                       name="embedding_model_id"
@@ -1307,6 +1367,10 @@ export function FolderRunModelStep() {
                       )}
                     />
 
+                    {/* The gate decides which boxes are classified and
+                        which are embedded, so it only does nothing when
+                        neither model is chosen. */}
+                    {(hasClassifier || hasEmbedding) && (
                     <FormField
                       control={form.control}
                       name="classification_gate"
@@ -1334,6 +1398,7 @@ export function FolderRunModelStep() {
                         </SettingRow>
                       )}
                     />
+                    )}
 
                     {/* Batch sizes last: pure performance knobs that most
                         users should not touch (see their captions). */}

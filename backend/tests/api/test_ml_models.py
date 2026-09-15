@@ -106,15 +106,18 @@ def test_detector_classes_and_domain_reach_the_list(client, mock_managers):
     assert model["release_date"] == "2024-06"
 
 
-def test_a_classifier_carries_no_classes_or_domain(client, mock_managers):
-    """Classifiers name their classes through the taxonomy endpoint and
-    declare no domain; the list says so with null, not an empty list."""
+def test_a_classifier_carries_its_domain_but_no_classes(client, mock_managers):
+    """Classifiers name their classes through the taxonomy endpoint, so
+    the list says null there, not an empty list. Their domain reaches the
+    list: the setup forms filter the classifier picker by data type."""
     mock_manifest, _, _ = mock_managers
-    mock_manifest.get_classification_models.return_value = {"X-1": _manifest(region="global")}
+    mock_manifest.get_classification_models.return_value = {
+        "X-1": _manifest(region="global", domain="camera_trap"),
+    }
     resp = client.get("/api/ml/models/classification")
     model = next(m for m in resp.json() if m["model_id"] == "X-1")
     assert model["classes"] is None
-    assert model["domain"] is None
+    assert model["domain"] == "camera_trap"
     assert model["example_images"] == []
 
 

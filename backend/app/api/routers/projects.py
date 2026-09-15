@@ -57,6 +57,47 @@ ListProjectsMode = Literal["folder_run", "research", "all"]
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
 
+# The catalog's `domain` values in the words the refusal uses.
+_DOMAIN_WORDS = {"camera_trap": "a camera trap", "underwater": "an underwater"}
+
+
+def _refuse_mixed_domains(
+    manifest_mgr: ManifestManager,
+    detection_model_id: str | None,
+    classification_model_id: str | None,
+) -> None:
+    """Refuse a detector and a classifier made for different footage.
+
+    Not a matter of taste: classification runs on every box that is not a
+    person or vehicle, and a box whose top-1 class is "blank" or "empty"
+    is never loaded (`should_skip_detection`). A camera trap classifier on
+    SharkTrack's boxes would therefore drop sharks without a word. The
+    setup forms only offer models of one data type; this holds for every
+    other way in (a stale last-used setting, a duplicate, the API).
+
+    Checks only what it can know: no classifier, a model that is not
+    installed, or a model without a domain skips it. Unknown ids are
+    reported by the callers' own not-found checks.
+    """
+    if not detection_model_id or not classification_model_id:
+        return
+    try:
+        detector = manifest_mgr.get_model(detection_model_id)
+        classifier = manifest_mgr.get_model(classification_model_id)
+    except ValueError:
+        return
+    if detector.domain and classifier.domain and detector.domain != classifier.domain:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"{detector.friendly_name} is "
+                f"{_DOMAIN_WORDS.get(detector.domain, detector.domain)} model and "
+                f"{classifier.friendly_name} "
+                f"{_DOMAIN_WORDS.get(classifier.domain, classifier.domain)} model. "
+                "A project uses models of one data type."
+            ),
+        )
+
 
 @router.get("", response_model=list[ProjectWithStats])
 def list_projects(
@@ -149,6 +190,10 @@ def create_project(
                 detail=f"Embedding model '{project.embedding_model_id}' not found",
             ) from None
 
+    _refuse_mixed_domains(
+        manifest_mgr, project.detection_model_id, project.classification_model_id
+    )
+
     # Auto-compute excluded_classes from geofence when country_code is set
     if (
         project.country_code
@@ -206,6 +251,19 @@ def duplicate_project(
     """
     if params.classification_model_id == "none":
         params.classification_model_id = None
+
+    # The duplicate always keeps the source's detector, so its classifier
+    # has to fit that detector's data type.
+    source = crud_project.get_project(db, project_id)
+    if source is not None:
+        from app.core.config import get_settings
+        from app.ml.manifest_manager import ManifestManager
+
+        _refuse_mixed_domains(
+            ManifestManager(get_settings().models_dir),
+            source.detection_model_id,
+            params.classification_model_id,
+        )
 
     try:
         new_project = crud_project.duplicate_project(db, project_id, params)
@@ -424,19 +482,55 @@ def update_project(
     """
     Update an existing project.
 
-    Returns 400 if all species are excluded.
+    Returns 400 if a model it names is not installed, if its detector and
+    classifier are for different data types, or if all species are excluded.
     Returns 404 if project doesn't exist.
     Returns 409 if new name conflicts with existing project.
     """
+    from app.core.config import get_settings
+    from app.ml.manifest_manager import ManifestManager
+
+    manifest_mgr = ManifestManager(get_settings().models_dir)
+
+    # Only the models this request names are checked, so renaming a
+    # project whose stored model has since been removed still works.
+    sent = project.model_dump(exclude_unset=True)
+    for field, kind in (
+        ("detection_model_id", "Detection"),
+        ("classification_model_id", "Classification"),
+    ):
+        model_id = sent.get(field)
+        if model_id in (None, "none"):
+            continue
+        try:
+            manifest_mgr.get_model(model_id)
+        except ValueError:
+            logger.warning(f"Invalid {kind.lower()} model: {model_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"{kind} model '{model_id}' not found",
+            ) from None
+
+    # The pair that will be stored: what this request sends, else what the
+    # project holds. A request that sends neither changes neither.
+    if "detection_model_id" in sent or "classification_model_id" in sent:
+        db_current = crud_project.get_project(db, project_id)
+        detection_model_id = sent.get("detection_model_id") or (
+            db_current.detection_model_id if db_current else None
+        )
+        classification_model_id = (
+            sent["classification_model_id"]
+            if "classification_model_id" in sent
+            else (db_current.classification_model_id if db_current else None)
+        )
+        if classification_model_id == "none":
+            classification_model_id = None
+        _refuse_mixed_domains(manifest_mgr, detection_model_id, classification_model_id)
+
     # Normalize "none" to NULL and validate embedding model
     if project.embedding_model_id == "none":
         project.embedding_model_id = None
     elif project.embedding_model_id is not None:
-        from app.core.config import get_settings
-        from app.ml.manifest_manager import ManifestManager
-
-        settings = get_settings()
-        manifest_mgr = ManifestManager(settings.models_dir)
         try:
             manifest_mgr.get_model(project.embedding_model_id)
         except ValueError:
