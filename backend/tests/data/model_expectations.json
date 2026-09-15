@@ -1206,6 +1206,39 @@
           }
         ]
       ]
+    },
+    "ARC-ADS-v1": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "raven",
+          "confidence": 0.9576600790023804
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "raven",
+            "confidence": 0.9576600790023804
+          },
+          {
+            "label": "snow goose",
+            "confidence": 0.0018530389061197639
+          },
+          {
+            "label": "arctic fox adult",
+            "confidence": 0.0015175447333604097
+          },
+          {
+            "label": "wolf",
+            "confidence": 0.0014081952394917607
+          },
+          {
+            "label": "herring gull",
+            "confidence": 0.0013545833062380552
+          }
+        ]
+      ]
     }
   }
 }

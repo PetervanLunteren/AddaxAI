@@ -603,6 +603,22 @@
         "info_url": "https://www.doc.govt.nz/",
         "min_app_version": "7.7.0",
         "region": "oceania"
+      },
+      {
+        "model_id": "ARC-ADS-v1",
+        "friendly_name": "Subarctic and low Arctic (Canada)",
+        "emoji": "🇨🇦",
+        "env": "pytorch",
+        "model_fname": "final-20260909.pt",
+        "description": "This model was developed to identify species at fox dens in the forest-tundra transition zone in northern Manitoba, Canada, by the Churchill Fox Project (University of Manitoba) in collaboration with Addax Data Science. It identifies 38 wildlife classes, with a particular focus on red foxes and Arctic foxes, for which classification extends to age class. The initial dataset comprises 1.2 million images that were manually reviewed and classified by the Churchill Fox Project. It was trained using a fine-tuned SpeciesNet architecture on 580K images from 2.6K locations.",
+        "description_short": "Fox den research • Churchill Fox Project • University of Manitoba • 38 classes",
+        "developer": "Addax Data Science",
+        "owner": "Churchill Fox Project",
+        "citation": "https://doi.org/10.1016/j.gecco.2022.e02310",
+        "license": "https://creativecommons.org/licenses/by-nc/4.0/",
+        "info_url": "https://www.churchillfoxproject.org",
+        "min_app_version": "7.7.0",
+        "region": "americas"
       }
     ],
     "emb": [
