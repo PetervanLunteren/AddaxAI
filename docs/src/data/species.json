@@ -1458,6 +1458,26 @@
       "unknown reptile",
       "false detection"
     ],
+    "SOCAL-IRC-v3-6": [
+      "bird sp",
+      "bobcat",
+      "cattle",
+      "coyote",
+      "dog",
+      "gray fox",
+      "horse",
+      "human",
+      "mountain lion",
+      "mule deer",
+      "non-animal",
+      "opossum",
+      "rabbit",
+      "raccoon",
+      "raven",
+      "squirrel",
+      "striped skunk",
+      "turkey vulture"
+    ],
     "SPECIESNET-v4-0-2-A": [
       "white/crandall's saddleback tamarin",
       "western polecat",

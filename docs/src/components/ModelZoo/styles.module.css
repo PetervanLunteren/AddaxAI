@@ -181,6 +181,37 @@
   color: var(--ifm-color-emphasis-800);
 }
 
+/* Sample training images: four across on a wide screen, two on a phone.
+   Only mounted when the row is open, so the page does not fetch them for
+   every model up front. */
+.examples {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.6rem;
+  margin: 0 0 0.85rem;
+  max-width: 760px;
+}
+
+.example {
+  margin: 0;
+}
+
+.example img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--ifm-global-radius);
+  border: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.example figcaption {
+  margin-top: 0.25rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--ifm-color-emphasis-600);
+}
+
 .species {
   margin: 0 0 0.85rem;
 }

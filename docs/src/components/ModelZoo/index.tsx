@@ -42,7 +42,20 @@ interface RawModel {
   license?: string;
   citation?: string;
   min_app_version?: string;
+  /** What a detector finds; classifiers carry their labels in species.json. */
+  classes?: string[];
+  /** What footage a detector is for: "camera_trap" or "underwater". */
+  domain?: string;
+  /** Up to four sample training images with credits. */
+  example_images?: Array<{ url: string; credit: string }>;
 }
+
+// The catalogue's `domain` values in words. The app's model sheet holds the
+// same two entries; the docs cannot import from it, so keep them in step.
+const DOMAIN_LABELS: Record<string, string> = {
+  camera_trap: "Camera trap footage",
+  underwater: "Underwater footage",
+};
 
 interface Row extends RawModel {
   type: ModelType;
@@ -339,8 +352,24 @@ export default function ModelZoo(): ReactElement {
                     <td colSpan={columnCount}>
                       <div className={styles.detail}>
                         {row.description ? <p>{row.description}</p> : null}
+                        {row.example_images && row.example_images.length > 0 ? (
+                          <div className={styles.examples}>
+                            {row.example_images.map((image) => (
+                              <figure key={image.url} className={styles.example}>
+                                <img
+                                  src={image.url}
+                                  alt={`Training image for ${row.friendly_name}`}
+                                  loading="lazy"
+                                />
+                                <figcaption>{image.credit}</figcaption>
+                              </figure>
+                            ))}
+                          </div>
+                        ) : null}
                         {(() => {
-                          const species = SPECIES[row.model_id];
+                          // A classifier's labels come from its taxonomy
+                          // (species.json); a detector's from the catalogue.
+                          const species = SPECIES[row.model_id] ?? row.classes;
                           if (!species || species.length === 0) {
                             return UNAVAILABLE.has(row.model_id) ? (
                               <p className={styles.speciesMissing}>
@@ -365,6 +394,12 @@ export default function ModelZoo(): ReactElement {
                           );
                         })()}
                         <dl className={styles.meta}>
+                          {row.domain ? (
+                            <>
+                              <dt>Made for</dt>
+                              <dd>{DOMAIN_LABELS[row.domain] ?? row.domain}</dd>
+                            </>
+                          ) : null}
                           {row.owner ? (
                             <>
                               <dt>Owner</dt>
