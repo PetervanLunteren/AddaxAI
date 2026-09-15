@@ -47,7 +47,8 @@ interface ModelInfoSheetProps {
 }
 
 export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetProps) {
-  const [exampleImageFailed, setExampleImageFailed] = useState(false);
+  // URLs that did not load; a broken picture is dropped, not shown.
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
   // Fetch all classification models to find the selected one
   const { data: classificationModels } = useQuery({
     queryKey: ["models", "classification"],
@@ -86,6 +87,8 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
   const currentVersion = useAppVersion();
 
   if (!model) return null;
+
+  const exampleImages = model.example_images.filter((image) => !failedImages.has(image.url));
 
   const classList =
     model.type === "detection" ? model.classes ?? [] : taxonomy?.all_classes ?? [];
@@ -132,19 +135,30 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
             <p className="text-sm text-gray-700 leading-relaxed">{model.description}</p>
           </div>
 
-          {/* Example picture: what the model expects to see. A URL from the
-              manifest, so it needs the network; when it does not load the
-              block disappears rather than showing a broken image. */}
-          {model.example_image_url && !exampleImageFailed && (
+          {/* Sample training images, each with its credit. URLs from the
+              manifest, so they need the network; one that does not load is
+              dropped, and the block goes when none is left. */}
+          {exampleImages.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold mb-2">Example image</h3>
-              <img
-                src={model.example_image_url}
-                alt={`Example image for ${model.friendly_name}`}
-                className="max-w-full rounded-md border"
-                onError={() => setExampleImageFailed(true)}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
+              <h3 className="text-sm font-semibold mb-2">Training images</h3>
+              <div className="grid grid-cols-2 gap-2">
+                {exampleImages.map((image) => (
+                  <figure key={image.url}>
+                    <img
+                      src={image.url}
+                      alt={`Training image for ${model.friendly_name}`}
+                      className="w-full rounded-md border object-cover aspect-[4/3]"
+                      onError={() =>
+                        setFailedImages((prev) => new Set(prev).add(image.url))
+                      }
+                    />
+                    <figcaption className="mt-1 text-xs text-muted-foreground">
+                      {image.credit}
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
                 The kind of photo this model was trained on. Compare it with
                 your own.
               </p>

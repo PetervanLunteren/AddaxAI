@@ -856,6 +856,11 @@ export const CLASSIFICATION_MODELS: ClassificationModel[] = [
 ];
 
 // Model Info types (for UI dropdowns)
+export interface ExampleImage {
+  url: string;
+  credit: string;
+}
+
 export interface ModelInfo {
   model_id: string;
   friendly_name: string;
@@ -873,8 +878,9 @@ export interface ModelInfo {
   /** The model labels the whole frame; no detector runs. The detector
    *  row and the detection settings are greyed out on it. */
   full_image_cls?: boolean;
-  /** Picture of what the model expects to see, shown in the info sheet. */
-  example_image_url?: string | null;
+  /** Sample training images with credits, at most four; empty when the
+   *  model's data is closed. */
+  example_images: ExampleImage[];
   /** What a detector finds, from the catalog. `null` for classifiers,
    *  whose classes come from their taxonomy, and for embedders. */
   classes?: string[] | null;

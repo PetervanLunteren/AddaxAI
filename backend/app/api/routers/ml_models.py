@@ -34,7 +34,7 @@ from app.ml.environment_manager import (
 )
 from app.ml.manifest_manager import ManifestManager
 from app.ml.model_storage import ModelStorage
-from app.ml.schemas.model_manifest import ModelManifest
+from app.ml.schemas.model_manifest import ExampleImage, ModelManifest
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/ml", tags=["ML Models"])
@@ -112,7 +112,9 @@ class ModelInfo(BaseModel):
     # True when the model labels the whole frame and MegaDetector is
     # skipped. The UI greys out the detector and its settings on it.
     full_image_cls: bool = False
-    example_image_url: str | None = None
+    # Sample training images with credits, at most four; empty when the
+    # model's data is closed.
+    example_images: list[ExampleImage] = []
     # What a detector finds, from the catalog (`ModelManifest.classes`).
     # None for classifiers, whose classes come from their taxonomy, and
     # for embedders.
@@ -170,7 +172,7 @@ def _model_info(
         embedding_dim=manifest.embedding_dim,
         region=manifest.region,
         full_image_cls=manifest.full_image_cls,
-        example_image_url=manifest.example_image_url,
+        example_images=manifest.example_images or [],
         classes=manifest.classes,
         domain=manifest.domain,
         release_date=manifest.release_date,

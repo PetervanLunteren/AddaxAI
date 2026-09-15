@@ -37,6 +37,13 @@ def resolve_hf_repo(model_id: str, hf_repo: str | None = None) -> str:
     return hf_repo or f"{DEFAULT_HF_ORG}/{model_id}"
 
 
+class ExampleImage(BaseModel):
+    """One sample training image: where it is and who to credit."""
+
+    url: str
+    credit: str
+
+
 class ModelManifest(BaseModel):
     """
     Model manifest defining all metadata and configuration for an ML model.
@@ -87,11 +94,14 @@ class ModelManifest(BaseModel):
     # detection covering the full image is fed straight into the
     # classification phase. See app.ml.full_image_detection.
     full_image_cls: bool = False
-    # Picture of what the model expects to see, shown in the model info
-    # sheet. A URL only, the image never lives in the repo or the app.
-    # Meant for models with a specific setup (a drift-fence bucket, a
-    # baited tray) so a user can compare it with their own photos.
-    example_image_url: str | None = None
+    # Pictures of what the model was trained on, shown in the model info
+    # sheet: at most four, each a URL with a credit line. The files live
+    # in the model's HuggingFace repo, resized, never in the app. Only an
+    # image from the training data itself (or the same camera setup) goes
+    # in, under a licence that allows showing it with credit, so a model
+    # whose data is closed simply has none. The catalog test pins the
+    # shape and the cap.
+    example_images: list["ExampleImage"] | None = None
     # The month the developer released this version, "YYYY-MM". Shown in
     # the model sheet and, by hand, at the end of `description_short`; the
     # catalog test pins that the two agree. Month precision by decision:

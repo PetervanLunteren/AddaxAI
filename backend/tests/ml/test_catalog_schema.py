@@ -171,3 +171,22 @@ def test_release_dates_are_months_and_match_the_caption() -> None:
                 f"the release month {words!r}"
             )
     assert dated >= 40, f"only {dated} models carry a release_date; did the field move?"
+
+
+def test_example_images_are_few_and_credited() -> None:
+    """At most four sample training images per model, each an https URL
+    with a credit line, because most of the source datasets require
+    attribution. The single-URL field they replaced must be gone."""
+    catalog = json.loads(_CATALOG_PATH.read_text())
+    for models in catalog["models"].values():
+        for entry in models:
+            model_id = entry["model_id"]
+            assert "example_image_url" not in entry, f"{model_id}: example_image_url is retired"
+            images = entry.get("example_images")
+            if images is None:
+                continue
+            assert 1 <= len(images) <= 4, f"{model_id}: {len(images)} example images"
+            for image in images:
+                assert set(image) == {"url", "credit"}, f"{model_id}: {image}"
+                assert image["url"].startswith("https://"), f"{model_id}: {image['url']}"
+                assert image["credit"].strip(), f"{model_id}: an image without credit"

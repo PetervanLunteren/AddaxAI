@@ -73,14 +73,16 @@ def test_full_image_classifier_flag_reaches_the_list(client, mock_managers):
         friendly_name="Bucket cameras",
         region="americas",
         full_image_cls=True,
-        example_image_url="https://example.org/bucket.jpg",
+        example_images=[{"url": "https://example.org/bucket.jpg", "credit": "Someone, CC BY 4.0"}],
     )
     mock_manifest.get_classification_models.return_value = {"FULL-1": manifest}
     resp = client.get("/api/ml/models/classification")
     assert resp.status_code == 200
     model = next(m for m in resp.json() if m["model_id"] == "FULL-1")
     assert model["full_image_cls"] is True
-    assert model["example_image_url"] == "https://example.org/bucket.jpg"
+    assert model["example_images"] == [
+        {"url": "https://example.org/bucket.jpg", "credit": "Someone, CC BY 4.0"}
+    ]
 
 
 def test_detector_classes_and_domain_reach_the_list(client, mock_managers):
@@ -113,6 +115,7 @@ def test_a_classifier_carries_no_classes_or_domain(client, mock_managers):
     model = next(m for m in resp.json() if m["model_id"] == "X-1")
     assert model["classes"] is None
     assert model["domain"] is None
+    assert model["example_images"] == []
 
 
 def test_list_embedding_models(client, mock_managers):
