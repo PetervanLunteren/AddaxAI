@@ -158,10 +158,6 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
                   </figure>
                 ))}
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                The kind of photo this model was trained on. Compare it with
-                your own.
-              </p>
             </div>
           )}
 
