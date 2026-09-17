@@ -16,6 +16,15 @@ It deliberately stops short of UI design and field-level schema detail. The mech
 what matter here: what talks to what, in which direction, with which credential, and which
 identifier survives the round trip.
 
+**Update, same day, after a second round of source reading.** Two findings arrived after
+sections 1 to 15 were written, and both change the conclusion rather than decorate it.
+Wildbook's catalogue is a queryable vector index, so a read-only token is enough to match a
+locally computed embedding against it with no image upload at all (section 16). And MiewID
+itself runs standalone offline in about forty lines of timm code, so AddaxAI can compute
+those embeddings itself (section 17). Sections 8 and 9 are left as written, because the
+reasoning that produced them is still correct for the upload path; section 16 is the better
+route and section 9.2 now points at it. Read 16 and 17 before planning from 9.
+
 ---
 
 ## 1. The original brief
@@ -73,6 +82,11 @@ matters if Connect is revisited.
 
 Non-goals for a first version: running re-identification locally, building an individual ID
 review UI inside AddaxAI, automating the upload, syncing continuously, supporting Connect.
+
+Sections 16 and 17 revisit the first of those. Computing MiewID embeddings locally is no
+longer only a self-contained offline feature; it is the query key for matching against a
+Wildbook catalogue without uploading anything. The non-goal that still stands is building a
+full local individual-ID system with its own catalogue and review flow.
 
 ---
 
@@ -441,6 +455,10 @@ Automating the upload would cost a stored password and coupling to a platform we
 control, to save a few minutes of drag and drop. Automating the download saves the user from
 manual transcription of every result. Those are not the same trade.
 
+That reasoning holds, and section 16 then pushes it one step further: for the narrower
+question "which known individual is this animal", the upload can be dropped entirely, because
+the read side can answer it on its own.
+
 ---
 
 ## 9. Recommended flow
@@ -486,6 +504,10 @@ Wildbook changes its import format, the user sees Wildbook's own validation erro
 Wildbook's own review screen, which is a soft failure.
 
 ### 9.2 Phase 2: pull the individual IDs back
+
+This is the pull for encounters we uploaded in phase 1. Section 16 describes a different and
+better pull that needs no upload at all; prefer that one where the goal is only to find out
+who an animal is. Keep this one for closing the loop on encounters we did upload.
 
 1. The user does the identification work in Wildbook: reviews match results, sets individuals.
    This is theirs and it cannot be automated.
@@ -628,6 +650,27 @@ deliberate duplication decision, not an accident.
 
 Short, because phases 1 and 2 need nothing. In priority order.
 
+Sections 16 and 17 changed this list. The three questions that now matter most, ahead of
+everything below, are:
+
+- **What licence covers the MiewID weights?** `wbia-plugin-miew-id` has no LICENSE file at all
+  and AddaxAI is MIT and used commercially. Section 17.5. They can answer this in a sentence
+  and nothing gets built until they do.
+- **Is the kNN query on `embeddings.vector` supported for token callers, and will it stay
+  supported?** Section 16 rests entirely on it. It works by construction in the code read here,
+  but it is not a documented contract and their own agent skill hints at query restrictions
+  that were not found in the source (section 16.6).
+- **What collaboration permissions would our users realistically get?** The kNN is ACL-scoped,
+  so a fresh account on a silo-secured instance matches against almost nothing. This decides
+  whether any of section 16 returns useful results, and it is a social question, not a
+  technical one.
+
+It is also worth telling them plainly that section 16 makes it possible to get identifications
+out of a Wildbook without ever contributing a sighting back, and asking how they would prefer
+that to be handled. Better raised by us than discovered by them.
+
+Then, in the original order:
+
 1. **Make the external key survive the clone.** Either copy `otherCatalogNumbers` in
    `Encounter.cloneWithoutAnnotations` (`Encounter.java:3868`), or add `alternateID` to
    `opensearchMapping()` and the document serialiser. One line either way. It upgrades the
@@ -711,6 +754,7 @@ Shallow clones taken 2026-09-17:
 - `https://github.com/WildMeOrg/ml-service`
 - `https://github.com/WildMeOrg/wildbook-docs`
 - `https://github.com/WildMeOrg/scout`
+- `https://github.com/WildMeOrg/wbia-plugin-miew-id` (second pass, for sections 16 and 17)
 
 Read in full or in part: `src/main/resources/openapi.yaml`,
 `src/main/webapp/WEB-INF/web.xml` (Shiro filter chain and servlet mappings),
@@ -732,6 +776,24 @@ Grepped: `camera trap|cameratrap` across `src/main/java` and the docs repo (noth
 `autoMatch|autoAssign|threshold` across `src/main/java/org/ecocean/ia/*.java` (nothing),
 `otherCatalogNumbers|alternateID` across `Encounter.java`.
 
+Second pass, for sections 16 and 17:
+`src/main/java/org/ecocean/Annotation.java` (`opensearchMapping`, the embeddings block, and
+`getMatchQuery` at lines ~1196 to 1250),
+`src/main/java/org/ecocean/Embedding.java` (`getVectorDimension`),
+`src/main/java/org/ecocean/OpenSearch.java` (`querySanitize`, `applyAclFilter`,
+`aggregationError`, `INDIVIDUAL_TOKEN_KEEP`),
+`src/main/java/org/ecocean/api/SearchApi.java` (the full token gate chain, lines ~60 to 175),
+`ml-service/app/models/miewid.py`, `ml-service/app/utils/helpers.py` (`get_chip_from_img`),
+`ml-service/requirements.txt`, `ml-service/LICENSE`,
+`wbia-plugin-miew-id/wbia_miew_id/models/model.py`, its `setup.py` and `README.md`,
+and `backend/app/ml/envs/addaxai-base/linux/environment.yml` plus
+`backend/app/ml/inference/embedding_script.py` on the AddaxAI side.
+
+Grepped: `script|knn` across `SearchApi.java` (no rejection of either found),
+`license` across the whole `wbia-plugin-miew-id` repo (no LICENSE file, no classifier in
+`setup.py`, licence text only in two unrelated vendored helpers),
+`timm|albumentations|opencv|faiss` across `environment.yml` (only `faiss-cpu>=1.7.4` present).
+
 ### 15.3 Egress limits during the investigation
 
 The session's proxy blocked `wildbook.docs.wildme.org`, `docs.wildme.org`, `www.wildme.org`,
@@ -749,6 +811,14 @@ Specifically second-hand and needing verification before being quoted anywhere:
 the "64 species, 225k photos, 37k individuals" MiewID figure, the "12.5% top-1" and "19.2% on
 unseen taxa" comparisons against MegaDescriptor, and the per-platform species lists in
 section 6.
+
+The same split applies to sections 16 and 17. The OpenSearch vector mapping, the 2152
+dimension, the kNN query shape, the token gate chain, the MiewID architecture, the
+preprocessing chain and the absence of a licence file are all first-hand from source and
+carry file references. What is **not** verified by experiment: that a real instance actually
+accepts the kNN body from a token caller (section 16.6), and what the MiewID weights are
+licensed under, which lives on HuggingFace model cards the proxy blocked. Neither should be
+relied on until tested.
 
 ### 15.4 Sources
 
@@ -773,6 +843,11 @@ Algorithms:
 - Multispecies Animal Re-ID Using a Large Community-Curated Dataset (MiewID):
   https://arxiv.org/abs/2412.05602
 - MiewID msv3 model card: https://huggingface.co/conservationxlabs/miewid-msv3
+- MiewID msv2 model card: https://huggingface.co/conservationxlabs/miewid-msv2
+  (both model cards carry the weight licence, and both were blocked during this investigation)
+- PAIR-X, the match explainability used beside MiewID: https://github.com/WildMeOrg/pairx
+- OpenSearch vector index reference, cited in Wildbook's own mapping code:
+  https://docs.opensearch.org/docs/latest/vector-search/creating-vector-index/
 - PIE: https://arxiv.org/pdf/1902.10847.pdf
 - HotSpotter: http://cs.rpi.edu/hotspotter/crall-hotspotter-wacv-2013.pdf
 - WBIA detection pipeline poster (Parham et al., WACV 2018):
@@ -812,9 +887,280 @@ Standards:
    of them", stop here.
 7. Decide whether video best frames are in scope for a first version.
 
+Added by sections 16 and 17:
+
+8. **Test the kNN query with curl against a real instance** before planning around section 16
+   at all. This is now the highest-value experiment in the document, ahead of item 1.
+9. **Run the free DINOv2 baseline** from section 17.6. A day, no new dependency, and it tells
+   us whether individual separation is achievable on our own data before any model is added.
+10. Resolve the MiewID weights licence (section 17.5). A hard gate.
+11. Verify the 2152 embedding dimension and the exact `embeddings.method` and `methodVersion`
+    strings a real instance uses, by querying one annotation of the target species.
+12. Decide whether viewpoint classification is in scope, or whether the stated limitation is
+    "matches same-side photos only" (section 17.4, item 3).
+13. Size the embedding storage at 2152 float16 dimensions against a real project before
+    committing to it.
+
 ---
 
-## 16. Plain English summary
+## 16. Matching by embedding, with no image upload
+
+Found on a second pass through the Wildbook source, after sections 1 to 15 were written.
+This is the most consequential mechanical finding in the document.
+
+### 16.1 Their catalogue is a queryable vector index
+
+`Annotation.java` maps the embeddings field for OpenSearch as a nested object whose vector is
+a first-class vector-search field:
+
+```java
+embMap.put("type", "nested");
+embProps.put("method", keywordType);
+embProps.put("methodVersion", keywordType);
+embVect.put("type", "knn_vector");
+embVect.put("dimension", Embedding.getVectorDimension());   // 2152
+embVect.put("space_type", "cosinesimil");
+```
+
+`Embedding.getVectorDimension()` returns **2152**, which independently confirms the dimension
+derived from the timm architecture in section 17.2 and shows that the `[1, 512]` in the
+ml-service README is an illustrative placeholder, not the real shape.
+
+### 16.2 A token caller can send a kNN query
+
+The token path does not restrict query shape on the `annotation` index:
+
+- `OpenSearch.querySanitize` returns the query unchanged. Its comment says queries pass as-is
+  for anyone and results are scrubbed afterwards by `sanitizeDoc`.
+- `queryReferencesOnlyAllowedFields` (the field allowlist) is applied only to the `individual`
+  index for non-admin token callers, never to `annotation`.
+- `OpenSearch.aggregationError` only fires when the body carries an `aggs` or `aggregations`
+  key, so it does not touch a plain query body.
+- `TOKEN_ALLOWED_INDICES` includes `annotation`.
+- `applyAclFilter` wraps whatever query is supplied in a bool whose filter enforces
+  `publiclyReadable OR submitterUserIds = you OR viewUsers = you`.
+
+So a bearer-token caller can POST an arbitrary OpenSearch body, including a `knn` clause, and
+the server scopes it to what that account may see.
+
+### 16.3 The query, taken from Wildbook's own matcher
+
+`Annotation.getMatchQuery` builds exactly this shape internally, so it is known to work on a
+real Wildbook cluster:
+
+```json
+{"query": {"bool": {"must": [
+  {"nested": {
+    "path": "embeddings",
+    "query": {"bool": {
+      "must": [
+        {"knn": {"embeddings.vector": {"vector": [ "...2152 floats..." ], "k": 100}}}
+      ],
+      "filter": [
+        {"term": {"embeddings.method": "<their method>"}},
+        {"term": {"embeddings.methodVersion": "<their version>"}}
+      ]
+    }}
+  }}
+]}}}
+```
+
+Carry their own comment across, because it is a scoring trap that no error message would
+reveal:
+
+> Inside the nested bool, keep ONLY the knn clause in `must` so the per-hit score is exactly
+> the OS knn similarity (no spurious +1.0-per-term-clause offset). method/methodVersion become
+> `filter` clauses.
+
+Put a term clause in `must` instead of `filter` and every score shifts by 1.0, quietly
+invalidating any threshold calibrated against it.
+
+### 16.4 The flow
+
+1. Locally: crop with `get_chip_from_img`, embed with MiewID, get a 2152-float vector.
+2. `POST /api/v3/search/annotation` with the body above and `Authorization: Bearer <token>`.
+   The server adds the ACL filter itself and returns the nearest catalogue annotations.
+3. Annotation search does not return `individualId`, so take the top annotation IDs and
+   `POST /api/v3/media/resolve` in batches of up to 100. That returns `individualId`,
+   `encounterId`, `imageUrl`, `bbox`, `viewpoint` and `methodVersion`.
+4. Show our crop beside their catalogue crops. A person decides.
+5. Write the individual name onto our record.
+
+No image leaves the machine. Read-only token, no login, no bulk import, no 200-encounter cap,
+no location IDs, no spreadsheet. It sidesteps nearly every friction point in section 9.
+
+A useful self-configuring trick: query one annotation of the target species first and read its
+`embeddings[].methodVersion` to learn which model that instance runs, then match it locally.
+
+### 16.5 Four things that will bite
+
+**Model and preprocessing must match exactly.** Different MiewID versions live in different
+latent spaces, and a mismatch produces confident nonsense rather than an error. This is also
+where the preprocessing fidelity in section 17.3 stops being pedantic: matching against our
+own embeddings lets a systematic bias cancel out, because every vector is shifted the same
+way. Matching against theirs does not. Cross-database matching is the one case where the
+albumentations detail is load-bearing.
+
+**ACL scoping decides result quality.** The kNN runs over the slice of their catalogue the
+account may see, not the whole thing. On an instance with silo security a fresh account sees
+very little. This is a collaboration-permissions problem, not a technical one, and it is the
+thing actually worth negotiating in a meeting.
+
+**The ACL filter sits outside the nested kNN.** `k` retrieves candidates and the ACL then
+removes what the account cannot see, so ask for more than needed.
+
+**This gets the answer without contributing the sighting.** If nothing is ever uploaded, the
+resight is never recorded in the shared catalogue and the team whose animal it is never learns
+it was seen. For our own population analysis that is sufficient. As a posture toward a shared
+conservation database it is taking without giving, and it should be raised with Wild Me
+directly rather than discovered by them. The decent version is to match by vector to find out
+who the animal is, then upload only the confirmed sightings, which is a handful of records
+rather than hundreds, and which incidentally makes the 200-encounter cap irrelevant.
+
+### 16.6 One caution about this section
+
+The `api-reference` agent skill states that "scripted queries and cross-index term lookups are
+rejected". No code enforcing that was found, and `querySanitize` explicitly passes queries
+through. Either the doc describes intent rather than behaviour, or the enforcement lives
+somewhere not read. Since this entire section rests on an unusual query body being accepted,
+**test it with curl against a real instance before planning around it**, and do not trust
+either their doc or this one on the point.
+
+---
+
+## 17. Running MiewID locally
+
+### 17.1 Why this matters now
+
+Section 10 parks local re-identification as a different project, and for a self-contained
+offline feature that still holds. But section 16 changes its value: local embeddings are not
+only a private clustering tool, they are the query key into every Wildbook the user has an
+account on. The two findings are one design.
+
+### 17.2 The model is small and standalone
+
+`ml-service/app/models/miewid.py` carries the whole architecture:
+
+```python
+self.backbone = timm.create_model('efficientnetv2_rw_m', pretrained=False)
+final_in_features = self.backbone.classifier.in_features   # 2152
+self.backbone.classifier = nn.Identity()
+self.backbone.global_pool = nn.Identity()
+self.pooling = GeM()              # generalized mean pooling
+self.bn = nn.BatchNorm1d(final_in_features)
+```
+
+Loading paths differ by version and the difference matters:
+
+- **msv4 and later** load through a standalone `MiewIdNet()` plus
+  `load_state_dict(..., strict=True)`. Pure timm, no `transformers`, no network.
+- **msv3 and msv2** load through `AutoModel.from_pretrained(tag, trust_remote_code=True)`,
+  which downloads and executes remote Python at load time. Wrong for an offline desktop app
+  on both counts, and a supply-chain surface that must not go into a signed installer.
+
+So the msv4 standalone path is the one to copy: vendor the architecture, ship the checkpoint
+through the existing model zoo like any DINOv2 weight.
+
+In `wbia_miew_id/models/model.py` the embedding width is `final_in_features` whenever
+`use_fc=False`, which is what the standalone path uses, giving 2152 dimensions. At float16
+that is 4.3 KB per crop against 768 bytes for DINOv2 ViT-S, so roughly 5.6x the current
+embedding storage. Only the target species needs embedding, so this is manageable, but it
+should be sized before committing.
+
+### 17.3 Preprocessing fidelity is the likeliest silent failure
+
+The required chain is albumentations `Resize(440, 440)`, then `Normalize()`, then
+`ToTensorV2`, because the model was trained against cv2 bilinear rather than PIL. The crop
+must go through their `get_chip_from_img`, which handles theta and off-frame boxes by sampling
+from a padded canvas rather than clamping the origin, which would shift the window onto a
+different region.
+
+Their own comment on why this is not optional:
+
+> Bumping to torchvision was a ~3° angular drift per embedding, large enough to reshuffle
+> top-N matches.
+
+`backend/app/ml/inference/embedding_script.py` uses torchvision transforms, so this is a
+sibling script rather than an arch swap in the existing one. Getting it wrong does not raise,
+it quietly degrades every match, and per section 16.5 it degrades cross-database matching
+worst of all.
+
+### 17.4 What AddaxAI already has, and what it does not
+
+Already present: `faiss-cpu` in `env-addaxai-base`, the `emb` model catalogue category, the
+download, manifest and staleness plumbing, the subprocess-in-conda-env pattern,
+`DetectionEmbedding` storage with a precomputed `l2_norm`, FAISS k-NN and the greedy
+nearest-neighbour chain in `services/label_service.py`, and a crop grid review UI. The base
+env would need `timm`, `albumentations` and `opencv` added.
+
+Missing, and this is the actual project rather than the model:
+
+1. **An individual entity.** A per-project table of individuals, an assignment from
+   observation to individual, and merge and split operations, because people will get it wrong
+   and need to repair it without losing the rest.
+2. **Open-set decision support.** Known animal or new one? There is no universal threshold.
+   The `api-reference` agent skill says same-individual cosine similarity runs around 0.50 for
+   whale sharks and 0.35 for grey nurse sharks, that thresholds must be calibrated per species
+   and never reused across species, and that similarity decays as the gap between sightings
+   grows. The software ranks; a person decides. Same conclusion Wildbook reached, for the same
+   reason.
+3. **Viewpoint.** MiewID embeddings are only comparable within the same viewpoint: a left-flank
+   and a right-flank photo of one animal are not neighbours. Wild Me handles this with a
+   viewpoint classifier during detection, which is why `/pipeline/` takes a `classify_model_id`
+   for viewpoint and an optional `orientation_model_id` beside the MiewID extractor. AddaxAI
+   has no viewpoint concept at all. Either ship a second model or state the limitation. This is
+   the cost most likely to be underestimated.
+
+### 17.5 A licence gate to clear before anything is built
+
+`ml-service` is MIT, Conservation X Labs 2025.
+
+`wbia-plugin-miew-id` has **no LICENSE file at the repo root** and no licence classifier in
+`setup.py`. A grep of the whole repo found licence text only in two unrelated vendored
+helpers. The weights' licence lives on the HuggingFace model cards, which the proxy blocked
+during this investigation.
+
+AddaxAI is MIT and used commercially, and the depth estimation plan lists permissive licensing
+as a goal. So this is a gate, not a footnote, and it is a question Wild Me can answer in one
+sentence.
+
+### 17.6 Step zero is free and should happen first
+
+Before adding any model, test whether the **existing DINOv2 embeddings** already separate
+individuals. The vectors, the FAISS index and the crop grid are all already there. Take a
+deployment with known individuals, pull the embeddings for one species, compute the cosine
+similarity matrix, and look at whether same-animal pairs sit clearly above different-animal
+pairs.
+
+DINOv2 is self-supervised general-purpose and was not trained for this, so it will likely lose
+to MiewID. But if it is usable on spotted cats there is a prototype this week with no new
+model, no new dependency and no licence question. If it is hopeless, the shape of the problem
+is now known and so is the bar MiewID has to clear. A day either way.
+
+### 17.7 How the two options relate
+
+Complementary, not competing.
+
+Local MiewID clusters our own archive into candidate individuals with no account, no network,
+no record cap and no per-instance species configuration, over the whole library at once, for
+species no Wildbook instance has configured, with nothing leaving the machine.
+
+What it cannot give is the shared catalogue, and for wide-ranging carnivores that is the
+scientific point: knowing our leopard is also the neighbouring reserve's leopard.
+
+The good version is both, in order. Embed locally, match against the catalogue by vector
+(section 16), confirm individuals, then upload only the confirmed sightings.
+
+### 17.8 Effort
+
+The embedding half mirrors the DINOv2 feature closely and is roughly a week. The individual
+entity, merge and split, the review flow, viewpoint handling and per-species calibration are
+the real work, and that is a month or more, most of it not machine learning. Against the
+section 13 estimate of about a week and a half for the whole Wildbook export path.
+
+---
+
+## 18. Plain English summary
 
 Wildbook can put individual animal IDs on camera trap photos, but only for species with
 visible individual markings, so leopards, jaguars, ocelots and zebras yes, foxes, badgers and
@@ -832,3 +1178,20 @@ external ID when it does, so the join has to use the batch ID and the sighting I
 both values we choose before sending. Almost all of the export machinery already exists as the
 Camtrap DP export job. Nothing in the first two phases needs the Wild Me team to change
 anything, though there is one genuinely one-line fix worth asking them for.
+
+Then a second pass through the source found something better, and it is what the plan should
+actually be built around. Wildbook stores its MiewID vectors in a searchable vector index, and
+a read-only token is enough to send it a vector computed on our own machine and get back its
+closest catalogue matches, which a second call turns into individual names and thumbnails. No
+photos are uploaded at all, which removes the login, the batch cap, the spreadsheet and the
+location IDs in one go. MiewID itself runs offline in about forty lines of standard timm code,
+so AddaxAI can compute those vectors without any cloud service. Three honest catches: the
+local model and its image preprocessing have to match theirs exactly or the results are
+confident nonsense rather than an error; the search only covers the part of their catalogue
+the account is allowed to see, so permissions decide whether it is useful at all; and getting
+answers this way without ever uploading means our sightings never reach the shared catalogue,
+which is worth raising with Wild Me rather than letting them find out. The sensible shape is
+to match by vector, confirm who the animal is, then upload only the confirmed sightings.
+Before building anything, spend a day checking whether the DINOv2 embeddings already in the
+database separate individuals on real data, test the vector query against a live instance with
+curl, and get the MiewID weight licence in writing.
