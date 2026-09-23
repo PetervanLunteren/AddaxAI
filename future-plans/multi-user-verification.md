@@ -8,7 +8,8 @@ Repo state at time of audit: `5c4401d` on `main`, VERSION `0.0.0-dev`
 This document is the raw material for a proper implementation plan. It holds the original
 brief, the questions to answer, what the audit of the repo found, the three approaches that
 were considered, why the simplest one won, the design that was agreed, the feasibility
-assessment against the real code, the security and concurrency analysis, what to deliberately
+assessment against the real code, the security and concurrency analysis, what happens when
+somebody runs a second AddaxAI of their own alongside the shared one, what to deliberately
 leave out, the risks, and the sources. It is written to be picked up cold months later
 without rerunning the investigation.
 
@@ -66,6 +67,15 @@ The scope then narrowed across several follow-ups, each quoted where it decided 
 > So basically a blocker on inference, right? So of inference is being run, show the pbars and
 > block other functions (like it was designed for already on a single user)
 
+> What would happen if a user would run inference on their local device while on the AddaxAI
+> served from the main device?
+
+That last question produced section 13, and two requirements that were missing from the
+original ten:
+
+> Yes, add it and include the instance indicator as R11. Inference can only run on the main
+> device that is hosting the AddaxAi.
+
 ## 2. Questions to answer
 
 1. Can several people verify at the same time, on different camera folders?
@@ -78,6 +88,7 @@ The scope then narrowed across several follow-ups, each quoted where it decided 
 8. Is any of this safe to expose on a network?
 9. Does the app actually hold up with several simultaneous clients?
 10. Should inference block everything while it runs?
+11. What happens if somebody runs inference in their own local install at the same time?
 
 ## 3. Goals
 
@@ -400,6 +411,18 @@ pattern that already exists. Single-detection verification never blocks.
 **R10. Work splits by deployment**, with the existing per-deployment `verified / total` as the
 progress readout and `tag:assigned_to` as the assignment mechanism.
 
+**R11. The UI always says which instance it is.** A persistent indicator naming the backend a
+client is talking to: the server's hostname for a remote session, "this computer" for a local
+one. Nothing in the frontend currently reveals this, and a lab member can have a local install
+and a browser tab open side by side that look identical. Section 13 is why this is a
+requirement rather than a nicety.
+
+**R12. Inference runs only on the host machine.** Analysis is started on the machine that
+serves AddaxAI, and lab members do not run their own local installs against the shared camera
+folders. Partly enforced already (a browser has no native folder picker), partly enforceable
+(the backend knows whether a client is loopback), and partly documentation only (nothing can
+stop somebody's own installed copy). Section 13.6 separates the three.
+
 ## 8. The core architectural decision
 
 Three separations carry the whole design. Each one is the difference between a small feature
@@ -465,6 +488,16 @@ form is what keeps it DRY across 164 routes.
 
 **R10** needs no code whatsoever. `DeploymentVerification` already reports `verified / total`,
 and `tag:assigned_to` already works through the deployments CSV import.
+
+**R11** has a source of truth already. `useAppVersion` reads `/health`, which works in a
+browser, and the backend knows its own bind address and whether a given client is loopback. The
+work is displaying it, not deriving it. Worth folding into the same pass as R8, since both put
+persistent status in the chrome.
+
+**R12** is mostly already true. A browser has no native folder picker, so the interactive
+"analyse a new folder" path cannot be reached remotely at all
+(`frontend/src/components/analyses/FolderSelector.tsx:130, 160`). What remains is replacing a
+dead button with an explanation, and deciding the open question in section 13.7.
 
 Two further audit findings help materially:
 
@@ -707,9 +740,129 @@ Three to five people verifying separate deployments should be fine. The app will
 than single-user because of 10.1 and 10.2, and there will be visible pauses during bulk
 operations and analysis ingest.
 
-This is a prediction from reading the code, not a measurement. See section 15.
+This is a prediction from reading the code, not a measurement. See section 17.
 
-## 13. What to deliberately not build
+## 13. A second AddaxAI on a lab member's own machine
+
+The question that produced this section: what happens if a lab member runs inference in their
+own locally installed AddaxAI while also using the served one from the main machine?
+
+The short answer is that nothing breaks, and that is exactly what makes it dangerous. This is
+not a concurrency problem. It is a data fragmentation problem, and it is invisible.
+
+### 13.1 The two instances never meet
+
+Their laptop runs its own backend process, its own database at `~/AddaxAI/addaxai.db` and its
+own models. The browser tab talks to the main machine. There is no port conflict, because the
+local backend binds `127.0.0.1:8000` while the served one is on the host's address, and those
+are different hosts. The Electron single instance lock (`electron/src/main.ts:128`) is per
+machine and does not apply.
+
+Local inference therefore never touches the shared database, never competes for its write lock
+and never stalls its event loop. The lab server is completely unaffected. Somebody could run a
+twelve hour analysis on their laptop and no colleague would notice anything.
+
+### 13.2 The results go nowhere
+
+Everything that analysis produces lands in the laptop's own database. The shared database gets
+no deployment, no files, no detections and no verifications.
+
+So the person has done real work that nobody else can see and that cannot be combined without
+the merge tooling section 5.3 explicitly rejected. This is the problem the whole design exists
+to eliminate, reintroduced by accident, by a user who believed they were helping.
+
+### 13.3 Artifacts on a shared drive coexist rather than collide
+
+Worth checking rather than assuming, and the answer is better than expected.
+`backend/app/workers/detection_worker.py:313` scopes analysis artifacts to
+`.addaxai/projects/<project_id>/`, and `project_id` is a UUID that necessarily differs between
+the two databases. The laptop therefore writes an entirely separate artifact tree beside the
+server's, with its own `results.json`, best frames and video frames. Nothing overwrites
+anything.
+
+There is a non-scoped fallback at `backend/app/ml/inference/megadetector.py:356` writing
+`.addaxai/detection_results.json` directly, but the project analysis path always passes an
+explicit `output_path`, so that branch is not reached here. Worth remembering if a future code
+path stops passing one.
+
+The cost is disk rather than corruption, and video frame extraction is the bulk of it. A second
+full set of artifacts on a shared drive is not small.
+
+This scenario also requires the media to be reachable from the laptop at all. A USB drive
+attached to the host machine makes it impossible for the shared folders. A NAS makes it easy,
+and unlike SQLite, JSON and JPEG artifacts over SMB or NFS are perfectly safe.
+
+### 13.4 The real hazard is that the two look identical
+
+This is the failure to plan around, and it is a user interface gap rather than a technical one.
+
+Both windows are AddaxAI, with the same interface and the same branding, and nothing anywhere
+on screen says which database is being looked at. A grep of the frontend finds no hostname, no
+server identity, nothing. The About page is worse than neutral: it reads the version over
+Electron IPC and falls back to "(dev)" in a browser
+(`frontend/src/pages/AboutPage.tsx`), so the served instance displays less identifying
+information than the local one. The health-backed `useAppVersion` hook does work in a browser,
+so the fix has a source of truth already.
+
+The realistic incident is not a deliberate rogue analysis. It is somebody with both open,
+verifying for two hours in the wrong tab, with nobody noticing until the counts fail to add up.
+
+R11 exists because of this paragraph.
+
+### 13.5 The legitimate version of this, and why it is still not supported
+
+A lab member with a much better GPU wanting to run the heavy analysis is a reasonable thing to
+want, and the original email raised exactly this trade-off between per-machine GPU capability
+and ease of combining results.
+
+There is no path for those results to return to the shared database, so the only supported
+answer is that analysis happens on the server machine. A lab that genuinely needs a second GPU
+is choosing option 2 from section 5.2, which means accepting separate databases and combining
+exports at the end.
+
+Say this plainly in the documentation. The alternative is people discovering the capability
+themselves and reasonably assuming it works.
+
+### 13.6 What R12 can and cannot enforce
+
+Three layers, and it matters which is which.
+
+**Already enforced by the absence of a capability.** A browser has no native folder picker.
+`frontend/src/components/analyses/FolderSelector.tsx:130` computes `isElectron()` and line 160
+returns early when `window.electronAPI` is missing, because the dialog lives entirely in the
+Electron main process (`electron/src/main.ts:1297`, `dialog:selectFolder`). A remote user
+cannot interactively choose a new folder to analyse. Today that shows up as a dead button
+rather than an explanation, which is the part worth fixing.
+
+**Enforceable cheaply.** The backend already has to know whether a client is loopback for R2's
+localhost exemption, reading `scope["client"]`. The same signal can drive the UI, so a remote
+client is told plainly that analysis runs on the host machine instead of being shown controls
+that cannot work.
+
+Note that the picker's absence does not close every path. `POST /api/deployment-queue/import`
+accepts a CSV carrying folder paths, and `POST /api/folder-runs/{id}/rerun` re-runs an existing
+run without any folder selection. Both are reachable from a browser.
+
+**Documentation only.** Nothing can stop a lab member running their own installed copy against
+their own folders. That is their machine and their software. The only lever is telling labs
+clearly, in the setup documentation, that analysis belongs on the server and that local installs
+pointed at shared folders produce work nobody else will ever see.
+
+### 13.7 One open question
+
+R12 says inference runs on the host. That is automatic for anything triggered through the
+served app, since the server executes the job regardless of which browser asked.
+
+What is genuinely undecided is whether a remote user should be able to *trigger* a run at all,
+through the queue or a re-run. Allowing it is convenient and lands the results in the right
+database. Refusing it means the person who monopolises the shared machine for the next six
+hours has to be sitting at it.
+
+The recommendation is to allow triggering but not to hide it: pair it with R8's banner so
+everyone can see who started what. Blocking it would be simple to implement via the loopback
+signal if a lab asks for that instead.
+
+## 14. What to deliberately not build
 
 **Per-user accounts, password hashing, sessions, logout, password reset, admin screens.**
 Section 8.2.
@@ -736,7 +889,14 @@ an installer, not a preferences screen, and a bind-host change requires a restar
 **A managed list of people for the attribution dropdown.** Section 7, R6. The list builds
 itself from `DISTINCT verified_by`.
 
-## 14. Risks and honest limits
+**Any technical attempt to stop a lab member running their own local install.** Section 13.6.
+It is their machine and their software, the app cannot know the shared server exists, and
+trying would be both futile and rude. Documentation is the whole of the answer.
+
+**A way to import a colleague's locally analysed results.** That is the merge tool again, and
+building it would legitimise the workflow R12 exists to discourage.
+
+## 15. Risks and honest limits
 
 **Typos fragment the attribution list.** "Peter", "peter" and "Pete" become three people with
 no merge path. Mitigate by trimming and collapsing whitespace on write, deduping
@@ -769,9 +929,9 @@ Bonjour `.local` name works out of the box and is usually simpler.
 
 **The two robustness items may turn out to matter more than expected.** Sections 10.1 and 10.2
 are reasoning, not measurement. If the load test shows them dominating, the effort estimate in
-section 15 roughly doubles.
+section 16 roughly doubles.
 
-## 15. Effort estimate
+## 16. Effort estimate
 
 Rough, and estimates rather than measurements.
 
@@ -783,16 +943,19 @@ Rough, and estimates rather than measurements.
 | R8 | 0.5 day | One indexed query plus a banner |
 | R9 | 0.5 day | The 409 pattern already exists |
 | R6 | 1 to 2 days | One migration, two nullable columns, modest UI |
+| R11 | 0.5 day | Same pass as R8; the data already exists |
+| R12 | 0.5 day | Mostly explaining a restriction that already exists, plus docs |
 | Engine caching (10.1) | 0.5 day | Plus real thought about restore and reset |
 | `to_thread` conversion (10.2) | 2 days | Mechanical, a dozen endpoints, wants tests |
 
 Suggested order: the load test first, because it tells you whether the last two rows are
-required or merely nice. Then R1 and R3 together. Then R2. Then R8, which is what makes the
-multi-user experience legible. R6 and R9 last, as both are independent of everything else.
+required or merely nice. Then R1 and R3 together. Then R2. Then R8 and R11 in one pass, which
+is what makes the multi-user experience legible. Then R12, since it depends on the loopback
+signal R2 introduces. R6 and R9 last, as both are independent of everything else.
 
 R10 needs no work at all.
 
-## 16. Step zero, before any of that
+## 17. Step zero, before any of that
 
 Three things, none of which is code.
 
@@ -809,7 +972,7 @@ and no amount of work on our side fixes it.
 turns any copy-the-database fallback into constant relinking, and it is worth knowing before
 recommending a path.
 
-## 17. Reproducibility notes
+## 18. Reproducibility notes
 
 Everything in this document was established by reading the repository at `5c4401d`. No code was
 written, no tests were run, and the backend was not executed (its dependencies are not
@@ -852,6 +1015,13 @@ Key files, with the line numbers current at that commit:
 | Async endpoint with blocking DB call | `backend/app/api/routers/events.py:327` |
 | Crop LRU, 2000 entries, shared | `backend/app/services/crop_service.py:22-23` |
 | Inference kept off the event loop | `backend/app/workers/detection_worker.py:416, 502, 664, 738` |
+| Artifacts scoped by project UUID | `backend/app/workers/detection_worker.py:313` |
+| Non-scoped artifact fallback | `backend/app/ml/inference/megadetector.py:356` |
+| Folder picker is Electron-only | `frontend/src/components/analyses/FolderSelector.tsx:130, 160` |
+| Native folder dialog | `electron/src/main.ts:1297` (`dialog:selectFolder`) |
+| Electron single instance lock | `electron/src/main.ts:128` |
+| Version over IPC, "(dev)" in a browser | `frontend/src/pages/AboutPage.tsx` |
+| Version over `/health`, works anywhere | `frontend/src/hooks/useAppVersion.ts` |
 | Deployment tags via CSV import | `backend/app/services/csv_import_deployments.py:383` |
 | Media paths never resolved | DEVELOPERS.md, "Paths to user media are never resolved" |
 | ContextVar forces `async def` | DEVELOPERS.md, "Datetime conventions" |
@@ -871,7 +1041,7 @@ Sources consulted:
 - Basic authentication over HTTP (https://www.acunetix.com/vulnerabilities/web/basic-authentication-over-http/)
 - Camera trap software review, including TRAPPER and Camelot (https://pmc.ncbi.nlm.nih.gov/articles/PMC6202726/)
 
-## 18. Plain English summary
+## 19. Plain English summary
 
 A lab asked how several people can verify camera trap images at the same time and combine their
 results cleanly. The answer that came out of this investigation is that they should not combine
@@ -898,6 +1068,13 @@ the app has no way to limit what any user can do, so five separate passwords wou
 exactly as much as one. Knowing who verified what is a separate and much smaller thing: let
 people pick their name from a list that fills itself in, and store that name next to the
 verification.
+
+One thing to warn labs about explicitly. If somebody also runs their own copy of AddaxAI on
+their laptop and analyses camera folders there, nothing crashes and nothing is corrupted, but
+the results land in their own private database and no colleague will ever see them. Because both
+windows look exactly alike, with nothing on screen saying which computer is being used, it is
+easy to spend an afternoon verifying in the wrong place. So the app should always show which
+machine it is connected to, and analysis should happen on the computer doing the serving.
 
 The honest limits are that a password here protects the door and not the rooms, since anyone who
 gets in can browse the host computer's files and delete all the data; that the password travels
