@@ -160,3 +160,8 @@ def _kill_tree(proc: subprocess.Popen) -> None:
         os.killpg(pgid, signal.SIGKILL)
     except ProcessLookupError:
         pass
+
+
+def kill_subprocess_tree(proc: subprocess.Popen) -> None:
+    """Public cancellation helper for isolated detector subprocesses."""
+    _kill_tree(proc)

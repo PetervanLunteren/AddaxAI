@@ -407,6 +407,7 @@ export function CreateProjectDialog({
                       caption="The AI model that identifies species in your images. Pick one trained for your region."
                     />
                     <ModelSelect
+                      modelType="classification"
                       value={field.value ?? "none"}
                       onValueChange={(val) => field.onChange(val === "none" ? "none" : val)}
                       models={classificationModels}

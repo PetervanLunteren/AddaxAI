@@ -264,6 +264,23 @@ class ModelCatalogUpdater:
         is_new_dir = not model_dir.exists()
 
         try:
+            # User-managed local packs own their local manifest. A future
+            # catalog entry with the same ID must never replace the local
+            # backend, class map, weights digest, or local-only marker.
+            if manifest_path.is_file():
+                try:
+                    with open(manifest_path, encoding="utf-8") as f:
+                        existing = json.load(f)
+                except (json.JSONDecodeError, OSError):
+                    existing = None
+                if isinstance(existing, dict) and existing.get("managed") is True:
+                    logger.warning(
+                        "Catalog entry %s/%s collides with a user-managed local model; preserving local manifest",
+                        model_type,
+                        model_id,
+                    )
+                    return "unchanged"
+
             # Compare existing content. Identical bytes-or-equivalent
             # JSON means the catalog hasn't moved and the file is left
             # alone, but we still fall through to the taxonomy check.
@@ -332,6 +349,16 @@ class ModelCatalogUpdater:
         exactly the install whose missing files this should restore.
         """
         model_dir = self.models_dir / model_type / manifest_data["model_id"]
+        local_manifest = model_dir / "manifest.json"
+        if local_manifest.is_file():
+            try:
+                local_data = json.loads(local_manifest.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                local_data = None
+            if isinstance(local_data, dict) and local_data.get("managed") is True:
+                # A central catalog row can never own a user-managed pack,
+                # even if an ID collision is introduced later.
+                return None
         if not (model_dir / manifest_data["model_fname"]).is_file():
             return None
 

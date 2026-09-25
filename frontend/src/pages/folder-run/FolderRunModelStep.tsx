@@ -996,6 +996,7 @@ export function FolderRunModelStep() {
                         </div>
                         <div className="space-y-2">
                           <ModelSelect
+                            modelType="classification"
                             value={field.value ?? NO_CLASSIFIER}
                             onValueChange={(val) =>
                               field.onChange(
@@ -1128,6 +1129,7 @@ export function FolderRunModelStep() {
                           }
                         >
                             <ModelSelect
+                              modelType="detection"
                               value={field.value}
                               onValueChange={field.onChange}
                               models={detectionModels}

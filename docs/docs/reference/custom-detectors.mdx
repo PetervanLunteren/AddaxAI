@@ -1,0 +1,115 @@
+---
+title: Custom detector manifests
+---
+
+AddaxAI keeps the MegaDetector JSON contract while allowing a detector
+manifest to select `megadetector`, `yolo`, `rfdetr`, `rtdetr`, or `rtdetrv2`.
+Detector packages are loaded in an isolated `env-<env>` subprocess; the API
+process never imports a model selected by an arbitrary manifest string.
+
+The default backend remains MegaDetector for existing manifests:
+
+```json
+{
+  "model_id": "MD5A-0-0",
+  "detector_backend": "megadetector"
+}
+```
+
+YOLO manifests set `detector_backend` to `yolo` and list `class_names` in
+training class-ID order. For local-only use, place the weights at
+`models/det/<model_id>/<model_fname>` and set `local_only` to true. A
+`weights_sha256` value can pin the expected file contents.
+
+RF-DETR uses an allow-listed class name, for example
+`RFDETRSmall`; arbitrary Python import paths are rejected. RF-DETR weights
+must also be local when `local_only` is true. Invalid boxes, NaN/negative
+confidence values, and missing confidences are dropped rather than inferred.
+Video outputs retain `frame_rate` and the sampled frame-index list in
+`frames_processed`, including failure entries for videos that cannot be
+decoded.
+
+## RT-DETR (PyTorch-Wildlife)
+
+The `rtdetr` backend uses PyTorch-Wildlife's `MegaDetectorV6Apache` wrapper and
+accepts only the model-zoo variants `MDV6-apa-rtdetr-c` and
+`MDV6-apa-rtdetr-e`. The compact variant is the default. Keep these models in
+the dedicated `env-rtdetr` environment; it is separate from the existing
+`env-pywildlife` environment. Windows and Linux environment definitions use
+the pinned CUDA PyTorch wheels, while macOS uses PyTorch's CPU/MPS-capable
+wheels.
+
+Weights must be present in the local model pack and `local_only` must be true.
+The adapter passes the local file to PyTorch-Wildlife with pretrained
+initialization disabled, so inference does not silently download a checkpoint.
+
+```json
+{
+  "model_id": "LOCAL-MDV6-APA-C",
+  "friendly_name": "Local MegaDetector V6 Apache Compact",
+  "env": "rtdetr",
+  "model_fname": "MDV6-apa-rtdetr-c.pth",
+  "detector_backend": "rtdetr",
+  "detector_model_variant": "MDV6-apa-rtdetr-c",
+  "class_names": ["animal", "person", "vehicle"],
+  "local_only": true,
+  "description": "Local RT-DETR detector",
+  "developer": "Your team",
+  "info_url": "https://example.invalid",
+  "min_app_version": "0"
+}
+```
+
+## RT-DETRv2 (official compatible implementation)
+
+The `rtdetrv2` backend is for checkpoints made by the pinned
+`lyuwenyu/RT-DETR` RT-DETRv2 implementation **with its matching explicit YAML
+configuration**. It does not identify arbitrary checkpoint formats or infer
+an architecture from weights alone. Place the weight and config together in
+the model directory, then set `detector_config_fname` to a safe relative path
+inside that directory. The manifest's `class_names` should list the class IDs
+in the same order used when the checkpoint was trained.
+
+Configuration includes are parsed with safe YAML loading and are limited to
+the model directory or the bundled, pinned RT-DETRv2 config tree. The narrow
+`../third_party/rtdetr/rtdetrv2_pytorch/` include prefix is mapped to that
+bundled tree; absolute paths, parent traversal outside those roots, cycles,
+and Python YAML tags are rejected. RT-DETRv2 also requires a configuration
+that disables pretrained backbone downloads. Checkpoints are read with
+PyTorch's `weights_only=True` and must contain a tensor-only `ema.module` or
+`model` state dict. A configuration or checkpoint from another RT-DETR family
+is not covered by this compatibility path.
+
+## Managing local model packs
+
+On the host PC, use **Manage custom models** next to a model picker to register
+a local detection or classification model pack. The application copies the
+selected folder into its user-data model directory, assigns a safe model ID,
+and marks it local-only. Companion files are retained. The management screen
+also supports editing display information and removing packs that are not in
+use. Other computers connected to the same AddaxAI server can select these
+registered models, but model-pack management is restricted to the host PC.
+
+Detection packs must include their weights and any backend configuration they
+need. Choose one of the four supported detector backends and provide class
+labels in model class-ID order. RT-DETRv2 also needs its YAML config in the
+pack. Classification packs must include an AddaxAI-compatible `inference.py`
+with the existing `ModelInference` interface; choose one of the packaged
+inference environments. Registration does not download weights or accept an
+arbitrary Python module path.
+
+After registration, weights, environment, inference settings, detector class
+labels, and full-image classification behavior are fixed. To change those,
+register a new pack. Display information can still be edited. A model cannot
+be removed while a project references it or while it is being used by a job.
+Catalog-managed standard models are not editable through this screen.
+
+Event smoothing in AddaxAI smooths classifier labels attached to `animal`
+detections. It does not smooth a detector's own class IDs. Custom-only
+detection categories are passed through unchanged when event smoothing is
+enabled, including detections without per-detection `classifications`. The
+recognition JSON export keeps the standard IDs `1` to `3` for `animal`,
+`person`, and `vehicle`; other category names receive deterministic export IDs
+starting at `4`. The database stores category names rather than the detector's
+original numeric IDs, so custom export IDs can differ from source IDs;
+category names and detections are preserved.

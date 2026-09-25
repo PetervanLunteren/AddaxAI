@@ -799,6 +799,7 @@ export default function SettingsPage() {
                       }
                     >
                         <ModelSelect
+                          modelType="detection"
                           value={field.value}
                           onValueChange={field.onChange}
                           models={detectionModels}
@@ -848,6 +849,7 @@ export default function SettingsPage() {
                       </div>
                       <div className="space-y-2">
                         <ModelSelect
+                          modelType="classification"
                           value={field.value ?? "none"}
                           onValueChange={(val) => {
                             // Show confirmation when removing classification model

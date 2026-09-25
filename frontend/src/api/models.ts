@@ -9,7 +9,16 @@
 import type { QueryClient } from "@tanstack/react-query";
 
 import { api } from "../lib/api-client";
-import type { ModelInfo, ModelStatusResponse, TaxonomyResponse, GeofenceResponse } from "./types";
+import type {
+  CustomModelCreateRequest,
+  CustomModelInfo,
+  CustomModelUpdateRequest,
+  CustomModelsResponse,
+  ModelInfo,
+  ModelStatusResponse,
+  TaxonomyResponse,
+  GeofenceResponse,
+} from "./types";
 
 /**
  * Invalidate every query derived from a model's on-disk files. Call after
@@ -43,6 +52,17 @@ export const modelsApi = {
    * List all embedding models (includes "No embeddings" option)
    */
   listEmbeddingModels: () => api.get<ModelInfo[]>("/api/ml/models/embedding"),
+
+  listCustomModels: () => api.get<CustomModelsResponse>("/api/ml/custom-models"),
+
+  createCustomModel: (model: CustomModelCreateRequest) =>
+    api.post<CustomModelInfo>("/api/ml/custom-models", model),
+
+  updateCustomModel: (modelId: string, changes: CustomModelUpdateRequest) =>
+    api.put<CustomModelInfo>(`/api/ml/custom-models/${encodeURIComponent(modelId)}`, changes),
+
+  deleteCustomModel: (modelId: string) =>
+    api.delete<void>(`/api/ml/custom-models/${encodeURIComponent(modelId)}`),
 
   /**
    * Check if model weights and environment are ready
