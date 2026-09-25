@@ -8,7 +8,6 @@ Following DEVELOPERS.md principles:
 """
 
 import json
-import stat
 from pathlib import Path
 
 from app.core.config import get_settings
@@ -78,16 +77,6 @@ class ManifestManager:
             for model_dir in type_dir.iterdir():
                 if not model_dir.is_dir():
                     continue
-                try:
-                    if model_dir.is_symlink() or (
-                        getattr(model_dir.lstat(), "st_file_attributes", 0)
-                        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
-                    ):
-                        logger.warning("Skipping linked model directory: %s", model_dir)
-                        continue
-                except OSError as exc:
-                    logger.warning("Cannot inspect model directory %s: %s", model_dir, exc)
-                    continue
 
                 manifest_path = model_dir / "manifest.json"
                 if not manifest_path.exists():
@@ -99,10 +88,6 @@ class ManifestManager:
                         data = json.load(f)
 
                     manifest = ModelManifest(**data)
-                    if manifest.model_id != model_dir.name:
-                        raise ValueError(
-                            f"manifest model_id {manifest.model_id!r} does not match directory {model_dir.name!r}"
-                        )
                     # Set model_category based on which directory it was loaded from
                     manifest.model_category = category_map[model_type]
                     validated_manifests[manifest.model_id] = manifest

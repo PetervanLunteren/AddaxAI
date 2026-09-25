@@ -22,9 +22,6 @@ import {
 import { FormControl } from "@/components/ui/form";
 import { ModelSelectValue } from "./ModelSelectValue";
 import type { ModelInfo } from "@/api/types";
-import { API_BASE_URL } from "@/lib/api-client";
-import { CustomModelManagerDialog } from "./CustomModelManagerDialog";
-import { useState } from "react";
 
 interface ModelSelectProps {
   /** Current value, already defaulted to noneValue when empty (e.g. field.value ?? "none"). */
@@ -39,8 +36,6 @@ interface ModelSelectProps {
   noneLabel?: string;
   /** Opens the model info slideout. When set and a real model is selected, a "Model details" link is shown. */
   onShowInfo?: () => void;
-  /** Enables custom detection/classification pack management for host-local pickers. */
-  modelType?: "detection" | "classification";
   /** SelectContent items: the optional none item plus the (grouped or flat) model items. */
   children: ReactNode;
 }
@@ -53,13 +48,10 @@ export function ModelSelect({
   noneValue,
   noneLabel,
   onShowInfo,
-  modelType,
   children,
 }: ModelSelectProps) {
-  const [manageOpen, setManageOpen] = useState(false);
   const isNone = noneValue !== undefined && value === noneValue;
   const selected = isNone ? undefined : models.find((m) => m.model_id === value);
-  const canManage = modelType !== undefined && isHostLocalUi();
 
   return (
     <div className="space-y-1">
@@ -92,43 +84,6 @@ export function ModelSelect({
           </button>
         </p>
       )}
-      {canManage && modelType && (
-        <p className="pl-3 text-xs">
-          <button
-            type="button"
-            onClick={() => setManageOpen(true)}
-            className="font-medium text-primary hover:underline"
-          >
-            Manage custom models
-          </button>
-        </p>
-      )}
-      {canManage && modelType && (
-        <CustomModelManagerDialog
-          open={manageOpen}
-          onOpenChange={setManageOpen}
-          modelType={modelType}
-          onCreated={(model) => {
-            if (model.type === modelType) onValueChange(model.model_id);
-          }}
-        />
-      )}
     </div>
   );
-}
-
-function isHostLocalUi(): boolean {
-  if (typeof window === "undefined") return false;
-  const isLoopback = (hostname: string) => {
-    const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
-    if (host === "localhost" || host === "::1") return true;
-    const parts = host.split(".").map(Number);
-    return parts.length === 4 && parts[0] === 127 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255);
-  };
-  try {
-    const localWindow = Boolean(window.electronAPI) || isLoopback(window.location.hostname);
-    return localWindow && isLoopback(new URL(API_BASE_URL).hostname);
-  } catch {
-    return false;
-  }
 }

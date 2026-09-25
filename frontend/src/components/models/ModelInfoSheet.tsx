@@ -66,7 +66,7 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
   if (!model) return null;
 
   // Format classes list
-  const classList = taxonomy?.all_classes || Object.values(model.class_names ?? {});
+  const classList = taxonomy?.all_classes || [];
 
   // Normalize class names: remove underscores, all lowercase
   const formatClassName = (className: string) => {

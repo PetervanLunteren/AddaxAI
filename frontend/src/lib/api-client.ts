@@ -166,16 +166,6 @@ export const api = {
   },
 
   /**
-   * PUT request
-   */
-  put: <T>(endpoint: string, data: unknown): Promise<T> => {
-    return apiFetch<T>(endpoint, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    });
-  },
-
-  /**
    * DELETE request
    */
   delete: <T>(endpoint: string): Promise<T> => {

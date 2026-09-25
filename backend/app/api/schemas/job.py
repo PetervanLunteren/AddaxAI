@@ -27,10 +27,8 @@ JobType = Literal[
 JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 
 # Model options for deployment analysis (use model IDs from manifests)
-# Detection model IDs include built-in catalog entries and user-managed local
-# model IDs, so this field must accept arbitrary manifest IDs.
-DetectionModel = str
-ClassificationModel = str
+DetectionModel = Literal["MD5A-0-0", "MD5B-0-0"]
+ClassificationModel = Literal["EUR-DF-v1-3", "NAM-ADS-v1", "none"]
 
 
 class DeploymentAnalysisPayload(BaseModel):

@@ -7,21 +7,11 @@ Following DEVELOPERS.md principles:
 """
 
 import asyncio
-import ipaddress
 from typing import Literal
-from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
-from app.api.schemas.custom_models import (
-    CustomModelCreate,
-    CustomModelInfo,
-    CustomModelsResponse,
-    CustomModelUpdate,
-)
-from app.core.config import get_settings
 from app.core.job_cancellation import (
     JobCancelledError,
     clear_cancel,
@@ -29,7 +19,6 @@ from app.core.job_cancellation import (
 )
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
-from app.db.base import get_db
 from app.ml.batch_size import (
     CLASSIFICATION_DEFAULT_CPU,
     CLASSIFICATION_DEFAULT_GPU,
@@ -39,7 +28,6 @@ from app.ml.batch_size import (
     EMBEDDING_DEFAULT_GPU,
 )
 from app.ml.catalog_updater import find_drifted_envs
-from app.ml.custom_model_manager import CustomModelError, CustomModelManager
 from app.ml.environment_manager import (
     EnvironmentManager,
     TlsRevocationCheckError,
@@ -124,10 +112,6 @@ class ModelInfo(BaseModel):
     # skipped. The UI greys out the detector and its settings on it.
     full_image_cls: bool = False
     example_image_url: str | None = None
-    local_only: bool = False
-    managed: bool = False
-    detector_backend: str | None = None
-    class_names: dict[str, str] | None = None
     # Per-pipeline default batch sizes used when the project leaves the
     # batch_size override unset. Same value for every model in the same
     # pipeline today; comes from app.ml.batch_size constants.
@@ -150,132 +134,6 @@ _DEFAULT_BATCH_SIZES_BY_TYPE: dict[str, tuple[int, int]] = {
     "classification": (CLASSIFICATION_DEFAULT_GPU, CLASSIFICATION_DEFAULT_CPU),
     "embedding": (EMBEDDING_DEFAULT_GPU, EMBEDDING_DEFAULT_CPU),
 }
-
-
-def _require_loopback(request: Request) -> None:
-    """Restrict mutations and custom-model management data to the host PC."""
-    peer = request.client.host if request.client else ""
-    if peer.lower() == "localhost":
-        is_loopback = True
-    else:
-        try:
-            is_loopback = ipaddress.ip_address(peer.split("%", 1)[0]).is_loopback
-        except ValueError:
-            is_loopback = False
-    if not is_loopback:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Custom model management is available only from the host PC",
-        )
-
-    origin = request.headers.get("origin")
-    if origin is None:
-        return
-    try:
-        parsed_origin = urlsplit(origin)
-        origin_host = parsed_origin.hostname
-        origin_port = parsed_origin.port
-    except ValueError:
-        origin_host = None
-        origin_port = None
-        parsed_origin = None
-    allowed_hosts = {"localhost", "127.0.0.1", "::1"}
-    allowed_ports = {get_settings().api_port, 3000, 5173}
-    if (
-        parsed_origin is None
-        or parsed_origin.scheme.lower() != "http"
-        or parsed_origin.path
-        or parsed_origin.query
-        or parsed_origin.fragment
-        or parsed_origin.username is not None
-        or parsed_origin.password is not None
-        or origin_host not in allowed_hosts
-        or origin_port not in allowed_ports
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Custom model management is available only from the host PC",
-        )
-
-
-def _custom_manager() -> CustomModelManager:
-    manifest_mgr, _, _ = _get_managers()
-    return CustomModelManager(manifest_mgr.models_dir, manifest_mgr)
-
-
-@router.get("/custom-models", response_model=CustomModelsResponse)
-def list_custom_models(request: Request) -> CustomModelsResponse:
-    _require_loopback(request)
-    manager = _custom_manager()
-    return CustomModelsResponse(
-        models=[CustomModelInfo.model_validate(row) for row in manager.list_models()],
-        environments=manager.environments(),
-    )
-
-
-@router.post(
-    "/custom-models",
-    response_model=CustomModelInfo,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_custom_model(
-    payload: CustomModelCreate,
-    request: Request,
-) -> CustomModelInfo:
-    _require_loopback(request)
-    try:
-        row = _custom_manager().create(payload)
-        return CustomModelInfo.model_validate(row)
-    except FileExistsError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from None
-    except CustomModelError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from None
-    except OSError as exc:
-        raise HTTPException(status_code=400, detail=f"Could not copy model pack: {exc}") from None
-
-
-@router.put("/custom-models/{model_id}", response_model=CustomModelInfo)
-def update_custom_model(
-    model_id: str,
-    changes: CustomModelUpdate,
-    request: Request,
-) -> CustomModelInfo:
-    _require_loopback(request)
-    try:
-        row = _custom_manager().update(model_id, changes.model_dump(exclude_unset=True))
-        return CustomModelInfo.model_validate(row)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from None
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from None
-    except OSError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Could not update model metadata: {exc}",
-        ) from None
-
-
-@router.delete("/custom-models/{model_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_custom_model(
-    model_id: str,
-    request: Request,
-    db: Session = Depends(get_db),
-) -> None:
-    _require_loopback(request)
-    try:
-        _custom_manager().delete(model_id, db)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from None
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from None
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from None
-    except OSError as exc:
-        raise HTTPException(status_code=400, detail=f"Could not delete model pack: {exc}") from None
 
 
 @router.get("/models/{model_id}/status", response_model=ModelStatusResponse)
@@ -921,14 +779,6 @@ def list_detection_models() -> list[ModelInfo]:
             citation=getattr(manifest, "citation", None),
             license=getattr(manifest, "license", None),
             min_app_version=manifest.min_app_version,
-            detector_backend=manifest.detector_backend,
-            class_names=(
-                dict(manifest.class_names)
-                if isinstance(manifest.class_names, dict)
-                else None
-            ),
-            local_only=manifest.local_only,
-            managed=manifest.managed,
             default_batch_size_gpu=det_gpu,
             default_batch_size_cpu=det_cpu,
         )
@@ -1004,8 +854,6 @@ def list_classification_models() -> list[ModelInfo]:
             region=getattr(manifest, "region", None),
             full_image_cls=bool(getattr(manifest, "full_image_cls", False)),
             example_image_url=getattr(manifest, "example_image_url", None),
-            local_only=manifest.local_only,
-            managed=manifest.managed,
             default_batch_size_gpu=cls_gpu,
             default_batch_size_cpu=cls_cpu,
         )

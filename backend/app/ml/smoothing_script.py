@@ -25,6 +25,12 @@ script runs. The input JSON already has those transformations applied.
 import json
 import sys
 
+from megadetector.postprocessing.classification_postprocessing import (
+    ClassificationSmoothingOptions,
+    smooth_classification_results_image_level,
+    smooth_classification_results_sequence_level,
+)
+
 # Preset parameter mappings for smoothing strength levels.
 # "normal" matches MegaDetector's defaults exactly.
 SMOOTHING_PRESETS = {
@@ -55,31 +61,6 @@ SMOOTHING_PRESETS = {
 }
 
 
-def _has_smoothable_animal_classifications(md_results: dict) -> bool:
-    """MegaDetector smoothing only applies to classified animal detections."""
-    categories = md_results.get("detection_categories")
-    if not isinstance(categories, dict):
-        return False
-    animal_ids = {
-        str(category_id)
-        for category_id, name in categories.items()
-        if isinstance(name, str) and name.casefold() == "animal"
-    }
-    if not animal_ids:
-        return False
-    for image in md_results.get("images") or []:
-        if not isinstance(image, dict):
-            continue
-        for detection in image.get("detections") or []:
-            if (
-                isinstance(detection, dict)
-                and str(detection.get("category")) in animal_ids
-                and detection.get("classifications")
-            ):
-                return True
-    return False
-
-
 def main() -> None:
     if len(sys.argv) != 4:
         print(
@@ -102,41 +83,46 @@ def main() -> None:
     smoothing_strength = opts.get("smoothing_strength", "normal")
     smoother_input = opts.get("smoother_input")
 
-    smoothed = md_results
-    if _has_smoothable_animal_classifications(md_results):
-        from megadetector.postprocessing.classification_postprocessing import (
-            ClassificationSmoothingOptions,
-            smooth_classification_results_image_level,
-            smooth_classification_results_sequence_level,
-        )
+    # Configure smoothing options
+    options = ClassificationSmoothingOptions()
+    options.propagate_classifications_through_taxonomy = True
+    options.detection_confidence_threshold = counting_threshold
+    options.detection_category_names_to_smooth = ["animal"]
 
-        options = ClassificationSmoothingOptions()
-        options.propagate_classifications_through_taxonomy = True
-        options.detection_confidence_threshold = counting_threshold
-        options.detection_category_names_to_smooth = ["animal"]
+    # Apply strength preset
+    preset = SMOOTHING_PRESETS.get(smoothing_strength, SMOOTHING_PRESETS["normal"])
+    for param, value in preset.items():
+        setattr(options, param, value)
 
-        preset = SMOOTHING_PRESETS.get(smoothing_strength, SMOOTHING_PRESETS["normal"])
-        for param, value in preset.items():
-            setattr(options, param, value)
+    # Generic "other" categories that the smoother can overwrite with a dominant
+    # real label. Non-label classes (blank, empty, false detection, none) are
+    # already stripped by label exclusion before smoothing runs.
+    base_other = [
+        "other",
+        "unknown",
+        "no cv result",
+        "animal",
+        "mammal",
+    ]
+    options.other_category_names = [name.lower() for name in base_other]
 
-        options.other_category_names = [
-            "other", "unknown", "no cv result", "animal", "mammal",
-        ]
-        options.modify_in_place = True
+    options.modify_in_place = True
 
-        smoothed = smooth_classification_results_image_level(
-            input_file=md_results,
+    # Image-level smoothing
+    smoothed = smooth_classification_results_image_level(
+        input_file=md_results,
+        output_file=None,
+        options=options,
+    )
+
+    # Event-level (aka sequence-level in MegaDetector) smoothing.
+    if event_smoothing and smoother_input:
+        smoothed = smooth_classification_results_sequence_level(
+            input_file=smoothed,
+            cct_sequence_information=smoother_input,
             output_file=None,
             options=options,
         )
-
-        if event_smoothing and smoother_input:
-            smoothed = smooth_classification_results_sequence_level(
-                input_file=smoothed,
-                cct_sequence_information=smoother_input,
-                output_file=None,
-                options=options,
-            )
 
     with open(output_path, "w") as f:
         json.dump(smoothed, f)

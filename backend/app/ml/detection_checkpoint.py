@@ -74,7 +74,6 @@ class CheckpointMeta:
     image_size: int | None
     augment: bool
     image_count: int
-    detector_signature: str = ""
 
     def write(self, folder: Path) -> None:
         # Written before detection starts, so a crash during this tiny

@@ -1041,7 +1041,6 @@ class EnvironmentManager:
                 [str(python_path), "-c", _BOOT_PROBE_SCRIPT],
                 capture_output=True,
                 timeout=10,
-                env=clean_python_env(),
             )
         except subprocess.TimeoutExpired:
             logger.warning(

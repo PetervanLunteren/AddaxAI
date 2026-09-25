@@ -70,7 +70,6 @@ dependencies:
     # nothing (beta report 2026-07-30).
     - yolov9pip==0.0.4
     - ultralytics==8.3.177
-    - rfdetr==1.9.2
     # albumentations arrives through yolov9pip and pulls albucore, which
     # requires stringzilla. stringzilla 5.1.2 shipped without a cp311
     # win_amd64 wheel (every other python and platform combination has

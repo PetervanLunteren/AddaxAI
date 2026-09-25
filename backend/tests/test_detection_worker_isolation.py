@@ -34,16 +34,8 @@ from tests.conftest import make_job, make_project
 
 
 class _FakeManifest:
-    model_id = "MD5A-0-0"
     env = "addaxai-base"
-    model_fname = "fake-model.pt"
     full_image_cls = False
-    detector_backend = "megadetector"
-    detector_model_class = None
-    detector_model_variant = None
-    detector_config_fname = None
-    class_names = None
-    weights_sha256 = None
 
 
 class _FakeManifestManager:
@@ -83,9 +75,7 @@ def _no_real_models(monkeypatch):
     )
     monkeypatch.setattr(detection_worker, "EnvironmentManager", _FakeEnvManager)
     monkeypatch.setattr(detection_worker, "ModelStorage", _FakeModelStorage)
-    monkeypatch.setattr(
-        detection_worker, "create_detector", lambda *_args, **_kwargs: _FakeDetector()
-    )
+    monkeypatch.setattr(detection_worker, "MegaDetectorV1000", _FakeDetector)
 
 
 def _empty_folder(tmp_path: Path, name: str) -> Path:
