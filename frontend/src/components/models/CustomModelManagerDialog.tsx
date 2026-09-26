@@ -31,14 +31,21 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   modelType: CustomModelType;
-  onCreated: (model: CustomModelInfo) => void;
+  onCreated?: (model: CustomModelInfo) => void;
+  onAnyCreated?: (model: CustomModelInfo) => void;
 }
 
 function getError(error: unknown): string {
   return error instanceof Error ? error.message : "Model management failed";
 }
 
-export function CustomModelManagerDialog({ open, onOpenChange, modelType, onCreated }: Props) {
+export function CustomModelManagerDialog({
+  open,
+  onOpenChange,
+  modelType,
+  onCreated,
+  onAnyCreated,
+}: Props) {
   const queryClient = useQueryClient();
   const [type, setType] = useState<CustomModelType>(modelType);
   const [sourcePath, setSourcePath] = useState("");
@@ -59,7 +66,7 @@ export function CustomModelManagerDialog({ open, onOpenChange, modelType, onCrea
   const [editDraft, setEditDraft] = useState<CustomModelUpdateRequest>({});
   const [errorText, setErrorText] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ["custom-models"],
     queryFn: modelsApi.listCustomModels,
     enabled: open,
@@ -91,7 +98,8 @@ export function CustomModelManagerDialog({ open, onOpenChange, modelType, onCrea
       toast.success(`${model.friendly_name} added`);
       setErrorText(null);
       resetCreateForm();
-      if (model.type === modelType) onCreated(model);
+      if (model.type === modelType) onCreated?.(model);
+      onAnyCreated?.(model);
       onOpenChange(false);
     },
     onError: (error) => setErrorText(getError(error)),
@@ -235,7 +243,12 @@ export function CustomModelManagerDialog({ open, onOpenChange, modelType, onCrea
           <section className="space-y-3">
             <h3 className="text-sm font-semibold">Registered {type} models</h3>
             {isLoading ? <p className="text-sm text-muted-foreground">Loading models…</p> : null}
-            {!isLoading && matchingModels.length === 0 ? (
+            {isError ? (
+              <p role="alert" className="text-sm text-destructive">
+                Could not load custom models: {getError(error)}
+              </p>
+            ) : null}
+            {!isLoading && !isError && matchingModels.length === 0 ? (
               <p className="text-sm text-muted-foreground">No custom models registered yet.</p>
             ) : null}
             <div className="space-y-2">
@@ -375,7 +388,7 @@ export function CustomModelManagerDialog({ open, onOpenChange, modelType, onCrea
                 {errorText ? <p role="alert" className="text-sm text-destructive">{errorText}</p> : null}
                 <DialogFooter>
                   <Button type="submit" disabled={createMutation.isPending || !environments.length}>
-                    <Plus /> {type === modelType ? "Register and select" : "Register"}
+                    <Plus /> {type === modelType || onAnyCreated ? "Register and select" : "Register"}
                   </Button>
                 </DialogFooter>
               </form>

@@ -117,7 +117,7 @@ export function ModelSelect({
   );
 }
 
-function isHostLocalUi(): boolean {
+export function isHostLocalUi(): boolean {
   if (typeof window === "undefined") return false;
   const isLoopback = (hostname: string) => {
     const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();

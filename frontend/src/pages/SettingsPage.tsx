@@ -13,10 +13,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
-import { Save, RotateCcw, Undo2 } from "lucide-react";
+import { Save, RotateCcw, Undo2, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { invalidateModelMetadata, modelsApi } from "../api/models";
+import type { CustomModelInfo } from "../api/types";
 import {
   LabelSelectionField,
   toApiCountryCode,
@@ -44,7 +45,8 @@ import {
   restoreAdvancedDefaults,
 } from "../lib/advancedSettingsDefaults";
 import { useSidebarCollapsed } from "../components/layout/sidebar-context";
-import { ModelSelect } from "../components/models/ModelSelect";
+import { isHostLocalUi, ModelSelect } from "../components/models/ModelSelect";
+import { CustomModelManagerDialog } from "../components/models/CustomModelManagerDialog";
 import { toApiModelId } from "../lib/model-id";
 import { NoClassifierNotice } from "../components/models/NoClassifierNotice";
 import { ModelInfoSheet } from "../components/models/ModelInfoSheet";
@@ -181,6 +183,8 @@ export default function SettingsPage() {
 
   // Classification model removal confirmation
   const [removeClsConfirmOpen, setRemoveClsConfirmOpen] = useState(false);
+  const [manageModelsOpen, setManageModelsOpen] = useState(false);
+  const canManageCustomModels = isHostLocalUi();
 
   // Re-embed confirmation + progress state
   const [reEmbedConfirmOpen, setReEmbedConfirmOpen] = useState(false);
@@ -242,6 +246,19 @@ export default function SettingsPage() {
       embedding_batch_size: null,
     },
   });
+
+  const selectRegisteredModel = (model: CustomModelInfo) => {
+    const options = {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    } as const;
+    if (model.type === "detection") {
+      form.setValue("detection_model_id", model.model_id, options);
+    } else {
+      form.setValue("classification_model_id", model.model_id, options);
+    }
+  };
 
   // Which advanced settings differ from their factory default, so each row
   // can chip itself. Same helper the folder-run setup step uses, so "what
@@ -778,10 +795,33 @@ export default function SettingsPage() {
             {/* Card: Models */}
             <Card>
               <CardHeader>
-                <CardTitle>Models</CardTitle>
-                <CardDescription>
-                  The models used to analyze your images. Changes apply to new analyses only.
-                </CardDescription>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="space-y-1.5">
+                    <CardTitle>Models</CardTitle>
+                    <CardDescription>
+                      The models used to analyze your images. Changes apply to new analyses only.
+                    </CardDescription>
+                  </div>
+                  {canManageCustomModels ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="shrink-0"
+                      onClick={() => setManageModelsOpen(true)}
+                    >
+                      <Settings2 className="mr-2 h-4 w-4" />
+                      Manage custom models
+                    </Button>
+                  ) : null}
+                </div>
+                {canManageCustomModels ? (
+                  <CustomModelManagerDialog
+                    open={manageModelsOpen}
+                    onOpenChange={setManageModelsOpen}
+                    modelType="detection"
+                    onAnyCreated={selectRegisteredModel}
+                  />
+                ) : null}
               </CardHeader>
               <CardContent className="space-y-0 divide-y border-t">
                 {/* Detection Model */}
