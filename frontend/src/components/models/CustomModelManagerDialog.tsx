@@ -9,6 +9,7 @@ import type {
   CustomDetectorBackend,
   CustomModelInfo,
   CustomModelInspectResponse,
+  CustomModelRegistrationRole,
   CustomModelType,
   CustomModelUpdateRequest,
   ModelInfo,
@@ -22,23 +23,35 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 
 const REGION_OPTIONS = ["global", "africa", "americas", "asia", "europe", "oceania"] as const;
-const RFDETR_CLASSES = [
-  "RFDETRBase", "RFDETRNano", "RFDETRSmall", "RFDETRMedium", "RFDETRLarge",
-  "RFDETRXLarge", "RFDETR2XLarge", "RFDETRSegNano", "RFDETRSegSmall",
-  "RFDETRSegMedium", "RFDETRSegLarge", "RFDETRSegXLarge", "RFDETRSeg2XLarge",
-  "RFDETRKeypointPreview", "RFDETRSegPreview",
-];
+const NEW_DETECTOR_BACKENDS = ["yolo", "rtdetrv2"] as const;
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   modelType: CustomModelType;
-  onCreated?: (model: CustomModelInfo) => void;
-  onAnyCreated?: (model: CustomModelInfo) => void;
+  onCreated?: (model: CustomModelInfo, role?: CustomModelRegistrationRole) => void;
+  onAnyCreated?: (model: CustomModelInfo, role?: CustomModelRegistrationRole) => void;
+  canSelectBoth?: boolean;
 }
 
 function getError(error: unknown): string {
   return error instanceof Error ? error.message : "Model management failed";
+}
+
+function willSelectCreatedModel(
+  type: CustomModelType | "",
+  modelType: CustomModelType,
+  role: CustomModelRegistrationRole | "",
+  hasAnyCreated: boolean,
+  canSelectBoth: boolean,
+): boolean {
+  return Boolean(
+    hasAnyCreated ||
+      (type &&
+        ((type === modelType &&
+          !(type === "classification" && role === "both" && !canSelectBoth)) ||
+          (role === "both" && canSelectBoth))),
+  );
 }
 
 export function CustomModelManagerDialog({
@@ -47,6 +60,7 @@ export function CustomModelManagerDialog({
   modelType,
   onCreated,
   onAnyCreated,
+  canSelectBoth = false,
 }: Props) {
   const queryClient = useQueryClient();
   const inspectGeneration = useRef(0);
@@ -59,6 +73,7 @@ export function CustomModelManagerDialog({
   const weightInputRef = useRef<HTMLInputElement>(null);
   const companionInputRef = useRef<HTMLInputElement>(null);
   const [type, setType] = useState<CustomModelType | "">(modelType);
+  const [registrationRole, setRegistrationRole] = useState<CustomModelRegistrationRole | "">("");
   const [listType, setListType] = useState<CustomModelType>(modelType);
   const [sourcePath, setSourcePath] = useState("");
   const [uploadId, setUploadId] = useState<string | null>(null);
@@ -74,8 +89,6 @@ export function CustomModelManagerDialog({
   const [backend, setBackend] = useState<CustomDetectorBackend | "">("");
   const [classNamesText, setClassNamesText] = useState("");
   const [datasetFile, setDatasetFile] = useState("");
-  const [detectorClass, setDetectorClass] = useState("");
-  const [detectorVariant, setDetectorVariant] = useState("");
   const [detectorConfig, setDetectorConfig] = useState("");
   const [detectorConfigTemplate, setDetectorConfigTemplate] = useState("");
   const [region, setRegion] = useState("");
@@ -126,6 +139,7 @@ export function CustomModelManagerDialog({
       return;
     }
     setType("");
+    setRegistrationRole("");
     setListType(modelType);
     setEditing(null);
     setErrorText(null);
@@ -146,16 +160,25 @@ export function CustomModelManagerDialog({
     mutationFn: modelsApi.createCustomModel,
     onSuccess: async (model) => {
       await refreshModelLists();
+      const selectedAfterCreate = willSelectCreatedModel(
+        type,
+        modelType,
+        registrationRole,
+        Boolean(onAnyCreated),
+        canSelectBoth,
+      );
       toast.success(
-        onAnyCreated
-          ? `${model.friendly_name} added and selected. Save project settings to keep this choice.`
+        selectedAfterCreate
+          ? `${model.friendly_name} added and selected. Save this form to keep the choice.`
           : `${model.friendly_name} added`,
       );
       setErrorText(null);
       clearUploadAfterCreate();
       resetCreateForm();
-      if (model.type === modelType) onCreated?.(model);
-      onAnyCreated?.(model);
+      if (model.type === modelType || (registrationRole === "both" && modelType === "classification")) {
+        onCreated?.(model, registrationRole || undefined);
+      }
+      onAnyCreated?.(model, registrationRole || undefined);
       onOpenChange(false);
     },
     onError: (error) => {
@@ -204,6 +227,7 @@ export function CustomModelManagerDialog({
     setSourcePath("");
     setInspection(null);
     setType("");
+    setRegistrationRole("");
     setFriendlyName("");
     setEnv("");
     setModelFname("");
@@ -214,8 +238,6 @@ export function CustomModelManagerDialog({
     setDatasetFile("");
     setDetectorConfig("");
     setDetectorConfigTemplate("");
-    setDetectorClass("");
-    setDetectorVariant("");
     setRegion("");
     setFullImage(false);
     setBackend("");
@@ -226,14 +248,13 @@ export function CustomModelManagerDialog({
     stagedWeightFilenameRef.current = "";
     setInspection(null);
     setType("");
+    setRegistrationRole("");
     setFriendlyName("");
     setEnv("");
     setModelFname("");
     setBackend("");
     setClassNamesText("");
     setDatasetFile("");
-    setDetectorClass("");
-    setDetectorVariant("");
     setDetectorConfig("");
     setDetectorConfigTemplate("");
     setDescription("");
@@ -258,12 +279,16 @@ export function CustomModelManagerDialog({
     const folderName = result.source_path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "";
     const stagedFilename = uploadIdRef.current ? stagedWeightFilenameRef.current : "";
     setFriendlyName(stagedFilename ? filenameStem(stagedFilename) : folderName);
-    setType(result.suggested_type ?? "");
+    const initialRole = result.suggested_type ?? "";
+    setType(initialRole);
+    setRegistrationRole(initialRole);
     setEnv(result.suggested_env ?? "");
     setModelFname(result.suggested_model_fname ?? "");
-    setBackend(result.suggested_detector_backend ?? "");
-    setDetectorClass(result.suggested_detector_model_class ?? "");
-    setDetectorVariant(result.suggested_detector_model_variant ?? "");
+    setBackend(
+      result.suggested_detector_backend === "yolo" || result.suggested_detector_backend === "rtdetrv2"
+        ? result.suggested_detector_backend
+        : "",
+    );
     setDetectorConfig(result.suggested_detector_config_fname ?? "");
     setDatasetFile(result.suggested_class_names_source ?? "");
     setDetectorConfigTemplate("");
@@ -306,7 +331,7 @@ export function CustomModelManagerDialog({
     event.preventDefault();
     event.stopPropagation();
     setErrorText(null);
-    if (!inspection || !type || !sourcePath.trim() || !friendlyName.trim() || !env) {
+    if (!inspection || !type || !registrationRole || !sourcePath.trim() || !friendlyName.trim() || !env) {
       setErrorText("Inspect a model folder, then complete the unresolved required fields.");
       return;
     }
@@ -320,6 +345,10 @@ export function CustomModelManagerDialog({
     }
     if (type === "classification" && !inspection.classifier_inference_compatible) {
       setErrorText("This folder does not contain a compatible classification inference.py.");
+      return;
+    }
+    if (!registrationRole) {
+      setErrorText("Choose whether to register this pack for detection, classification, or both.");
       return;
     }
     let classNames: Record<string, string> | undefined;
@@ -343,6 +372,9 @@ export function CustomModelManagerDialog({
       developer,
       info_url: infoUrl,
     };
+    if (type === "detection") {
+      payload.classification_uses_detection_classes = registrationRole === "both";
+    }
     if (type === "classification") {
       payload.region = (region || undefined) as ModelInfo["region"];
       payload.full_image_cls = fullImage;
@@ -353,20 +385,6 @@ export function CustomModelManagerDialog({
       }
       payload.detector_backend = backend;
       payload.class_names = classNames;
-      if (backend === "rfdetr") {
-        if (!detectorClass) {
-          setErrorText("Choose the RF-DETR model class.");
-          return;
-        }
-        payload.detector_model_class = detectorClass;
-      }
-      if (backend === "rtdetr") {
-        if (!detectorVariant) {
-          setErrorText("Choose the RT-DETR variant.");
-          return;
-        }
-        payload.detector_model_variant = detectorVariant;
-      }
       if (backend === "rtdetrv2") {
         if (!detectorConfig.trim() && !detectorConfigTemplate) {
           setErrorText("Choose an RT-DETRv2 YAML config or architecture template.");
@@ -536,21 +554,15 @@ export function CustomModelManagerDialog({
     ? inspection.type_candidates.length === 0
       ? ["This folder does not match a supported model pack. Choose a folder with model weights, and for classification include an AddaxAI-compatible inference.py."]
       : [
-          ...(!type ? ["Choose whether this is a detection or classification model."] : []),
+          ...(!registrationRole ? ["Choose whether to register this pack for detection, classification, or both."] : []),
           ...(type === "classification" && !inspection.classifier_inference_compatible
             ? ["Add an AddaxAI-compatible inference.py to register this as a classification model."]
             : []),
           ...(!modelFname.trim()
             ? [inspection.weights.length ? "Choose a model weight file." : "Add a supported model weight file."]
             : []),
-          ...(!env ? ["Choose an inference environment."] : []),
+          ...(!env ? [type === "classification" ? "Choose the classifier environment in Advanced settings." : "Choose a supported detection backend to select its packaged environment."] : []),
           ...(type === "detection" && !backend ? ["Choose the detection backend."] : []),
-          ...(type === "detection" && backend === "rfdetr" && !detectorClass
-            ? ["Choose the RF-DETR model class."]
-            : []),
-          ...(type === "detection" && backend === "rtdetr" && !detectorVariant
-            ? ["Choose the RT-DETR model variant."]
-            : []),
           ...(type === "detection" && backend === "rtdetrv2" && !detectorConfig.trim() && !detectorConfigTemplate
             ? ["Choose an RT-DETRv2 YAML config or architecture template."]
             : []),
@@ -576,12 +588,10 @@ export function CustomModelManagerDialog({
   const canRegister = Boolean(
     inspection &&
     inspection.source_path.toLowerCase() === sourcePath.trim().toLowerCase() &&
-    type && inspection.type_candidates.includes(type) &&
+    type && registrationRole && inspection.type_candidates.includes(type) &&
     friendlyName.trim() && env && environments.includes(env) && modelFname.trim() &&
     (type !== "classification" || inspection.classifier_inference_compatible) &&
     (type !== "detection" || backend) &&
-    (type !== "detection" || backend !== "rfdetr" || detectorClass) &&
-    (type !== "detection" || backend !== "rtdetr" || detectorVariant) &&
     (type !== "detection" || backend !== "rtdetrv2" || detectorConfig.trim() || detectorConfigTemplate) &&
     (type !== "detection" || classNamesCount > 0) &&
     !hasInvalidClassNames &&
@@ -622,6 +632,9 @@ export function CustomModelManagerDialog({
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{model.emoji} {model.friendly_name}</p>
                     <p className="truncate text-xs text-muted-foreground">{model.model_id} · {model.detector_backend ? formatDetectorBackend(model.detector_backend) : formatEnvironment(model.env)}</p>
+                    {model.classification_uses_detection_classes ? (
+                      <p className="text-xs text-muted-foreground">Also selectable under Classification with the same ID; detector classes and confidence are reused without another inference.</p>
+                    ) : null}
                   </div>
                   <div className="flex shrink-0 gap-1">
                     <Button type="button" variant="outline" size="icon" aria-label={`Edit ${model.friendly_name}`} onClick={() => beginEdit(model)}>
@@ -826,37 +839,36 @@ export function CustomModelManagerDialog({
                       </div>
                     ) : null}
 
-                    {inspection.type_candidates.length > 1 ? (
-                      <Field label="Model type">
-                        <Select value={type || "choose-type"} onValueChange={(value) => {
-                          const nextType = value === "choose-type" ? "" : value as CustomModelType;
-                          setType(nextType);
-                          if (inspection.suggested_env_source === "manifest") {
-                            setEnv(inspection.suggested_env ?? "");
-                          } else if (
-                            inspection.suggested_env_source === "rtdetrv2_config" &&
-                            nextType === "detection"
-                          ) {
-                            setEnv(inspection.suggested_env ?? "");
-                          } else {
-                            setEnv("");
-                          }
-                        }}>
-                          <SelectTrigger><SelectValue placeholder="Choose model type" /></SelectTrigger><SelectContent>
-                            <SelectItem value="choose-type" disabled>Choose model type</SelectItem>
-                            {inspection.type_candidates.includes("detection") || inspection.type_candidates.length === 0 ? (
-                              <SelectItem value="detection">Detection</SelectItem>
-                            ) : null}
-                            {inspection.type_candidates.includes("classification") || inspection.type_candidates.length === 0 ? (
-                              <SelectItem value="classification">Classification</SelectItem>
-                            ) : null}
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                    ) : null}
-                    {type === "classification" && !inspection.classifier_inference_compatible ? (
-                      <p role="alert" className="text-sm text-destructive">
-                        This folder does not have an AddaxAI-compatible inference.py, so it cannot be registered as a classifier.
+                    <Field label="Register for">
+                      <Select value={registrationRole || "choose-role"} onValueChange={(value) => {
+                        const nextRole = value === "choose-role" ? "" : value as CustomModelRegistrationRole;
+                        setRegistrationRole(nextRole);
+                        const nextType: CustomModelType | "" = nextRole === "classification"
+                          ? "classification"
+                          : nextRole ? "detection" : "";
+                        setType(nextType);
+                        if (nextType === "detection") setEnv(detectorEnvironment(backend));
+                        else if (nextType === "classification") {
+                          setEnv(inspection.suggested_env_source === "manifest" ? inspection.suggested_env ?? "" : "");
+                        } else setEnv("");
+                      }}>
+                        <SelectTrigger><SelectValue placeholder="Choose how to use this pack" /></SelectTrigger><SelectContent>
+                          <SelectItem value="choose-role" disabled>Choose how to use this pack</SelectItem>
+                          {inspection.type_candidates.includes("detection") ? (
+                            <>
+                              <SelectItem value="detection">Detection only</SelectItem>
+                              <SelectItem value="both">Detection and Classification (reuse detector classes; no second inference)</SelectItem>
+                            </>
+                          ) : null}
+                          {inspection.type_candidates.includes("classification") && inspection.classifier_inference_compatible ? (
+                            <SelectItem value="classification">Classification only (AddaxAI inference.py)</SelectItem>
+                          ) : null}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    {inspection.type_candidates.includes("detection") && !inspection.classifier_inference_compatible ? (
+                      <p className="text-sm text-muted-foreground">
+                        Classification only requires an AddaxAI-compatible <code>inference.py</code>, which this pack does not have. Choose <strong>Detection and Classification</strong> to reuse the detector classes without a second inference.
                       </p>
                     ) : null}
 
@@ -883,31 +895,18 @@ export function CustomModelManagerDialog({
                         />
                       </Field>
                     )}
-                    <Field label="Inference environment">
-                      <Select value={env || "choose-env"} onValueChange={(value) => setEnv(value === "choose-env" ? "" : value)}>
-                        <SelectTrigger><SelectValue placeholder="Choose an environment" /></SelectTrigger><SelectContent>
-                          <SelectItem value="choose-env" disabled>Choose an environment</SelectItem>
-                          {environments.map((value) => <SelectItem key={value} value={value}>{formatEnvironment(value)}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-
                     {type === "detection" ? (
                       <>
                         <Field label="Detection backend">
                           <Select value={backend || "choose-backend"} onValueChange={(value) => {
                             const nextBackend = value === "choose-backend" ? "" : value as CustomDetectorBackend;
                             setBackend(nextBackend);
-                            setDetectorClass("");
-                            setDetectorVariant("");
                             if (value !== "rtdetrv2") setDetectorConfig("");
-                            if (inspection.suggested_env_source === "rtdetrv2_config") {
-                              setEnv(nextBackend === "rtdetrv2" ? inspection.suggested_env ?? "" : "");
-                            }
+                            setEnv(detectorEnvironment(nextBackend));
                           }}>
                             <SelectTrigger><SelectValue placeholder="Choose a backend" /></SelectTrigger><SelectContent>
                               <SelectItem value="choose-backend" disabled>Choose a backend</SelectItem>
-                              {(["yolo", "rfdetr", "rtdetr", "rtdetrv2"] as const).map((value) => (
+                              {NEW_DETECTOR_BACKENDS.map((value) => (
                                 <SelectItem key={value} value={value}>{formatDetectorBackend(value)}</SelectItem>
                               ))}
                             </SelectContent>
@@ -916,29 +915,16 @@ export function CustomModelManagerDialog({
                             <p className="mt-1 text-xs text-muted-foreground">Detected from pack contents: {formatDetectorBackend(inspection.suggested_detector_backend)}.</p>
                           ) : null}
                         </Field>
-                        {backend === "rfdetr" ? (
-                          <Field label="RF-DETR model class">
-                            <Select value={detectorClass || "choose-class"} onValueChange={(value) => setDetectorClass(value === "choose-class" ? "" : value)}>
-                              <SelectTrigger><SelectValue placeholder="Choose model class" /></SelectTrigger><SelectContent>
-                                <SelectItem value="choose-class" disabled>Choose model class</SelectItem>
-                                {RFDETR_CLASSES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}
-                              </SelectContent>
-                            </Select>
-                          </Field>
-                        ) : null}
-                        {backend === "rtdetr" ? (
-                          <Field label="RT-DETR variant">
-                            <Select value={detectorVariant || "choose-variant"} onValueChange={(value) => setDetectorVariant(value === "choose-variant" ? "" : value)}>
-                              <SelectTrigger><SelectValue placeholder="Choose variant" /></SelectTrigger><SelectContent>
-                                <SelectItem value="choose-variant" disabled>Choose variant</SelectItem>
-                                <SelectItem value="MDV6-apa-rtdetr-c">MDV6-apa-rtdetr-c</SelectItem>
-                                <SelectItem value="MDV6-apa-rtdetr-e">MDV6-apa-rtdetr-e</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </Field>
-                        ) : null}
+                        <p className="text-xs text-muted-foreground">
+                          {backend === "yolo"
+                            ? "YOLO runs in the packaged PyTorch environment."
+                            : backend === "rtdetrv2"
+                              ? <>Official PyTorch RT-DETRv2 runs in the packaged RT-DETR environment. Its YAML must match the checkpoint architecture. See the <a className="underline" href="https://github.com/lyuwenyu/RT-DETR/tree/main/rtdetrv2_pytorch" target="_blank" rel="noreferrer">official PyTorch implementation</a>.</>
+                              : "Choose a supported backend; AddaxAI selects its packaged environment automatically."}
+                        </p>
                     {backend === "rtdetrv2" ? (
-                      inspection.detector_config_candidates.length > 0 ? (
+                      <>
+                      {inspection.detector_config_candidates.length > 0 ? (
                             <Field label="RT-DETRv2 YAML config">
                               <Select value={detectorConfig || "choose-config"} onValueChange={(value) => {
                                 setDetectorConfig(value === "choose-config" ? "" : value);
@@ -967,7 +953,11 @@ export function CustomModelManagerDialog({
                             This creates a safe AddaxAI config with your class count and pretrained weights disabled. Choose the backbone that matches the checkpoint.
                           </p>
                         </Field>
-                      )
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        If the matching YAML is not already in the selected pack, choose <strong>Add companion files</strong> and add it before registering. For the MDV6-c checkpoint, use the <a className="underline" href="/model-configs/MDV6-apa-rtdetr-c.yml" download>MDV6-c example inference YAML</a>.
+                      </p>
+                      </>
                     ) : null}
                         {inspection.dataset_candidates.length > 1 && hasAmbiguousLabels ? (
                           <Field label="Class labels source">
@@ -1009,6 +999,14 @@ export function CustomModelManagerDialog({
                       <div className="mt-3 space-y-3">
                         {type === "classification" ? (
                           <>
+                            <Field label="Inference environment">
+                              <Select value={env || "choose-env"} onValueChange={(value) => setEnv(value === "choose-env" ? "" : value)}>
+                                <SelectTrigger><SelectValue placeholder="Choose an environment" /></SelectTrigger><SelectContent>
+                                  <SelectItem value="choose-env" disabled>Choose an environment</SelectItem>
+                                  {environments.map((value) => <SelectItem key={value} value={value}>{formatEnvironment(value)}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </Field>
                             <Field label="Region">
                               <Select value={region || "none"} onValueChange={(value) => setRegion(value === "none" ? "" : value)}>
                                 <SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
@@ -1050,7 +1048,7 @@ export function CustomModelManagerDialog({
                     type="submit"
                     disabled={createMutation.isPending || inspectMutation.isPending || Boolean(uploadProgress) || !canRegister}
                   >
-                    <Plus /> {type === modelType || onAnyCreated ? "Register and select" : "Register"}
+                    <Plus /> {willSelectCreatedModel(type, modelType, registrationRole, Boolean(onAnyCreated), canSelectBoth) ? "Register and select" : "Register"}
                   </Button>
                 </DialogFooter>
               </form>
@@ -1107,6 +1105,12 @@ function formatEnvironment(value: string): string {
   if (value === "addaxai-base") return "AddaxAI base environment";
   if (value === "rtdetr") return "RT-DETR environment";
   return value.split(/[-_]/).map((part) => part ? part[0].toUpperCase() + part.slice(1) : part).join(" ");
+}
+
+function detectorEnvironment(value: CustomDetectorBackend | ""): string {
+  if (value === "yolo") return "pytorch";
+  if (value === "rtdetrv2") return "rtdetr";
+  return "";
 }
 
 function formatRtdetrv2Template(value: string): string {

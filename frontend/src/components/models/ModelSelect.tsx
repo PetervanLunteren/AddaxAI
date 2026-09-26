@@ -21,10 +21,15 @@ import {
 } from "@/components/ui/select";
 import { FormControl } from "@/components/ui/form";
 import { ModelSelectValue } from "./ModelSelectValue";
-import type { ModelInfo } from "@/api/types";
+import type {
+  CustomModelInfo,
+  CustomModelRegistrationRole,
+  ModelInfo,
+} from "@/api/types";
 import { API_BASE_URL } from "@/lib/api-client";
 import { CustomModelManagerDialog } from "./CustomModelManagerDialog";
 import { useState } from "react";
+import { toast } from "sonner";
 
 interface ModelSelectProps {
   /** Current value, already defaulted to noneValue when empty (e.g. field.value ?? "none"). */
@@ -41,6 +46,8 @@ interface ModelSelectProps {
   onShowInfo?: () => void;
   /** Enables custom detection/classification pack management for host-local pickers. */
   modelType?: "detection" | "classification";
+  /** Lets a parent update coupled detector/classifier fields for a newly registered alias. */
+  onModelCreated?: (model: CustomModelInfo, role?: CustomModelRegistrationRole) => void;
   /** SelectContent items: the optional none item plus the (grouped or flat) model items. */
   children: ReactNode;
 }
@@ -54,6 +61,7 @@ export function ModelSelect({
   noneLabel,
   onShowInfo,
   modelType,
+  onModelCreated,
   children,
 }: ModelSelectProps) {
   const [manageOpen, setManageOpen] = useState(false);
@@ -108,8 +116,19 @@ export function ModelSelect({
           open={manageOpen}
           onOpenChange={setManageOpen}
           modelType={modelType}
-          onCreated={(model) => {
-            if (model.type === modelType) onValueChange(model.model_id);
+          canSelectBoth={Boolean(onModelCreated)}
+          onCreated={(model, role) => {
+            if (model.type === modelType || (role === "both" && modelType === "classification")) {
+              if (onModelCreated) {
+                onModelCreated(model, role);
+              } else if (role === "both" && modelType === "classification") {
+                toast.info(
+                  "Model registered. This screen keeps its detection model fixed; select this same model for Detection and Classification in Project settings to reuse its labels.",
+                );
+              } else {
+                onValueChange(model.model_id);
+              }
+            }
           }}
         />
       )}

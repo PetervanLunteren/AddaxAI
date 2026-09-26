@@ -108,6 +108,33 @@ register a new pack. Display information can still be edited. A model cannot
 be removed while a project references it or while it is being used by a job.
 Catalog-managed standard models are not editable through this screen.
 
+### Choose how the pack is used
+
+During registration, choose **Detection only**, **Classification only**, or
+**Detection and Classification**. Detection plus Classification stores one
+detector pack and exposes the same model ID in the Classification picker. The
+classification result reuses each detection's class name and confidence; it
+does not run a second model. This option does not require `inference.py`.
+Classification-only packs still require an AddaxAI-compatible `inference.py`.
+
+New detector registrations support YOLO and the official PyTorch RT-DETRv2
+implementation. Existing registered RF-DETR and PyTorch-Wildlife RT-DETR packs
+remain usable. The application selects the packaged `pytorch` environment for
+YOLO and `rtdetr` for RT-DETRv2; classifier environments are inferred from the
+pack manifest or can be chosen in Advanced settings.
+
+### MDV6-apa-rtdetr-c checkpoint
+
+For the pinned PytorchWildlife `MDV6-apa-rtdetr-c.pth` checkpoint, download
+[`MDV6-apa-rtdetr-c.yml`](/model-configs/MDV6-apa-rtdetr-c.yml), place it beside
+the weight, then register the folder with **Official PyTorch RT-DETRv2** and
+the matching class names in checkpoint order: `animal`, `person`, `vehicle`.
+This inference YAML is separate from AddaxAI's generated `manifest.json`: the
+YAML defines the RT-DETRv2 architecture, while the manifest stores AddaxAI
+model metadata. The supplied config uses the pinned R18 backbone definition,
+disables pretrained downloads, sets three classes, and disables COCO category
+remapping so class IDs stay `0`, `1`, and `2`.
+
 Event smoothing in AddaxAI smooths classifier labels attached to `animal`
 detections. It does not smooth a detector's own class IDs. Custom-only
 detection categories are passed through unchanged when event smoothing is

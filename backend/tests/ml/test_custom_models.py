@@ -112,6 +112,8 @@ def test_create_copies_detection_pack_with_managed_local_manifest(tmp_path: Path
     assert manifest["managed"] is True
     assert manifest["local_only"] is True
     assert manifest["weights_sha256"]
+    assert manifest["classification_uses_detection_classes"] is False
+    assert result["env"] == "pytorch"
     assert manager.manifest_manager.get_model(result["model_id"]).detector_backend == "yolo"
 
 
@@ -147,9 +149,9 @@ def test_create_does_not_guess_detector_backend_or_variant(tmp_path: Path):
     source = _detection_pack(tmp_path / "explicit-settings")
     env = manager.environments()[0]
 
-    with pytest.raises(CustomModelError, match="Select detector_backend explicitly"):
+    with pytest.raises(CustomModelError, match="YOLO or official RT-DETRv2"):
         manager.create(_create_payload(source, env, detector_backend=None))
-    with pytest.raises(CustomModelError, match="explicit detector_model_class"):
+    with pytest.raises(CustomModelError, match="YOLO or official RT-DETRv2"):
         manager.create(
             _create_payload(
                 source,
@@ -158,7 +160,7 @@ def test_create_does_not_guess_detector_backend_or_variant(tmp_path: Path):
                 detector_model_class=None,
             )
         )
-    with pytest.raises(CustomModelError, match="explicit detector_model_variant"):
+    with pytest.raises(CustomModelError, match="YOLO or official RT-DETRv2"):
         manager.create(
             _create_payload(
                 source,
@@ -167,6 +169,58 @@ def test_create_does_not_guess_detector_backend_or_variant(tmp_path: Path):
                 detector_model_variant=None,
             )
         )
+
+
+def test_both_role_persists_explicit_alias_and_requires_valid_class_ids(tmp_path: Path):
+    manager = _manager(tmp_path)
+    source = _detection_pack(tmp_path / "both-role")
+    env = manager.environments()[0]
+    payload = _create_payload(
+        source,
+        env,
+        classification_uses_detection_classes=True,
+        class_names={"0": "animal", "1": "person", "2": "vehicle"},
+    )
+
+    result = manager.create(payload)
+
+    assert result["classification_uses_detection_classes"] is True
+    assert result["env"] == "pytorch"
+    registered_manifest = manager.manifest_manager.get_model(result["model_id"])
+    assert registered_manifest.classification_uses_detection_classes is True
+
+    with pytest.raises(CustomModelError, match="unique class names"):
+        manager.create(
+            payload.model_copy(
+                update={"class_names": {"0": "animal", "1": "Animal"}}
+            )
+        )
+
+
+def test_rtdetrv2_md_v6_c_reference_config_flattens_safely():
+    from app.ml.inference.rtdetrv2_config import load_rtdetrv2_config
+
+    repo_root = Path(__file__).resolve().parents[3]
+    config_path = repo_root / "docs" / "static" / "model-configs" / "MDV6-apa-rtdetr-c.yml"
+    frontend_config_path = repo_root / "frontend" / "public" / "model-configs" / "MDV6-apa-rtdetr-c.yml"
+    assert frontend_config_path.read_bytes() == config_path.read_bytes()
+    source_root = repo_root / "backend" / "app" / "ml" / "third_party" / "rtdetrv2_pytorch"
+    resolved = load_rtdetrv2_config(
+        config_path,
+        model_root=config_path.parent,
+        source_root=source_root,
+    )
+
+    assert resolved["num_classes"] == 3
+    assert resolved["remap_mscoco_category"] is False
+    assert resolved["PResNet"]["depth"] == 18
+    assert resolved["PResNet"]["freeze_at"] == -1
+    assert resolved["PResNet"]["freeze_norm"] is False
+    assert resolved["PResNet"]["pretrained"] is False
+    assert resolved["HybridEncoder"]["in_channels"] == [128, 256, 512]
+    assert resolved["HybridEncoder"]["hidden_dim"] == 256
+    assert resolved["HybridEncoder"]["expansion"] == 0.5
+    assert resolved["RTDETRTransformerv2"]["num_layers"] == 3
 
 
 def test_create_validates_rtdetrv2_yaml_and_preserves_safe_include_config(tmp_path: Path):
@@ -521,6 +575,80 @@ async def test_local_custom_model_api_crud_and_model_selection_lists(
 
 
 @pytest.mark.asyncio
+async def test_api_registers_both_role_and_lists_detector_alias(
+    local_model_api, tmp_path: Path
+):
+    app, _models_dir = local_model_api
+    source = _detection_pack(tmp_path / "both-role-source")
+    env = "rtdetr"
+    transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 54126))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/ml/custom-models",
+            json={
+                "type": "detection",
+                "source_path": str(source),
+                "friendly_name": "YOLO detector and classifier alias",
+                "env": env,
+                "model_fname": "weights.pt",
+                "detector_backend": "yolo",
+                "class_names": {"0": "fox", "1": "deer"},
+                "classification_uses_detection_classes": True,
+            },
+        )
+
+        assert response.status_code == 201, response.text
+        registered = response.json()
+        model_id = registered["model_id"]
+        assert registered["type"] == "detection"
+        assert registered["env"] == "pytorch"
+        assert registered["classification_uses_detection_classes"] is True
+
+        classification_models = (await client.get("/api/ml/models/classification")).json()
+        alias = next(row for row in classification_models if row["model_id"] == model_id)
+        assert alias["uses_detection_classes"] is True
+        assert alias["class_names"] == {"0": "fox", "1": "deer"}
+
+        taxonomy = (await client.get(f"/api/ml/models/{model_id}/taxonomy")).json()
+        assert taxonomy["all_classes"] == ["fox", "deer"]
+
+        detection_only = await client.post(
+            "/api/ml/custom-models",
+            json={
+                "type": "detection",
+                "source_path": str(_detection_pack(tmp_path / "detection-only-source")),
+                "friendly_name": "Detection only",
+                "env": "rtdetr",
+                "model_fname": "weights.pt",
+                "detector_backend": "yolo",
+                "class_names": {"0": "fox", "1": "deer"},
+            },
+        )
+        assert detection_only.status_code == 201, detection_only.text
+        detection_only_id = detection_only.json()["model_id"]
+        assert detection_only.json()["classification_uses_detection_classes"] is False
+        classification_ids = {
+            row["model_id"]
+            for row in (await client.get("/api/ml/models/classification")).json()
+        }
+        assert model_id in classification_ids
+        assert detection_only_id not in classification_ids
+
+        invalid_role = await client.post(
+            "/api/ml/custom-models",
+            json={
+                "type": "classification",
+                "source_path": str(_classification_pack(tmp_path / "classifier-with-invalid-role")),
+                "friendly_name": "Invalid alias classifier",
+                "env": "pytorch",
+                "model_fname": "weights.pth",
+                "classification_uses_detection_classes": True,
+            },
+        )
+        assert invalid_role.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_custom_model_api_rejects_source_ancestor_of_managed_models(
     local_model_api, tmp_path: Path
 ):
@@ -583,6 +711,7 @@ async def test_detector_with_class_names_is_exposed_as_same_id_classifier_alias(
         source,
         CustomModelManager.environments()[0],
         class_names={"0": "fox", "1": "deer"},
+        classification_uses_detection_classes=True,
     )
     manager = CustomModelManager(_models_dir, ManifestManager(_models_dir))
     created = manager.create(payload)
@@ -1003,7 +1132,7 @@ def test_inspect_marks_manifest_backend_conflicting_with_rtdetrv2_config_ambiguo
 
     result = manager.inspect(str(source))
 
-    assert result["detector_backend_candidates"] == ["rtdetrv2", "yolo"]
+    assert result["detector_backend_candidates"] == ["yolo", "rtdetrv2"]
     assert result["suggested_detector_backend"] is None
     assert result["suggested_env"] is None
     assert result["suggested_env_source"] is None
@@ -1019,7 +1148,7 @@ def test_inspect_leaves_backend_and_environment_unselected_when_unknown(tmp_path
 
     assert result["suggested_type"] == "detection"
     assert result["suggested_detector_backend"] is None
-    assert result["detector_backend_candidates"] == ["yolo", "rfdetr", "rtdetr", "rtdetrv2"]
+    assert result["detector_backend_candidates"] == ["yolo", "rtdetrv2"]
     assert result["suggested_env"] is None
     assert "Choose the detection backend." in result["missing_required"]
     assert "Choose a packaged inference environment." in result["missing_required"]
@@ -1149,7 +1278,7 @@ async def test_custom_model_inspect_api_is_read_only_and_loopback_only(
             headers={"Origin": "http://127.0.0.1:5173"},
         )
         assert conflict_response.status_code == 200, conflict_response.text
-        assert conflict_response.json()["detector_backend_candidates"] == ["rtdetrv2", "yolo"]
+        assert conflict_response.json()["detector_backend_candidates"] == ["yolo", "rtdetrv2"]
         assert conflict_response.json()["suggested_detector_backend"] is None
         assert conflict_response.json()["suggested_env"] is None
 

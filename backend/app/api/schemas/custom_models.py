@@ -16,7 +16,7 @@ class CustomModelCreate(BaseModel):
     source_path: str | None = Field(default=None, min_length=1, max_length=4096)
     upload_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
     friendly_name: str = Field(min_length=1, max_length=120)
-    env: str = Field(min_length=1, max_length=80)
+    env: str | None = Field(default=None, min_length=1, max_length=80)
     model_fname: str | None = Field(default=None, max_length=512)
     description: str = Field(default="", max_length=1000)
     description_short: str | None = Field(default=None, max_length=240)
@@ -35,11 +35,16 @@ class CustomModelCreate(BaseModel):
     detector_model_variant: str | None = Field(default=None, max_length=80)
     detector_config_fname: str | None = Field(default=None, max_length=512)
     detector_config_template: str | None = Field(default=None, max_length=120)
+    classification_uses_detection_classes: bool = False
 
     @model_validator(mode="after")
     def _require_one_source(self):
         if bool(self.source_path) == bool(self.upload_id):
             raise ValueError("Provide exactly one of source_path or upload_id")
+        if self.classification_uses_detection_classes and self.type != "detection":
+            raise ValueError(
+                "classification_uses_detection_classes is only valid for detection packs"
+            )
         return self
 
 
@@ -82,7 +87,7 @@ class CustomModelInspectResponse(BaseModel):
     suggested_detector_config_fname: str | None = None
     environments: list[str]
     suggested_env: str | None = None
-    suggested_env_source: Literal["manifest", "rtdetrv2_config"] | None = None
+    suggested_env_source: Literal["manifest", "detector_backend", "rtdetrv2_config"] | None = None
     dataset_candidates: list[CustomModelDatasetCandidate]
     suggested_class_names: dict[str, str] | None = None
     suggested_class_names_source: str | None = None
@@ -138,6 +143,7 @@ class CustomModelInfo(BaseModel):
     detector_model_variant: str | None = None
     detector_config_fname: str | None = None
     class_names: dict[str, str] | None = None
+    classification_uses_detection_classes: bool | None = None
     local_only: bool
     managed: bool
 

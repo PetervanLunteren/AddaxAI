@@ -24,10 +24,14 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.ml.manifest_manager import ManifestManager
 from app.ml.model_usage import is_model_active, model_usage_guard
-from app.ml.schemas.model_manifest import ModelManifest
+from app.ml.schemas.model_manifest import (
+    ModelManifest,
+    uses_detection_classes_for_classification,
+)
 from app.models.project import Project
 
 _MODEL_TYPE_DIR = {"detection": "det", "classification": "cls"}
+_DETECTOR_ENVIRONMENTS = {"yolo": "pytorch", "rtdetrv2": "rtdetr"}
 _WEIGHT_SUFFIXES = {
     ".pt", ".pth", ".ckpt", ".h5", ".hdf5", ".keras", ".onnx",
     ".pb", ".safetensors", ".tflite",
@@ -313,7 +317,16 @@ def _source_value(
 def _manifest_from_pack(payload: Any, source: Path, model_id: str) -> ModelManifest:
     source_manifest = _read_source_manifest(source)
     model_type = payload.type
-    env = _source_value(payload, source_manifest, "env")
+    backend = None
+    if model_type == "classification":
+        env = _source_value(payload, source_manifest, "env")
+    else:
+        backend = _source_value(payload, source_manifest, "detector_backend")
+        if backend not in _DETECTOR_ENVIRONMENTS:
+            raise CustomModelError(
+                "New custom detection registrations support YOLO or official RT-DETRv2"
+            )
+        env = _DETECTOR_ENVIRONMENTS[backend]
     if not env or env not in _available_environments():
         raise CustomModelError("env must be one of the environments packaged for this platform")
     model_fname = _weight_file(source, payload.model_fname, source_manifest)
@@ -348,21 +361,8 @@ def _manifest_from_pack(payload: Any, source: Path, model_id: str) -> ModelManif
             example_image_url=payload.example_image_url or source_manifest.get("example_image_url"),
         )
     else:
-        backend = _source_value(payload, source_manifest, "detector_backend")
-        if not backend:
-            raise CustomModelError("Select detector_backend explicitly for this detection pack")
-        if backend not in {"yolo", "rfdetr", "rtdetr", "rtdetrv2"}:
-            raise CustomModelError(
-                "Custom detection backend must be YOLO, RF-DETR, RT-DETR or RT-DETRv2"
-            )
-        detector_model_class = _source_value(payload, source_manifest, "detector_model_class")
-        if backend == "rfdetr" and not detector_model_class:
-            raise CustomModelError("RF-DETR packs require an explicit detector_model_class")
-        detector_model_variant = _source_value(
-            payload, source_manifest, "detector_model_variant"
-        )
-        if backend == "rtdetr" and not detector_model_variant:
-            raise CustomModelError("RT-DETR packs require an explicit detector_model_variant")
+        detector_model_class = None
+        detector_model_variant = None
         class_names = _source_value(payload, source_manifest, "class_names")
         metadata.update(
             detector_backend=backend,
@@ -370,6 +370,9 @@ def _manifest_from_pack(payload: Any, source: Path, model_id: str) -> ModelManif
             detector_model_class=detector_model_class,
             detector_model_variant=detector_model_variant,
             detector_config_fname=_source_value(payload, source_manifest, "detector_config_fname"),
+            classification_uses_detection_classes=bool(
+                getattr(payload, "classification_uses_detection_classes", False)
+            ),
         )
         if backend == "rtdetrv2":
             template_name = getattr(payload, "detector_config_template", None)
@@ -420,7 +423,21 @@ def _manifest_from_pack(payload: Any, source: Path, model_id: str) -> ModelManif
                 metadata["detector_config_fname"] = config_relative.as_posix()
 
     try:
-        return ModelManifest.model_validate(metadata)
+        manifest = ModelManifest.model_validate(metadata)
+        manifest.model_category = model_type
+        if (
+            model_type == "detection"
+            and manifest.classification_uses_detection_classes
+            and not uses_detection_classes_for_classification(manifest)
+        ):
+            raise CustomModelError(
+                "Using detection output as classification requires unique class names and "
+                "canonical numeric class IDs"
+            )
+        manifest.model_category = None
+        return manifest
+    except CustomModelError:
+        raise
     except Exception as exc:
         raise CustomModelError(f"Model pack configuration is invalid: {exc}") from exc
 
@@ -465,6 +482,9 @@ def _model_record(manifest: ModelManifest) -> dict[str, Any]:
         "detector_model_variant": manifest.detector_model_variant,
         "detector_config_fname": manifest.detector_config_fname,
         "class_names": manifest.class_names if isinstance(manifest.class_names, dict) else None,
+        "classification_uses_detection_classes": (
+            uses_detection_classes_for_classification(manifest)
+        ),
         "local_only": manifest.local_only,
         "managed": manifest.managed,
     }
@@ -751,19 +771,27 @@ class CustomModelManager:
         )
 
         recognized_backends = set()
-        if explicit_backend:
+        if explicit_backend in _DETECTOR_ENVIRONMENTS:
             recognized_backends.add(explicit_backend)
         if rtdetrv2_configs:
             recognized_backends.add("rtdetrv2")
+        if explicit_backend in {"rfdetr", "rtdetr"}:
+            warnings.append(
+                "This pack declares a legacy RF-DETR or RT-DETR backend. New custom registrations "
+                "support YOLO and official RT-DETRv2; existing registered legacy models remain "
+                "available."
+            )
         if len(recognized_backends) > 1:
-            detector_backend_candidates = sorted(recognized_backends)
+            detector_backend_candidates = ["yolo", "rtdetrv2"]
         elif recognized_backends:
-            detector_backend_candidates = list(recognized_backends)
+            detector_backend_candidates = sorted(recognized_backends)
         elif detection_evidence:
-            detector_backend_candidates = ["yolo", "rfdetr", "rtdetr", "rtdetrv2"]
+            detector_backend_candidates = ["yolo", "rtdetrv2"]
         else:
             detector_backend_candidates = []
-        backend_conflict = len(recognized_backends) > 1
+        backend_conflict = len(recognized_backends) > 1 or (
+            explicit_backend in {"rfdetr", "rtdetr"} and bool(rtdetrv2_configs)
+        )
         if backend_conflict:
             suggested_backend = None
             warnings.append(
@@ -772,7 +800,10 @@ class CustomModelManager:
             )
         elif len(recognized_backends) == 1:
             suggested_backend = next(iter(recognized_backends))
-        elif explicit_backend and explicit_backend in detector_backend_candidates:
+        elif (
+            explicit_backend in _DETECTOR_ENVIRONMENTS
+            and explicit_backend in detector_backend_candidates
+        ):
             suggested_backend = explicit_backend
         elif len(detector_backend_candidates) == 1:
             suggested_backend = detector_backend_candidates[0]
@@ -796,12 +827,16 @@ class CustomModelManager:
                     "Choose the inference environment after resolving the detector backend "
                     "conflict."
                 )
+        elif suggested_backend in _DETECTOR_ENVIRONMENTS:
+            backend_env = _DETECTOR_ENVIRONMENTS[suggested_backend]
+            if backend_env in environments:
+                suggested_env = backend_env
+                suggested_env_source = (
+                    "rtdetrv2_config" if suggested_backend == "rtdetrv2" else "detector_backend"
+                )
         elif isinstance(source_env, str) and source_env in environments:
             suggested_env = source_env
             suggested_env_source = "manifest"
-        elif suggested_backend == "rtdetrv2" and "rtdetr" in environments:
-            suggested_env = "rtdetr"
-            suggested_env_source = "rtdetrv2_config"
         elif source_env:
             warnings.append("Source manifest environment is not available in this installation.")
 

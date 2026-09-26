@@ -32,6 +32,27 @@ def test_detector_alias_requires_unique_names_and_canonical_ids(class_names):
     assert not uses_detection_classes_for_classification(manifest)
 
 
+@pytest.mark.parametrize(
+    ("explicit_alias", "expected"),
+    [(False, False), (True, True), (None, True)],
+)
+def test_manifest_alias_flag_controls_new_packs_and_preserves_legacy(
+    explicit_alias, expected
+):
+    from types import SimpleNamespace
+
+    manifest = SimpleNamespace(
+        model_category="detection",
+        managed=True,
+        local_only=True,
+        detector_backend="rtdetrv2",
+        class_names={"0": "animal", "1": "person", "2": "vehicle"},
+        classification_uses_detection_classes=explicit_alias,
+    )
+
+    assert uses_detection_classes_for_classification(manifest) is expected
+
+
 def test_reuses_zero_based_detector_classes_and_confidence_without_inference():
     document = {
         "detection_categories": {"0": "fox", "1": "deer"},

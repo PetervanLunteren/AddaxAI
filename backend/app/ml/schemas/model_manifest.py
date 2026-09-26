@@ -124,6 +124,9 @@ class ModelManifest(BaseModel):
     managed: bool = False
     managed_created_at: str | None = None
     weights_sha256: str | None = None
+    # Explicit choice for new packs. None preserves the historical behavior
+    # where managed local detectors with class_names were classifier aliases.
+    classification_uses_detection_classes: bool | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -235,10 +238,14 @@ def uses_detection_classes_for_classification(manifest: ModelManifest) -> bool:
         and len(names) == len(class_names)
         and len(set(names)) == len(names)
     )
-    return bool(
+    eligible_detector = bool(
         manifest.model_category == "detection"
         and manifest.managed
         and manifest.local_only
         and manifest.detector_backend in {"yolo", "rfdetr", "rtdetr", "rtdetrv2"}
         and has_names
     )
+    explicit_choice = getattr(manifest, "classification_uses_detection_classes", None)
+    if explicit_choice is not None:
+        return bool(explicit_choice and eligible_detector)
+    return eligible_detector

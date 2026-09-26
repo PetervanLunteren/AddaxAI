@@ -130,6 +130,7 @@ import {
 } from "../../lib/folderRunSettings";
 
 import { deploymentQueueApi } from "../../api/deployment-queue";
+import type { CustomModelInfo, CustomModelRegistrationRole } from "../../api/types";
 import {
   folderRunsApi,
   type FolderRunCreate,
@@ -356,6 +357,37 @@ export function FolderRunModelStep() {
     !!classificationModelId && classificationModelId !== NO_CLASSIFIER;
   const hasEmbedding =
     !!embeddingModelId && embeddingModelId !== NO_EMBEDDING;
+
+  const selectRegisteredModel = (
+    model: CustomModelInfo,
+    role?: CustomModelRegistrationRole,
+  ) => {
+    const options = {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    } as const;
+    if (model.type === "detection") {
+      form.setValue("detection_model_id", model.model_id, options);
+      if (role === "both") {
+        form.setValue("classification_model_id", model.model_id, options);
+      } else {
+        const currentClassifier = form.getValues("classification_model_id");
+        const selectedClassifier = classificationModels.find(
+          (candidate) => candidate.model_id === currentClassifier,
+        );
+        if (
+          selectedClassifier?.uses_detection_classes &&
+          currentClassifier !== model.model_id
+        ) {
+          form.setValue("classification_model_id", NO_CLASSIFIER, options);
+        }
+      }
+    }
+    if (model.type === "classification" || role === "both") {
+      form.setValue("classification_model_id", model.model_id, options);
+    }
+  };
 
   // Which advanced settings differ from their factory default. Settings are
   // sticky across runs by design (lib/folderRunSettings: run 2 starts
@@ -1018,6 +1050,7 @@ export function FolderRunModelStep() {
                         <div className="space-y-2">
                           <ModelSelect
                             modelType="classification"
+                            onModelCreated={selectRegisteredModel}
                             value={field.value ?? NO_CLASSIFIER}
                             onValueChange={(val) =>
                               field.onChange(
@@ -1170,8 +1203,22 @@ export function FolderRunModelStep() {
                         >
                             <ModelSelect
                               modelType="detection"
+                              onModelCreated={selectRegisteredModel}
                               value={field.value}
-                              onValueChange={field.onChange}
+                              onValueChange={(value) => {
+                                field.onChange(value);
+                                const currentClassifier = form.getValues("classification_model_id");
+                                const selectedClassifier = classificationModels.find(
+                                  (model) => model.model_id === currentClassifier,
+                                );
+                                if (selectedClassifier?.uses_detection_classes && currentClassifier !== value) {
+                                  form.setValue("classification_model_id", NO_CLASSIFIER, {
+                                    shouldDirty: true,
+                                    shouldTouch: true,
+                                    shouldValidate: true,
+                                  });
+                                }
+                              }}
                               models={detectionModels}
                               placeholder="Select detection model"
                               onShowInfo={() => setShowDetInfo(true)}

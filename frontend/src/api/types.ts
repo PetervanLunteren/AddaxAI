@@ -869,6 +869,7 @@ export interface ModelInfo {
 }
 
 export type CustomModelType = "detection" | "classification";
+export type CustomModelRegistrationRole = CustomModelType | "both";
 export type CustomDetectorBackend = "yolo" | "rfdetr" | "rtdetr" | "rtdetrv2";
 
 export interface CustomModelFileInfo {
@@ -896,7 +897,7 @@ export interface CustomModelInspectResponse {
   suggested_detector_config_fname: string | null;
   environments: string[];
   suggested_env: string | null;
-  suggested_env_source: "manifest" | "rtdetrv2_config" | null;
+  suggested_env_source: "manifest" | "detector_backend" | "rtdetrv2_config" | null;
   dataset_candidates: CustomModelDatasetCandidate[];
   suggested_class_names: Record<string, string> | null;
   suggested_class_names_source: string | null;
@@ -916,6 +917,7 @@ export interface CustomModelInfo extends Omit<ModelInfo, "default_batch_size_gpu
   model_fname: string;
   local_only: boolean;
   managed: boolean;
+  classification_uses_detection_classes?: boolean | null;
   detector_model_class?: string | null;
   detector_model_variant?: string | null;
   detector_config_fname?: string | null;
@@ -945,6 +947,7 @@ export interface CustomModelCreateRequest {
   full_image_cls?: boolean;
   example_image_url?: string;
   detector_backend?: CustomDetectorBackend;
+  classification_uses_detection_classes?: boolean;
   class_names?: Record<string, string> | string[];
   detector_model_class?: string;
   detector_model_variant?: string;
