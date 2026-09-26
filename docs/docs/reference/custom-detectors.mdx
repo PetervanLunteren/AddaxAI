@@ -90,11 +90,15 @@ also supports editing display information and removing packs that are not in
 use. Other computers connected to the same AddaxAI server can select these
 registered models, but model-pack management is restricted to the host PC.
 
-Detection packs must include their weights and any backend configuration they
-need. Choose one of the four supported detector backends and provide class
-labels in model class-ID order. RT-DETRv2 also needs its YAML config in the
-pack. Classification packs must include an AddaxAI-compatible `inference.py`
-with the existing `ModelInference` interface; choose one of the packaged
+Choose a folder and inspect it before registering. Inspection lists the files
+that will be retained and checks small metadata files without loading or
+copying model weights. A single weight file, compatible classification
+`inference.py`, RT-DETRv2 config, and dataset YAML `names` may be recognized
+automatically. If a folder supports more than one interpretation, has several
+weights/configs, or does not identify its environment/backend, choose the
+missing values in the form. Dataset labels are ordered by numeric class ID.
+RT-DETRv2 requires its YAML config in the pack. Classification packs must use
+the existing AddaxAI `ModelInference` interface and one of the packaged
 inference environments. Registration does not download weights or accept an
 arbitrary Python module path.
 

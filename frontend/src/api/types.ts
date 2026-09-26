@@ -867,6 +867,45 @@ export interface ModelInfo {
 }
 
 export type CustomModelType = "detection" | "classification";
+export type CustomDetectorBackend = "yolo" | "rfdetr" | "rtdetr" | "rtdetrv2";
+
+export interface CustomModelFileInfo {
+  path: string;
+  size_bytes: number;
+}
+
+export interface CustomModelDatasetCandidate {
+  path: string;
+  class_names: Record<string, string>;
+}
+
+export interface CustomModelInspectResponse {
+  source_path: string;
+  type_candidates: CustomModelType[];
+  suggested_type: CustomModelType | null;
+  weights: string[];
+  suggested_model_fname: string | null;
+  detector_backend_candidates: CustomDetectorBackend[];
+  suggested_detector_backend: CustomDetectorBackend | null;
+  suggested_detector_model_class: string | null;
+  suggested_detector_model_variant: string | null;
+  detector_config_candidates: string[];
+  suggested_detector_config_fname: string | null;
+  environments: string[];
+  suggested_env: string | null;
+  suggested_env_source: "manifest" | "rtdetrv2_config" | null;
+  dataset_candidates: CustomModelDatasetCandidate[];
+  suggested_class_names: Record<string, string> | null;
+  suggested_class_names_source: string | null;
+  source_manifest_detected: boolean;
+  classifier_inference_compatible: boolean;
+  files: CustomModelFileInfo[];
+  total_file_count: number;
+  total_size_bytes: number;
+  files_truncated: boolean;
+  missing_required: string[];
+  warnings: string[];
+}
 
 export interface CustomModelInfo extends Omit<ModelInfo, "default_batch_size_gpu" | "default_batch_size_cpu"> {
   type: CustomModelType;
@@ -901,7 +940,7 @@ export interface CustomModelCreateRequest {
   region?: ModelInfo["region"];
   full_image_cls?: boolean;
   example_image_url?: string;
-  detector_backend?: "yolo" | "rfdetr" | "rtdetr" | "rtdetrv2";
+  detector_backend?: CustomDetectorBackend;
   class_names?: Record<string, string> | string[];
   detector_model_class?: string;
   detector_model_variant?: string;

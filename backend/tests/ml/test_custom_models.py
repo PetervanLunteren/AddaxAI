@@ -58,6 +58,27 @@ def _classification_pack(path: Path) -> Path:
     return path
 
 
+def _mdv6_style_rtdetrv2_pack(path: Path) -> Path:
+    path.mkdir(parents=True)
+    (path / "best.pth").write_bytes(b"checkpoint bytes must not be read during inspect")
+    (path / "rtdetrv2_r101_mdv6_20cls.yml").write_text(
+        "__include__: []\n"
+        "num_classes: 20\n"
+        "PResNet: {}\n"
+        "RTDETRTransformerv2: {}\n",
+        encoding="utf-8",
+    )
+    labels = [
+        "person", "bird", "boar", "deer", "tanuki", "araiguma", "fox", "hakubishin",
+        "rabbit", "ten", "itachi", "monkey", "bear", "kamosika", "japanese squirrel",
+        "mouse", "anaguma", "cat", "other", "vehicle",
+    ]
+    (path / "rtdetrv2_mdv6_20cls_dataset.yaml").write_text(
+        "names: " + json.dumps(labels, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    return path
+
+
 def _create_payload(pack: Path, env: str, **changes) -> CustomModelCreate:
     values = {
         "type": "detection",
@@ -119,6 +140,74 @@ def test_create_requires_addaxai_classifier_inference_pack(tmp_path: Path):
     (source / "inference.py").write_text("class Other: pass\n", encoding="utf-8")
     with pytest.raises(CustomModelError, match="ModelInference"):
         manager.create(payload.model_copy(update={"friendly_name": "Invalid classifier"}))
+
+
+def test_create_does_not_guess_detector_backend_or_variant(tmp_path: Path):
+    manager = _manager(tmp_path)
+    source = _detection_pack(tmp_path / "explicit-settings")
+    env = manager.environments()[0]
+
+    with pytest.raises(CustomModelError, match="Select detector_backend explicitly"):
+        manager.create(_create_payload(source, env, detector_backend=None))
+    with pytest.raises(CustomModelError, match="explicit detector_model_class"):
+        manager.create(
+            _create_payload(
+                source,
+                env,
+                detector_backend="rfdetr",
+                detector_model_class=None,
+            )
+        )
+    with pytest.raises(CustomModelError, match="explicit detector_model_variant"):
+        manager.create(
+            _create_payload(
+                source,
+                env,
+                detector_backend="rtdetr",
+                detector_model_variant=None,
+            )
+        )
+
+
+def test_create_validates_rtdetrv2_yaml_and_preserves_safe_include_config(tmp_path: Path):
+    manager = _manager(tmp_path)
+    env = "rtdetr"
+    invalid = _detection_pack(tmp_path / "invalid-rtdetrv2")
+    (invalid / "config.yml").write_text("RTDETRTransformerv2: [\n", encoding="utf-8")
+    with pytest.raises(CustomModelError, match="Could not parse YAML file config.yml"):
+        manager.create(
+            _create_payload(
+                invalid,
+                env,
+                detector_backend="rtdetrv2",
+                detector_config_fname="config.yml",
+            )
+        )
+
+    valid = _mdv6_style_rtdetrv2_pack(tmp_path / "valid-rtdetrv2")
+    config_path = valid / "rtdetrv2_r101_mdv6_20cls.yml"
+    config_path.write_text(
+        "__include__:\n"
+        "  - ../third_party/rtdetr/rtdetrv2_pytorch/configs/rtdetr/include.yml\n"
+        "num_classes: 20\n"
+        "PResNet: {}\n"
+        "RTDETRTransformerv2: {}\n",
+        encoding="utf-8",
+    )
+    result = manager.create(
+        CustomModelCreate(
+            type="detection",
+            source_path=str(valid),
+            friendly_name="Included RT-DETRv2 config",
+            env=env,
+            model_fname="best.pth",
+            detector_backend="rtdetrv2",
+            detector_config_fname="rtdetrv2_r101_mdv6_20cls.yml",
+        )
+    )
+
+    assert result["detector_backend"] == "rtdetrv2"
+    assert result["detector_config_fname"] == "rtdetrv2_r101_mdv6_20cls.yml"
 
 
 def test_rejects_paths_missing_weights_and_unsafe_rtdetr_config(tmp_path: Path):
@@ -459,7 +548,9 @@ async def test_custom_model_api_rejects_source_ancestor_of_managed_models(
 
 
 @pytest.mark.asyncio
-async def test_custom_model_management_api_rejects_non_loopback_clients(tmp_path: Path, monkeypatch):
+async def test_custom_model_management_api_rejects_non_loopback_clients(
+    tmp_path: Path, monkeypatch
+):
     from app import main
     from app.api.routers import ml_models
 
@@ -552,6 +643,277 @@ async def test_custom_model_api_rejects_remote_origin_from_loopback_client(
             headers={"Origin": "http://localhost:8000"},
         )
         assert allowed_delete.status_code == 204
+
+
+def test_inspect_identifies_mdv6_rtdetrv2_pack_without_reading_weights(
+    tmp_path: Path, monkeypatch
+):
+    manager = _manager(tmp_path)
+    source = _mdv6_style_rtdetrv2_pack(tmp_path / "mdv6-custom")
+    monkeypatch.setattr(
+        "app.ml.custom_model_manager._sha256_file",
+        lambda _path: pytest.fail("inspect must not read or hash checkpoint contents"),
+    )
+
+    result = manager.inspect(str(source))
+
+    assert result["type_candidates"] == ["detection"]
+    assert result["suggested_type"] == "detection"
+    assert result["weights"] == ["best.pth"]
+    assert result["suggested_model_fname"] == "best.pth"
+    assert result["detector_backend_candidates"] == ["rtdetrv2"]
+    assert result["suggested_detector_backend"] == "rtdetrv2"
+    assert result["suggested_detector_config_fname"] == "rtdetrv2_r101_mdv6_20cls.yml"
+    assert result["suggested_env"] == "rtdetr"
+    assert result["suggested_class_names_source"] == "rtdetrv2_mdv6_20cls_dataset.yaml"
+    assert result["suggested_class_names"]["0"] == "person"
+    assert result["suggested_class_names"]["19"] == "vehicle"
+    assert result["total_file_count"] == 3
+    assert {row["path"] for row in result["files"]} == {
+        "best.pth",
+        "rtdetrv2_r101_mdv6_20cls.yml",
+        "rtdetrv2_mdv6_20cls_dataset.yaml",
+    }
+    assert not list((manager.models_dir / "det").iterdir())
+    assert not list((manager.models_dir / "cls").iterdir())
+
+
+def test_inspect_reports_ambiguous_type_and_multiple_weights(tmp_path: Path):
+    manager = _manager(tmp_path)
+    source = _mdv6_style_rtdetrv2_pack(tmp_path / "ambiguous")
+    (source / "weights.pth").write_bytes(b"second checkpoint")
+    (source / "inference.py").write_text(
+        "class ModelInference:\n"
+        "    def check_gpu(self): pass\n"
+        "    def load_model(self): pass\n"
+        "    def get_crop(self): pass\n"
+        "    def get_classification(self): pass\n"
+        "    def get_class_names(self): pass\n",
+        encoding="utf-8",
+    )
+
+    result = manager.inspect(str(source))
+
+    assert result["type_candidates"] == ["classification", "detection"]
+    assert result["suggested_type"] is None
+    assert result["weights"] == ["best.pth", "weights.pth"]
+    assert result["suggested_model_fname"] is None
+    assert (
+        "Choose whether this pack is for detection or classification."
+        in result["missing_required"]
+    )
+    assert "Choose one model weight file." in result["missing_required"]
+
+
+def test_inspect_recognizes_compatible_classification_pack(tmp_path: Path):
+    manager = _manager(tmp_path)
+    source = _classification_pack(tmp_path / "classifier-pack")
+
+    result = manager.inspect(str(source))
+
+    assert result["type_candidates"] == ["classification"]
+    assert result["suggested_type"] == "classification"
+    assert result["classifier_inference_compatible"] is True
+    assert result["suggested_model_fname"] == "weights.pth"
+    assert result["suggested_detector_backend"] is None
+    assert result["suggested_env"] is None
+    assert "Choose a packaged inference environment." in result["missing_required"]
+
+
+def test_inspect_does_not_guess_between_different_dataset_label_files(tmp_path: Path):
+    manager = _manager(tmp_path)
+    source = _detection_pack(tmp_path / "multiple-labels")
+    (source / "dataset-a.yaml").write_text('names: ["fox", "deer"]\n', encoding="utf-8")
+    (source / "dataset-b.yaml").write_text('names: ["person", "vehicle"]\n', encoding="utf-8")
+
+    result = manager.inspect(str(source))
+
+    assert result["suggested_class_names"] is None
+    assert result["suggested_class_names_source"] is None
+    assert len(result["dataset_candidates"]) == 2
+    assert (
+        "Choose the dataset YAML that defines this model's class labels."
+        in result["missing_required"]
+    )
+
+
+def test_inspect_marks_manifest_backend_conflicting_with_rtdetrv2_config_ambiguous(
+    tmp_path: Path,
+):
+    manager = _manager(tmp_path)
+    source = _mdv6_style_rtdetrv2_pack(tmp_path / "backend-conflict")
+    (source / "manifest.json").write_text(
+        json.dumps({"detector_backend": "yolo", "env": "pytorch", "model_fname": "best.pth"}),
+        encoding="utf-8",
+    )
+
+    result = manager.inspect(str(source))
+
+    assert result["detector_backend_candidates"] == ["rtdetrv2", "yolo"]
+    assert result["suggested_detector_backend"] is None
+    assert result["suggested_env"] is None
+    assert result["suggested_env_source"] is None
+    assert "Choose the detection backend." in result["missing_required"]
+    assert "Choose a packaged inference environment." in result["missing_required"]
+
+
+def test_inspect_leaves_backend_and_environment_unselected_when_unknown(tmp_path: Path):
+    manager = _manager(tmp_path)
+    source = _detection_pack(tmp_path / "unknown-detector")
+
+    result = manager.inspect(str(source))
+
+    assert result["suggested_type"] == "detection"
+    assert result["suggested_detector_backend"] is None
+    assert result["detector_backend_candidates"] == ["yolo", "rfdetr", "rtdetr", "rtdetrv2"]
+    assert result["suggested_env"] is None
+    assert "Choose the detection backend." in result["missing_required"]
+    assert "Choose a packaged inference environment." in result["missing_required"]
+
+
+def test_inspect_handles_empty_and_invalid_yaml_packs(tmp_path: Path):
+    manager = _manager(tmp_path)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    empty_result = manager.inspect(str(empty))
+    assert empty_result["type_candidates"] == []
+    assert "Add a supported model weight file." in empty_result["missing_required"]
+
+    invalid = _detection_pack(tmp_path / "invalid-yaml")
+    (invalid / "broken.yml").write_text("RTDETRTransformerv2: [\n", encoding="utf-8")
+    invalid_result = manager.inspect(str(invalid))
+    assert invalid_result["suggested_detector_backend"] is None
+    assert any(
+        "Could not parse YAML file broken.yml" in warning
+        for warning in invalid_result["warnings"]
+    )
+
+
+def test_inspect_reuses_source_path_and_reparse_protections(tmp_path: Path):
+    manager = _manager(tmp_path)
+    source = _detection_pack(tmp_path / "source")
+    user_data_root = manager.models_dir.parent
+    with pytest.raises(CustomModelError, match="outside AddaxAI's managed model folders"):
+        manager.inspect(str(user_data_root))
+    with pytest.raises(CustomModelError, match="parent-directory traversal"):
+        manager.inspect(str(source / ".." / "source"))
+
+    linked = tmp_path / "linked-source"
+    try:
+        linked.symlink_to(source, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"Symlink creation is unavailable: {exc}")
+    with pytest.raises(CustomModelError, match="Symbolic links and junctions"):
+        manager.inspect(str(linked))
+
+
+def test_inspect_missing_folder_returns_actionable_message(tmp_path: Path):
+    manager = _manager(tmp_path)
+    missing = tmp_path / "missing-model-pack"
+
+    with pytest.raises(
+        CustomModelError,
+        match=re.escape("Model folder not found on this PC. Check the full path and try again."),
+    ) as exc_info:
+        manager.inspect(str(missing))
+
+    assert "WinError" not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected"),
+    [
+        (
+            PermissionError,
+            "Cannot access the selected model folder. Check its permissions and try again.",
+        ),
+        (
+            OSError,
+            "Selected model folder is unavailable. Check the path or permissions and try again.",
+        ),
+    ],
+)
+def test_inspect_os_errors_return_concise_messages(
+    tmp_path: Path, monkeypatch, failure: type[OSError], expected: str
+):
+    manager = _manager(tmp_path)
+    source = tmp_path / "unavailable-model-pack"
+    source.mkdir()
+    original_resolve = Path.resolve
+
+    def fail_selected_path(path: Path, strict: bool = False, **kwargs):
+        if path == source:
+            raise failure("private OS error details")
+        return original_resolve(path, strict=strict, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", fail_selected_path)
+
+    with pytest.raises(CustomModelError, match=re.escape(expected)) as exc_info:
+        manager.inspect(str(source))
+
+    assert "private OS error details" not in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_custom_model_inspect_api_is_read_only_and_loopback_only(
+    local_model_api, tmp_path: Path
+):
+    app, models_dir = local_model_api
+    source = _mdv6_style_rtdetrv2_pack(tmp_path / "api-mdv6-custom")
+    transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 54128))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/ml/custom-models/inspect",
+            json={"source_path": str(source)},
+            headers={"Origin": "http://127.0.0.1:5173"},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["suggested_detector_backend"] == "rtdetrv2"
+        assert response.json()["suggested_env"] == "rtdetr"
+        assert response.json()["suggested_class_names"]["19"] == "vehicle"
+        assert list((models_dir / "det").iterdir()) == []
+        assert list((models_dir / "cls").iterdir()) == []
+
+        missing_response = await client.post(
+            "/api/ml/custom-models/inspect",
+            json={"source_path": str(tmp_path / "missing-model-pack")},
+            headers={"Origin": "http://127.0.0.1:5173"},
+        )
+        assert missing_response.status_code == 400
+        assert missing_response.json()["detail"] == (
+            "Model folder not found on this PC. Check the full path and try again."
+        )
+
+        conflict_source = _mdv6_style_rtdetrv2_pack(tmp_path / "api-backend-conflict")
+        (conflict_source / "manifest.json").write_text(
+            json.dumps({"detector_backend": "yolo", "env": "pytorch"}),
+            encoding="utf-8",
+        )
+        conflict_response = await client.post(
+            "/api/ml/custom-models/inspect",
+            json={"source_path": str(conflict_source)},
+            headers={"Origin": "http://127.0.0.1:5173"},
+        )
+        assert conflict_response.status_code == 200, conflict_response.text
+        assert conflict_response.json()["detector_backend_candidates"] == ["rtdetrv2", "yolo"]
+        assert conflict_response.json()["suggested_detector_backend"] is None
+        assert conflict_response.json()["suggested_env"] is None
+
+        ancestor = await client.post(
+            "/api/ml/custom-models/inspect",
+            json={"source_path": str(models_dir.parent)},
+        )
+        assert ancestor.status_code == 400
+        assert list((models_dir / "det").iterdir()) == []
+
+    remote_transport = httpx.ASGITransport(app=app, client=("192.168.1.22", 54129))
+    async with httpx.AsyncClient(
+        transport=remote_transport, base_url="http://testserver"
+    ) as remote_client:
+        remote_response = await remote_client.post(
+            "/api/ml/custom-models/inspect", json={"source_path": str(source)}
+        )
+    assert remote_response.status_code == 403
 
 
 def test_deployment_job_schema_accepts_custom_model_ids():

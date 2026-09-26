@@ -18,6 +18,8 @@ from sqlalchemy.orm import Session
 from app.api.schemas.custom_models import (
     CustomModelCreate,
     CustomModelInfo,
+    CustomModelInspectRequest,
+    CustomModelInspectResponse,
     CustomModelsResponse,
     CustomModelUpdate,
 )
@@ -211,6 +213,27 @@ def list_custom_models(request: Request) -> CustomModelsResponse:
         models=[CustomModelInfo.model_validate(row) for row in manager.list_models()],
         environments=manager.environments(),
     )
+
+
+@router.post("/custom-models/inspect", response_model=CustomModelInspectResponse)
+def inspect_custom_model_pack(
+    payload: CustomModelInspectRequest,
+    request: Request,
+) -> CustomModelInspectResponse:
+    """Inspect a host-local model folder without copying or opening weights."""
+    _require_loopback(request)
+    try:
+        result = _custom_manager().inspect(payload.source_path)
+        return CustomModelInspectResponse.model_validate(result)
+    except CustomModelError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from None
+    except OSError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not inspect model pack: {exc}",
+        ) from None
 
 
 @router.post(

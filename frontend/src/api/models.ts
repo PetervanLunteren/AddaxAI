@@ -12,6 +12,7 @@ import { api } from "../lib/api-client";
 import type {
   CustomModelCreateRequest,
   CustomModelInfo,
+  CustomModelInspectResponse,
   CustomModelUpdateRequest,
   CustomModelsResponse,
   ModelInfo,
@@ -54,6 +55,9 @@ export const modelsApi = {
   listEmbeddingModels: () => api.get<ModelInfo[]>("/api/ml/models/embedding"),
 
   listCustomModels: () => api.get<CustomModelsResponse>("/api/ml/custom-models"),
+
+  inspectCustomModel: (sourcePath: string) =>
+    api.post<CustomModelInspectResponse>("/api/ml/custom-models/inspect", { source_path: sourcePath }),
 
   createCustomModel: (model: CustomModelCreateRequest) =>
     api.post<CustomModelInfo>("/api/ml/custom-models", model),

@@ -35,6 +35,58 @@ class CustomModelCreate(BaseModel):
     detector_config_fname: str | None = Field(default=None, max_length=512)
 
 
+class CustomModelInspectRequest(BaseModel):
+    """Inspect a local pack without copying or opening its model weights."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_path: str = Field(min_length=1, max_length=4096)
+
+
+class CustomModelFileInfo(BaseModel):
+    """Relative file path and size that registration will copy."""
+
+    path: str
+    size_bytes: int
+
+
+class CustomModelDatasetCandidate(BaseModel):
+    """Safely parsed class names from a dataset YAML file."""
+
+    path: str
+    class_names: dict[str, str]
+
+
+class CustomModelInspectResponse(BaseModel):
+    """Read-only pack inspection results and unresolved choices."""
+
+    source_path: str
+    type_candidates: list[Literal["detection", "classification"]]
+    suggested_type: Literal["detection", "classification"] | None = None
+    weights: list[str]
+    suggested_model_fname: str | None = None
+    detector_backend_candidates: list[Literal["yolo", "rfdetr", "rtdetr", "rtdetrv2"]]
+    suggested_detector_backend: Literal["yolo", "rfdetr", "rtdetr", "rtdetrv2"] | None = None
+    suggested_detector_model_class: str | None = None
+    suggested_detector_model_variant: str | None = None
+    detector_config_candidates: list[str]
+    suggested_detector_config_fname: str | None = None
+    environments: list[str]
+    suggested_env: str | None = None
+    suggested_env_source: Literal["manifest", "rtdetrv2_config"] | None = None
+    dataset_candidates: list[CustomModelDatasetCandidate]
+    suggested_class_names: dict[str, str] | None = None
+    suggested_class_names_source: str | None = None
+    source_manifest_detected: bool
+    classifier_inference_compatible: bool
+    files: list[CustomModelFileInfo]
+    total_file_count: int
+    total_size_bytes: int
+    files_truncated: bool = False
+    missing_required: list[str]
+    warnings: list[str]
+
+
 class CustomModelUpdate(BaseModel):
     """Display metadata for a local pack; inference behavior is immutable."""
 
