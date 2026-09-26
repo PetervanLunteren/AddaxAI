@@ -73,8 +73,12 @@ Follow-ups, after the first version of this document was written, also verbatim:
 > combine this? Would it be good UI UX to combine these? And make the AI suggestions
 > pre-filled optional?
 
+> Would users need to go through all their data again for every question? Is that OK? How
+> does timelapse do it?
+
 The first two are answered in sections 9.7 and 9.8. The third changed the scope of the
-plan and is answered in section 15.
+plan and is answered in section 15. The fourth is answered in section 15.21, which adds an
+entry mode and qualifies the "one question at a time" rule of 9.7.
 
 ## 2. Questions to answer
 
@@ -97,6 +101,8 @@ plan and is answered in section 15.
     images, events and detections? (15)
 12. Should manual values and AI answers be one feature, and should AI suggestions be
     optional? (15.3, 15.4)
+13. Does every new field or question mean another pass over all the data, and how does
+    Timelapse avoid that? (15.21)
 
 ## 3. Goals
 
@@ -589,6 +595,10 @@ per tile, or answering several questions per crop in one pass, looks efficient b
 change of judgement on every tile; one question per pass is faster on the keyboard and more
 accurate.
 
+This rule holds for reviewing AI suggestions and for bulk fills. It is wrong for entering
+manual values, where the expensive part is looking at the image and several fields should be
+filled in the same look. Section 15.21 adds an entry mode for that.
+
 **Shared parts, not copies.** The page is assembled from the Labels page's components
 (section 4.7): `CropGrid` for animal questions, `FilesGrid` for whole-image ones, the filter
 bar and chips, the confidence range filter, `BulkActionBar`, the grid selection store, the
@@ -657,7 +667,7 @@ also improve species similarity for elongated animals. Measure before deciding.
 ## 12. Effort estimate
 
 This covers the AI part only. Section 15.19 adds the manual fields and revises the total to
-about four weeks.
+about four and a half weeks.
 
 Backend, roughly a week:
 
@@ -849,11 +859,21 @@ without AI without either looking half-finished. Section 15.10 covers how.
 ### 15.5 Precedent
 
 Manual custom fields are an established pattern. Timelapse, widely used for camera trap
-review, builds each project on a template of user-defined data fields (choices, counters,
-notes and flags) that people fill in per image (https://saul.cpsc.ucalgary.ca/timelapse/).
-The field types listed there are from memory of the tool, not re-read during this
-investigation. So the manual half of this design copies something proven; the optional AI
-layer on top is the new part, and it is the part sections 5 to 8 justify.
+review, builds each project on a template of user-defined data fields that people fill in
+per image (https://github.com/saulgreenberg/Timelapse). Its website and guides were blocked
+from the investigation session, so what follows was read from its source code instead
+(commit `4c42a6b`, 2026-09-21):
+
+- Field types are the constants Note, MultiLine, AlphaNumeric, Choice, FixedChoice,
+  MultiChoice, Counter, Flag, IntegerAny, IntegerPositive, DecimalAny and DecimalPositive.
+- Each field carries a default value and a `Copyable` setting (`DataTables/ControlRow.cs`).
+- As far as the source shows, fields belong to the file. There are no per-detection fields;
+  recognition boxes are displayed and queried, not annotated with template fields.
+
+How Timelapse keeps data entry to one pass is in 15.21. So the manual half of this design
+copies something proven; the optional AI layer on top is the new part, and it is the part
+sections 5 to 8 justify. Per-detection fields are also new relative to Timelapse, and they
+are what makes AI suggestions possible, since the classifier works on detection crops.
 
 ### 15.6 The field model
 
@@ -958,11 +978,13 @@ frame and is stable.
 
 ### 15.11 Where values are entered
 
-- **Detail views, for one-off entries while browsing.** Image fields appear as inputs in
-  `FileDetailModal`, detection fields in `DetectionDetailModal`, and image fields as event
-  inputs in `EventDetailModal` (15.7), next to the notes, counts and demographics that
-  already live there. That is where someone paging through photos notices the snow.
-- **The field's review page, for bulk work.** The Questions review page from the canvas,
+- **Detail views, the entry mode (15.21).** Every field of the matching level appears in
+  one panel: image fields in `FileDetailModal`, detection fields in `DetectionDetailModal`,
+  and image fields as event inputs in `EventDetailModal` (15.7), next to the notes, counts
+  and demographics that already live there. The panel stays open while stepping to the next
+  item, and carries the copy and propagate helpers from 15.21. This is where most manual
+  values are entered, in the pass people already make.
+- **The field's review page, the review mode, for AI suggestions and bulk work.** The Questions review page from the canvas,
   generalised: pick a field, get `FilesGrid` for image fields or `CropGrid` for detection
   fields, filter to "empty" or "not confirmed", select, set. Choice fields keep the 1 to 9
   and 0 keys. Number fields put an input in the bulk bar, so a run of 30 frames from one
@@ -1059,11 +1081,13 @@ On top of section 12's three weeks for the AI part:
 - Number and text input in the bulk bar, and the time-ordered sort: one day
 - Field setup dialog with levels, types and the conditional AI switch: one day
 - Exports for image and detection fields, and the event view rule: half a day
+- Entry-mode helpers from 15.21 (copy previous values, propagate, copy forward, the
+  copyable setting): one and a half days
 
-About a week more, so roughly **four weeks for a v1** that ships manual fields at both
-levels and AI suggestions for detection choice fields.
+About a week and a half more, so roughly **four and a half weeks for a v1** that ships
+manual fields at both levels and AI suggestions for detection choice fields.
 
-The manual part could ship first and alone, in about a week and a half, since it needs no
+The manual part could ship first and alone, in about two weeks, since it needs no
 embeddings, no training and no spike. That is a reasonable order: it delivers what users
 asked for now, and every value entered becomes training data for when AI suggestions land.
 
@@ -1072,14 +1096,76 @@ asked for now, and every value entered becomes training data for when AI suggest
 1. Decide whether the manual part ships first, as 15.19 suggests.
 2. Settle the event view display rule for "mixed" in the UI and in `counts.csv`.
 3. Decide which edits to a field are allowed once values exist.
-4. Confirm the Timelapse field types against its current documentation, if the comparison
-   is used in user-facing docs.
+4. Read the Timelapse guides (blocked during this investigation) to check how its helpers
+   behave at the edges, for example whether "copy to all" respects the current selection
+   exactly as the source suggests, before copying the behaviour.
 5. Decide the name: "Fields" or "Custom fields".
+6. Decide the boundary for "copy forward to end": the end of the deployment, the end of the
+   current filter, or the end of the day. Timelapse uses the end of the current set of
+   selected files.
+7. Decide which fields appear in the Counts event view by default: all image fields, or
+   only those marked for it.
+
+### 15.21 Entry mode: one pass for all fields
+
+**The problem.** The review page in 9.7 shows one field at a time. For AI suggestions that
+is right. For manual values it would mean one pass over the data per field: a project with
+snow depth, antler size and a collar flag would be walked three times. Opening and looking
+at an image is the expensive part of manual annotation; once someone is looking, filling
+three fields costs seconds. So N passes for N fields is not acceptable.
+
+**How Timelapse avoids it**, read from its source (15.5):
+
+- All template fields sit in one data entry panel beside the image. The user looks once and
+  fills every field before moving on. A new field does not create a new pass; it rides along
+  in the pass that already happens.
+- **Copy previous values**: a menu item and button, shortcut C, that copies "selected data as
+  recorded on the previous file", only for fields marked `Copyable` (`TimelapseWindow.xaml`,
+  `MenuItemCopyPreviousValues`).
+- Per-field context menu (`ControlsDataEntry/DataEntryHandler.cs`, around line 180):
+  "Propagate from the last non-empty value to here" (or last non-zero, for counters), "Copy
+  forward to end", described as copying "from this file to the last file in this set", and
+  "Copy to all" for the current selection.
+- An overview grid of thumbnails where a field is edited for every selected file at once,
+  showing an ellipsis when the selected files disagree.
+- Fields can be populated from file metadata or episode data in bulk.
+
+**What AddaxAI adopts.** Two modes, each with a clear job.
+
+1. **Entry mode, all fields in one pass.** The detail views show every field of their level
+   in one panel (15.11), and the panel stays open while stepping to the next or previous
+   item. It gets the Timelapse helpers: copy previous values, propagate from the last
+   non-empty value, copy forward to the end of the deployment, and a per-field copyable
+   setting. For snow depth this means one entry per change in the snow, propagated, not one
+   per image.
+
+2. **Review mode, one field at a time.** The review page from 9.7, for reviewing AI
+   suggestions, for filling a field that was added late, and for bulk-setting runs of
+   frames.
+
+**The important part: fields ride along with passes users already make.** Users already step
+through events on the Counts page to confirm counts, sex, life stage and behaviour. If the
+event view also shows the image fields (written to the event's files, 15.7) and the
+detection fields of the animals in it, then filling them costs no extra pass. That page is
+AddaxAI's closest equivalent of the Timelapse data entry panel, and it is where most manual
+values will be entered.
+
+**When a second pass is still needed, and why that is acceptable.** Only when a field is
+added after the data was already reviewed. Three things keep it cheap:
+
+- Scope: antler size only appears on deer detections, not on every detection.
+- The review grid with propagation: snow depth for a deployment is a handful of entries
+  copied forward.
+- AI suggestions for choice fields, which turn a full pass into a few dozen examples plus
+  review of the unsure ones.
+
+**What this changes elsewhere.** The "one question at a time" rule in 9.7 now applies to the
+review mode only (noted there). The effort in 15.19 grows by a day and a half for the
+helpers. Nothing changes in storage: entry mode and review mode write the same values table.
 
 ---
 
 ## 16. Plain English summary
-
 
 Letting people type any question and get an answer is possible with vision-language models,
 but on camera trap images the ones that fit on a laptop are weak, biased towards "yes", and
@@ -1109,5 +1195,14 @@ choice fields on detections. Combining them means one place, one kind of storage
 export shape, and every value someone types by hand becomes training data if they later
 switch suggestions on. Events get no stored values of their own, because the app rebuilds
 events and a number cannot survive a merge; setting snow depth on an event writes it to the
-event's images instead. The manual part is the cheaper half, about a week and a half, and
-could ship first; the whole thing is roughly four weeks.
+event's images instead. The manual part is the cheaper half, about two weeks, and could
+ship first; the whole thing is roughly four and a half weeks.
+
+Adding fields must not mean walking through the data once per field. Timelapse, the
+established tool for this, avoids that by showing every field beside the image so one look
+fills them all, with helpers to copy values from the previous image or carry them forward.
+AddaxAI will do the same in its existing detail views, above all the Counts page where people
+already step through every event, so new fields ride along in a pass that happens anyway. The
+one-field-at-a-time page stays for reviewing AI suggestions and for bulk fills. Only a field
+added late needs a second look at old data, and scope, bulk editing and AI suggestions keep
+that short.
