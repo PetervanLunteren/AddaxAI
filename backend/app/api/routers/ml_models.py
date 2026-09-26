@@ -7,7 +7,10 @@ Following DEVELOPERS.md principles:
 """
 
 import asyncio
+import hashlib
 import ipaddress
+import os
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -48,6 +51,7 @@ from app.ml.environment_manager import (
 )
 from app.ml.manifest_manager import ManifestManager
 from app.ml.model_storage import ModelStorage
+from app.ml.schemas.model_manifest import uses_detection_classes_for_classification
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/ml", tags=["ML Models"])
@@ -130,6 +134,10 @@ class ModelInfo(BaseModel):
     managed: bool = False
     detector_backend: str | None = None
     class_names: dict[str, str] | None = None
+    # Custom detectors with stable class labels may be selected in the
+    # classification slot to reuse those labels and confidences. No second
+    # inference pass is run for this alias.
+    uses_detection_classes: bool = False
     # Per-pipeline default batch sizes used when the project leaves the
     # batch_size override unset. Same value for every model in the same
     # pipeline today; comes from app.ml.batch_size constants.
@@ -213,6 +221,93 @@ def list_custom_models(request: Request) -> CustomModelsResponse:
         models=[CustomModelInfo.model_validate(row) for row in manager.list_models()],
         environments=manager.environments(),
     )
+
+
+@router.post("/custom-models/uploads", status_code=status.HTTP_201_CREATED)
+def start_custom_model_upload(request: Request) -> dict[str, str]:
+    """Create a private staging directory for streamed browser file uploads."""
+    _require_loopback(request)
+    try:
+        upload_id, folder = _custom_manager().create_upload_session()
+        return {"upload_id": upload_id, "source_path": str(folder)}
+    except CustomModelError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except OSError:
+        raise HTTPException(
+            status_code=503,
+            detail="Could not prepare temporary model-file storage on this PC",
+        ) from None
+
+
+@router.put(
+    "/custom-models/uploads/{upload_id}/files/{filename:path}",
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_custom_model_file(
+    upload_id: str,
+    filename: str,
+    request: Request,
+) -> dict[str, str | int]:
+    """Stream a selected file to disk without buffering the model in memory."""
+    _require_loopback(request)
+    manager = _custom_manager()
+    temporary: Path | None = None
+    uploaded = False
+    try:
+        target, temporary = manager.begin_upload_file(upload_id, filename)
+        total = 0
+        digest = hashlib.sha256()
+        with temporary.open("xb") as output:
+            async for chunk in request.stream():
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > 50 * 1024**3:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail="Selected file exceeds the 50 GiB upload limit",
+                    )
+                output.write(chunk)
+                digest.update(chunk)
+            output.flush()
+            os.fsync(output.fileno())
+        manager.finish_upload_file(upload_id, target, temporary)
+        uploaded = True
+        return {"filename": target.name, "size_bytes": total, "sha256": digest.hexdigest()}
+    except HTTPException:
+        manager.discard_upload_session(upload_id)
+        raise
+    except CustomModelError as exc:
+        manager.discard_upload_session(upload_id)
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except FileNotFoundError as exc:
+        manager.discard_upload_session(upload_id)
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+    except (OSError, PermissionError) as exc:
+        manager.discard_upload_session(upload_id)
+        raise HTTPException(
+            status_code=400, detail=f"Could not upload model file: {exc}"
+        ) from None
+    finally:
+        if not uploaded:
+            try:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Could not remove partial custom-model upload file")
+            try:
+                manager.discard_upload_session(upload_id)
+            except (CustomModelError, OSError):
+                logger.warning("Could not remove incomplete custom-model upload session")
+
+
+@router.delete("/custom-models/uploads/{upload_id}", status_code=status.HTTP_204_NO_CONTENT)
+def cancel_custom_model_upload(upload_id: str, request: Request) -> None:
+    _require_loopback(request)
+    try:
+        _custom_manager().discard_upload_session(upload_id)
+    except CustomModelError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 @router.post("/custom-models/inspect", response_model=CustomModelInspectResponse)
@@ -950,6 +1045,7 @@ def list_detection_models() -> list[ModelInfo]:
                 if isinstance(manifest.class_names, dict)
                 else None
             ),
+            uses_detection_classes=uses_detection_classes_for_classification(manifest),
             local_only=manifest.local_only,
             managed=manifest.managed,
             default_batch_size_gpu=det_gpu,
@@ -981,6 +1077,11 @@ def list_classification_models() -> list[ModelInfo]:
     """
     manifest_mgr, _, _ = _get_managers()
     models = manifest_mgr.get_classification_models()
+    reusable_detectors = [
+        manifest
+        for manifest in manifest_mgr.get_detection_models().values()
+        if uses_detection_classes_for_classification(manifest)
+    ]
 
     cls_gpu, cls_cpu = _DEFAULT_BATCH_SIZES_BY_TYPE["classification"]
 
@@ -1034,10 +1135,44 @@ def list_classification_models() -> list[ModelInfo]:
         )
         for manifest in models.values()
     ]
+    model_list.extend(
+        ModelInfo(
+            model_id=manifest.model_id,
+            friendly_name=manifest.friendly_name,
+            emoji=manifest.emoji,
+            type="classification",
+            description=(
+                "Uses this detector's class name and confidence as the classification result. "
+                "No additional inference is run."
+            ),
+            description_short="Reuse this detector's class labels; no additional inference",
+            developer=manifest.developer,
+            owner=manifest.owner,
+            info_url=manifest.info_url,
+            citation=manifest.citation,
+            license=manifest.license,
+            detector_backend=manifest.detector_backend,
+            class_names=(
+                dict(manifest.class_names)
+                if isinstance(manifest.class_names, dict)
+                else None
+            ),
+            local_only=True,
+            managed=True,
+            uses_detection_classes=True,
+            default_batch_size_gpu=cls_gpu,
+            default_batch_size_cpu=cls_cpu,
+        )
+        for manifest in reusable_detectors
+    )
     result.extend(
         sorted(
             model_list,
-            key=lambda m: (region_order.get(m.region or "", 99), m.friendly_name),
+            key=lambda m: (
+                0 if m.uses_detection_classes else 1,
+                region_order.get(m.region or "", 99),
+                m.friendly_name.casefold(),
+            ),
         )
     )
 
@@ -1134,7 +1269,35 @@ def get_model_taxonomy(model_id: str):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from None
 
-    # Only classification models have taxonomy
+    # A managed custom detector exposes a flat label list when selected as
+    # its own classification source. It has no taxonomic rank information.
+    if uses_detection_classes_for_classification(manifest):
+        names = manifest.class_names or {}
+        all_classes = [
+            name
+            for _, name in sorted(
+                names.items(),
+                key=lambda item: (0, int(item[0]))
+                if item[0].isdecimal()
+                else (1, item[0].casefold()),
+            )
+        ]
+        return {
+            "tree": [
+                {
+                    "id": name,
+                    "name": name,
+                    "level": 1,
+                    "children": [],
+                    "selected": True,
+                }
+                for name in all_classes
+            ],
+            "all_classes": all_classes,
+            "source": "detector",
+        }
+
+    # Only classification models have taxonomy otherwise.
     if manifest.model_category == "detection":
         raise HTTPException(
             status_code=400,

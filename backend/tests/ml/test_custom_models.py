@@ -574,6 +574,260 @@ async def test_custom_model_management_api_rejects_non_loopback_clients(
 
 
 @pytest.mark.asyncio
+async def test_detector_with_class_names_is_exposed_as_same_id_classifier_alias(
+    local_model_api, tmp_path: Path
+):
+    app, _models_dir = local_model_api
+    source = _detection_pack(tmp_path / "reusable-detector")
+    payload = _create_payload(
+        source,
+        CustomModelManager.environments()[0],
+        class_names={"0": "fox", "1": "deer"},
+    )
+    manager = CustomModelManager(_models_dir, ManifestManager(_models_dir))
+    created = manager.create(payload)
+    transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 54128))
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        detection_rows = await client.get("/api/ml/models/detection")
+        rows = (await client.get("/api/ml/models/classification")).json()
+        alias = next(row for row in rows if row["model_id"] == created["model_id"])
+        detector = next(
+            row for row in detection_rows.json() if row["model_id"] == created["model_id"]
+        )
+        taxonomy = await client.get(f"/api/ml/models/{created['model_id']}/taxonomy")
+
+    assert alias["type"] == "classification"
+    assert alias["uses_detection_classes"] is True
+    assert alias["class_names"] == {"0": "fox", "1": "deer"}
+    assert detector["uses_detection_classes"] is True
+    assert taxonomy.status_code == 200
+    assert taxonomy.json()["all_classes"] == ["fox", "deer"]
+    assert [node["id"] for node in taxonomy.json()["tree"]] == ["fox", "deer"]
+
+
+@pytest.mark.asyncio
+async def test_custom_model_upload_is_streamed_then_consumed_or_cleaned(
+    local_model_api,
+):
+    app, models_dir = local_model_api
+    env = CustomModelManager.environments()[0]
+    transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 54129))
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        started = await client.post("/api/ml/custom-models/uploads")
+        assert started.status_code == 201
+        upload_id = started.json()["upload_id"]
+        uploaded = await client.put(
+            f"/api/ml/custom-models/uploads/{upload_id}/files/weights.pt",
+            content=b"small streamed fixture weights",
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        created = await client.post(
+            "/api/ml/custom-models",
+            json={
+                "upload_id": upload_id,
+                "type": "detection",
+                "friendly_name": "Uploaded detector fixture",
+                "env": env,
+                "model_fname": "weights.pt",
+                "detector_backend": "yolo",
+                "class_names": {"0": "fox"},
+            },
+        )
+
+    assert created.status_code == 201, created.text
+    model_id = created.json()["model_id"]
+    assert (models_dir / "det" / model_id / "weights.pt").read_bytes() == (
+        b"small streamed fixture weights"
+    )
+    staging_root = models_dir.parent / ".custom-model-imports"
+    assert not list(staging_root.iterdir())
+
+
+@pytest.mark.asyncio
+async def test_custom_model_upload_rejects_traversal_and_removes_partial_session(
+    local_model_api,
+):
+    app, models_dir = local_model_api
+    transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 54130))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        started = await client.post("/api/ml/custom-models/uploads")
+        upload_id = started.json()["upload_id"]
+        rejected = await client.put(
+            f"/api/ml/custom-models/uploads/{upload_id}/files/%2E%2E%2Foutside.pt",
+            content=b"must not escape staging",
+        )
+
+    assert rejected.status_code == 400
+    assert not (models_dir.parent / "outside.pt").exists()
+    assert not (models_dir.parent / ".custom-model-imports" / upload_id).exists()
+
+
+@pytest.mark.asyncio
+async def test_custom_model_upload_cancellation_removes_partial_file_and_session(
+    local_model_api,
+):
+    app, models_dir = local_model_api
+    transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 54131))
+
+    async def interrupted_body():
+        yield b"partial model bytes"
+        raise asyncio.CancelledError
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        started = await client.post("/api/ml/custom-models/uploads")
+        upload_id = started.json()["upload_id"]
+        interrupted = await client.put(
+            f"/api/ml/custom-models/uploads/{upload_id}/files/weights.pt",
+            content=interrupted_body(),
+        )
+
+    # Starlette's BaseHTTPMiddleware turns a body-generator cancellation into
+    # its generic 500 response in the in-process transport. The route's finally
+    # block must still remove the incomplete session and staged bytes.
+    assert interrupted.status_code == 500
+    assert not (models_dir.parent / ".custom-model-imports" / upload_id).exists()
+
+
+@pytest.mark.asyncio
+async def test_custom_model_upload_collision_does_not_replace_staged_weight(
+    local_model_api,
+):
+    app, models_dir = local_model_api
+    transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 54132))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        started = await client.post("/api/ml/custom-models/uploads")
+        upload_id = started.json()["upload_id"]
+        first = await client.put(
+            f"/api/ml/custom-models/uploads/{upload_id}/files/weights.pt",
+            content=b"original checkpoint",
+        )
+        assert first.status_code == 201
+        second = await client.put(
+            f"/api/ml/custom-models/uploads/{upload_id}/files/weights.pt",
+            content=b"replacement checkpoint",
+        )
+
+    assert second.status_code == 400
+    assert not (models_dir.parent / ".custom-model-imports" / upload_id).exists()
+
+
+@pytest.mark.asyncio
+async def test_custom_model_upload_session_storage_error_is_service_unavailable(
+    local_model_api, monkeypatch,
+):
+    app, _models_dir = local_model_api
+    from app.api.routers import ml_models
+
+    class FailingManager:
+        def create_upload_session(self):
+            raise OSError("private disk detail")
+
+    monkeypatch.setattr(ml_models, "_custom_manager", lambda: FailingManager())
+    transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 54133))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post("/api/ml/custom-models/uploads")
+
+    assert response.status_code == 503
+    assert "private disk detail" not in response.text
+
+
+def test_rtdetrv2_can_generate_yaml_only_from_explicit_supported_template(tmp_path: Path):
+    manager = _manager(tmp_path)
+    source = _detection_pack(tmp_path / "template-rtdetrv2")
+    payload = CustomModelCreate(
+        type="detection",
+        source_path=str(source),
+        friendly_name="Explicit RT-DETRv2 template",
+        env="rtdetr",
+        model_fname="weights.pt",
+        detector_backend="rtdetrv2",
+        detector_config_template="rtdetrv2_r50vd_6x_coco.yml",
+        class_names={"0": "fox", "1": "deer"},
+    )
+
+    result = manager.create(payload)
+
+    model_dir = manager.models_dir / "det" / result["model_id"]
+    generated = model_dir / result["detector_config_fname"]
+    assert generated.is_file()
+    assert result["detector_config_fname"].startswith("addaxai-generated-")
+    assert "pretrained: false" in generated.read_text(encoding="utf-8").lower()
+    assert "num_classes: 2" in generated.read_text(encoding="utf-8")
+    from app.ml.inference.rtdetrv2_config import load_rtdetrv2_config
+
+    flattened = load_rtdetrv2_config(
+        generated,
+        model_root=model_dir,
+        source_root=(
+            Path(__file__).resolve().parents[2]
+            / "app" / "ml" / "third_party" / "rtdetrv2_pytorch"
+        ),
+    )
+    assert flattened["num_classes"] == 2
+    assert flattened["PResNet"]["pretrained"] is False
+    assert flattened["remap_mscoco_category"] is False
+
+
+def test_rtdetrv2_hgnet_template_disables_pretrained_weights_and_coco_remapping(
+    tmp_path: Path,
+):
+    manager = _manager(tmp_path)
+    source = _detection_pack(tmp_path / "template-hgnet-rtdetrv2")
+    payload = CustomModelCreate(
+        type="detection",
+        source_path=str(source),
+        friendly_name="Explicit RT-DETRv2 HGNet template",
+        env="rtdetr",
+        model_fname="weights.pt",
+        detector_backend="rtdetrv2",
+        detector_config_template="rtdetrv2_hgnetv2_h_6x_coco.yml",
+        class_names={"0": "fox", "1": "deer"},
+    )
+
+    result = manager.create(payload)
+
+    model_dir = manager.models_dir / "det" / result["model_id"]
+    generated = model_dir / result["detector_config_fname"]
+    from app.ml.inference.rtdetrv2_config import load_rtdetrv2_config
+
+    flattened = load_rtdetrv2_config(
+        generated,
+        model_root=model_dir,
+        source_root=(
+            Path(__file__).resolve().parents[2]
+            / "app" / "ml" / "third_party" / "rtdetrv2_pytorch"
+        ),
+    )
+
+    assert flattened["HGNetv2"]["pretrained"] is False
+    assert flattened["remap_mscoco_category"] is False
+
+
+def test_rtdetrv2_generation_rejects_unknown_template_and_missing_labels(tmp_path: Path):
+    manager = _manager(tmp_path)
+    source = _detection_pack(tmp_path / "invalid-template-rtdetrv2")
+    base = {
+        "type": "detection",
+        "source_path": str(source),
+        "friendly_name": "Invalid template",
+        "env": "rtdetr",
+        "model_fname": "weights.pt",
+        "detector_backend": "rtdetrv2",
+        "detector_config_template": "../../outside.yml",
+        "class_names": {"0": "fox"},
+    }
+    with pytest.raises(CustomModelError, match="supported RT-DETRv2 architecture"):
+        manager.create(CustomModelCreate(**base))
+
+    del base["class_names"]
+    base["detector_config_template"] = "rtdetrv2_r50vd_6x_coco.yml"
+    with pytest.raises(CustomModelError, match="class labels"):
+        manager.create(CustomModelCreate(**base))
+
+
+@pytest.mark.asyncio
 async def test_custom_model_api_rejects_remote_origin_from_loopback_client(
     tmp_path: Path, db, monkeypatch
 ):

@@ -341,8 +341,14 @@ export function FolderRunModelStep() {
   const folderPath = form.watch("folder_path") || null;
   const detectionModelId = form.watch("detection_model_id");
   const classificationModelId = form.watch("classification_model_id");
+  const isDetectionClassAlias = classificationModels.find(
+    (model) => model.model_id === classificationModelId,
+  )?.uses_detection_classes === true;
+  const isUsingDetectorClassAlias =
+    isDetectionClassAlias && classificationModelId === detectionModelId;
   const labelCaption = useLabelSelectionCaption(
     classificationModelId && classificationModelId !== "none" ? classificationModelId : "",
+    isDetectionClassAlias,
   );
   const embeddingModelId = form.watch("embedding_model_id");
   const excludedClasses = form.watch("excluded_classes") ?? [];
@@ -419,6 +425,10 @@ export function FolderRunModelStep() {
   const classificationModel = classificationModels.find(
     (m) => m.model_id === classificationModelId,
   );
+  const classifierAliasMismatch = Boolean(
+    classificationModel?.uses_detection_classes &&
+    classificationModel.model_id !== detectionModelId,
+  );
   // A full-image classifier skips MegaDetector, so the detector row and
   // the detection settings are greyed out with one caption saying so.
   const fullImageCls = classificationModel?.full_image_cls === true;
@@ -435,7 +445,7 @@ export function FolderRunModelStep() {
     useQuery({
       queryKey: ["model-status", classificationModelId],
       queryFn: () => modelsApi.getModelStatus(classificationModelId!),
-      enabled: hasClassifier,
+      enabled: hasClassifier && !isUsingDetectorClassAlias,
     });
   const { data: embeddingStatus, isLoading: embStatusLoading } = useQuery({
     queryKey: ["model-status", embeddingModelId],
@@ -448,7 +458,7 @@ export function FolderRunModelStep() {
   // new id's status is briefly unknown).
   const statusLoading =
     detStatusLoading ||
-    (hasClassifier && clsStatusLoading) ||
+    (hasClassifier && !isUsingDetectorClassAlias && clsStatusLoading) ||
     (hasEmbedding && embStatusLoading);
 
   const { data: taxonomy } = useQuery({
@@ -775,6 +785,12 @@ export function FolderRunModelStep() {
   /** Submit dispatcher. The button label / action depend on the run
    * state — see `actionMode` below for the full matrix. */
   const onSubmit = (data: SettingsFormData) => {
+    if (classifierAliasMismatch) {
+      form.setError("classification_model_id", {
+        message: "A detector can be reused as a classifier only when both settings use the same model.",
+      });
+      return;
+    }
     if (!folderPath || !scanResult) return;
     // Geofenced classifiers require an explicit location choice: a
     // country, or knowingly "All labels". Enforced here rather than in
@@ -839,7 +855,10 @@ export function FolderRunModelStep() {
   }
 
   const detReady = detectionStatus?.status === "ready";
-  const clsReady = !hasClassifier || classificationStatus?.status === "ready";
+  const clsReady =
+    !hasClassifier ||
+    isUsingDetectorClassAlias ||
+    classificationStatus?.status === "ready";
   const embReady = !hasEmbedding || embeddingStatus?.status === "ready";
   // Every selected model installed + ready. Gates both Start and
   // Re-run, and drives the "needs setup" warning. Important for the
@@ -890,6 +909,7 @@ export function FolderRunModelStep() {
   const canStart =
     modelsReady &&
     folderReady &&
+    !classifierAliasMismatch &&
     !isLookingUp &&
     !showCompletedNotice &&
     !isMutating;
@@ -990,8 +1010,9 @@ export function FolderRunModelStep() {
                         <div className="space-y-1">
                           <FormLabel>Classification model</FormLabel>
                           <FormDescription className="text-sm">
-                            Identifies the species behind each animal
-                            detection.
+                            {detectionModel?.uses_detection_classes
+                              ? `Choose “${detectionModel.friendly_name}” here to reuse its ${Object.keys(detectionModel.class_names ?? {}).length} class names and confidence without another inference.`
+                              : "Identifies the species behind each animal detection. A custom detector with class names can also be selected here to reuse its labels."}
                           </FormDescription>
                         </div>
                         <div className="space-y-2">
@@ -1013,17 +1034,21 @@ export function FolderRunModelStep() {
                               ∅ No classification model
                               <br />
                               <span className="text-xs text-muted-foreground">
-                                Run animal detector only, identify species
-                                manually
+                                {detectionModel?.uses_detection_classes
+                                  ? "Keep detector labels in detections; select the same model as Classification to add classification results."
+                                  : "Run animal detector without a separate species classifier."}
                               </span>
                             </SelectItem>
                             <ClassificationModelGroupedItems
                               models={classificationModels.filter(
                                 (m) => m.model_id !== "none",
                               )}
+                              detectionModelId={detectionModelId}
+                              selectedModelId={classificationModelId}
                             />
                           </ModelSelect>
                           {hasClassifier &&
+                            !isUsingDetectorClassAlias &&
                             classificationStatus &&
                             classificationStatus.status !== "ready" && (
                               <ModelStatusBadge
@@ -1034,7 +1059,17 @@ export function FolderRunModelStep() {
                                 isPreparing={false}
                               />
                             )}
-                          {!hasClassifier && <NoClassifierNotice />}
+                          {!hasClassifier && (
+                            <NoClassifierNotice
+                              detectorClassCount={detectionModel?.uses_detection_classes ? Object.keys(detectionModel.class_names ?? {}).length : 0}
+                              detectorModelName={detectionModel?.friendly_name}
+                            />
+                          )}
+                          {classifierAliasMismatch ? (
+                            <p role="alert" className="text-sm text-destructive">
+                              This classification choice belongs to another detection model. Select the same detector above or choose another classifier.
+                            </p>
+                          ) : null}
                           <FormMessage />
                         </div>
                       </div>
@@ -1044,7 +1079,11 @@ export function FolderRunModelStep() {
                   {hasClassifier && taxonomy && (
                     <div className="grid grid-cols-2 items-center gap-8 py-6">
                       <div className="space-y-1">
-                        <FormLabel>Species selection</FormLabel>
+                        <FormLabel>
+                          {isDetectionClassAlias
+                            ? "Detection class selection"
+                            : "Species selection"}
+                        </FormLabel>
                         <FormDescription className="text-sm">
                           {labelCaption}
                         </FormDescription>
@@ -1052,6 +1091,7 @@ export function FolderRunModelStep() {
                       <div>
                         <LabelSelectionField
                           modelId={classificationModelId!}
+                          isDetectionAlias={isDetectionClassAlias}
                           excludedClasses={excludedClasses}
                           allClasses={taxonomy.all_classes ?? []}
                           countryCode={form.watch("country_code")}
@@ -1335,7 +1375,7 @@ export function FolderRunModelStep() {
                       )}
                     />
 
-                    <FormField
+                    {!isUsingDetectorClassAlias && <FormField
                       control={form.control}
                       name="classification_gate"
                       render={({ field }) => (
@@ -1361,7 +1401,7 @@ export function FolderRunModelStep() {
                           <FormMessage />
                         </SettingRow>
                       )}
-                    />
+                    />}
 
                     {/* Batch sizes last: pure performance knobs that most
                         users should not touch (see their captions). */}
@@ -1381,7 +1421,9 @@ export function FolderRunModelStep() {
                       />
                     )}
 
-                    {hasClassifier && classificationModel && (
+                    {hasClassifier &&
+                      classificationModel &&
+                      !isUsingDetectorClassAlias && (
                       <BatchSizeRow
                         control={form.control}
                         name="classification_batch_size"

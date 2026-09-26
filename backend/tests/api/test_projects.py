@@ -10,8 +10,19 @@ from tests.conftest import make_deployment, make_detection, make_file, make_proj
 @pytest.fixture(autouse=True)
 def mock_manifest_manager():
     """Patch ManifestManager so model validation always succeeds."""
+    from types import SimpleNamespace
+
     mock_mgr = MagicMock()
-    mock_mgr.get_model.return_value = MagicMock(model_id="MD5A-0-0")
+
+    def get_model(model_id):
+        category = (
+            "classification"
+            if model_id in {"tiny-model", "big-model", "BC-WEM-v4", "EUR-DF-v1-4"}
+            else "detection"
+        )
+        return SimpleNamespace(model_id=model_id, model_category=category)
+
+    mock_mgr.get_model.side_effect = get_model
     with patch("app.ml.manifest_manager.ManifestManager", return_value=mock_mgr):
         yield mock_mgr
 
@@ -36,6 +47,162 @@ def test_create_project(client):
     assert data["timezone"] == "UTC"
     assert "id" in data
     assert "created_at_utc" in data
+
+
+def _reusable_detector_manifest():
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        model_id="custom-detector",
+        model_category="detection",
+        managed=True,
+        local_only=True,
+        detector_backend="rtdetrv2",
+        class_names={"0": "fox", "1": "deer"},
+    )
+
+
+def test_create_project_accepts_same_managed_detector_as_classifier(client, mock_manifest_manager):
+    detector = _reusable_detector_manifest()
+    mock_manifest_manager.get_model.side_effect = lambda model_id: detector
+
+    response = client.post(
+        "/api/projects",
+        json={
+            "name": "reuse detector output",
+            "detection_model_id": "custom-detector",
+            "classification_model_id": "custom-detector",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["classification_model_id"] == "custom-detector"
+
+
+def test_create_project_rejects_detector_alias_for_a_different_detector(
+    client, mock_manifest_manager
+):
+    detector = _reusable_detector_manifest()
+    mock_manifest_manager.get_model.side_effect = lambda model_id: detector
+
+    response = client.post(
+        "/api/projects",
+        json={
+            "name": "mismatched detector alias",
+            "detection_model_id": "MD5A-0-0",
+            "classification_model_id": "custom-detector",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "same managed custom detector" in response.json()["detail"]
+
+
+def test_create_project_rejects_embedding_in_classification_slot(
+    client, mock_manifest_manager
+):
+    from types import SimpleNamespace
+
+    manifests = {
+        "custom-detector": _reusable_detector_manifest(),
+        "custom-embedding": SimpleNamespace(
+            model_id="custom-embedding", model_category="embedding"
+        ),
+    }
+    mock_manifest_manager.get_model.side_effect = manifests.__getitem__
+
+    response = client.post(
+        "/api/projects",
+        json={
+            "name": "reject embedding classifier",
+            "detection_model_id": "custom-detector",
+            "classification_model_id": "custom-embedding",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "not a classification model" in response.json()["detail"]
+
+
+def test_create_project_rejects_classification_model_in_detection_slot(
+    client, mock_manifest_manager
+):
+    from types import SimpleNamespace
+
+    classifier = SimpleNamespace(
+        model_id="custom-classifier", model_category="classification"
+    )
+    mock_manifest_manager.get_model.side_effect = lambda model_id: classifier
+
+    response = client.post(
+        "/api/projects",
+        json={
+            "name": "reject classifier detector",
+            "detection_model_id": "custom-classifier",
+            "classification_model_id": None,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "not a detection model" in response.json()["detail"]
+
+
+def test_update_project_rejects_detection_change_while_alias_is_selected(
+    client, db, mock_manifest_manager
+):
+    detector = _reusable_detector_manifest()
+    mock_manifest_manager.get_model.side_effect = lambda model_id: detector
+    project = make_project(
+        db,
+        detection_model_id="custom-detector",
+        classification_model_id="custom-detector",
+    )
+
+    response = client.patch(
+        f"/api/projects/{project.id}",
+        json={"detection_model_id": "MD5A-0-0"},
+    )
+
+    assert response.status_code == 400
+    assert "same managed custom detector" in response.json()["detail"]
+
+
+def test_duplicate_project_validates_detector_alias_against_copied_settings(
+    client, db, mock_manifest_manager
+):
+    detector = _reusable_detector_manifest()
+    mock_manifest_manager.get_model.side_effect = lambda model_id: detector
+    source = make_project(
+        db,
+        detection_model_id="custom-detector",
+        classification_model_id="custom-detector",
+    )
+
+    accepted = client.post(
+        f"/api/projects/{source.id}/duplicate",
+        json={
+            "name": "duplicate alias",
+            "classification_model_id": "custom-detector",
+            "copy_settings": True,
+            "copy_sites": False,
+            "copy_deployments": False,
+        },
+    )
+    rejected = client.post(
+        f"/api/projects/{source.id}/duplicate",
+        json={
+            "name": "duplicate without detector settings",
+            "classification_model_id": "custom-detector",
+            "copy_settings": False,
+            "copy_sites": False,
+            "copy_deployments": False,
+        },
+    )
+
+    assert accepted.status_code == 201
+    assert accepted.json()["detection_model_id"] == "custom-detector"
+    assert accepted.json()["classification_model_id"] == "custom-detector"
+    assert rejected.status_code == 400
 
 
 def test_create_project_duplicate_name(client, db):
@@ -766,3 +933,57 @@ def test_a_folder_run_inherits_the_slots_last_used_with_its_model(client, db):
         f"/api/projects/{research.id}", json={"classification_model_id": "BC-WEM-v4"}
     )
     assert resp.json()["shortcut_labels"] == {}
+
+
+def test_model_readiness_lists_reused_detector_once_and_keeps_other_models(
+    client, db, mock_manifest_manager
+):
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from app.models.project import Project
+
+    detector = SimpleNamespace(
+        model_id="custom-detector",
+        friendly_name="Custom detector",
+        emoji="🦊",
+        model_category="detection",
+        env="rtdetr",
+    )
+    embedding = SimpleNamespace(
+        model_id="DINOV2-VITS14",
+        friendly_name="DINOv2",
+        emoji="🔎",
+        model_category="embedding",
+        env="embed",
+    )
+    manifests = {detector.model_id: detector, embedding.model_id: embedding}
+    mock_manifest_manager.get_model.side_effect = manifests.__getitem__
+
+    project = Project(
+        name="shared detector readiness",
+        timezone="UTC",
+        detection_model_id=detector.model_id,
+        classification_model_id=detector.model_id,
+        embedding_model_id=embedding.model_id,
+    )
+    db.add(project)
+    db.flush()
+
+    with (
+        patch("app.ml.environment_manager.EnvironmentManager") as env_manager_cls,
+        patch("app.ml.model_storage.ModelStorage") as storage_cls,
+    ):
+        env_manager = env_manager_cls.return_value
+        env_manager.envs_dir = Path("unused-model-envs")
+        storage_cls.return_value.check_weights_ready.return_value = False
+
+        response = client.get(f"/api/projects/{project.id}/model-readiness")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ready"] is False
+    assert [model["model_id"] for model in payload["missing"]] == [
+        "custom-detector",
+        "DINOV2-VITS14",
+    ]

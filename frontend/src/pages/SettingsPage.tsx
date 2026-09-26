@@ -68,12 +68,6 @@ import {
 import { useTaskProgress } from "../hooks/useTaskProgress";
 import { useReprocessSummary } from "../hooks/useReprocessSummary";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -305,6 +299,16 @@ export default function SettingsPage() {
   // Watch model changes
   const detectionModelId = form.watch("detection_model_id");
   const classificationModelId = form.watch("classification_model_id");
+  const selectedDetectionModel = detectionModels.find((model) => model.model_id === detectionModelId);
+  const selectedClassificationModel = classificationModels.find((model) => model.model_id === classificationModelId);
+  const isUsingDetectorClassAlias = Boolean(
+    selectedClassificationModel?.uses_detection_classes === true &&
+      selectedClassificationModel.model_id === detectionModelId,
+  );
+  const classifierAliasMismatch = Boolean(
+    selectedClassificationModel?.uses_detection_classes &&
+    selectedClassificationModel.model_id !== detectionModelId,
+  );
   // A full-image classifier skips MegaDetector, so the detector row and
   // the detection settings are greyed out with one caption saying so.
   const fullImageCls =
@@ -312,6 +316,7 @@ export default function SettingsPage() {
       ?.full_image_cls === true;
   const labelCaption = useLabelSelectionCaption(
     classificationModelId && classificationModelId !== "none" ? classificationModelId : "",
+    selectedClassificationModel?.uses_detection_classes === true,
   );
   const embeddingModelId = form.watch("embedding_model_id");
   const countryCode = form.watch("country_code");
@@ -568,6 +573,15 @@ export default function SettingsPage() {
     regroupConfirmed = false,
   ) => {
     if (!projectId) return;
+    const selectedClassifier = classificationModels.find(
+      (model) => model.model_id === data.classification_model_id,
+    );
+    if (selectedClassifier?.uses_detection_classes && selectedClassifier.model_id !== data.detection_model_id) {
+      form.setError("classification_model_id", {
+        message: "A detector can be reused as a classifier only when both settings use the same model.",
+      });
+      return;
+    }
 
     // Validate that at least one label remains included
     if (taxonomy) {
@@ -789,8 +803,7 @@ export default function SettingsPage() {
 
       <main className="mx-auto max-w-7xl px-4 py-8 pb-20 sm:px-6 lg:px-8 space-y-6">
         {/* Settings form */}
-        <TooltipProvider>
-          <Form {...form}>
+        <Form {...form}>
             <form onSubmit={form.handleSubmit((data) => saveSettings(data))} className="space-y-6" key={project?.id}>
             {/* Card: Models */}
             <Card>
@@ -884,7 +897,9 @@ export default function SettingsPage() {
                       <div className="space-y-1">
                         <FormLabel>Classification model</FormLabel>
                         <FormDescription className="text-sm">
-                          Identifies the species of each animal the detection model finds. Optional: choose "none" for a detection-only project.
+                          {selectedDetectionModel?.uses_detection_classes
+                            ? `Select “${selectedDetectionModel.friendly_name}” here to reuse its ${Object.keys(selectedDetectionModel.class_names ?? {}).length} class names and confidence without another inference.`
+                            : "Identifies the species of each animal the detection model finds. A custom detector with class names can also be selected here to reuse its labels without another inference."}
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -911,16 +926,32 @@ export default function SettingsPage() {
                           <SelectItem value="none">
                             ∅ No classification model
                             <br />
-                            <span className="text-xs text-muted-foreground">Run animal detector only, identify species manually</span>
+                            <span className="text-xs text-muted-foreground">
+                              {selectedDetectionModel?.uses_detection_classes
+                                ? "Keep detector labels in detections; select the same model as Classification to add classification results."
+                                : "Run the animal detector without a separate species classifier."}
+                            </span>
                           </SelectItem>
                           <ClassificationModelGroupedItems
                             models={classificationModels.filter((m) => m.model_id !== "none")}
+                            detectionModelId={detectionModelId}
+                            selectedModelId={classificationModelId}
                           />
                         </ModelSelect>
+                        {classifierAliasMismatch ? (
+                          <p role="alert" className="text-sm text-destructive">
+                            This classification choice reuses the previous detector's labels. Select that same detector above, or choose another classifier before saving.
+                          </p>
+                        ) : null}
                         <FormMessage />
 
                         {/* Model Status Badge */}
-                        {field.value && classificationModelStatus && (
+                        {isUsingDetectorClassAlias && (
+                          <p className="text-sm text-muted-foreground">
+                            This reuses the Detection model's labels and confidence. Prepare the model once under Detection; no separate classification setup or inference is needed.
+                          </p>
+                        )}
+                        {field.value && classificationModelStatus && !isUsingDetectorClassAlias && (
                           <ModelStatusBadge
                             status={classificationModelStatus}
                             onPrepare={handlePrepareClassificationModel}
@@ -928,7 +959,12 @@ export default function SettingsPage() {
                           />
                         )}
 
-                        {!hasClassificationModel && <NoClassifierNotice />}
+                        {!hasClassificationModel && (
+                          <NoClassifierNotice
+                            detectorClassCount={selectedDetectionModel?.uses_detection_classes ? Object.keys(selectedDetectionModel.class_names ?? {}).length : 0}
+                            detectorModelName={selectedDetectionModel?.friendly_name}
+                          />
+                        )}
                       </div>
                     </div>
                   )}
@@ -1005,7 +1041,10 @@ export default function SettingsPage() {
                 (m) => m.model_id === classificationModelId,
               );
               const embeddingModel = embeddingModels.find((m) => m.model_id === embeddingModelId);
-              const showClassificationRow = hasClassificationModel && !!classificationModel;
+              const showClassificationRow =
+                hasClassificationModel &&
+                !!classificationModel &&
+                !isUsingDetectorClassAlias;
               const showEmbeddingRow =
                 !!embeddingModelId && embeddingModelId !== "none" && !!embeddingModel;
               return (
@@ -1070,15 +1109,20 @@ export default function SettingsPage() {
                 <CardContent className="space-y-0 divide-y border-t">
                   <div className="grid grid-cols-2 items-center gap-8 py-6">
                     <div className="space-y-1">
-                      <FormLabel>Species selection</FormLabel>
+                        <FormLabel>
+                          {selectedClassificationModel?.uses_detection_classes
+                            ? "Detection class selection"
+                            : "Species selection"}
+                        </FormLabel>
                       <FormDescription className="text-sm">
                         {labelCaption}
                       </FormDescription>
                     </div>
                     <div>
-                      <LabelSelectionField
-                        modelId={classificationModelId}
-                        excludedClasses={excludedClasses}
+                        <LabelSelectionField
+                          modelId={classificationModelId}
+                          isDetectionAlias={selectedClassificationModel?.uses_detection_classes === true}
+                          excludedClasses={excludedClasses}
                         allClasses={taxonomy.all_classes ?? []}
                         countryCode={countryCode}
                         stateCode={form.watch("state_code")}
@@ -1225,7 +1269,7 @@ export default function SettingsPage() {
                 />
 
                 {/* Classification gate (inference-time) */}
-                <FormField
+                {!isUsingDetectorClassAlias && <FormField
                   control={form.control}
                   name="classification_gate"
                   render={({ field }) => (
@@ -1254,7 +1298,7 @@ export default function SettingsPage() {
                         <FormMessage />
                     </SettingRow>
                   )}
-                />
+                />}
 
                 {/* Detection Threshold */}
                 <FormField
@@ -1321,6 +1365,12 @@ export default function SettingsPage() {
                   }
                   showClassifierFields={hasClassificationModel}
                   intervalNote="Affects all statistics retroactively."
+                  rollupCaption={
+                    selectedClassificationModel?.uses_detection_classes
+                      ? SETTING_CAPTIONS.detectorClassRollup
+                      : undefined
+                  }
+                  hideRollup={isUsingDetectorClassAlias}
                 />
 
                 {/* Camera timezone: affects how event/activity times and
@@ -1416,38 +1466,18 @@ export default function SettingsPage() {
                     <Undo2 className="h-4 w-4 mr-2" />
                     Reset changes
                   </Button>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span>
-                        <Button
-                          type="submit"
-                          disabled={
-                            !isDirty ||
-                            updateMutation.isPending ||
-                            !!saveJobId ||
-                            detectionModelStatus?.status !== "ready" ||
-                            (hasClassificationModel && classificationModelStatus?.status !== "ready") ||
-                            Boolean(embeddingModelId && embeddingModelId !== "none" && embeddingModelStatus?.status !== "ready")
-                          }
-                        >
-                          <Save className="h-4 w-4 mr-2" />
-                          {updateMutation.isPending ? "Saving..." : "Save changes"}
-                        </Button>
-                      </span>
-                    </TooltipTrigger>
-                    {(detectionModelStatus?.status !== "ready" || (hasClassificationModel && classificationModelStatus?.status !== "ready") || (embeddingModelId && embeddingModelId !== "none" && embeddingModelStatus?.status !== "ready")) && (
-                      <TooltipContent>
-                        <p>Model needs preparing first</p>
-                      </TooltipContent>
-                    )}
-                  </Tooltip>
+                  <Button
+                    type="submit"
+                    disabled={!isDirty || updateMutation.isPending || !!saveJobId}
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    {updateMutation.isPending ? "Saving..." : "Save changes"}
+                  </Button>
                 </div>
               </div>
             </div>
           </form>
         </Form>
-
-        </TooltipProvider>
 
         {/* Model Info Sheet */}
         <ModelInfoSheet

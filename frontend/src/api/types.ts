@@ -859,6 +859,8 @@ export interface ModelInfo {
   detector_backend?: "megadetector" | "yolo" | "rfdetr" | "rtdetr" | "rtdetrv2" | null;
   /** Model category ids mapped to user-facing labels. */
   class_names?: Record<string, string> | null;
+  /** Classification alias: consumes this detector's labels without a second pass. */
+  uses_detection_classes?: boolean;
   // Per-pipeline default batch sizes the worker will use when the project's
   // batch_size override is null. Used to label the "Default" option in the
   // Performance card. Same numbers for every model in the same pipeline.
@@ -890,6 +892,7 @@ export interface CustomModelInspectResponse {
   suggested_detector_model_class: string | null;
   suggested_detector_model_variant: string | null;
   detector_config_candidates: string[];
+  detector_config_templates: string[];
   suggested_detector_config_fname: string | null;
   environments: string[];
   suggested_env: string | null;
@@ -925,7 +928,8 @@ export interface CustomModelsResponse {
 
 export interface CustomModelCreateRequest {
   type: CustomModelType;
-  source_path: string;
+  source_path?: string;
+  upload_id?: string;
   friendly_name: string;
   env: string;
   model_fname?: string;
@@ -945,6 +949,18 @@ export interface CustomModelCreateRequest {
   detector_model_class?: string;
   detector_model_variant?: string;
   detector_config_fname?: string;
+  detector_config_template?: string;
+}
+
+export interface CustomModelUploadSession {
+  upload_id: string;
+  source_path: string;
+}
+
+export interface CustomModelUploadedFile {
+  filename: string;
+  size_bytes: number;
+  sha256: string;
 }
 
 export type CustomModelUpdateRequest = Partial<Pick<

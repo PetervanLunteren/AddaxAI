@@ -8,6 +8,7 @@ Following DEVELOPERS.md principles:
 Based on proven patterns from streamlit-AddaxAI.
 """
 
+import re
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, Literal
 
@@ -206,3 +207,38 @@ class ModelManifest(BaseModel):
                 "min_app_version": "0.1.0",
             }
         }
+
+
+def uses_detection_classes_for_classification(manifest: ModelManifest) -> bool:
+    """Whether this managed custom detector can expose its output classes as labels.
+
+    The same model ID may be selected in both project fields for these packs.
+    Classification then reuses the detector's category and confidence; no
+    classifier subprocess or second inference pass is needed.
+    """
+    class_names = manifest.class_names
+    names = []
+    canonical_ids = False
+    if isinstance(class_names, dict):
+        canonical_ids = all(
+            re.fullmatch(r"(?:0|[1-9]\d*)", class_id)
+            for class_id in class_names
+        )
+        names = [
+            name.strip().casefold()
+            for name in class_names.values()
+            if isinstance(name, str) and name.strip()
+        ]
+    has_names = (
+        bool(names)
+        and canonical_ids
+        and len(names) == len(class_names)
+        and len(set(names)) == len(names)
+    )
+    return bool(
+        manifest.model_category == "detection"
+        and manifest.managed
+        and manifest.local_only
+        and manifest.detector_backend in {"yolo", "rfdetr", "rtdetr", "rtdetrv2"}
+        and has_names
+    )

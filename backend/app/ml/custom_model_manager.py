@@ -6,10 +6,12 @@ import ast
 import hashlib
 import json
 import os
+import re
 import shutil
 import stat
 import sys
 import threading
+import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -39,6 +41,7 @@ _SEMANTIC_FIELDS = {
     "detector_model_class", "detector_model_variant", "detector_config_fname",
     "full_image_cls",
 }
+MAX_UPLOAD_FILE_BYTES = 50 * 1024**3
 _write_lock = threading.RLock()
 
 
@@ -369,25 +372,52 @@ def _manifest_from_pack(payload: Any, source: Path, model_id: str) -> ModelManif
             detector_config_fname=_source_value(payload, source_manifest, "detector_config_fname"),
         )
         if backend == "rtdetrv2":
+            template_name = getattr(payload, "detector_config_template", None)
             config_name = metadata.get("detector_config_fname")
+            if config_name and template_name:
+                raise CustomModelError(
+                    "Choose an existing RT-DETRv2 config or a generated architecture "
+                    "template, not both"
+                )
+            if template_name:
+                if template_name not in _available_rtdetrv2_templates():
+                    raise CustomModelError(
+                        "Choose a supported RT-DETRv2 architecture template"
+                    )
+                names = _manifest_class_names({"class_names": class_names})
+                if not names:
+                    raise CustomModelError(
+                        "RT-DETRv2 config generation requires class labels from a "
+                        "dataset YAML or your input"
+                    )
+                config_name = "addaxai-generated-rtdetrv2.yml"
+                metadata["detector_config_fname"] = config_name
             if not config_name:
-                raise CustomModelError("RT-DETRv2 packs require detector_config_fname")
-            config_relative = _safe_relative_file(
-                str(config_name), field_name="detector_config_fname"
-            )
-            config_path = source / config_relative
-            if not config_path.is_file() or config_path.suffix.lower() not in {".yml", ".yaml"}:
                 raise CustomModelError(
-                    "RT-DETRv2 detector_config_fname must point to an existing YAML file"
+                    "RT-DETRv2 packs require an existing YAML config or a supported "
+                    "architecture template"
                 )
-            config_document = _read_small_yaml(config_path)
-            if not isinstance(config_document, dict) or not _contains_rtdetrv2_signature(
-                config_document
-            ):
-                raise CustomModelError(
-                    "RT-DETRv2 detector_config_fname must be a valid RT-DETRv2 YAML config"
+            if not template_name:
+                config_relative = _safe_relative_file(
+                    str(config_name), field_name="detector_config_fname"
                 )
-            metadata["detector_config_fname"] = config_relative.as_posix()
+                config_path = source / config_relative
+                if (
+                    not config_path.is_file()
+                    or config_path.suffix.lower() not in {".yml", ".yaml"}
+                    or _reparse_point(config_path)
+                ):
+                    raise CustomModelError(
+                        "RT-DETRv2 detector_config_fname must point to an existing YAML file"
+                    )
+                config_document = _read_small_yaml(config_path)
+                if not isinstance(config_document, dict) or not _contains_rtdetrv2_signature(
+                    config_document
+                ):
+                    raise CustomModelError(
+                        "RT-DETRv2 detector_config_fname must be a valid RT-DETRv2 YAML config"
+                    )
+                metadata["detector_config_fname"] = config_relative.as_posix()
 
     try:
         return ModelManifest.model_validate(metadata)
@@ -440,6 +470,66 @@ def _model_record(manifest: ModelManifest) -> dict[str, Any]:
     }
 
 
+def _available_rtdetrv2_templates() -> list[str]:
+    template_dir = (
+        Path(__file__).resolve().parent
+        / "third_party"
+        / "rtdetrv2_pytorch"
+        / "configs"
+        / "rtdetrv2"
+    )
+    return sorted(
+        path.name
+        for path in template_dir.glob("rtdetrv2_*.yml")
+        if path.is_file()
+        and isinstance(_read_small_yaml(path), dict)
+        and isinstance(_read_small_yaml(path).get("__include__"), list)
+    )
+
+
+def _generated_rtdetrv2_yaml(
+    template_name: str, class_names: dict[str, str] | list[str] | None
+) -> str:
+    if template_name not in _available_rtdetrv2_templates():
+        raise CustomModelError("Choose a supported RT-DETRv2 architecture template")
+    names = _manifest_class_names({"class_names": class_names})
+    if not names:
+        raise CustomModelError("RT-DETRv2 config generation requires class labels")
+    source_root = Path(__file__).resolve().parent / "third_party" / "rtdetrv2_pytorch"
+    template_path = source_root / "configs" / "rtdetrv2" / template_name
+    document = _read_small_yaml(template_path)
+    includes = document.get("__include__", [])
+    if not isinstance(includes, list) or not includes:
+        raise CustomModelError("Supported RT-DETRv2 template has no safe include list")
+    safe_includes: list[str] = []
+    for entry in includes:
+        if not isinstance(entry, str) or not entry.strip():
+            raise CustomModelError("RT-DETRv2 template has an invalid include")
+        include_path = (template_path.parent / entry).resolve()
+        if not _is_within(include_path, source_root) or not include_path.is_file():
+            raise CustomModelError("RT-DETRv2 template include is outside the bundled source")
+        safe_includes.append(
+            "../third_party/rtdetr/rtdetrv2_pytorch/"
+            + include_path.relative_to(source_root).as_posix()
+        )
+    document["__include__"] = safe_includes
+    document["num_classes"] = len(names)
+    rtdetr_config = document.get("RTDETR") or {}
+    if not isinstance(rtdetr_config, dict):
+        raise CustomModelError("RT-DETRv2 template has an invalid detector configuration")
+    backbone = rtdetr_config.get("backbone", "PResNet")
+    if backbone not in {"PResNet", "HGNetv2"}:
+        raise CustomModelError("RT-DETRv2 template uses an unsupported backbone")
+    backbone_config = document.get(backbone) or {}
+    if not isinstance(backbone_config, dict):
+        raise CustomModelError("RT-DETRv2 template has an invalid backbone configuration")
+    document[backbone] = {**backbone_config, "pretrained": False}
+    # The bundled COCO dataset include remaps class IDs to the COCO taxonomy.
+    # Custom class_names are already indexed from zero, so preserve those IDs.
+    document["remap_mscoco_category"] = False
+    return yaml.safe_dump(document, sort_keys=False, allow_unicode=True)
+
+
 class CustomModelManager:
     """Own managed model pack import, metadata update, and deletion."""
 
@@ -454,6 +544,91 @@ class CustomModelManager:
     @staticmethod
     def environments() -> list[str]:
         return _available_environments()
+
+    def rtdetrv2_templates(self) -> list[str]:
+        return _available_rtdetrv2_templates()
+
+    def _upload_root(self) -> Path:
+        return self.models_dir.parent / ".custom-model-imports"
+
+    def create_upload_session(self) -> tuple[str, Path]:
+        root = self._upload_root()
+        _reject_reparse_ancestors(root)
+        root.mkdir(parents=True, exist_ok=True)
+        self.cleanup_expired_upload_sessions()
+        upload_id = uuid.uuid4().hex
+        session = root / upload_id
+        session.mkdir()
+        return upload_id, session
+
+    def cleanup_expired_upload_sessions(self, *, max_age_seconds: int = 24 * 60 * 60) -> None:
+        root = self._upload_root()
+        if not root.is_dir() or _reparse_point(root):
+            return
+        cutoff = time.time() - max_age_seconds
+        for session in root.iterdir():
+            if not re.fullmatch(r"[0-9a-f]{32}", session.name):
+                continue
+            if _reparse_point(session):
+                continue
+            try:
+                stale = session.stat().st_mtime < cutoff
+            except OSError:
+                continue
+            if stale and session.is_dir() and _is_within(session, root):
+                shutil.rmtree(session)
+
+    def _upload_session(self, upload_id: str) -> Path:
+        if not re.fullmatch(r"[0-9a-f]{32}", upload_id):
+            raise CustomModelError("Invalid upload session")
+        root = self._upload_root()
+        session = root / upload_id
+        _reject_reparse_ancestors(session)
+        if not session.is_dir() or not _is_within(session, root):
+            raise FileNotFoundError("Upload session has expired; choose the weight file again")
+        return session
+
+    def begin_upload_file(self, upload_id: str, filename: str) -> tuple[Path, Path]:
+        session = self._upload_session(upload_id)
+        try:
+            relative = _safe_relative_file(filename, field_name="filename")
+        except CustomModelError:
+            self.discard_upload_session(upload_id)
+            raise
+        if len(relative.parts) != 1:
+            self.discard_upload_session(upload_id)
+            raise CustomModelError("Choose individual files; folder paths are not accepted")
+        target = session / relative
+        _reject_reparse_ancestors(target.parent)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if _path_exists(target):
+            self.discard_upload_session(upload_id)
+            raise CustomModelError(
+                "A file with this name is already in the selected model pack"
+            )
+        temporary = target.with_name(f".{target.name}.upload-{uuid.uuid4().hex}.part")
+        return target, temporary
+
+    def finish_upload_file(self, upload_id: str, target: Path, temporary: Path) -> None:
+        session = self._upload_session(upload_id)
+        if not _is_within(target, session) or not _is_within(temporary, session):
+            self.discard_upload_session(upload_id)
+            raise CustomModelError("Uploaded file must remain inside its upload session")
+        _reject_reparse_ancestors(target)
+        if not temporary.is_file() or _reparse_point(temporary):
+            self.discard_upload_session(upload_id)
+            raise CustomModelError("Uploaded file was not written safely")
+        os.replace(temporary, target)
+
+    def discard_upload_session(self, upload_id: str) -> None:
+        if not re.fullmatch(r"[0-9a-f]{32}", upload_id):
+            return
+        session = self._upload_root() / upload_id
+        if _path_exists(session):
+            _reject_reparse_ancestors(session)
+            if not _is_within(session, self._upload_root()):
+                raise CustomModelError("Upload session escaped its staging folder")
+            shutil.rmtree(session)
 
     def inspect(self, source_path: str) -> dict[str, Any]:
         """Inspect a source pack without copying it or reading model weights."""
@@ -666,7 +841,9 @@ class CustomModelManager:
             suggested_backend == "rtdetrv2"
             and suggested_detector_config is None
         ):
-            missing_required.append("Choose the RT-DETRv2 YAML config.")
+            missing_required.append(
+                "Choose an existing RT-DETRv2 YAML config or a known architecture template."
+            )
         if (
             suggested_class_names is None
             and len(dataset_candidates) > 1
@@ -690,6 +867,7 @@ class CustomModelManager:
             "suggested_detector_model_class": suggested_detector_model_class,
             "suggested_detector_model_variant": suggested_detector_model_variant,
             "detector_config_candidates": detector_config_candidates,
+            "detector_config_templates": self.rtdetrv2_templates(),
             "suggested_detector_config_fname": suggested_detector_config,
             "environments": environments,
             "suggested_env": suggested_env,
@@ -715,7 +893,20 @@ class CustomModelManager:
         )
 
     def create(self, payload: Any) -> dict[str, Any]:
-        source = _resolve_source(payload.source_path, self.models_dir)
+        upload_id = getattr(payload, "upload_id", None)
+        try:
+            source_path = (
+                payload.source_path
+                if payload.source_path
+                else str(self._upload_session(upload_id))
+            )
+            return self._create_from_source(payload, source_path)
+        finally:
+            if upload_id:
+                self.discard_upload_session(upload_id)
+
+    def _create_from_source(self, payload: Any, source_path: str) -> dict[str, Any]:
+        source = _resolve_source(source_path, self.models_dir)
         generated_id = f"custom-{uuid.uuid4().hex}"
         manifest = _manifest_from_pack(payload, source, generated_id)
         category = _MODEL_TYPE_DIR[payload.type]
@@ -743,6 +934,13 @@ class CustomModelManager:
                 if _sha256_file(copied_weights) != manifest.weights_sha256:
                     raise CustomModelError(
                         "Model weights changed while the pack was being copied; retry registration"
+                    )
+                template_name = getattr(payload, "detector_config_template", None)
+                if template_name and manifest.detector_config_fname:
+                    generated_config = temp_dir / manifest.detector_config_fname
+                    generated_config.write_text(
+                        _generated_rtdetrv2_yaml(template_name, manifest.class_names),
+                        encoding="utf-8",
                     )
                 manifest_target = temp_dir / "manifest.json"
                 manifest_tmp = temp_dir / ".manifest.json.tmp"

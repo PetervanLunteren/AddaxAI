@@ -30,6 +30,7 @@ from app.core.websocket_manager import ws_manager
 from app.db.base import get_db, refresh_query_statistics
 from app.ml import detection_checkpoint as ckpt
 from app.ml.detection import MD_OUTPUT_CONFIDENCE_THRESHOLD
+from app.ml.detector_classification import reuse_detector_classes_in_json
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.inference.custom_classification_model import CustomClassificationModel
 from app.ml.inference.detector_backend import create_detector
@@ -37,6 +38,7 @@ from app.ml.json_pipeline import merge_json_files, run_classification_on_json
 from app.ml.manifest_manager import ManifestManager
 from app.ml.model_storage import ModelStorage
 from app.ml.model_usage import acquire_model_usage
+from app.ml.schemas.model_manifest import uses_detection_classes_for_classification
 from app.models import Deployment
 from app.services.folder_scanner import walk_media_files
 from app.utils.fs_hidden import mkdir_hidden_addaxai
@@ -126,31 +128,51 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
         classification_model = None
         full_image_cls = False
         cls_model_dir = None
+        reuse_detector_classes = False
         if classification_model_id:
             cls_manifest = manifest_manager.get_model(classification_model_id)
-            cls_model_path = model_storage.get_model_file(cls_manifest)
-            cls_model_dir = model_storage.get_model_path(cls_manifest)
-            env_name = cls_manifest.env
-            full_image_cls = bool(getattr(cls_manifest, "full_image_cls", False))
-
-            # Check for custom inference.py script.
-            inference_script = cls_model_dir / "inference.py"
-            if not inference_script.exists():
-                error_msg = (
-                    f"Custom inference script not found: {inference_script}\n"
-                    f"Model developers must provide inference.py in their HuggingFace repo."
+            if cls_manifest.model_category == "detection":
+                if (
+                    classification_model_id != detection_model_id
+                    or not uses_detection_classes_for_classification(det_manifest)
+                ):
+                    raise ValueError(
+                        "A detection model can fill the classification slot only when it is "
+                        "the same managed custom detector with class labels."
+                    )
+                reuse_detector_classes = True
+                # Keep optional pack metadata (for example taxonomy.csv) visible
+                # to the database loader, while deliberately skipping inference.py.
+                cls_model_dir = det_model_path.parent
+                logger.info(
+                    "Reusing custom detector categories and confidence as classification; "
+                    "no second model inference will run"
                 )
-                logger.error(error_msg)
-                raise FileNotFoundError(error_msg)
+            else:
+                cls_model_path = model_storage.get_model_file(cls_manifest)
+                cls_model_dir = model_storage.get_model_path(cls_manifest)
+                env_name = cls_manifest.env
+                full_image_cls = bool(getattr(cls_manifest, "full_image_cls", False))
 
-            # Existing AddaxAI-compatible classification interface, isolated
-            # in the selected packaged environment.
-            logger.info(
-                f"Loading custom classification model: {classification_model_id} (env: {env_name})"
-            )
-            classification_model = CustomClassificationModel(
-                cls_model_dir, cls_model_path, env_name, env_manager
-            )
+                # Check for custom inference.py script.
+                inference_script = cls_model_dir / "inference.py"
+                if not inference_script.exists():
+                    error_msg = (
+                        f"Custom inference script not found: {inference_script}\n"
+                        f"Model developers must provide inference.py in their HuggingFace repo."
+                    )
+                    logger.error(error_msg)
+                    raise FileNotFoundError(error_msg)
+
+                # Existing AddaxAI-compatible classification interface, isolated
+                # in the selected packaged environment.
+                logger.info(
+                    "Loading custom classification model: "
+                    f"{classification_model_id} (env: {env_name})"
+                )
+                classification_model = CustomClassificationModel(
+                    cls_model_dir, cls_model_path, env_name, env_manager
+                )
     except BaseException:
         release_model_usage()
         raise
@@ -220,7 +242,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                             "total_deployments": total_entries,
                             "video_count": announced_videos,
                             "image_count": announced_images,
-                            "has_classifier": classification_model is not None,
+                            "has_classifier": (
+                                classification_model is not None or reuse_detector_classes
+                            ),
                             "has_embedding": bool(project.embedding_model_id),
                         },
                     )
@@ -270,7 +294,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                             "total_deployments": total_entries,
                             "video_count": announced_videos,
                             "image_count": announced_images,
-                            "has_classifier": classification_model is not None,
+                            "has_classifier": (
+                                classification_model is not None or reuse_detector_classes
+                            ),
                             "has_embedding": bool(project.embedding_model_id),
                         },
                     )
@@ -466,6 +492,14 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                     json_files_to_merge.append(video_json_path)
                     logger.info(f"Video detection complete: {video_json_path}")
+
+                if reuse_detector_classes and video_json_path.exists():
+                    # Video JSON can be reused from interrupted runs. Apply
+                    # this small mapping step every time so older cached
+                    # detector output gains the same classification fields.
+                    await asyncio.to_thread(
+                        reuse_detector_classes_in_json, video_json_path
+                    )
 
                 # Best-frame selection.
                 #
@@ -732,6 +766,13 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     json_files_to_merge.append(image_json_path)
 
                     logger.info(f"Image detection complete: {image_json_path}")
+
+                if reuse_detector_classes and image_json_path.exists():
+                    # This also covers a completed image-detection checkpoint:
+                    # class reuse is deterministic and does not rerun inference.
+                    await asyncio.to_thread(
+                        reuse_detector_classes_in_json, image_json_path
+                    )
 
                 # ============================================================
                 # PHASE 4: Image Classification (if images + classifier)

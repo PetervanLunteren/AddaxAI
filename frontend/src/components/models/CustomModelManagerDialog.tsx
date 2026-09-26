@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FolderOpen, Pencil, Plus, Trash2 } from "lucide-react";
+import { FileUp, FolderOpen, Pencil, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { modelsApi } from "@/api/models";
+import { modelsApi, uploadCustomModelFile } from "@/api/models";
 import type {
   CustomModelCreateRequest,
   CustomDetectorBackend,
@@ -50,9 +50,20 @@ export function CustomModelManagerDialog({
 }: Props) {
   const queryClient = useQueryClient();
   const inspectGeneration = useRef(0);
+  const uploadGeneration = useRef(0);
+  const sourcePathRef = useRef("");
+  const pendingWeightRef = useRef("");
+  const stagedWeightFilenameRef = useRef("");
+  const uploadIdRef = useRef<string | null>(null);
+  const uploadAbortRef = useRef<AbortController | null>(null);
+  const weightInputRef = useRef<HTMLInputElement>(null);
+  const companionInputRef = useRef<HTMLInputElement>(null);
   const [type, setType] = useState<CustomModelType | "">(modelType);
   const [listType, setListType] = useState<CustomModelType>(modelType);
   const [sourcePath, setSourcePath] = useState("");
+  const [uploadId, setUploadId] = useState<string | null>(null);
+  const [uploadingName, setUploadingName] = useState("");
+  const [uploadProgress, setUploadProgress] = useState<{ loaded: number; total: number } | null>(null);
   const [inspection, setInspection] = useState<CustomModelInspectResponse | null>(null);
   const [friendlyName, setFriendlyName] = useState("");
   const [env, setEnv] = useState("");
@@ -66,6 +77,7 @@ export function CustomModelManagerDialog({
   const [detectorClass, setDetectorClass] = useState("");
   const [detectorVariant, setDetectorVariant] = useState("");
   const [detectorConfig, setDetectorConfig] = useState("");
+  const [detectorConfigTemplate, setDetectorConfigTemplate] = useState("");
   const [region, setRegion] = useState("");
   const [fullImage, setFullImage] = useState(false);
   const [editing, setEditing] = useState<CustomModelInfo | null>(null);
@@ -79,16 +91,49 @@ export function CustomModelManagerDialog({
   });
   const environments = inspection?.environments ?? data?.environments ?? [];
 
+  const cancelUploadSession = useCallback(() => {
+    uploadGeneration.current += 1;
+    uploadAbortRef.current?.abort();
+    uploadAbortRef.current = null;
+    const previousUploadId = uploadIdRef.current;
+    uploadIdRef.current = null;
+    stagedWeightFilenameRef.current = "";
+    setUploadId(null);
+    setUploadProgress(null);
+    setUploadingName("");
+    if (previousUploadId) {
+      void modelsApi.cancelCustomModelUpload(previousUploadId).catch(() => undefined);
+    }
+  }, []);
+
+  function clearUploadAfterCreate() {
+    uploadAbortRef.current = null;
+    uploadIdRef.current = null;
+    setUploadId(null);
+    setUploadProgress(null);
+    setUploadingName("");
+  }
+
+  function handleDialogOpenChange(nextOpen: boolean) {
+    if (!nextOpen) cancelUploadSession();
+    onOpenChange(nextOpen);
+  }
+
   useEffect(() => {
     inspectGeneration.current += 1;
-    if (!open) return;
+    if (!open) {
+      cancelUploadSession();
+      return;
+    }
     setType("");
     setListType(modelType);
     setEditing(null);
     setErrorText(null);
     setInspection(null);
+    cancelUploadSession();
     setSourcePath("");
-  }, [open, modelType]);
+    sourcePathRef.current = "";
+  }, [cancelUploadSession, open, modelType]);
 
   const refreshModelLists = async () => {
     await Promise.all([
@@ -107,12 +152,27 @@ export function CustomModelManagerDialog({
           : `${model.friendly_name} added`,
       );
       setErrorText(null);
+      clearUploadAfterCreate();
       resetCreateForm();
       if (model.type === modelType) onCreated?.(model);
       onAnyCreated?.(model);
       onOpenChange(false);
     },
-    onError: (error) => setErrorText(getError(error)),
+    onError: (error) => {
+      if (!uploadIdRef.current) {
+        setErrorText(getError(error));
+        return;
+      }
+      cancelUploadSession();
+      sourcePathRef.current = "";
+      pendingWeightRef.current = "";
+      setSourcePath("");
+      setInspection(null);
+      clearInferredValues();
+      setErrorText(
+        `${getError(error)} Uploaded files were discarded. Choose the weight file again and reselect any companion files before registering.`,
+      );
+    },
   });
 
   const updateMutation = useMutation({
@@ -138,6 +198,9 @@ export function CustomModelManagerDialog({
   });
 
   function resetCreateForm() {
+    sourcePathRef.current = "";
+    pendingWeightRef.current = "";
+    stagedWeightFilenameRef.current = "";
     setSourcePath("");
     setInspection(null);
     setType("");
@@ -150,6 +213,7 @@ export function CustomModelManagerDialog({
     setClassNamesText("");
     setDatasetFile("");
     setDetectorConfig("");
+    setDetectorConfigTemplate("");
     setDetectorClass("");
     setDetectorVariant("");
     setRegion("");
@@ -159,6 +223,7 @@ export function CustomModelManagerDialog({
 
   function clearInferredValues() {
     inspectGeneration.current += 1;
+    stagedWeightFilenameRef.current = "";
     setInspection(null);
     setType("");
     setFriendlyName("");
@@ -170,6 +235,7 @@ export function CustomModelManagerDialog({
     setDetectorClass("");
     setDetectorVariant("");
     setDetectorConfig("");
+    setDetectorConfigTemplate("");
     setDescription("");
     setDeveloper("");
     setInfoUrl("");
@@ -179,15 +245,19 @@ export function CustomModelManagerDialog({
   }
 
   function updateSourcePath(value: string) {
+    if (uploadIdRef.current) cancelUploadSession();
     clearInferredValues();
+    sourcePathRef.current = value;
     setSourcePath(value);
   }
 
   function applyInspection(result: CustomModelInspectResponse) {
     setInspection(result);
+    sourcePathRef.current = result.source_path;
     setSourcePath(result.source_path);
     const folderName = result.source_path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "";
-    setFriendlyName(folderName);
+    const stagedFilename = uploadIdRef.current ? stagedWeightFilenameRef.current : "";
+    setFriendlyName(stagedFilename ? filenameStem(stagedFilename) : folderName);
     setType(result.suggested_type ?? "");
     setEnv(result.suggested_env ?? "");
     setModelFname(result.suggested_model_fname ?? "");
@@ -196,11 +266,8 @@ export function CustomModelManagerDialog({
     setDetectorVariant(result.suggested_detector_model_variant ?? "");
     setDetectorConfig(result.suggested_detector_config_fname ?? "");
     setDatasetFile(result.suggested_class_names_source ?? "");
-    setClassNamesText(
-      result.suggested_class_names
-        ? JSON.stringify(result.suggested_class_names, null, 2)
-        : "",
-    );
+    setDetectorConfigTemplate("");
+    setClassNamesText(result.suggested_class_names ? classNamesToLines(result.suggested_class_names) : "");
     setErrorText(null);
   }
 
@@ -210,9 +277,13 @@ export function CustomModelManagerDialog({
       if (
         !open ||
         inspectGeneration.current !== variables.generation ||
-        sourcePath.trim().toLowerCase() !== variables.path.toLowerCase()
+        sourcePathRef.current.trim().toLowerCase() !== variables.path.toLowerCase()
       ) return;
       applyInspection(result);
+      if (pendingWeightRef.current && result.weights.includes(pendingWeightRef.current)) {
+        setModelFname(pendingWeightRef.current);
+      }
+      pendingWeightRef.current = "";
     },
     onError: (error, variables) => {
       if (!open || inspectGeneration.current !== variables.generation) return;
@@ -251,32 +322,20 @@ export function CustomModelManagerDialog({
       setErrorText("This folder does not contain a compatible classification inference.py.");
       return;
     }
-    let classNames: Record<string, string> | string[] | undefined;
+    let classNames: Record<string, string> | undefined;
     if (type === "detection" && classNamesText.trim()) {
       try {
-        const parsed: unknown = JSON.parse(classNamesText);
-        if (
-          !Array.isArray(parsed) &&
-          (parsed === null || typeof parsed !== "object" ||
-            !Object.values(parsed).every((value) => typeof value === "string"))
-        ) {
-          throw new Error("Class labels must be a JSON list or string map.");
-        }
-        if (Array.isArray(parsed) && !parsed.every((value) => typeof value === "string" && value.trim())) {
-          throw new Error("Class labels must be non-empty strings.");
-        }
-        if (!Array.isArray(parsed) && Object.values(parsed).some((value) => !value.trim())) {
-          throw new Error("Class labels must be non-empty strings.");
-        }
-        classNames = parsed as Record<string, string> | string[];
+        classNames = linesToClassNames(classNamesText, requiresExplicitClassIds);
       } catch (error) {
-        setErrorText(getError(error) === "Unexpected end of JSON input" ? "Class labels are not valid JSON." : getError(error));
+        setErrorText(getError(error));
         return;
       }
     }
     const payload: CustomModelCreateRequest = {
       type,
-      source_path: sourcePath.trim(),
+      ...(uploadIdRef.current
+        ? { upload_id: uploadIdRef.current }
+        : { source_path: sourcePath.trim() }),
       friendly_name: friendlyName.trim(),
       env,
       model_fname: modelFname.trim() || undefined,
@@ -309,11 +368,12 @@ export function CustomModelManagerDialog({
         payload.detector_model_variant = detectorVariant;
       }
       if (backend === "rtdetrv2") {
-        if (!detectorConfig.trim()) {
-          setErrorText("Choose the RT-DETRv2 YAML config.");
+        if (!detectorConfig.trim() && !detectorConfigTemplate) {
+          setErrorText("Choose an RT-DETRv2 YAML config or architecture template.");
           return;
         }
-        payload.detector_config_fname = detectorConfig.trim();
+        if (detectorConfig.trim()) payload.detector_config_fname = detectorConfig.trim();
+        if (detectorConfigTemplate) payload.detector_config_template = detectorConfigTemplate;
       }
     }
     createMutation.mutate(payload);
@@ -352,7 +412,105 @@ export function CustomModelManagerDialog({
   function selectDataset(path: string) {
     setDatasetFile(path);
     const candidate = inspection?.dataset_candidates.find((row) => row.path === path);
-    setClassNamesText(candidate ? JSON.stringify(candidate.class_names, null, 2) : "");
+    setClassNamesText(candidate ? classNamesToLines(candidate.class_names) : "");
+  }
+
+  function inspectPath(path: string) {
+    sourcePathRef.current = path;
+    setSourcePath(path);
+    setErrorText(null);
+    const generation = ++inspectGeneration.current;
+    inspectMutation.mutate({ path, generation });
+  }
+
+  async function uploadSelectedFile(file: File, isWeight: boolean): Promise<boolean> {
+    if (isWeight || uploadAbortRef.current) cancelUploadSession();
+    const generation = uploadGeneration.current;
+    if (isWeight) {
+      clearInferredValues();
+      pendingWeightRef.current = file.name;
+      stagedWeightFilenameRef.current = file.name;
+      setFriendlyName(filenameStem(file.name));
+    }
+    setUploadingName(file.name);
+    setUploadProgress({ loaded: 0, total: file.size });
+    setErrorText(null);
+
+    try {
+      let sessionId = uploadIdRef.current;
+      let stagingPath = sourcePathRef.current;
+      if (!sessionId) {
+        const session = await modelsApi.startCustomModelUpload();
+        if (generation !== uploadGeneration.current || !open) {
+          await modelsApi.cancelCustomModelUpload(session.upload_id).catch(() => undefined);
+          return false;
+        }
+        sessionId = session.upload_id;
+        stagingPath = session.source_path;
+        uploadIdRef.current = sessionId;
+        sourcePathRef.current = stagingPath;
+        setUploadId(sessionId);
+        setSourcePath(stagingPath);
+      }
+      const controller = new AbortController();
+      uploadAbortRef.current = controller;
+      await uploadCustomModelFile(sessionId, file, (loaded, total) => {
+        setUploadProgress({ loaded, total });
+      }, controller.signal);
+      if (generation !== uploadGeneration.current || !open) return false;
+      uploadAbortRef.current = null;
+      setUploadProgress(null);
+      setUploadingName("");
+      inspectPath(stagingPath);
+      return true;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return false;
+      cancelUploadSession();
+      setInspection(null);
+      sourcePathRef.current = "";
+      setSourcePath("");
+      clearInferredValues();
+      setErrorText(getError(error));
+      return false;
+    }
+  }
+
+  async function chooseWeightFile() {
+    if (window.electronAPI?.openFile) {
+      try {
+        const path = await window.electronAPI.openFile({
+          title: "Choose model weight file",
+          filters: [{ name: "Model weights", extensions: ["pt", "pth", "ckpt", "h5", "hdf5", "keras", "onnx", "pb", "safetensors", "tflite"] }],
+        });
+        if (!path) return;
+        cancelUploadSession();
+        clearInferredValues();
+        const normalized = path.replace(/\\/g, "/");
+        const separator = normalized.lastIndexOf("/");
+        pendingWeightRef.current = normalized.slice(separator + 1);
+        inspectPath(separator > 0 ? normalized.slice(0, separator) : ".");
+      } catch (error) {
+        setErrorText(getError(error));
+      }
+      return;
+    }
+    weightInputRef.current?.click();
+  }
+
+  async function onWeightInputChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) await uploadSelectedFile(file, true);
+  }
+
+  async function onCompanionInputChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (!uploadIdRef.current || !sourcePathRef.current) return;
+    for (const file of files) {
+      const completed = await uploadSelectedFile(file, false);
+      if (!completed) break;
+    }
   }
 
   function inspectFolder() {
@@ -362,14 +520,17 @@ export function CustomModelManagerDialog({
       return;
     }
     setErrorText(null);
-    const generation = ++inspectGeneration.current;
-    inspectMutation.mutate({ path: selectedPath, generation });
+    inspectPath(selectedPath);
   }
 
   const hasAmbiguousLabels = Boolean(inspection && inspection.dataset_candidates.length > 1 &&
     new Set(inspection.dataset_candidates.map((candidate) => JSON.stringify(candidate.class_names))).size > 1);
+  const selectedDataset = inspection?.dataset_candidates.find((candidate) => candidate.path === datasetFile);
+  const suggestedNames = selectedDataset?.class_names ?? inspection?.suggested_class_names ?? undefined;
+  const requiresExplicitClassIds = Boolean(suggestedNames && !hasZeroBasedSequentialIds(suggestedNames));
+  const hasNonNumericClassIds = Boolean(suggestedNames && Object.keys(suggestedNames).some((id) => !/^\d+$/.test(id)));
   const registeredModelsAvailable = (data?.models.length ?? 0) > 0;
-  const classNamesCount = countClassNames(classNamesText);
+  const classNamesCount = countClassNames(classNamesText, requiresExplicitClassIds);
   const hasInvalidClassNames = type === "detection" && classNamesText.trim().length > 0 && classNamesCount === 0;
   const needsInput = inspection
     ? inspection.type_candidates.length === 0
@@ -390,13 +551,26 @@ export function CustomModelManagerDialog({
           ...(type === "detection" && backend === "rtdetr" && !detectorVariant
             ? ["Choose the RT-DETR model variant."]
             : []),
-          ...(type === "detection" && backend === "rtdetrv2" && !detectorConfig.trim()
-            ? ["Choose the RT-DETRv2 YAML config."]
+          ...(type === "detection" && backend === "rtdetrv2" && !detectorConfig.trim() && !detectorConfigTemplate
+            ? ["Choose an RT-DETRv2 YAML config or architecture template."]
             : []),
           ...(type === "detection" && hasAmbiguousLabels && !classNamesText.trim()
-            ? ["Choose the dataset YAML that contains this model's class labels, or enter labels in Advanced settings."]
+            ? ["Choose the dataset YAML that contains this model's class labels, or enter one class name per line."]
             : []),
-          ...(hasInvalidClassNames ? ["Fix the class-label JSON in Advanced settings."] : []),
+          ...(type === "detection" && requiresExplicitClassIds && !hasNonNumericClassIds && !classNamesText.trim()
+            ? ["Keep the existing numeric class IDs by entering each line as ID: name."]
+            : []),
+          ...(type === "detection" && hasNonNumericClassIds
+            ? ["This pack has non-numeric class IDs; AddaxAI detector packs require numeric class IDs."]
+            : []),
+          ...(type === "detection" && !classNamesText.trim() && !hasAmbiguousLabels
+            ? ["Enter one class name per line so AddaxAI can reuse the detector's labels as classifications."]
+            : []),
+          ...(hasInvalidClassNames
+            ? [requiresExplicitClassIds
+                ? "Use unique class names and canonical IDs (0, 1, ...), written as ID: name."
+                : "Enter non-empty, unique class names, one per line."]
+            : []),
         ]
     : [];
   const canRegister = Boolean(
@@ -408,13 +582,14 @@ export function CustomModelManagerDialog({
     (type !== "detection" || backend) &&
     (type !== "detection" || backend !== "rfdetr" || detectorClass) &&
     (type !== "detection" || backend !== "rtdetr" || detectorVariant) &&
-    (type !== "detection" || backend !== "rtdetrv2" || detectorConfig.trim()) &&
+    (type !== "detection" || backend !== "rtdetrv2" || detectorConfig.trim() || detectorConfigTemplate) &&
+    (type !== "detection" || classNamesCount > 0) &&
     !hasInvalidClassNames &&
     (!hasAmbiguousLabels || classNamesText.trim()),
   );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Manage custom models</DialogTitle>
@@ -434,6 +609,11 @@ export function CustomModelManagerDialog({
                 </SelectContent>
               </Select>
             </Field>
+            {listType === "classification" ? (
+              <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                A custom Detection model with class labels can also be selected under Classification in Project settings. Select the same model ID to reuse its detected class and confidence; no duplicate registration or extra inference is needed.
+              </p>
+            ) : null}
             {isError ? <p role="alert" className="text-sm text-destructive">Could not refresh custom models: {getError(error)}</p> : null}
             {matchingModels.length === 0 ? <p className="text-sm text-muted-foreground">No custom {listType} models registered.</p> : null}
             <div className="space-y-2">
@@ -495,40 +675,92 @@ export function CustomModelManagerDialog({
               </form>
             ) : (
               <form className="space-y-3" onSubmit={createModel}>
-                <Field label="Model folder">
-                  <div className="flex gap-2">
-                    <Input
-                      className="min-w-0 flex-1"
-                      required
-                      value={sourcePath}
-                      title={sourcePath || undefined}
-                      placeholder="Choose or enter the local model folder"
-                      disabled={inspectMutation.isPending || createMutation.isPending}
-                      onChange={(event) => updateSourcePath(event.target.value)}
-                    />
-                    {window.electronAPI?.selectFolder ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        aria-label="Choose model folder"
-                        disabled={inspectMutation.isPending || createMutation.isPending}
-                        onClick={chooseFolder}
-                      ><FolderOpen /></Button>
-                    ) : null}
+                <input
+                  ref={weightInputRef}
+                  type="file"
+                  accept=".pt,.pth,.ckpt,.h5,.hdf5,.keras,.onnx,.pb,.safetensors,.tflite"
+                  className="hidden"
+                  onChange={onWeightInputChange}
+                />
+                <input
+                  ref={companionInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={onCompanionInputChange}
+                />
+                <div className="rounded-md border border-primary/30 bg-primary/5 p-4">
+                  <p className="font-medium">Start by choosing the model weight file</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {window.electronAPI?.openFile
+                      ? "AddaxAI will inspect the selected file's folder. The files listed below will be copied into its managed model folder."
+                      : "Choose a weight file to stream it to this PC. Browsers cannot read neighboring files, so add any inference.py, dataset YAML, or model config with Add companion files."}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <Button
                       type="button"
-                      variant="outline"
-                      disabled={!sourcePath.trim() || inspectMutation.isPending}
-                      onClick={inspectFolder}
-                    >{inspectMutation.isPending ? "Inspecting…" : "Inspect folder"}</Button>
+                      disabled={Boolean(uploadProgress) || inspectMutation.isPending || createMutation.isPending}
+                      onClick={chooseWeightFile}
+                    ><FileUp /> Choose weight file</Button>
+                    {uploadId ? (
+                      <Button type="button" variant="outline" disabled={Boolean(uploadProgress) || inspectMutation.isPending} onClick={() => companionInputRef.current?.click()}>
+                        Add companion files
+                      </Button>
+                    ) : null}
+                    {uploadId ? (
+                      <Button type="button" variant="ghost" disabled={createMutation.isPending} onClick={() => {
+                        cancelUploadSession();
+                        clearInferredValues();
+                        sourcePathRef.current = "";
+                        setSourcePath("");
+                      }}><X /> Cancel selected files</Button>
+                    ) : null}
                   </div>
-                  {!window.electronAPI?.selectFolder ? (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Paste the full folder path from Windows Explorer on this PC.
-                    </p>
+                  {uploadId && !uploadProgress ? (
+                    <p className="mt-2 text-sm text-muted-foreground">Weight and selected companion files are staged temporarily on this PC.</p>
                   ) : null}
-                </Field>
+                  {uploadProgress ? (
+                    <div className="mt-3 space-y-2" aria-live="polite">
+                      <p className="text-sm">Uploading {uploadingName}: {formatBytes(uploadProgress.loaded)} / {formatBytes(uploadProgress.total)}</p>
+                      <progress className="w-full" max={Math.max(uploadProgress.total, 1)} value={uploadProgress.loaded} />
+                      <Button type="button" size="sm" variant="outline" onClick={() => {
+                        cancelUploadSession();
+                        setInspection(null);
+                        clearInferredValues();
+                        sourcePathRef.current = "";
+                        setSourcePath("");
+                      }}>Cancel upload</Button>
+                    </div>
+                  ) : null}
+                </div>
+                <details className="rounded-md border p-3">
+                  <summary className="cursor-pointer text-sm font-medium">Or inspect an existing model folder</summary>
+                  <div className="mt-3 space-y-2">
+                    <Field label="Model folder">
+                      <div className="flex gap-2">
+                        <Input
+                          className="min-w-0 flex-1"
+                          value={uploadId ? "Selected files are staged on this PC" : sourcePath}
+                          title={uploadId ? undefined : sourcePath || undefined}
+                          placeholder="Choose or enter the local model folder"
+                          disabled={Boolean(uploadId) || inspectMutation.isPending || createMutation.isPending}
+                          onChange={(event) => updateSourcePath(event.target.value)}
+                        />
+                        {window.electronAPI?.selectFolder ? (
+                          <Button type="button" variant="outline" size="icon" aria-label="Choose model folder" disabled={Boolean(uploadId) || inspectMutation.isPending || createMutation.isPending} onClick={chooseFolder}>
+                            <FolderOpen />
+                          </Button>
+                        ) : null}
+                        <Button type="button" variant="outline" disabled={Boolean(uploadId) || !sourcePath.trim() || inspectMutation.isPending} onClick={inspectFolder}>
+                          {inspectMutation.isPending ? "Inspecting…" : "Inspect folder"}
+                        </Button>
+                      </div>
+                      {!window.electronAPI?.selectFolder ? (
+                        <p className="mt-1 text-xs text-muted-foreground">Paste the full folder path from Windows Explorer on this PC.</p>
+                      ) : null}
+                    </Field>
+                  </div>
+                </details>
                 {errorText ? <p role="alert" className="text-sm text-destructive">{errorText}</p> : null}
                 {inspection ? (
                   <div className="space-y-4 rounded-md border p-3">
@@ -539,13 +771,18 @@ export function CustomModelManagerDialog({
                           : "Choose the model type from the inspection results"}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {inspection.total_file_count} files · {formatBytes(inspection.total_size_bytes)} will be copied
+                        {inspection.total_file_count} files · {formatBytes(inspection.total_size_bytes)} will be copied from the selected folder
                       </p>
+                      {inspection.total_file_count > 1 ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          All listed files will be copied, including any extra weights and supporting files.
+                        </p>
+                      ) : null}
                       {type === "detection" ? (
                         <p className="text-sm text-muted-foreground">
                           {classNamesCount > 0
                             ? `${classNamesCount} class labels found${datasetFile ? ` in ${datasetFile}` : ""}.`
-                            : "No class labels found. If the checkpoint does not include them, add labels in Advanced settings."}
+                            : "No class labels found. Enter one class name per line below; IDs will be assigned in order."}
                         </p>
                       ) : null}
                     </div>
@@ -700,20 +937,38 @@ export function CustomModelManagerDialog({
                             </Select>
                           </Field>
                         ) : null}
-                        {backend === "rtdetrv2" ? (
-                          inspection.detector_config_candidates.length > 0 ? (
+                    {backend === "rtdetrv2" ? (
+                      inspection.detector_config_candidates.length > 0 ? (
                             <Field label="RT-DETRv2 YAML config">
-                              <Select value={detectorConfig || "choose-config"} onValueChange={(value) => setDetectorConfig(value === "choose-config" ? "" : value)}>
+                              <Select value={detectorConfig || "choose-config"} onValueChange={(value) => {
+                                setDetectorConfig(value === "choose-config" ? "" : value);
+                                setDetectorConfigTemplate("");
+                              }}>
                                 <SelectTrigger><SelectValue placeholder="Choose a config" /></SelectTrigger><SelectContent>
                                   <SelectItem value="choose-config" disabled>Choose a config</SelectItem>
                                   {inspection.detector_config_candidates.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}
                                 </SelectContent>
                               </Select>
                             </Field>
-                          ) : (
-                            <Field label="RT-DETRv2 YAML config (relative path)"><Input required value={detectorConfig} onChange={(event) => setDetectorConfig(event.target.value)} /></Field>
-                          )
-                        ) : null}
+                      ) : (
+                        <Field label="RT-DETRv2 architecture">
+                          <Select value={detectorConfigTemplate || "choose-template"} onValueChange={(value) => {
+                            setDetectorConfigTemplate(value === "choose-template" ? "" : value);
+                            setDetectorConfig("");
+                          }}>
+                            <SelectTrigger><SelectValue placeholder="Choose an architecture" /></SelectTrigger><SelectContent>
+                              <SelectItem value="choose-template" disabled>Choose an architecture</SelectItem>
+                              {inspection.detector_config_templates.map((value) => (
+                                <SelectItem key={value} value={value}>{formatRtdetrv2Template(value)}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            This creates a safe AddaxAI config with your class count and pretrained weights disabled. Choose the backbone that matches the checkpoint.
+                          </p>
+                        </Field>
+                      )
+                    ) : null}
                         {inspection.dataset_candidates.length > 1 && hasAmbiguousLabels ? (
                           <Field label="Class labels source">
                             <Select value={datasetFile || "choose-label-source"} onValueChange={(value) => selectDataset(value === "choose-label-source" ? "" : value)}>
@@ -733,18 +988,25 @@ export function CustomModelManagerDialog({
                       </p>
                     ) : null}
 
+                    {type === "detection" ? (
+                      <Field label="Class names (one per line)">
+                        <Textarea
+                          rows={4}
+                          value={classNamesText}
+                          placeholder={"fox\ndeer\nvehicle"}
+                          onChange={(event) => setClassNamesText(event.target.value)}
+                        />
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {requiresExplicitClassIds
+                            ? "Keep the numeric ID: prefix on every line to preserve the model's class mapping."
+                            : "Each non-empty line becomes the next class ID, starting at 0."}
+                        </p>
+                      </Field>
+                    ) : null}
+
                     <details className="rounded-md border p-3">
                       <summary className="cursor-pointer text-sm font-medium">Advanced settings</summary>
                       <div className="mt-3 space-y-3">
-                        {type === "detection" ? (
-                          <Field label="Class labels (JSON; optional if the checkpoint contains labels)">
-                            <Textarea
-                              value={classNamesText}
-                              placeholder={'{"0":"animal","1":"person"}'}
-                              onChange={(event) => setClassNamesText(event.target.value)}
-                            />
-                          </Field>
-                        ) : null}
                         {type === "classification" ? (
                           <>
                             <Field label="Region">
@@ -786,7 +1048,7 @@ export function CustomModelManagerDialog({
                 <DialogFooter>
                   <Button
                     type="submit"
-                    disabled={createMutation.isPending || inspectMutation.isPending || !canRegister}
+                    disabled={createMutation.isPending || inspectMutation.isPending || Boolean(uploadProgress) || !canRegister}
                   >
                     <Plus /> {type === modelType || onAnyCreated ? "Register and select" : "Register"}
                   </Button>
@@ -808,6 +1070,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <div>{children}</div>
     </div>
   );
+}
+
+function filenameStem(filename: string): string {
+  const extensionStart = filename.lastIndexOf(".");
+  return extensionStart > 0 ? filename.slice(0, extensionStart) : filename;
 }
 
 function formatBytes(value: number): string {
@@ -842,21 +1109,78 @@ function formatEnvironment(value: string): string {
   return value.split(/[-_]/).map((part) => part ? part[0].toUpperCase() + part.slice(1) : part).join(" ");
 }
 
-function countClassNames(value: string): number {
-  if (!value.trim()) return 0;
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (Array.isArray(parsed)) {
-      return parsed.every((item) => typeof item === "string" && item.trim()) ? parsed.length : 0;
-    }
-    if (parsed && typeof parsed === "object") {
-      const labels = Object.values(parsed);
-      return labels.length > 0 && labels.every((item) => typeof item === "string" && item.trim())
-        ? labels.length
-        : 0;
-    }
-  } catch {
-    return 0;
+function formatRtdetrv2Template(value: string): string {
+  const stem = value.replace(/\.ya?ml$/i, "");
+  const parts = stem.replace(/^rtdetrv2_/i, "").split("_");
+  let backbone: string;
+  let details: string[];
+
+  if (parts[0]?.toLowerCase() === "hgnetv2" && parts[1]) {
+    backbone = `HGNetv2 ${parts[1].toUpperCase()}`;
+    details = parts.slice(2);
+  } else {
+    const resnet = parts[0]?.match(/^r(\d+)vd$/i);
+    if (!resnet) return `${stem} (${value})`;
+    backbone = `ResNet ${resnet[1]} VD`;
+    details = parts.slice(1);
   }
-  return 0;
+
+  const recipeIndex = details.findIndex((part) => /^\d+(?:x|e)$/i.test(part));
+  const recipe = recipeIndex >= 0 ? `${details[recipeIndex].toUpperCase()} recipe` : "";
+  const dataset = details.find((part) => /^(?:coco|voc)$/i.test(part))?.toUpperCase() ?? "";
+  const variants = details
+    .filter((part, index) => index !== recipeIndex && !/^(?:coco|voc)$/i.test(part))
+    .map((part) => part.toUpperCase());
+  const description = [backbone, ...variants, recipe, dataset].filter(Boolean).join(" · ");
+  return `${description} (${value})`;
+}
+
+function classNamesToLines(classNames: Record<string, string>): string {
+  const sequential = hasZeroBasedSequentialIds(classNames);
+  return Object.entries(classNames)
+    .sort(([left], [right]) => {
+      const leftId = Number(left);
+      const rightId = Number(right);
+      if (Number.isFinite(leftId) && Number.isFinite(rightId)) return leftId - rightId;
+      return left.localeCompare(right);
+    })
+    .map(([id, name]) => sequential ? name : `${id}: ${name}`)
+    .join("\n");
+}
+
+function hasZeroBasedSequentialIds(classNames: Record<string, string>): boolean {
+  const ids = Object.keys(classNames);
+  return ids.length > 0 && ids.every((id, index) => id === String(index));
+}
+
+function linesToClassNames(value: string, requireExplicitIds = false): Record<string, string> {
+  const lines = value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length === 0) throw new Error("Enter at least one class name, one per line.");
+  const explicit = lines.map((line) => line.match(/^(\d+)\s*:\s*(.+)$/));
+  if (explicit.every(Boolean)) {
+    const ids = explicit.map((match) => match![1]);
+    const names = explicit.map((match) => match![2].trim());
+    if (ids.some((id) => !/^(0|[1-9]\d*)$/.test(id))) {
+      throw new Error("Class IDs must use canonical non-negative integers without leading zeroes.");
+    }
+    validateUniqueClassNames(names);
+    return Object.fromEntries(ids.map((id, index) => [id, names[index]]));
+  }
+  if (explicit.some(Boolean) || requireExplicitIds) {
+    throw new Error("Keep a numeric ID: name prefix on every line to preserve this model's class IDs.");
+  }
+  validateUniqueClassNames(lines);
+  return Object.fromEntries(lines.map((name, index) => [String(index), name]));
+}
+
+function validateUniqueClassNames(names: string[]): void {
+  const normalized = names.map((name) => name.trim().toLowerCase());
+  if (normalized.some((name) => !name) || new Set(normalized).size !== normalized.length) {
+    throw new Error("Class names must be non-empty and unique, ignoring letter case.");
+  }
+}
+
+function countClassNames(value: string, requireExplicitIds = false): number {
+  if (!value.trim()) return 0;
+  try { return Object.keys(linesToClassNames(value, requireExplicitIds)).length; } catch { return 0; }
 }

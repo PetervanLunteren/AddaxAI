@@ -8,13 +8,15 @@
 
 import type { QueryClient } from "@tanstack/react-query";
 
-import { api } from "../lib/api-client";
+import { api, API_BASE_URL } from "../lib/api-client";
 import type {
   CustomModelCreateRequest,
   CustomModelInfo,
   CustomModelInspectResponse,
   CustomModelUpdateRequest,
   CustomModelsResponse,
+  CustomModelUploadSession,
+  CustomModelUploadedFile,
   ModelInfo,
   ModelStatusResponse,
   TaxonomyResponse,
@@ -38,6 +40,57 @@ export function invalidateModelMetadata(
   }
 }
 
+export function uploadCustomModelFile(
+  uploadId: string,
+  file: File,
+  onProgress: (loaded: number, total: number) => void,
+  signal: AbortSignal,
+): Promise<CustomModelUploadedFile> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException("Upload canceled", "AbortError"));
+      return;
+    }
+    const xhr = new XMLHttpRequest();
+    const onAbort = () => xhr.abort();
+    signal.addEventListener("abort", onAbort, { once: true });
+    xhr.open(
+      "PUT",
+      `${API_BASE_URL}/api/ml/custom-models/uploads/${encodeURIComponent(uploadId)}/files/${encodeURIComponent(file.name)}`,
+    );
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.upload.onprogress = (event) => {
+      onProgress(event.loaded, event.lengthComputable ? event.total : file.size);
+    };
+    xhr.onload = () => {
+      signal.removeEventListener("abort", onAbort);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText) as CustomModelUploadedFile);
+        } catch {
+          reject(new Error("The upload completed but the server response could not be read."));
+        }
+        return;
+      }
+      let message = `Upload failed (HTTP ${xhr.status})`;
+      try {
+        const body = JSON.parse(xhr.responseText) as { detail?: unknown };
+        if (typeof body.detail === "string") message = body.detail;
+      } catch { /* retain the status message */ }
+      reject(new Error(message));
+    };
+    xhr.onerror = () => {
+      signal.removeEventListener("abort", onAbort);
+      reject(new Error("The model file upload failed. Check the connection and try again."));
+    };
+    xhr.onabort = () => {
+      signal.removeEventListener("abort", onAbort);
+      reject(new DOMException("Upload canceled", "AbortError"));
+    };
+    xhr.send(file);
+  });
+}
+
 export const modelsApi = {
   /**
    * List all detection models
@@ -55,6 +108,12 @@ export const modelsApi = {
   listEmbeddingModels: () => api.get<ModelInfo[]>("/api/ml/models/embedding"),
 
   listCustomModels: () => api.get<CustomModelsResponse>("/api/ml/custom-models"),
+
+  startCustomModelUpload: () =>
+    api.post<CustomModelUploadSession>("/api/ml/custom-models/uploads", {}),
+
+  cancelCustomModelUpload: (uploadId: string) =>
+    api.delete<void>(`/api/ml/custom-models/uploads/${encodeURIComponent(uploadId)}`),
 
   inspectCustomModel: (sourcePath: string) =>
     api.post<CustomModelInspectResponse>("/api/ml/custom-models/inspect", { source_path: sourcePath }),

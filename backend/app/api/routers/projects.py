@@ -40,6 +40,7 @@ from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.ml.detection_visibility import on_visible_frame
 from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
+from app.ml.schemas.model_manifest import uses_detection_classes_for_classification
 from app.models import Deployment, Detection, Event, File, Job, Project
 from app.models.detection_embedding import DetectionEmbedding
 from app.models.event_observation import EventObservation
@@ -51,6 +52,58 @@ ListProjectsMode = Literal["folder_run", "research", "all"]
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
+
+
+def _validate_classification_model_pair(
+    manifest_mgr, detection_model_id: str, classification_model_id: str | None
+) -> None:
+    """Validate model categories and allow only an eligible same-model alias."""
+    try:
+        detector = manifest_mgr.get_model(detection_model_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Detection model '{detection_model_id}' not found",
+        ) from None
+    if detector.model_category != "detection":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Model '{detection_model_id}' is not a detection model",
+        )
+    if not classification_model_id:
+        return
+
+    try:
+        classifier = manifest_mgr.get_model(classification_model_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Classification model '{classification_model_id}' not found",
+        ) from None
+    if classifier.model_category == "classification":
+        return
+    if (
+        classifier.model_category == "detection"
+        and classification_model_id != detection_model_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "A detector can be used as the classification model only when it is "
+                "the same managed custom detector selected for detection."
+            ),
+        )
+    if classifier.model_category == "detection" and uses_detection_classes_for_classification(
+        classifier
+    ):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=(
+            f"Model '{classification_model_id}' is not a classification model or an "
+            "eligible managed custom detector"
+        ),
+    )
 
 
 @router.get("", response_model=list[ProjectWithStats])
@@ -131,6 +184,10 @@ def create_project(
                 detail=f"Classification model '{project.classification_model_id}' not found",
             ) from None
 
+    _validate_classification_model_pair(
+        manifest_mgr, project.detection_model_id, project.classification_model_id
+    )
+
     # Normalize "none" to NULL and validate embedding model
     if project.embedding_model_id == "none":
         project.embedding_model_id = None
@@ -201,6 +258,22 @@ def duplicate_project(
     """
     if params.classification_model_id == "none":
         params.classification_model_id = None
+
+    from app.core.config import get_settings
+    from app.ml.manifest_manager import ManifestManager
+
+    source = crud_project.get_project(db, project_id)
+    if source is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Source project not found",
+        )
+    target_detection_id = source.detection_model_id if params.copy_settings else "MD5A-0-0"
+    _validate_classification_model_pair(
+        ManifestManager(get_settings().models_dir),
+        target_detection_id,
+        params.classification_model_id,
+    )
 
     try:
         new_project = crud_project.duplicate_project(db, project_id, params)
@@ -363,11 +436,18 @@ def get_project_model_readiness(
     env_mgr = EnvironmentManager()
     storage = ModelStorage(manifest_mgr.models_dir)
 
-    configured_ids = [
-        db_project.detection_model_id,
-        db_project.classification_model_id,
-        db_project.embedding_model_id,
-    ]
+    # A managed custom detector may also be selected as the classification
+    # model to reuse its class labels. Its weights/environment only need one
+    # setup row even though the project references it in two roles.
+    configured_ids = list(
+        dict.fromkeys(
+            (
+                db_project.detection_model_id,
+                db_project.classification_model_id,
+                db_project.embedding_model_id,
+            )
+        )
+    )
     missing: list[MissingModel] = []
     for model_id in configured_ids:
         if not model_id:
@@ -423,6 +503,39 @@ def update_project(
     Returns 404 if project doesn't exist.
     Returns 409 if new name conflicts with existing project.
     """
+    if project.classification_model_id == "none":
+        project.classification_model_id = None
+
+    update_fields = project.model_dump(exclude_unset=True)
+    if "detection_model_id" in update_fields or "classification_model_id" in update_fields:
+        db_existing = crud_project.get_project(db, project_id)
+        if db_existing is not None:
+            from app.core.config import get_settings
+            from app.ml.manifest_manager import ManifestManager
+
+            settings = get_settings()
+            manifest_mgr = ManifestManager(settings.models_dir)
+            detection_model_id = (
+                project.detection_model_id
+                if "detection_model_id" in update_fields
+                else db_existing.detection_model_id
+            )
+            classification_model_id = (
+                project.classification_model_id
+                if "classification_model_id" in update_fields
+                else db_existing.classification_model_id
+            )
+            try:
+                manifest_mgr.get_model(detection_model_id)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Detection model '{detection_model_id}' not found",
+                ) from None
+            _validate_classification_model_pair(
+                manifest_mgr, detection_model_id, classification_model_id
+            )
+
     # Normalize "none" to NULL and validate embedding model
     if project.embedding_model_id == "none":
         project.embedding_model_id = None

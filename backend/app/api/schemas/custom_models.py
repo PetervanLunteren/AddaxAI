@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.ml.schemas.model_manifest import DetectorBackend, ModelRegion
 
@@ -13,7 +13,8 @@ class CustomModelCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     type: Literal["detection", "classification"]
-    source_path: str = Field(min_length=1, max_length=4096)
+    source_path: str | None = Field(default=None, min_length=1, max_length=4096)
+    upload_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
     friendly_name: str = Field(min_length=1, max_length=120)
     env: str = Field(min_length=1, max_length=80)
     model_fname: str | None = Field(default=None, max_length=512)
@@ -33,6 +34,13 @@ class CustomModelCreate(BaseModel):
     detector_model_class: str | None = Field(default=None, max_length=80)
     detector_model_variant: str | None = Field(default=None, max_length=80)
     detector_config_fname: str | None = Field(default=None, max_length=512)
+    detector_config_template: str | None = Field(default=None, max_length=120)
+
+    @model_validator(mode="after")
+    def _require_one_source(self):
+        if bool(self.source_path) == bool(self.upload_id):
+            raise ValueError("Provide exactly one of source_path or upload_id")
+        return self
 
 
 class CustomModelInspectRequest(BaseModel):
@@ -70,6 +78,7 @@ class CustomModelInspectResponse(BaseModel):
     suggested_detector_model_class: str | None = None
     suggested_detector_model_variant: str | None = None
     detector_config_candidates: list[str]
+    detector_config_templates: list[str] = Field(default_factory=list)
     suggested_detector_config_fname: str | None = None
     environments: list[str]
     suggested_env: str | None = None

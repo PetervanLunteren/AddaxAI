@@ -92,6 +92,12 @@ export function AddDeploymentDialog({
 
   // Watch the selected detection model
   const selectedDetectionModel = form.watch("detection_model");
+  const selectedClassificationId = form.watch("classification_model");
+  const selectedClassificationInfo = classificationModels.find((model) => model.model_id === selectedClassificationId);
+  const classifierAliasMismatch = Boolean(
+    selectedClassificationInfo?.uses_detection_classes &&
+    selectedClassificationInfo.model_id !== selectedDetectionModel,
+  );
 
   // Query model status when dialog opens or model changes
   const { data: modelStatus, isLoading: isLoadingStatus } = useQuery({
@@ -156,6 +162,12 @@ export function AddDeploymentDialog({
   const onSubmit = (values: DeploymentFormValues) => {
     if (!projectId) {
       console.error("Project ID is missing");
+      return;
+    }
+    if (classifierAliasMismatch) {
+      form.setError("classification_model", {
+        message: "Select the same model for Detection and Classification to reuse detector classes.",
+      });
       return;
     }
 
@@ -402,11 +414,22 @@ export function AddDeploymentDialog({
                     noneLabel="No classification model"
                   >
                     <SelectItem value="none">∅ No classification model</SelectItem>
-                    <ClassificationModelGroupedItems models={classificationModels.filter((m) => m.model_id !== "none")} />
+                    <ClassificationModelGroupedItems
+                      models={classificationModels.filter((m) => m.model_id !== "none")}
+                      detectionModelId={selectedDetectionModel}
+                      selectedModelId={form.watch("classification_model")}
+                    />
                   </ModelSelect>
                   <FormDescription>
-                    Regional species classifier (optional)
+                    {selectedDetectionModel === selectedClassificationId && selectedClassificationInfo?.uses_detection_classes
+                      ? `Reuses ${Object.keys(selectedClassificationInfo.class_names ?? {}).length} detector classes and confidence without another inference.`
+                      : "Regional species classifier (optional). The same custom detector can be selected here to reuse its classes without another inference."}
                   </FormDescription>
+                  {classifierAliasMismatch ? (
+                    <p role="alert" className="text-sm text-destructive">
+                      This classification choice belongs to another detection model. Select that same detector or choose another classification model.
+                    </p>
+                  ) : null}
                   <FormMessage />
                 </FormItem>
               )}

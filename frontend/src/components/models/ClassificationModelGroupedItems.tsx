@@ -21,10 +21,19 @@ interface Props {
   /** Cls models from /api/ml/models/classification, with the "none"
    *  entry filtered out (the parent renders that one explicitly). */
   models: ModelInfo[];
+  /** Detector used by the current project; custom detector aliases require this same ID. */
+  detectionModelId?: string | null;
+  /** Keep an already selected incompatible alias visible so its state is explainable. */
+  selectedModelId?: string | null;
 }
 
-export function ClassificationModelGroupedItems({ models }: Props) {
-  const groups = groupClassificationModels(models);
+export function ClassificationModelGroupedItems({ models, detectionModelId, selectedModelId }: Props) {
+  const visibleModels = models.filter((model) =>
+    !model.uses_detection_classes ||
+    model.model_id === detectionModelId ||
+    model.model_id === selectedModelId,
+  );
+  const groups = groupClassificationModels(visibleModels);
   // `min_app_version` is the release a model first works on (a new env,
   // a new non-label class). Older builds must not be able to pick it,
   // or they download and run a model their code cannot handle. The gate
@@ -46,13 +55,31 @@ export function ClassificationModelGroupedItems({ models }: Props) {
               {group.label}
             </SelectLabel>
             {group.models.map((model) => (
+              (() => {
+                const detectorMismatch = model.uses_detection_classes && model.model_id !== detectionModelId;
+                const classCount = Object.keys(model.class_names ?? {}).length;
+                return (
               <SelectItem
                 key={model.model_id}
                 value={model.model_id}
-                disabled={tooOld(model)}
+                disabled={tooOld(model) || detectorMismatch}
               >
                 {model.emoji} {model.friendly_name}
-                {tooOld(model) ? (
+                {detectorMismatch ? (
+                  <>
+                    <br />
+                    <span className="text-xs text-muted-foreground">
+                      Select the same detection model to reuse its {classCount} classes without another inference.
+                    </span>
+                  </>
+                ) : model.uses_detection_classes ? (
+                  <>
+                    <br />
+                    <span className="text-xs text-muted-foreground">
+                      Reuses {classCount} detector classes and confidence; no second inference.
+                    </span>
+                  </>
+                ) : tooOld(model) ? (
                   <>
                     <br />
                     <span className="text-xs text-muted-foreground">
@@ -70,6 +97,8 @@ export function ClassificationModelGroupedItems({ models }: Props) {
                   )
                 )}
               </SelectItem>
+                );
+              })()
             ))}
           </SelectGroup>
         </Fragment>
