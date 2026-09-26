@@ -1,7 +1,7 @@
-# Custom questions about pixels in AddaxAI: investigation and future plan
+# Custom fields with optional AI suggestions in AddaxAI: investigation and future plan
 
 Status: investigation only, no code written.
-Date: 2026-09-25
+Date: 2026-09-25, revised 2026-09-26
 Branch the investigation ran on: `claude/lay-of-the-land-doulv4`
 Repo state at time of audit: `b8b75e2` on `main`, VERSION `0.0.0-dev`
 
@@ -16,6 +16,17 @@ It stops short of detailed UI design and field-level schema detail. What matters
 which approach is sound, which of the example questions it can and cannot answer, what the
 existing code already provides, and how answers are verified without mixing with species
 verification (section 9.7), which is the one UI decision it does make.
+
+**Update, 2026-09-26, after user feedback.** The investigation started as "can the AI
+answer a user's question about their images". Feedback then asked for something more basic:
+fields users fill in themselves, like snow depth in centimetres or antler size as S, M or L,
+with no AI involved. Section 15 argues why that should not be a second feature but the
+foundation of this one, and turns the plan into **custom fields**, typed values on images
+and detections, with AI suggestions as an optional switch on the fields where the method
+works. A "question" from the earlier sections is now a choice field with suggestions on.
+Sections 1 to 14 are left as written, because their reasoning about the AI part still
+holds; where section 15 replaces a part of them (the scope in 9.1, the storage in 9.2, the
+effort in 12), they point to it. The file keeps its name so existing links still work.
 
 ---
 
@@ -44,6 +55,27 @@ Verbatim, as given, over three messages:
 > the compute necessary for both? Does the embeddings training also work with epochs and
 > hyperparametets etc?
 
+Follow-ups, after the first version of this document was written, also verbatim:
+
+> I see that you do the full verification in the labels page. How to do that when it
+> regards a full image question?
+
+> How would one go about verification if there are N questions? Basically the labels are
+> for species labels, right? The counts are for counts and sex age behaviour. Wouldn't it
+> mix up if we use the same labels page for question answering? When is one verified? What
+> if the user had 50 % of the species labels verified and then only 10 % of the question,
+> and another question of 40%? Wouldn't it make more sense to have a question page with the
+> same dry helpers as in the labels page but not have it mix up??
+
+> Ive also got the feedback that folks want to have the option to add custom values to
+> images/events/detections like snow depth (input int cm), antler size (input S/M/L), etc,
+> without having to have it pre-filled by AI/embeddings. How would that work? How could we
+> combine this? Would it be good UI UX to combine these? And make the AI suggestions
+> pre-filled optional?
+
+The first two are answered in sections 9.7 and 9.8. The third changed the scope of the
+plan and is answered in section 15.
+
 ## 2. Questions to answer
 
 1. How can a user ask a closed question about their images and get an answer per image
@@ -58,9 +90,18 @@ Verbatim, as given, over three messages:
 6. What compute does each need?
 7. Does the embedding classifier have epochs and hyperparameters to tune?
 8. How feasible is it in the current repo?
+9. How are answers verified when there are several questions, without mixing with species
+   verification? (9.7)
+10. How would whole-image questions be reviewed? (9.8)
+11. How can users record their own values (snow depth, antler size) with no AI at all, on
+    images, events and detections? (15)
+12. Should manual values and AI answers be one feature, and should AI suggestions be
+    optional? (15.3, 15.4)
 
 ## 3. Goals
 
+- Let users record their own structured values on images and detections, such as snow
+  depth or antler size, with no AI involved (added after feedback, section 15).
 - Let a user define a question with a fixed set of answers and get a suggested answer on
   every detection in a project.
 - Stay offline, private and free to run, like the rest of the app.
@@ -450,11 +491,17 @@ embeddings for image-level questions.
 
 ### 9.1 Scope of v1
 
+Superseded by section 15, which widens v1 to manual fields on images and detections. What
+follows still describes the scope of the AI suggestions within it.
+
 Detection-level questions only, answered from the existing crop embeddings. Closed answer
 sets of two to about six answers. One project at a time. Images and video best frames,
 which is what already has vectors.
 
 ### 9.2 Storage
+
+Superseded by section 15.13, which generalises these two tables to typed fields and values
+on both images and detections. Kept for the reasoning.
 
 Two new tables, sketched rather than specified:
 
@@ -572,6 +619,8 @@ tiles instead of crops, with the same filters and bulk actions. Before that work
 
 ## 10. What to deliberately not build
 
+Section 15.17 adds to this list.
+
 - A generative VLM, local or cloud. Revisit only if users show the labelled approach is not
   enough, and then as an optional power feature.
 - Free-text answers. Closed sets only.
@@ -606,6 +655,9 @@ also improve species similarity for elongated animals. Measure before deciding.
 ---
 
 ## 12. Effort estimate
+
+This covers the AI part only. Section 15.19 adds the manual fields and revises the total to
+about four weeks.
 
 Backend, roughly a week:
 
@@ -656,6 +708,7 @@ plus the observation cohorts, custom classification model and embedding mentions
 `frontend/src/components/verify/SuggestionsToolbarPill.tsx`,
 `frontend/src/pages/ConfusionMatrixPage.tsx` (header),
 `backend/app/models/{detection,file,event}.py` (the verification fields),
+`backend/app/api/crud/event.py` (`_RegroupCarry`, `_snapshot_event_carry`),
 `frontend/src/components/verify/{FilesTab,FilesGrid,EventCollage}.tsx` (headers) and the
 directory listing of `frontend/src/components/verify/`, and the `future-plans/` documents
 for structure.
@@ -708,9 +761,325 @@ per class, 84.3% zero-shot) are second-hand.
 9. Decide what a question's scope stores (taxonomy ids, category) so relabelling moves
    detections in and out of scope without deleting answers.
 
+Section 15.20 adds five more.
+
 ---
 
-## 15. Plain English summary
+## 15. Custom fields: why the plan widened
+
+Sections 1 to 14 plan a feature where the AI answers a user's question. After they were
+written, feedback came in that changes what the feature is for. This section records the
+change, argues it in full, and gives the design that replaces parts of section 9. The earlier
+sections are left standing because their reasoning about the AI part still holds; where this
+section supersedes them, they point here.
+
+### 15.1 The feedback
+
+Quoted in section 1: users want to add their own values to images, events and detections,
+such as snow depth as a whole number in centimetres or antler size as S, M or L, **without**
+having them filled in by AI. The follow-up question was whether that should be combined with
+the AI questions, and whether the AI pre-fill should become optional.
+
+This is a different need from the one the investigation started from. The original brief
+was "can the AI answer my question". The feedback is "let me record my own observations in
+a structured way". The second is more basic, and the first turns out to be a special case of
+it.
+
+### 15.2 What changes, in one sentence
+
+"Custom questions answered by AI" becomes **custom fields**: user-defined, typed values on
+images and detections that people fill in, with **AI suggestions as an optional switch** on
+the fields where the method works. A question from sections 1 to 14 is now simply a choice
+field with AI suggestions switched on.
+
+### 15.3 Why combine instead of building two features
+
+The alternative is two features: a manual "custom attributes" feature for typed values, and
+the AI "questions" feature as planned. That was considered and rejected, for five reasons.
+
+1. **One idea for the user.** From the user's side both are "extra things I record about my
+   data". Asking them to decide up front whether a field is a question or an attribute, and
+   then look in two places, is a distinction the software cares about and the ecologist does
+   not. With one concept, whether AI helps is a property of a field, visible on its card and
+   switchable later, not a different part of the app.
+
+2. **Manual values are the AI's training data.** This is the strongest argument. Someone who
+   has typed antler size by hand for 200 detections has done exactly the labelling that the
+   teach round in section 9.3 asks for. In one system, switching AI on for that field starts
+   from those 200 labels and can go straight to the check step. In two systems those values
+   sit in a table the classifier cannot see, and the user is asked to label the same crops
+   again. The reverse also holds: a field that started with AI and whose suggestions the user
+   corrected is a manual field with a head start.
+
+3. **One storage model, one export shape, one review page.** Two features would mean two
+   tables with near-identical columns, two export paths into the same CSVs, two progress
+   indicators, and two review grids assembled from the same components. That is the drift
+   the conventions warn about (DRY, shared helpers): the second copy gets the bug fix a month
+   late. One values table and one review page carry both.
+
+4. **The manual feature is the foundation anyway.** An AI suggestion is useless until a
+   person can confirm or override it, which requires an input for that value, storage for a
+   human value, and a review flow. Those are precisely the parts of a manual feature. Built
+   the other way round (AI first, manual later) the manual part would be bolted onto a
+   design that assumed every value comes from a classifier.
+
+5. **It fixes the scope problem of the original plan honestly.** Sections 8.2 and 9.8
+   concluded that weather and other numeric or whole-image values are poorly served by
+   pixels. Under the old framing those needs were simply out of scope. Under the new one
+   they are served: snow depth becomes a manual number field today, with no AI promised.
+
+What combining costs: the setup dialog and the list page must handle fields with and
+without AI without either looking half-finished. Section 15.10 covers how.
+
+### 15.4 Why AI suggestions are optional and off by default
+
+- **Many fields cannot use AI at all.** Numbers, free text and event-level values have no
+  honest AI path (section 15.8). A default of "on" would be a default that is invalid for
+  half the field types.
+- **AI needs setup the user may not want.** Switching it on commits the user to a teach
+  round of at least 15 examples per answer and a check step. Someone who wants to type 40
+  snow depths should never see that.
+- **Trust.** Every AI value is a suggestion that has to be confirmed (section 9.7). A user
+  who did not ask for suggestions should not find thousands of unconfirmed values in their
+  project.
+- **The switch can be flipped later at no loss.** Off to on reuses every manual value as a
+  training label. On to off hides AI suggestions and leaves every human value untouched. So
+  the cautious default costs nothing.
+
+### 15.5 Precedent
+
+Manual custom fields are an established pattern. Timelapse, widely used for camera trap
+review, builds each project on a template of user-defined data fields (choices, counters,
+notes and flags) that people fill in per image (https://saul.cpsc.ucalgary.ca/timelapse/).
+The field types listed there are from memory of the tool, not re-read during this
+investigation. So the manual half of this design copies something proven; the optional AI
+layer on top is the new part, and it is the part sections 5 to 8 justify.
+
+### 15.6 The field model
+
+A field has:
+
+- **Name.** Shown in the UI and used for the export column, for example `snow_depth_cm`,
+  `antler_size`, `posture`.
+- **Level.** Image (file) or detection. Events are handled as a view, see 15.7.
+- **Type.** Choice (a fixed, ordered list), whole number, decimal, yes/no, or short text.
+- **Constraints.** Unit and minimum and maximum for numbers; the options for choice fields;
+  a maximum length for text. The API validates every write against them and rejects
+  anything outside, the same way `observation_attributes.py` guards sex, life stage and
+  behaviour. No silent coercion (convention 1).
+- **Scope** (optional). Which detections a detection field applies to, by species or
+  category, following the current label as in 9.7.
+- **AI suggestions.** Off by default. Only offered for choice and yes/no fields at detection
+  level in v1.
+
+Two worked examples:
+
+| | Snow depth | Antler size |
+|---|---|---|
+| Level | Image | Detection |
+| Type | Whole number | Choice |
+| Constraints | cm, 0 to 300 | S, M, L, cannot tell |
+| Scope | All images | Red deer, roe deer |
+| AI suggestions | Not available for numbers | Available; off until the user switches it on |
+
+### 15.7 Why there is no stored event level
+
+The feedback asks for values on events too. The honest answer is that events in this app
+are not stable enough to hold typed values, and they do not need to.
+
+Events are regenerated. A regroup deletes a deployment's events and builds new ones, and
+`_RegroupCarry` in `backend/app/api/crud/event.py` spells out what survives, "with two
+different rules". Counts and the confirmed flag are claims about one exact file set, so they
+carry only onto a new event with the same files; a merged or split event loses them. Notes
+are free text, so they are never lost: a split copies the note to every child and a merge
+joins the notes in time order, one per line.
+
+Neither rule works for a typed value. Carrying by exact file set would silently drop a snow
+depth whenever a regroup changes an event's boundaries. Carrying by overlap, as notes do,
+has no answer for a merge of two events with 20 cm and 35 cm: a number cannot be
+concatenated. Every choice there loses a human value or invents one.
+
+So values are **stored only on images and detections**, which are stable. Events get a
+**view** instead:
+
+- In `EventDetailModal`, image fields appear as inputs for the whole event. Setting snow
+  depth there writes the value to every file in the event.
+- Displaying it reads the files: one value if they all agree, "mixed" with the range if they
+  do not, empty if none is set.
+- A regroup changes nothing, because nothing is stored on the event. A merged event whose
+  halves had different depths simply shows "mixed", which is true.
+
+This gives users what they asked for (set snow depth once per visit) without a third level
+of storage or a carry rule that cannot be right.
+
+### 15.8 Why fields cannot live on observation cohorts
+
+`event_observations` rows are deleted and recreated on every relabel, threshold change and
+regeneration, under the seed rule described in `DEVELOPERS.md`, "Observation cohorts". Sex,
+life stage and behaviour survive that only because they are hand-carried field by field in
+`PriorObs`, `_snapshot_event_carry` and `deployment_split.py`, and the docs warn that
+forgetting one silently loses data. Arbitrary user fields cannot be added to that list.
+
+They stay built-in because they map onto Camtrap DP's own columns. Per-animal attributes
+that users invent, like antler size, belong on the detection, which is one animal in one
+frame and is stable.
+
+### 15.9 Where AI suggestions can be switched on
+
+| Level | Choice / yes-no | Whole number / decimal | Text |
+|---|---|---|---|
+| Detection | Yes, v1 (sections 7 to 9) | No | No |
+| Image | Later, needs whole-image embeddings (9.8) | No | No |
+| Event (view) | No | No | No |
+
+- **Numbers.** A regression on the embeddings could technically output a snow depth, but
+  nothing in section 5 supports it, and without a snow stake in view there is nothing in the
+  pixels to measure against. It would produce confident, unverifiable numbers. Not offered.
+  In the setup dialog the switch is visible but disabled, with a one-line reason, so the user
+  learns why instead of wondering where it went.
+- **Text.** Nothing to classify.
+- **Events.** There is no single thing to embed. A later version could show the most common
+  detection answer per event as a summary, but not store it.
+
+### 15.10 Keeping the two kinds of field from cluttering each other
+
+- **The setup dialog** asks name, level, type and constraints first. The AI switch sits
+  below them, only enabled when the level and type allow it.
+- **A field with AI off** has no rounds, accuracy, retrain pill or teach screens anywhere.
+  Its card on the list page shows only filled x of y.
+- **A field with AI on** gains the teach, check, rounds and answer-all flow from the canvas
+  (screens 3 to 7), and its card also shows confirmed x of y and the held-out accuracy.
+- **Switching AI on** for a field that already has manual values counts those values per
+  answer. If every answer has the minimum, the flow opens at the check step; if not, the
+  teach screen shows which answers still need examples.
+- **Switching AI off** hides all AI values of that field from grids, detail views and
+  exports. Human values stay. Switching back on restores the last fitted classifier's
+  suggestions or refits.
+
+### 15.11 Where values are entered
+
+- **Detail views, for one-off entries while browsing.** Image fields appear as inputs in
+  `FileDetailModal`, detection fields in `DetectionDetailModal`, and image fields as event
+  inputs in `EventDetailModal` (15.7), next to the notes, counts and demographics that
+  already live there. That is where someone paging through photos notices the snow.
+- **The field's review page, for bulk work.** The Questions review page from the canvas,
+  generalised: pick a field, get `FilesGrid` for image fields or `CropGrid` for detection
+  fields, filter to "empty" or "not confirmed", select, set. Choice fields keep the 1 to 9
+  and 0 keys. Number fields put an input in the bulk bar, so a run of 30 frames from one
+  morning can be set to 35 cm at once; a sort by time within a deployment makes such runs
+  easy to select.
+- **Progress per field.** Filled x of y for every field, plus confirmed x of y where AI is
+  on. Separate from species verification and from Counts, as 9.7 requires.
+
+### 15.12 Filled and confirmed
+
+One flag per value, `source`, human or AI, covers both kinds of field.
+
+- A value a person typed or picked is filled and confirmed at once.
+- An AI value is filled but not confirmed until a person accepts or changes it; accepting it
+  flips its source to human.
+- Filled x of y counts both. Confirmed x of y counts human values only.
+
+So manual fields have no separate confirmation step, and AI fields reuse the model from 9.7
+unchanged.
+
+### 15.13 Storage, replacing 9.2
+
+Sketched, not specified:
+
+- `custom_fields`: project, name, export key, level, type, constraints (unit, min, max,
+  options, max length) as JSON, scope, `ai_enabled`, and for AI fields the embedding model
+  id, fitted weights, held-out accuracy and fitted timestamp. Options keep a stable id per
+  option, so renaming "Medium" to "M" does not orphan stored values.
+- `custom_field_values`: field, `file_id` or `detection_id` (two nullable foreign keys,
+  exactly one set, enforced by a check constraint), `value_num` or `value_text` (the type
+  decides which), `source` (human or AI), `score` for AI values, updated timestamp.
+
+Two explicit foreign keys rather than a generic `target_type` and `target_id`: SQLite can
+cascade from a real foreign key, and the leaf-first purge in `purge_deployment_data()`
+(`DEVELOPERS.md`, "Deleting analysis data") can empty this table first, before detections and
+files, so their deletes find nothing to cascade to. A string target id would cascade from
+nothing and leave orphans.
+
+One row per (field, target): human and AI never coexist for the same value, because
+accepting or overriding a suggestion replaces it.
+
+### 15.14 Exports
+
+- Detection fields: one column per field in the detection-level tables.
+- Image fields: one column per field in the file-level tables.
+- Event rows in `counts.csv`: the event view from 15.7, a single value or empty when mixed,
+  with a documented rule.
+- Where AI is on, a companion column says whether the value was confirmed, so an analyst can
+  filter to human values.
+- Camtrap DP is still open (14.4): the standard has no slot for arbitrary fields, and adding
+  columns may break validators.
+
+### 15.15 What stays the same
+
+- The whole AI method: sections 5 to 8, the loop in 9.3, training in 9.4, the deployment
+  split, the centre-crop finding and the step-zero spike.
+- Verification per value and per field, never mixed with species or counts (9.7).
+- Built-in sex, life stage and behaviour on cohorts, and the separation from `behavior`
+  (9.6).
+- The separation from SpeciesNet fine-tuning (8.3).
+
+### 15.16 Terminology in the UI
+
+The sidebar item, list page and review page become "Fields" (or "Custom fields") instead of
+"Questions". "Question" only fit the AI case: nobody asks a question when typing a snow
+depth. The AI part is called "suggestions", matching the existing species suggestions
+(`SuggestionsToolbarPill`), so users meet one word for one idea across the app.
+
+### 15.17 Additions to what not to build
+
+- A stored event level, for the reasons in 15.7.
+- Fields on observation cohorts (15.8).
+- AI for numbers, text or events (15.9).
+- Formulas or computed fields ("antler size from pixel width").
+- Fields shared across projects, or a template library. Useful later, YAGNI now.
+- Dates, times, coordinates or file attachments as field types.
+
+### 15.18 Additions to risks
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| Users expect event-level storage and are surprised values sit on images | Medium | The event view writes to all files and shows "mixed" honestly; say so in the docs |
+| Editing a field's type or options after values exist | High, data loss | Allow adding options and renaming; block type changes and option removal while values exist |
+| Setup dialog feels heavy for simple manual fields | Medium | AI switch last, disabled where not possible, nothing about rounds unless on |
+| Export tables grow wide with many fields | Low | One column per field is still the most usable shape for analysts in R |
+| Generalising the Labels components takes longer than planned | Medium | It was already the main frontend cost in 12; manual fields add number input, not new grids |
+
+### 15.19 Revised effort
+
+On top of section 12's three weeks for the AI part:
+
+- Field model, types, constraints and validation, replacing the question tables: one day
+- Inputs per type in the three detail views, including the event view: two days
+- Number and text input in the bulk bar, and the time-ordered sort: one day
+- Field setup dialog with levels, types and the conditional AI switch: one day
+- Exports for image and detection fields, and the event view rule: half a day
+
+About a week more, so roughly **four weeks for a v1** that ships manual fields at both
+levels and AI suggestions for detection choice fields.
+
+The manual part could ship first and alone, in about a week and a half, since it needs no
+embeddings, no training and no spike. That is a reasonable order: it delivers what users
+asked for now, and every value entered becomes training data for when AI suggestions land.
+
+### 15.20 Additions to open items
+
+1. Decide whether the manual part ships first, as 15.19 suggests.
+2. Settle the event view display rule for "mixed" in the UI and in `counts.csv`.
+3. Decide which edits to a field are allowed once values exist.
+4. Confirm the Timelapse field types against its current documentation, if the comparison
+   is used in user-facing docs.
+5. Decide the name: "Fields" or "Custom fields".
+
+---
+
+## 16. Plain English summary
+
 
 Letting people type any question and get an answer is possible with vision-language models,
 but on camera trap images the ones that fit on a laptop are weak, biased towards "yes", and
@@ -730,3 +1099,15 @@ species verification or with other questions. Sleeping versus resting, coat colo
 antler size and weather are hard or impossible from a single crop, and antler questions are
 hurt further because the current crop cuts off the ends of wide boxes. Before building, spend
 a day testing a few real questions on stored features to see whether the numbers hold up.
+
+The plan has since grown on user feedback. People also want to record their own values,
+like snow depth in centimetres per image or antler size per animal, with no AI involved.
+Rather than build that as a second feature, it becomes the base of this one: custom fields
+that users define and fill in on images and detections, with AI suggestions as an optional
+switch that is off by default and only offered where it genuinely works, which in v1 means
+choice fields on detections. Combining them means one place, one kind of storage and one
+export shape, and every value someone types by hand becomes training data if they later
+switch suggestions on. Events get no stored values of their own, because the app rebuilds
+events and a number cannot survive a merge; setting snow depth on an event writes it to the
+event's images instead. The manual part is the cheaper half, about a week and a half, and
+could ship first; the whole thing is roughly four weeks.
