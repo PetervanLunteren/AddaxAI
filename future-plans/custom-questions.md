@@ -12,9 +12,10 @@ simplest one won, how it relates to the planned SpeciesNet fine-tuning feature, 
 deliberately leave out, the risks, and the sources. It is written to be picked up cold
 months later without rerunning the investigation.
 
-It deliberately stops short of UI design and field-level schema detail. What matters here
-is which approach is sound, which of the example questions it can and cannot answer, and
-what the existing code already provides.
+It stops short of detailed UI design and field-level schema detail. What matters here is
+which approach is sound, which of the example questions it can and cannot answer, what the
+existing code already provides, and how answers are verified without mixing with species
+verification (section 9.7), which is the one UI decision it does make.
 
 ---
 
@@ -162,7 +163,29 @@ scikit-learn. scikit-learn exists only in the `tensorflow-v1` and `tensorflow-v2
 backend's own `requirements.txt` has numpy but neither scipy nor scikit-learn. Section 9.4
 covers the choice.
 
-### 4.7 What does not exist
+### 4.7 Verification is already one flag per job
+
+The app keeps a separate confirmation flag for each kind of review, and never lets one
+imply another:
+
+- **Labels** confirms species. `Detection.verified` (`backend/app/models/detection.py:98`),
+  rolled up to `File.verified` (`backend/app/models/file.py:103`), which the file's docstring
+  calls "the single user-facing verification flag": badges, filters, navigation and the event
+  MaxN rollup all read it.
+- **Counts** confirms counts and demographics. `Event.confirmed`
+  (`backend/app/models/event.py:66`), documented as "distinct from Detection.verified" and
+  cleared automatically when the event's species or count set changes.
+
+Custom questions are a third job and need the same separation. Showing question answers on
+the Labels page would give `verified` two meanings and corrupt the rollup everything else
+reads. Section 9.7 has the design.
+
+The Labels page is built from parts that are already separate components:
+`frontend/src/components/verify/{CropGrid,FilesGrid,VerifyFilterBar,FilterChips,ConfidenceRangeFilter,BulkActionBar,SuggestionsToolbarPill}.tsx`
+plus `grid-selection.ts`, `shortcuts.ts` and `labels-filters.ts`. `FilesTab` shows one tile per
+whole frame, empty frames included, and `CropGrid` one tile per detection.
+
+### 4.8 What does not exist
 
 - No full-frame (scene) embedding. Every vector is a detection crop.
 - No per-detection storage for arbitrary question answers.
@@ -453,8 +476,8 @@ Deleting a project or deployment must remove these rows. They join the leaf-firs
 3. Fit, with a split by deployment, report held-out accuracy and a confusion matrix.
 4. Show the least certain detections next, label, refit. Repeat until the user is happy.
 5. Predict all embedded detections, write AI answers with scores.
-6. Review in the verify grid: filter by answer and score, confirm or correct. Corrections
-   become labels for the next fit.
+6. Review on the question's own review page (section 9.7): filter by answer and score,
+   least sure first, confirm or correct. Corrections become labels for the next fit.
 
 ### 9.4 Where the training runs
 
@@ -484,6 +507,66 @@ column is the only honest place, to decide later.
 of truth for one fact. Keep them separate in v1 and document it. A later step could offer
 "use this question to suggest behaviour", which writes suggestions into the cohort field
 through the existing human edit path. Not in v1.
+
+### 9.7 Verification with N questions
+
+A question's answers are confirmed on a Questions review page, never on the Labels page.
+Labels stays for species, Counts for counts and demographics, Questions for answers.
+
+**What "confirmed" means.** Confirmation belongs to one answer: the pair (detection,
+question), stored as the `source = human` row in `detection_answers`. Nothing rolls up across
+questions. Question answers never read or write `Detection.verified`, `File.verified` or
+`Event.confirmed`, and those never confirm an answer. A project can have species 50%
+verified, posture 10% confirmed and coat colour 40% confirmed, and those are three
+independent numbers shown in three places. The answers a user gave while teaching count as
+confirmed.
+
+**When a question is done.** When the user says so. The question card shows confirmed
+count and percentage, how many unconfirmed answers remain, and how many of those the model
+was unsure about. No global "done" state is derived.
+
+**How it interacts with species labels.**
+
+- Scope follows the current species label. A question scoped to wild boar covers what is
+  labelled wild boar now. A crop relabelled to red deer drops out of scope: its answer is
+  hidden, not deleted, and returns if the label is reverted. A crop marked as a false
+  detection leaves every question.
+- Species confirmation is not a prerequisite. The review page offers a "species verified
+  only" filter for users who want answers on top of confirmed species; making it mandatory
+  would block the feature on the slowest step.
+- Each tile shows the species label and whether it is verified, as context only.
+
+**One question at a time.** The review page has a question selector at the top. Keys 1 to 9
+and 0 map to that question's answers and each tile carries one answer badge. Several badges
+per tile, or answering several questions per crop in one pass, looks efficient but forces a
+change of judgement on every tile; one question per pass is faster on the keyboard and more
+accurate.
+
+**Shared parts, not copies.** The page is assembled from the Labels page's components
+(section 4.7): `CropGrid` for animal questions, `FilesGrid` for whole-image ones, the filter
+bar and chips, the confidence range filter, `BulkActionBar`, the grid selection store, the
+shortcut table, and the `SuggestionsToolbarPill` pattern for the "corrections since last
+round, retrain" pill. Some of them assume a species label today and need the item type and
+the answer set as inputs instead. That generalisation is the main frontend cost and is the
+shared-helper work the conventions ask for; the alternative, a second copy of the grid, is
+what they forbid.
+
+### 9.8 Whole-image questions, later
+
+Out of scope for v1 (section 10), but the design leaves room. The question setup would ask
+"about the animal" or "about the whole image", and the review page would show `FilesGrid`
+tiles instead of crops, with the same filters and bulk actions. Before that works:
+
+- It needs a second embedding pass on full frames, one per file, empty frames included,
+  which are usually most of a project. Per item it costs about the same as a detection
+  embedding; videos get one frame.
+- Full frames must be letterboxed. A centre crop of a 16:9 frame drops about 44% of its
+  width, which for a scene question is much of the evidence.
+- Review needs a time-ordered sort within a deployment, so a run of consecutive frames with
+  the same scene can be selected and confirmed in one action.
+- Weather specifically is still better served by historical weather data for the
+  deployment's coordinates and timestamp. Whole-image questions pay off for things that are
+  visible in the scene: snow cover, flooding, vegetation state, a knocked-over camera.
 
 ---
 
@@ -532,13 +615,14 @@ Backend, roughly a week:
 - Accuracy split by deployment, shared with the confusion matrix endpoint: one day
 - Exports: half a day
 
-Frontend, about a week: question setup, the labelling view (reusing the crop grid), the
-accuracy panel, and the answer filter in verify.
+Frontend, about a week and a half: question setup, the labelling view, the accuracy panel,
+and the Questions review page. The extra half week is generalising the shared Labels
+components (section 9.7) to take an item type and an answer set, rather than copying them.
 
 Docs, half a day: one page under `docs/docs/guides/` with the honest limits, including
 which kinds of questions do not work.
 
-Total, about two and a half weeks for a v1. The crop change, if the spike justifies it, is
+Total, about three weeks for a v1. The crop change, if the spike justifies it, is
 another day plus a re-embed for every project.
 
 ## 13. Step zero, before any of that
@@ -570,7 +654,10 @@ plus the observation cohorts, custom classification model and embedding mentions
 (header), `backend/app/workers/detection_worker.py` (phase 8),
 `backend/app/ml/envs/addaxai-base/linux/environment.yml`, `backend/requirements.txt`,
 `frontend/src/components/verify/SuggestionsToolbarPill.tsx`,
-`frontend/src/pages/ConfusionMatrixPage.tsx` (header), and the `future-plans/` documents
+`frontend/src/pages/ConfusionMatrixPage.tsx` (header),
+`backend/app/models/{detection,file,event}.py` (the verification fields),
+`frontend/src/components/verify/{FilesTab,FilesGrid,EventCollage}.tsx` (headers) and the
+directory listing of `frontend/src/components/verify/`, and the `future-plans/` documents
 for structure.
 
 Grepped: `fine-tun|finetun` (only env files), `scikit|sklearn|scipy` across envs and
@@ -616,6 +703,10 @@ per class, 84.3% zero-shot) are second-hand.
 6. Read the second-hand papers in full.
 7. Agree the UI placement that keeps this apart from SpeciesNet fine-tuning, and share the
    deployment-split validation between the two.
+8. List which Labels components assume a species label, and how each takes an item type
+   and answer set instead.
+9. Decide what a question's scope stores (taxonomy ids, category) so relabelling moves
+   detections in and out of scope without deleting answers.
 
 ---
 
@@ -632,7 +723,10 @@ for species suggestions, so this is a sibling feature, not a new idea for the ap
 separate from fine-tuning SpeciesNet: that makes a new portable species model from
 thousands of labels and needs a GPU for hours, while this adds answers to one project from a
 few dozen labels. Both can live in the app if they sit in different places and share one
-honest accuracy check split by camera site. Sleeping versus resting, coat colour at night,
+honest accuracy check split by camera site. Answers are reviewed on their own Questions
+page, one question at a time, built from the same grid, filter and keyboard parts as the
+Labels page, and each question keeps its own confirmed percentage that never mixes with
+species verification or with other questions. Sleeping versus resting, coat colour at night,
 antler size and weather are hard or impossible from a single crop, and antler questions are
 hurt further because the current crop cuts off the ends of wide boxes. Before building, spend
 a day testing a few real questions on stored features to see whether the numbers hold up.
