@@ -30,3 +30,15 @@ def test_encoded_unmapped_label_uses_category_when_label_is_missing():
 
     assert label_matches_filter(None, None, {token}, category="red fox")
     assert not label_matches_filter(None, "taxonomy-uuid", {token}, category="red fox")
+
+
+def test_taxonomy_uuid_matches_only_the_taxonomy_column():
+    taxonomy_id = "0b6f3c1e-8f7a-4c55-9d1f-2a4e5b6c7d8e"
+
+    assert parse_label_filter_ids([taxonomy_id, "fox"]) == (
+        [taxonomy_id, "fox"],
+        ["fox"],
+        [],
+    )
+    assert label_matches_filter("deer", taxonomy_id, {taxonomy_id})
+    assert not label_matches_filter(taxonomy_id, None, {taxonomy_id})

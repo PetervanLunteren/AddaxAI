@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ApiError } from "@/lib/api-client";
 
 const REGION_OPTIONS = ["global", "africa", "americas", "asia", "europe", "oceania"] as const;
 const NEW_DETECTOR_BACKENDS = ["yolo", "rtdetrv2"] as const;
@@ -72,7 +73,8 @@ export function CustomModelManagerDialog({
   const uploadAbortRef = useRef<AbortController | null>(null);
   const weightInputRef = useRef<HTMLInputElement>(null);
   const companionInputRef = useRef<HTMLInputElement>(null);
-  const [type, setType] = useState<CustomModelType | "">(modelType);
+  // Reset on every open below, so the initial value matches that reset.
+  const [type, setType] = useState<CustomModelType | "">("");
   const [registrationRole, setRegistrationRole] = useState<CustomModelRegistrationRole | "">("");
   const [listType, setListType] = useState<CustomModelType>(modelType);
   const [sourcePath, setSourcePath] = useState("");
@@ -104,20 +106,27 @@ export function CustomModelManagerDialog({
   });
   const environments = inspection?.environments ?? data?.environments ?? [];
 
-  const cancelUploadSession = useCallback(() => {
+  // Side effects only (abort, refs, server cleanup); safe to call from an
+  // effect. The matching state reset lives in cancelUploadSession and in
+  // the render-time reset below.
+  const discardUploadSession = useCallback(() => {
     uploadGeneration.current += 1;
     uploadAbortRef.current?.abort();
     uploadAbortRef.current = null;
     const previousUploadId = uploadIdRef.current;
     uploadIdRef.current = null;
     stagedWeightFilenameRef.current = "";
-    setUploadId(null);
-    setUploadProgress(null);
-    setUploadingName("");
     if (previousUploadId) {
       void modelsApi.cancelCustomModelUpload(previousUploadId).catch(() => undefined);
     }
   }, []);
+
+  const cancelUploadSession = useCallback(() => {
+    discardUploadSession();
+    setUploadId(null);
+    setUploadProgress(null);
+    setUploadingName("");
+  }, [discardUploadSession]);
 
   function clearUploadAfterCreate() {
     uploadAbortRef.current = null;
@@ -132,22 +141,31 @@ export function CustomModelManagerDialog({
     onOpenChange(nextOpen);
   }
 
+  // Reset form state when the dialog opens/closes or switches model type.
+  // Done during render (React's "adjust state on prop change" pattern) so
+  // it does not cascade through an effect.
+  const [resetFor, setResetFor] = useState({ open, modelType });
+  if (resetFor.open !== open || resetFor.modelType !== modelType) {
+    setResetFor({ open, modelType });
+    setUploadId(null);
+    setUploadProgress(null);
+    setUploadingName("");
+    if (open) {
+      setType("");
+      setRegistrationRole("");
+      setListType(modelType);
+      setEditing(null);
+      setErrorText(null);
+      setInspection(null);
+      setSourcePath("");
+    }
+  }
+
   useEffect(() => {
     inspectGeneration.current += 1;
-    if (!open) {
-      cancelUploadSession();
-      return;
-    }
-    setType("");
-    setRegistrationRole("");
-    setListType(modelType);
-    setEditing(null);
-    setErrorText(null);
-    setInspection(null);
-    cancelUploadSession();
-    setSourcePath("");
-    sourcePathRef.current = "";
-  }, [cancelUploadSession, open, modelType]);
+    discardUploadSession();
+    if (open) sourcePathRef.current = "";
+  }, [discardUploadSession, open, modelType]);
 
   const refreshModelLists = async () => {
     await Promise.all([
@@ -182,7 +200,10 @@ export function CustomModelManagerDialog({
       onOpenChange(false);
     },
     onError: (error) => {
-      if (!uploadIdRef.current) {
+      // The backend keeps staged uploads after a rejected registration, so
+      // the user can fix the form and retry. Only an expired session (404)
+      // forces choosing the files again.
+      if (!uploadIdRef.current || !(error instanceof ApiError && error.status === 404)) {
         setErrorText(getError(error));
         return;
       }
@@ -193,7 +214,7 @@ export function CustomModelManagerDialog({
       setInspection(null);
       clearInferredValues();
       setErrorText(
-        `${getError(error)} Uploaded files were discarded. Choose the weight file again and reselect any companion files before registering.`,
+        `${getError(error)} Choose the weight file again and reselect any companion files before registering.`,
       );
     },
   });

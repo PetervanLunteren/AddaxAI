@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import functools
 import hashlib
 import json
 import os
@@ -361,14 +362,19 @@ def _manifest_from_pack(payload: Any, source: Path, model_id: str) -> ModelManif
             example_image_url=payload.example_image_url or source_manifest.get("example_image_url"),
         )
     else:
-        detector_model_class = None
-        detector_model_variant = None
+        # Model class/variant only select legacy RF-DETR/RT-DETR builds, which
+        # new registrations do not support. Reject rather than drop them.
+        if getattr(payload, "detector_model_class", None) or getattr(
+            payload, "detector_model_variant", None
+        ):
+            raise CustomModelError(
+                "detector_model_class and detector_model_variant apply only to legacy "
+                "RF-DETR/RT-DETR packs; YOLO and RT-DETRv2 registrations do not use them"
+            )
         class_names = _source_value(payload, source_manifest, "class_names")
         metadata.update(
             detector_backend=backend,
             class_names=class_names,
-            detector_model_class=detector_model_class,
-            detector_model_variant=detector_model_variant,
             detector_config_fname=_source_value(payload, source_manifest, "detector_config_fname"),
             classification_uses_detection_classes=bool(
                 getattr(payload, "classification_uses_detection_classes", False)
@@ -491,6 +497,12 @@ def _model_record(manifest: ModelManifest) -> dict[str, Any]:
 
 
 def _available_rtdetrv2_templates() -> list[str]:
+    return list(_bundled_rtdetrv2_templates())
+
+
+@functools.cache
+def _bundled_rtdetrv2_templates() -> tuple[str, ...]:
+    """Parse the bundled templates once; they are fixed for the process lifetime."""
     template_dir = (
         Path(__file__).resolve().parent
         / "third_party"
@@ -498,13 +510,14 @@ def _available_rtdetrv2_templates() -> list[str]:
         / "configs"
         / "rtdetrv2"
     )
-    return sorted(
-        path.name
-        for path in template_dir.glob("rtdetrv2_*.yml")
-        if path.is_file()
-        and isinstance(_read_small_yaml(path), dict)
-        and isinstance(_read_small_yaml(path).get("__include__"), list)
-    )
+    names: list[str] = []
+    for path in template_dir.glob("rtdetrv2_*.yml"):
+        if not path.is_file():
+            continue
+        document = _read_small_yaml(path)
+        if isinstance(document, dict) and isinstance(document.get("__include__"), list):
+            names.append(path.name)
+    return tuple(sorted(names))
 
 
 def _generated_rtdetrv2_yaml(
@@ -929,16 +942,18 @@ class CustomModelManager:
 
     def create(self, payload: Any) -> dict[str, Any]:
         upload_id = getattr(payload, "upload_id", None)
-        try:
-            source_path = (
-                payload.source_path
-                if payload.source_path
-                else str(self._upload_session(upload_id))
-            )
-            return self._create_from_source(payload, source_path)
-        finally:
-            if upload_id:
-                self.discard_upload_session(upload_id)
+        source_path = (
+            payload.source_path
+            if payload.source_path
+            else str(self._upload_session(upload_id))
+        )
+        # A failed registration keeps the staged upload so the user can fix
+        # the form and retry without re-sending multi-GB weights. Closing
+        # the dialog or the 24 h expiry sweep removes it otherwise.
+        record = self._create_from_source(payload, source_path)
+        if upload_id:
+            self.discard_upload_session(upload_id)
+        return record
 
     def _create_from_source(self, payload: Any, source_path: str) -> dict[str, Any]:
         source = _resolve_source(source_path, self.models_dir)
@@ -1031,11 +1046,8 @@ class CustomModelManager:
                 encoding="utf-8",
             )
             os.replace(temp_path, target_path)
-            manifests = self.manifest_manager.load_manifests(force_refresh=True)
-            updated.model_category = manifest.model_category
-            manifests[model_id] = updated
-            self.manifest_manager._cache = manifests
-            return _model_record(updated)
+            self.manifest_manager.load_manifests(force_refresh=True)
+            return _model_record(self.manifest_manager.get_model(model_id))
 
     def delete(self, model_id: str, db: Session) -> None:
         with _write_lock, model_usage_guard():

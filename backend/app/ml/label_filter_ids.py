@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import binascii
 import re
+import uuid
 
 UNMAPPED_LABEL_PREFIX = "unmapped:"
 _TOKEN_BODY = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -40,14 +41,24 @@ def decode_unmapped_label(token: str) -> str | None:
     return label
 
 
+def _is_uuid(token: str) -> bool:
+    try:
+        return str(uuid.UUID(token)) == token.lower()
+    except ValueError:
+        return False
+
+
 def parse_label_filter_ids(
     label_ids: list[str] | tuple[str, ...] | set[str] | frozenset[str],
 ) -> tuple[list[str], list[str], list[str]]:
     """Return taxonomy IDs, legacy raw names, and encoded unmapped names.
 
-    Plain values are kept in both the taxonomy and raw-name groups. This
-    preserves the older folder-run exclusion contract, which accepted raw
-    label strings, while new unmapped tokens match only null-taxonomy rows.
+    Taxonomy rows are keyed by UUIDs, so a UUID only ever matches the
+    taxonomy column; keeping it out of the raw-name group lets the filter
+    use the taxonomy index. Other plain values are kept in both groups.
+    This preserves the older folder-run exclusion contract, which accepted
+    raw label strings, while new unmapped tokens match only null-taxonomy
+    rows.
     """
     taxonomy_ids: list[str] = []
     legacy_raw_labels: list[str] = []
@@ -59,7 +70,8 @@ def parse_label_filter_ids(
             continue
         if token:
             taxonomy_ids.append(token)
-            legacy_raw_labels.append(token)
+            if not _is_uuid(token):
+                legacy_raw_labels.append(token)
     return (
         list(dict.fromkeys(taxonomy_ids)),
         list(dict.fromkeys(legacy_raw_labels)),
@@ -95,32 +107,21 @@ def label_filter_expression(
     taxonomy_column, label_column, label_ids: list[str], category_column=None
 ):
     """Build a SQLAlchemy expression matching taxonomy and raw-label tokens."""
-    from sqlalchemy import and_, false, or_
+    from sqlalchemy import and_, false, func, or_
 
     taxonomy_ids, legacy_raw_labels, unmapped_labels = parse_label_filter_ids(
         label_ids
     )
+    if category_column is not None:
+        effective_label = func.coalesce(func.nullif(label_column, ""), category_column)
+    else:
+        effective_label = label_column
     expressions = []
     if taxonomy_ids:
         expressions.append(taxonomy_column.in_(taxonomy_ids))
-    if legacy_raw_labels or unmapped_labels:
-        if category_column is not None:
-            from sqlalchemy import func
-
-            effective_label = func.coalesce(
-                func.nullif(label_column, ""), category_column
-            )
-        else:
-            effective_label = label_column
-        if legacy_raw_labels:
-            expressions.append(effective_label.in_(legacy_raw_labels))
+    if legacy_raw_labels:
+        expressions.append(effective_label.in_(legacy_raw_labels))
     if unmapped_labels:
-        if category_column is not None:
-            effective_label = func.coalesce(
-                func.nullif(label_column, ""), category_column
-            )
-        else:
-            effective_label = label_column
         expressions.append(
             and_(taxonomy_column.is_(None), effective_label.in_(unmapped_labels))
         )

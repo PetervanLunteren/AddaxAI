@@ -345,7 +345,8 @@ class ModelStorage:
         """
         if manifest.local_only:
             raise RuntimeError(
-                f"Model {manifest.model_id} is local-only; its model pack must be registered from this computer."
+                f"Model {manifest.model_id} is local-only; its model pack must be "
+                "registered from this computer."
             )
 
         # Model is in models/det/{model_id}/ or models/cls/{model_id}/

@@ -45,7 +45,8 @@ import {
   restoreAdvancedDefaults,
 } from "../lib/advancedSettingsDefaults";
 import { useSidebarCollapsed } from "../components/layout/sidebar-context";
-import { isHostLocalUi, ModelSelect } from "../components/models/ModelSelect";
+import { ModelSelect } from "../components/models/ModelSelect";
+import { isHostLocalUi } from "../lib/host-local";
 import { CustomModelManagerDialog } from "../components/models/CustomModelManagerDialog";
 import { toApiModelId } from "../lib/model-id";
 import { NoClassifierNotice } from "../components/models/NoClassifierNotice";

@@ -7,6 +7,8 @@ requires-python = ">=3.11"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Vendored upstream RT-DETRv2 source is kept byte-for-byte with its pin.
+extend-exclude = ["app/ml/third_party"]
 
 [tool.ruff.lint]
 select = [

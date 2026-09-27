@@ -275,7 +275,8 @@ class ModelCatalogUpdater:
                     existing = None
                 if isinstance(existing, dict) and existing.get("managed") is True:
                     logger.warning(
-                        "Catalog entry %s/%s collides with a user-managed local model; preserving local manifest",
+                        "Catalog entry %s/%s collides with a user-managed local model; "
+                        "preserving local manifest",
                         model_type,
                         model_id,
                     )

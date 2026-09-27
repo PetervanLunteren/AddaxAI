@@ -44,7 +44,11 @@ from app.ml.batch_size import (
     EMBEDDING_DEFAULT_GPU,
 )
 from app.ml.catalog_updater import find_drifted_envs
-from app.ml.custom_model_manager import CustomModelError, CustomModelManager
+from app.ml.custom_model_manager import (
+    MAX_UPLOAD_FILE_BYTES,
+    CustomModelError,
+    CustomModelManager,
+)
 from app.ml.environment_manager import (
     EnvironmentManager,
     TlsRevocationCheckError,
@@ -208,6 +212,10 @@ def _require_loopback(request: Request) -> None:
         )
 
 
+# Upload bytes buffered before each off-loop disk write.
+_UPLOAD_WRITE_BYTES = 8 * 1024 * 1024
+
+
 def _custom_manager() -> CustomModelManager:
     manifest_mgr, _, _ = _get_managers()
     return CustomModelManager(manifest_mgr.models_dir, manifest_mgr)
@@ -254,24 +262,42 @@ async def upload_custom_model_file(
     temporary: Path | None = None
     uploaded = False
     try:
-        target, temporary = manager.begin_upload_file(upload_id, filename)
+        target, temporary = await asyncio.to_thread(
+            manager.begin_upload_file, upload_id, filename
+        )
         total = 0
         digest = hashlib.sha256()
+        pending = bytearray()
+
+        def write_pending(output, data: bytes) -> None:
+            output.write(data)
+            digest.update(data)
+
+        def sync_and_close(output) -> None:
+            output.flush()
+            os.fsync(output.fileno())
+
+        # Disk writes, hashing and fsync run in a worker thread so a
+        # multi-GB upload does not stall the event loop (websockets etc.).
         with temporary.open("xb") as output:
             async for chunk in request.stream():
                 if not chunk:
                     continue
                 total += len(chunk)
-                if total > 50 * 1024**3:
+                if total > MAX_UPLOAD_FILE_BYTES:
                     raise HTTPException(
                         status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                         detail="Selected file exceeds the 50 GiB upload limit",
                     )
-                output.write(chunk)
-                digest.update(chunk)
-            output.flush()
-            os.fsync(output.fileno())
-        manager.finish_upload_file(upload_id, target, temporary)
+                pending.extend(chunk)
+                if len(pending) >= _UPLOAD_WRITE_BYTES:
+                    await asyncio.to_thread(write_pending, output, bytes(pending))
+                    pending.clear()
+            if pending:
+                await asyncio.to_thread(write_pending, output, bytes(pending))
+                pending.clear()
+            await asyncio.to_thread(sync_and_close, output)
+        await asyncio.to_thread(manager.finish_upload_file, upload_id, target, temporary)
         uploaded = True
         return {"filename": target.name, "size_bytes": total, "sha256": digest.hexdigest()}
     except HTTPException:
@@ -346,6 +372,9 @@ def create_custom_model(
         return CustomModelInfo.model_validate(row)
     except FileExistsError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
+    except FileNotFoundError as exc:
+        # The staged upload session expired or was cancelled.
+        raise HTTPException(status_code=404, detail=str(exc)) from None
     except CustomModelError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     except PermissionError as exc:

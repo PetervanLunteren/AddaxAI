@@ -101,7 +101,8 @@ class ManifestManager:
                     manifest = ModelManifest(**data)
                     if manifest.model_id != model_dir.name:
                         raise ValueError(
-                            f"manifest model_id {manifest.model_id!r} does not match directory {model_dir.name!r}"
+                            f"manifest model_id {manifest.model_id!r} does not match "
+                            f"directory {model_dir.name!r}"
                         )
                     # Set model_category based on which directory it was loaded from
                     manifest.model_category = category_map[model_type]

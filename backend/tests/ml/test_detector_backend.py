@@ -537,3 +537,180 @@ def test_local_only_model_readiness_uses_digest_and_blocks_download(tmp_path: Pa
     assert not storage.check_weights_ready(model)
     with pytest.raises(RuntimeError, match="local-only"):
         storage.download_weights(model)
+
+
+def test_generic_adapter_runs_images_in_chunks_with_progress(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr("app.ml.inference.detector_backend.INFERENCE_CHUNK_SIZE", 2)
+    model_path = tmp_path / "weights.pt"
+    model_path.touch()
+    images = [tmp_path / f"image-{index}.jpg" for index in range(5)]
+    for image in images:
+        image.touch()
+    chunks: list[list[str]] = []
+    progress: list[tuple[str, float]] = []
+
+    class StubRunner:
+        def run(self, args, *, job_id=None):
+            inputs = json.loads(
+                Path(args[args.index("--inputs") + 1]).read_text(encoding="utf-8")
+            )
+            chunks.append(inputs)
+            Path(args[args.index("--output") + 1]).write_text(
+                json.dumps(
+                    {
+                        "images": [
+                            {
+                                "file": path,
+                                "detections": [
+                                    {"category": "0", "conf": 0.8, "bbox": [0, 0, 0.1, 0.1]}
+                                ],
+                            }
+                            for path in inputs
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+    adapter = YoloDetectorAdapter(
+        manifest(detector_backend="yolo", class_names={"0": "fox"}),
+        model_path,
+        SimpleNamespace(get_python=lambda _env: Path("python")),
+        runner=StubRunner(),
+    )
+    output_path = adapter.detect_to_json(
+        image_paths=images,
+        deployment_folder=tmp_path,
+        confidence_threshold=0.1,
+        progress_callback=lambda message, value: progress.append((message, value)),
+    )
+
+    assert [len(chunk) for chunk in chunks] == [2, 2, 1]
+    assert [value for _, value in progress] == [0.0, 0.4, 0.8, 1.0]
+    document = json.loads(output_path.read_text(encoding="utf-8"))
+    assert [image["file"] for image in document["images"]] == [p.name for p in images]
+    assert document["detection_categories"] == {"0": "fox"}
+
+
+def test_generic_video_sampler_flushes_frames_in_chunks_for_all_video_types(
+    monkeypatch, tmp_path: Path
+):
+    monkeypatch.setattr("app.ml.inference.detector_backend.INFERENCE_CHUNK_SIZE", 2)
+    source = tmp_path / "videos"
+    source.mkdir()
+    for name in ("a.wmv", "b.mpg", "notes.txt"):
+        (source / name).touch()
+    opened: list[str] = []
+
+    class FakeCapture:
+        def __init__(self, path: str):
+            opened.append(Path(path).name)
+            self.position = 0
+
+        def get(self, _property):
+            return 1.0
+
+        def isOpened(self):
+            return True
+
+        def read(self):
+            if self.position >= 3:
+                return False, None
+            self.position += 1
+            return True, b"frame"
+
+        def release(self):
+            return None
+
+    monkeypatch.setitem(
+        sys.modules,
+        "cv2",
+        SimpleNamespace(
+            CAP_PROP_FPS=5,
+            VideoCapture=FakeCapture,
+            imwrite=lambda name, _frame: (Path(name).write_bytes(b"x"), True)[-1],
+        ),
+    )
+    weights = tmp_path / "weights.pt"
+    weights.touch()
+    detector = YoloDetectorAdapter(
+        manifest(detector_backend="yolo", class_names={"0": "fox"}),
+        weights,
+        SimpleNamespace(get_python=lambda _env: Path("python")),
+        runner=object(),
+    )
+    frames_on_disk: list[int] = []
+
+    def fake_run_images(image_paths, _folder, _threshold, *, output_path, **_kwargs):
+        frames_on_disk.append(len(list(image_paths[0].parent.glob("*.jpg"))))
+        output_path.write_text(
+            json.dumps(
+                {
+                    "images": [
+                        {"file": str(path), "detections": [
+                            {"category": "0", "conf": 0.9, "bbox": [0, 0, 0.5, 0.5]}
+                        ]}
+                        for path in image_paths
+                    ],
+                    "detection_categories": {"0": "fox"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        return output_path
+
+    monkeypatch.setattr(detector, "_run_images", fake_run_images)
+    output_path = tmp_path / "output.json"
+    detector.detect_videos_to_json(
+        video_folder=source, output_json=output_path, fps=1.0, confidence_threshold=0.1
+    )
+
+    result = json.loads(output_path.read_text(encoding="utf-8"))
+    assert sorted(opened) == ["a.wmv", "b.mpg"]
+    # Six sampled frames in chunks of two: never more than one chunk on disk.
+    assert frames_on_disk == [2, 2, 2]
+    assert {record["file"] for record in result["images"]} == {"a.wmv", "b.mpg"}
+    assert all(len(record["detections"]) == 3 for record in result["images"])
+
+
+def test_generic_video_sampler_declares_manifest_categories_without_frames(
+    monkeypatch, tmp_path: Path
+):
+    source = tmp_path / "videos"
+    source.mkdir()
+    (source / "broken.mp4").touch()
+
+    class ClosedCapture:
+        def __init__(self, _path: str):
+            pass
+
+        def get(self, _property):
+            return 0.0
+
+        def isOpened(self):
+            return False
+
+        def release(self):
+            return None
+
+    monkeypatch.setitem(
+        sys.modules,
+        "cv2",
+        SimpleNamespace(CAP_PROP_FPS=5, VideoCapture=ClosedCapture, imwrite=None),
+    )
+    weights = tmp_path / "weights.pt"
+    weights.touch()
+    detector = YoloDetectorAdapter(
+        manifest(detector_backend="yolo", class_names={"0": "fox", "1": "deer"}),
+        weights,
+        SimpleNamespace(get_python=lambda _env: Path("python")),
+        runner=object(),
+    )
+    output_path = tmp_path / "output.json"
+    detector.detect_videos_to_json(
+        video_folder=source, output_json=output_path, fps=1.0, confidence_threshold=0.1
+    )
+
+    result = json.loads(output_path.read_text(encoding="utf-8"))
+    assert result["detection_categories"] == {"0": "fox", "1": "deer"}
+    assert result["images"][0]["failure"] == "Unable to open video"

@@ -23,6 +23,7 @@ from app.core.job_cancellation import (
     track_subprocess,
 )
 from app.core.logging_config import get_logger
+from app.core.media_types import VIDEO_EXTENSIONS
 from app.core.subprocess_group import popen_group
 from app.ml.inference.base import DetectionModel
 from app.ml.inference.megadetector import MegaDetectorV1000
@@ -33,6 +34,11 @@ from app.utils.subprocess_env import clean_python_env
 logger = get_logger(__name__)
 
 ProgressCallback = Callable[..., None]
+
+# Images (or sampled video frames) handed to one isolated child process.
+# Bounds the temporary frame files a video run holds on disk at once and
+# gives the caller progress between chunks.
+INFERENCE_CHUNK_SIZE = 1000
 
 
 def _finite_float(value: Any, *, default: float | None = None) -> float | None:
@@ -275,67 +281,84 @@ class _GenericAdapter(DetectionModel):
                 raise FileNotFoundError(f"Image not found: {path}")
         output_path = output_path or deployment_folder / ".addaxai" / "detection_results.json"
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        args = self._backend_args(confidence_threshold, image_size)
+        total = len(image_paths)
+        if progress_callback:
+            progress_callback(f"Starting {self.backend} detector...", 0.0)
+        raw_images: list[Any] = []
         with tempfile.TemporaryDirectory(prefix="addaxai-detector-") as temp_dir:
             temp = Path(temp_dir)
             file_list = temp / "inputs.json"
             raw_output = temp / "raw.json"
-            file_list.write_text(json.dumps([str(p) for p in image_paths]), encoding="utf-8")
-            args = [
-                "--backend", self.backend,
-                "--model", str(self.model_path),
-                "--inputs", str(file_list),
-                "--output", str(raw_output),
-                "--threshold", str(confidence_threshold),
-                "--class-names", json.dumps(class_category_map(self.manifest.class_names)),
-            ]
-            if self.backend == "rfdetr":
-                args.extend(["--model-class", self.manifest.detector_model_class or "RFDETRMedium"])
-            if self.backend == "rtdetr":
-                args.extend(
-                    ["--model-variant", self.manifest.detector_model_variant or "MDV6-apa-rtdetr-c"]
+            # One child per chunk: the model loads once per chunk, and the
+            # caller sees progress instead of a single 0 -> 1 jump.
+            for start in range(0, total, INFERENCE_CHUNK_SIZE):
+                chunk = image_paths[start : start + INFERENCE_CHUNK_SIZE]
+                file_list.write_text(json.dumps([str(p) for p in chunk]), encoding="utf-8")
+                raw_output.unlink(missing_ok=True)
+                self.runner.run(
+                    [*args, "--inputs", str(file_list), "--output", str(raw_output)],
+                    job_id=job_id,
                 )
-            if self.backend == "rtdetrv2":
-                config_name = self.manifest.detector_config_fname
-                if not config_name:
-                    raise ValueError("detector_config_fname is required for rtdetrv2")
-                config_path = (self.model_path.parent / config_name).resolve()
-                try:
-                    config_path.relative_to(self.model_path.parent.resolve())
-                except ValueError as exc:
-                    raise ValueError(
-                        "RT-DETRv2 config must remain inside its model directory"
-                    ) from exc
-                if not config_path.is_file():
-                    raise FileNotFoundError(f"RT-DETRv2 config not found: {config_path}")
-                source_path = (
-                    Path(__file__).resolve().parents[1] / "third_party" / "rtdetrv2_pytorch"
-                )
-                if not (source_path / "src" / "core" / "__init__.py").is_file():
-                    raise FileNotFoundError(f"Pinned RT-DETRv2 source not found: {source_path}")
-                args.extend(
-                    [
-                        "--model-config",
-                        str(config_path),
-                        "--rtdetrv2-source",
-                        str(source_path),
-                    ]
-                )
-            if image_size is not None:
-                args.extend(["--image-size", str(image_size)])
-            if progress_callback:
-                progress_callback(f"Starting {self.backend} detector...", 0.0)
-            self.runner.run(args, job_id=job_id)
-            raw_results = json.loads(raw_output.read_text(encoding="utf-8"))
-            document = normalize_image_results(
-                raw_results.get("images", raw_results),
-                deployment_folder=deployment_folder,
-                class_names=self.manifest.class_names,
-            )
-            document["info"]["detector_backend"] = self.backend
-            output_path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+                raw_results = json.loads(raw_output.read_text(encoding="utf-8"))
+                raw_images.extend(raw_results.get("images", raw_results))
+                done = start + len(chunk)
+                if progress_callback and done < total:
+                    progress_callback(f"Detected {done}/{total} images", done / total)
+        document = normalize_image_results(
+            raw_images,
+            deployment_folder=deployment_folder,
+            class_names=self.manifest.class_names,
+        )
+        document["info"]["detector_backend"] = self.backend
+        output_path.write_text(json.dumps(document, indent=2), encoding="utf-8")
         if progress_callback:
             progress_callback("Detection complete", 1.0)
         return output_path
+
+    def _backend_args(self, confidence_threshold: float, image_size: int | None) -> list[str]:
+        """Child arguments shared by every chunk; inputs/output are added per chunk."""
+        args = [
+            "--backend", self.backend,
+            "--model", str(self.model_path),
+            "--threshold", str(confidence_threshold),
+            "--class-names", json.dumps(class_category_map(self.manifest.class_names)),
+        ]
+        if self.backend == "rfdetr":
+            args.extend(["--model-class", self.manifest.detector_model_class or "RFDETRMedium"])
+        if self.backend == "rtdetr":
+            args.extend(
+                ["--model-variant", self.manifest.detector_model_variant or "MDV6-apa-rtdetr-c"]
+            )
+        if self.backend == "rtdetrv2":
+            config_name = self.manifest.detector_config_fname
+            if not config_name:
+                raise ValueError("detector_config_fname is required for rtdetrv2")
+            config_path = (self.model_path.parent / config_name).resolve()
+            try:
+                config_path.relative_to(self.model_path.parent.resolve())
+            except ValueError as exc:
+                raise ValueError(
+                    "RT-DETRv2 config must remain inside its model directory"
+                ) from exc
+            if not config_path.is_file():
+                raise FileNotFoundError(f"RT-DETRv2 config not found: {config_path}")
+            source_path = (
+                Path(__file__).resolve().parents[1] / "third_party" / "rtdetrv2_pytorch"
+            )
+            if not (source_path / "src" / "core" / "__init__.py").is_file():
+                raise FileNotFoundError(f"Pinned RT-DETRv2 source not found: {source_path}")
+            args.extend(
+                [
+                    "--model-config",
+                    str(config_path),
+                    "--rtdetrv2-source",
+                    str(source_path),
+                ]
+            )
+        if image_size is not None:
+            args.extend(["--image-size", str(image_size)])
+        return args
 
     def detect_to_json(self, **kwargs: Any) -> Path:
         return self._run_images(**kwargs)
@@ -377,21 +400,66 @@ class _GenericAdapter(DetectionModel):
         progress_callback: ProgressCallback | None,
         job_id: str | None,
     ) -> Path:
-        """Sample video frames under a private temp root and write MD JSON."""
+        """Sample video frames under a private temp root and write MD JSON.
+
+        Frames are inferred and deleted in chunks of ``INFERENCE_CHUNK_SIZE``,
+        so the temp root never holds more than one chunk of JPEGs.
+        """
         import cv2
 
-        samples: list[dict[str, Any]] = []
         video_records: dict[str, dict[str, Any]] = {}
+        # Seed with the manifest labels so a run with no usable frames still
+        # declares its categories (detector-class reuse requires them).
+        categories = class_category_map(self.manifest.class_names)
+        pending: list[dict[str, Any]] = []
+        frame_counter = 0
         sample_period = 1.0 / max(float(fps), 1e-6)
 
         def raise_if_cancelled() -> None:
             if job_id is not None and is_cancel_requested(job_id):
                 raise JobCancelledError(f"Detection cancelled for job {job_id}")
 
-        for video in sorted(video_folder.rglob("*")):
+        def flush() -> None:
+            if not pending:
+                return
+            with tempfile.TemporaryDirectory(prefix="addaxai-video-") as temp_dir:
+                intermediate = Path(temp_dir) / "images.json"
+                self._run_images(
+                    [sample["path"] for sample in pending],
+                    video_folder,
+                    confidence_threshold,
+                    image_size=image_size,
+                    output_path=intermediate,
+                    job_id=job_id,
+                )
+                detected = json.loads(intermediate.read_text(encoding="utf-8"))
+            for key, value in (detected.get("detection_categories") or {}).items():
+                categories.setdefault(str(key), str(value))
+            sample_by_name = {sample["path"].name: sample for sample in pending}
+            for image in detected.get("images", []):
+                sample = sample_by_name.get(Path(image.get("file", "")).name)
+                if sample is None:
+                    continue
+                record = video_records[sample["relative_file"]]
+                if record["detections"] is None:
+                    # The video failed after this frame was queued.
+                    continue
+                for det in image.get("detections", []):
+                    det["frame_number"] = int(sample["frame"])
+                    record["detections"].append(det)
+                for key, value in (image.get("class_names") or {}).items():
+                    categories.setdefault(str(key), str(value))
+            for sample in pending:
+                sample["path"].unlink(missing_ok=True)
+            pending.clear()
+
+        videos = sorted(
+            path
+            for path in video_folder.rglob("*")
+            if path.suffix.lower() in VIDEO_EXTENSIONS and path.is_file()
+        )
+        for video_index, video in enumerate(videos, start=1):
             raise_if_cancelled()
-            if video.suffix.lower() not in {".mp4", ".avi", ".mov", ".mkv", ".m4v"}:
-                continue
             capture = cv2.VideoCapture(str(video))
             relative_video = str(video.resolve().relative_to(video_folder.resolve()))
             frame_rate = float(capture.get(cv2.CAP_PROP_FPS) or fps)
@@ -408,77 +476,51 @@ class _GenericAdapter(DetectionModel):
                 continue
             frame_index = 0
             next_sample = 0.0
-            while capture.isOpened():
-                if job_id is not None and is_cancel_requested(job_id):
-                    capture.release()
+            try:
+                while capture.isOpened():
                     raise_if_cancelled()
-                ok, frame = capture.read()
-                if not ok:
-                    break
-                timestamp = frame_index / max(frame_rate, 1e-6)
-                if timestamp + 1e-9 >= next_sample:
-                    frame_path = frame_root / f"frame-{len(samples):08d}.jpg"
-                    if not cv2.imwrite(str(frame_path), frame):
-                        record.update(
-                            {"failure": "Unable to write sampled frame", "detections": None}
-                        )
+                    ok, frame = capture.read()
+                    if not ok:
                         break
-                    samples.append(
-                        {
-                            "file": str(video),
-                            "relative_file": relative_video,
-                            "frame": frame_index,
-                            "path": frame_path,
-                        }
-                    )
-                    record["frames_processed"].append(frame_index)
-                    next_sample += sample_period
-                frame_index += 1
-            capture.release()
+                    timestamp = frame_index / max(frame_rate, 1e-6)
+                    if timestamp + 1e-9 >= next_sample:
+                        frame_path = frame_root / f"frame-{frame_counter:08d}.jpg"
+                        frame_counter += 1
+                        if not cv2.imwrite(str(frame_path), frame):
+                            record.update(
+                                {"failure": "Unable to write sampled frame", "detections": None}
+                            )
+                            break
+                        pending.append(
+                            {
+                                "relative_file": relative_video,
+                                "frame": frame_index,
+                                "path": frame_path,
+                            }
+                        )
+                        record["frames_processed"].append(frame_index)
+                        next_sample += sample_period
+                        if len(pending) >= INFERENCE_CHUNK_SIZE:
+                            flush()
+                    frame_index += 1
+            finally:
+                capture.release()
             if not record["frames_processed"] and "failure" not in record:
                 record.update({"failure": "No frames decoded", "detections": None})
-        if not video_records:
-            output_json.parent.mkdir(parents=True, exist_ok=True)
-            output_json.write_text(
-                json.dumps({"images": [], "detection_categories": {}}),
-                encoding="utf-8",
-            )
-            return output_json
-        detected: dict[str, Any] = {
-            "images": [],
-            "detection_categories": {},
+            if progress_callback:
+                progress_callback(
+                    f"Sampled {video_index}/{len(videos)} videos",
+                    video_index / len(videos),
+                )
+        flush()
+
+        document: dict[str, Any] = {
+            "images": list(video_records.values()),
+            "detection_categories": categories,
             "info": {"detector_backend": self.backend},
         }
-        if samples:
-            raw_paths = [sample["path"] for sample in samples]
-            with tempfile.TemporaryDirectory(prefix="addaxai-video-") as temp_dir:
-                intermediate = Path(temp_dir) / "images.json"
-                self._run_images(
-                    raw_paths,
-                    video_folder,
-                    confidence_threshold,
-                    image_size=image_size,
-                    progress_callback=progress_callback,
-                    output_path=intermediate,
-                    job_id=job_id,
-                )
-                detected = json.loads(intermediate.read_text(encoding="utf-8"))
-        sample_by_name = {sample["path"].name: sample for sample in samples}
-        for image in detected.get("images", []):
-            sample = sample_by_name.get(Path(image.get("file", "")).name)
-            if sample is None:
-                continue
-            record = video_records[sample["relative_file"]]
-            for det in image.get("detections", []):
-                det["frame_number"] = int(sample["frame"])
-                record["detections"].append(det)
-            detected.setdefault("detection_categories", {})
-            detected["detection_categories"].update(
-                {str(k): str(v) for k, v in (image.get("class_names") or {}).items()}
-            )
-        detected["images"] = list(video_records.values())
         output_json.parent.mkdir(parents=True, exist_ok=True)
-        output_json.write_text(json.dumps(detected, indent=2), encoding="utf-8")
+        output_json.write_text(json.dumps(document, indent=2), encoding="utf-8")
         return output_json
 
 

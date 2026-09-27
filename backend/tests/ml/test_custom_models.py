@@ -169,6 +169,15 @@ def test_create_does_not_guess_detector_backend_or_variant(tmp_path: Path):
                 detector_model_variant=None,
             )
         )
+    with pytest.raises(CustomModelError, match="apply only to legacy"):
+        manager.create(
+            _create_payload(
+                source,
+                env,
+                detector_backend="yolo",
+                detector_model_class="RFDETRSmall",
+            )
+        )
 
 
 def test_both_role_persists_explicit_alias_and_requires_valid_class_ids(tmp_path: Path):
@@ -202,7 +211,9 @@ def test_rtdetrv2_md_v6_c_reference_config_flattens_safely():
 
     repo_root = Path(__file__).resolve().parents[3]
     config_path = repo_root / "docs" / "static" / "model-configs" / "MDV6-apa-rtdetr-c.yml"
-    frontend_config_path = repo_root / "frontend" / "public" / "model-configs" / "MDV6-apa-rtdetr-c.yml"
+    frontend_config_path = (
+        repo_root / "frontend" / "public" / "model-configs" / "MDV6-apa-rtdetr-c.yml"
+    )
     assert frontend_config_path.read_bytes() == config_path.read_bytes()
     source_root = repo_root / "backend" / "app" / "ml" / "third_party" / "rtdetrv2_pytorch"
     resolved = load_rtdetrv2_config(
@@ -772,6 +783,48 @@ async def test_custom_model_upload_is_streamed_then_consumed_or_cleaned(
     )
     staging_root = models_dir.parent / ".custom-model-imports"
     assert not list(staging_root.iterdir())
+
+
+@pytest.mark.asyncio
+async def test_failed_upload_registration_keeps_staged_files_for_retry(local_model_api):
+    app, models_dir = local_model_api
+    env = CustomModelManager.environments()[0]
+    transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 54131))
+    body = {
+        "type": "detection",
+        "friendly_name": "Retry detector fixture",
+        "env": env,
+        "model_fname": "weights.pt",
+        "class_names": {"0": "fox"},
+    }
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        started = await client.post("/api/ml/custom-models/uploads")
+        upload_id = started.json()["upload_id"]
+        await client.put(
+            f"/api/ml/custom-models/uploads/{upload_id}/files/weights.pt",
+            content=b"retry fixture weights",
+        )
+        rejected = await client.post(
+            "/api/ml/custom-models",
+            json={**body, "upload_id": upload_id, "detector_backend": "rfdetr"},
+        )
+        staged = models_dir.parent / ".custom-model-imports" / upload_id
+        assert rejected.status_code == 400, rejected.text
+        assert (staged / "weights.pt").is_file()
+
+        created = await client.post(
+            "/api/ml/custom-models",
+            json={**body, "upload_id": upload_id, "detector_backend": "yolo"},
+        )
+        assert created.status_code == 201, created.text
+        assert not staged.exists()
+
+        expired = await client.post(
+            "/api/ml/custom-models",
+            json={**body, "upload_id": upload_id, "detector_backend": "yolo"},
+        )
+        assert expired.status_code == 404, expired.text
 
 
 @pytest.mark.asyncio
