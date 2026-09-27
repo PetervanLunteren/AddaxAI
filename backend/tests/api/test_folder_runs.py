@@ -7,6 +7,7 @@ round-trips through GET, and lookups for non-folder-run project IDs
 404 cleanly.
 """
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -29,7 +30,9 @@ def mock_manifest_manager():
     types and would otherwise reject MagicMock attributes."""
     mock_mgr = MagicMock()
     mock_mgr.get_model.return_value = MagicMock(
-        model_id="MD5A-0-0", friendly_name="MegaDetector 5a"
+        model_id="MD5A-0-0",
+        friendly_name="MegaDetector 5a",
+        model_category="detection",
     )
     with patch("app.ml.manifest_manager.ManifestManager", return_value=mock_mgr):
         yield mock_mgr
@@ -49,12 +52,13 @@ def test_create_folder_run_auto_name(client):
     assert body["project"]["name"] == "Kruger_April"
     assert body["project"]["mode"] == "folder_run"
     assert body["project"]["timezone"] == "UTC"
+    expected_folder = str(Path("/Volumes/Photos/Kruger_April"))
     assert body["project"]["folder_run_state"] == {
         "step": "setup",
         "source_folder": "/Volumes/Photos/Kruger_April",
     }
     assert body["step"] == "setup"
-    assert body["queue_entry"]["folder_path"] == "/Volumes/Photos/Kruger_April"
+    assert body["queue_entry"]["folder_path"] == expected_folder
     assert body["queue_entry"]["site_id"] is None
     assert body["queue_entry"]["video_count"] == 7
     assert body["queue_entry"]["image_count"] == 412
@@ -1438,7 +1442,8 @@ def test_folder_run_paths_match_with_or_without_a_trailing_slash(client):
     created = client.post(
         "/api/folder-runs", json={"source_folder": "/tmp/slash-run/"}
     ).json()
-    assert created["queue_entry"]["folder_path"] == "/tmp/slash-run"
+    expected_folder = str(Path("/tmp/slash-run"))
+    assert created["queue_entry"]["folder_path"] == expected_folder
     for folder in ("/tmp/slash-run", "/tmp/slash-run/"):
         body = client.get("/api/folder-runs/lookup", params={"folder": folder}).json()
         assert body is not None and body["id"] == created["project"]["id"]

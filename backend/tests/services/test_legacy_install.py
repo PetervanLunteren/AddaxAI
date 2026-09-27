@@ -149,21 +149,21 @@ def test_removal_leaves_everything_outside_the_root_alone(at_root, tmp_path, mon
 
 def test_removes_desktop_leftovers_only_during_purge(at_root, tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")
-    shortcut = tmp_path / "Desktop" / "AddaxAI.app"
-    shortcut.parent.mkdir()
-    shortcut.symlink_to(at_root / "AddaxAI.app")
-    monkeypatch.setattr(legacy_install, "_desktop_leftovers", lambda: [shortcut])
+    desktop_bundle = tmp_path / "Desktop" / "AddaxAI.app"
+    desktop_bundle.mkdir(parents=True)
+    (desktop_bundle / "marker.txt").write_text("desktop bundle")
+    monkeypatch.setattr(
+        legacy_install, "_desktop_leftovers", lambda: [desktop_bundle]
+    )
     _make_legacy(at_root)
 
     # scan() must not touch the desktop: on macOS that triggers a
     # permission prompt, and it runs on every launch.
     legacy_install.scan()
-    assert shortcut.is_symlink()
+    assert (desktop_bundle / "marker.txt").is_file()
 
     legacy_install.remove()
-    # Dangling by now (its target went with the root), so is_symlink,
-    # not exists, is what proves it is gone.
-    assert not shortcut.is_symlink()
+    assert not desktop_bundle.exists()
 
 
 def test_survivors_reported_when_the_marker_stays(at_root, monkeypatch):

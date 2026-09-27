@@ -425,7 +425,9 @@ function resolveBackendCommand(): {
   if (isDev) {
     // Development: venv Python with uvicorn
     const backendDir = path.join(__dirname, '..', '..', 'backend');
-    const pythonPath = path.join(backendDir, 'venv', 'bin', 'python');
+    const pythonPath = process.platform === 'win32'
+      ? path.join(backendDir, '.venv', 'Scripts', 'python.exe')
+      : path.join(backendDir, 'venv', 'bin', 'python');
     if (!fs.existsSync(pythonPath)) {
       throw new Error(`Python not found: ${pythonPath}`);
     }
@@ -433,6 +435,9 @@ function resolveBackendCommand(): {
       executable: pythonPath,
       cwd: backendDir,
       args: [
+        // Ignore inherited PYTHONHOME/PYTHONPATH from tool launchers. The
+        // working directory already makes the backend package importable.
+        '-E',
         '-m', 'uvicorn',
         'app.main:app',
         '--host', '127.0.0.1',

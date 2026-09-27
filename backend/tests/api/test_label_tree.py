@@ -197,12 +197,26 @@ def test_build_tree_no_detections(db):
 
 
 def test_build_tree_no_taxonomy_rows(db):
-    """Detections without taxonomy links don't appear in the tree."""
+    """Unmapped detections appear under the no-taxonomy branch."""
+    from app.ml.label_filter_ids import encode_unmapped_label
+
     p = _setup_project_with_detections(db, ["leopard"])
     # Don't add any taxonomy rows and don't link
     result = build_label_filter_tree(p.id, db)
-    # No linked detections, so tree should be None
-    assert result is None
+    assert result is not None
+    token = encode_unmapped_label("leopard")
+    assert result["all_leaf_ids"] == [token]
+
+    def find_leaf(nodes):
+        for node in nodes:
+            if node["id"] == token:
+                return node
+            found = find_leaf(node.get("children", []))
+            if found is not None:
+                return found
+        return None
+
+    assert find_leaf(result["tree"]) is not None
 
 
 def test_build_tree_with_event_counts(db):

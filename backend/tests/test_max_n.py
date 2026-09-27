@@ -7,6 +7,7 @@ single image within an event.
 
 import uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from sqlalchemy import insert
 
@@ -1393,8 +1394,12 @@ def test_update_camera_offsets_shifts_one_subfolder_and_regroups(db):
 
     project = make_project(db, counting_threshold=0.5, independence_interval=300)
     project.postprocessing_settings_hash = "stamped"
+    station_path = Path("/data/station")
     station = make_deployment(
-        db, project_id=project.id, folder_path="/data/station", paired_cameras=True
+        db,
+        project_id=project.id,
+        folder_path=str(station_path),
+        paired_cameras=True,
     )
     t0 = datetime(2024, 1, 1, 12, 0, 0)
     paths = {}
@@ -1402,7 +1407,7 @@ def test_update_camera_offsets_shifts_one_subfolder_and_regroups(db):
     # sibling whose name shares the prefix "cam_2" and must not move.
     for cam, secs in (("cam_1", 0), ("cam_2", 301), ("cam_2b", 0)):
         f = _file_with_dets(db, station.id, t0 + timedelta(seconds=secs), [("cow", "animal", 0.9)])
-        f.file_path = f"/data/station/{cam}/{f.id}.jpg"
+        f.file_path = str(station_path / cam / f"{f.id}.jpg")
         paths[cam] = f.file_path
     db.commit()
 

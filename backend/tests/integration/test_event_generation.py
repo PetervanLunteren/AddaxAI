@@ -6,6 +6,7 @@ No subprocess mocks needed — cv2 works on 1x1 JPEGs.
 """
 
 from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 from app.api.crud.event import generate_events_for_project
@@ -252,9 +253,9 @@ def test_events_split_at_folder_boundary(deployment_scaffold):
     assert events[1].file_count == 2
     # First event's files all live under card_a.
     for f in events[0].files:
-        assert "/card_a/" in f.file_path
+        assert Path(f.file_path).parent.name == "card_a"
     for f in events[1].files:
-        assert "/card_b/" in f.file_path
+        assert Path(f.file_path).parent.name == "card_b"
 
 
 def test_events_interleaved_parallel_folders(deployment_scaffold):
@@ -313,7 +314,7 @@ def test_events_interleaved_parallel_folders(deployment_scaffold):
     events = db.query(Event).all()
     assert sorted(e.file_count for e in events) == [3, 3]
     for e in events:
-        folders = {f.file_path.rsplit("/", 1)[0] for f in e.files}
+        folders = {str(Path(f.file_path).parent) for f in e.files}
         assert len(folders) == 1, "event spans multiple folders"
 
 
@@ -495,7 +496,7 @@ def test_paired_cameras_form_one_event_with_max_not_sum(deployment_scaffold):
     event = db.query(Event).one()
     assert event.file_count == 4
     ordered = sorted(event.files, key=lambda f: f.captured_at_local)
-    assert [f.file_path.rsplit("/", 2)[1] for f in ordered] == [
+    assert [Path(f.file_path).parent.name for f in ordered] == [
         "cam_a", "cam_b", "cam_a", "cam_b",
     ]
     (obs,) = event.observations
