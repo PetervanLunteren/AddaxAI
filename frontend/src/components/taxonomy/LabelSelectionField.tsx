@@ -32,6 +32,7 @@ import {
 import { cn } from "../../lib/utils";
 import { modelsApi } from "../../api/models";
 import { SpeciesSelectionModal } from "./SpeciesSelectionModal";
+import { shouldFetchModelGeofence } from "./geofenceQuery";
 
 /** Sentinel country code for an explicit "All labels" choice. Kept out
  *  of the API: forms map it to null before sending (the backend knows
@@ -69,7 +70,7 @@ export function useLabelSelectionCaption(
   const { data: geofence } = useQuery({
     queryKey: ["model-geofence", modelId],
     queryFn: () => modelsApi.getModelGeofence(modelId),
-    enabled: !!modelId,
+    enabled: shouldFetchModelGeofence(modelId, isDetectionAlias),
     staleTime: Infinity,
   });
   if (isDetectionAlias) {
@@ -122,7 +123,7 @@ export function LabelSelectionField({
   const { data: geofence } = useQuery({
     queryKey: ["model-geofence", modelId],
     queryFn: () => modelsApi.getModelGeofence(modelId),
-    enabled: !!modelId,
+    enabled: shouldFetchModelGeofence(modelId, isDetectionAlias),
     staleTime: Infinity,
   });
 

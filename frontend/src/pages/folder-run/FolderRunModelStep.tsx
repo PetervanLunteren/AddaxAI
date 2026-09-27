@@ -70,6 +70,7 @@ import {
   CollapsibleTrigger,
 } from "../../components/ui/collapsible";
 import { Dialog, DialogContent } from "../../components/ui/dialog";
+import { shouldFetchModelGeofence } from "../../components/taxonomy/geofenceQuery";
 import {
   Form,
   FormControl,
@@ -518,7 +519,10 @@ export function FolderRunModelStep() {
   const { data: clsGeofence } = useQuery({
     queryKey: ["model-geofence", classificationModelId],
     queryFn: () => modelsApi.getModelGeofence(classificationModelId!),
-    enabled: hasClassifier,
+    enabled: shouldFetchModelGeofence(
+      classificationModelId,
+      isDetectionClassAlias,
+    ),
     staleTime: Infinity,
   });
   const requiresCountryChoice =

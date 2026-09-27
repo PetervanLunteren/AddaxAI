@@ -8,6 +8,7 @@
     "build": "vite build",
     "build:check": "tsc -b && vite build",
     "typecheck": "tsc -b",
+    "test:unit": "node --experimental-strip-types --test tests/geofenceQuery.test.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },

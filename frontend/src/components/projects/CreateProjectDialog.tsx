@@ -54,6 +54,7 @@ import {
   toApiCountryCode,
   useLabelSelectionCaption,
 } from "../taxonomy/LabelSelectionField";
+import { shouldFetchModelGeofence } from "../taxonomy/geofenceQuery";
 import { ModelSelect } from "../models/ModelSelect";
 import { toApiModelId } from "@/lib/model-id";
 import { NoClassifierNotice } from "../models/NoClassifierNotice";
@@ -167,7 +168,12 @@ export function CreateProjectDialog({
   const { data: clsGeofence } = useQuery({
     queryKey: ["model-geofence", classificationModelId],
     queryFn: () => modelsApi.getModelGeofence(classificationModelId!),
-    enabled: hasClassificationModel && open,
+    enabled:
+      open &&
+      shouldFetchModelGeofence(
+        classificationModelId,
+        selectedClassificationModel?.uses_detection_classes === true,
+      ),
     staleTime: Infinity,
   });
   const requiresCountryChoice =
