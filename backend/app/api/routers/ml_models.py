@@ -10,8 +10,9 @@ import asyncio
 import hashlib
 import ipaddress
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Literal
+from typing import Any, BinaryIO, Literal
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -216,6 +217,24 @@ def _require_loopback(request: Request) -> None:
 _UPLOAD_WRITE_BYTES = 8 * 1024 * 1024
 
 
+async def _run_upload_io(function: Callable[..., Any], *args: Any) -> Any:
+    """Wait for an in-flight disk operation before cancellation cleanup.
+
+    Cancelling ``asyncio.to_thread`` only cancels its awaitable; the worker
+    thread continues. Shield it and, on request cancellation, wait for the
+    worker to release any open file handle before the route closes/unlinks it.
+    """
+    operation = asyncio.create_task(asyncio.to_thread(function, *args))
+    try:
+        return await asyncio.shield(operation)
+    except asyncio.CancelledError:
+        try:
+            await operation
+        except Exception:
+            logger.exception("Custom-model upload I/O failed while cancelling request")
+        raise
+
+
 def _custom_manager() -> CustomModelManager:
     manifest_mgr, _, _ = _get_managers()
     return CustomModelManager(manifest_mgr.models_dir, manifest_mgr)
@@ -262,23 +281,25 @@ async def upload_custom_model_file(
     temporary: Path | None = None
     uploaded = False
     try:
-        target, temporary = await asyncio.to_thread(
+        target, temporary = await _run_upload_io(
             manager.begin_upload_file, upload_id, filename
         )
         total = 0
         digest = hashlib.sha256()
         pending = bytearray()
 
-        def write_pending(output, data: bytes) -> None:
+        def write_pending(output: BinaryIO, data: bytearray) -> None:
             output.write(data)
             digest.update(data)
 
-        def sync_and_close(output) -> None:
+        def sync_and_close(output: BinaryIO) -> None:
             output.flush()
             os.fsync(output.fileno())
 
         # Disk writes, hashing and fsync run in a worker thread so a
         # multi-GB upload does not stall the event loop (websockets etc.).
+        # The application-owned copy stays capped at _UPLOAD_WRITE_BYTES,
+        # even when one ASGI body event contains a much larger byte string.
         with temporary.open("xb") as output:
             async for chunk in request.stream():
                 if not chunk:
@@ -289,15 +310,21 @@ async def upload_custom_model_file(
                         status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                         detail="Selected file exceeds the 50 GiB upload limit",
                     )
-                pending.extend(chunk)
-                if len(pending) >= _UPLOAD_WRITE_BYTES:
-                    await asyncio.to_thread(write_pending, output, bytes(pending))
-                    pending.clear()
+                view = memoryview(chunk)
+                offset = 0
+                while offset < len(view):
+                    capacity = _UPLOAD_WRITE_BYTES - len(pending)
+                    count = min(capacity, len(view) - offset)
+                    pending.extend(view[offset : offset + count])
+                    offset += count
+                    if len(pending) == _UPLOAD_WRITE_BYTES:
+                        await _run_upload_io(write_pending, output, pending)
+                        pending.clear()
             if pending:
-                await asyncio.to_thread(write_pending, output, bytes(pending))
+                await _run_upload_io(write_pending, output, pending)
                 pending.clear()
-            await asyncio.to_thread(sync_and_close, output)
-        await asyncio.to_thread(manager.finish_upload_file, upload_id, target, temporary)
+            await _run_upload_io(sync_and_close, output)
+        await _run_upload_io(manager.finish_upload_file, upload_id, target, temporary)
         uploaded = True
         return {"filename": target.name, "size_bytes": total, "sha256": digest.hexdigest()}
     except HTTPException:

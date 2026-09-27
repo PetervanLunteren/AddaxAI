@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import threading
 import uuid
 from pathlib import Path
 
@@ -783,6 +784,131 @@ async def test_custom_model_upload_is_streamed_then_consumed_or_cleaned(
     )
     staging_root = models_dir.parent / ".custom-model-imports"
     assert not list(staging_root.iterdir())
+
+
+@pytest.mark.asyncio
+async def test_single_large_asgi_chunk_is_written_in_bounded_slices(
+    local_model_api, monkeypatch
+):
+    from app.api.routers import ml_models
+
+    app, models_dir = local_model_api
+    write_limit = ml_models._UPLOAD_WRITE_BYTES
+    payload = b"x" * (write_limit * 2 + 17)
+    write_sizes: list[int] = []
+    actual_to_thread = asyncio.to_thread
+
+    async def record_write_sizes(func, *args, **kwargs):
+        if getattr(func, "__name__", "") == "write_pending":
+            write_sizes.append(len(args[1]))
+        return await actual_to_thread(func, *args, **kwargs)
+
+    monkeypatch.setattr(ml_models.asyncio, "to_thread", record_write_sizes)
+    transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 54134))
+
+    async def one_large_chunk():
+        yield payload
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        started = await client.post("/api/ml/custom-models/uploads")
+        upload_id = started.json()["upload_id"]
+        uploaded = await client.put(
+            f"/api/ml/custom-models/uploads/{upload_id}/files/weights.pt",
+            content=one_large_chunk(),
+        )
+        cleaned = await client.delete(f"/api/ml/custom-models/uploads/{upload_id}")
+
+    assert uploaded.status_code == 201, uploaded.text
+    assert uploaded.json()["size_bytes"] == len(payload)
+    assert sum(write_sizes) == len(payload)
+    assert len(write_sizes) == 3
+    assert max(write_sizes) <= write_limit
+    assert cleaned.status_code == 204
+    assert not (models_dir.parent / ".custom-model-imports" / upload_id).exists()
+
+
+@pytest.mark.asyncio
+async def test_cancellation_waits_for_off_thread_write_before_closing_and_cleaning(
+    local_model_api, monkeypatch
+):
+    from starlette.requests import Request
+
+    from app.api.routers import ml_models
+
+    app, models_dir = local_model_api
+    write_limit = ml_models._UPLOAD_WRITE_BYTES
+    payload = b"x" * write_limit
+    write_started = threading.Event()
+    release_write = threading.Event()
+    write_finished = threading.Event()
+    actual_to_thread = asyncio.to_thread
+
+    async def block_upload_write(func, *args, **kwargs):
+        if getattr(func, "__name__", "") != "write_pending":
+            return await actual_to_thread(func, *args, **kwargs)
+
+        def blocked_write():
+            write_started.set()
+            try:
+                if not release_write.wait(timeout=10):
+                    raise TimeoutError("test did not release the blocked upload write")
+                return func(*args, **kwargs)
+            finally:
+                write_finished.set()
+
+        return await actual_to_thread(blocked_write)
+
+    monkeypatch.setattr(ml_models.asyncio, "to_thread", block_upload_write)
+    transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 54135))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        started = await client.post("/api/ml/custom-models/uploads")
+        upload_id = started.json()["upload_id"]
+    session = models_dir.parent / ".custom-model-imports" / upload_id
+    received = False
+
+    async def receive():
+        nonlocal received
+        if not received:
+            received = True
+            return {"type": "http.request", "body": payload, "more_body": False}
+        return {"type": "http.disconnect"}
+
+    request = Request(
+        {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "PUT",
+            "scheme": "http",
+            "path": f"/api/ml/custom-models/uploads/{upload_id}/files/weights.pt",
+            "raw_path": b"/api/ml/custom-models/uploads/file/weights.pt",
+            "query_string": b"",
+            "headers": [],
+            "client": ("127.0.0.1", 54135),
+            "server": ("testserver", 80),
+            "root_path": "",
+        },
+        receive,
+    )
+    upload_task = asyncio.create_task(
+        ml_models.upload_custom_model_file(upload_id, "weights.pt", request)
+    )
+    loop = asyncio.get_running_loop()
+    assert await asyncio.wait_for(loop.run_in_executor(None, write_started.wait), 5)
+    upload_task.cancel()
+    await asyncio.sleep(0.05)
+    # Cancellation must not close the open file or delete its session while
+    # the executor thread still owns the write operation.
+    waited_for_worker = not upload_task.done()
+    session_retained = session.is_dir()
+    partial_retained = any(session.glob("*.part"))
+    release_write.set()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(upload_task, 5)
+
+    assert waited_for_worker
+    assert session_retained and partial_retained
+    assert write_finished.is_set()
+    assert not session.exists()
 
 
 @pytest.mark.asyncio
