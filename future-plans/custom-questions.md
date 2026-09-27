@@ -1485,6 +1485,16 @@ stored in cohorts**. In the Counts event view, under the species:
 split path. The rebuild logic does not change at all, and the rule from 9.7 holds: an AI value is
 a suggestion until a person accepts it.
 
+Two limits on Apply, found while drawing the Counts screen:
+
+- **Apply only acts on a species row that has not been split by hand.** Once a person has split
+  red deer into two males and three females, the posture answers cannot be assigned to those rows,
+  because crops are not linked to cohort rows and sex is not a crop answer. The suggestion then
+  stays visible as a hint for the person to assign.
+- **Several AI fields at once are fine.** Each crop in the peak frame carries an answer for every
+  AI field, so the combinations are known ("two standing with large antlers, one lying with medium
+  antlers") and Apply splits by combination in one step.
+
 ### 16.7 Training data flows one way
 
 A confirmed "3 standing, 2 lying" does not say which crop was which, so it cannot teach the
@@ -1613,8 +1623,11 @@ the peak-frame translation and the suggest-and-apply line on Counts (two days): 
 5. The default visibility and order of fields on Counts.
 6. Whether presence per event ("any animal doing this") is offered as an option for state fields
    later (16.4).
-7. Redraw the canvas to this design: the fields table, the Counts event view with standard and
-   custom fields and a suggestion line, and the teaching flow opened from a field's row.
+7. Done: the canvas (https://claude.ai/artifact/7CeL6nZ88bxfXEojBZbr6B, private to its owner)
+   is redrawn to this design: the fields table, the new-field dialog, the teaching flow opened from
+   a field's row, the "suggestions switched on" screen, the Counts list with its field filters, and
+   the Counts event view with event fields, standard and custom columns, and a suggestion line with
+   Apply.
 
 ---
 
