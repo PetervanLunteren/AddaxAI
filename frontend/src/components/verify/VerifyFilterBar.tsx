@@ -28,6 +28,7 @@ import { sitesApi } from "../../api/sites";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { buildSiteOptions } from "../../lib/site-filter-options";
 import { speciesLabelMap } from "../../lib/species-name-mode";
+import { labelTreeDisplayNames } from "../../lib/label-filter-ids";
 import type {
   EmptyFilter,
   EventFilterParams,
@@ -89,6 +90,8 @@ interface VerifyFilterBarProps {
    *  Files tab: a file is empty or not, but liked and flagged are event
    *  filters there. Defaults to `showLikedFlaggedEmpty`. */
   showEmpty?: boolean;
+  /** Place Empty in the main row instead of the More popover. */
+  emptyInline?: boolean;
   /** The page's default empty value, same contract as
    *  `verificationDefault`. Counts rests on "hide", Files on "all". */
   emptyDefault?: EmptyFilter;
@@ -119,6 +122,7 @@ export function VerifyFilterBar({
   verificationOptions,
   showLikedFlaggedEmpty = true,
   showEmpty = showLikedFlaggedEmpty,
+  emptyInline = false,
   emptyDefault = "hide",
   confidenceFloorMode = "clamp",
   verificationDefault = "all",
@@ -185,15 +189,56 @@ export function VerifyFilterBar({
     noSite?.count ?? 0,
   );
 
-  const labelNames = filterOptions ? speciesLabelMap(filterOptions) : {};
+  const labelNames = {
+    ...(filterOptions ? speciesLabelMap(filterOptions) : {}),
+    ...labelTreeDisplayNames(labelTree?.tree),
+  };
+  const availableLabelIds = labelTree?.all_leaf_ids ?? filterOptions?.labels ?? [];
   const labelFilterOptions: MultiSelectOption[] =
-    filterOptions?.labels.map((lbl) => ({
+    availableLabelIds.map((lbl) => ({
       value: lbl,
       label: labelNames[lbl] ?? lbl,
     })) ?? [];
 
-  // Four controls without Sites (folder runs), five with it (projects).
-  const gridCols = showSites ? "lg:grid-cols-5" : "lg:grid-cols-4";
+  const hasInlineEmpty = showEmpty && emptyInline;
+  const gridCols = showSites
+    ? hasInlineEmpty
+      ? "lg:grid-cols-6"
+      : "lg:grid-cols-5"
+    : hasInlineEmpty
+      ? "lg:grid-cols-5"
+      : "lg:grid-cols-4";
+
+  const updateLabels = (labels: string[]) => {
+    const allLeafs = availableLabelIds;
+    const isAll = labels.length >= allLeafs.length;
+    onChange({
+      ...filters,
+      labels: isAll ? undefined : labels.length ? labels : undefined,
+      ...(filters.empty === "show_only" && labels.length > 0
+        ? { empty: undefined }
+        : {}),
+    });
+  };
+
+  const updateEmpty = (value: string) => {
+    if (value === "show_only") {
+      onChange({
+        ...filters,
+        empty: "show_only",
+        labels: undefined,
+        min_confidence: undefined,
+        max_confidence: undefined,
+        min_label_confidence: undefined,
+        max_label_confidence: undefined,
+      });
+      return;
+    }
+    onChange({
+      ...filters,
+      empty: value === emptyDefault ? undefined : (value as EmptyFilter),
+    });
+  };
 
   return (
     <div className="space-y-2 rounded-lg border bg-white px-3 py-2">
@@ -241,7 +286,7 @@ export function VerifyFilterBar({
               >
                 <span className="truncate">
                   {filters.labels?.length
-                    ? `${filters.labels.length} labels`
+                    ? `${filters.labels.length} label${filters.labels.length === 1 ? "" : "s"}`
                     : "All labels"}
                 </span>
               </Button>
@@ -250,12 +295,7 @@ export function VerifyFilterBar({
                 allLeafIds={labelTree!.all_leaf_ids}
                 selectedLabels={filters.labels ?? []}
                 onApply={(labels) => {
-                  const allLeafs = labelTree!.all_leaf_ids;
-                  const isAll = labels.length >= allLeafs.length;
-                  onChange({
-                    ...filters,
-                    labels: isAll ? undefined : labels.length ? labels : undefined,
-                  });
+                  updateLabels(labels);
                 }}
                 open={labelModalOpen}
                 onOpenChange={setLabelModalOpen}
@@ -266,17 +306,31 @@ export function VerifyFilterBar({
             <MultiSelect
               options={labelFilterOptions}
               value={filters.labels ?? []}
-              onChange={(v) =>
-                onChange({ ...filters, labels: v.length ? v : undefined })
-              }
+              onChange={updateLabels}
               placeholder="All labels"
               searchPlaceholder="Search labels..."
               emptyMessage="No labels found."
-              summary={(n) => `${n} labels`}
+              summary={(n) => `${n} label${n === 1 ? "" : "s"}`}
               capitalize
             />
           )}
         </div>
+        )}
+
+        {hasInlineEmpty && (
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Empty</label>
+            <Select value={filters.empty ?? emptyDefault} onValueChange={updateEmpty}>
+              <SelectTrigger className="h-9 min-h-0 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="show_only">Empty only</SelectItem>
+                <SelectItem value="hide">Hide empty</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         )}
 
         <div className="space-y-1.5">
@@ -326,7 +380,7 @@ export function VerifyFilterBar({
             }
             showClassification={!!classificationModelId}
             showLikedFlaggedEmpty={showLikedFlaggedEmpty}
-            showEmpty={showEmpty}
+            showEmpty={showEmpty && !emptyInline}
             emptyDefault={emptyDefault}
           />
         </div>
@@ -342,7 +396,7 @@ export function VerifyFilterBar({
         emptyDefault={emptyDefault}
         showEmpty={showEmpty}
         siteNames={siteNames}
-        displayLabels={filterOptions ? speciesLabelMap(filterOptions) : undefined}
+        displayLabels={labelNames}
         detectionFloor={detectionFloor}
         verificationLabels={isEventScope ? EVENT_VERIFICATION_LABELS : undefined}
       />

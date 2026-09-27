@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
 from app.ml.label_exclusion import threshold_or_verified
+from app.ml.label_filter_ids import label_matches_filter
 from app.models import Detection, File, Project
 from app.utils.exiftool_bin import resolve_exiftool
 
@@ -98,18 +99,16 @@ def build_tag_set(
     ).scalars().all()
 
     if excluded_label_ids:
-        # Same filter rule as _label_filter.detection_is_excluded —
-        # match by taxonomy id OR label string so the heterogeneous
-        # exclusion set (UUIDs for mapped, strings for unmapped)
-        # behaves consistently across modules.
-        def _excluded(det: Detection) -> bool:
-            if det.label_taxonomy_id and det.label_taxonomy_id in excluded_label_ids:
-                return True
-            if det.label and det.label in excluded_label_ids:
-                return True
-            return False
-
-        rows = [r for r in rows if not _excluded(r)]
+        rows = [
+            row
+            for row in rows
+            if not label_matches_filter(
+                row.label,
+                row.label_taxonomy_id,
+                excluded_label_ids,
+                row.category,
+            )
+        ]
 
     if not rows:
         return None

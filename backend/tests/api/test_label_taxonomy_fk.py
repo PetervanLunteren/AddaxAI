@@ -3,7 +3,9 @@
 from datetime import datetime
 
 from app.api.crud.label_tree import build_label_filter_tree
+from app.ml.label_filter_ids import encode_unmapped_label
 from app.ml.taxonomy_db import link_detections_to_taxonomy
+from app.models.event import event_files
 from app.models.label_taxonomy import LabelTaxonomy
 from tests.conftest import (
     make_deployment,
@@ -120,6 +122,120 @@ def test_label_tree_all_linked(db):
     result = build_label_filter_tree(p.id, db)
     assert result is not None
     assert leopard_tax.id in result["all_leaf_ids"]
+
+
+def test_label_tree_returns_unmapped_only_project(db):
+    project = make_project(db)
+    deployment = make_deployment(db, project_id=project.id)
+    event = make_event_with_files(
+        db,
+        deployment_id=deployment.id,
+        event_start_local=datetime(2024, 6, 1, 12, 0),
+    )
+    file_id = db.execute(
+        event_files.select().where(event_files.c.event_id == event.id)
+    ).first().file_id
+    make_detection(
+        db,
+        file_id=file_id,
+        label=None,
+        category="unmapped, class",
+        confidence=0.9,
+    )
+
+    tree = build_label_filter_tree(project.id, db, count_by="event")
+
+    assert tree is not None
+    token = encode_unmapped_label("unmapped, class")
+    assert token in tree["all_leaf_ids"]
+    no_taxonomy = next(node for node in tree["tree"] if node["id"] == "other")
+    assert no_taxonomy["children"][0]["id"] == token
+    assert no_taxonomy["children"][0]["name"] == "unmapped, class (unmapped)"
+
+
+def test_unmapped_category_labels_have_distinct_filter_ids_and_filter_api_rows(
+    client, db
+):
+    """A raw class stays distinct from a taxonomy row with the same name.
+
+    The raw label is supplied by Detection.category because the classifier
+    label is NULL. Its encoded ID is comma-safe and selects only the
+    null-taxonomy event/file rows.
+    """
+    raw_name = "red fox, silver"
+    p = make_project(db, counting_threshold=0.2)
+    site = make_site(db, project_id=p.id)
+    deployment = make_deployment(db, site_id=site.id)
+
+    raw_event = make_event_with_files(
+        db,
+        deployment_id=deployment.id,
+        event_start_local=datetime(2024, 6, 1, 12, 0),
+    )
+    raw_file_id = db.execute(
+        event_files.select().where(event_files.c.event_id == raw_event.id)
+    ).first().file_id
+    make_detection(
+        db,
+        file_id=raw_file_id,
+        category=raw_name,
+        label=None,
+        confidence=0.9,
+    )
+
+    mapped_event = make_event_with_files(
+        db,
+        deployment_id=deployment.id,
+        event_start_local=datetime(2024, 6, 2, 12, 0),
+    )
+    mapped_file_id = db.execute(
+        event_files.select().where(event_files.c.event_id == mapped_event.id)
+    ).first().file_id
+    mapped_taxonomy = _add_taxonomy(db, raw_name, "unknown")
+    make_detection(
+        db,
+        file_id=mapped_file_id,
+        category="animal",
+        label=raw_name,
+        label_taxonomy_id=mapped_taxonomy.id,
+        confidence=0.9,
+    )
+    db.commit()
+
+    token = encode_unmapped_label(raw_name)
+    tree = build_label_filter_tree(p.id, db, count_by="event")
+    assert tree is not None
+    no_taxonomy = next(node for node in tree["tree"] if node["id"] == "other")
+    same_name_leaves = [
+        node
+        for node in no_taxonomy["children"]
+        if node["id"] in {mapped_taxonomy.id, token}
+    ]
+    assert {(node["id"], node["count"]) for node in same_name_leaves} == {
+        (token, 1),
+        (mapped_taxonomy.id, 1),
+    }
+    assert next(node for node in same_name_leaves if node["id"] == token)["name"] == (
+        f"{raw_name} (unmapped)"
+    )
+    assert next(
+        node for node in same_name_leaves if node["id"] == mapped_taxonomy.id
+    )["name"] != f"{raw_name} (unmapped)"
+    assert token in tree["all_leaf_ids"]
+
+    events = client.get(
+        "/api/events",
+        params={"project_id": p.id, "labels": token, "verification": "all"},
+    )
+    assert events.status_code == 200, events.text
+    assert [row["id"] for row in events.json()] == [raw_event.id]
+
+    files = client.get(
+        f"/api/projects/{p.id}/labels/files",
+        params={"labels": token, "verification": "all"},
+    )
+    assert files.status_code == 200, files.text
+    assert [row["id"] for row in files.json()["items"]] == [raw_file_id]
 
 
 # ---------- Delete custom label sets FK to NULL ----------

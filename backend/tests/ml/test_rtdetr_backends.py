@@ -227,7 +227,18 @@ def test_rtdetr_child_uses_local_pywildlife_weights_without_pretrained_download(
         cuda=SimpleNamespace(is_available=lambda: False),
         backends=SimpleNamespace(mps=SimpleNamespace(is_available=lambda: False)),
     )
-    image_stub = SimpleNamespace(open=lambda _path: SimpleNamespace(size=(100, 80)))
+    class StubImage:
+        size = (100, 80)
+        width = 100
+        height = 80
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    image_stub = SimpleNamespace(open=lambda _path: StubImage())
     package = ModuleType("PytorchWildlife")
     models_module = ModuleType("PytorchWildlife.models")
     detection_module = ModuleType("PytorchWildlife.models.detection")
@@ -265,6 +276,7 @@ def test_rtdetr_child_uses_local_pywildlife_weights_without_pretrained_download(
     }
     assert captured["detect"] == (str(image), 0.25)
     assert base_module.YAMLConfig("bundled-config.yml").yaml_cfg["PResNet"]["pretrained"] is False
+    assert (result[0]["width"], result[0]["height"]) == (100, 80)
     assert result[0]["class_names"] == {"3": "red fox"}
     assert result[0]["detections"] == [
         {"bbox": [0.1, 0.0625, 0.5, 0.5], "conf": 0.8, "class_id": "3"}

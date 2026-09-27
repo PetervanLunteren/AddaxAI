@@ -9,7 +9,9 @@ aggregation path.
 from datetime import date, datetime
 
 from app.api.crud import statistics as stats_crud
+from app.ml.label_filter_ids import encode_unmapped_label
 from app.models.event_observation import EventObservation
+from app.models.label_taxonomy import LabelTaxonomy
 from tests.conftest import (
     make_deployment,
     make_event_with_files,
@@ -181,6 +183,59 @@ def test_observation_rate_map_includes_species_breakdown(db):
     assert len(lion) == 1
     assert lion[0].label == "lion"
     assert lion[0].count == 1
+
+
+def test_observation_rate_map_filters_unmapped_label_without_same_name_taxonomy(
+    db,
+):
+    project = make_project(db)
+    site = make_site(db, project_id=project.id, latitude=10.0, longitude=20.0)
+    deployment = make_deployment(
+        db,
+        site_id=site.id,
+        start_date_local=date(2024, 1, 1),
+        end_date_local=date(2024, 1, 3),
+    )
+    raw_name = "fox, red"
+    raw_event = make_event_with_files(
+        db, deployment_id=deployment.id, event_start_local=datetime(2024, 1, 2, 8)
+    )
+    mapped_event = make_event_with_files(
+        db, deployment_id=deployment.id, event_start_local=datetime(2024, 1, 3, 8)
+    )
+    taxonomy = LabelTaxonomy(
+        classification_model_id="test-model", name=raw_name, level="unknown"
+    )
+    db.add(taxonomy)
+    db.flush()
+    _add_observation(
+        db,
+        event_id=raw_event.id,
+        label=raw_name,
+        max_n=2,
+        category="animal",
+    )
+    _add_observation(
+        db,
+        event_id=mapped_event.id,
+        label=raw_name,
+        label_taxonomy_id=taxonomy.id,
+        max_n=7,
+    )
+
+    response = stats_crud.get_observation_rate_map(
+        db,
+        project.id,
+        label_taxonomy_ids=[encode_unmapped_label(raw_name)],
+    )
+
+    assert len(response.features) == 1
+    feature = response.features[0]
+    assert feature.observation_count == 2
+    assert [
+        (row.label, row.label_taxonomy_id, row.count)
+        for row in feature.species_breakdown
+    ] == [(raw_name, None, 2)]
 
 
 def test_observation_rate_map_aggregates_multiple_deployments_per_site(db):

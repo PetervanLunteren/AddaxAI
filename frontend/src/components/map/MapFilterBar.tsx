@@ -31,6 +31,7 @@ import {
 import { eventsApi } from "../../api/events";
 import { sitesApi } from "../../api/sites";
 import { speciesLabelMap } from "../../lib/species-name-mode";
+import { labelTreeDisplayNames } from "../../lib/label-filter-ids";
 import { Button } from "../ui/button";
 import { DateRangePicker } from "../ui/date-range-picker";
 import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
@@ -107,9 +108,13 @@ export function MapFilterBar({
   const siteOptions: MultiSelectOption[] =
     sites?.map((s) => ({ value: s.id, label: s.name })) ?? [];
 
-  const labelNames = filterOptions ? speciesLabelMap(filterOptions) : {};
+  const labelNames = {
+    ...(filterOptions ? speciesLabelMap(filterOptions) : {}),
+    ...labelTreeDisplayNames(labelTree?.tree),
+  };
+  const availableLabelIds = labelTree?.all_leaf_ids ?? filterOptions?.labels ?? [];
   const labelFlatOptions: MultiSelectOption[] =
-    filterOptions?.labels.map((lbl) => ({
+    availableLabelIds.map((lbl) => ({
       value: lbl,
       label: labelNames[lbl] ?? lbl,
     })) ?? [];
@@ -182,7 +187,7 @@ export function MapFilterBar({
                 <ListTodo className="h-4 w-4 mr-2 text-muted-foreground shrink-0" />
                 <span className="truncate">
                   {filters.labels?.length
-                    ? `${filters.labels.length} labels`
+                    ? `${filters.labels.length} label${filters.labels.length === 1 ? "" : "s"}`
                     : "All labels"}
                 </span>
               </Button>
@@ -217,7 +222,7 @@ export function MapFilterBar({
               placeholder="All labels"
               searchPlaceholder="Search labels..."
               emptyMessage="No labels found."
-              summary={(n) => `${n} labels`}
+              summary={(n) => `${n} label${n === 1 ? "" : "s"}`}
               capitalize
             />
           )}

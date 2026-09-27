@@ -8,11 +8,51 @@ files on disk. No mocks needed — this function only reads JSON + file stats.
 from unittest.mock import patch
 
 import pytest
+from PIL import Image
 
 from app.ml.json_pipeline import load_json_to_database
 from app.models import Detection, File
 
 from .conftest import build_detection_json, write_json
+
+
+def test_image_dimensions_are_read_on_create_and_missing_dimensions_backfilled_on_reingest(
+    deployment_scaffold,
+):
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    source_path = s["img_paths"][0]
+    Image.new("RGB", (37, 23)).save(source_path, format="JPEG")
+    relative_path = str(source_path.relative_to(deploy_dir))
+
+    def load_without_dimensions() -> None:
+        payload = build_detection_json(
+            [{"file": relative_path, "detections": []}]
+        )
+        json_path = write_json(s["artifacts"] / "dimension-results.json", payload)
+        with patch("app.ml.json_pipeline.extract_video_dates", return_value={}):
+            load_json_to_database(
+                json_path=json_path,
+                deployment_id=s["deployment"].id,
+                deployment_folder=deploy_dir,
+                job_id=s["job"].id,
+                db=db,
+                artifacts_folder=s["artifacts"],
+            )
+
+    load_without_dimensions()
+    file_record = db.query(File).filter(File.deployment_id == s["deployment"].id).one()
+    assert (file_record.width_px, file_record.height_px) == (37, 23)
+
+    # Re-ingest fills only the missing value and preserves dimensions that
+    # were already recorded, even if the source image later changes size.
+    file_record.width_px = 101
+    file_record.height_px = None
+    db.flush()
+    Image.new("RGB", (41, 29)).save(source_path, format="JPEG")
+    load_without_dimensions()
+    db.refresh(file_record)
+    assert (file_record.width_px, file_record.height_px) == (101, 29)
 
 
 def test_load_creates_file_records(deployment_scaffold):

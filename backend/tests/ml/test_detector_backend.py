@@ -183,7 +183,60 @@ def test_yolo_child_omits_none_image_size(monkeypatch, tmp_path: Path):
     assert "imgsz" not in captured
     assert captured["source"] == str(tmp_path / "photo.jpg")
     assert captured["stream"] is False
+    assert output[0]["width"] == 20
+    assert output[0]["height"] == 20
     assert output[0]["class_names"] == {"0": "fox"}
+
+
+def test_yolo_child_reads_source_dimensions_when_result_shape_is_missing(
+    monkeypatch, tmp_path: Path
+):
+    from PIL import Image
+
+    image_path = tmp_path / "photo.jpg"
+    Image.new("RGB", (37, 23)).save(image_path)
+
+    class FakeYOLO:
+        def __init__(self, _model_path: str):
+            pass
+
+        def predict(self, **_kwargs):
+            return [SimpleNamespace(boxes=None, names={}, orig_shape=None)]
+
+    monkeypatch.setitem(sys.modules, "ultralytics", SimpleNamespace(YOLO=FakeYOLO))
+    from app.ml.inference import detector_subprocess
+
+    output = detector_subprocess._run_yolo(
+        tmp_path / "weights.pt", [image_path], 0.1, None
+    )
+
+    assert (output[0]["width"], output[0]["height"]) == (37, 23)
+
+
+def test_rfdetr_child_includes_source_dimensions(monkeypatch, tmp_path: Path):
+    from PIL import Image
+
+    image_path = tmp_path / "photo.jpg"
+    Image.new("RGB", (31, 19)).save(image_path)
+
+    class FakeRFDETR:
+        classes = {0: "fox"}
+
+        def __init__(self, **_kwargs):
+            pass
+
+        def predict(self, _path: str, *, threshold: float):
+            assert threshold == 0.25
+            return SimpleNamespace(xyxy=[], confidence=[], class_id=[])
+
+    monkeypatch.setitem(sys.modules, "rfdetr", SimpleNamespace(RFDETRMedium=FakeRFDETR))
+    from app.ml.inference import detector_subprocess
+
+    output = detector_subprocess._run_rfdetr(
+        tmp_path / "weights.pth", [image_path], 0.25, None, "RFDETRMedium"
+    )
+
+    assert (output[0]["width"], output[0]["height"]) == (31, 19)
 
 
 def test_yolo_child_streams_100_results_in_input_order(monkeypatch, tmp_path: Path):

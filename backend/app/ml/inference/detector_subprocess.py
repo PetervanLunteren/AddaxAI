@@ -83,6 +83,14 @@ def _xyxy_to_xywh(box: Any, width: float, height: float) -> list[float] | None:
     return [x1 / width, y1 / height, max(0.0, x2 - x1) / width, max(0.0, y2 - y1) / height]
 
 
+def _read_image_dimensions(path: Path) -> tuple[int, int]:
+    """Read the source image dimensions for a detector result record."""
+    from PIL import Image
+
+    with Image.open(path) as image:
+        return int(image.width), int(image.height)
+
+
 def _run_yolo(
     model_path: Path,
     paths: list[Path],
@@ -109,13 +117,21 @@ def _run_yolo(
         result = predictions[0] if predictions else None
         boxes = getattr(result, "boxes", None)
         names = getattr(result, "names", None) or getattr(model, "names", None) or {}
+        original_shape = getattr(result, "orig_shape", None)
+        if (
+            isinstance(original_shape, list | tuple)
+            and len(original_shape) == 2
+            and int(original_shape[0]) > 0
+            and int(original_shape[1]) > 0
+        ):
+            height, width = int(original_shape[0]), int(original_shape[1])
+        else:
+            width, height = _read_image_dimensions(path)
         detections: list[dict[str, Any]] = []
         if boxes is not None:
             xyxy = getattr(boxes, "xyxy", [])
             confs = getattr(boxes, "conf", [])
             classes = getattr(boxes, "cls", [])
-            orig_shape = getattr(result, "orig_shape", (0, 0))
-            width, height = orig_shape[1], orig_shape[0]
             for box, conf, cls in zip(xyxy, confs, classes, strict=False):
                 bbox = _xyxy_to_xywh(box, width, height)
                 if bbox is None:
@@ -127,7 +143,15 @@ def _run_yolo(
             class_names = {str(k): str(v) for k, v in enumerate(names)}
         else:
             class_names = {}
-        output.append({"file": str(path), "detections": detections, "class_names": class_names})
+        output.append(
+            {
+                "file": str(path),
+                "width": width,
+                "height": height,
+                "detections": detections,
+                "class_names": class_names,
+            }
+        )
     return output
 
 
@@ -157,9 +181,7 @@ def _run_rfdetr(
         confidences = getattr(prediction, "confidence", getattr(prediction, "conf", []))
         class_ids = getattr(prediction, "class_id", getattr(prediction, "classes", []))
         detections: list[dict[str, Any]] = []
-        from PIL import Image
-
-        width, height = Image.open(path).size
+        width, height = _read_image_dimensions(path)
         for box, confidence, class_id in zip(boxes, confidences, class_ids, strict=False):
             bbox = _xyxy_to_xywh(box, width, height)
             if bbox is None or float(confidence) < threshold:
@@ -177,7 +199,15 @@ def _run_rfdetr(
             class_names = {str(k): str(v) for k, v in enumerate(model_names)}
         else:
             class_names = {}
-        output.append({"file": str(path), "detections": detections, "class_names": class_names})
+        output.append(
+            {
+                "file": str(path),
+                "width": width,
+                "height": height,
+                "detections": detections,
+                "class_names": class_names,
+            }
+        )
     return output
 
 
@@ -202,7 +232,6 @@ def _run_rtdetr(
         raise FileNotFoundError(f"RT-DETR weights not found: {model_path}")
 
     import torch  # type: ignore[import-not-found]
-    from PIL import Image
     from PytorchWildlife.models import detection as pw_detection  # type: ignore[import-not-found]
 
     # The upstream 1.2.4.x Apache wrapper ignores its ``pretrained`` argument
@@ -229,8 +258,8 @@ def _run_rtdetr(
         confidences = getattr(detections_object, "confidence", None)
         class_ids = getattr(detections_object, "class_id", None)
         detections: list[dict[str, Any]] = []
+        width, height = _read_image_dimensions(path)
         if boxes is not None and confidences is not None and class_ids is not None:
-            width, height = Image.open(path).size
             for box, confidence, class_id in zip(boxes, confidences, class_ids, strict=False):
                 score = float(confidence)
                 if not math.isfinite(score) or score < threshold:
@@ -241,7 +270,13 @@ def _run_rtdetr(
                         {"bbox": bbox, "conf": score, "class_id": str(int(class_id))}
                     )
         output.append(
-            {"file": str(path), "detections": detections, "class_names": class_names}
+            {
+                "file": str(path),
+                "width": width,
+                "height": height,
+                "detections": detections,
+                "class_names": class_names,
+            }
         )
     return output
 
@@ -391,6 +426,8 @@ def _run_rtdetrv2(
                 output.append(
                     {
                         "file": str(path),
+                        "width": width,
+                        "height": height,
                         "detections": _rtdetrv2_detections(
                             labels[0],
                             boxes[0],

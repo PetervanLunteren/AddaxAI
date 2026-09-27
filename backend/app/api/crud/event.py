@@ -20,6 +20,7 @@ from app.ml.label_exclusion import (
     classification_score_in_range,
     threshold_or_verified,
 )
+from app.ml.label_filter_ids import label_filter_expression
 from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
@@ -254,7 +255,14 @@ def _apply_event_filters(
             .join(File, File.id == event_files.c.file_id)
             .join(Detection, Detection.file_id == File.id)
             .where(event_files.c.event_id == Event.id)
-            .where(Detection.label_taxonomy_id.in_(labels))
+            .where(
+                label_filter_expression(
+                    Detection.label_taxonomy_id,
+                    Detection.label,
+                    labels,
+                    Detection.category,
+                )
+            )
         )
         if project_floor is not None:
             label_subq = label_subq.where(threshold_or_verified(project_floor))

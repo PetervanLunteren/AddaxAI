@@ -52,6 +52,7 @@ from sqlalchemy.orm import Session
 
 from app import __version__ as APP_VERSION
 from app.core.logging_config import get_logger
+from app.ml.postprocessing_outputs._label_filter import detection_is_excluded
 from app.models import Deployment, Detection, File, LabelTaxonomy, Project
 
 logger = get_logger(__name__)
@@ -310,10 +311,7 @@ def write_recognition_json(
                 "verified": bool(det.verified),
             }
 
-            label_excluded = bool(excluded) and (
-                (det.label_taxonomy_id and det.label_taxonomy_id in excluded)
-                or (det.label and det.label in excluded)
-            )
+            label_excluded = detection_is_excluded(det, excluded or None)
             if (
                 det.label
                 and det.label_confidence is not None

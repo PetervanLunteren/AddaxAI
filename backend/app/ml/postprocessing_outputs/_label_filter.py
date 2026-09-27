@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session
 
 from app.ml.detection_visibility import on_visible_frame_of
 from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
+from app.ml.label_filter_ids import label_matches_filter
 from app.models import Detection, File
 
 
@@ -46,21 +47,16 @@ def detection_is_excluded(
 ) -> bool:
     """Return True when the user's exclusion set covers this detection.
 
-    Either the detection's taxonomy id or its raw label string can
-    match — the set is heterogeneous (UUIDs for taxonomy-mapped
-    labels, plain strings for unmapped ones from the "Other"
-    branch of the label tree).
+    Taxonomy UUIDs match the foreign key. New unmapped-label tokens
+    match the effective raw label only when the taxonomy key is NULL;
+    older plain-string exclusions retain their previous string matching.
     """
-    if not excluded_label_ids:
-        return False
-    if (
-        detection.label_taxonomy_id
-        and detection.label_taxonomy_id in excluded_label_ids
-    ):
-        return True
-    if detection.label and detection.label in excluded_label_ids:
-        return True
-    return False
+    return label_matches_filter(
+        detection.label,
+        detection.label_taxonomy_id,
+        excluded_label_ids or (),
+        detection.category,
+    )
 
 
 def passing_detections_for_file(
@@ -141,9 +137,9 @@ def file_is_dropped_by_filter(
 ) -> bool:
     """True when ALL of a file's passing, identified detections are excluded.
 
-    Identified = the detection carries a ``label`` or a
-    ``label_taxonomy_id``, which covers species labels and the builtin
-    animal / person / vehicle ids alike. A file whose every identified
+    Identified = the detection carries a ``label``, a category, or a
+    ``label_taxonomy_id``, which covers unmapped detector classes and
+    builtin animal / person / vehicle categories alike. A file whose every identified
     detection is excluded is dropped from the media outputs. A file with
     no identified detection (a true blank) is never dropped here — the
     "copy empties" toggle owns those.
@@ -162,6 +158,7 @@ def file_is_dropped_by_filter(
         .where(
             or_(
                 Detection.label.isnot(None),
+                Detection.category.isnot(None),
                 Detection.label_taxonomy_id.isnot(None),
             )
         )
