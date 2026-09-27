@@ -7,6 +7,7 @@
 import { X } from "lucide-react";
 import type { EmptyFilter, EventFilterParams } from "../../api/types";
 import { Badge } from "../ui/badge";
+import { labelFilterDisplayName } from "../../lib/label-filter-ids";
 
 /** True when any user filter is set on these params. Shared by every
  *  verify tab so the chip row and "no results" copy stay in sync with
@@ -58,8 +59,8 @@ interface FilterChipsProps {
 
 /** Format a raw label ID for display (e.g. "artiodactyla:unspecified" -> "Artiodactyla"). */
 function formatLabel(raw: string, displayLabels?: Record<string, string>): string {
-  if (displayLabels?.[raw]) return displayLabels[raw];
-  const name = raw.replace(/:unspecified$/, "").replace(/_/g, " ");
+  const display = labelFilterDisplayName(raw, displayLabels);
+  const name = display.replace(/:unspecified$/, "").replace(/_/g, " ");
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 

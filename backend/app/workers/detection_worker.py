@@ -12,6 +12,7 @@ Created by Claude Code on 2026-01-04
 """
 
 import asyncio
+import hashlib
 import json
 import time
 from collections.abc import Callable
@@ -29,17 +30,48 @@ from app.core.websocket_manager import ws_manager
 from app.db.base import get_db, refresh_query_statistics
 from app.ml import detection_checkpoint as ckpt
 from app.ml.detection import MD_OUTPUT_CONFIDENCE_THRESHOLD
+from app.ml.detector_classification import reuse_detector_classes_in_json
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.inference.custom_classification_model import CustomClassificationModel
-from app.ml.inference.megadetector import MegaDetectorV1000
+from app.ml.inference.detector_backend import create_detector
 from app.ml.json_pipeline import merge_json_files, run_classification_on_json
 from app.ml.manifest_manager import ManifestManager
 from app.ml.model_storage import ModelStorage
+from app.ml.model_usage import acquire_model_usage
+from app.ml.schemas.model_manifest import uses_detection_classes_for_classification
 from app.models import Deployment
 from app.services.folder_scanner import walk_media_files
 from app.utils.fs_hidden import mkdir_hidden_addaxai
 
 logger = get_logger(__name__)
+
+
+def _detection_model_signature(manifest, model_path: Path) -> str:
+    """Hash all manifest settings and local files that change detector output."""
+    files: dict[str, dict[str, int]] = {}
+    candidates = {"weights": model_path}
+    if manifest.detector_config_fname:
+        candidates["config"] = model_path.parent / manifest.detector_config_fname
+    for key, path in candidates.items():
+        try:
+            stat = path.stat()
+        except OSError:
+            files[key] = {"size": -1, "mtime_ns": -1}
+        else:
+            files[key] = {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns}
+    identity = {
+        "backend": manifest.detector_backend or "megadetector",
+        "env": manifest.env,
+        "model_fname": manifest.model_fname,
+        "model_class": manifest.detector_model_class,
+        "variant": manifest.detector_model_variant,
+        "config_fname": manifest.detector_config_fname,
+        "class_names": manifest.class_names,
+        "weights_sha256": manifest.weights_sha256,
+        "files": files,
+    }
+    encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list[str], db) -> None:
@@ -76,49 +108,74 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
     # Initialize ML infrastructure (once for all deployments)
     await ws_manager.send_progress(job_id, "Initializing ML models...", 0.01)
 
-    manifest_manager = ManifestManager()
-    env_manager = EnvironmentManager()
-    model_storage = ModelStorage()
+    # Mark the selected packs active before resolving their manifests. A
+    # concurrent custom-model delete uses the same usage lock and therefore
+    # cannot remove a pack after this point.
+    release_model_usage = acquire_model_usage(
+        [detection_model_id, classification_model_id]
+    )
+    try:
+        manifest_manager = ManifestManager()
+        env_manager = EnvironmentManager()
+        model_storage = ModelStorage()
 
-    # Load detection model
-    det_manifest = manifest_manager.get_model(detection_model_id)
-    det_model_path = model_storage.get_model_file(det_manifest)
-    detection_model = MegaDetectorV1000(det_model_path, env_manager)
+        # Load the manifest-driven detector (MegaDetector remains the default).
+        det_manifest = manifest_manager.get_model(detection_model_id)
+        det_model_path = model_storage.get_model_file(det_manifest)
+        detection_model = create_detector(det_manifest, det_model_path, env_manager)
 
-    # Load classification model (if configured)
-    classification_model = None
-    full_image_cls = False
-    # Bound unconditionally, like its two neighbours above. It used to be
-    # set only inside the branch below, which was survivable only because
-    # every reader wrote `if classification_model_id and cls_model_dir`
-    # and Python short-circuits before touching it. Passing it as a plain
-    # argument evaluates it every time, and a detection-only run then died
-    # at postprocessing with UnboundLocalError.
-    cls_model_dir = None
-    if classification_model_id:
-        cls_manifest = manifest_manager.get_model(classification_model_id)
-        cls_model_path = model_storage.get_model_file(cls_manifest)
-        cls_model_dir = model_storage.get_model_path(cls_manifest)
-        env_name = cls_manifest.env
-        full_image_cls = bool(getattr(cls_manifest, "full_image_cls", False))
+        # Load classification model (if configured).
+        classification_model = None
+        full_image_cls = False
+        cls_model_dir = None
+        reuse_detector_classes = False
+        if classification_model_id:
+            cls_manifest = manifest_manager.get_model(classification_model_id)
+            if cls_manifest.model_category == "detection":
+                if (
+                    classification_model_id != detection_model_id
+                    or not uses_detection_classes_for_classification(det_manifest)
+                ):
+                    raise ValueError(
+                        "A detection model can fill the classification slot only when it is "
+                        "the same managed custom detector with class labels."
+                    )
+                reuse_detector_classes = True
+                # Keep optional pack metadata (for example taxonomy.csv) visible
+                # to the database loader, while deliberately skipping inference.py.
+                cls_model_dir = det_model_path.parent
+                logger.info(
+                    "Reusing custom detector categories and confidence as classification; "
+                    "no second model inference will run"
+                )
+            else:
+                cls_model_path = model_storage.get_model_file(cls_manifest)
+                cls_model_dir = model_storage.get_model_path(cls_manifest)
+                env_name = cls_manifest.env
+                full_image_cls = bool(getattr(cls_manifest, "full_image_cls", False))
 
-        # Check for custom inference.py script
-        inference_script = cls_model_dir / "inference.py"
-        if not inference_script.exists():
-            error_msg = (
-                f"Custom inference script not found: {inference_script}\n"
-                f"Model developers must provide inference.py in their HuggingFace repo."
-            )
-            logger.error(error_msg)
-            raise FileNotFoundError(error_msg)
+                # Check for custom inference.py script.
+                inference_script = cls_model_dir / "inference.py"
+                if not inference_script.exists():
+                    error_msg = (
+                        f"Custom inference script not found: {inference_script}\n"
+                        f"Model developers must provide inference.py in their HuggingFace repo."
+                    )
+                    logger.error(error_msg)
+                    raise FileNotFoundError(error_msg)
 
-        # Use custom classification model with subprocess isolation
-        logger.info(
-            f"Loading custom classification model: {classification_model_id} (env: {env_name})"
-        )
-        classification_model = CustomClassificationModel(
-            cls_model_dir, cls_model_path, env_name, env_manager
-        )
+                # Existing AddaxAI-compatible classification interface, isolated
+                # in the selected packaged environment.
+                logger.info(
+                    "Loading custom classification model: "
+                    f"{classification_model_id} (env: {env_name})"
+                )
+                classification_model = CustomClassificationModel(
+                    cls_model_dir, cls_model_path, env_name, env_manager
+                )
+    except BaseException:
+        release_model_usage()
+        raise
 
     total_detections = 0
     total_files = 0
@@ -185,7 +242,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                             "total_deployments": total_entries,
                             "video_count": announced_videos,
                             "image_count": announced_images,
-                            "has_classifier": classification_model is not None,
+                            "has_classifier": (
+                                classification_model is not None or reuse_detector_classes
+                            ),
                             "has_embedding": bool(project.embedding_model_id),
                         },
                     )
@@ -235,7 +294,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                             "total_deployments": total_entries,
                             "video_count": announced_videos,
                             "image_count": announced_images,
-                            "has_classifier": classification_model is not None,
+                            "has_classifier": (
+                                classification_model is not None or reuse_detector_classes
+                            ),
                             "has_embedding": bool(project.embedding_model_id),
                         },
                     )
@@ -387,10 +448,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 elif video_files:
                     logger.info(f"Phase 1: Running video detection on {len(video_files)} videos")
 
-                    # Create video detection model
-                    from app.ml.inference.video_detector import VideoDetectionModel
-
-                    video_detector = VideoDetectionModel(det_model_path, env_manager)
+                    # The detector adapter keeps MegaDetector's video path
+                    # and routes generic backends through sampled frames.
+                    video_detector = detection_model
 
                     # Create sync progress wrapper for executor thread
                     loop = asyncio.get_event_loop()
@@ -432,6 +492,14 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                     json_files_to_merge.append(video_json_path)
                     logger.info(f"Video detection complete: {video_json_path}")
+
+                if reuse_detector_classes and video_json_path.exists():
+                    # Video JSON can be reused from interrupted runs. Apply
+                    # this small mapping step every time so older cached
+                    # detector output gains the same classification fields.
+                    await asyncio.to_thread(
+                        reuse_detector_classes_in_json, video_json_path
+                    )
 
                 # Best-frame selection.
                 #
@@ -603,6 +671,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         image_size=project.detection_image_size,
                         augment=project.detection_augment,
                         image_count=len(image_files),
+                        detector_signature=_detection_model_signature(
+                            det_manifest, det_model_path
+                        ),
                     )
                     resume_state = ckpt.inspect(artifacts_folder, checkpoint_meta)
                     if resume_state is None:
@@ -661,36 +732,47 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         )
 
                     # Run MegaDetector on images
+                    image_detection_kwargs = {
+                        "image_paths": image_files,
+                        "deployment_folder": folder_path,
+                        "confidence_threshold": MD_OUTPUT_CONFIDENCE_THRESHOLD,
+                        "batch_size": project.detection_batch_size,
+                        "image_size": project.detection_image_size,
+                        "augment": project.detection_augment,
+                        "progress_callback": sync_image_detection_progress,
+                        "output_path": image_json_path,
+                        "job_id": job_id,
+                    }
+                    if (det_manifest.detector_backend or "megadetector") == "megadetector":
+                        image_detection_kwargs.update(
+                            checkpoint_path=artifacts_folder / ckpt.CHECKPOINT_FILE,
+                            checkpoint_frequency=ckpt.checkpoint_frequency(
+                                len(image_files), project.detection_batch_size
+                            ),
+                            images_done=resume_state.images_done if resume_state else 0,
+                        )
+                    else:
+                        # Partial MegaDetector checkpoints are never valid
+                        # input to isolated generic backends.
+                        (artifacts_folder / ckpt.CHECKPOINT_FILE).unlink(missing_ok=True)
+
                     image_json_path = await loop.run_in_executor(
                         None,
-                        lambda _if=image_files,
-                        _fp=folder_path,
-                        _ijp=image_json_path,
-                        _bs=project.detection_batch_size,
-                        _jid=job_id,
-                        _af=artifacts_folder,
-                        _done=resume_state.images_done if resume_state else 0:
-                        detection_model.detect_to_json(
-                            image_paths=_if,
-                            deployment_folder=_fp,
-                            confidence_threshold=MD_OUTPUT_CONFIDENCE_THRESHOLD,
-                            batch_size=_bs,
-                            image_size=project.detection_image_size,
-                            augment=project.detection_augment,
-                            progress_callback=sync_image_detection_progress,
-                            output_path=_ijp,
-                            job_id=_jid,
-                            checkpoint_path=_af / ckpt.CHECKPOINT_FILE,
-                            checkpoint_frequency=ckpt.checkpoint_frequency(
-                                len(_if), _bs
-                            ),
-                            images_done=_done,
+                        lambda _kwargs=image_detection_kwargs: detection_model.detect_to_json(
+                            **_kwargs
                         ),
                     )
 
                     json_files_to_merge.append(image_json_path)
 
                     logger.info(f"Image detection complete: {image_json_path}")
+
+                if reuse_detector_classes and image_json_path.exists():
+                    # This also covers a completed image-detection checkpoint:
+                    # class reuse is deterministic and does not rerun inference.
+                    await asyncio.to_thread(
+                        reuse_detector_classes_in_json, image_json_path
+                    )
 
                 # ============================================================
                 # PHASE 4: Image Classification (if images + classifier)
@@ -1308,6 +1390,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
     finally:
         clear_cancel(job_id)
+        release_model_usage()
 
 
 async def process_deployment_analysis(job_id: str) -> None:

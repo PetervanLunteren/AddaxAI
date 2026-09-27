@@ -45,6 +45,8 @@ interface SpeciesSelectionModalProps {
    *  between the internal exclusion set and the included list stored in the
    *  file. */
   allClasses: string[];
+  /** Classification selection reuses flat class labels from a detector. */
+  isDetectionAlias?: boolean;
   onExclusionChange: (classes: string[]) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -52,6 +54,7 @@ interface SpeciesSelectionModalProps {
 
 export function SpeciesSelectionModal({
   modelId,
+  isDetectionAlias = false,
   excludedClasses,
   allClasses,
   onExclusionChange,
@@ -157,21 +160,23 @@ export function SpeciesSelectionModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Species at your site</DialogTitle>
-          {/* True whichever way taxonomic rollup is set, because this dialog
-              does not know that setting and one sentence beats plumbing the
-              flag through four callers. Saying only the rollup half promised
-              a substitute that rollup alone delivers: a user who unticked the
-              sex classes of his model, with rollup off, got his moose back
-              at 1.6% instead of 99%, which his own confidence filter then
-              hid, and read the app as broken (measured on his photos,
-              2026-09-08). */}
-          <DialogDescription>
-            This sets which species the AI can identify. If it finds one you
-            didn't select, taxonomic rollup reports the nearest broader group
-            you kept instead, for example its family. With rollup off it falls
-            back to your next best species, usually with a very low score.
-          </DialogDescription>
+          <DialogTitle>
+            {isDetectionAlias ? "Detection classes" : "Species at your site"}
+          </DialogTitle>
+          {isDetectionAlias ? (
+            <DialogDescription>
+              Choose which of this detector's class labels to include. These
+              labels are flat and have no broader taxonomic groups such as
+              families or genera.
+            </DialogDescription>
+          ) : (
+            <DialogDescription>
+              This sets which species the AI can identify. If it finds one you
+              didn't select, taxonomic rollup reports the nearest broader group
+              you kept instead, for example its family. With rollup off it falls
+              back to your next best species, usually with a very low score.
+            </DialogDescription>
+          )}
         </DialogHeader>
 
         <div className="flex-1 min-h-0">

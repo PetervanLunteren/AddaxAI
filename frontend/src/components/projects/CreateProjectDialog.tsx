@@ -54,6 +54,7 @@ import {
   toApiCountryCode,
   useLabelSelectionCaption,
 } from "../taxonomy/LabelSelectionField";
+import { shouldFetchModelGeofence } from "../taxonomy/geofenceQuery";
 import { ModelSelect } from "../models/ModelSelect";
 import { toApiModelId } from "@/lib/model-id";
 import { NoClassifierNotice } from "../models/NoClassifierNotice";
@@ -140,9 +141,15 @@ export function CreateProjectDialog({
 
   // Watch classification model changes
   const classificationModelId = form.watch("classification_model_id");
+  const selectedClassificationModel = classificationModels.find((model) => model.model_id === classificationModelId);
+  const classifierAliasMismatch = Boolean(
+    selectedClassificationModel?.uses_detection_classes &&
+    selectedClassificationModel.model_id !== "MD5A-0-0",
+  );
   const hasClassificationModel = !!classificationModelId && classificationModelId !== "none";
   const labelCaption = useLabelSelectionCaption(
     hasClassificationModel ? classificationModelId! : "",
+    selectedClassificationModel?.uses_detection_classes === true,
   );
 
   // Label selection state
@@ -161,7 +168,12 @@ export function CreateProjectDialog({
   const { data: clsGeofence } = useQuery({
     queryKey: ["model-geofence", classificationModelId],
     queryFn: () => modelsApi.getModelGeofence(classificationModelId!),
-    enabled: hasClassificationModel && open,
+    enabled:
+      open &&
+      shouldFetchModelGeofence(
+        classificationModelId,
+        selectedClassificationModel?.uses_detection_classes === true,
+      ),
     staleTime: Infinity,
   });
   const requiresCountryChoice =
@@ -306,6 +318,12 @@ export function CreateProjectDialog({
   };
 
   const onSubmit = (data: ProjectCreate) => {
+    if (classifierAliasMismatch) {
+      form.setError("classification_model_id", {
+        message: "This detector can be reused as a classifier only after both model settings use the same custom detector in Project settings.",
+      });
+      return;
+    }
     // Geofenced classifiers require an explicit location choice: a
     // country, or knowingly "All labels". Enforced here rather than in
     // the zod schema because the requirement depends on the selected
@@ -404,9 +422,10 @@ export function CreateProjectDialog({
                   <FormItem>
                     <FieldHeader
                       label={<FormLabel>Classification model</FormLabel>}
-                      caption="The AI model that identifies species in your images. Pick one trained for your region."
+                      caption="The AI model that identifies species in your images. A custom detector can be reused from Project settings when both model choices match."
                     />
                     <ModelSelect
+                      modelType="classification"
                       value={field.value ?? "none"}
                       onValueChange={(val) => field.onChange(val === "none" ? "none" : val)}
                       models={classificationModels}
@@ -422,8 +441,15 @@ export function CreateProjectDialog({
                       </SelectItem>
                       <ClassificationModelGroupedItems
                         models={classificationModels.filter((m) => m.model_id !== "none")}
+                        detectionModelId="MD5A-0-0"
+                        selectedModelId={classificationModelId}
                       />
                     </ModelSelect>
+                    {classifierAliasMismatch ? (
+                      <p role="alert" className="text-sm text-destructive">
+                        This detector alias needs the same custom detector in both settings. This form starts with MegaDetector; select the matching model after creating the project in Settings.
+                      </p>
+                    ) : null}
 
                     {/* Field status kept inside the FormItem so it sits tight
                         to the dropdown (space-y-2) instead of the form's
@@ -453,6 +479,7 @@ export function CreateProjectDialog({
                   />
                   <LabelSelectionField
                     modelId={classificationModelId}
+                    isDetectionAlias={selectedClassificationModel?.uses_detection_classes === true}
                     excludedClasses={excludedClasses}
                     allClasses={taxonomy.all_classes ?? []}
                     countryCode={form.watch("country_code")}

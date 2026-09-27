@@ -66,6 +66,8 @@ def test_full_image_classifier_flag_reaches_the_list(client, mock_managers):
         license=None,
         min_app_version="7.0.1",
         region="americas",
+        local_only=False,
+        managed=False,
         full_image_cls=True,
         example_image_url="https://example.org/bucket.jpg",
     )

@@ -12,6 +12,9 @@ import * as z from "zod";
 import { useParams } from "react-router-dom";
 import { jobsApi } from "../../api/jobs";
 import { mlModelsApi } from "../../api/ml-models";
+import { modelsApi } from "../../api/models";
+import { ClassificationModelGroupedItems } from "../models/ClassificationModelGroupedItems";
+import { ModelSelect } from "../models/ModelSelect";
 import type {
   JobCreate,
   DetectionModel,
@@ -39,11 +42,7 @@ import {
 } from "../ui/form";
 import { Input } from "../ui/input";
 import {
-  Select,
-  SelectContent,
   SelectItem,
-  SelectTrigger,
-  SelectValue,
 } from "../ui/select";
 import { Loader2 } from "lucide-react";
 import { Callout } from "../ui/callout";
@@ -52,8 +51,8 @@ import { Progress } from "../ui/progress";
 
 const deploymentSchema = z.object({
   folder_path: z.string().min(1, "Folder path is required"),
-  detection_model: z.enum(["MD5A-0-0", "MD5B-0-0"]),
-  classification_model: z.enum(["EUR-DF-v1-3", "NAM-ADS-v1", "none"]),
+  detection_model: z.string().min(1),
+  classification_model: z.string(),
 });
 
 type DeploymentFormValues = z.infer<typeof deploymentSchema>;
@@ -71,6 +70,17 @@ export function AddDeploymentDialog({
   const queryClient = useQueryClient();
   const [prepareTaskId, setPrepareTaskId] = useState<string | null>(null);
 
+  const { data: detectionModels = [], isLoading: detectionModelsLoading } = useQuery({
+    queryKey: ["models", "detection"],
+    queryFn: modelsApi.listDetectionModels,
+    enabled: open,
+  });
+  const { data: classificationModels = [] } = useQuery({
+    queryKey: ["models", "classification"],
+    queryFn: modelsApi.listClassificationModels,
+    enabled: open,
+  });
+
   const form = useForm<DeploymentFormValues>({
     resolver: zodResolver(deploymentSchema),
     defaultValues: {
@@ -82,6 +92,12 @@ export function AddDeploymentDialog({
 
   // Watch the selected detection model
   const selectedDetectionModel = form.watch("detection_model");
+  const selectedClassificationId = form.watch("classification_model");
+  const selectedClassificationInfo = classificationModels.find((model) => model.model_id === selectedClassificationId);
+  const classifierAliasMismatch = Boolean(
+    selectedClassificationInfo?.uses_detection_classes &&
+    selectedClassificationInfo.model_id !== selectedDetectionModel,
+  );
 
   // Query model status when dialog opens or model changes
   const { data: modelStatus, isLoading: isLoadingStatus } = useQuery({
@@ -146,6 +162,12 @@ export function AddDeploymentDialog({
   const onSubmit = (values: DeploymentFormValues) => {
     if (!projectId) {
       console.error("Project ID is missing");
+      return;
+    }
+    if (classifierAliasMismatch) {
+      form.setError("classification_model", {
+        message: "Select the same model for Detection and Classification to reuse detector classes.",
+      });
       return;
     }
 
@@ -343,24 +365,20 @@ export function AddDeploymentDialog({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Detection model</FormLabel>
-                  <Select
+                  <ModelSelect
+                    modelType="detection"
+                    value={field.value}
                     onValueChange={field.onChange}
-                    defaultValue={field.value}
+                    models={detectionModels}
+                    placeholder="Select detection model"
                   >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select detection model" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="MD5A-0-0">
-                        MegaDetector 5a
+                    {detectionModels.map((model) => (
+                      <SelectItem key={model.model_id} value={model.model_id}>
+                        {model.emoji} {model.friendly_name}
+                        {model.description_short ? <><br /><span className="text-xs text-muted-foreground">{model.description_short}</span></> : null}
                       </SelectItem>
-                      <SelectItem value="MD5B-0-0">
-                        MegaDetector 5b
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                    ))}
+                  </ModelSelect>
                   <FormDescription>
                     Model for detecting animals in images
                   </FormDescription>
@@ -370,7 +388,7 @@ export function AddDeploymentDialog({
             />
 
             {/* Model Status Indicator */}
-            {isLoadingStatus ? (
+            {isLoadingStatus || detectionModelsLoading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span>Checking model status...</span>
@@ -386,30 +404,32 @@ export function AddDeploymentDialog({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Classification model</FormLabel>
-                  <Select
+                  <ModelSelect
+                    modelType="classification"
+                    value={field.value}
                     onValueChange={field.onChange}
-                    defaultValue={field.value}
+                    models={classificationModels}
+                    placeholder="Select classification model"
+                    noneValue="none"
+                    noneLabel="No classification model"
                   >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select classification model" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="none">
-                        None (Detection only)
-                      </SelectItem>
-                      <SelectItem value="EUR-DF-v1-3">
-                        Europe (Deepfaune v1.3)
-                      </SelectItem>
-                      <SelectItem value="NAM-ADS-v1">
-                        Namibia (Addax DS v1)
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <SelectItem value="none">∅ No classification model</SelectItem>
+                    <ClassificationModelGroupedItems
+                      models={classificationModels.filter((m) => m.model_id !== "none")}
+                      detectionModelId={selectedDetectionModel}
+                      selectedModelId={form.watch("classification_model")}
+                    />
+                  </ModelSelect>
                   <FormDescription>
-                    Regional species classifier (optional)
+                    {selectedDetectionModel === selectedClassificationId && selectedClassificationInfo?.uses_detection_classes
+                      ? `Reuses ${Object.keys(selectedClassificationInfo.class_names ?? {}).length} detector classes and confidence without another inference.`
+                      : "Regional species classifier (optional). The same custom detector can be selected here to reuse its classes without another inference."}
                   </FormDescription>
+                  {classifierAliasMismatch ? (
+                    <p role="alert" className="text-sm text-destructive">
+                      This classification choice belongs to another detection model. Select that same detector or choose another classification model.
+                    </p>
+                  ) : null}
                   <FormMessage />
                 </FormItem>
               )}

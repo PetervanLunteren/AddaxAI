@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
 from app.db.backup import (
@@ -15,10 +16,11 @@ from app.db.backup import (
     _daily_filename,
     _pre_upgrade_filename,
 )
+from app.db.base import get_db
 
 
 @pytest.fixture()
-def live_db(tmp_path: Path):
+def live_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Plant a real SQLite file at settings.user_data_dir/addaxai.db.
 
     The conftest's `client` fixture uses an in-memory engine; backup
@@ -30,6 +32,12 @@ def live_db(tmp_path: Path):
     wiring and `init_db` refuses it, so restoring one would only send
     the user back to the startup error page.
     """
+    # conftest configures a shared test user-data directory for the app.
+    # Keep this module's on-disk SQLite file private to the test so pooled
+    # connections from other API tests cannot keep it locked on Windows.
+    test_user_data_dir = tmp_path / "user_data"
+    test_user_data_dir.mkdir()
+    monkeypatch.setenv("ADDAXAI_USER_DATA_DIR", str(test_user_data_dir))
     settings = get_settings()
     live = settings.user_data_dir / "addaxai.db"
 
@@ -55,6 +63,41 @@ def live_db(tmp_path: Path):
         shutil.rmtree(backups_dir)
     marker = settings.user_data_dir / RESTORE_MARKER_FILENAME
     marker.unlink(missing_ok=True)
+
+
+@pytest.fixture()
+def client(live_db, db):
+    """Start the API after its on-disk database fixture has been planted.
+
+    This module's database is intentionally a minimal on-disk file, not the
+    in-memory app database. Keep startup migrations and background DB scans
+    out of it: they open pooled SQLite connections that Windows refuses to
+    unlink during fixture cleanup. The endpoint requests under test use the
+    normal in-memory dependency override.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    from app.main import create_app
+
+    with (
+        patch("app.main.init_db"),
+        patch("app.db.migrations.needs_upgrade", return_value=False),
+        patch("app.api.crud.job.reconcile_interrupted_jobs", return_value=0),
+        patch("app.main.auto_generate_thumbnails", new=AsyncMock()),
+        patch("app.main.update_model_catalog", new=AsyncMock()),
+        patch("app.main._check_deployment_folders_on_startup", new=AsyncMock()),
+        patch("app.main._warm_up_query_caches", new=AsyncMock()),
+        patch("app.main._reclaim_legacy_video_frames", new=AsyncMock()),
+    ):
+        app = create_app()
+
+        def _override_get_db():
+            yield db
+
+        app.dependency_overrides[get_db] = _override_get_db
+
+        with TestClient(app, raise_server_exceptions=False) as test_client:
+            yield test_client
 
 
 # ── /api/backup/dir ──────────────────────────────────────────────────

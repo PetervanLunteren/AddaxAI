@@ -70,3 +70,4 @@ dependencies:
     # nothing (beta report 2026-07-30).
     - yolov9pip==0.0.4
     - ultralytics==8.3.177
+    - rfdetr==1.9.2

@@ -42,6 +42,7 @@ from sqlalchemy.orm import Session
 
 from app.ml.detection_visibility import on_visible_frame
 from app.ml.label_exclusion import is_a_real_detection
+from app.ml.label_filter_ids import label_matches_filter
 from app.ml.observation_type import derive_observation_type
 from app.models import (
     Deployment,
@@ -242,13 +243,9 @@ def build_output_preview(
     taxonomy_by_name = _load_taxonomy_map(db, project)
 
     def _row_is_excluded(row) -> bool:
-        if not excluded:
-            return False
-        if row.label_taxonomy_id and row.label_taxonomy_id in excluded:
-            return True
-        if row.label and row.label in excluded:
-            return True
-        return False
+        return label_matches_filter(
+            row.label, row.label_taxonomy_id, excluded or (), row.category
+        )
 
     def _row_passes(row) -> bool:
         return row.confidence >= threshold or row.verified
@@ -261,7 +258,7 @@ def build_output_preview(
     for det_row in detection_rows:
         dets_per_file.setdefault(det_row.file_id, []).append(det_row)
         if _row_passes(det_row) and (
-            det_row.label or det_row.label_taxonomy_id
+            det_row.label or det_row.label_taxonomy_id or det_row.category
         ):
             idents_per_file.setdefault(det_row.file_id, []).append(det_row)
     obs_type_per_file: dict[str, str] = {

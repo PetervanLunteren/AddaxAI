@@ -120,6 +120,7 @@ from app import __version__ as APP_VERSION
 from app.core.logging_config import get_logger
 from app.ml.detection_visibility import on_visible_frame, visible_detections
 from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
+from app.ml.label_filter_ids import label_matches_filter
 from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, File, LabelTaxonomy, Project
 from app.models.event import event_files
@@ -265,6 +266,7 @@ def build_event_primary_labels(
             Detection.file_id,
             Detection.label,
             Detection.label_taxonomy_id,
+            Detection.category,
             Detection.confidence,
             Detection.verified,
         )
@@ -299,13 +301,9 @@ def build_event_primary_labels(
     excluded = excluded_label_ids or frozenset()
 
     def _is_excluded(row) -> bool:
-        if not excluded:
-            return False
-        if row.label_taxonomy_id and row.label_taxonomy_id in excluded:
-            return True
-        if row.label and row.label in excluded:
-            return True
-        return False
+        return label_matches_filter(
+            row.label, row.label_taxonomy_id, excluded, row.category
+        )
 
     rows = [r for r in rows if not _is_excluded(r)]
 

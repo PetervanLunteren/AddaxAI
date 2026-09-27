@@ -336,7 +336,7 @@ def test_split_creates_children_and_removes_parent(client, db, tmp_path):
             .all()
         )
         for f in child_files:
-            assert f.file_path.startswith(child.folder_path + "/")
+            assert Path(f.file_path).is_relative_to(Path(child.folder_path))
 
     # Inherited metadata; site carries over from parent; dates recomputed.
     for child in children:
@@ -425,8 +425,9 @@ def test_split_slices_results_json_and_removes_parent_dir(
         assert child_json_path.exists()
         payload = json.loads(child_json_path.read_text())
         for img in payload["images"]:
-            assert not img["file"].startswith(sub + "/")
-            assert img["file"].startswith("img_")
+            relative_file = Path(img["file"])
+            assert relative_file.parts[0] != sub
+            assert relative_file.name.startswith("img_")
         # Top-level metadata is preserved.
         assert payload["info"] == {"detector": "md5a"}
         assert payload["classification_categories"] == {"1": "deer"}
@@ -442,11 +443,11 @@ def test_split_reassigns_single_group_event(client, db, tmp_path):
         db, tmp_path, {"siteA": 2, "siteB": 2}
     )
     # Event linking two siteA files only.
-    a_files = list(
-        db.execute(
-            select(File).where(File.file_path.like(f"{root}/siteA/%"))
-        ).scalars()
-    )
+    a_files = [
+        file_row
+        for file_row in db.execute(select(File)).scalars()
+        if Path(file_row.file_path).parent == root / "siteA"
+    ]
     from app.models.event import event_files
     ev = Event(
         deployment_id=d.id,
@@ -521,7 +522,7 @@ def test_split_duplicates_straddling_event(client, db, tmp_path):
             )
         )
     peak_file = next(
-        f for f in files if f.file_path.startswith(str(root / "siteA"))
+        f for f in files if Path(f.file_path).parent == root / "siteA"
     )
     db.add(
         EventObservation(
@@ -755,9 +756,11 @@ def test_split_rewrites_best_frame_path(client, db, tmp_path):
     )
     # Promote siteA's image to a "video" by faking best_frame_number +
     # best_frame_path under the parent's .addaxai layout.
-    site_a_file = db.execute(
-        select(File).where(File.file_path.like(f"{root}/siteA/%"))
-    ).scalar_one()
+    site_a_file = next(
+        file_row
+        for file_row in db.execute(select(File)).scalars()
+        if Path(file_row.file_path).parent == root / "siteA"
+    )
     site_a_file.file_type = "video"
     site_a_file.best_frame_number = 42
     frame_relative = (

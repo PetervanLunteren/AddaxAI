@@ -21,6 +21,9 @@ dependencies:
       - torchvision==0.23.0+cu128
       - ultralytics==8.3.177
       - numpy==1.26.4
+      # 5.1.2 lacks a CPython 3.11 Windows wheel and its MSVC source build
+      # fails under Japanese CP932; 5.1.1 has the cp311 win_amd64 wheel.
+      - stringzilla==5.1.1
       - humanfriendly==10.0
       - jsonpickle==3.0.2
       - timm
@@ -40,9 +43,6 @@ dependencies:
       - transformers==4.49.0
       - pytorch-lightning==2.4.0
       - albumentations==1.4.24
-      # Same stringzilla 5.1.2 wheel gap as addaxai-base/windows, here
-      # via albumentations -> albucore. See that file for the detail.
-      - stringzilla==5.1.1
       # OpenCV (headless variant: no GUI deps, only the cv2 module).
       # Used by the classification worker to stream frames straight
       # from source videos so we never write frame JPEGs to disk.

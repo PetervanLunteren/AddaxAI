@@ -476,8 +476,8 @@ export type JobStatus =
   | "failed"
   | "cancelled";
 
-export type DetectionModel = "MD5A-0-0" | "MD5B-0-0";
-export type ClassificationModel = "EUR-DF-v1-3" | "NAM-ADS-v1" | "none";
+export type DetectionModel = string;
+export type ClassificationModel = string;
 
 // ML Model Status
 export type ModelStatus = "ready" | "needs_weights" | "needs_env" | "needs_both";
@@ -851,12 +851,135 @@ export interface ModelInfo {
     | "europe"
     | "oceania"
     | null;
+  /** User-managed packs are local to the AddaxAI host. */
+  local_only?: boolean;
+  /** True only for packs imported through custom-model management. */
+  managed?: boolean;
+  /** Detector implementation selected by the manifest. */
+  detector_backend?: "megadetector" | "yolo" | "rfdetr" | "rtdetr" | "rtdetrv2" | null;
+  /** Model category ids mapped to user-facing labels. */
+  class_names?: Record<string, string> | null;
+  /** Classification alias: consumes this detector's labels without a second pass. */
+  uses_detection_classes?: boolean;
   // Per-pipeline default batch sizes the worker will use when the project's
   // batch_size override is null. Used to label the "Default" option in the
   // Performance card. Same numbers for every model in the same pipeline.
   default_batch_size_gpu: number;
   default_batch_size_cpu: number;
 }
+
+export type CustomModelType = "detection" | "classification";
+export type CustomModelRegistrationRole = CustomModelType | "both";
+export type CustomDetectorBackend = "yolo" | "rfdetr" | "rtdetr" | "rtdetrv2";
+
+export interface CustomModelFileInfo {
+  path: string;
+  size_bytes: number;
+}
+
+export interface CustomModelDatasetCandidate {
+  path: string;
+  class_names: Record<string, string>;
+}
+
+export interface CustomModelInspectResponse {
+  source_path: string;
+  type_candidates: CustomModelType[];
+  suggested_type: CustomModelType | null;
+  weights: string[];
+  suggested_model_fname: string | null;
+  detector_backend_candidates: CustomDetectorBackend[];
+  suggested_detector_backend: CustomDetectorBackend | null;
+  suggested_detector_model_class: string | null;
+  suggested_detector_model_variant: string | null;
+  detector_config_candidates: string[];
+  detector_config_templates: string[];
+  suggested_detector_config_fname: string | null;
+  environments: string[];
+  suggested_env: string | null;
+  suggested_env_source: "manifest" | "detector_backend" | "rtdetrv2_config" | null;
+  dataset_candidates: CustomModelDatasetCandidate[];
+  suggested_class_names: Record<string, string> | null;
+  suggested_class_names_source: string | null;
+  source_manifest_detected: boolean;
+  classifier_inference_compatible: boolean;
+  files: CustomModelFileInfo[];
+  total_file_count: number;
+  total_size_bytes: number;
+  files_truncated: boolean;
+  missing_required: string[];
+  warnings: string[];
+}
+
+export interface CustomModelInfo extends Omit<ModelInfo, "default_batch_size_gpu" | "default_batch_size_cpu"> {
+  type: CustomModelType;
+  env: string;
+  model_fname: string;
+  local_only: boolean;
+  managed: boolean;
+  classification_uses_detection_classes?: boolean | null;
+  detector_model_class?: string | null;
+  detector_model_variant?: string | null;
+  detector_config_fname?: string | null;
+}
+
+export interface CustomModelsResponse {
+  models: CustomModelInfo[];
+  environments: string[];
+}
+
+export interface CustomModelCreateRequest {
+  type: CustomModelType;
+  source_path?: string;
+  upload_id?: string;
+  friendly_name: string;
+  env: string;
+  model_fname?: string;
+  description?: string;
+  description_short?: string;
+  developer?: string;
+  owner?: string;
+  citation?: string;
+  license?: string;
+  info_url?: string;
+  emoji?: string;
+  region?: ModelInfo["region"];
+  full_image_cls?: boolean;
+  example_image_url?: string;
+  detector_backend?: CustomDetectorBackend;
+  classification_uses_detection_classes?: boolean;
+  class_names?: Record<string, string> | string[];
+  detector_model_class?: string;
+  detector_model_variant?: string;
+  detector_config_fname?: string;
+  detector_config_template?: string;
+}
+
+export interface CustomModelUploadSession {
+  upload_id: string;
+  source_path: string;
+}
+
+export interface CustomModelUploadedFile {
+  filename: string;
+  size_bytes: number;
+  sha256: string;
+}
+
+export type CustomModelUpdateRequest = Partial<Pick<
+  CustomModelInfo,
+  | "friendly_name"
+  | "description"
+  | "description_short"
+  | "developer"
+  | "owner"
+  | "citation"
+  | "license"
+  | "info_url"
+  | "emoji"
+  | "region"
+  | "example_image_url"
+>>;
 
 // Taxonomy types
 export interface TaxonomyNode {

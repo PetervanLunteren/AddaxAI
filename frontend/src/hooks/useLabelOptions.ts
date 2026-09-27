@@ -128,6 +128,13 @@ export function useLabelOptions(
     } else if (taxonomy?.all_classes) {
       for (const cls of taxonomy.all_classes) {
         const entry = taxonomyMap?.[cls];
+        const existing = result.find(
+          (option) => option.value.toLowerCase() === cls.toLowerCase(),
+        );
+        if (existing) {
+          existing.taxonomyCaption = buildTaxonomyCaption(entry);
+          continue;
+        }
         result.push({
           value: cls,
           displayName: getDisplayName(cls, entry),

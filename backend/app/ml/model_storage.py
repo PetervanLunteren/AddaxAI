@@ -12,6 +12,7 @@ Following DEVELOPERS.md principles:
 
 import hashlib
 from collections.abc import Callable
+from functools import lru_cache
 from pathlib import Path
 
 from huggingface_hub import HfApi
@@ -25,6 +26,21 @@ from app.ml.schemas.model_manifest import ModelManifest, resolve_hf_repo
 from app.utils.fs_remove import safe_rmtree
 
 logger = get_logger(__name__)
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as model_file:
+        for chunk in iter(lambda: model_file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+@lru_cache(maxsize=256)
+def _cached_sha256_file(path: str, size: int, mtime_ns: int) -> str:
+    """Hash one immutable file fingerprint once across readiness checks."""
+    del size, mtime_ns  # included in the cache key to invalidate on change
+    return _sha256_file(Path(path))
 
 # Seconds to wait on the HuggingFace listing during a staleness check. The
 # check runs once per installed model at startup, so an unreachable host
@@ -259,8 +275,38 @@ class ModelStorage:
         model_path = self.models_dir / model_type / manifest.model_id
         model_file = model_path / manifest.model_fname
 
-        if not model_file.exists():
+        if not model_file.is_file():
             return False
+
+        if manifest.managed and manifest.model_category == "classification":
+            if not (model_path / "inference.py").is_file():
+                return False
+
+        if manifest.detector_config_fname:
+            config_path = model_path / manifest.detector_config_fname
+            try:
+                config_path.resolve().relative_to(model_path.resolve())
+            except ValueError:
+                return False
+            if not config_path.is_file():
+                return False
+
+        if manifest.weights_sha256:
+            try:
+                before = model_file.stat()
+                digest = _cached_sha256_file(
+                    str(model_file.resolve()), before.st_size, before.st_mtime_ns
+                )
+                after = model_file.stat()
+            except OSError:
+                return False
+            if (before.st_size, before.st_mtime_ns) != (
+                after.st_size,
+                after.st_mtime_ns,
+            ):
+                return False
+            if digest.lower() != manifest.weights_sha256.lower():
+                return False
 
         # Architecture source check: only applies to models that load via
         # torch.hub.load(source="local"). Other models load their
@@ -297,6 +343,12 @@ class ModelStorage:
             RuntimeError: If download fails
             JobCancelledError: If cancelled via should_cancel
         """
+        if manifest.local_only:
+            raise RuntimeError(
+                f"Model {manifest.model_id} is local-only; its model pack must be "
+                "registered from this computer."
+            )
+
         # Model is in models/det/{model_id}/ or models/cls/{model_id}/
         # Use model_category (set by ManifestManager based on directory) to determine path
         model_type = {"detection": "det", "classification": "cls", "embedding": "emb"}[
@@ -399,6 +451,10 @@ class ModelStorage:
             ConnectionError: upstream could not be reached to decide.
             RuntimeError: a file was found to be stale but failed to download.
         """
+        if manifest.local_only:
+            logger.info("Skipping remote update check for local-only model %s", manifest.model_id)
+            return []
+
         # Raises FileNotFoundError with a message aimed at the user when the
         # model directory or the weights file is absent.
         model_dir = self.get_model_file(manifest).parent

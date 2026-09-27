@@ -120,8 +120,9 @@ def test_image_cmd_checkpoint_flags_when_a_path_is_given():
     cmd = _image_cmd(
         checkpoint_path=Path("art/md_checkpoint.json"), checkpoint_frequency=500
     )
+    expected_checkpoint = str(Path("art/md_checkpoint.json"))
     assert cmd[cmd.index("--checkpoint_frequency") + 1] == "500"
-    assert cmd[cmd.index("--checkpoint_path") + 1] == "art/md_checkpoint.json"
+    assert cmd[cmd.index("--checkpoint_path") + 1] == expected_checkpoint
     # Not resuming: MegaDetector would otherwise load a file that is not there.
     assert "--resume_from_checkpoint" not in cmd
     assert cmd[-3:] == ["model.pt", "files.json", "out.json"]
@@ -133,8 +134,9 @@ def test_image_cmd_resume_flag_points_at_the_same_checkpoint():
         checkpoint_frequency=500,
         resume=True,
     )
-    assert cmd[cmd.index("--resume_from_checkpoint") + 1] == "art/md_checkpoint.json"
-    assert cmd[cmd.index("--checkpoint_path") + 1] == "art/md_checkpoint.json"
+    expected_checkpoint = str(Path("art/md_checkpoint.json"))
+    assert cmd[cmd.index("--resume_from_checkpoint") + 1] == expected_checkpoint
+    assert cmd[cmd.index("--checkpoint_path") + 1] == expected_checkpoint
     assert cmd[-3:] == ["model.pt", "files.json", "out.json"]
 
 

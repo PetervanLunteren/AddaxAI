@@ -24,10 +24,17 @@ def test_resolves_env_binary_first(tmp_path, monkeypatch, skip_preflight):
     """The env-addaxai-base binary wins over PATH, and the env's bin is
     prepended to PATH so the script's `#!/usr/bin/env perl` shebang
     resolves the env's perl instead of the system one."""
-    env_bin = tmp_path / "envs" / "env-addaxai-base" / "bin"
+    env_dir = tmp_path / "envs" / "env-addaxai-base"
+    env_bin = env_dir / "bin"
     env_bin.mkdir(parents=True)
-    binary = env_bin / "exiftool"
-    binary.write_text("#!/usr/bin/env perl\n")
+    if os.name == "nt":
+        binary = env_bin / "exiftool.bat"
+        binary.write_text("@perl -x -S %0 %*\n")
+        library_bin = env_dir / "Library" / "bin"
+        library_bin.mkdir(parents=True)
+    else:
+        binary = env_bin / "exiftool"
+        binary.write_text("#!/usr/bin/env perl\n")
 
     monkeypatch.setattr(
         exiftool_bin, "get_settings", lambda: _fake_settings(tmp_path)
@@ -41,7 +48,10 @@ def test_resolves_env_binary_first(tmp_path, monkeypatch, skip_preflight):
     path_parts = exiftool_bin.os.environ["PATH"].split(
         exiftool_bin.os.pathsep
     )
-    assert path_parts[0] == str(env_bin)
+    expected_prefix = (
+        [str(library_bin), str(env_bin)] if os.name == "nt" else [str(env_bin)]
+    )
+    assert path_parts[: len(expected_prefix)] == expected_prefix
 
     # Second resolve must not duplicate the PATH entry.
     exiftool_bin.resolve_exiftool()
@@ -49,6 +59,8 @@ def test_resolves_env_binary_first(tmp_path, monkeypatch, skip_preflight):
         exiftool_bin.os.pathsep
     )
     assert path_parts.count(str(env_bin)) == 1
+    if os.name == "nt":
+        assert path_parts.count(str(library_bin)) == 1
 
 
 def test_falls_back_to_path(tmp_path, monkeypatch, skip_preflight):

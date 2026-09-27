@@ -1,5 +1,6 @@
 """Tests for the /api/deployment-queue endpoints."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 from tests.conftest import make_project
@@ -215,5 +216,6 @@ def test_queue_stores_the_folder_path_normalised(client, db):
         json={"project_id": p.id, "folder_path": "/some/folder/", "image_count": 1},
     )
     assert resp.status_code == 201
-    assert resp.json()["folder_path"] == "/some/folder"
-    assert db.get(DeploymentQueue, resp.json()["id"]).folder_path == "/some/folder"
+    expected_path = str(Path("/some/folder"))
+    assert resp.json()["folder_path"] == expected_path
+    assert db.get(DeploymentQueue, resp.json()["id"]).folder_path == expected_path

@@ -9,8 +9,10 @@ truncation at the deepest known rank, main-species placement, and
 how the exclusion filter interacts with both.
 """
 
+import importlib
 from pathlib import Path
 
+from app.ml.label_filter_ids import encode_unmapped_label
 from app.ml.postprocessing_outputs._output_context import OutputContext
 from app.ml.postprocessing_outputs.separate_folders import (
     separate_into_folders,
@@ -21,6 +23,10 @@ from tests.conftest import (
     make_detection,
     make_file,
     make_project,
+)
+
+separate_folders_module = importlib.import_module(
+    "app.ml.postprocessing_outputs.separate_folders"
 )
 
 
@@ -374,6 +380,76 @@ def test_excluded_label_ids_drops_animal_file(db, tmp_path):
     assert result.skipped_excluded == 1
     assert result.copied_count == 0
     assert not (target / "other").exists()
+
+
+def test_encoded_unmapped_exclusion_skips_only_unmapped_same_name(
+    db, tmp_path, monkeypatch
+):
+    class _NoopExifBatch:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def write(self, *_args):
+            return None
+
+    monkeypatch.setattr(separate_folders_module, "ExifBatch", _NoopExifBatch)
+    project = make_project(
+        db,
+        name="sep-unmapped-excl",
+        counting_threshold=0.5,
+        classification_model_id="test-model",
+    )
+    taxon = _add_taxonomy(
+        db, model_id="test-model", name="fox, red", level="unknown"
+    )
+    dep = make_deployment(db, project_id=project.id)
+
+    raw_source = _make_source(tmp_path, "raw.jpg")
+    raw_file = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=raw_source,
+        observation_type="animal",
+    )
+    make_detection(
+        db,
+        file_id=raw_file.id,
+        category="fox, red",
+        label=None,
+        confidence=0.9,
+    )
+    mapped_source = _make_source(tmp_path, "mapped.jpg")
+    mapped_file = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=mapped_source,
+        observation_type="animal",
+    )
+    make_detection(
+        db,
+        file_id=mapped_file.id,
+        category="animal",
+        label="fox, red",
+        label_taxonomy_id=taxon.id,
+        confidence=0.9,
+    )
+
+    target = tmp_path / "out-unmapped"
+    result = separate_into_folders(
+        db,
+        project.id,
+        _ctx(target),
+        excluded_label_ids=frozenset({encode_unmapped_label("fox, red")}),
+        media_threshold=0.5,
+    )
+
+    assert result.skipped_excluded == 1
+    assert result.copied_count == 1
+    assert not (target / "raw.jpg").exists()
+    assert list(target.rglob("mapped.jpg"))
 
 
 def test_excluded_label_ids_partial_keeps_file_in_remaining_folders(

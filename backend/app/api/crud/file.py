@@ -22,6 +22,7 @@ from app.ml.label_exclusion import (
     is_a_real_detection,
     threshold_or_verified,
 )
+from app.ml.label_filter_ids import label_filter_expression
 from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
@@ -248,7 +249,14 @@ def get_labels_files(
     # (or through "Show only empty").
     box_filters = []
     if labels:
-        box_filters.append(Detection.label_taxonomy_id.in_(labels))
+        box_filters.append(
+            label_filter_expression(
+                Detection.label_taxonomy_id,
+                Detection.label,
+                labels,
+                Detection.category,
+            )
+        )
     if min_confidence is not None and min_confidence > floor:
         box_filters.append(Detection.confidence >= min_confidence)
     if max_confidence is not None:

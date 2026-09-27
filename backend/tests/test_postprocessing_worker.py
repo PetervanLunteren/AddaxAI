@@ -183,11 +183,18 @@ def test_unreadable_folder_does_not_abort_the_whole_job(
     project_id, folder = _seed(db, tmp_path)
     artifacts = folder / ".addaxai"
     artifacts.mkdir(parents=True, exist_ok=True)
-    artifacts.chmod(0o000)
-    try:
-        sent = _run_job(db, monkeypatch, project_id)
-    finally:
-        artifacts.chmod(0o755)
+    results_path = artifacts / "projects" / project_id / "results.json"
+    real_exists = Path.exists
+
+    def exists_with_unreadable_results(path: Path) -> bool:
+        if path == results_path:
+            raise PermissionError("simulated inaccessible results directory")
+        return real_exists(path)
+
+    # chmod(0) does not deny access on Windows, where this suite also runs.
+    # Raise the same filesystem error at the exact read boundary instead.
+    monkeypatch.setattr(Path, "exists", exists_with_unreadable_results)
+    sent = _run_job(db, monkeypatch, project_id)
 
     assert sent["success"] is True
     assert sent["data"]["skipped"] == {

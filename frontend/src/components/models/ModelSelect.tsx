@@ -21,7 +21,15 @@ import {
 } from "@/components/ui/select";
 import { FormControl } from "@/components/ui/form";
 import { ModelSelectValue } from "./ModelSelectValue";
-import type { ModelInfo } from "@/api/types";
+import type {
+  CustomModelInfo,
+  CustomModelRegistrationRole,
+  ModelInfo,
+} from "@/api/types";
+import { CustomModelManagerDialog } from "./CustomModelManagerDialog";
+import { useState } from "react";
+import { toast } from "sonner";
+import { isHostLocalUi } from "@/lib/host-local";
 
 interface ModelSelectProps {
   /** Current value, already defaulted to noneValue when empty (e.g. field.value ?? "none"). */
@@ -36,6 +44,10 @@ interface ModelSelectProps {
   noneLabel?: string;
   /** Opens the model info slideout. When set and a real model is selected, a "Model details" link is shown. */
   onShowInfo?: () => void;
+  /** Enables custom detection/classification pack management for host-local pickers. */
+  modelType?: "detection" | "classification";
+  /** Lets a parent update coupled detector/classifier fields for a newly registered alias. */
+  onModelCreated?: (model: CustomModelInfo, role?: CustomModelRegistrationRole) => void;
   /** SelectContent items: the optional none item plus the (grouped or flat) model items. */
   children: ReactNode;
 }
@@ -48,10 +60,14 @@ export function ModelSelect({
   noneValue,
   noneLabel,
   onShowInfo,
+  modelType,
+  onModelCreated,
   children,
 }: ModelSelectProps) {
+  const [manageOpen, setManageOpen] = useState(false);
   const isNone = noneValue !== undefined && value === noneValue;
   const selected = isNone ? undefined : models.find((m) => m.model_id === value);
+  const canManage = modelType !== undefined && isHostLocalUi();
 
   return (
     <div className="space-y-1">
@@ -83,6 +99,38 @@ export function ModelSelect({
             Model details
           </button>
         </p>
+      )}
+      {canManage && modelType && (
+        <p className="pl-3 text-xs">
+          <button
+            type="button"
+            onClick={() => setManageOpen(true)}
+            className="font-medium text-primary hover:underline"
+          >
+            Manage custom models
+          </button>
+        </p>
+      )}
+      {canManage && modelType && (
+        <CustomModelManagerDialog
+          open={manageOpen}
+          onOpenChange={setManageOpen}
+          modelType={modelType}
+          canSelectBoth={Boolean(onModelCreated)}
+          onCreated={(model, role) => {
+            if (model.type === modelType || (role === "both" && modelType === "classification")) {
+              if (onModelCreated) {
+                onModelCreated(model, role);
+              } else if (role === "both" && modelType === "classification") {
+                toast.info(
+                  "Model registered. This screen keeps its detection model fixed; select this same model for Detection and Classification in Project settings to reuse its labels.",
+                );
+              } else {
+                onValueChange(model.model_id);
+              }
+            }
+          }}
+        />
       )}
     </div>
   );

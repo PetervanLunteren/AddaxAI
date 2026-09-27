@@ -66,6 +66,20 @@ def test_unreadable_meta_reads_as_absent(tmp_path: Path, junk: str):
     assert CheckpointMeta.read(tmp_path) is None
 
 
+def test_pre_signature_checkpoint_metadata_deserializes_as_legacy_meta(tmp_path: Path):
+    (tmp_path / META_FILE).write_text(
+        json.dumps(
+            {
+                "detection_model_id": "MD5A-0-0",
+                "image_size": None,
+                "augment": False,
+                "image_count": 2,
+            }
+        )
+    )
+    assert CheckpointMeta.read(tmp_path) == CheckpointMeta("MD5A-0-0", None, False, 2)
+
+
 # --- inspect ----------------------------------------------------------------
 
 

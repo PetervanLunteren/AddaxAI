@@ -791,8 +791,8 @@ export function FilesTab({
         classificationModelId={project?.classification_model_id ?? null}
         detectionFloor={project?.counting_threshold ?? 0}
         countBy="file"
-        // Liked / flagged as on Counts, plus the Empty select and the
-        // confidence ranges in More filters. Each range means "at
+        // Liked / flagged as on Counts, plus inline Empty and confidence
+        // ranges in More filters. Each range means "at
         // least one box in it": the Detections rules lifted to files
         // (see `get_labels_files`). Clamped at the project threshold,
         // unlike Detections: this surface can never show a
@@ -800,6 +800,7 @@ export function FilesTab({
         // slider must not pretend to reach below.
         showLikedFlaggedEmpty
         showEmpty
+        emptyInline
         emptyDefault="all"
         confidenceFloorMode="clamp"
         clampReason={

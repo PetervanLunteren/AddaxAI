@@ -15,7 +15,9 @@ import * as path from 'path';
 
 export const REPO = path.join(__dirname, '..', '..');
 export const BACKEND = path.join(REPO, 'backend');
-const VENV_PY = path.join(BACKEND, 'venv', 'bin', 'python');
+const VENV_PY = process.platform === 'win32'
+  ? path.join(BACKEND, '.venv', 'Scripts', 'python.exe')
+  : path.join(BACKEND, 'venv', 'bin', 'python');
 
 /**
  * A user data dir with a database at head, built by the real migration
@@ -26,12 +28,11 @@ export function makeHealthyDb(dir: string): string {
   const db = path.join(dir, 'addaxai.db');
   execFileSync(
     VENV_PY,
-    ['-c', 'from app.db.migrations import upgrade_to_head; upgrade_to_head()'],
+    ['-E', '-X', 'utf8', '-c', 'from app.db.migrations import upgrade_to_head; upgrade_to_head()'],
     {
       cwd: BACKEND,
       env: {
         ...process.env,
-        PYTHONPATH: BACKEND,
         // The DB path derives from ADDAXAI_USER_DATA_DIR (Settings
         // derivation); no separate ADDAXAI_DATABASE_URL needed.
         ADDAXAI_USER_DATA_DIR: dir,
@@ -39,6 +40,27 @@ export function makeHealthyDb(dir: string): string {
     },
   );
   return db;
+}
+
+/** Run one SQL statement against a test database using Python's sqlite3. */
+export function runSqlite(db: string, statement: string): string {
+  const script = [
+    'import sqlite3, sys',
+    'connection = sqlite3.connect(sys.argv[1])',
+    'try:',
+    '    cursor = connection.execute(sys.argv[2])',
+    '    if cursor.description:',
+    '        for row in cursor.fetchall():',
+    '            print("|".join("" if value is None else str(value) for value in row))',
+    '    connection.commit()',
+    'finally:',
+    '    connection.close()',
+  ].join('\n');
+  return execFileSync(
+    VENV_PY,
+    ['-E', '-X', 'utf8', '-c', script, db, statement],
+    { cwd: BACKEND, env: process.env },
+  ).toString().trim();
 }
 
 export interface LaunchOptions {

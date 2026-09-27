@@ -16,12 +16,11 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as os from 'os';
 import * as path from 'path';
-import { launch as launchApp, makeHealthyDb, appWindow } from './app-harness';
+import { launch as launchApp, makeHealthyDb, appWindow, runSqlite } from './app-harness';
 
 // Its own port, so a running dev backend on 8000 is left alone. The app
 // kills whatever AddaxAI backend already holds its port.
@@ -58,11 +57,6 @@ test('a healthy database loads the app, not the error page', async () => {
 
   await app.close();
 });
-
-/** Run one SQL statement against `db` and return the trimmed output. */
-function sql(db: string, statement: string): string {
-  return execFileSync('sqlite3', [db, statement]).toString().trim();
-}
 
 test('a slow start says so, and never offers to start a second backend', async () => {
   /**
@@ -140,8 +134,8 @@ test('a broken database shows the reason and the recovery buttons', async () => 
   const db = makeHealthyDb(userDataDir);
   // Exactly the shape the old code used to "repair" by replaying the
   // migration chain: stamped at head, schema missing a column.
-  execFileSync('sqlite3', [db, 'ALTER TABLE deployments DROP COLUMN warnings']);
-  const stampBefore = sql(db, 'SELECT version_num FROM alembic_version');
+  runSqlite(db, 'ALTER TABLE deployments DROP COLUMN warnings');
+  const stampBefore = runSqlite(db, 'SELECT version_num FROM alembic_version');
 
   const app = await launch();
   const win = await appWindow(app);
@@ -166,8 +160,8 @@ test('a broken database shows the reason and the recovery buttons', async () => 
   // And it means it. The old code "repaired" this shape by re-stamping
   // backwards and replaying the chain over already-migrated data; the
   // refusal must leave the stamp alone and add nothing back.
-  expect(sql(db, 'SELECT version_num FROM alembic_version')).toBe(stampBefore);
-  expect(sql(db, 'PRAGMA table_info(deployments)')).not.toContain('warnings');
+  expect(runSqlite(db, 'SELECT version_num FROM alembic_version')).toBe(stampBefore);
+  expect(runSqlite(db, 'PRAGMA table_info(deployments)')).not.toContain('warnings');
 
   // Not asserted: byte-for-byte equality. Merely connecting runs
   // `PRAGMA optimize` (app/db/base.py), which writes SQLite's own
@@ -180,7 +174,7 @@ test('a broken database shows the reason and the recovery buttons', async () => 
 
 test('Restore from backup schedules the chosen file and quits', async () => {
   const db = makeHealthyDb(userDataDir);
-  execFileSync('sqlite3', [db, 'ALTER TABLE deployments DROP COLUMN warnings']);
+  runSqlite(db, 'ALTER TABLE deployments DROP COLUMN warnings');
 
   const chosen = path.join(userDataDir, 'backups', 'chosen-backup.db');
   fs.mkdirSync(path.dirname(chosen), { recursive: true });
@@ -211,7 +205,7 @@ test('Restore from backup schedules the chosen file and quits', async () => {
 
 test('Delete database is gated on the confirm dialog', async () => {
   const db = makeHealthyDb(userDataDir);
-  execFileSync('sqlite3', [db, 'ALTER TABLE deployments DROP COLUMN warnings']);
+  runSqlite(db, 'ALTER TABLE deployments DROP COLUMN warnings');
   const marker = path.join(userDataDir, '.wipe-db-on-next-launch');
 
   const app = await launch();
@@ -252,10 +246,16 @@ test('an unwritable data folder shows a clear error instead of a dead app', asyn
    * is broken. The Electron pre-flight has to catch it and explain it.
    * Locking the parent (r-x) makes the data dir uncreatable, the same
    * shape as ADDAXAI_USER_DATA_DIR pointing into a root-owned folder.
-   */
+  */
   const lockedParent = path.join(userDataDir, 'locked');
-  fs.mkdirSync(lockedParent);
-  fs.chmodSync(lockedParent, 0o555);
+  if (process.platform === 'win32') {
+    // chmod does not deny writes on Windows. A file occupying the parent
+    // path gives the same preflight failure without changing ACLs.
+    fs.writeFileSync(lockedParent, 'occupied');
+  } else {
+    fs.mkdirSync(lockedParent);
+    fs.chmodSync(lockedParent, 0o555);
+  }
   const target = path.join(lockedParent, 'data');
 
   try {
@@ -276,6 +276,6 @@ test('an unwritable data folder shows a clear error instead of a dead app', asyn
 
     await app.close();
   } finally {
-    fs.chmodSync(lockedParent, 0o755);
+    if (process.platform !== 'win32') fs.chmodSync(lockedParent, 0o755);
   }
 });
