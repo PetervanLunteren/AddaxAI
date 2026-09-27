@@ -1,7 +1,7 @@
 # Custom fields with optional AI suggestions in AddaxAI: investigation and future plan
 
 Status: investigation only, no code written.
-Date: 2026-09-25, revised 2026-09-26
+Date: 2026-09-25, revised 2026-09-26 and 2026-09-27
 Branch the investigation ran on: `claude/lay-of-the-land-doulv4`
 Repo state at time of audit: `b8b75e2` on `main`, VERSION `0.0.0-dev`
 
@@ -27,6 +27,15 @@ works. A "question" from the earlier sections is now a choice field with suggest
 Sections 1 to 14 are left as written, because their reasoning about the AI part still
 holds; where section 15 replaces a part of them (the scope in 9.1, the storage in 9.2, the
 effort in 12), they point to it. The file keeps its name so existing links still work.
+
+**Update, 2026-09-27, where fields live.** Section 15 left open where fields are filled in and
+verified. Discussion went through six versions (Labels grid, a questions page, the detail
+windows, a fields page of its own) before settling on a simpler model: sex, life stage and
+behaviour are the three standard fields, people define their own in a table page like Sites
+and Deployments, and all fields are filled on the Counts page, per cohort or once per event.
+AI answers per detection are translated to cohorts the way species already are, with a
+peak-frame rule that keeps counts adding up, and are shown as suggestions a person applies.
+Section 16 records every step and why it was replaced, and is the current design.
 
 ---
 
@@ -76,9 +85,63 @@ Follow-ups, after the first version of this document was written, also verbatim:
 > Would users need to go through all their data again for every question? Is that OK? How
 > does timelapse do it?
 
+> But just for clarification, is the custom field verification only in its own menu page? Or
+> also in the counts or labels page? I’m confused now?
+
+> In not sure if I like the idea that some of the fields also show up at the counts page.
+> Isn’t that confusing?! Shouldn’t we separate conserns here and keep fields to the fields
+> page only? With a select box on which questions you want to verify and check at the same
+> time? Default to all?
+
+> what if we uh, rethink our design once more and um, isn't actually every field, whether
+> it's for a detection or for a image setting, uh, verifiable in counts, uh, so verifiable by
+> the event. isn't sex, age, and behavior actually three uh, input fields that are default,
+> but in basics they are the same as um, antler size or snow depth, right? So what if we move
+> all verifications to the counts page? Of course we leave labels to do the species labels,
+> which is one thing, which is uh, truly um, about, well we, we just leave that as it is. Uh,
+> that is just for species labels. And then we move the rest to the counts page with the
+> first uh, goal, the counts per event. But then also we can s split them by sex, age and
+> behavior. And then people can add custom fields, uh, perhaps from the counts page itself.
+> Or we have a different table-like page, uh, like sites and deployments, and then a third
+> table-like page for input fields, where every row is an input field, and you can set the
+> uh, choices or the expected input. integer, float, minimum, maximum, etc. And then from
+> there you can also uh, select whether or not you want to uh, pre-fill it with AI. what do
+> you think then you can also change the default settings of um, the sex age and the
+> behaviors that we just filled in which are now hard-coded and then people can change those
+> if they want what do you think? Please be honest, no sugarcoating. Uh, do web queries to
+> find out best practices uh, and also how other major platforms do it. What are the best
+> practices in terms of user experience, etc. Be thorough and concise. What do you think of
+> this new approach where sex, age and behavior are just three uh, input fields that are
+> already filled in and then people can add multiple ones or edit the pre-filled ones um,
+> from there and then it's just a simple mind model not a new page where some of the work
+> goes in that page and some of the work goes into a different page etc what do you think
+> please be honest no sugarcoating
+
+> I see your point about uh, labels attached to detections. Uh, something like, is this
+> animal laying down, yes or no? Uh, cannot be cleanly translated to the event level. And
+> that is true because it's two different levels. But that same problem is with species
+> labels and events. One deer can get the labels deer, deer, deer, dog, deer, deer. Uh, and
+> we already translate that to event level, if you see what I mean. So would it make sense to
+> do that same kind of translation uh, so we do not have to skip the AI uh, suggestions for
+> detection level categories? Do you know what I mean? Please be honest, no sugarcoating.
+> Uh, check if that works. Do web queries if needed. Check scholar articles. Uh, everything
+> you need to find out what is ecologically meaningful and allowed and etc. the detections
+> table isn't really ecologically meaningful, right? It's more bounding box labels stuff that
+> is meaningful for training models, uh, training data. Not necessarily ecological
+> interpretation, right? Eco eco ecologists uh, tend to look at the counts table only. And
+> with counts table, I mean the table that um, has rows per observation. So five deer at this
+> point in time, at this location. And two of those were male and two of those were female.
+> Then we can just add any custom field that we want. One of those was laying down, four of
+> those were standing. Only the real problem is when there is a mix, which is almost always
+> the case, but that is also almost always the case with labels. So you see what I'm aiming
+> at? I'm just trying to find out if we can uh, still incorporate the AI suggestion thing
+> that we talked about earlier and the new input field table page that we talked about just
+> now.
+
 The first two are answered in sections 9.7 and 9.8. The third changed the scope of the
 plan and is answered in section 15. The fourth is answered in section 15.21, which adds an
-entry mode and qualifies the "one question at a time" rule of 9.7.
+entry mode and qualifies the "one question at a time" rule of 9.7. The last four moved the
+design, step by step, to the one in section 16, which records each step.
 
 ## 2. Questions to answer
 
@@ -103,6 +166,11 @@ entry mode and qualifies the "one question at a time" rule of 9.7.
     optional? (15.3, 15.4)
 13. Does every new field or question mean another pass over all the data, and how does
     Timelapse avoid that? (15.21)
+14. Where are fields filled in and verified: their own page, Counts or Labels? (16.1)
+15. Are sex, life stage and behaviour just three predefined fields, and should all fields be
+    filled on Counts and defined in a table page? How do other platforms do it? (16.2, 16.5)
+16. Can per-detection AI answers be translated to cohorts the way species labels are, and is
+    that ecologically sound? (16.3, 16.4)
 
 ## 3. Goals
 
@@ -563,6 +631,11 @@ through the existing human edit path. Not in v1.
 
 ### 9.7 Verification with N questions
 
+Superseded by section 16: there is no separate review page any more. Fields, standard and
+custom, are filled and confirmed on Counts, and AI suggestions are applied there. The
+reasoning below about keeping fields apart from species verification still holds and carried
+into section 16.
+
 A question's answers are confirmed on a Questions review page, never on the Labels page.
 Labels stays for species, Counts for counts and demographics, Questions for answers.
 
@@ -718,7 +791,10 @@ plus the observation cohorts, custom classification model and embedding mentions
 `frontend/src/components/verify/SuggestionsToolbarPill.tsx`,
 `frontend/src/pages/ConfusionMatrixPage.tsx` (header),
 `backend/app/models/{detection,file,event}.py` (the verification fields),
-`backend/app/api/crud/event.py` (`_RegroupCarry`, `_snapshot_event_carry`),
+`backend/app/api/crud/event.py` (`_RegroupCarry`, `_snapshot_event_carry`, the `empty`
+filter), `backend/app/api/crud/event_observation.py` (`calculate_max_n_for_event`),
+`backend/app/services/event_clustering.py` (header), the Camtrap DP observations and media
+table schemas from `tdwg/camtrap-dp` on GitHub, the Timelapse source (15.5),
 `frontend/src/components/verify/{FilesTab,FilesGrid,EventCollage}.tsx` (headers) and the
 directory listing of `frontend/src/components/verify/`, and the `future-plans/` documents
 for structure.
@@ -730,7 +806,10 @@ requirements, `suggest` in routers, `cohort` in the backend.
 
 The session's proxy blocked `arxiv.org`, `export.arxiv.org`, `besjournals.onlinelibrary.wiley.com`,
 `biorxiv.org`, `link.springer.com`, `openaccess.thecvf.com`, `journals-sol.sbc.org.br` and
-`agentmorris.github.io`. `github.com` was reachable.
+`agentmorris.github.io`, and later `timelapse.ucalgary.ca` and `saul.cpsc.ucalgary.ca`.
+`github.com` and `raw.githubusercontent.com` were reachable, which is why the Timelapse source
+and the Camtrap DP schemas were read directly. The Trapper, Camelot, Agouti, Wildlife Insights
+and WildTrax descriptions in 16.2 come from search summaries only.
 
 Therefore: the two SpeciesNet fine-tuning repositories and the WildCLIP repository were
 read directly. Everything from arXiv, the journals and the CVF was taken from web-search
@@ -753,6 +832,14 @@ per class, 84.3% zero-shot) are second-hand.
 - `linear probe frozen foundation model embeddings few-shot ecology images label-efficient benchmark number of examples per class`
 - `Label Studio Prompts LLM auto-labeling image classification ground truth evaluation feature`
 - `agentmorris speciesnet fine-tuning tutorial GPU hours images per class`
+- `Trapper camera trap classificator static dynamic attributes custom fields observation`
+- `Camelot camera trap software sighting fields custom configurable survey`
+- `Agouti camera trap annotation observation sex life stage behaviour individual fields project settings custom`
+- `Wildlife Insights identify tab sex age number of individuals behavior fields custom attributes`
+- `WildTrax camera tagging fields sex age behaviour custom project tag fields`
+- `Snapshot Serengeti behaviour standing resting moving eating interacting young present per capture volunteers Swanson 2015 Scientific Data`
+- `Altmann 1974 observational study of behavior sampling methods scan sampling instantaneous camera trap behaviour`
+- `camera trap group size estimation maximum number of individuals single frame sequence MaxN bias`
 
 ### 14.4 Open items to settle before building
 
@@ -776,6 +863,9 @@ Section 15.20 adds five more.
 ---
 
 ## 15. Custom fields: why the plan widened
+
+Section 16 revises where fields are filled in and stored. The argument for custom fields
+below stands; the sections it replaces point there.
 
 Sections 1 to 14 plan a feature where the AI answers a user's question. After they were
 written, feedback came in that changes what the feature is for. This section records the
@@ -877,6 +967,8 @@ are what makes AI suggestions possible, since the classifier works on detection 
 
 ### 15.6 The field model
 
+Superseded in part by section 16; see 16.12 for what was retired and what survives.
+
 A field has:
 
 - **Name.** Shown in the UI and used for the export column, for example `snow_depth_cm`,
@@ -934,6 +1026,8 @@ of storage or a carry rule that cannot be right.
 
 ### 15.8 Why fields cannot live on observation cohorts
 
+Superseded in part by section 16; see 16.12 for what was retired and what survives.
+
 `event_observations` rows are deleted and recreated on every relabel, threshold change and
 regeneration, under the seed rule described in `DEVELOPERS.md`, "Observation cohorts". Sex,
 life stage and behaviour survive that only because they are hand-carried field by field in
@@ -978,6 +1072,8 @@ frame and is stable.
 
 ### 15.11 Where values are entered
 
+Superseded in part by section 16; see 16.12 for what was retired and what survives.
+
 - **Detail views, the entry mode (15.21).** Every field of the matching level appears in
   one panel: image fields in `FileDetailModal`, detection fields in `DetectionDetailModal`,
   and image fields as event inputs in `EventDetailModal` (15.7), next to the notes, counts
@@ -1006,6 +1102,8 @@ So manual fields have no separate confirmation step, and AI fields reuse the mod
 unchanged.
 
 ### 15.13 Storage, replacing 9.2
+
+Superseded in part by section 16; see 16.12 for what was retired and what survives.
 
 Sketched, not specified:
 
@@ -1048,6 +1146,8 @@ accepting or overriding a suggestion replaces it.
 
 ### 15.16 Terminology in the UI
 
+Superseded in part by section 16; see 16.12 for what was retired and what survives.
+
 The sidebar item, list page and review page become "Fields" (or "Custom fields") instead of
 "Questions". "Question" only fit the AI case: nobody asks a question when typing a snow
 depth. The AI part is called "suggestions", matching the existing species suggestions
@@ -1073,6 +1173,8 @@ depth. The AI part is called "suggestions", matching the existing species sugges
 | Generalising the Labels components takes longer than planned | Medium | It was already the main frontend cost in 12; manual fields add number input, not new grids |
 
 ### 15.19 Revised effort
+
+Superseded in part by section 16; see 16.12 for what was retired and what survives.
 
 On top of section 12's three weeks for the AI part:
 
@@ -1107,6 +1209,8 @@ asked for now, and every value entered becomes training data for when AI suggest
    only those marked for it.
 
 ### 15.21 Entry mode: one pass for all fields
+
+Superseded in part by section 16; see 16.12 for what was retired and what survives.
 
 **The problem.** The review page in 9.7 shows one field at a time. For AI suggestions that
 is right. For manual values it would mean one pass over the data per field: a project with
@@ -1165,44 +1269,381 @@ helpers. Nothing changes in storage: entry mode and review mode write the same v
 
 ---
 
-## 16. Plain English summary
+## 16. Where fields live: from a separate page to the counts table
 
-Letting people type any question and get an answer is possible with vision-language models,
-but on camera trap images the ones that fit on a laptop are weak, biased towards "yes", and
-worse at night. The proven route, used by Google for bird and whale sounds and shown for
-camera trap species in 2021, is to have the user pick a question with fixed answers, label a
-few dozen examples, and fit a tiny classifier on image features the app already stores. It
-needs no new model, runs in seconds on any laptop, has no settings to tune, and tells the
-user how accurate it is before they trust it. AddaxAI already does something very similar
-for species suggestions, so this is a sibling feature, not a new idea for the app. It is
-separate from fine-tuning SpeciesNet: that makes a new portable species model from
-thousands of labels and needs a GPU for hours, while this adds answers to one project from a
-few dozen labels. Both can live in the app if they sit in different places and share one
-honest accuracy check split by camera site. Answers are reviewed on their own Questions
-page, one question at a time, built from the same grid, filter and keyboard parts as the
-Labels page, and each question keeps its own confirmed percentage that never mixes with
-species verification or with other questions. Sleeping versus resting, coat colour at night,
-antler size and weather are hard or impossible from a single crop, and antler questions are
-hurt further because the current crop cuts off the ends of wide boxes. Before building, spend
-a day testing a few real questions on stored features to see whether the numbers hold up.
+Section 15 turned custom questions into custom fields but left open where people fill them
+in and where they are verified. That question went through six versions in discussion before
+it settled. This section records each step, what was wrong with it, and what replaced it,
+because the reasons matter more than the final answer: anyone revisiting the design will be
+tempted by the same earlier versions. The design in 16.5 to 16.14 is the current one. Where
+it conflicts with sections 9.7, 15.6, 15.8, 15.11, 15.13, 15.16, 15.19 or 15.21, this section
+wins; those sections now point here.
 
-The plan has since grown on user feedback. People also want to record their own values,
-like snow depth in centimetres per image or antler size per animal, with no AI involved.
-Rather than build that as a second feature, it becomes the base of this one: custom fields
-that users define and fill in on images and detections, with AI suggestions as an optional
-switch that is off by default and only offered where it genuinely works, which in v1 means
-choice fields on detections. Combining them means one place, one kind of storage and one
-export shape, and every value someone types by hand becomes training data if they later
-switch suggestions on. Events get no stored values of their own, because the app rebuilds
-events and a number cannot survive a merge; setting snow depth on an event writes it to the
-event's images instead. The manual part is the cheaper half, about two weeks, and could
-ship first; the whole thing is roughly four and a half weeks.
+### 16.1 How the design moved, step by step
 
-Adding fields must not mean walking through the data once per field. Timelapse, the
-established tool for this, avoids that by showing every field beside the image so one look
-fills them all, with helpers to copy values from the previous image or carry them forward.
-AddaxAI will do the same in its existing detail views, above all the Counts page where people
-already step through every event, so new fields ride along in a pass that happens anyway. The
-one-field-at-a-time page stays for reviewing AI suggestions and for bulk fills. Only a field
-added late needs a second look at old data, and scope, bulk editing and AI suggestions keep
-that short.
+| Step | Proposal | What was wrong with it | What replaced it |
+|---|---|---|---|
+| A | AI answers reviewed in the Labels grid, next to species (first canvas, screen 8) | Labels means species. `Detection.verified` and its `File.verified` rollup feed badges, filters, navigation and MaxN; question answers there would give "verified" two meanings | A separate Questions review page, one question at a time (9.7) |
+| B | Questions page, one question at a time | Fine for AI review, but for manual fields it means one pass over the data per field | An entry mode with all fields in one pass, Timelapse style (15.21) |
+| C | Entry mode spread over the detail views: `FileDetailModal`, `DetectionDetailModal` and the Counts event view | Fields now appeared in three places. Two of those windows also open from Labels, reopening the mix from A. A "Confirm and next" button on Counts read as confirming untouched AI suggestions | Keep fields on their own Fields page, with a select box for which fields to fill, defaulting to all |
+| D | Fields page only, with the field selector | Clean, but sex, life stage and behaviour stayed on Counts while antler size, a value of exactly the same kind, lived on another page. Two homes for one kind of thing, and a second pass after Counts | The reframe in 16.2 |
+| E | Sex, life stage and behaviour are three predefined fields. All fields are filled on Counts. Fields are defined in a table page like Sites and Deployments | Adopted. One objection: AI answers are per detection crop, cohorts are not linked to detections, so suggestions seemed to be lost for anything but single animals | The counter-argument in 16.3 |
+| F | Detection answers are translated to cohorts the same way species already are | Adopted, with a peak-frame rule instead of per-answer MaxN (16.3) and suggestions that are applied, not written (16.6) | The design in 16.5 onwards |
+
+Each step fixed a real problem with the one before it. The mistake that ran through A to D
+was treating custom fields as something new that needed its own place, when three of them
+already existed in the app under different names.
+
+### 16.2 The reframe, and why it is right
+
+The user's argument, in short: sex, life stage and behaviour are already three input fields,
+filled per cohort on the Counts page. Antler size and snow depth are the same kind of thing.
+So instead of a new page where some of the work happens and another page where the rest
+happens, make those three the predefined fields, let people edit them and add their own in a
+table page, and do all the filling on Counts. Labels stays exactly as it is, for species.
+
+The platforms that let users define annotation fields do exactly this:
+
+- **Trapper**, from the people behind Camtrap DP, lets each project define its annotation form
+  (a "classificator"). Some fields are predefined and follow Camtrap DP, with observation type
+  and species required and age and sex optional; users add their own with a data type (string,
+  integer, float, boolean) and validation rules. Attributes are either static, once per file,
+  or dynamic, per observation
+  (https://trapper-project.readthedocs.io/en/latest/tutorial.html,
+  https://trapper-project.readthedocs.io/en/docs-docs-refactor/explanation/classification-model/).
+- **Camelot** has "sighting fields": the number and type are fully user-configurable per survey,
+  and they are searched, bulk-imported and reported like built-in fields
+  (https://camelot-project.readthedocs.io/en/latest/sightingfields.html).
+- **Agouti** lets a project define its own behaviour list, offered during annotation
+  (https://docs.agouti.eu/general/getting_started.html).
+- **Wildlife Insights** keeps a fixed set: age, sex, markings, behaviour and remarks
+  (https://www.wildlifeinsights.org/get-started/identify-images/image-projects).
+- **WildTrax** attaches age, sex and behaviour tags to a species tag
+  (https://www.wildtrax.ca/home/resources/guide/image-data/camera-tagging-methods.html).
+- **Timelapse** defines per-image fields in a template (15.5).
+
+The pattern across them: fields are defined in a configuration place and filled where the
+annotation happens, with sex, age and behaviour as the predefined ones. These platform
+descriptions come from search summaries; their documentation pages were not opened directly
+(14.2).
+
+Camtrap DP supports the export side. Its observations table, read directly from
+https://github.com/tdwg/camtrap-dp/blob/main/observations-table-schema.json, has an
+`observationTags` column, "a pipe (`|`) separated list for multiple values, with values
+optionally formatted as `key:value` pairs". An AddaxAI cohort row is a Camtrap DP event
+observation, so `antlerSize:L|collar:yes` has a standard place to go.
+
+Why it is the better model:
+
+1. **One mental model.** Labels is species. Counts is everything about what is in an event.
+   The fields table is what you can record. Nothing else.
+2. **Antler size lives where sex already lives.** "Five red deer: two adult males with large
+   antlers, three adult females" is a cohort split, the same action people already use for sex.
+3. **No extra pass.** Fields are filled in the Counts pass people already make.
+4. **One confirmation.** "Event confirmed" means the event is done.
+5. **The fields table fits the app.** Sites and Deployments are already table pages in the
+   configuration group of the sidebar, and the platforms above put field definitions in project
+   configuration too.
+
+### 16.3 The objection, and the answer: translating detection answers to cohorts
+
+**The objection** (raised when step E was proposed). The AI answers per detection crop.
+Cohorts are a species and a count, taken from the frame with the most animals, and are not
+linked to particular detections. So a detection answer like "lying" cannot cleanly become a
+cohort value when the cohort holds several animals, and AI suggestions would only work for
+single animals.
+
+**The counter-argument** (from the user). Species have the same problem and the app already
+solves it. One deer gets the labels deer, deer, deer, dog, deer, deer across six frames, and
+the Counts page still shows one red deer. The detections table is training material, not the
+ecological product; ecologists work from the counts table, rows of "five deer at this place and
+time, two male, three female". So translate field answers to cohorts the same way species are.
+
+**What the code does for species.** `calculate_max_n_for_event`
+(`backend/app/api/crud/event_observation.py:86`) counts detections per file, frame and species
+and takes the maximum count per species, MaxN, with ties broken on summed confidence. Each
+species is counted independently, which is how deer, deer, dog yields a red deer row with
+MaxN 2 and a spurious dog row with MaxN 1. The spurious row is not removed by the aggregation;
+a person relabels the dog crop on Labels and the row disappears on rebuild. Each row keeps
+`max_n_file_id`, the frame where the peak count was seen.
+
+**The counter-argument holds.** Camtrap DP states the same division of labour: media-based
+observations "are especially useful for machine learning and don't need to be mutually
+exclusive", while event-based observations "are especially useful for ecological research and
+should be mutually exclusive, so that their `count` can be summed" (`observationLevel` in the
+schema above). Translating detection answers to event rows is what the standard expects.
+
+**But the literal copy double counts.** Copying the species rule means MaxN per answer. One
+event with five deer:
+
+| Frame | Standing | Lying |
+|---|---|---|
+| 1 | 3 | 2 |
+| 2 | 5 | 0 |
+
+MaxN per answer gives 5 standing and 2 lying: seven deer, where the species count says five.
+For species that can only happen through a classification error. For posture it happens with
+perfect predictions, because animals genuinely lie down and stand up within a visit.
+
+**The rule adopted instead.**
+
+- **Split the species count by the answers in its peak frame**, the frame in `max_n_file_id`.
+  In the example that is frame 2: five deer, all standing. The parts always add up to the count,
+  for every kind of field.
+- **When the count is one, use the most common answer across all frames of the event.** Most
+  camera trap events are single animals, and there the most common answer is sturdier than one
+  frame and is what Camtrap DP asks for (16.4). Ties go to the answer with the higher summed
+  score, mirroring the species tie-break.
+- For videos, the peak frame is the best frame, which is the only frame a video detection is
+  shown on (`DEVELOPERS.md`, "The best frame is the only frame a video detection can be shown
+  on"), so the same rule applies.
+
+Two worked examples:
+
+- One roe deer, six frames, antler size answers L, L, M, L, L, L. Count is one, so the most
+  common answer: **L**. The stray M is classifier noise, exactly like the stray dog.
+- Five red deer, peak frame shows three standing and two lying. Suggestion: **three standing,
+  two lying**, labelled as taken from the peak frame.
+
+### 16.4 Traits and states
+
+The peak-frame rule is sound for both kinds of field, but it measures different things, and the
+difference has to be stated.
+
+- **Traits** belong to the animal and do not change within a visit: sex, life stage, antler
+  size, coat colour, a collar. They behave like species. Disagreement between frames is
+  classifier noise, which a person cleans up.
+- **States** change within a visit: lying, feeding, vigilant, moving. Camtrap DP defines
+  `behavior` as the "dominant behavior of the observed individual(s)". For single animals the
+  most common answer across the event is a fair estimate of the dominant behaviour. For groups,
+  the peak-frame split is a snapshot of one moment: in the terms of Altmann's classic review of
+  behavioural sampling, an instantaneous scan sample, not the dominant behaviour
+  (https://pubmed.ncbi.nlm.nih.gov/4597405/). That is an accepted method for activity budgets,
+  but it is a different quantity, so the Counts page labels group suggestions "from peak frame"
+  and the docs explain it.
+
+An alternative some projects use is presence per event, "any animal doing this, yes or no",
+which is how Snapshot Serengeti volunteers recorded standing, resting, moving, eating,
+interacting and young present per capture (https://www.nature.com/articles/sdata201526).
+Possible later as an option per field; not in v1.
+
+MaxN itself is a known approximation: counting boxes in single frames can over- or undercount a
+group, which is why counting-by-tracking is an active research topic
+(https://arxiv.org/pdf/2609.05038). The attribute split inherits that approximation and does not
+add to it.
+
+Per-image answers are not worthless ecologically either: per-image predictions are how Dussert
+et al. built behaviour-specific activity patterns (5.2). So the per-detection answers stay in the
+detection export as model output (16.11), while the counts table carries the ecological values.
+
+### 16.5 The fields table page
+
+A table page in the configuration group of the sidebar, next to Sites and Deployments. One row
+per field:
+
+| Column | Content |
+|---|---|
+| Name | Shown on Counts, and the export key (`antler_size`) |
+| Level | **Animal**: one value per cohort row. **Event**: one value per visit, stored on its images (16.8) |
+| Type | Choice, whole number, decimal, yes/no, short text |
+| Values | Options for choice fields; unit, minimum and maximum for numbers |
+| Shown on Counts | Whether the field appears there by default |
+| AI suggestions | Off, or on with its held-out accuracy; only offered for animal-level choice and yes/no fields |
+| Status | Standard or custom |
+
+The first three rows are **sex, life stage and behaviour**, marked standard:
+
+- **Sex and life stage** can be hidden and their display names changed, but their stored values
+  stay locked to the Camtrap DP enums (female, male; adult, subadult, juvenile), read from the
+  schema above. Letting users rename or add values would make every export either invalid or
+  lossy.
+- **Behaviour** can take extra values, because Camtrap DP leaves it open ("preferably expressed
+  as controlled values"). The catch: `observation_attributes.py` keeps the list identical to
+  AddaxAI Connect's on purpose, so a project that extends it drifts from Connect. Acceptable,
+  since the export is text, but documented.
+
+Fields are created and edited only on this page. Creating them inline on Counts was considered
+and rejected: mid-review is exactly when a project's form should not change by accident. Counts
+gets a small "Manage fields" link instead.
+
+For a field with AI suggestions, its row opens the teaching flow from sections 9.3 and 9.4: the
+teach, check and rounds screens (canvas screens 3 to 6). That flow labels crops, at detection
+level, because that is what the classifier learns from (16.7).
+
+### 16.6 Suggest and apply, never write into cohorts
+
+Today the AI never writes sex, life stage or behaviour, and the rebuild depends on it: rows with
+demographics are "never seeds" (`DEVELOPERS.md`, "Observation cohorts"). Letting the AI write
+field values into cohort rows would break that invariant in the most fragile code in the app.
+
+So suggestions are **computed on the fly from the stored detection answers and shown, never
+stored in cohorts**. In the Counts event view, under the species:
+
+> AI suggests: 3 standing, 2 lying (peak frame, 5 crops) · Apply
+
+**Apply** performs the split exactly as a person would, creating human rows through the existing
+split path. The rebuild logic does not change at all, and the rule from 9.7 holds: an AI value is
+a suggestion until a person accepts it.
+
+### 16.7 Training data flows one way
+
+A confirmed "3 standing, 2 lying" does not say which crop was which, so it cannot teach the
+classifier. Training labels keep coming from the crop-level teaching screens opened from the
+fields table.
+
+The one case where a Counts confirmation could safely feed back is a trait on a cohort of one:
+every crop of that animal in the event can take the label. Never for states, since an animal
+whose dominant behaviour was lying also stood in some frames. Even that case needs a per-field
+trait or state setting, so it is left out of v1 and listed as an open item.
+
+### 16.8 The Counts page with fields
+
+- **Event fields** appear once per event, above the cohort rows. Their values are written to
+  every image in the event and displayed as one value when the images agree, "mixed" with the
+  range when they do not, which is the event view rule from 15.7. Nothing is stored on the
+  event, so regrouping cannot lose a value. Empty images are covered: the Counts page already
+  lists all-blank events (the `empty` filter in `backend/app/api/crud/event.py`).
+- **Animal fields** appear as columns on each cohort row, next to sex, life stage and behaviour,
+  and splitting a cohort works exactly as it does today.
+- **Visibility.** Each user chooses which fields show on Counts, defaulting to all fields marked
+  "shown on Counts". This is where the select box from step C ends up.
+- **Keyboard.** Choice fields get number keys, so filling several fields per row stays fast.
+- **Suggestions** appear as in 16.6, and a filter narrows the event list to "events with
+  suggestions not yet applied for field X".
+
+### 16.9 What confirmed means now
+
+- `Event.confirmed` means: the species, counts and every field value present at that moment are
+  right.
+- Adding a field later does not unconfirm old events. Counts shows "812 confirmed events have no
+  value for antler size" instead, with a filter to go through them.
+- Editing a field value does not clear confirmation, the same as editing notes today.
+- Labels verification is unchanged and never touches fields.
+
+### 16.10 Storage, replacing 15.13
+
+Unify in the interface and the fields table, **not in storage**:
+
+- **Sex, life stage and behaviour keep their three columns** on `event_observations`. The export
+  mapping, filters and tests depend on them, and moving them into generic storage would be a
+  risky rewrite of the core for no user benefit.
+- **Custom animal field values go in one JSON column** on `event_observations`. It is carried
+  through a rebuild in the same three places as the demographics (`PriorObs`,
+  `_snapshot_event_carry`, `deployment_split.py`), which is one more thing to carry rather than
+  N more. A row with any custom value counts as having demographics for the seed rule.
+- **Event field values go in a file-level values table**, as in 15.13 but with only the
+  `file_id` foreign key, so the leaf-first purge can empty it before files.
+- **Field definitions** go in a `custom_fields` table as in 15.13, with the three standard fields
+  as rows whose storage points at the existing columns.
+- **Per-detection AI answers** stay in their own table as model output: the predictions the
+  suggestions are computed from, and the crop labels from the teaching screens. They are never
+  shown as user values.
+
+### 16.11 Exports
+
+- `counts.csv`: one column per field. Event fields repeat on every row of the event, like
+  `event_notes` today.
+- Camtrap DP: the standard fields map to `sex`, `lifeStage` and `behavior` as now; custom animal
+  fields go into `observationTags` as `key:value` pairs. Event fields have no clean home: the
+  media table offers only `mediaComments`. Putting them into the `observationTags` of every
+  observation of the event is the likely answer, and is listed as open.
+- The detection export gains the per-detection AI answers as model output.
+
+### 16.12 What this retires, and what survives
+
+Retired:
+
+- The Questions review page and its per-question confirmed percentage (9.7). Suggestions are
+  reviewed on Counts, event by event.
+- User values stored per detection (the detection level in 15.6 and 15.13). Animal values live
+  on cohorts.
+- The entry points in the detail views (15.11) and the entry mode as drawn on canvas screen 10
+  (15.21). Entry happens on Counts, and the Timelapse helpers (copy previous values, copy
+  forward) move there.
+- The rule in 15.8 that fields cannot live on cohorts. It was right that arbitrary fields cannot
+  be added one by one to the carry list; one JSON column solves that.
+- "Fields" or "Questions" as a work page in the sidebar (15.16). The only fields page is the
+  definition table.
+
+Survives:
+
+- The AI method: sections 5 to 8, the loop and training in 9.3 and 9.4, the centre-crop finding,
+  the deployment split, and the step-zero spike.
+- Why manual and AI are one feature, and why AI is off by default (15.3, 15.4).
+- Values for events are stored on images (15.7).
+- The separation from SpeciesNet fine-tuning (8.3).
+
+### 16.13 Costs, stated plainly
+
+| Cost | Why it is accepted |
+|---|---|
+| The fast one-field grid for reviewing hundreds of AI suggestions is gone; review is event by event | A clear model beats a stronger AI feature nobody can find their way around. The filter in 16.8 limits the review to events that have suggestions |
+| Group suggestions for states describe one moment, not the whole visit | Stated on screen and in the docs; single animals, the majority, get the dominant answer |
+| Sex and life stage values cannot be changed | The alternative is invalid Camtrap DP exports |
+| An extended behaviour list drifts from AddaxAI Connect | Per project and text in the export; documented |
+| Counts rows get wider | Per-user field visibility and number keys |
+| One more item in the cohort carry code | One JSON column instead of N columns, covered by the existing cohort tests plus new ones |
+| AI feedback from Counts into training is not in v1 | Training labels come from the teaching screens, which is where they are unambiguous |
+
+### 16.14 Effort, replacing 15.19
+
+Rough, and to be redone once the open items are settled:
+
+- Fields table page, field definitions, standard fields as rows, validation: two days
+- Counts: event fields block, animal field columns, visibility, number keys, Timelapse helpers:
+  four days
+- Storage: JSON column, carry paths, seed rule, file-level values, tests: three days
+- Exports, including `observationTags`: one day
+- Editable behaviour list and locked sex and life stage values: one day
+
+That is about **two and a half weeks for the manual part**, which ships first and alone.
+
+The AI part is roughly section 12's three weeks, minus the review page (about half a week), plus
+the peak-frame translation and the suggest-and-apply line on Counts (two days): about
+**three weeks**. Together roughly **five and a half weeks**.
+
+### 16.15 Open items added by this section
+
+1. Tie-breaking in the peak-frame rule when two frames share the maximum count.
+2. Where event fields go in Camtrap DP (16.11).
+3. Whether a per-field trait or state setting is worth adding, to allow training feedback from
+   single-animal cohorts (16.7) and to word group suggestions (16.4).
+4. How existing projects migrate: the current behaviour list becomes the standard field's
+   initial values, with nothing lost.
+5. The default visibility and order of fields on Counts.
+6. Whether presence per event ("any animal doing this") is offered as an option for state fields
+   later (16.4).
+7. Redraw the canvas to this design: the fields table, the Counts event view with standard and
+   custom fields and a suggestion line, and the teaching flow opened from a field's row.
+
+---
+
+## 17. Plain English summary
+
+Letting people type any question about their photos and get an answer is possible with
+vision-language models, but on camera trap images the ones that fit on a laptop are weak, biased
+towards "yes" and worse at night. The proven route, used by Google for bird and whale sounds and
+shown for camera trap species in 2021, is to have people answer a few dozen examples and fit a
+tiny classifier on the image features AddaxAI already stores. It runs in seconds on any laptop,
+has nothing to tune, and says how accurate it is before anyone trusts it. It is separate from
+fine-tuning SpeciesNet, which makes a new species model from thousands of labels and needs a GPU
+for hours.
+
+User feedback then widened the plan: people also want to record their own values, like snow
+depth or antler size, with no AI at all. So the feature became custom fields, with AI suggestions
+as an optional extra on the fields where it works. Where those fields should live went through
+several versions: in the Labels page, on a separate questions page, in the detail windows, on a
+fields page of their own. Each fixed a problem with the previous one, and none felt right, because
+the app already had three such fields under other names.
+
+The design that settled is simple. Sex, life stage and behaviour are the three standard fields.
+People add their own in a table page, like sites and deployments, and fill them all in on the
+Counts page, per group of animals or once per visit. Labels stays for species only. The AI works
+on single animal crops, but its answers are translated to the counts table the same way species
+labels already are: for one animal, the most common answer across the visit; for a group, the
+answers in the frame where the most animals were seen, so the numbers always add up. The AI
+never writes anything itself; it shows a suggestion that a person applies. Snow depth and other
+per-visit values are stored on the visit's images, so regrouping can never lose them. The manual
+part is about two and a half weeks of work and can ship first; with AI suggestions the whole is
+about five and a half weeks. Before building the AI part, spend a day testing a few real
+questions on the stored features to check the numbers hold up.
