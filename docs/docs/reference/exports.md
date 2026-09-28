@@ -31,7 +31,7 @@ If you do want every box on every frame, use the recognition file described at t
 
 ## Every row says where it came from
 
-Counts, Detections and Files repeat the site, the camera period and the event on every row, in the same columns and the same order: `site_name`, `latitude`, `longitude`, `site_tags`, then `deployment_id`, `deployment_start`, `deployment_end`, `deployment_tags`, then `event_id`, `event_start`, `event_end`. Detections also carries its file: `file_id`, `relative_path`, `absolute_path`, `datetime`, `image_width`, `image_height`. So you can filter one table on a site, a tag or a date in Excel without looking anything up in another table. The ids are still there if you prefer to join.
+Counts, Detections and Files repeat the site, the camera period and the event on every row, in the same columns and the same order: `site_name`, `latitude`, `longitude`, `site_tags`, then `deployment_id`, `deployment_start`, `deployment_end`, `deployment_tags`, then `event_id`, `event_start`, `event_end`. Detections also carries its file: `file_id`, `relative_path`, `datetime`, `image_width`, `image_height`. So you can filter one table on a site, a tag or a date in Excel without looking anything up in another table. The ids are still there if you prefer to join.
 
 Scientific names are written in full in every export, `Vulpes vulpes`, where the app itself shows `V. vulpes`. If you copy a name from the app to search a table, search on `common_name` or on the second word.
 
@@ -98,8 +98,7 @@ One row per box. Use it when you care about individual boxes. Blank files do not
 | `deployment_id`, `deployment_start`, `deployment_end`, `deployment_tags` | The camera period, as in the Deployments table |
 | `event_id`, `event_start`, `event_end` | Which event, and when. Empty if not grouped |
 | `file_id` | Which file it is on |
-| `relative_path` | Path inside the deployment folder |
-| `absolute_path` | Full path on the machine that ran the analysis |
+| `relative_path` | Path inside the deployment folder. The full path is in the Files table |
 | `datetime` | Capture time of the file, camera local time |
 | `image_width`, `image_height` | Size of the image in pixels. Empty when the size was not recorded |
 | `detection_category` | animal, person or vehicle |

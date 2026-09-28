@@ -101,12 +101,14 @@ _DEPLOYMENT_CONTEXT_HEADERS = [
     "deployment_tags",
 ]
 _EVENT_CONTEXT_HEADERS = ["event_id", "event_start", "event_end"]
-# What a row says about its file, after the file's own id: the two paths,
-# the capture time and the pixel size. The size is what turns the
-# fractional box columns into pixels without opening the image.
+# What a row says about its file, after the file's own id: the path inside
+# the deployment folder, the capture time and the pixel size. The size is
+# what turns the fractional box columns into pixels without opening the
+# image. The absolute path is files.csv's own: repeated per box it nearly
+# doubled detections.csv (2.6 to 4.8 MB on the ENA24 test project) for a
+# value the relative path plus files.csv already gives.
 _FILE_CONTEXT_HEADERS = [
     "relative_path",
-    "absolute_path",
     "datetime",
     "image_width",
     "image_height",
@@ -807,7 +809,6 @@ def _file_cells(
     before the best-frame size was stored)."""
     return [
         _relative_path(file_obj, deployment),
-        file_obj.file_path,
         _iso_datetime(file_obj.captured_at_local, tz_name),
         file_obj.width_px if file_obj.width_px is not None else "",
         file_obj.height_px if file_obj.height_px is not None else "",
@@ -902,7 +903,12 @@ _FILES_HEADERS = [
     *_DEPLOYMENT_CONTEXT_HEADERS,
     *_EVENT_CONTEXT_HEADERS,
     "file_type",
-    *_FILE_CONTEXT_HEADERS,
+    # The file block, plus the absolute path that only this table carries.
+    "relative_path",
+    "absolute_path",
+    "datetime",
+    "image_width",
+    "image_height",
     # What the camera wrote into the image's EXIF at capture time, as
     # extracted during analysis (megadetector.py's --include_exif_tags)
     # and stored in File.exif_data. Blank for videos (no EXIF), for
@@ -1044,6 +1050,7 @@ def build_files_rows(
     rows: list[list[Any]] = []
     for file_obj, deployment, site, detections in grouped:
         event = event_map.get(file_obj.id)
+        relative_path, *file_rest = _file_cells(file_obj, deployment, tz_name)
         rows.append(
             [
                 file_obj.id,
@@ -1051,7 +1058,9 @@ def build_files_rows(
                 *_deployment_cells(deployment),
                 *_event_cells(event, tz_name),
                 file_obj.file_type or "",
-                *_file_cells(file_obj, deployment, tz_name),
+                relative_path,
+                file_obj.file_path,
+                *file_rest,
                 *camera_map.get(file_obj.id, _BLANK_CAMERA_CELLS),
                 file_obj.observation_type or "",
                 *_strongest_species_cells(project, file_obj, detections),

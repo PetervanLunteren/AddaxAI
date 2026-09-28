@@ -656,7 +656,7 @@ The two never meet today: the event label is used only by `separate_folders` and
 
 ## Export tables carry their context
 
-Counts, detections and files repeat the identity of their parents on every row: the site (`site_name`, `latitude`, `longitude`, `site_tags`), the deployment (`deployment_id`, its dates, its tags), the event (`event_id`, start, end), and on a detection row also its file (`file_id`, both paths, `datetime`, pixel size). Same columns, same order, built by `_site_cells`, `_deployment_cells`, `_event_cells` and `_file_cells` in `crud/export.py`. The ids stay, so a join still works for whoever wants one.
+Counts, detections and files repeat the identity of their parents on every row: the site (`site_name`, `latitude`, `longitude`, `site_tags`), the deployment (`deployment_id`, its dates, its tags), the event (`event_id`, start, end), and on a detection row also its file (`file_id`, `relative_path`, `datetime`, pixel size; the absolute path stays on files.csv, because repeated per box it nearly doubled detections.csv for a value the relative path already gives). Same columns, same order, built by `_site_cells`, `_deployment_cells`, `_event_cells` and `_file_cells` in `crud/export.py`. The ids stay, so a join still works for whoever wants one.
 
 The tables were tidy until 2026-09: time and place lived in files.csv and deployments.csv only, and everything else joined on an id. In one month four users wrote in with the same problem in different words (coordinates on species rows, capture time and pixel size on box rows, "what is in this file", the AI count next to the human count): the column they needed was in the other file, the join key was a UUID, and they work in Excel, not in R. Tidy was the right shape for the wrong audience.
 

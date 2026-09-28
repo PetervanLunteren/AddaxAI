@@ -135,8 +135,7 @@ def test_export_detections_csv_happy_path(client, db):
         "site_name", "latitude", "longitude", "site_tags",
         "deployment_id", "deployment_start", "deployment_end", "deployment_tags",
         "event_id", "event_start", "event_end",
-        "file_id", "relative_path", "absolute_path", "datetime",
-        "image_width", "image_height",
+        "file_id", "relative_path", "datetime", "image_width", "image_height",
         "detection_category", "detection_confidence",
         "classification_label", "classification_confidence",
         "ai_classification_label", "ai_classification_confidence",
@@ -1285,7 +1284,11 @@ def test_detections_export_carries_the_file_size_and_time(client, db):
     assert by_file[sized.id]["datetime"].startswith("2024-06-15T09:00:00")
     assert by_file[sized.id]["datetime"].endswith("+02:00")
     assert by_file[unsized.id]["datetime"].endswith("+01:00")
-    assert by_file[sized.id]["absolute_path"] == sized.file_path
+    # The absolute path stays on files.csv only: repeated per box it nearly
+    # doubled this table for a value relative_path already gives.
+    assert "absolute_path" not in by_file[sized.id]
+    _headers, files = _csv_table(client, project.id, "files")
+    assert {f["file_id"]: f["absolute_path"] for f in files}[sized.id] == sized.file_path
 
 
 def test_exports_write_the_scientific_name_in_full(client, db):
