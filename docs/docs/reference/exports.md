@@ -29,6 +29,14 @@ For videos, only the frame AddaxAI saved is included. A video is analysed frame 
 
 If you do want every box on every frame, use the recognition file described at the end of this page. That one is complete on purpose.
 
+## Every row says where it came from
+
+Counts, Detections and Files repeat the site, the camera period and the event on every row, in the same columns and the same order: `site_name`, `latitude`, `longitude`, `site_tags`, then `deployment_id`, `deployment_start`, `deployment_end`, `deployment_tags`, then `event_id`, `event_start`, `event_end`. Detections also carries its file: `file_id`, `relative_path`, `absolute_path`, `datetime`, `image_width`, `image_height`. So you can filter one table on a site, a tag or a date in Excel without looking anything up in another table. The ids are still there if you prefer to join.
+
+Scientific names are written in full in every export, `Vulpes vulpes`, where the app itself shows `V. vulpes`. If you copy a name from the app to search a table, search on `common_name` or on the second word.
+
+If you read these files with a script, read columns by their header name, not by their position. Columns get added over time, and the order changed when the context columns moved to the front of each table.
+
 ## Summary
 
 One row per species, plus one row each for people, vehicles and animals without a species. The first sheet of the workbook, so you see what was found before anything else. Each count column counts one of the other tables, so the numbers can always be traced back.
@@ -55,7 +63,9 @@ One row per species per event, with the count. Each row is one [observation](../
 | Column | Meaning |
 |---|---|
 | `event_id` | Identifier of the event |
-| `deployment_id` | Which camera period it came from |
+| `site_name`, `latitude`, `longitude`, `site_tags` | The site, as in the Deployments table |
+| `deployment_id`, `deployment_start`, `deployment_end`, `deployment_tags` | The camera period, as in the Deployments table |
+| `trap_nights` | How long that camera was out, as in the Deployments table, so count per trap night is one formula on the row |
 | `event_start` | Time of the first photo in the event, camera local time |
 | `event_end` | Time of the last photo in the event |
 | `category` | animal, person or vehicle |
@@ -66,9 +76,11 @@ One row per species per event, with the count. Each row is one [observation](../
 | `taxon_genus` | Genus, for example vulpes |
 | `taxon_species` | Species |
 | `taxon_variant` | One level below species, when the model predicts it, for example adult or juvenile. Empty for most models |
-| `scientific_name` | Scientific name for display |
+| `scientific_name` | Scientific name, written in full |
 | `common_name` | Common name for display |
 | `count` | Number of individuals. Your confirmed number if you set one, otherwise the AI's highest number seen in a single photo |
+| `ai_count` | The AI's number: the highest count seen in a single photo of the event |
+| `human_count` | The number you set on the Counts page. Empty if you did not set one |
 | `sex` | female or male, if you set it. Empty means unknown |
 | `life_stage` | adult, subadult or juvenile, if you set it |
 | `behavior` | What the animals were doing, if you set it, for example foraging |
@@ -82,10 +94,14 @@ One row per box. Use it when you care about individual boxes. Blank files do not
 | Column | Meaning |
 |---|---|
 | `detection_id` | Identifier of the box |
+| `site_name`, `latitude`, `longitude`, `site_tags` | The site, as in the Deployments table |
+| `deployment_id`, `deployment_start`, `deployment_end`, `deployment_tags` | The camera period, as in the Deployments table |
+| `event_id`, `event_start`, `event_end` | Which event, and when. Empty if not grouped |
 | `file_id` | Which file it is on |
-| `relative_path` | Path inside the deployment folder, so you can find the photo without joining to the Files table |
-| `deployment_id` | Which camera period |
-| `event_id` | Which event, empty if not grouped |
+| `relative_path` | Path inside the deployment folder |
+| `absolute_path` | Full path on the machine that ran the analysis |
+| `datetime` | Capture time of the file, camera local time |
+| `image_width`, `image_height` | Size of the image in pixels. Empty when the size was not recorded |
 | `detection_category` | animal, person or vehicle |
 | `detection_confidence` | How sure the detector was there is something there |
 | `classification_label` | The current species label. May be your correction |
@@ -101,7 +117,7 @@ One row per box. Use it when you care about individual boxes. Blank files do not
 | `bbox_x`, `bbox_y` | Top left corner of the box, 0 to 1 |
 | `bbox_width`, `bbox_height` | Size of the box, 0 to 1 |
 
-Box positions are fractions of the image, not pixels. Multiply by the image width and height to get pixels.
+Box positions are fractions of the image, not pixels. Multiply by `image_width` and `image_height` on the same row to get pixels.
 
 To see where the AI was wrong, compare `ai_classification_label` with `classification_label` on rows where `is_verified` is TRUE.
 
@@ -114,12 +130,14 @@ One row per photo or video, whether or not anything was found.
 | Column | Meaning |
 |---|---|
 | `file_id` | Identifier of the file |
-| `deployment_id` | Which camera period |
-| `event_id` | Which event, empty if not grouped |
+| `site_name`, `latitude`, `longitude`, `site_tags` | The site, as in the Deployments table |
+| `deployment_id`, `deployment_start`, `deployment_end`, `deployment_tags` | The camera period, as in the Deployments table |
+| `event_id`, `event_start`, `event_end` | Which event, and when. Empty if not grouped |
 | `file_type` | image or video |
 | `relative_path` | Path inside the deployment folder |
 | `absolute_path` | Full path on the machine that ran the analysis |
 | `datetime` | Capture time, camera local time. Empty if the file had no readable date |
+| `image_width`, `image_height` | Size in pixels. Empty when the size was not recorded |
 | `camera_make` | Camera manufacturer, from the image's own EXIF (`Make`), read once during analysis |
 | `camera_model` | Camera model, from EXIF `Model`, read once during analysis |
 | `ambient_temperature` | Temperature at capture, from EXIF `AmbientTemperature`, read once during analysis. The standard says degrees Celsius, but camera trap thermometers are rough, so treat it as indicative |
@@ -159,9 +177,9 @@ One row per camera period. This is your effort table.
 
 ## Folder runs
 
-In the three tables a folder run writes, `deployment_id` is dropped because there is no deployment, and `notes` because nothing ever fills it. The Summary keeps `n_images`, `n_videos` and `n_detections` and drops `n_events` and `n_individuals`: those are ecological interpretation, and a folder run has no Counts table to back them.
+In the three tables a folder run writes, the site and camera period columns (`site_name` to `deployment_tags`, and `trap_nights`) are dropped because a folder run has no sites and no camera periods, and `notes` because nothing ever fills it. The Summary keeps `n_images`, `n_videos` and `n_detections` and drops `n_events` and `n_individuals`: those are ecological interpretation, and a folder run has no Counts table to back them.
 
-`event_id` stays. Files and detections from the same burst share one, so you can still group by visit. What you cannot do is look the event up, because the counts table is projects only. In a project that column points at a row in counts; in a folder run it is only a grouping key.
+`event_id`, `event_start` and `event_end` stay. Files and detections from the same burst share one event, so you can still group by visit. What you cannot do is look the event up, because the counts table is projects only. In a project that column points at a row in counts; in a folder run it is only a grouping key.
 
 ## Recognition file (JSON)
 

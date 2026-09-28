@@ -116,10 +116,18 @@ def test_folder_run_headers_omit_deployment_id_and_notes(db, tmp_path):
     )
 
     for headers in (files_headers, det_headers):
-        assert "deployment_id" not in headers
-        assert "notes" not in headers
-        assert "file_id" in headers
-        assert "event_id" in headers
+        # The site and deployment part of the context block goes with
+        # deployment_id: a folder run has no site and one deployment.
+        for name in (
+            "deployment_id", "notes",
+            "site_name", "latitude", "longitude", "site_tags",
+            "deployment_start", "deployment_end", "deployment_tags",
+            "trap_nights",
+        ):
+            assert name not in headers
+        # The event part stays: it is what says which files share a burst.
+        for name in ("file_id", "event_id", "event_start", "event_end"):
+            assert name in headers
 
     assert "detection_id" in det_headers
     assert "relative_path" in files_headers

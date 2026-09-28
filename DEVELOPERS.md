@@ -654,6 +654,25 @@ The two never meet today: the event label is used only by `separate_folders` and
 
 `observation_type` is denormalised, so it is recomputed at ingest, after postprocessing, on any detection edit, and on a project threshold change. A rule change therefore needs a data migration; `5e6f7a8b9c0d` is the worked example, with its data test in `tests/db/test_migration_data.py`.
 
+## Export tables carry their context
+
+Counts, detections and files repeat the identity of their parents on every row: the site (`site_name`, `latitude`, `longitude`, `site_tags`), the deployment (`deployment_id`, its dates, its tags), the event (`event_id`, start, end), and on a detection row also its file (`file_id`, both paths, `datetime`, pixel size). Same columns, same order, built by `_site_cells`, `_deployment_cells`, `_event_cells` and `_file_cells` in `crud/export.py`. The ids stay, so a join still works for whoever wants one.
+
+The tables were tidy until 2026-09: time and place lived in files.csv and deployments.csv only, and everything else joined on an id. In one month four users wrote in with the same problem in different words (coordinates on species rows, capture time and pixel size on box rows, "what is in this file", the AI count next to the human count): the column they needed was in the other file, the join key was a UUID, and they work in Excel, not in R. Tidy was the right shape for the wrong audience.
+
+The rule that decides what goes on a row, so the next request is judged rather than debated:
+
+1. **Parent context travels down.** Anything that identifies a row's site, deployment, event or file may be repeated on the row. Parents are few and stable, so the repetition is cheap and never ambiguous.
+2. **Child aggregates travel up only when fixed and bounded.** `trap_nights` on a count row is one number with one definition. "The species in this event" as a list is not, and stays in the Counts rows.
+3. **One block, one order, everywhere.** A new context column goes into the shared header lists and the shared helper, never into one builder.
+4. **Names read without a lookup.** The exports write `Vulpes vulpes` where the app shows `V. vulpes` (`_export_scientific_name`). The stored `scientific_name` is unchanged and stays the app's source of truth; only rows with both genus and species are ever abbreviated, so only those are rebuilt.
+
+Two tables do not follow the rule on purpose. Deployments and Summary are the parent tables themselves and keep their own shape. Camtrap DP is a standard read by software and keeps its fixed columns, apart from the full name.
+
+Folder runs drop the site and deployment part of the block (`OMITTED_COLUMNS` in `postprocessing_outputs/_table_columns.py`): a folder run has no site and one synthetic deployment. The event part stays.
+
+Adding a context column moves every column after it. A script that reads by position breaks once per change; `docs/docs/reference/exports.md` tells people to read by header name, and the release note says when the order changed.
+
 ## Paths to user media are never resolved
 
 One rule:

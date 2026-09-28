@@ -34,6 +34,8 @@ def format_scientific_name_from_taxonomy_row(
     taxon_order: str | None = None,
     taxon_class: str | None = None,
     taxon_variant: str | None = None,
+    *,
+    abbreviate: bool = True,
 ) -> str:
     """
     Format a Latin display name from individual taxonomy fields.
@@ -44,9 +46,17 @@ def format_scientific_name_from_taxonomy_row(
     A variant is appended in parentheses ("V. vulpes (adult)") so two
     variant classes of one species never share a scientific name; the
     parentheses make clear it is not part of the Latin name.
+
+    ``abbreviate`` is what the app shows: "V. vulpes" fits a chip and a
+    tree row. The exports pass ``False`` and get "Vulpes vulpes", because
+    a table is read away from the app, and an abbreviated genus is
+    ambiguous there and fails name matching in tools like GBIF.
     """
     if taxon_species and taxon_genus:
-        base = f"{taxon_genus[0].upper()}. {taxon_species}"
+        if abbreviate:
+            base = f"{taxon_genus[0].upper()}. {taxon_species}"
+        else:
+            base = f"{taxon_genus[0].upper()}{taxon_genus[1:]} {taxon_species}"
     elif taxon_genus:
         base = taxon_genus.capitalize()
     elif taxon_family:

@@ -10,10 +10,14 @@ The trimming lives here, on the folder-run side, rather than in the
 shared builders. Projects-mode exports therefore cannot regress by
 construction: nothing in this file is reachable from them.
 
-``deployment_id`` is dropped. A folder run creates exactly one queue
-entry, which becomes exactly one synthetic deployment (``rerun`` reuses
-it), so the column is the same UUID on every row and points at a table
-the run never exports.
+``deployment_id`` is dropped, and with it the rest of the site and
+deployment part of the context block (``site_name``, ``latitude``,
+``longitude``, ``site_tags``, ``deployment_start``, ``deployment_end``,
+``deployment_tags``, ``trap_nights``). A folder run creates exactly one
+queue entry, which becomes exactly one synthetic deployment (``rerun``
+reuses it) with no site, so the id is the same UUID on every row and
+points at a table the run never exports, and the other columns are
+blank or repeat one value.
 
 ``notes`` is dropped. ``File.notes`` is writable over the API but no UI
 ever sets it, so the column is always empty.
@@ -26,8 +30,9 @@ figure computed from an interval almost no folder-run user sets. What is
 left, images, videos and boxes per species, is what the AI directly
 produced.
 
-``event_id`` is kept: it is the only column that says which files belong
-to the same burst. A key a user can group on is not a figure.
+``event_id`` is kept, and so are ``event_start`` and ``event_end``: they
+are the only columns that say which files belong to the same burst and
+when it was. A key a user can group on is not a figure.
 """
 
 from __future__ import annotations
@@ -36,7 +41,20 @@ from typing import Any
 
 # Columns the shared builders emit that say nothing in a folder run.
 OMITTED_COLUMNS = frozenset(
-    {"deployment_id", "notes", "n_events", "n_individuals"}
+    {
+        "site_name",
+        "latitude",
+        "longitude",
+        "site_tags",
+        "deployment_id",
+        "deployment_start",
+        "deployment_end",
+        "deployment_tags",
+        "trap_nights",
+        "notes",
+        "n_events",
+        "n_individuals",
+    }
 )
 
 

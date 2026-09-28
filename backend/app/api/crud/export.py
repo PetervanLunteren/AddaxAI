@@ -40,7 +40,7 @@ from app.db.sql_params import iter_id_chunks
 from app.ml.detection_visibility import visible_detections
 from app.ml.label_exclusion import is_non_label, threshold_or_verified
 from app.ml.observation_type import strongest_passing_detection
-from app.ml.taxonomic_rank import species_binomial
+from app.ml.taxonomic_rollup import format_scientific_name_from_taxonomy_row
 from app.models import (
     Deployment,
     Detection,
@@ -75,25 +75,56 @@ OBSERVATIONS_SCHEMA = (
     "/observations-table-schema.json"
 )
 
-# Flat detections CSV. One row per detection (the box grain). Lean on
-# attributes (no time / place / paths — join to files.csv for those), but
-# carries the full set of FK ids (file_id, deployment_id, event_id) so it
-# links directly to every parent table without chained joins. Mirrors
-# Camtrap-DP, whose observations table carries deploymentID / mediaID /
-# eventID together.
+# ---------------------------------------------------------------------------
+# Context block: where and when a row came from
+# ---------------------------------------------------------------------------
+
+# Every table carries the identity of its parents, broadest first: site,
+# deployment, event, file. The same columns in the same order in counts,
+# detections and files, built by ``_site_cells`` and friends below, so a
+# person can read one table in Excel without joining another. The ids
+# stay, so a join is still possible for those who want one.
 #
-# Column order follows the pipeline: ids, the detector stage (category +
-# score), the classifier stage (label + score), the label's taxonomy /
-# names, then geometry, then the verified flag.
+# The tables were tidy once (time and place only in files.csv and
+# deployments.csv, everything else joined on an id), and four users in
+# one month wrote in with the same problem: the column they needed was
+# in the other file and the join key was a UUID. The rule that replaced
+# it, written out in DEVELOPERS.md "Export tables carry their context":
+# parent context travels down to every row; a child aggregate is added
+# only when its definition is fixed and bounded. Deployments and Summary
+# are the parent tables themselves and keep their own shape.
+_SITE_CONTEXT_HEADERS = ["site_name", "latitude", "longitude", "site_tags"]
+_DEPLOYMENT_CONTEXT_HEADERS = [
+    "deployment_id",
+    "deployment_start",
+    "deployment_end",
+    "deployment_tags",
+]
+_EVENT_CONTEXT_HEADERS = ["event_id", "event_start", "event_end"]
+# What a row says about its file, after the file's own id: the two paths,
+# the capture time and the pixel size. The size is what turns the
+# fractional box columns into pixels without opening the image.
+_FILE_CONTEXT_HEADERS = [
+    "relative_path",
+    "absolute_path",
+    "datetime",
+    "image_width",
+    "image_height",
+]
+
+# Flat detections CSV. One row per detection (the box grain). Carries the
+# context block, so it links to every parent table and reads on its own.
+# Mirrors Camtrap-DP, whose observations table carries deploymentID /
+# mediaID / eventID together.
+#
+# Column order: the row's own id, the context block broad to specific,
+# then the pipeline: the detector stage (category + score), the
+# classifier stage (label + score), the label's taxonomy / names, then
+# geometry.
 #
 #   detection_id    — the detection row id.
-#   file_id         — FK to files.csv (time, place, paths live there).
-#   relative_path   — path inside the deployment folder, same value as
-#                     files.csv. The one non-id column from the file, so a
-#                     person reading this table in Excel can find the photo
-#                     without a join (a beta tester could not).
-#   deployment_id   — FK to deployments.csv (site, effort).
-#   event_id        — FK to the event (also on files.csv).
+#   site_*, deployment_*, event_*, file_id and the file columns: the
+#                     context block, same values as files.csv.
 #   detection_category — detector class: animal / person / vehicle.
 #   detection_confidence — detector (MegaDetector) score for the box.
 #   classification_label — the current species label, by model or human
@@ -121,10 +152,11 @@ OBSERVATIONS_SCHEMA = (
 # they live in files.csv. The per-event species count lives in counts.csv.
 _FLAT_DETECTION_HEADERS = [
     "detection_id",
+    *_SITE_CONTEXT_HEADERS,
+    *_DEPLOYMENT_CONTEXT_HEADERS,
+    *_EVENT_CONTEXT_HEADERS,
     "file_id",
-    "relative_path",
-    "deployment_id",
-    "event_id",
+    *_FILE_CONTEXT_HEADERS,
     # Detector stage (MegaDetector): category + score.
     "detection_category",
     "detection_confidence",
@@ -425,18 +457,51 @@ def _taxon_ranks(taxonomy: LabelTaxonomy | None) -> list[str]:
     ]
 
 
+def _full_binomial(
+    taxonomy: LabelTaxonomy | None, *, with_variant: bool = True
+) -> str | None:
+    """"Isoodon macrourus" rebuilt from the rank columns, or None when the
+    row has no genus + species to build it from."""
+    if taxonomy is None or not (taxonomy.taxon_genus and taxonomy.taxon_species):
+        return None
+    return format_scientific_name_from_taxonomy_row(
+        taxonomy.name,
+        taxonomy.taxon_genus,
+        taxonomy.taxon_species,
+        taxon_variant=taxonomy.taxon_variant if with_variant else None,
+        abbreviate=False,
+    )
+
+
+def _export_scientific_name(
+    taxonomy: LabelTaxonomy | None, stored: str | None = None
+) -> str:
+    """The Latin name as every export writes it: "Isoodon macrourus", where
+    the app shows "I. macrourus".
+
+    Only a row with both genus and species is ever abbreviated, so only
+    that case is rebuilt. Every other row (a rollup to family, a custom
+    label, the builtin Person) falls back to ``stored``, the name on the
+    detection when the caller has one, and then to the taxonomy row's own
+    name; both are already what they should be. The stored
+    ``scientific_name`` stays the app's source of truth; the exports
+    differ from it on purpose, see ``format_scientific_name_from_taxonomy_row``.
+    """
+    return (
+        _full_binomial(taxonomy)
+        or stored
+        or (taxonomy.scientific_name if taxonomy else None)
+        or ""
+    )
+
+
 def _scientific_name(
     detection: Detection, taxonomy: LabelTaxonomy | None
 ) -> str:
-    """
-    Latin / scientific name. ``label_taxonomy.scientific_name`` is the single
-    source of truth (see MEMORY.md project_taxonomy_scientific_name).
-    """
+    """Latin name for the spatial layer: blank for a person or a vehicle."""
     if detection.category != "animal":
         return ""
-    if taxonomy and taxonomy.scientific_name:
-        return taxonomy.scientific_name
-    return ""
+    return _export_scientific_name(taxonomy)
 
 
 def _camtrap_taxonomy_name(taxonomy: LabelTaxonomy | None) -> str | None:
@@ -449,8 +514,8 @@ def _camtrap_taxonomy_name(taxonomy: LabelTaxonomy | None) -> str | None:
     if taxonomy is None:
         return None
     if taxonomy.taxon_variant:
-        return species_binomial(taxonomy.taxon_genus, taxonomy.taxon_species)
-    return taxonomy.scientific_name
+        return _full_binomial(taxonomy, with_variant=False)
+    return _export_scientific_name(taxonomy) or None
 
 
 # Camtrap DP's enums for the two observation columns a variant can fill.
@@ -601,10 +666,10 @@ def build_detection_rows(
     """
     Build `(headers, rows)` for the flat Detections export.
 
-    Grain: one row per detection (the box view). Lean on attributes (time /
-    place / paths live in files.csv) but carries the full FK id set
-    (file_id, deployment_id, event_id) for direct linkability. Files with no
-    detections do not appear here; per-event counts live in counts.csv.
+    Grain: one row per detection (the box view). Carries the context block
+    (site, deployment, event, file) so a row reads on its own, and the FK
+    id set inside it for direct linkability. Files with no detections do
+    not appear here; per-event counts live in counts.csv.
 
     `event_id` is blank when the file has no event, so every non-empty
     value resolves in the events table. See the note on `_FILES_HEADERS`.
@@ -622,11 +687,19 @@ def build_detection_rows(
     grouped = list(_group_rows_by_file(scoped_rows))
     event_map = _events_by_file(db, [f.id for f, _d, _s, _dets in grouped])
 
+    tz_name = project.timezone
     rows: list[list[Any]] = []
-    for file_obj, deployment, _site, detections in grouped:
-        deployment_id = deployment.id if deployment is not None else ""
+    for file_obj, deployment, site, detections in grouped:
         event = event_map.get(file_obj.id)
-        event_id = event.id if event else ""
+        # Built once per file, not once per box: the same cells repeat on
+        # every detection row of the file.
+        context = [
+            *_site_cells(site),
+            *_deployment_cells(deployment),
+            *_event_cells(event, tz_name),
+            file_obj.id,
+            *_file_cells(file_obj, deployment, tz_name),
+        ]
         shown = {
             d.id
             for d in visible_detections(
@@ -637,14 +710,7 @@ def build_detection_rows(
             if detection.id not in shown:
                 continue
             rows.append(
-                [
-                    detection.id,
-                    file_obj.id,
-                    _relative_path(file_obj, deployment),
-                    deployment_id,
-                    event_id,
-                ]
-                + _detection_cells(detection, taxonomy)
+                [detection.id, *context] + _detection_cells(detection, taxonomy)
             )
 
     return _FLAT_DETECTION_HEADERS, rows
@@ -674,7 +740,7 @@ def _detection_cells(
         detection.classification_method or "",
         "TRUE" if detection.verified else "FALSE",
         *_taxon_ranks(taxonomy),
-        detection.scientific_name or "",
+        _export_scientific_name(taxonomy, detection.scientific_name),
         detection.common_name or "",
         detection.frame_number if detection.frame_number is not None else "",
         _round_or_blank(detection.bbox_x, 6),
@@ -689,8 +755,9 @@ def _detection_cells(
 # ---------------------------------------------------------------------------
 
 # One row per deployment: where it was (site + coordinates) and the effort
-# (date span + trap-nights). The single home for location, so files.csv and
-# counts.csv carry only deployment_id and join here. Mirrors the Camtrap-DP
+# (date span + trap-nights). The full site and deployment record; the
+# other tables repeat its identity columns (the context block) and point
+# back here with deployment_id for the rest. Mirrors the Camtrap-DP
 # deployments table.
 def _format_tags(tags: dict | None) -> str:
     """Serialize a tags dict to one cell as pipe-separated key:value pairs,
@@ -698,6 +765,53 @@ def _format_tags(tags: dict | None) -> str:
     if not tags:
         return ""
     return " | ".join(f"{k}:{v}" for k, v in tags.items())
+
+
+def _site_cells(site: Site | None) -> list[Any]:
+    """The site part of the context block; blanks for a deployment with no
+    site, which is what the CSV already did for latitude / longitude."""
+    if site is None:
+        return ["", "", "", ""]
+    return [site.name, site.latitude, site.longitude, _format_tags(site.tags)]
+
+
+def _deployment_cells(deployment: Deployment | None) -> list[Any]:
+    """The deployment part of the context block."""
+    if deployment is None:
+        return ["", "", "", ""]
+    return [
+        deployment.id,
+        deployment.start_date_local.isoformat() if deployment.start_date_local else "",
+        deployment.end_date_local.isoformat() if deployment.end_date_local else "",
+        _format_tags(deployment.tags),
+    ]
+
+
+def _event_cells(event: Event | None, tz_name: str) -> list[Any]:
+    """The event part of the context block. All blank when the file has no
+    event, never a stand-in id; see the note on ``_FILES_HEADERS``."""
+    if event is None:
+        return ["", "", ""]
+    return [
+        event.id,
+        _iso_datetime(event.event_start_local, tz_name),
+        _iso_datetime(event.event_end_local, tz_name),
+    ]
+
+
+def _file_cells(
+    file_obj: File, deployment: Deployment | None, tz_name: str
+) -> list[Any]:
+    """The file part of the context block, after the file's own id. The
+    pixel size is blank, never 0, when it was not recorded (videos from
+    before the best-frame size was stored)."""
+    return [
+        _relative_path(file_obj, deployment),
+        file_obj.file_path,
+        _iso_datetime(file_obj.captured_at_local, tz_name),
+        file_obj.width_px if file_obj.width_px is not None else "",
+        file_obj.height_px if file_obj.height_px is not None else "",
+    ]
 
 
 _DEPLOYMENTS_HEADERS = [
@@ -725,8 +839,8 @@ def build_deployments_rows(
 ) -> tuple[list[str], list[list[Any]]]:
     """Build `(headers, rows)` for the Deployments export: one row per
     deployment with its site, coordinates, date span and trap-nights. The
-    single home for location / effort; files and counts join here on
-    deployment_id."""
+    full location / effort record; the other tables carry its identity
+    columns and point back here with deployment_id for the rest."""
     from app.api.crud.trap_nights import compute_trap_nights_for_deployments
 
     query = (
@@ -770,11 +884,11 @@ def build_deployments_rows(
 # Files rows (one row per media file, the media / membership table)
 # ---------------------------------------------------------------------------
 
-# One row per file, including empties. This is the tidy home for "which
-# files had no detections" (category=blank) and "which files are in which
+# One row per file, including empties. This is the home for "which files
+# had no detections" (category=blank) and "which files are in which
 # event" (event_id), instead of faking blank rows in the detections table.
-# Mirrors the Camtrap-DP media table. Location lives in deployments.csv;
-# join on deployment_id.
+# Mirrors the Camtrap-DP media table. Carries the context block, so the
+# site and the deployment dates sit on the row.
 #
 # event_id is blank when a file has no event, never a stand-in id. Every
 # image / video lands in exactly one cluster once events are generated
@@ -784,12 +898,11 @@ def build_deployments_rows(
 # table.
 _FILES_HEADERS = [
     "file_id",
-    "deployment_id",
-    "event_id",
+    *_SITE_CONTEXT_HEADERS,
+    *_DEPLOYMENT_CONTEXT_HEADERS,
+    *_EVENT_CONTEXT_HEADERS,
     "file_type",
-    "relative_path",
-    "absolute_path",
-    "datetime",
+    *_FILE_CONTEXT_HEADERS,
     # What the camera wrote into the image's EXIF at capture time, as
     # extracted during analysis (megadetector.py's --include_exif_tags)
     # and stored in File.exif_data. Blank for videos (no EXIF), for
@@ -929,18 +1042,16 @@ def build_files_rows(
     camera_map = _camera_cells_by_file(db, file_ids)
 
     rows: list[list[Any]] = []
-    for file_obj, deployment, _site, detections in grouped:
+    for file_obj, deployment, site, detections in grouped:
         event = event_map.get(file_obj.id)
-        event_id = event.id if event else ""
         rows.append(
             [
                 file_obj.id,
-                deployment.id if deployment is not None else "",
-                event_id,
+                *_site_cells(site),
+                *_deployment_cells(deployment),
+                *_event_cells(event, tz_name),
                 file_obj.file_type or "",
-                _relative_path(file_obj, deployment),
-                file_obj.file_path,
-                _iso_datetime(file_obj.captured_at_local, tz_name),
+                *_file_cells(file_obj, deployment, tz_name),
                 *camera_map.get(file_obj.id, _BLANK_CAMERA_CELLS),
                 file_obj.observation_type or "",
                 *_strongest_species_cells(project, file_obj, detections),
@@ -1015,7 +1126,7 @@ def _strongest_species_cells(
         best.label or "",
         _round_or_blank(best.label_confidence, 6),
         *_taxon_ranks(taxonomy),
-        best.scientific_name or "",
+        _export_scientific_name(taxonomy, best.scientific_name),
         best.common_name or "",
     ]
 
@@ -1030,7 +1141,12 @@ def _strongest_species_cells(
 # page output, distinct from the per-detection Detections export above.
 _OBSERVATIONS_HEADERS = [
     "event_id",
-    "deployment_id",
+    *_SITE_CONTEXT_HEADERS,
+    *_DEPLOYMENT_CONTEXT_HEADERS,
+    # The deployment's effort, so count per trap night is one formula on
+    # the row. Counts only: on a per-box or per-file row it would invite
+    # sums that mean nothing.
+    "trap_nights",
     "event_start",
     "event_end",
     "category",
@@ -1044,8 +1160,12 @@ _OBSERVATIONS_HEADERS = [
     "scientific_name",
     "common_name",
     # The human-confirmed count, falling back to the AI's count when the
-    # event isn't confirmed.
+    # event isn't confirmed. The two it is made of follow, so an export
+    # taken after review still separates what the AI said from what a
+    # person set (a user comparing the two asked for exactly that).
     "count",
+    "ai_count",
+    "human_count",
     # What a person recorded about the individuals on this row, blank
     # when unknown. One species can have several rows in an event (4 adult
     # males, 2 juveniles); the species total is their sum.
@@ -1072,12 +1192,15 @@ def build_observation_rows(
     removed) are skipped. This maps to the Counts page; the per-detection
     grain lives in the Detections export.
     """
+    from app.api.crud.trap_nights import compute_trap_nights_for_deployments
+
     tz_name = project.timezone
 
     query = (
-        db.query(EventObservation, Event, Deployment, LabelTaxonomy)
+        db.query(EventObservation, Event, Deployment, Site, LabelTaxonomy)
         .join(Event, Event.id == EventObservation.event_id)
         .join(Deployment, Deployment.id == Event.deployment_id)
+        .outerjoin(Site, Site.id == Deployment.site_id)
         .outerjoin(
             LabelTaxonomy,
             LabelTaxonomy.id == EventObservation.label_taxonomy_id,
@@ -1087,24 +1210,36 @@ def build_observation_rows(
     )
     if deployment_ids is not None:
         query = query.filter(Deployment.id.in_(deployment_ids))
+    results = query.all()
+
+    seen_deployment_ids = sorted({dep.id for _o, _e, dep, _s, _t in results})
+    trap_nights = (
+        compute_trap_nights_for_deployments(db, seen_deployment_ids)
+        if seen_deployment_ids
+        else {}
+    )
 
     rows: list[list[Any]] = []
-    for obs, event, deployment, taxonomy in query.all():
+    for obs, event, deployment, site, taxonomy in results:
         count = obs.effective_count
         if count <= 0:
             continue
         rows.append(
             [
                 event.id,
-                deployment.id,
+                *_site_cells(site),
+                *_deployment_cells(deployment),
+                trap_nights.get(deployment.id, ""),
                 _iso_datetime(event.event_start_local, tz_name),
                 _iso_datetime(event.event_end_local, tz_name),
                 obs.category,
                 obs.label or "",
                 *_taxon_ranks(taxonomy),
-                (taxonomy.scientific_name if taxonomy else "") or "",
+                _export_scientific_name(taxonomy),
                 (taxonomy.common_name if taxonomy else "") or "",
                 count,
+                obs.max_n,
+                obs.human_count if obs.human_count is not None else "",
                 obs.sex or "",
                 obs.life_stage or "",
                 obs.behavior or "",
@@ -1214,7 +1349,7 @@ def build_summary_rows(
             if key not in name_cells:
                 name_cells[key] = [
                     *_taxon_ranks(taxonomy),
-                    detection.scientific_name or "",
+                    _export_scientific_name(taxonomy, detection.scientific_name),
                     detection.common_name or "",
                 ]
             n_detections[key] += 1

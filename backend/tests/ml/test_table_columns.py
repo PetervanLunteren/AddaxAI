@@ -24,7 +24,12 @@ def test_drops_deployment_id_and_notes():
 
 def test_omitted_columns_is_the_documented_set():
     assert OMITTED_COLUMNS == {
-        "deployment_id", "notes", "n_events", "n_individuals",
+        # The site and deployment part of the context block: a folder run
+        # has no site and one synthetic deployment.
+        "site_name", "latitude", "longitude", "site_tags",
+        "deployment_id", "deployment_start", "deployment_end", "deployment_tags",
+        "trap_nights",
+        "notes", "n_events", "n_individuals",
     }
 
 

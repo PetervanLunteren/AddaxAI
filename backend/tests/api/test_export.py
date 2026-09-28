@@ -126,12 +126,17 @@ def test_export_detections_csv_happy_path(client, db):
 
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     headers = rows[0]
-    # Lean detections table: detection_id + file_id + the file's path + the
-    # detection's own fields. Time / place live in files.csv (join on
-    # file_id); relative_path is there so a reader can find the photo
-    # without that join.
+    # One row per box, and every row reads on its own: the row's id, then
+    # the context block (site, deployment, event, file) broad to specific,
+    # then the detection's own fields. The block is the same, in the same
+    # order, in files.csv and counts.csv.
     assert headers == [
-        "detection_id", "file_id", "relative_path", "deployment_id", "event_id",
+        "detection_id",
+        "site_name", "latitude", "longitude", "site_tags",
+        "deployment_id", "deployment_start", "deployment_end", "deployment_tags",
+        "event_id", "event_start", "event_end",
+        "file_id", "relative_path", "absolute_path", "datetime",
+        "image_width", "image_height",
         "detection_category", "detection_confidence",
         "classification_label", "classification_confidence",
         "ai_classification_label", "ai_classification_confidence",
@@ -375,16 +380,19 @@ def test_files_export_camera_columns_come_from_stored_exif(client, db):
 
     headers, by_id = _files_rows(client, project.id)
     dt_i = headers.index("datetime")
-    assert headers[dt_i : dt_i + 5] == [
+    assert headers[dt_i : dt_i + 7] == [
         "datetime",
+        "image_width",
+        "image_height",
         "camera_make",
         "camera_model",
         "ambient_temperature",
         "camera_serial",
     ]
+    cam_i = headers.index("camera_make")
 
     def camera_cells(row: list[str]) -> list[str]:
-        return row[dt_i + 1 : dt_i + 5]
+        return row[cam_i : cam_i + 4]
 
     assert camera_cells(by_id[f_exif.id]) == [
         "RECONYX",
@@ -1111,6 +1119,234 @@ def test_export_observations_event_level(client, db):
 def test_export_observations_project_not_found(client):
     resp = client.get("/api/projects/does-not-exist/export/observations?format=csv")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# The context block: where and when a row came from
+#
+# Counts, detections and files repeat the site, the deployment and the
+# event on every row, in the same columns and the same order, so a person
+# reading one table in Excel needs no join. The ids stay for those who do.
+# ---------------------------------------------------------------------------
+
+
+def _csv_table(
+    client, project_id: str, table: str
+) -> tuple[list[str], list[dict[str, str]]]:
+    """One export table as dicts keyed by header. ``strict`` makes a row
+    that is narrower or wider than the header fail here rather than shift
+    silently."""
+    resp = client.get(f"/api/projects/{project_id}/export/{table}?format=csv")
+    assert resp.status_code == 200
+    rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
+    headers = rows[0]
+    return headers, [dict(zip(headers, r, strict=True)) for r in rows[1:]]
+
+
+_CONTEXT_HEADERS = [
+    "site_name", "latitude", "longitude", "site_tags",
+    "deployment_id", "deployment_start", "deployment_end", "deployment_tags",
+]
+
+
+def test_every_table_carries_the_site_and_deployment_on_each_row(client, db):
+    from app.api.crud.event_observation import calculate_max_n_for_event
+
+    project, site, deployment = _build_simple_project(db, timezone="Europe/Amsterdam")
+    site.tags = {"tenure": "park"}
+    deployment.tags = {"camera": "A1", "bait": "none"}
+    ev = make_event_with_files(
+        db,
+        deployment_id=deployment.id,
+        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+    )
+    make_detection(db, file_id=ev.files[0].id, category="animal", confidence=0.9, label="deer")
+    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    db.commit()
+
+    expected = {
+        "site_name": "alpha",
+        "latitude": "52.1",
+        "longitude": "5.1",
+        "site_tags": "tenure:park",
+        "deployment_id": deployment.id,
+        "deployment_start": "2024-06-01",
+        "deployment_end": "2024-06-10",
+        "deployment_tags": "camera:A1 | bait:none",
+    }
+    for table, own_id in (
+        ("observations", "event_id"),
+        ("detections", "detection_id"),
+        ("files", "file_id"),
+    ):
+        headers, rows = _csv_table(client, project.id, table)
+        # The row's own id first, then the block, in this order.
+        assert headers[: 1 + len(_CONTEXT_HEADERS)] == [own_id, *_CONTEXT_HEADERS], table
+        assert len(rows) == 1, table
+        assert {k: rows[0][k] for k in expected} == expected, table
+        assert rows[0]["event_id"] == ev.id, table
+        # Event times carry the per-row DST offset like every other datetime.
+        assert rows[0]["event_start"].endswith("+02:00"), table
+        assert rows[0]["event_end"].endswith("+02:00"), table
+
+
+def test_context_block_is_blank_for_a_deployment_without_a_site(client, db):
+    """No site means blank site cells, never a crash and never a stand-in;
+    the deployment part still fills in."""
+    project = make_project(db)
+    deployment = make_deployment(
+        db, project_id=project.id, start_date_local=date(2024, 6, 1)
+    )
+    make_file(db, deployment_id=deployment.id)
+    db.commit()
+
+    _headers, rows = _csv_table(client, project.id, "files")
+    assert len(rows) == 1
+    site_cells = [rows[0][k] for k in ("site_name", "latitude", "longitude", "site_tags")]
+    assert site_cells == ["", "", "", ""]
+    assert rows[0]["deployment_id"] == deployment.id
+    assert rows[0]["deployment_start"] == "2024-06-01"
+    assert rows[0]["deployment_end"] == ""
+    assert rows[0]["event_id"] == ""
+    assert rows[0]["event_start"] == ""
+
+
+def test_counts_export_keeps_the_ai_count_next_to_the_human_count(client, db):
+    """``count`` is what the app shows (the human's number if set, else the
+    AI's); the two it is made of sit beside it, so an export taken after
+    review still tells the AI's number from the person's. ``trap_nights``
+    repeats the Deployments table, so count per trap night is one formula
+    on the row."""
+    from app.api.crud.event_observation import (
+        calculate_max_n_for_event,
+        set_human_count,
+    )
+
+    project, _site, deployment = _build_simple_project(db)
+    ev = make_event_with_files(
+        db,
+        deployment_id=deployment.id,
+        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+    )
+    make_detection(db, file_id=ev.files[0].id, category="animal", confidence=0.9, label="deer")
+    make_detection(db, file_id=ev.files[0].id, category="animal", confidence=0.8, label="deer")
+    ev2 = make_event_with_files(
+        db,
+        deployment_id=deployment.id,
+        event_start_local=datetime(2024, 6, 16, 9, 0, 0),
+    )
+    make_detection(db, file_id=ev2.files[0].id, category="animal", confidence=0.9, label="fox")
+    obs = calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    calculate_max_n_for_event(db, ev2.id, project.counting_threshold)
+    db.flush()
+    set_human_count(db, obs[0].id, 5)
+    db.commit()
+
+    _headers, rows = _csv_table(client, project.id, "observations")
+    by_label = {r["classification_label"]: r for r in rows}
+    deer, fox = by_label["deer"], by_label["fox"]
+    assert (deer["count"], deer["ai_count"], deer["human_count"]) == ("5", "2", "5")
+    assert (fox["count"], fox["ai_count"], fox["human_count"]) == ("1", "1", "")
+
+    _dep_headers, dep_rows = _csv_table(client, project.id, "deployments")
+    assert deer["trap_nights"].isdigit()
+    assert deer["trap_nights"] == dep_rows[0]["trap_nights"]
+
+
+def test_detections_export_carries_the_file_size_and_time(client, db):
+    """Boxes are fractions of the image, so the row carries the pixel size
+    that turns them into pixels, and the capture time, without a join to
+    files.csv. The size is blank, never 0, when it was not recorded."""
+    project, _site, deployment = _build_simple_project(db, timezone="Europe/Amsterdam")
+    sized = make_file(
+        db,
+        deployment_id=deployment.id,
+        captured_at_local=datetime(2024, 6, 15, 9, 0, 0),
+        width_px=4000,
+        height_px=3000,
+    )
+    unsized = make_file(
+        db,
+        deployment_id=deployment.id,
+        captured_at_local=datetime(2024, 12, 15, 9, 0, 0),
+    )
+    for f in (sized, unsized):
+        make_detection(db, file_id=f.id, label="deer")
+    db.commit()
+
+    _headers, rows = _csv_table(client, project.id, "detections")
+    by_file = {r["file_id"]: r for r in rows}
+    assert (by_file[sized.id]["image_width"], by_file[sized.id]["image_height"]) == (
+        "4000", "3000",
+    )
+    assert (by_file[unsized.id]["image_width"], by_file[unsized.id]["image_height"]) == (
+        "", "",
+    )
+    assert by_file[sized.id]["datetime"].startswith("2024-06-15T09:00:00")
+    assert by_file[sized.id]["datetime"].endswith("+02:00")
+    assert by_file[unsized.id]["datetime"].endswith("+01:00")
+    assert by_file[sized.id]["absolute_path"] == sized.file_path
+
+
+def test_exports_write_the_scientific_name_in_full(client, db):
+    """The app shows "V. vulpes"; the tables write "Vulpes vulpes". A table
+    is read away from the app, where the abbreviation is ambiguous and
+    fails name matching. Rows that were never abbreviated (a rollup to
+    family, a custom label) keep their stored name, and a variant keeps
+    its qualifier."""
+    from app.api.crud.event_observation import calculate_max_n_for_event
+
+    project, _site, deployment = _build_simple_project(db)
+
+    def _row(**kw) -> LabelTaxonomy:
+        row = LabelTaxonomy(
+            id=str(uuid.uuid4()), classification_model_id="TEST-MODEL", **kw
+        )
+        db.add(row)
+        db.flush()
+        return row
+
+    fox = _row(
+        name="red fox", level="species", taxon_class="mammalia",
+        taxon_order="carnivora", taxon_family="canidae", taxon_genus="vulpes",
+        taxon_species="vulpes", common_name="Red fox", scientific_name="V. vulpes",
+    )
+    canids = _row(
+        name="canidae", level="family", taxon_class="mammalia",
+        taxon_order="carnivora", taxon_family="canidae",
+        common_name="Canidae", scientific_name="Canidae",
+    )
+    cub = _row(
+        name="red fox juvenile", level="variant", taxon_class="mammalia",
+        taxon_order="carnivora", taxon_family="canidae", taxon_genus="vulpes",
+        taxon_species="vulpes", taxon_variant="juvenile",
+        common_name="Red fox juvenile", scientific_name="V. vulpes (juvenile)",
+    )
+    for day, taxonomy in enumerate((fox, canids, cub), start=1):
+        ev = make_event_with_files(
+            db,
+            deployment_id=deployment.id,
+            event_start_local=datetime(2024, 6, day, 9, 0, 0),
+        )
+        make_detection(
+            db,
+            file_id=ev.files[0].id,
+            label=taxonomy.name,
+            scientific_name=taxonomy.scientific_name,
+            common_name=taxonomy.common_name,
+            label_taxonomy_id=taxonomy.id,
+        )
+        calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    db.commit()
+
+    expected = {
+        "red fox": "Vulpes vulpes",
+        "canidae": "Canidae",
+        "red fox juvenile": "Vulpes vulpes (juvenile)",
+    }
+    for table in ("detections", "files", "observations", "summary"):
+        _headers, rows = _csv_table(client, project.id, table)
+        assert {r["classification_label"]: r["scientific_name"] for r in rows} == expected, table
 
 
 def test_export_spreadsheet_is_multi_sheet_workbook(client, db):
@@ -2120,10 +2356,12 @@ def test_spatial_detection_count_ignores_off_best_frame_boxes(client, db):
 
 
 def test_export_camtrap_dp_variant_rows(client, db):
-    """A variant class exports the plain binomial as scientificName; the
-    variant itself fills lifeStage or sex when it fits the standard's
-    vocabulary and rides in observationComments otherwise. The taxonomic
-    scope deduplicates variants into one species entry."""
+    """A variant class exports the plain binomial as scientificName, written
+    in full (the standard and GBIF match on "Vulpes vulpes", never on the
+    "V. vulpes" the app shows); the variant itself fills lifeStage or sex
+    when it fits the standard's vocabulary and rides in observationComments
+    otherwise. The taxonomic scope deduplicates variants into one species
+    entry."""
     project, _site, deployment = _build_simple_project(
         db, timezone="Europe/Amsterdam"
     )
@@ -2183,7 +2421,7 @@ def test_export_camtrap_dp_variant_rows(client, db):
     data = obs_rows[1:]
     assert len(data) == 3
     # Every row carries the real binomial, never the qualified leaf name.
-    assert {r[i_sci] for r in data} == {"V. vulpes"}
+    assert {r[i_sci] for r in data} == {"Vulpes vulpes"}
 
     by_life = {r[i_life] for r in data}
     by_sex = {r[i_sex] for r in data}
@@ -2196,7 +2434,7 @@ def test_export_camtrap_dp_variant_rows(client, db):
 
     # One species entry in the taxonomic scope, at species rank.
     fox_entries = [
-        e for e in dp["taxonomic"] if e["scientificName"] == "V. vulpes"
+        e for e in dp["taxonomic"] if e["scientificName"] == "Vulpes vulpes"
     ]
     assert len(fox_entries) == 1
     assert fox_entries[0]["taxonRank"] == "species"
