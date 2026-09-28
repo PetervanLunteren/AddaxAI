@@ -30,6 +30,8 @@ Forum: https://forum.addaxai.com/
 
 AddaxAI is an application designed to streamline the work of ecologists dealing with camera trap images. It’s an AI platform that allows you to analyse images with machine learning models for automatic detection, offering ecologists a way to save time and focus on conservation efforts.
 
+For registering local detector and classifier packs, see the [custom detector guide](docs/docs/reference/custom-detectors.mdx). The guide includes a downloadable [MDV6-apa-rtdetr-c inference YAML](docs/static/model-configs/MDV6-apa-rtdetr-c.yml) for the pinned PyTorch RT-DETRv2 backend.
+
 <p align="center">
   <img src="https://github.com/PetervanLunteren/EcoAssist-metadata/blob/main/imgs/teaser_animal.jpg" width=45% height="auto" />
   <img src="https://github.com/PetervanLunteren/EcoAssist-metadata/blob/main/imgs/teaser_red_fox.JPG" width=45% height="auto" />

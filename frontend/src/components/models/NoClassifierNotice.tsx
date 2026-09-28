@@ -6,7 +6,20 @@ import { Callout } from "@/components/ui/callout";
  * not name species. Info, not warning: detector-only is a valid mode and the
  * first-run default, so this informs without nagging.
  */
-export function NoClassifierNotice() {
+export function NoClassifierNotice({
+  detectorClassCount = 0,
+  detectorModelName,
+}: {
+  detectorClassCount?: number;
+  detectorModelName?: string;
+}) {
+  if (detectorClassCount > 0) {
+    return (
+      <Callout variant="info" size="compact">
+        The selected detector already labels detections with {detectorClassCount} classes. To include those names and confidence as classification results without another inference pass, choose {detectorModelName ? `“${detectorModelName}”` : "the same detector"} in Classification model.
+      </Callout>
+    );
+  }
   return (
     <Callout variant="info" size="compact">
       Without a classification model, AddaxAI detects animals but does not

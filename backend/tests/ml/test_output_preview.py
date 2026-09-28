@@ -9,6 +9,7 @@ in-scope counters under the species exclusion filter, and the non-animal
 observation-type fallback.
 """
 
+from app.ml.label_filter_ids import encode_unmapped_label
 from app.ml.postprocessing_outputs.output_preview import (
     build_output_preview,
 )
@@ -425,6 +426,47 @@ def test_excluded_filter_matches_taxonomy_id(db):
     assert preview.dropped_by_filter == 1
     assert preview.in_scope_files == 0
     assert dict(preview.by_media_tree) == {}
+
+
+def test_encoded_unmapped_exclusion_uses_category_and_preserves_mapped_same_name(db):
+    """Encoded raw-label filters only drop null-FK rows, including category-only labels."""
+    project = make_project(
+        db,
+        name="prev-excl-unmapped",
+        counting_threshold=0.5,
+        classification_model_id="test-model",
+    )
+    taxon = _add_taxonomy(db, model_id="test-model", name="fox, red")
+    dep = make_deployment(db, project_id=project.id)
+
+    raw_file = _animal_file(db, dep.id)
+    make_detection(
+        db,
+        file_id=raw_file.id,
+        category="fox, red",
+        label=None,
+        confidence=0.9,
+    )
+    mapped_file = _animal_file(db, dep.id)
+    make_detection(
+        db,
+        file_id=mapped_file.id,
+        category="animal",
+        label="fox, red",
+        label_taxonomy_id=taxon.id,
+        confidence=0.9,
+    )
+
+    preview = build_output_preview(
+        db,
+        project.id,
+        excluded_label_ids=frozenset({encode_unmapped_label("fox, red")}),
+        media_threshold=0.5,
+    )
+
+    assert preview.dropped_by_filter == 1
+    assert preview.in_scope_files == 1
+    assert preview.by_media_tree == {"fox_red": 1}
 
 
 def test_a_rejected_box_never_names_a_folder(db):

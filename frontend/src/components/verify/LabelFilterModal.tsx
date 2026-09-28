@@ -71,7 +71,7 @@ export function LabelFilterModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-4xl h-[calc(100dvh-2rem)] max-h-[calc(100dvh-2rem)] min-h-0 overflow-hidden grid grid-rows-[auto_minmax(0,1fr)_auto] gap-3">
         <DialogHeader>
           <DialogTitle>Filter by label</DialogTitle>
           <DialogDescription>
@@ -79,7 +79,7 @@ export function LabelFilterModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0">
+        <div className="min-h-0 overflow-hidden">
           <TreeSelector
             tree={preBuiltTree}
             selectedIds={workingSet}

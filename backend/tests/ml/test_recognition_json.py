@@ -267,6 +267,50 @@ def test_classification_categories_map_built_from_labels(db, tmp_path):
     assert set(classes.keys()) == {"1", "2"}
 
 
+def test_managed_detector_alias_is_preserved_in_recognition_json(db, tmp_path):
+    """Detector labels reused as classifications survive the canonical export."""
+    model_id = "managed-custom-detector"
+    project = make_project(
+        db,
+        name="rj-detector-alias",
+        detection_model_id=model_id,
+        classification_model_id=model_id,
+    )
+    dep = make_deployment(
+        db,
+        project_id=project.id,
+        folder_path=str(tmp_path / "src"),
+    )
+    file = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=str(tmp_path / "src" / "IMG.jpg"),
+        observation_type="animal",
+    )
+    make_detection(
+        db,
+        file_id=file.id,
+        category="0",
+        confidence=0.8123,
+        label="fox",
+        label_confidence=0.8123,
+        bbox_x=0.1,
+        bbox_y=0.1,
+        bbox_width=0.3,
+        bbox_height=0.3,
+    )
+
+    target = tmp_path / "out"
+    write_recognition_json(db, project.id, target)
+    payload = _load_json(target)
+
+    assert payload["classification_categories"] == {"1": "fox"}
+    assert payload["images"][0]["detections"][0]["classifications"] == [
+        ["1", 0.8123]
+    ]
+    assert payload["info"]["addaxai"]["classification_model"] == model_id
+
+
 def test_classification_category_descriptions_carry_taxonomy(db, tmp_path):
     """The 7-token taxonomy strings are rebuilt from label_taxonomy, keyed
     by the same classification category id, matching results mode."""

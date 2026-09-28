@@ -61,6 +61,7 @@ from app.api.crud.label_colors import assign_label_colors
 from app.core.confidence import format_confidence_pct
 from app.core.logging_config import get_logger
 from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
+from app.ml.postprocessing_outputs._label_filter import detection_is_excluded
 from app.models import Deployment, Detection, File, Project
 
 from ._exif_writer import ExifBatch, build_tag_set, is_image_path
@@ -460,10 +461,7 @@ def _detections_to_draw(
     if excluded_label_ids:
         detections = [
             d for d in detections
-            if not (
-                (d.label_taxonomy_id and d.label_taxonomy_id in excluded_label_ids)
-                or (d.label and d.label in excluded_label_ids)
-            )
+            if not detection_is_excluded(d, excluded_label_ids)
         ]
     return detections
 

@@ -311,6 +311,15 @@ export function AnalysisSettingsButton({
                 setValues((v) => ({ ...v, taxonomic_rollup: enabled }))
               }
               showClassifierFields={hasClassifier}
+              rollupCaption={
+                project.detection_model_id === project.classification_model_id
+                  ? SETTING_CAPTIONS.detectorClassRollup
+                  : undefined
+              }
+              hideRollup={
+                hasClassifier &&
+                project.detection_model_id === project.classification_model_id
+              }
             />
             <div className="grid grid-cols-2 items-center gap-8 py-6">
               <div className="space-y-1">

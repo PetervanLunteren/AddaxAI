@@ -25,7 +25,13 @@ from tests.conftest import (
 def mock_manifest_manager():
     """Patch ManifestManager so model validation in create paths is a no-op."""
     mock_mgr = MagicMock()
-    mock_mgr.get_model.return_value = MagicMock(model_id="MD5A-0-0")
+    mock_mgr.get_model.return_value = MagicMock(
+        model_id="MD5A-0-0",
+        model_category="detection",
+        class_names=None,
+        managed=False,
+        classification_uses_detection_classes=None,
+    )
     with patch("app.ml.manifest_manager.ManifestManager", return_value=mock_mgr):
         yield mock_mgr
 

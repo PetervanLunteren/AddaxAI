@@ -27,7 +27,10 @@ Following CONVENTIONS.md: crash early and loudly, no silent failures.
 """
 
 import argparse
+import base64
+import binascii
 import json
+import re
 import sqlite3
 import sys
 from collections import Counter
@@ -35,6 +38,27 @@ from collections.abc import Callable
 from typing import Any
 
 import numpy as np
+
+_UNMAPPED_LABEL_PREFIX = "unmapped:"
+_LABEL_TOKEN_BODY = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _decode_unmapped_label(token: str) -> str | None:
+    """Decode the stdlib-only token used by API label trees."""
+    if not token.startswith(_UNMAPPED_LABEL_PREFIX):
+        return None
+    body = token[len(_UNMAPPED_LABEL_PREFIX) :]
+    if not body or not _LABEL_TOKEN_BODY.fullmatch(body):
+        return None
+    try:
+        padding = "=" * (-len(body) % 4)
+        label = base64.urlsafe_b64decode(body + padding).decode("utf-8")
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        return None
+    if not label:
+        return None
+    canonical = base64.urlsafe_b64encode(label.encode("utf-8")).decode("ascii")
+    return label if f"{_UNMAPPED_LABEL_PREFIX}{canonical.rstrip('=')}" == token else None
 
 # Two independent limits (see the sort load paths):
 #   MAX_EMBEDDINGS — the FAISS budget: the most embedding vectors held in
@@ -179,9 +203,36 @@ def _build_query(
     params: list = [project_id]
 
     if filters.get("labels"):
-        placeholders = ",".join("?" for _ in filters["labels"])
-        clauses.append(f"d.label_taxonomy_id IN ({placeholders})")
-        params.extend(filters["labels"])
+        taxonomy_ids: list[str] = []
+        legacy_raw_labels: list[str] = []
+        unmapped_labels: list[str] = []
+        for token in filters["labels"]:
+            raw_label = _decode_unmapped_label(token)
+            if raw_label is not None:
+                unmapped_labels.append(raw_label)
+            else:
+                taxonomy_ids.append(token)
+                legacy_raw_labels.append(token)
+        label_clauses: list[str] = []
+        if taxonomy_ids:
+            placeholders = ",".join("?" for _ in taxonomy_ids)
+            label_clauses.append(f"d.label_taxonomy_id IN ({placeholders})")
+            params.extend(taxonomy_ids)
+        if legacy_raw_labels:
+            placeholders = ",".join("?" for _ in legacy_raw_labels)
+            label_clauses.append(
+                f"COALESCE(NULLIF(d.label, ''), d.category) IN ({placeholders})"
+            )
+            params.extend(legacy_raw_labels)
+        if unmapped_labels:
+            placeholders = ",".join("?" for _ in unmapped_labels)
+            label_clauses.append(
+                "(d.label_taxonomy_id IS NULL AND "
+                f"COALESCE(NULLIF(d.label, ''), d.category) IN ({placeholders}))"
+            )
+            params.extend(unmapped_labels)
+        if label_clauses:
+            clauses.append(f"({' OR '.join(label_clauses)})")
 
     if filters.get("site_ids"):
         # "null" is the reserved NO_SITE_SENTINEL token for deployments

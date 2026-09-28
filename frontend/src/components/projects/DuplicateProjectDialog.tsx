@@ -143,13 +143,26 @@ export function DuplicateProjectDialog({
     queryFn: () => modelsApi.listClassificationModels(),
     enabled: open,
   });
+  const { data: detectionModels = [] } = useQuery({
+    queryKey: ["models", "detection"],
+    queryFn: () => modelsApi.listDetectionModels(),
+    enabled: open,
+  });
 
   const classificationModelId = form.watch("classification_model_id");
+  const effectiveDetectionModelId = copySettings ? source?.detection_model_id : "MD5A-0-0";
+  const effectiveDetectionModel = detectionModels.find((model) => model.model_id === effectiveDetectionModelId);
+  const selectedClassificationModel = classificationModels.find((model) => model.model_id === classificationModelId);
+  const classifierAliasMismatch = Boolean(
+    selectedClassificationModel?.uses_detection_classes &&
+    selectedClassificationModel.model_id !== effectiveDetectionModelId,
+  );
   const excludedClasses = form.watch("excluded_classes");
   const hasClassifier =
     !!classificationModelId && classificationModelId !== "none";
   const labelCaption = useLabelSelectionCaption(
     hasClassifier ? classificationModelId! : "",
+    selectedClassificationModel?.uses_detection_classes === true,
   );
 
   const { data: taxonomy } = useQuery({
@@ -211,7 +224,13 @@ export function DuplicateProjectDialog({
 
         <Form {...form}>
           <form
-            onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
+            onSubmit={form.handleSubmit((data) => {
+              if (classifierAliasMismatch) {
+                setError("The selected detector labels can be reused only when Detection and Classification use the same model.");
+                return;
+              }
+              mutation.mutate(data);
+            })}
             className="space-y-6 py-2"
           >
             <Callout variant="info" size="compact">
@@ -265,9 +284,12 @@ export function DuplicateProjectDialog({
                 <FormItem>
                   <FieldHeader
                     label={<FormLabel>Classification model</FormLabel>}
-                    caption="The AI model that identifies species in your images. Pick one trained for your region."
+                    caption={effectiveDetectionModel?.uses_detection_classes
+                      ? `Select “${effectiveDetectionModel.friendly_name}” here to reuse its class names and confidence without another inference.`
+                      : "The AI model that identifies species in your images. Pick one trained for your region."}
                   />
                   <ModelSelect
+                    modelType="classification"
                     value={field.value ?? "none"}
                     onValueChange={(val) =>
                       field.onChange(val === "none" ? null : val)
@@ -282,16 +304,30 @@ export function DuplicateProjectDialog({
                       ∅ No classification model
                       <br />
                       <span className="text-xs text-muted-foreground">
-                        Run animal detector only, identify species manually
+                        {effectiveDetectionModel?.uses_detection_classes
+                          ? "Keep detector labels in detections; select the same model as Classification to add classification results."
+                          : "Run animal detector without a separate species classifier."}
                       </span>
                     </SelectItem>
                     <ClassificationModelGroupedItems
                       models={classificationModels.filter(
                         (m) => m.model_id !== "none",
                       )}
+                      detectionModelId={effectiveDetectionModelId}
+                      selectedModelId={classificationModelId}
                     />
                   </ModelSelect>
-                  {!hasClassifier && <NoClassifierNotice />}
+                  {classifierAliasMismatch ? (
+                    <p role="alert" className="text-sm text-destructive">
+                      This selected classification option belongs to a different detection model. Restore Settings copying, select No classification model, or choose another classifier.
+                    </p>
+                  ) : null}
+                  {!hasClassifier && (
+                    <NoClassifierNotice
+                      detectorClassCount={effectiveDetectionModel?.uses_detection_classes ? Object.keys(effectiveDetectionModel.class_names ?? {}).length : 0}
+                      detectorModelName={effectiveDetectionModel?.friendly_name}
+                    />
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
@@ -305,6 +341,7 @@ export function DuplicateProjectDialog({
                 />
                 <LabelSelectionField
                   modelId={classificationModelId!}
+                  isDetectionAlias={selectedClassificationModel?.uses_detection_classes === true}
                   excludedClasses={excludedClasses}
                   allClasses={taxonomy.all_classes ?? []}
                   countryCode={form.watch("country_code")}

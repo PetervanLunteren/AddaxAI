@@ -1,0 +1,36 @@
+# Inference configuration for the PytorchWildlife MDV6-apa-rtdetr-c checkpoint.
+# Copy this file beside MDV6-apa-rtdetr-c.pth and register both as one pack.
+__include__:
+  - ../third_party/rtdetr/rtdetrv2_pytorch/configs/rtdetrv2/include/rtdetrv2_r50vd.yml
+
+task: detection
+model: RTDETR
+criterion: RTDETRCriterionv2
+postprocessor: RTDETRPostProcessor
+use_focal_loss: true
+eval_spatial_size: [640, 640]
+num_classes: 3
+remap_mscoco_category: false
+
+RTDETR:
+  backbone: PResNet
+  encoder: HybridEncoder
+  decoder: RTDETRTransformerv2
+
+PResNet:
+  depth: 18
+  variant: d
+  freeze_at: -1
+  return_idx: [1, 2, 3]
+  num_stages: 4
+  freeze_norm: false
+  pretrained: false
+
+HybridEncoder:
+  in_channels: [128, 256, 512]
+  feat_strides: [8, 16, 32]
+  hidden_dim: 256
+  expansion: 0.5
+
+RTDETRTransformerv2:
+  num_layers: 3

@@ -35,6 +35,7 @@ from app.api.schemas.statistics import (
 )
 from app.ml.detection_visibility import on_visible_frame
 from app.ml.label_exclusion import NON_WILDLIFE_CLASSES, threshold_or_verified
+from app.ml.label_filter_ids import label_filter_expression
 from app.ml.taxonomic_rank import (
     HIGHER_LEVEL_TAXA,
     NO_TAXONOMY,
@@ -1377,7 +1378,14 @@ def get_observation_rate_map(
 
     obs_on: list = [EventObservation.event_id == Event.id]
     if label_taxonomy_ids:
-        obs_on.append(EventObservation.label_taxonomy_id.in_(label_taxonomy_ids))
+        obs_on.append(
+            label_filter_expression(
+                EventObservation.label_taxonomy_id,
+                EventObservation.label,
+                label_taxonomy_ids,
+                EventObservation.category,
+            )
+        )
 
     site_rows_query = (
         select(
@@ -1436,7 +1444,12 @@ def get_observation_rate_map(
             breakdown_query = breakdown_query.where(Event.event_start_local <= end_of_day)
         if label_taxonomy_ids:
             breakdown_query = breakdown_query.where(
-                EventObservation.label_taxonomy_id.in_(label_taxonomy_ids)
+                label_filter_expression(
+                    EventObservation.label_taxonomy_id,
+                    EventObservation.label,
+                    label_taxonomy_ids,
+                    EventObservation.category,
+                )
             )
 
         for row in db.execute(breakdown_query).all():

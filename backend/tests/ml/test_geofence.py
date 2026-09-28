@@ -11,7 +11,9 @@ Three test categories (per SpeciesNet developer recommendation):
 """
 
 import json
+import os
 import subprocess
+import sys
 import textwrap
 from pathlib import Path
 
@@ -28,7 +30,17 @@ from app.ml.geofence import (
 )
 
 MODEL_DIR = Path.home() / "AddaxAI/models/cls/SPECIESNET-v4-0-2-A"
-ENV_PYTHON = Path.home() / "AddaxAI/envs/env-addaxai-base/bin/python"
+_speciesnet_test_python = os.environ.get("ADDAXAI_SPECIESNET_TEST_PYTHON")
+if sys.platform == "win32":
+    ENV_PYTHON = Path(
+        _speciesnet_test_python
+        or Path.home() / "AddaxAI/envs/env-addaxai-base/python.exe"
+    )
+else:
+    ENV_PYTHON = Path(
+        _speciesnet_test_python
+        or Path.home() / "AddaxAI/envs/env-addaxai-base/bin/python"
+    )
 
 # Skip when the model dir is just a catalog stub (manifest.json + taxonomy.csv
 # only). The geofence tests need the real geofence_release.*.json file, which
@@ -370,7 +382,10 @@ class TestGeofenceFixesMatchOfficialAPI:
             json.dump(results, sys.stdout)
         """)
         proc = subprocess.run(
-            [str(ENV_PYTHON), "-c", script, str(geofence_path)],
+            # The backend test runner may be launched by uv with PYTHONHOME
+            # pointing at its own interpreter. Ignore inherited PYTHON*
+            # settings so this explicit model environment uses its own stdlib.
+            [str(ENV_PYTHON), "-E", "-c", script, str(geofence_path)],
             input=json.dumps(queries),
             capture_output=True,
             text=True,
@@ -533,7 +548,7 @@ class TestExhaustiveMatchOfficialAPI:
         ]
 
         proc = subprocess.run(
-            [str(ENV_PYTHON), "-c", script, str(geofence_path)],
+            [str(ENV_PYTHON), "-E", "-c", script, str(geofence_path)],
             input=json.dumps(subprocess_queries),
             capture_output=True,
             text=True,

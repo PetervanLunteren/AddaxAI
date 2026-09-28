@@ -42,6 +42,7 @@ user's own files.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -51,6 +52,7 @@ from sqlalchemy.orm import Session
 
 from app import __version__ as APP_VERSION
 from app.core.logging_config import get_logger
+from app.ml.postprocessing_outputs._label_filter import detection_is_excluded
 from app.models import Deployment, Detection, File, LabelTaxonomy, Project
 
 logger = get_logger(__name__)
@@ -61,6 +63,17 @@ logger = get_logger(__name__)
 # code) interprets the field.
 _CATEGORY_TO_ID = {"animal": "1", "person": "2", "vehicle": "3"}
 _DETECTION_CATEGORIES = {v: k for k, v in _CATEGORY_TO_ID.items()}
+
+
+def _category_ids(categories: Iterable[str]) -> dict[str, str]:
+    """Keep canonical IDs and assign deterministic IDs to custom categories."""
+    category_to_id = dict(_CATEGORY_TO_ID)
+    custom = sorted(
+        {category for category in categories if category not in category_to_id},
+        key=lambda category: (category.casefold(), category),
+    )
+    category_to_id.update({category: str(index) for index, category in enumerate(custom, 4)})
+    return category_to_id
 
 # Output filename. Stays the same across runs so downstream tools that
 # look for one canonical filename keep working.
@@ -233,6 +246,19 @@ def write_recognition_json(
         .order_by(File.captured_at_local.asc())
     ).scalars().all()
 
+    category_rows = db.execute(
+        select(Detection.category)
+        .join(File, Detection.file_id == File.id)
+        .join(Deployment, File.deployment_id == Deployment.id)
+        .where(Deployment.project_id == project_id)
+        .distinct()
+    ).scalars().all()
+    category_to_id = _category_ids(category_rows)
+    detection_categories = {
+        category_id: category
+        for category, category_id in category_to_id.items()
+    }
+
     # Build a stable label -> id map as we walk detections, mirroring
     # the unified mapping merge_json_files produces. Alongside it, remember
     # each label's taxonomy row so we can rebuild the canonical
@@ -260,12 +286,12 @@ def write_recognition_json(
 
         det_objs: list[dict] = []
         for det in detections:
-            category_id = _CATEGORY_TO_ID.get(det.category)
+            category_id = category_to_id.get(det.category)
             if category_id is None:
-                # Unknown category — log and skip rather than emit a
-                # row downstream tools cannot interpret.
+                # A category absent from the project map indicates a
+                # concurrent or inconsistent database change.
                 logger.warning(
-                    f"recognition_json: dropping detection with unknown "
+                    f"recognition_json: skipping detection with unmapped "
                     f"category {det.category!r} on file {file.id}"
                 )
                 continue
@@ -285,10 +311,7 @@ def write_recognition_json(
                 "verified": bool(det.verified),
             }
 
-            label_excluded = bool(excluded) and (
-                (det.label_taxonomy_id and det.label_taxonomy_id in excluded)
-                or (det.label and det.label in excluded)
-            )
+            label_excluded = detection_is_excluded(det, excluded or None)
             if (
                 det.label
                 and det.label_confidence is not None
@@ -374,7 +397,7 @@ def write_recognition_json(
 
     output_payload: dict = {
         "images": images_out,
-        "detection_categories": dict(_DETECTION_CATEGORIES),
+        "detection_categories": detection_categories,
         "classification_categories": classification_categories,
     }
     # Mirror results mode: only present when there's taxonomy to describe.

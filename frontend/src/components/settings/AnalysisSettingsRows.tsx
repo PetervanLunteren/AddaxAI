@@ -55,6 +55,8 @@ export function AnalysisSettingsRows({
   intervalNote,
   smoothingNote,
   rollupNote,
+  rollupCaption,
+  hideRollup = false,
 }: {
   values: AnalysisSettingsValues;
   onIntervalChange: (seconds: number) => void;
@@ -67,6 +69,10 @@ export function AnalysisSettingsRows({
   intervalNote?: string;
   smoothingNote?: string;
   rollupNote?: string;
+  /** Override when the selected classifier has no taxonomic hierarchy. */
+  rollupCaption?: string;
+  /** Omit the control when the selected class alias has no rollup behavior. */
+  hideRollup?: boolean;
 }) {
   const withNote = (base: string, note?: string) =>
     note ? `${base} ${note}` : base;
@@ -101,10 +107,10 @@ export function AnalysisSettingsRows({
         />
       </Row>
 
-      {showClassifierFields && (
+      {showClassifierFields && !hideRollup && (
         <Row
           label="Taxonomic rollup"
-          caption={withNote(SETTING_CAPTIONS.taxonomicRollup, rollupNote)}
+          caption={withNote(rollupCaption ?? SETTING_CAPTIONS.taxonomicRollup, rollupNote)}
         >
           <Switch
             checked={values.taxonomic_rollup}

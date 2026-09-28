@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.logging_config import get_logger
 from app.ml.detection_visibility import on_visible_frame
 from app.ml.label_exclusion import threshold_or_verified
+from app.ml.label_filter_ids import encode_unmapped_label
 from app.ml.taxonomic_rank import NO_TAXONOMY, species_binomial, to_display_case
 from app.ml.taxonomic_rollup import format_leaf_annotation
 from app.models import Deployment, Detection, Event, File, Project
@@ -66,71 +67,64 @@ def build_label_filter_tree(
             query = query.filter(File.captured_at_local <= date_to)
         return query
 
-    # Count by label_taxonomy_id (authoritative FK).
-    # Only count detections at or above the project's confidence threshold
-    # so the tree matches what the verify page actually displays.
+    # The tree counts taxonomy IDs and raw unmapped names independently.
+    # Both queries share the exact threshold, visible-frame, site and date
+    # scope so the filter count matches the records each page can show.
     if count_by == "detection":
-        query = (
-            db.query(
-                Detection.label_taxonomy_id,
-                func.count(Detection.id),
-            )
-            .join(File, File.id == Detection.file_id)
-            .join(Deployment, Deployment.id == File.deployment_id)
-            .filter(Deployment.project_id == project_id)
-            .filter(Detection.label_taxonomy_id.isnot(None))
-            .filter(threshold_or_verified(threshold))
-            # Only detections the user can actually reach. Without
-            # this the tree promised counts the grid cannot show.
-            .filter(on_visible_frame())
-        )
-        label_count_rows = (
-            _apply_scope(query).group_by(Detection.label_taxonomy_id).all()
-        )
+        count_expression = func.count(Detection.id)
     elif count_by == "file":
-        # Count distinct media items (image/video), resolving frame rows up
-        # to their parent video so a video isn't undercounted once per frame.
-        media_id = func.coalesce(File.source_video_id, File.id)
-        query = (
-            db.query(
-                Detection.label_taxonomy_id,
-                func.count(func.distinct(media_id)),
-            )
-            .join(File, File.id == Detection.file_id)
-            .join(Deployment, Deployment.id == File.deployment_id)
-            .filter(Deployment.project_id == project_id)
-            .filter(Detection.label_taxonomy_id.isnot(None))
-            .filter(threshold_or_verified(threshold))
-            # Only detections the user can actually reach. Without
-            # this the tree promised counts the grid cannot show.
-            .filter(on_visible_frame())
-        )
-        label_count_rows = (
-            _apply_scope(query).group_by(Detection.label_taxonomy_id).all()
+        # Resolve video frame rows to one media item.
+        count_expression = func.count(
+            func.distinct(func.coalesce(File.source_video_id, File.id))
         )
     else:
-        query = (
-            db.query(
-                Detection.label_taxonomy_id,
-                func.count(func.distinct(Event.id)),
+        count_expression = func.count(func.distinct(Event.id))
+
+    def _count_query(label_column):
+        query = db.query(label_column, count_expression).join(
+            File, File.id == Detection.file_id
+        )
+        if count_by == "event":
+            query = (
+                query.join(event_files, event_files.c.file_id == File.id)
+                .join(Event, Event.id == event_files.c.event_id)
+                .join(Deployment, Deployment.id == Event.deployment_id)
             )
-            .join(File, File.id == Detection.file_id)
-            .join(event_files, event_files.c.file_id == File.id)
-            .join(Event, Event.id == event_files.c.event_id)
-            .join(Deployment, Deployment.id == Event.deployment_id)
-            .filter(Deployment.project_id == project_id)
-            .filter(Detection.label_taxonomy_id.isnot(None))
+        else:
+            query = query.join(Deployment, Deployment.id == File.deployment_id)
+        return (
+            query.filter(Deployment.project_id == project_id)
             .filter(threshold_or_verified(threshold))
-            # Only detections the user can actually reach. Without
-            # this the tree promised counts the grid cannot show.
             .filter(on_visible_frame())
         )
-        label_count_rows = (
-            _apply_scope(query).group_by(Detection.label_taxonomy_id).all()
-        )
 
-    if not label_count_rows:
+    label_count_rows = (
+        _apply_scope(
+            _count_query(Detection.label_taxonomy_id).filter(
+                Detection.label_taxonomy_id.isnot(None)
+            )
+        )
+        .group_by(Detection.label_taxonomy_id)
+        .all()
+    )
+    effective_label = func.coalesce(func.nullif(Detection.label, ""), Detection.category)
+    unmapped_label_count_rows = (
+        _apply_scope(
+            _count_query(effective_label)
+            .filter(Detection.label_taxonomy_id.is_(None))
+            .filter(effective_label.isnot(None))
+            .filter(effective_label != "")
+        )
+        .group_by(effective_label)
+        .all()
+    )
+
+    if not label_count_rows and not unmapped_label_count_rows:
         return None
+
+    unmapped_label_counts = {
+        label: count for label, count in unmapped_label_count_rows if label
+    }
 
     taxonomy_id_counts = {
         tid: count for tid, count in label_count_rows if tid
@@ -142,6 +136,8 @@ def build_label_filter_tree(
         db.query(LabelTaxonomy)
         .filter(LabelTaxonomy.id.in_(detected_taxonomy_ids))
         .all()
+        if detected_taxonomy_ids
+        else []
     )
 
     # Build name-based counts from taxonomy_id counts
@@ -179,7 +175,7 @@ def build_label_filter_tree(
             unranked_rows.append(row)
     taxonomy_rows = has_taxonomy
 
-    if not taxonomy_rows and not unranked_rows:
+    if not taxonomy_rows and not unranked_rows and not unmapped_label_counts:
         return None
 
     # Build hierarchical tree
@@ -290,7 +286,7 @@ def build_label_filter_tree(
     # The node id stays "other": only leaf ids reach `all_leaf_ids` and the
     # filter, so this one is never user-visible, and changing it would
     # break saved filter URLs for no gain.
-    if unranked_rows:
+    if unranked_rows or unmapped_label_counts:
         other_children: dict = {}
         for row in unranked_rows:
             count = taxonomy_id_counts.get(row.id, 0)
@@ -300,6 +296,16 @@ def build_label_filter_tree(
             other_children[row.id] = {
                 "id": row.id,
                 "name": display,
+                "count": count,
+                "children": {},
+                "is_leaf": True,
+                "_event_count": count,
+            }
+        for label, count in unmapped_label_counts.items():
+            leaf_id = encode_unmapped_label(label)
+            other_children[leaf_id] = {
+                "id": leaf_id,
+                "name": f"{label} (unmapped)",
                 "count": count,
                 "children": {},
                 "is_leaf": True,

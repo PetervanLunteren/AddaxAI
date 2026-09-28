@@ -12,6 +12,7 @@
 import { X } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { NO_SITE_SENTINEL } from "../../lib/filter-url";
+import { labelFilterDisplayName } from "../../lib/label-filter-ids";
 
 export interface FilterChip {
   key: string;
@@ -156,7 +157,7 @@ export function labelChips(
   if (labels.length <= 2) {
     return labels.map((id) => ({
       key: `label-${id}`,
-      label: displayLabels?.[id] ?? id,
+      label: labelFilterDisplayName(id, displayLabels),
       onRemove: () => setLabels(labels.filter((s) => s !== id)),
     }));
   }

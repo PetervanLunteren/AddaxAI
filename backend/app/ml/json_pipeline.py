@@ -124,6 +124,30 @@ def _safe_file_size(path: Path) -> int | None:
         return None
 
 
+def _positive_pixel_dimension(value: object) -> int | None:
+    """Return a valid positive image dimension, or None for absent/invalid JSON."""
+    try:
+        dimension = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return dimension if dimension > 0 else None
+
+
+def _read_source_dimensions(path: Path | None) -> tuple[int, int] | None:
+    """Read a local image's dimensions without retaining its pixel buffer."""
+    if path is None or not path.is_file():
+        return None
+    try:
+        from PIL import Image as PILImage
+
+        with PILImage.open(path) as image:
+            width, height = image.size
+    except Exception as exc:
+        logger.warning("Could not read image dimensions from %s: %s", path, exc)
+        return None
+    return (int(width), int(height)) if width > 0 and height > 0 else None
+
+
 def load_json_to_database(
     json_path: Path,
     deployment_id: str,
@@ -379,6 +403,23 @@ def load_json_to_database(
                     .first()
                 )
 
+            # Keep dimensions from detector output when valid, but fill
+            # missing dimensions from the source image. For videos the
+            # best-frame JPEG is the only image surface represented by the
+            # detection JSON. This happens before the create/update split
+            # so old File rows are repaired on re-ingest too.
+            width_px = _positive_pixel_dimension(img.get("width"))
+            height_px = _positive_pixel_dimension(img.get("height"))
+            if width_px is None or height_px is None:
+                dimension_source = (
+                    Path(best_frame_path) if is_video and best_frame_path else
+                    None if is_video else absolute_path
+                )
+                source_dimensions = _read_source_dimensions(dimension_source)
+                if source_dimensions:
+                    width_px = width_px or source_dimensions[0]
+                    height_px = height_px or source_dimensions[1]
+
             # Create new file record if still not found
             if not file_record:
                 if not file_id:
@@ -414,21 +455,6 @@ def load_json_to_database(
                 # pass has already written by the time we reach DB load).
                 # Without this `_compute_crop_bbox` returns None and the
                 # observations grid renders crops with no bbox overlay.
-                width_px = img.get("width")
-                height_px = img.get("height")
-                if is_video and (not width_px or not height_px) and best_frame_path:
-                    bf = Path(best_frame_path)
-                    if bf.is_file():
-                        try:
-                            from PIL import Image as PILImage
-
-                            with PILImage.open(bf) as bf_img:
-                                width_px, height_px = bf_img.size
-                        except Exception as e:
-                            logger.warning(
-                                f"Could not read dims from {bf}: {e}"
-                            )
-
                 file_record = File(
                     id=file_id,
                     deployment_id=deployment_id,
@@ -448,6 +474,13 @@ def load_json_to_database(
                 db.add(file_record)
                 db.flush()  # Get file_record.id
             else:
+                # Preserve any known dimensions and backfill only missing
+                # values. Re-ingest must not replace a stored size with
+                # stale metadata from an older results file.
+                if file_record.width_px is None and width_px is not None:
+                    file_record.width_px = width_px
+                if file_record.height_px is None and height_px is not None:
+                    file_record.height_px = height_px
                 if best_frame_number is not None:
                     # Existing row, re-ingested. Keep the stored best frame
                     # in step with the detections being appended below; see

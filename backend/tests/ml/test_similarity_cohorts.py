@@ -12,10 +12,22 @@ fake index with a hard-coded neighbour table.
 import numpy as np
 
 from app.ml.inference.similarity_script import (
+    _build_query,
     _compute_neighbor_signals,
     _group_cohorts,
     _is_useful_suggestion,
 )
+from app.ml.label_filter_ids import encode_unmapped_label
+
+
+def test_similarity_query_filters_encoded_unmapped_labels_by_null_taxonomy():
+    token = encode_unmapped_label("fox, red")
+
+    sql, params = _build_query("project-1", {"labels": [token]})
+
+    assert "d.label_taxonomy_id IS NULL" in sql
+    assert "COALESCE(NULLIF(d.label, ''), d.category) IN (?)" in sql
+    assert params == ["project-1", "fox, red"]
 
 
 def _meta(

@@ -56,8 +56,8 @@ def test_reports_paths_and_version_when_found(client, with_legacy):
     data = client.get("/api/setup/legacy-install").json()
     assert data["found"] is True
     assert data["version"] == "6.37"
-    assert data["removable_paths"] == ["/Applications/AddaxAI_files"]
-    assert data["manual_paths"] == ["C:/Program Files/AddaxAI_files"]
+    assert data["removable_paths"] == [str(Path("/Applications/AddaxAI_files"))]
+    assert data["manual_paths"] == [str(Path("C:/Program Files/AddaxAI_files"))]
 
 
 def test_remove_returns_202(client, with_legacy, monkeypatch):
@@ -110,8 +110,8 @@ def test_disk_space_error_names_a_legacy_install(disk_full, with_legacy):
 
     detail = excinfo.value.detail
     assert excinfo.value.status_code == 507
-    assert "/Applications/AddaxAI_files" in detail
-    assert "C:/Program Files/AddaxAI_files" in detail
+    assert str(Path("/Applications/AddaxAI_files")) in detail
+    assert str(Path("C:/Program Files/AddaxAI_files")) in detail
     assert "your photos and results are not stored there" in detail
     assert "You can safely remove it and try again." in detail
 
