@@ -468,6 +468,9 @@ def test_lookup_returns_summary_for_existing_run(client, db):
         db, file_id=f1.id, confidence=0.9, label="dog", verified=True
     )
     make_detection(db, file_id=f2.id, confidence=0.85, label="wolf")
+    # A box the classifier rejected is stored too, but it is neither a
+    # detection nor a species in the summary.
+    make_detection(db, file_id=f2.id, confidence=0.9, label="false detection")
 
     resp = client.get(
         "/api/folder-runs/lookup",

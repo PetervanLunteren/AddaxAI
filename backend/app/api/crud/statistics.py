@@ -34,7 +34,11 @@ from app.api.schemas.statistics import (
     VerificationProgressByLabel,
 )
 from app.ml.detection_visibility import on_visible_frame
-from app.ml.label_exclusion import NON_WILDLIFE_CLASSES, threshold_or_verified
+from app.ml.label_exclusion import (
+    NON_WILDLIFE_CLASSES,
+    is_a_real_detection,
+    threshold_or_verified,
+)
 from app.ml.taxonomic_rank import (
     HIGHER_LEVEL_TAXA,
     NO_TAXONOMY,
@@ -1230,7 +1234,8 @@ def get_verification_progress_by_label(
     and the visible surface, so a video contributes its best frame
     rather than every sampled frame: these rows break down the same
     population the Labels page asks the user to check.
-    `false detection` rows are excluded since they are not a real class.
+    Rejected boxes (a "nothing here" label, from the model or from a
+    person) are left out: they are not a class to check.
     Sorted by total descending so the highest-support classes come first.
     """
     threshold = _get_counting_threshold(db, project_id)
@@ -1253,9 +1258,7 @@ def get_verification_progress_by_label(
             LabelTaxonomy,
             LabelTaxonomy.id == Detection.label_taxonomy_id,
         )
-        .where(
-            (Detection.label.is_(None)) | (Detection.label != "false detection"),
-        )
+        .where(is_a_real_detection())
         .where(on_visible_frame())
         .group_by(
             Detection.label_taxonomy_id,

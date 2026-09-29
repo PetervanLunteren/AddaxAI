@@ -720,11 +720,20 @@ def update_database_from_smoothed_results(
     # above (rollup, smoothing, excluded->NULL sweep), so it captures the
     # final state. Verified detections are frozen: human judgment outranks
     # the machine, and postprocessing never touches them.
+    #
+    # The method follows the label: whatever an unverified row reads after
+    # this pass is the machine's call, even when the label text did not
+    # change. A file sign-off writes "human" onto the weak boxes it rejects
+    # and an untick hands them back unverified; without this the machine's
+    # relabel kept that "human" and detections.csv reported a machine label
+    # as a person's. Mirrors the ingest: "machine" with a label, None
+    # without one.
     for det in detections:
         if det.verified:
             continue
         det.original_label = det.label
         det.original_label_confidence = det.label_confidence
+        det.classification_method = "machine" if det.label else None
 
     # Recompute observation_type for files with changed detections, from
     # the file's passing detections (over the project threshold or

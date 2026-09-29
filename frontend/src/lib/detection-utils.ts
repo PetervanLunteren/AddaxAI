@@ -23,8 +23,10 @@ export function getDetectionColor(detection: {
  * Labels that mean "nothing is here". Mirrors `NON_LABEL_CLASSES` in
  * `backend/app/ml/label_exclusion.py` — keep the two in sync.
  *
- * The ingest skip keeps the AI's own such calls out of the database, so
- * the only way one gets in is a person pressing X on the Labels page.
+ * Two writers produce the same row: a species model with such a class
+ * writes it at ingest with its own score, and a person writes it by
+ * pressing X on the Labels page. Either way the box is stored, shown as
+ * a card, and kept out of every count and off every canvas.
  */
 export const NON_LABEL_CLASSES = new Set([
   "bait",

@@ -1,13 +1,10 @@
-"""Unit tests for label exclusion and non-label skip logic."""
+"""Unit tests for label exclusion and the "nothing here" labels."""
 
 from app.ml.label_exclusion import (
     NON_LABEL_CLASSES,
     build_excluded_class_ids,
-    build_non_label_class_ids,
     is_a_real_detection,
     is_non_label,
-    is_non_label_detection,
-    should_skip_detection,
 )
 from app.models import Detection
 from tests.conftest import (
@@ -28,88 +25,16 @@ def test_non_label_classes_complete():
     assert NON_LABEL_CLASSES == expected
 
 
-# ---------- build_non_label_class_ids ----------
-
-def test_non_label_ids():
-    """Returns IDs for NON_LABEL_CLASSES only."""
-    cats = {"1": "lion", "2": "blank", "3": "Bait", "4": "zebra"}
-    result = build_non_label_class_ids(cats)
-    assert result == {"2", "3"}  # blank + Bait (case-insensitive)
-
-
-def test_non_label_ids_empty_categories():
-    """Empty categories returns empty set."""
-    assert build_non_label_class_ids({}) == set()
-
-
-def test_non_label_ids_no_matches():
-    """No NON_LABEL classes in categories returns empty set."""
-    cats = {"1": "lion", "2": "zebra"}
-    assert build_non_label_class_ids(cats) == set()
-
-
 # ---------- build_excluded_class_ids (used by postprocessing) ----------
 
-def test_build_excluded_includes_both():
-    """Includes both NON_LABEL and user exclusions, matched without
-    regard to case, as the rollup matches the same exclusions."""
+def test_build_excluded_is_the_users_exclusions_only():
+    """User exclusions, matched without regard to case, as the rollup
+    matches the same exclusions. A non-label class is not excluded: it
+    is the model's answer and stays in the list."""
     cats = {"1": "Lion", "2": "Blank", "3": "zebra"}
     result = build_excluded_class_ids(cats, ["lion"])
-    assert "1" in result  # user excluded
-    assert "2" in result  # NON_LABEL
-    assert "3" not in result
-
-
-# ---------- should_skip_detection ----------
-
-def test_skip_no_classifications():
-    """Unclassified detection is not skipped."""
-    det = {"category": "1", "conf": 0.9, "bbox": [0, 0, 0.5, 0.5]}
-    assert should_skip_detection(det, {"1"}) is False
-
-
-def test_skip_empty_classifications():
-    """Empty classifications list is not skipped."""
-    det = {"classifications": []}
-    assert should_skip_detection(det, {"1"}) is False
-
-
-def test_skip_blank_top1():
-    """Blank as top-1: skip (false positive)."""
-    det = {"classifications": [["2", 0.65], ["1", 0.19], ["3", 0.10]]}
-    non_label = {"2"}  # blank
-    assert should_skip_detection(det, non_label) is True
-
-
-def test_skip_cattle_top1():
-    """Real species as top-1: not skipped."""
-    det = {"classifications": [["1", 0.92], ["2", 0.05], ["3", 0.03]]}
-    non_label = {"2"}  # blank
-    assert should_skip_detection(det, non_label) is False
-
-
-# ---------- is_non_label_detection (legacy, kept for backward compat) ----------
-
-def test_legacy_no_classifications():
-    """Unclassified detection is not skipped."""
-    det = {"category": "1", "conf": 0.9}
-    excluded = build_excluded_class_ids({"1": "blank"})
-    assert is_non_label_detection(det, excluded) is False
-
-
-def test_legacy_all_excluded():
-    """Detection with only non-label classifications is skipped."""
-    det = {"classifications": [["1", 0.9], ["2", 0.1]]}
-    excluded = build_excluded_class_ids({"1": "blank", "2": "empty"})
-    assert is_non_label_detection(det, excluded) is True
-
-
-def test_legacy_vide_excluded():
-    """'vide' triggers skip."""
-    assert "vide" in NON_LABEL_CLASSES
-    det = {"classifications": [["1", 1.0]]}
-    excluded = build_excluded_class_ids({"1": "vide"})
-    assert is_non_label_detection(det, excluded) is True
+    assert result == {"1"}
+    assert build_excluded_class_ids(cats, None) == set()
 
 
 # ---------- filter_classifications (no renormalization) ----------
@@ -182,40 +107,17 @@ def test_apply_label_exclusion_noop_when_rollup_handles_it():
 
 
 def test_apply_label_exclusion_drops_excluded_and_keeps_next_best_score():
-    """Without rollup the excluded top-1 and the non-label class go, and
-    the next best included class leads at its own score, not inflated."""
+    """Without rollup the excluded top-1 goes and the next best class
+    leads at its own score, not inflated. The non-label class "blank"
+    is not an exclusion, so here it is what leads."""
     from app.ml.label_exclusion import apply_label_exclusion_to_results
 
     md_results = _one_detection_results()
     apply_label_exclusion_to_results(md_results, excluded_labels=["lion"])
     assert (
         md_results["images"][0]["detections"][0]["classifications"]
-        == [["4", 0.10]]
+        == [["5", 0.30], ["4", 0.10]]
     )
-
-
-# ---------- strip_non_label_from_results ----------
-
-def test_strip_non_label_from_results():
-    """strip_non_label_from_results removes blank and bait."""
-    from app.ml.label_exclusion import strip_non_label_from_results
-
-    md_results = {
-        "classification_categories": {
-            "1": "lion", "2": "blank", "3": "bait",
-        },
-        "images": [{
-            "detections": [{
-                "classifications": [
-                    ["1", 0.60], ["2", 0.30], ["3", 0.10],
-                ],
-            }],
-        }],
-    }
-    strip_non_label_from_results(md_results)
-    cls = md_results["images"][0]["detections"][0]["classifications"]
-    assert len(cls) == 1
-    assert cls[0][0] == "1"
 
 
 # ---------- the two lanes of the read-time rule ----------

@@ -353,6 +353,40 @@ def test_flagged_and_liked_ride_on_rows_and_filter_the_pool(sort_db):
     assert [d["file_id"] for d in got["detections"]] == [plain.id]
 
 
+def test_a_box_the_model_rejected_is_a_card_like_any_other(sort_db):
+    """A box the classifier called "false detection" is stored unverified
+    and the grid shows it like any other unverified card, label and all,
+    so a person can agree or rescue it. Nothing here hides it: the model's
+    verdict is a label, not a filter."""
+    db_path, s = sort_db
+    p = make_project(s, classification_model_id=CLS_MODEL)
+    dep = make_deployment(s, project_id=p.id)
+
+    def det(day, **kw):
+        f = make_file(
+            s,
+            deployment_id=dep.id,
+            captured_at_local=datetime(2024, 1, day, 12),
+            width_px=1920,
+            height_px=1080,
+        )
+        return make_detection(s, file_id=f.id, confidence=0.9, **kw)
+
+    rejected = det(1, label="false detection", label_confidence=0.95)
+    plain = det(2, label="canis")
+    s.commit()
+
+    rows = do_sort(
+        db_path,
+        p.id,
+        {"sort": "events", "filters": {"verified": False, "project_floor": 0.2}},
+    )
+    by_id = {d["detection_id"]: d for d in rows["detections"]}
+    assert set(by_id) == {rejected.id, plain.id}
+    assert by_id[rejected.id]["label"] == "false detection"
+    assert by_id[rejected.id]["verified"] is False
+
+
 def test_empty_result_carries_every_count(sort_db, fake_faiss):
     """Nothing matched: all three counts are present and zero."""
     db_path, s = sort_db

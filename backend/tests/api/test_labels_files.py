@@ -8,9 +8,12 @@ counting threshold and at nothing else: the confidence slider is clamped
 there on Files, so a transient control can never redefine "empty".
 
 The property these tests protect: the two halves of the ``empty`` filter
-partition the project, and ``show_only`` is exactly the set of files with
-no card in the Detections tab. ``test_every_photo_is_in_exactly_one_half``
-pins it.
+partition the project, and ``show_only`` is the set of files with no
+*real* card in the Detections tab. ``test_every_photo_is_in_exactly_one_half``
+pins it. The one file that is on both tabs is one whose only passing
+boxes the model rejected ("false detection"): those are cards to check,
+but not observations, so the file is also empty. Verifying either side
+cascades to the other.
 """
 
 import uuid
@@ -468,6 +471,30 @@ def test_confirming_an_empty_file_moves_the_bar(client, db):
     data = _progress(client, p.id)
     assert (data["total_labels"], data["verified_labels"]) == (2, 1)
     assert (data["empty_labels"], data["empty_labels_verified"]) == (1, 1)
+
+
+def test_a_box_the_model_rejected_is_a_card_and_its_file_an_empty(client, db):
+    """A box the classifier called "false detection" is stored unverified,
+    so it is a card in the Detections tab and a label to check. It is not
+    an observation, so the file is also in the Empties tab. Both are
+    counted, honestly, and one click clears both: verifying the box rolls
+    the file up to verified through ``recompute_file_verified``."""
+    p, _d, (f,) = _project_with_files(db, 1)
+    d = make_detection(
+        db, file_id=f.id, confidence=0.9,
+        label="false detection", label_confidence=0.95,
+    )
+    db.commit()
+
+    data = _progress(client, p.id)
+    assert (data["crop_labels"], data["empty_labels"]) == (1, 1)
+    assert (data["total_labels"], data["verified_labels"]) == (2, 0)
+    assert _empties(client, p.id)["total"] == 1
+
+    client.patch(f"/api/detections/{d.id}/verify", json={"verified": True})
+    data = _progress(client, p.id)
+    assert (data["crop_labels_verified"], data["empty_labels_verified"]) == (1, 1)
+    assert data["verified_labels"] == data["total_labels"] == 2
 
 
 def test_files_counts_feed_the_files_chip(client, db):

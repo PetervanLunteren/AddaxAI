@@ -179,16 +179,9 @@ def load_json_to_database(
         # pass rather than in a held-in-memory dict.
         logger.info("Streaming images/videos to database")
 
-        # Build non-label ID set for skip logic
-        from app.ml.label_exclusion import (
-            build_non_label_class_ids,
-            should_skip_detection,
-        )
-
         class_categories = read_top_level_object(
             json_path, "classification_categories"
         )
-        non_label_ids = build_non_label_class_ids(class_categories)
 
         # The detector's own category vocabulary, e.g. MegaDetector's
         # {"1": "animal", "2": "person", "3": "vehicle"}. Read from the
@@ -241,7 +234,6 @@ def load_json_to_database(
         person_count = 0
         vehicle_count = 0
         classified_count = 0
-        skipped_non_label = 0
         skipped_missing_timestamp: list[str] = []
         # Files whose capture time came from the opt-in mtime fallback.
         # Counted, not recorded per file: when the fallback is on these
@@ -489,12 +481,13 @@ def load_json_to_database(
                         f"({sorted(detection_categories)})."
                     )
 
-                if category == "animal" and should_skip_detection(
-                    det, non_label_ids,
-                ):
-                    skipped_non_label += 1
-                    continue
-
+                # Every box the detector found is stored, whatever the
+                # classifier called it. A top-1 of "false detection" or
+                # "blank" is a label like any other: the row is kept,
+                # `is_a_real_detection()` keeps it out of every count, and
+                # the Labels grid shows it as a card a person can confirm
+                # or rescue. Until 2026-09 such boxes were dropped here,
+                # which deleted the model's own evidence with no trace.
                 total_detections += 1
 
                 # Count by category
@@ -621,8 +614,7 @@ def load_json_to_database(
 
         logger.info(
             f"Database load complete: {total_detections} detections, "
-            f"{classified_count} classified, "
-            f"{skipped_non_label} skipped (non-label)"
+            f"{classified_count} classified"
         )
 
         return PipelineResult(

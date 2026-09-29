@@ -442,6 +442,65 @@ def test_the_raw_reload_drops_excluded_classes_the_same_way(
         assert det.label_confidence == pytest.approx(0.2)
 
 
+def test_a_box_the_model_rejected_keeps_its_label_with_rollup_off(
+    deployment_scaffold,
+):
+    """With rollup off the plain exclusion filter runs. It removes the
+    user's exclusions only: "false detection" is the model's answer, not
+    an exclusion, so the box keeps that label and the file stays blank.
+    Stripping it here emptied the list (the next class sat far below the
+    scale minimum), the box came back unclassified, and a rejected stump
+    counted as an animal the moment rollup was turned off."""
+    s = deployment_scaffold
+    db = s["db"]
+    json_path = _load_basic_images(
+        s, label_map={"1": "false detection", "2": "zebra", "3": "giraffe"}
+    )
+    project = s["project"]
+    project.event_smoothing = False
+    project.taxonomic_rollup = False
+    db.flush()
+
+    with patch(
+        "app.ml.postprocessing._find_classification_model_dir",
+        return_value=None,
+    ):
+        results = run_postprocessing_for_deployment(
+            deployment_id=s["deployment"].id,
+            json_path=json_path,
+            deployment_folder=s["deploy_dir"],
+            project=project,
+            db=db,
+        )
+    counts = update_database_from_smoothed_results(
+        s["deployment"].id, results, s["deploy_dir"], db,
+    )
+
+    assert counts["errors"] == 0
+    for det in db.query(Detection).all():
+        assert det.label == "false detection"
+        assert det.label_confidence == pytest.approx(0.7)
+    for f in db.query(File).filter(File.deployment_id == s["deployment"].id):
+        assert f.observation_type == "blank"
+
+
+def test_the_raw_reload_keeps_a_rejected_box_too(deployment_scaffold):
+    """Same rule on the raw-reload path (smoothing and rollup both off)."""
+    s = deployment_scaffold
+    json_path = _load_basic_images(
+        s, label_map={"1": "false detection", "2": "zebra", "3": "giraffe"}
+    )
+
+    counts = reload_raw_classifications_from_json(
+        s["deployment"].id, json_path, s["deploy_dir"], s["db"],
+        excluded_classes=["giraffe"],
+    )
+
+    assert counts["errors"] == 0
+    for det in s["db"].query(Detection).all():
+        assert det.label == "false detection"
+
+
 def test_a_box_left_unclassified_keeps_its_animal_row_and_stays_filterable(
     deployment_scaffold,
 ):
@@ -805,6 +864,71 @@ def test_a_discarded_box_is_not_reported_as_a_reprocess_error(deployment_scaffol
     )
 
 
+def test_a_box_the_model_rejected_reprocesses_like_any_other(deployment_scaffold):
+    """A box whose top-1 is "false detection" is a row, so the matcher
+    finds it: no error, and the verdict stays when the smoothed JSON
+    keeps it. When smoothing turns it into a species (one rejected frame
+    in a zebra burst), the row takes the species and the file becomes an
+    animal. Under the old ingest skip both cases were lost: the box had
+    no row, so every reprocess counted it as an error and the smoother's
+    rescue had nothing to write to.
+    """
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    _load_basic_images(
+        s, label_map={"1": "false detection", "2": "zebra", "3": "giraffe"}
+    )
+
+    files = (
+        db.query(File)
+        .filter(File.deployment_id == s["deployment"].id)
+        .order_by(File.captured_at_local.asc())
+        .all()
+    )
+    kept, rescued = files[0], files[1]
+    for f in files:
+        assert f.observation_type == "blank"
+        assert db.query(Detection).filter(Detection.file_id == f.id).count() == 1
+
+    def _entry(f: File, classifications: list[list]) -> dict:
+        return {
+            "file": str(Path(f.file_path).relative_to(deploy_dir)),
+            "detections": [
+                {
+                    "category": "1",
+                    "conf": 0.9,
+                    "bbox": [0.1, 0.2, 0.3, 0.4],
+                    "classifications": classifications,
+                }
+            ],
+        }
+
+    smoothed = build_detection_json(
+        [
+            _entry(kept, [[1, 0.7], [2, 0.2]]),
+            _entry(rescued, [[2, 0.8], [1, 0.2]]),
+            _entry(files[2], [[1, 0.7], [2, 0.2]]),
+        ],
+        classification_categories={"1": "false detection", "2": "zebra", "3": "giraffe"},
+    )
+
+    counts = update_database_from_smoothed_results(
+        deployment_id=s["deployment"].id,
+        smoothed_results=smoothed,
+        deployment_folder=deploy_dir,
+        db=db,
+    )
+
+    assert counts["errors"] == 0
+    assert counts["updated"] == 1
+    db.refresh(kept)
+    db.refresh(rescued)
+    assert kept.detections[0].label == "false detection"
+    assert kept.observation_type == "blank"
+    assert rescued.detections[0].label == "zebra"
+    assert rescued.observation_type == "animal"
+
+
 def test_a_missing_box_on_an_unverified_file_is_still_an_error(deployment_scaffold):
     """The exemption reaches verified files only. A box the JSON lists
     that the database lacks on a file nobody signed off is still the one
@@ -924,4 +1048,7 @@ def test_an_unticked_files_rejected_boxes_reprocess_cleanly(deployment_scaffold)
     assert counts["errors"] == 0, "no phantom errors after the untick"
     db.refresh(weak)
     assert weak.label == "zebra", "the machine's call is restored"
+    # The sign-off wrote "human" onto the rejected box; the machine owns
+    # the row again, so its method says so. Exports read this column.
+    assert weak.classification_method == "machine"
     assert weak.verified is False

@@ -409,13 +409,19 @@ def get_label_progress(
 
     - every detection that passes the project threshold, which is one
       card in the Crops tab, and
-    - every file where nothing passes, which is one card in the Empties
-      tab carrying the label "nothing here".
+    - every file with no real passing detection, which is one card in
+      the Empties tab carrying the label "nothing here".
 
-    The two never overlap and together they cover the project, because a
-    file either has a passing detection or it does not. So this total is
-    exactly the number of cards across both tabs, and 100% means every
-    one of them has been looked at.
+    Together they cover the project, and this total is the number of
+    cards across both tabs, so 100% means every one of them has been
+    looked at. The crop half uses the grid's own scope rule, so a box the
+    model called "false detection" is a card to check like any other. The
+    empties half uses the Empties grid's rule, which ignores such boxes.
+    The two therefore overlap on exactly one shape: a file whose only
+    passing boxes are rejections is one crop label and one empty label.
+    That is honest, since it does appear on both tabs, and verifying
+    either card cascades to the other (``recompute_file_verified`` and
+    ``set_file_verified``), so one click clears both.
 
     That is what makes one bar work for a page with two halves, and what
     stops it reading 100% while the empty files are untouched. Counting
@@ -446,7 +452,12 @@ def get_label_progress(
     if project is None:
         return LabelCounts(0, 0, 0, 0)
     floor = effective_floor(project.counting_threshold, min_confidence)
-    passes = and_(
+    # What the Detections grid shows: its sort worker applies the same
+    # clause in SQL (`similarity_script.py`).
+    is_a_card = threshold_or_verified(floor)
+    # What the Empties grid asks in `get_labels_files`: a file with none
+    # of these is empty.
+    is_a_real_passing_box = and_(
         is_a_real_detection(),
         or_(
             Detection.confidence >= floor,
@@ -478,14 +489,14 @@ def get_label_progress(
         .select_from(Detection)
         .join(File, File.id == Detection.file_id)
         .filter(on_visible_frame())
-        .filter(passes)
+        .filter(is_a_card)
     ).one()
 
     has_passing = (
         select(Detection.id)
         .where(Detection.file_id == File.id)
         .where(on_visible_frame())
-        .where(passes)
+        .where(is_a_real_passing_box)
     )
     empty_total, empty_verified = in_scope(
         db.query(

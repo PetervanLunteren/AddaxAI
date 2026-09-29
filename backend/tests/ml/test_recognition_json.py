@@ -443,6 +443,40 @@ def test_detection_without_label_omits_classifications(db, tmp_path):
     assert "classifications" not in det
 
 
+def test_a_box_the_model_rejected_is_in_the_file(db, tmp_path):
+    """The file is the complete record of the run, so a box the
+    classifier called "false detection" is written with that
+    classification, the same way SpeciesNet's own output carries
+    "blank". Timelapse and downstream scripts see the box and the
+    model's verdict on it, and can decide for themselves."""
+    project = make_project(db, name="rj-rejected")
+    dep = make_deployment(
+        db, project_id=project.id, folder_path=str(tmp_path / "src"),
+    )
+    file = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=str(tmp_path / "src" / "IMG.jpg"),
+        observation_type="blank",
+    )
+    make_detection(
+        db, file_id=file.id, category="animal", confidence=0.83,
+        label="false detection", label_confidence=0.954, verified=False,
+        bbox_x=0.15, bbox_y=0.54, bbox_width=0.1, bbox_height=0.07,
+    )
+
+    target = tmp_path / "out"
+    write_recognition_json(db, project.id, target)
+    payload = _load_json(target)
+
+    (det,) = payload["images"][0]["detections"]
+    assert det["conf"] == 0.83
+    assert det["verified"] is False
+    (class_id, score) = det["classifications"][0]
+    assert score == 0.954
+    assert payload["classification_categories"][class_id] == "false detection"
+
+
 def test_verified_flag_per_detection(db, tmp_path):
     """Each detection carries its human-verified state, so the folder JSON
     captures review status from the DB (not present in raw results-mode

@@ -1,5 +1,5 @@
 """
-Label exclusion and non-label skip logic.
+Label exclusion and the "nothing here" labels.
 
 Two separate concerns handled here:
 
@@ -8,10 +8,12 @@ Two separate concerns handled here:
    Remaining confidences keep their raw values (no renormalization).
    This changes which label is assigned to a detection.
 
-2. **Non-label skip** (DB gatekeeper): if the top-1 prediction after
-   user filtering is a NON_LABEL_CLASS (blank, bait, etc.), the
-   detection is not loaded to the database at all. The bbox is treated
-   as a false positive.
+2. **Non-label classes**: labels that mean "nothing is here" (blank,
+   false detection, bait, ...). A box carrying one is stored like any
+   other, whether the model wrote it at ingest or a person wrote it by
+   pressing X. ``is_a_real_detection()`` is the one predicate that keeps
+   such a box out of every count, export and media output, and the
+   Labels grid still shows it as a card to confirm or rescue.
 
 These two steps are independent. JSON files on disk remain untouched
 as raw ground truth.
@@ -27,12 +29,13 @@ from app.models import Detection
 logger = get_logger(__name__)
 
 
-# Non-label classes: predictions that mean "nothing here" or "false positive".
-# A detection whose top-1 is one of these is not loaded to the database.
-# Also stripped before smoothing/rollup so they don't corrupt those algorithms.
-# Add new junk classes here (e.g. "calibration", "setup") — and in the two
-# hand copies: `NON_LABEL_CLASSES` in `frontend/src/lib/detection-utils.ts`
-# and the SQL list in `app/ml/inference/similarity_script.py`.
+# Non-label classes: labels that mean "nothing here" or "false positive".
+# Two writers: a classification model whose class list has one (fifteen
+# zoo models do), written at ingest with the model's own score, and a
+# person pressing X on the Labels page. Both produce the same row. Add new
+# junk classes here (e.g. "calibration", "setup") — and in the two hand
+# copies: `NON_LABEL_CLASSES` in `frontend/src/lib/detection-utils.ts` and
+# the SQL list in `app/ml/inference/similarity_script.py`.
 NON_LABEL_CLASSES = frozenset({
     "bait", "blank", "empty", "false detection", "non-animal", "none", "vide",
 })
@@ -40,11 +43,13 @@ NON_LABEL_CLASSES = frozenset({
 def is_a_real_detection() -> ColumnElement[bool]:
     """Predicate: this detection is not one of the "nothing here" labels.
 
-    The ingest skip keeps the AI's own such calls out of the database, so
-    the only way one gets in is a person applying it later, by pressing X
-    on the Labels page. That verdict has to reach every surface that asks
-    "what is on this file", and three of them ask in three different
-    ways, so the rule lives here once rather than in each.
+    A rejected box stays in the database, whoever rejected it: the model
+    at ingest, or a person pressing X later. That verdict has to reach
+    every surface that asks "what is on this file", and three of them
+    ask in three different ways, so the rule lives here once rather than
+    in each. The Labels grid deliberately does not apply it: a rejection
+    is a card like any other there, so a person can confirm or overturn
+    it.
 
     Two lanes, the same shape as ``ml/detection_visibility.py``: this one
     for a query, ``is_non_label`` below for a label already in memory. A
@@ -176,10 +181,17 @@ def build_excluded_class_ids(
     excluded_labels: list[str] | None = None,
 ) -> set[str]:
     """
-    Build the full set of class IDs to exclude.
+    Build the set of class IDs the user excluded.
 
-    Always includes NON_LABEL_CLASSES (bait, blank, empty, false detection,
-    none, vide). Additionally includes any user-configured excluded labels.
+    Only the user's own exclusions. The non-label classes are not in
+    it: a model's "false detection" is a label like any other, so with
+    rollup off it must survive this filter the way it survives the
+    rollup path. Until 2026-09 they were always stripped here, which
+    was harmless while the ingest dropped such boxes, and wrong once it
+    keeps them: the filter emptied the list (the next best class sits
+    far below ``CONFIDENCE_SCALE_MIN``), the box came back unclassified,
+    and a rejected stump counted as an animal the moment rollup was
+    turned off.
 
     Args:
         class_categories: Mapping of class_id -> class_name from JSON
@@ -188,7 +200,7 @@ def build_excluded_class_ids(
     Returns:
         Set of class ID strings to exclude
     """
-    if not class_categories:
+    if not class_categories or not excluded_labels:
         return set()
 
     # Names compare lowercase throughout, as the rollup does with the
@@ -199,100 +211,11 @@ def build_excluded_class_ids(
         name_lower_to_ids.setdefault(name.lower(), []).append(cls_id)
 
     excluded_class_ids: set[str] = set()
-    for name in [*NON_LABEL_CLASSES, *(excluded_labels or [])]:
+    for name in excluded_labels:
         for cls_id in name_lower_to_ids.get(name.lower(), []):
             excluded_class_ids.add(str(cls_id))
 
     return excluded_class_ids
-
-
-
-def build_non_label_class_ids(
-    class_categories: dict[str, str],
-) -> set[str]:
-    """
-    Build class IDs for NON_LABEL_CLASSES only.
-
-    Used for the skip decision during DB loading: if a detection's
-    top-1 prediction (after user filtering) is one of these, the
-    detection is not loaded.
-
-    Args:
-        class_categories: Mapping of class_id -> class_name from JSON
-
-    Returns:
-        Set of class ID strings for non-label classes
-    """
-    if not class_categories:
-        return set()
-
-    non_label_ids: set[str] = set()
-    for cls_id, name in class_categories.items():
-        if name.lower() in NON_LABEL_CLASSES:
-            non_label_ids.add(str(cls_id))
-
-    return non_label_ids
-
-
-
-def should_skip_detection(
-    det: dict,
-    non_label_class_ids: set[str],
-) -> bool:
-    """
-    Return True if a detection should not be loaded to the database.
-
-    Checks if the raw top-1 classification is a NON_LABEL class
-    (blank, bait, etc.). User exclusion and rollup are handled
-    separately in Phase 7 (postprocessing).
-
-    Args:
-        det: Detection dict from JSON
-        non_label_class_ids: Class IDs for NON_LABEL_CLASSES
-
-    Returns:
-        True if detection should be skipped, False if it should be loaded.
-    """
-    raw = det.get("classifications")
-    if not raw:
-        return False
-
-    top_class_id = str(raw[0][0])
-    return top_class_id in non_label_class_ids
-
-
-def is_non_label_detection(
-    det: dict,
-    excluded_class_ids: set[str],
-) -> bool:
-    """
-    Return True if a detection should be skipped (not loaded to DB).
-
-    A detection is skipped when:
-    1. It HAS classifications (went through a classifier), AND
-    2. After filtering out excluded/non-label class IDs, no classifications
-       remain.
-
-    Detections without any classifications (unclassified animals) are NOT
-    skipped. Non-animal detections (person, vehicle) never have
-    classifications, so they are never skipped.
-
-    Args:
-        det: Detection dict from JSON (has "classifications" key if classified)
-        excluded_class_ids: Set of class IDs to exclude
-
-    Returns:
-        True if detection should be skipped, False if it should be loaded.
-    """
-    if not excluded_class_ids:
-        return False
-
-    raw_classifications = det.get("classifications")
-    if not raw_classifications:
-        return False
-
-    filtered = filter_classifications(raw_classifications, excluded_class_ids)
-    return len(filtered) == 0
 
 
 def apply_label_exclusion_to_results(
@@ -315,10 +238,11 @@ def apply_label_exclusion_to_results(
     handles an excluded top-1, so deferring without a rollup to defer to
     means the label is later erased instead of replaced.
 
-    Otherwise user-excluded and NON_LABEL classes are removed from every
+    Otherwise the user-excluded classes are removed from every
     classification list. The next best included class becomes the
     top-1, at its own score (no renormalisation), and a list that empties
-    leaves the detection unclassified.
+    leaves the detection unclassified. The non-label classes stay: a
+    model's "false detection" is its answer, not an exclusion.
 
     Args:
         md_results: Full MegaDetector JSON dict (modified in place)
@@ -349,37 +273,5 @@ def apply_label_exclusion_to_results(
             det["classifications"] = filter_classifications(
                 det["classifications"], excluded_class_ids
             )
-
-    return md_results
-
-
-def strip_non_label_from_results(md_results: dict) -> dict:
-    """
-    Strip NON_LABEL classes from all detections in md_results (in place).
-
-    Should be called AFTER taxonomic rollup but BEFORE smoothing, so that
-    rollup sees the full confidence landscape (matching the official
-    SpeciesNet API) while smoothing does not see blank/bait/etc.
-
-    Args:
-        md_results: Full MegaDetector JSON dict (modified in place)
-
-    Returns:
-        The modified dict (same reference as input)
-    """
-    class_categories = md_results.get("classification_categories", {})
-    non_label_ids = build_non_label_class_ids(class_categories)
-    if not non_label_ids:
-        return md_results
-
-    for img in md_results.get("images") or []:
-        for det in img.get("detections") or []:
-            if not det.get("classifications"):
-                continue
-            det["classifications"] = [
-                [cls_id, conf]
-                for cls_id, conf in det["classifications"]
-                if str(cls_id) not in non_label_ids
-            ]
 
     return md_results

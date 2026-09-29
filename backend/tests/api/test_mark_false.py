@@ -192,10 +192,14 @@ def test_the_empties_tab_and_the_export_agree_about_it(client, db):
     assert empties.status_code == 200, empties.text
     assert f.id in {i["id"] for i in empties.json()["items"]}
 
+    # The rejected box keeps its card in the grid (above the threshold,
+    # verified by the X press), so the progress bar counts it as one
+    # checked crop label beside the one empty label. Same rule as a box
+    # the model rejected, which is the same row minus the verified flag.
     progress = client.get(f"/api/projects/{project.id}/labels/progress")
     body = progress.json()
-    assert body["empty_labels"] == 1
-    assert body["crop_labels"] == 0
+    assert (body["empty_labels"], body["empty_labels_verified"]) == (1, 1)
+    assert (body["crop_labels"], body["crop_labels_verified"]) == (1, 1)
 
 
 def test_an_unknown_verification_value_is_refused(client, db):

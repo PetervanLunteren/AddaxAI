@@ -47,7 +47,7 @@ from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.ml import detection_checkpoint as ckpt
-from app.ml.label_exclusion import threshold_or_verified
+from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
 from app.ml.postprocessing_outputs.output_preview import (
     build_output_preview,
 )
@@ -831,9 +831,12 @@ def lookup_folder_run(
             File.deployment_id.in_(deployment_ids_subq)
         )
     ) or 0
+    # Boxes found, not boxes rejected: a model's "false detection" is
+    # neither a detection nor a species in the recent-runs summary.
     detection_filter = and_(
         File.deployment_id.in_(deployment_ids_subq),
         threshold_or_verified(threshold),
+        is_a_real_detection(),
     )
     detection_count = db.scalar(
         select(func.count(Detection.id))

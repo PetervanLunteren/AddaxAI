@@ -484,7 +484,7 @@ copy (no `app.*` on its path); it is marked at both ends.
 
 **The same rule applies to what is drawn, not only to what is counted.** `shouldDrawBbox` in `frontend/src/lib/detection-utils.ts` is the one place a bounding box is admitted to a canvas, and it carries the override too. Relabelling never rewrites `Detection.confidence` (`bulk_relabel` and `update_detection` both leave it alone), so a box a human confirmed at 3% keeps that 3% forever. Without the override such a box earns a card, a count and a MaxN, and then paints no rectangle on the photo those numbers describe.
 
-It also refuses a box a person **rejected**, mirroring `is_a_real_detection()`. A falsed box is already out of every count, so outlining it argues with the number printed beside it. The row itself is kept (see "Non-label detection skip"), it is just not drawn on any counting surface.
+It also refuses a box a person **rejected**, mirroring `is_a_real_detection()`. A falsed box is already out of every count, so outlining it argues with the number printed beside it. The row itself is kept (see "Non-label classifications are kept as rejected rows"), it is just not drawn on any counting surface.
 
 **Both rules live in `passesDrawFilter`, not in `shouldDrawBbox` itself.** `VideoPlayer` draws every frame's boxes over the real video on purpose, so it cannot use `shouldDrawBbox` (the best-frame gate would blank it), and it used to carry its own inline `confidence < threshold` instead. Neither rule reached it, and the result was one event modal disagreeing with itself: in the Counts event view a box a human confirmed below the threshold drew in frame mode and vanished on play, while a box they rejected did the reverse. If a new surface needs the rules without the frame gate, call `passesDrawFilter`; do not inline the comparison again.
 
@@ -566,17 +566,19 @@ the reprocess pair in `tests/integration/test_postprocessing_pipeline.py`
 (`test_an_unticked_files_rejected_boxes_reprocess_cleanly`,
 `test_a_discarded_box_is_not_reported_as_a_reprocess_error`).
 
-## Non-label detection skip
+## Non-label classifications are kept as rejected rows
 
-MegaDetector sometimes produces false positive bounding boxes. When a classification model (SpeciesNet or custom) classifies a detection as one of the non-label classes, the detection is not loaded to the database at all. This keeps false positives out of counts, filters, and the verification UI.
+MegaDetector produces false positive boxes, and most classification models have a class for that: **the non-label classes** in `backend/app/ml/label_exclusion.py` are `bait`, `blank`, `empty`, `false detection`, `non-animal` (the MegaDetector false-positive class of MEWC models such as SOCAL-IRC-v3-6), `none` and `vide` (French for empty). Fifteen zoo models carry one.
 
-**Non-label classes** (defined in `backend/app/ml/label_exclusion.py`): `bait`, `blank`, `empty`, `false detection`, `non-animal` (the MegaDetector false-positive class of MEWC models such as SOCAL-IRC-v3-6), `none`, `vide` (French for empty). These are always stripped, regardless of project settings.
+**The rule:** a box whose top-1 classification is a non-label class is stored like any other box, with that label and the model's score, `verified = False`, `classification_method = "machine"`. That is the same row a person creates by pressing X on the Labels page (`mark_detections_false`, `crud/detection.py`), minus the verified flag, so nothing downstream has to know who rejected it:
 
-**The rule:** a detection is skipped when its **raw top-1** classification is a non-label class. That is `should_skip_detection`, and it is what the DB load calls (`json_pipeline.py`, gated on `category == "animal"`). Detections with no classifier output (unclassified animals) are still loaded with `label=NULL`. Person and vehicle detections are never classified and are always loaded.
+- `is_a_real_detection()` keeps it out of every count, export and media output: `observation_type` (a file with nothing else reads `blank`), MaxN and the Counts page, the dashboard and every insight, the summary, counts, files and Camtrap DP tables, species folders, annotated copies, the folder-run summary and the dashboard's per-class verification rows. `passesDrawFilter` on the frontend keeps it off every canvas.
+- The Labels grid deliberately does **not** apply it. The box is a card like any other, sorted by its embedding next to its look-alikes, so a fox among a hundred rejected stumps is visible. Enter agrees with the model (the row becomes a human rejection), R rescues it. The progress bar counts it as a card to check, and the file as an empty one, so a file whose only boxes are rejections is on both tabs and counted on both; verifying either side cascades to the other (`get_label_progress`).
+- The detections table and the recognition JSON carry the row with its label, so the recognition file is the complete record it promises to be, the way SpeciesNet's own output carries `blank`.
 
-Do not confuse it with `is_non_label_detection` in the same module, which skips only when *every* remaining classification has been filtered out. That one is legacy: nothing in `app/` calls it, only the unit tests do. The distinction matters because the JSON keeps the top 5 classifications per detection, so "all filtered out" is a far rarer condition than "top-1 is blank", and reading the wrong function gives you the wrong mental model of what reaches the database.
+**Until 2026-09 these boxes were dropped at ingest** (`should_skip_detection`, since removed). That looked like a clean filter and was three bugs. It deleted the model's own evidence with no trace: no count, no warning, only a log line, and the recognition file that the docs call complete silently lacked every rejected box (Dan Morris, 2026-09-28: a 0.83 box ARC-ADS called "false detection" at 95%, present without a classifier and gone with one; on this machine one run had dropped 11,667 of 30,810 boxes). It made every reprocess report phantom errors, because `update_database_from_smoothed_results` counts a JSON box with no row as an error and the skipped boxes had no row. And it threw away smoothing rescues: phase 7 smooths the JSON after phase 6 loaded the database, so a lone "false detection" frame in a zebra burst was corrected to zebra in the JSON and then found nothing to write to. The smoother sees non-label classes as ordinary classes on purpose; they are not in its `other_category_names`.
 
-User species exclusion is a separate path: `apply_label_exclusion_to_results` in postprocessing, which builds its excluded set from the non-label classes plus the project's `excluded_classes`.
+User species exclusion is a separate path: `apply_label_exclusion_to_results` in postprocessing, which removes the project's `excluded_classes` and nothing else. The non-label classes are deliberately not in that set. They used to be, which was harmless while the ingest dropped such boxes and wrong once it keeps them: with rollup off the filter emptied the list (the next class sits far below `CONFIDENCE_SCALE_MIN`), the box came back unclassified, and a rejected stump counted as an animal. Pinned by `test_a_box_the_model_rejected_keeps_its_label_with_rollup_off`.
 
 **An excluded class has exactly one owner per run, and it is never the sweep.** With taxonomic rollup on, the filter stays out of the way (`rollup_handles_exclusion=True`) and Path A in `rollup_single_detection` redirects an excluded top-1 to its nearest allowed ancestor, using the model's full classification list. With rollup off, the filter drops the excluded classes from every list before smoothing, so the next best included class becomes the label at its own score, no renormalisation. A list that empties, or whose best remaining class scores below `CONFIDENCE_SCALE_MIN` (1%, a score no slider can show; measured: a 99% cat left "snowshoe hare 0.3%"), leaves the box unclassified. Exclusion names match lowercase on both sides, as the rollup matches them. Until 2026-09-06 the filter deferred whenever a `taxonomy.csv` existed, whether or not rollup was on, so with rollup off nothing handled the excluded top-1: it reached the database and the final sweep in `update_database_from_smoothed_results` erased it. A user who selected one of a sex-age model's 87 classes lost 736 of 799 labels in one run, because the model's confident answer on every sharp photo was an excluded variant. That sweep still exists as a safety net and now logs a warning with its count; in a healthy run it finds nothing. Pinned by the rollup-off and rollup-on pair in `tests/integration/test_postprocessing_pipeline.py`.
 
@@ -584,7 +586,7 @@ User species exclusion is a separate path: `apply_label_exclusion_to_results` in
 
 **Raw JSON preservation:** the JSON on disk (`results.json`) is never modified. It contains all original detections including those classified as blank. The skip only applies during the in-memory DB load step.
 
-**The same rule is applied a second time, at read time.** The ingest skip cannot reach a human who presses X on the Labels page later: "Mark false" writes `label = "false detection"` and deliberately leaves the detector's `category` alone (the category is the detector's and is never translated), while also setting `verified = True`, and a verified box always passes the threshold. So the rejected box became the file's subject. Measured: the file exported `observation_type = animal` with `classification_label = false detection` beside it, and the Counts page grew an observation called "false detection" with a MaxN of 1.
+**The rule is applied at read time, not at ingest.** "Mark false" writes `label = "false detection"` and deliberately leaves the detector's `category` alone (the category is the detector's and is never translated), while also setting `verified = True`, and a verified box always passes the threshold. So before the read-time rule existed the rejected box became the file's subject. Measured: the file exported `observation_type = animal` with `classification_label = false detection` beside it, and the Counts page grew an observation called "false detection" with a MaxN of 1.
 
 Two places apply it, because they are two different queries:
 
@@ -599,8 +601,9 @@ Two places apply it, because they are two different queries:
 
 | File | What it does |
 |------|-------------|
-| `backend/app/ml/label_exclusion.py` | `NON_LABEL_CLASSES` set, `is_non_label_detection()` helper |
-| `backend/app/ml/json_pipeline.py` | Skip logic in `load_json_to_database()` and `_load_to_database()` |
+| `backend/app/ml/label_exclusion.py` | `NON_LABEL_CLASSES` set, `is_a_real_detection()` and `is_non_label()` |
+| `backend/app/ml/observation_type.py`, `backend/app/api/crud/event_observation.py` | The two read-time applications: what a file is, and what an event holds |
+| `backend/tests/integration/test_non_label_kept.py` | The ingest keeps the row; the file still reads blank |
 
 ## Scanning a folder for media
 
