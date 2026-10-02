@@ -31,6 +31,7 @@ user saves to their own folder are not listed here and are theirs to
 manage.
 """
 
+import os
 import re
 import shutil
 import sqlite3
@@ -343,17 +344,39 @@ def restore_db(settings: Settings, source_path: Path) -> None:
     defence against time-of-check / time-of-use races. The current DB
     is force-snapshotted to the ring buffer first as a safety net so a
     wrong-file mistake stays recoverable.
+
+    The source is copied to a staging file before anything destructive
+    runs, and the live DB is replaced by one atomic rename at the end.
+    Both halves are load-bearing: the pre-restore snapshot prunes its
+    ring, which deletes the selected source when it is the oldest of
+    `BACKUP_KEEP` pre-restore backups, and a copy that fails partway
+    (full disk, unplugged drive) must not leave the live DB missing.
+    The live DB therefore survives until its replacement is fully on
+    disk, whatever fails.
     """
     validate_backup(source_path)
 
     live = _live_db_path(settings)
-    if live.is_file():
-        pre_restore_snapshot(settings)
+    # Same directory as the live DB, so os.replace stays on one
+    # filesystem. Matches no backup filename pattern, so the restore
+    # picker never lists a leftover from a crashed restore.
+    staged = live.with_name(live.name + ".restore-staging")
+    staged.unlink(missing_ok=True)
+    try:
+        shutil.copyfile(source_path, staged)
 
-    for sibling in (live, live.with_name(live.name + "-wal"), live.with_name(live.name + "-shm")):
-        sibling.unlink(missing_ok=True)
+        if live.is_file():
+            pre_restore_snapshot(settings)
 
-    shutil.copyfile(source_path, live)
+        # The sidecars belong to the outgoing DB; the snapshot above
+        # read through the WAL, so nothing in them is lost.
+        for sibling in (live.with_name(live.name + "-wal"), live.with_name(live.name + "-shm")):
+            sibling.unlink(missing_ok=True)
+
+        os.replace(staged, live)
+    finally:
+        staged.unlink(missing_ok=True)
+
     logger.warning(f"Restored DB from {source_path}")
 
 

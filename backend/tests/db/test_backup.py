@@ -11,6 +11,7 @@ import pytest
 
 from app.core.config import Settings
 from app.db.backup import (
+    BACKUP_KEEP,
     DAILY_BACKUP_KEEP,
     RESTORE_MARKER_FILENAME,
     BackupInvalidError,
@@ -413,6 +414,76 @@ def test_restore_db_rejects_invalid_source(tmp_settings: Settings) -> None:
     bad.write_bytes(b"junk")
     with pytest.raises(BackupInvalidError):
         restore_db(tmp_settings, bad)
+
+
+def _make_pre_restore_ring(settings: Settings, count: int) -> list[Path]:
+    """Seed `count` pre-restore backups with distinct content and mtimes.
+
+    Returns them oldest first. Each DB carries a `marker` table naming
+    its slot, so a test can prove exactly which one ended up live.
+    """
+    backups_dir = settings.user_data_dir / "backups"
+    backups_dir.mkdir(parents=True, exist_ok=True)
+    paths: list[Path] = []
+    for i in range(count):
+        path = backups_dir / f"addaxai-pre-restore-2026-01-{i + 1:02d}T000000Z.db"
+        _make_sqlite(path)
+        conn = sqlite3.connect(str(path))
+        try:
+            conn.execute("CREATE TABLE marker (note TEXT)")
+            conn.execute("INSERT INTO marker (note) VALUES (?)", (f"ring-{i}",))
+            conn.commit()
+        finally:
+            conn.close()
+        # Pruning orders by mtime, so pin it to match the filenames.
+        stamp = time.time() - (count - i) * 60
+        os.utime(path, (stamp, stamp))
+        paths.append(path)
+    return paths
+
+
+def test_restoring_the_oldest_pre_restore_backup_survives_its_own_pruning(
+    tmp_settings: Settings,
+) -> None:
+    # Issue #122: with a full pre-restore ring, the safety snapshot taken
+    # during the restore pruned the ring and deleted the selected source
+    # before it was copied, losing both the backup and the live DB.
+    oldest = _make_pre_restore_ring(tmp_settings, BACKUP_KEEP)[0]
+
+    schedule_restore(tmp_settings, oldest)
+    consume_restore_marker(tmp_settings)
+
+    assert not (tmp_settings.user_data_dir / RESTORE_MARKER_FILENAME).exists()
+    live = tmp_settings.user_data_dir / "addaxai.db"
+    with sqlite3.connect(str(live)) as conn:
+        row = conn.execute("SELECT note FROM marker").fetchone()
+    assert row == ("ring-0",)
+    # No staging leftovers.
+    assert not live.with_name(live.name + ".restore-staging").exists()
+
+
+def test_a_failed_copy_leaves_the_live_db_intact(
+    tmp_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A copy that dies partway (full disk, unplugged drive) must fail
+    # before anything destructive has happened to the live DB.
+    source = tmp_settings.user_data_dir / "other.db"
+    _make_sqlite(source)
+
+    def _explode(src: object, dst: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr("app.db.backup.shutil.copyfile", _explode)
+
+    with pytest.raises(OSError):
+        restore_db(tmp_settings, source)
+
+    live = tmp_settings.user_data_dir / "addaxai.db"
+    validate_backup(live)
+    with sqlite3.connect(str(live)) as conn:
+        row = conn.execute("SELECT x FROM t").fetchone()
+    assert row == (1,)
+    assert not live.with_name(live.name + ".restore-staging").exists()
 
 
 # ── schedule_restore + consume_restore_marker ────────────────────────
