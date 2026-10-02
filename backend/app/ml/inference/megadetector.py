@@ -28,6 +28,7 @@ from app.ml.environment_manager import EnvironmentManager
 from app.ml.gpu_guard import cuda_guard_overrides
 from app.ml.inference.base import DetectionModel
 from app.utils.fs_hidden import mkdir_hidden_addaxai
+from app.utils.json_io import write_json_verified
 from app.utils.subprocess_env import clean_python_env
 
 logger = get_logger(__name__)
@@ -552,8 +553,7 @@ class MegaDetectorV1000(DetectionModel):
                             f"under the deployment folder {deployment_folder}"
                         ) from e
 
-                with open(output_file, "w") as f:
-                    json.dump(md_results, f, indent=2)
+                write_json_verified(output_file, md_results)
 
                 logger.info(f"Detection complete: Results saved to {output_file}")
 

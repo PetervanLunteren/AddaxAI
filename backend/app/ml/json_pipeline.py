@@ -36,6 +36,7 @@ from app.ml.progress import ProgressTicker
 from app.ml.results_json import iter_images, read_top_level_object
 from app.ml.taxonomy_db import clear_classification
 from app.models import Deployment, File, Project
+from app.utils.json_io import write_json_verified
 from app.utils.media_dates import (
     date_from_exif_dict,
     extract_image_date,
@@ -687,6 +688,25 @@ def load_json_to_database_owned_session(
         db.close()
 
 
+def load_results_json(json_path: Path) -> dict:
+    """Load a results JSON, turning a corrupt file into an actionable error.
+
+    A results file that fails to parse means the bytes on disk differ
+    from what the writer produced (full or failing drive, see
+    `app/utils/json_io.py`). The raw JSONDecodeError names a character
+    offset nobody can act on; this names the file and the way out.
+    """
+    try:
+        with open(json_path) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        raise RuntimeError(
+            f"The results file {json_path} is corrupt and cannot be read "
+            f"({e}). The drive it is stored on may be full or failing. "
+            f"Re-running the analysis on this folder recreates it."
+        ) from e
+
+
 async def run_classification_on_json(
     json_path: Path,
     classification_model,
@@ -729,8 +749,7 @@ async def run_classification_on_json(
     """
     logger.info("Running per-detection classification")
 
-    with open(json_path) as f:
-        md_results = json.load(f)
+    md_results = load_results_json(json_path)
 
     animal_detections = extract_animal_detections(
         md_results, min_confidence=classification_gate
@@ -941,8 +960,7 @@ async def run_classification_on_json(
                     if descriptions:
                         md_results["classification_category_descriptions"] = descriptions
 
-        with open(json_path, "w") as f:
-            json.dump(md_results, f, indent=2)
+        write_json_verified(json_path, md_results)
 
         logger.info(f"Classified {classified_count}/{total_animals} animals")
         logger.info(
@@ -1080,8 +1098,7 @@ def merge_json_files(
         # this; key order is not semantically meaningful to any consumer.
         merged_data["images"] = merged_data.pop("images")
 
-        with open(output_file, "w") as f:
-            json.dump(merged_data, f, indent=2)
+        write_json_verified(output_file, merged_data)
 
         logger.info(f"Merged {len(json_files)} JSON files to {output_file}")
 
