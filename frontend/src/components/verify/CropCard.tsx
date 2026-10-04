@@ -29,6 +29,7 @@ import { cn } from "../../lib/utils";
 import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
 import { Badge } from "../ui/badge";
 import { StatusBadgeCluster } from "./StatusBadgeCluster";
+import { useImageFilter } from "./viewer-tools";
 import type { DetectionSummary } from "../../api/types";
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
 
@@ -51,6 +52,9 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
   const isFalseDetection = isNonLabel(detection.label) && detection.verified;
 
   const [imageFailed, setImageFailed] = useState(false);
+  // Shared brightness/contrast; on the photo only, so the bbox overlay
+  // and the label pill keep their exact colours.
+  const imageFilter = useImageFilter();
   const isSmall = tileSize === "S";
   const pillSize = isSmall
     ? "text-[7px] px-0.5 py-0 rounded-sm"
@@ -90,6 +94,7 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
               alt={getDetectionDisplayName(detection)}
               loading="lazy"
               className="w-full h-full object-cover"
+              style={imageFilter ? { filter: imageFilter } : undefined}
               onError={() => {
                 setImageFailed(true);
                 reportMissingMedia(detection.deployment_id);

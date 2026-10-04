@@ -113,8 +113,7 @@ export function DetectionDetailModal({
   // viewer): brightness/contrast on the source image, the box toggle,
   // and the flag/like writes the F key shares.
   const [boxesHidden, setBoxesHidden] = useState(false);
-  const { brightness, setBrightness, contrast, setContrast, imageFilter } =
-    useImageAdjust();
+  const { imageFilter } = useImageAdjust();
   // The base hook's writes, plus the grid's optimistic patch: the crops
   // of a flagged file show the badge without waiting for a re-sort.
   const baseTriage = useFileTriage();
@@ -491,10 +490,6 @@ export function DetectionDetailModal({
       // the whole annotated photo is one "Open in files view" away.
       toolbar={
         <ViewerToolRail
-          brightness={brightness}
-          onBrightnessChange={setBrightness}
-          contrast={contrast}
-          onContrastChange={setContrast}
           boxesHidden={boxesHidden}
           onToggleBoxes={() => setBoxesHidden((v) => !v)}
           file={fileData}
@@ -725,6 +720,7 @@ export function DetectionDetailModal({
                             fileId={file.id}
                             file={file}
                             detectionThreshold={detectionThreshold}
+                            imageFilter={imageFilter}
                           />
                           {file.file_type === "video" && (
                             <span className="pointer-events-none absolute bottom-0.5 left-0.5 flex items-center justify-center rounded-full bg-black/60 p-0.5">
@@ -740,6 +736,7 @@ export function DetectionDetailModal({
                               fileId={file.id}
                               file={file}
                               detectionThreshold={detectionThreshold}
+                              imageFilter={imageFilter}
                             />
                           </div>
                           <p className="mt-1.5 px-0.5 text-[11px] text-muted-foreground">
@@ -799,6 +796,7 @@ export function DetectionDetailModal({
                         src={`${API_BASE_URL}${n.crop_url}`}
                         alt={getDetectionDisplayName(n)}
                         className="h-full w-full object-cover"
+                        style={imageFilter ? { filter: imageFilter } : undefined}
                       />
                     );
                     return {

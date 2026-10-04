@@ -4,11 +4,12 @@
  * components for fast refresh to work.
  */
 
-import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { create } from "zustand";
 
 import { filesApi } from "../../api/files";
+import { readLabelsSettings, persistLabelsSetting } from "./labels-settings";
 
 /** What the rail needs to know about the focused file. */
 export interface RailFile {
@@ -18,15 +19,61 @@ export interface RailFile {
   favorited: boolean;
 }
 
+/** A persisted slider value; anything odd falls back to neutral (50). */
+function clampAdjust(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 100
+    ? v
+    : 50;
+}
+
+interface ImageAdjustState {
+  brightness: number;
+  contrast: number;
+  setBrightness: (v: number) => void;
+  setContrast: (v: number) => void;
+}
+
+/**
+ * One store for the whole app, initialised from localStorage, so the grids,
+ * the detail modals and the video player always show the same adjustment
+ * and it survives a restart. View-only CSS filters; stored data never
+ * changes.
+ */
+const useImageAdjustStore = create<ImageAdjustState>((set) => ({
+  brightness: clampAdjust(readLabelsSettings().brightness),
+  contrast: clampAdjust(readLabelsSettings().contrast),
+  setBrightness: (v) => {
+    set({ brightness: v });
+    persistLabelsSetting("brightness", v);
+  },
+  setContrast: (v) => {
+    set({ contrast: v });
+    persistLabelsSetting("contrast", v);
+  },
+}));
+
+function toFilter(brightness: number, contrast: number): string | undefined {
+  return brightness !== 50 || contrast !== 50
+    ? `brightness(${brightness / 50}) contrast(${contrast / 50})`
+    : undefined;
+}
+
 /** Brightness/contrast state plus the CSS filter they mean. */
 export function useImageAdjust() {
-  const [brightness, setBrightness] = useState(50);
-  const [contrast, setContrast] = useState(50);
-  const imageFilter =
-    brightness !== 50 || contrast !== 50
-      ? `brightness(${brightness / 50}) contrast(${contrast / 50})`
-      : undefined;
-  return { brightness, setBrightness, contrast, setContrast, imageFilter };
+  const { brightness, contrast, setBrightness, setContrast } =
+    useImageAdjustStore();
+  return {
+    brightness,
+    setBrightness,
+    contrast,
+    setContrast,
+    imageFilter: toFilter(brightness, contrast),
+  };
+}
+
+/** Just the CSS filter, for tiles that only display it. */
+export function useImageFilter(): string | undefined {
+  return useImageAdjustStore((s) => toFilter(s.brightness, s.contrast));
 }
 
 export interface FileTriage {

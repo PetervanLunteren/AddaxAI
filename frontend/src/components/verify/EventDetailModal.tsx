@@ -114,8 +114,7 @@ export function EventDetailModal({
   );
   const [boxesHidden, setBoxesHidden] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const { brightness, setBrightness, contrast, setContrast, imageFilter } =
-    useImageAdjust();
+  const { imageFilter } = useImageAdjust();
 
   // Filmstrip view settings, persisted per user: the resizable filmstrip
   // height (set by dragging the divider) and the S/M/L thumbnail size.
@@ -699,10 +698,6 @@ export function EventDetailModal({
           {currentFile && (
             <div className="flex flex-col items-center gap-1 px-1.5 py-2 bg-white border-r shrink-0">
               <ViewerToolRail
-                brightness={brightness}
-                onBrightnessChange={setBrightness}
-                contrast={contrast}
-                onContrastChange={setContrast}
                 boxesHidden={boxesHidden}
                 onToggleBoxes={() => setBoxesHidden((h) => !h)}
                 file={currentFile}

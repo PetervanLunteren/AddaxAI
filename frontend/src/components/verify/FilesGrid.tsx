@@ -31,6 +31,7 @@ import {
   useSpeciesColorsVersion,
 } from "../../utils/species-colors";
 import { FrameThumbnail } from "./FrameThumbnail";
+import { useImageFilter } from "./viewer-tools";
 import { StatusBadgeCluster } from "./StatusBadgeCluster";
 import { columnsForWidth, useWideModeValue } from "./wide-mode";
 import type { LabelsFileItem } from "../../api/types";
@@ -235,6 +236,9 @@ const FileTile = memo(function FileTile({
   aspect,
 }: FileTileProps) {
   const isSmall = tileSize === "S";
+  // Shared brightness/contrast, applied inside FrameThumbnail on the
+  // photo only.
+  const imageFilter = useImageFilter();
   // The same key the viewer uses, so opening a tile costs no request.
   const { data: file } = useQuery({
     queryKey: ["file", item.id],
@@ -316,6 +320,7 @@ const FileTile = memo(function FileTile({
           file={file}
           detectionThreshold={detectionThreshold}
           fit="contain"
+          imageFilter={imageFilter}
         />
         {/* A video reads as a photo here, because the tile is the best
             frame. Without this, someone scanning a wall of tiles has no

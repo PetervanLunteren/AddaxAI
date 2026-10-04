@@ -17,6 +17,7 @@ import { Layers } from "lucide-react";
 
 import { filesApi } from "../../api/files";
 import { FrameThumbnail } from "./FrameThumbnail";
+import { useImageFilter } from "./viewer-tools";
 
 interface EventCollageProps {
   /** Up to four file IDs from EventSummary.collage_file_ids. Empty
@@ -112,6 +113,7 @@ function EventCollageTile({
     queryKey: ["file", fileId],
     queryFn: ({ signal }) => filesApi.get(fileId, { signal }),
   });
+  const imageFilter = useImageFilter();
 
   return (
     <FrameThumbnail
@@ -119,6 +121,7 @@ function EventCollageTile({
       file={file}
       detectionThreshold={detectionThreshold}
       className={className}
+      imageFilter={imageFilter}
     />
   );
 }

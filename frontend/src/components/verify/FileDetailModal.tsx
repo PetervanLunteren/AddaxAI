@@ -159,8 +159,7 @@ export function FileDetailModal({
   const exportFnRef = useRef<(() => void) | null>(null);
   // The shared rail's state: brightness/contrast and the flag/like
   // writes (the F key below shares the same mutation).
-  const { brightness, setBrightness, contrast, setContrast, imageFilter } =
-    useImageAdjust();
+  const { imageFilter } = useImageAdjust();
   const triage = useFileTriage();
   const [selectedDetectionId, setSelectedDetectionId] = useState<string | null>(
     null,
@@ -633,10 +632,6 @@ export function FileDetailModal({
       // verdict actions stay in the right column, in words.
       toolbar={
         <ViewerToolRail
-          brightness={brightness}
-          onBrightnessChange={setBrightness}
-          contrast={contrast}
-          onContrastChange={setContrast}
           boxesHidden={boxesHidden}
           onToggleBoxes={() => setBoxesHidden((v) => !v)}
           file={file}

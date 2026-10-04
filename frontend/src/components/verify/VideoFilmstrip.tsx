@@ -12,6 +12,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { filesApi } from "../../api/files";
+import { useImageFilter } from "./viewer-tools";
 
 /** Seconds -> "m:ss", or null when the video has no known frame rate. */
 function formatClock(seconds: number | null): string | null {
@@ -26,6 +27,7 @@ interface VideoFilmstripProps {
 }
 
 export function VideoFilmstrip({ fileId }: VideoFilmstripProps) {
+  const imageFilter = useImageFilter();
   const { data, isLoading } = useQuery({
     queryKey: ["filmstrip", fileId],
     queryFn: () => filesApi.getFilmstrip(fileId),
@@ -67,6 +69,7 @@ export function VideoFilmstrip({ fileId }: VideoFilmstripProps) {
               src={frame.image}
               alt=""
               className="h-full w-full object-cover"
+              style={imageFilter ? { filter: imageFilter } : undefined}
             />
             {clock && (
               <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[10px] leading-tight text-white/90">

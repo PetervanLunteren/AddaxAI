@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { VERIFY_TOOLBAR_ICON_CLASS } from "./VerifyToolbar";
 import type { TileSize } from "./CropGrid";
 import { TileSizeToggle } from "./TileSizeToggle";
+import { ImageAdjustRows } from "./ViewControls";
 
 interface LabelsSettingsProps {
   tileSize: TileSize;
@@ -39,6 +40,11 @@ export function LabelsSettings({
         <div className="space-y-1.5">
           <p className="text-sm">Tile size</p>
           <TileSizeToggle value={tileSize} onChange={onTileSizeChange} />
+        </div>
+        {/* Shared brightness/contrast (viewer-tools store), for dark
+            night images. The modals' tool rail shows the same values. */}
+        <div className="border-t mt-3 pt-3 space-y-3">
+          <ImageAdjustRows />
         </div>
       </PopoverContent>
     </Popover>

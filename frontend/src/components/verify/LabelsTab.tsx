@@ -1135,6 +1135,15 @@ export function LabelsTab({
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      // Keys inside a popover (the toolbar's sliders and toggles)
+      // belong to the popover: without this, keys on a focused slider
+      // also fired grid shortcuts.
+      if (
+        e.target instanceof HTMLElement &&
+        e.target.closest("[data-radix-popper-content-wrapper]")
+      ) {
+        return;
+      }
 
       // Undo: Cmd+Z on macOS, Ctrl+Z on Windows/Linux (the standard
       // everywhere). Shift is excluded to leave room for a future redo.

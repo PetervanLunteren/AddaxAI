@@ -659,6 +659,15 @@ export function FilesTab({
       ) {
         return;
       }
+      // Keys inside a popover (the toolbar's sliders and toggles)
+      // belong to the popover: without this, Escape on a focused
+      // slider also cleared the selection.
+      if (
+        e.target instanceof HTMLElement &&
+        e.target.closest("[data-radix-popper-content-wrapper]")
+      ) {
+        return;
+      }
       if (e.key === "Escape" && selected.size > 0) {
         e.preventDefault();
         clearSelection();

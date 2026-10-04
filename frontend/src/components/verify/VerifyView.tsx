@@ -26,6 +26,7 @@ import {
   Loader2,
   Maximize2,
   Minimize2,
+  SlidersHorizontal,
   Video as VideoIcon,
 } from "lucide-react";
 import { eventsApi } from "../../api/events";
@@ -58,9 +59,12 @@ import { SortSelector } from "./SortSelector";
 import {
   VerifyGuideLink,
   VerifyProgressPill,
+  VERIFY_TOOLBAR_ICON_CLASS,
   VerifyToolbar,
   VerifyToolbarIcon,
 } from "./VerifyToolbar";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { ImageAdjustRows } from "./ViewControls";
 import { StatusBadgeCluster } from "./StatusBadgeCluster";
 import { columnsForWidth, useWideModeControls } from "./wide-mode";
 import { cn } from "../../lib/utils";
@@ -332,6 +336,23 @@ export function VerifyView({ projectId }: VerifyViewProps) {
               onClick={toggleWide}
               active={wide}
             />
+            {/* Shared brightness/contrast (viewer-tools store); the
+                collage tiles and the event modal follow the same value. */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  title="Image (brightness, contrast)"
+                  aria-label="Image (brightness, contrast)"
+                  className={VERIFY_TOOLBAR_ICON_CLASS}
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-56 p-3 space-y-3">
+                <ImageAdjustRows />
+              </PopoverContent>
+            </Popover>
             <VerifyGuideLink step="counts" />
             <div className="ml-2">
               <VerifyProgressPill

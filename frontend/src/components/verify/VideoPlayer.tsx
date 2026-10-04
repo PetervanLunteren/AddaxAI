@@ -28,6 +28,7 @@ import {
   PILL_BG,
 } from "../../lib/detection-overlay";
 import { SpotlightDim } from "./SpotlightDim";
+import { useImageFilter } from "./viewer-tools";
 import type { FileWithDetections, DetectionResponse } from "../../api/types";
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
 interface VideoPlayerProps {
@@ -188,6 +189,9 @@ export function VideoPlayer({
   // Repaint when the project's colour map lands or changes.
   useSpeciesColorsVersion();
   const videoRef = useRef<HTMLVideoElement>(null);
+  // Shared brightness/contrast; on the video element only, so the SVG
+  // box overlay stays crisp. The export records the file as is.
+  const imageFilter = useImageFilter();
   const containerRef = useRef<HTMLDivElement>(null);
   const [currentFrame, setCurrentFrame] = useState<number>(0);
   const [displayWidth, setDisplayWidth] = useState(0);
@@ -488,6 +492,7 @@ export function VideoPlayer({
           controls
           controlsList="nodownload"
           className="w-full h-full object-contain"
+          style={imageFilter ? { filter: imageFilter } : undefined}
           onPlay={handlePlay}
           onPause={handlePause}
           onSeeked={handleSeeked}
