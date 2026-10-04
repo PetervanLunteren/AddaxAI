@@ -1,13 +1,14 @@
 /**
  * Labels view-options popover.
  *
- * Renders its own toolbar icon trigger (LayoutGrid) so it sits inline
+ * Renders its own toolbar icon trigger (SlidersHorizontal, the one icon
+ * for view controls everywhere) so it sits inline
  * with the other utility icons in the verify toolbar. Hosts the
  * tile-size segmented control. The value is persisted to localStorage by
  * the parent (see LabelsTab's persistSetting helper).
  */
 
-import { LayoutGrid } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { VERIFY_TOOLBAR_ICON_CLASS } from "./VerifyToolbar";
@@ -33,7 +34,7 @@ export function LabelsSettings({
           aria-label="View options"
           className={VERIFY_TOOLBAR_ICON_CLASS}
         >
-          <LayoutGrid className="h-4 w-4" />
+          <SlidersHorizontal className="h-4 w-4" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72">
