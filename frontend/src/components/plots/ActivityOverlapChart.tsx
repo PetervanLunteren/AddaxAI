@@ -21,6 +21,8 @@
 
 import { useMemo } from "react";
 import { Line } from "react-chartjs-2";
+
+import { useChartColors, useTheme } from "../../lib/theme";
 import {
   CategoryScale,
   Chart as ChartJS,
@@ -51,10 +53,14 @@ ChartJS.register(
 );
 
 // Species colors pinned to slots A and B so the picker swatches, the
-// chart curves, and the legend badges always agree. Picked to match
-// the AddaxAI palette (teal + accent orange).
-export const SPECIES_A_COLOR = "#0f6064";
-export const SPECIES_B_COLOR = "#ff8945";
+// chart curves, and the legend badges always agree. Slot A is the
+// theme's teal ink (lighter in dark); slot B is the accent orange,
+// which reads on both themes. One hook so every consumer stays in
+// sync with the theme.
+export function useSpeciesSlotColors(): { a: string; b: string } {
+  const colors = useChartColors();
+  return { a: colors.primaryInk, b: "#ff8945" };
+}
 const OVERLAP_FILL = "rgba(120, 120, 120, 0.28)";
 const RUG_HEIGHT_PX = 6;
 
@@ -67,7 +73,11 @@ const RUG_HEIGHT_PX = 6;
 const twilightBandsPlugin: Plugin<"line"> = {
   id: "twilightBands",
   beforeDatasetsDraw(chart, _args, options) {
-    const opts = options as { sunBands?: SunBands | null; visible?: boolean };
+    const opts = options as {
+      sunBands?: SunBands | null;
+      visible?: boolean;
+      nightFill?: string;
+    };
     if (!opts.visible || !opts.sunBands) return;
     const { dawn, sunrise, sunset, dusk } = opts.sunBands;
     const { ctx, chartArea, scales } = chart;
@@ -81,7 +91,7 @@ const twilightBandsPlugin: Plugin<"line"> = {
     ctx.save();
 
     // Night bands: 0..dawn and dusk..24
-    ctx.fillStyle = "rgba(30, 41, 59, 0.06)";
+    ctx.fillStyle = opts.nightFill ?? "rgba(30, 41, 59, 0.06)";
     ctx.fillRect(chartArea.left, top, xAt(dawn) - chartArea.left, bottom - top);
     ctx.fillRect(xAt(dusk), top, chartArea.right - xAt(dusk), bottom - top);
 
@@ -130,16 +140,15 @@ const rugTicksPlugin: Plugin<"line"> = {
       ctx.restore();
     };
 
-    drawRug(
-      opts.speciesA,
-      chartArea.bottom - 2 * RUG_HEIGHT_PX - 2,
-      opts.colorA ?? SPECIES_A_COLOR,
-    );
-    drawRug(
-      opts.speciesB,
-      chartArea.bottom - RUG_HEIGHT_PX,
-      opts.colorB ?? SPECIES_B_COLOR,
-    );
+    // Colours always come through the options block (injected per
+    // render from the theme); no module-level fallback, so a theme
+    // flip can never leave a stale closure colour behind.
+    if (opts.colorA) {
+      drawRug(opts.speciesA, chartArea.bottom - 2 * RUG_HEIGHT_PX - 2, opts.colorA);
+    }
+    if (opts.colorB) {
+      drawRug(opts.speciesB, chartArea.bottom - RUG_HEIGHT_PX, opts.colorB);
+    }
   },
 };
 
@@ -196,6 +205,10 @@ export function ActivityOverlapChart({
     return a.map((v, i) => Math.min(v, b[i] ?? 0));
   }, [data]);
 
+  const colors = useChartColors();
+  const slotColors = useSpeciesSlotColors();
+  const { resolvedTheme } = useTheme();
+
   const chartData: ChartData<"line"> = useMemo(() => {
     const datasets: ChartData<"line">["datasets"] = [];
 
@@ -216,7 +229,7 @@ export function ActivityOverlapChart({
     datasets.push({
       label: speciesAName ?? data.species_a.label,
       data: data.species_a.kde_density,
-      borderColor: SPECIES_A_COLOR,
+      borderColor: slotColors.a,
       backgroundColor: "transparent",
       borderWidth: 2,
       pointRadius: 0,
@@ -229,7 +242,7 @@ export function ActivityOverlapChart({
       datasets.push({
         label: speciesBName ?? data.species_b.label,
         data: data.species_b.kde_density,
-        borderColor: SPECIES_B_COLOR,
+        borderColor: slotColors.b,
         backgroundColor: "transparent",
         borderWidth: 2,
         pointRadius: 0,
@@ -243,7 +256,7 @@ export function ActivityOverlapChart({
       labels: gridX,
       datasets,
     };
-  }, [data, overlapMin, gridX]);
+  }, [data, overlapMin, gridX, speciesAName, speciesBName, slotColors]);
 
   const options: ChartOptions<"line"> = useMemo(() => {
     const isSun = timeAxis === "sun";
@@ -296,6 +309,7 @@ export function ActivityOverlapChart({
           min: xMin,
           max: xMax,
           ticks: {
+            color: colors.axis,
             ...(isSun
               ? {
                   autoSkip: false,
@@ -306,6 +320,7 @@ export function ActivityOverlapChart({
                   callback: (v) => fmtTick(Number(v)),
                 }),
           },
+          grid: { color: colors.grid },
           afterBuildTicks: isSun && rawBands
             ? (scale) => {
                 // dawn and dusk ticks dropped: they sit so close to
@@ -321,14 +336,16 @@ export function ActivityOverlapChart({
                 ];
               }
             : undefined,
-          title: { display: !!xTitle, text: xTitle },
+          title: { display: !!xTitle, text: xTitle, color: colors.axis },
         },
         y: {
           beginAtZero: true,
-          title: { display: true, text: "Activity density" },
+          title: { display: true, text: "Activity density", color: colors.axis },
           ticks: {
             callback: (value) => Number(value).toFixed(2),
+            color: colors.axis,
           },
+          grid: { color: colors.grid },
         },
       },
       plugins: {
@@ -337,6 +354,7 @@ export function ActivityOverlapChart({
           position: "top",
           labels: {
             filter: (item) => item.text !== "Overlap",
+            color: colors.axis,
           },
         },
         tooltip: {
@@ -363,16 +381,20 @@ export function ActivityOverlapChart({
         twilightBands: {
           sunBands: bandsForMode,
           visible: bandsForMode !== null,
+          // On dark the night region darkens instead of greying out.
+          nightFill: resolvedTheme === "dark"
+            ? "rgba(0, 0, 0, 0.30)"
+            : "rgba(30, 41, 59, 0.06)",
         },
         rugTicks: {
           speciesA: data.species_a.raw_detection_times.map((t) => t - sunShift),
           speciesB: data.species_b?.raw_detection_times.map((t) => t - sunShift),
-          colorA: SPECIES_A_COLOR,
-          colorB: SPECIES_B_COLOR,
+          colorA: slotColors.a,
+          colorB: slotColors.b,
         },
       },
     };
-  }, [data, timeAxis, sunShift]);
+  }, [data, timeAxis, sunShift, colors, slotColors, resolvedTheme]);
 
   return (
     <div className="h-full w-full">

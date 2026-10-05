@@ -51,12 +51,12 @@ import { projectsApi } from "../../api/projects";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { buildSiteOptions } from "../../lib/site-filter-options";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
+import { useChartColors } from "../../lib/theme";
 
 // One colour for every bar, matching AddaxAI Connect's species chart:
 // the species name is already on the axis, so per-bar colours read as
-// meaning something when they don't.
-const BAR_FILL = "rgba(15, 96, 100, 0.18)";
-const BAR_BORDER = "#0f6064";
+// meaning something when they don't. The colour itself comes from the
+// theme (useChartColors) inside the component.
 import { RANK_OPTIONS } from "../../lib/taxonomic-rank";
 import {
   type DateRange,
@@ -217,13 +217,13 @@ export function DashboardView({ projectId }: { projectId: string }) {
     ...(isFolderRun
       ? []
       : [
-          { title: "Sites", value: overview?.total_sites ?? 0, icon: MapPin, color: "#0f6064" },
-          { title: "Deployments", value: overview?.total_deployments ?? 0, icon: FolderOpen, color: "#0f6064" },
+          { title: "Sites", value: overview?.total_sites ?? 0, icon: MapPin, color: "var(--primary-ink)" },
+          { title: "Deployments", value: overview?.total_deployments ?? 0, icon: FolderOpen, color: "var(--primary-ink)" },
         ]),
-    { title: "Trap nights", value: overview?.trap_nights ?? 0, icon: CalendarDays, color: "#0f6064" },
-    { title: "Events", value: overview?.total_events ?? 0, icon: Layers, color: "#0f6064" },
-    { title: "Files", value: overview?.total_files ?? 0, icon: FileImage, color: "#0f6064" },
-    { title: "Observations", value: overview?.total_observations ?? 0, icon: Eye, color: "#0f6064" },
+    { title: "Trap nights", value: overview?.trap_nights ?? 0, icon: CalendarDays, color: "var(--primary-ink)" },
+    { title: "Events", value: overview?.total_events ?? 0, icon: Layers, color: "var(--primary-ink)" },
+    { title: "Files", value: overview?.total_files ?? 0, icon: FileImage, color: "var(--primary-ink)" },
+    { title: "Observations", value: overview?.total_observations ?? 0, icon: Eye, color: "var(--primary-ink)" },
   ];
 
   const speciesAxisLabel =
@@ -233,6 +233,7 @@ export function DashboardView({ projectId }: { projectId: string }) {
 
   // Wildlife-only list (person/vehicle and non-wildlife labels are
   // filtered server-side); the bars show only the top 10.
+  const colors = useChartColors();
   const topSpecies = (species ?? []).slice(0, 10);
   const speciesData = {
     labels: topSpecies.map((s) =>
@@ -245,8 +246,8 @@ export function DashboardView({ projectId }: { projectId: string }) {
       {
         label: speciesAxisLabel,
         data: topSpecies.map((s) => norm(s.count)),
-        backgroundColor: BAR_FILL,
-        borderColor: BAR_BORDER,
+        backgroundColor: colors.withAlpha(colors.primaryInk, 0.18),
+        borderColor: colors.primaryInk,
         borderWidth: 1.25,
         borderRadius: 4,
         barPercentage: 0.75,
@@ -288,7 +289,13 @@ export function DashboardView({ projectId }: { projectId: string }) {
     scales: {
       x: {
         beginAtZero: true,
-        title: { display: true, text: speciesAxisLabel },
+        title: { display: true, text: speciesAxisLabel, color: colors.axis },
+        ticks: { color: colors.axis },
+        grid: { color: colors.grid },
+      },
+      y: {
+        ticks: { color: colors.axis },
+        grid: { display: false },
       },
     },
   };
@@ -388,7 +395,7 @@ export function DashboardView({ projectId }: { projectId: string }) {
                 </div>
                 <div
                   className="p-3 rounded-lg"
-                  style={{ backgroundColor: `${card.color}20` }}
+                  style={{ backgroundColor: `color-mix(in srgb, ${card.color} 12%, transparent)` }}
                 >
                   <card.icon
                     className="h-6 w-6"

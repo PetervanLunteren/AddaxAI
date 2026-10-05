@@ -20,6 +20,7 @@ import {
   type ChartOptions,
 } from "chart.js";
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
+import { useChartColors } from "../../lib/theme";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { DashboardAboutPopover } from "./DashboardAboutPopover";
 import { MissingDatesIcon } from "./MissingDatesWarning";
@@ -257,21 +258,22 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
     [normalizedValues, smoothingWindow],
   );
 
-  // One series at a time, so the color carries no information: always teal.
-  // Species colors from species-colors.ts are for charts where several
-  // species appear together; the light end of that gradient is barely
-  // visible as a single line on the white card.
-  const lineColor = "#0f6064";
+  // One series at a time, so the color carries no information: always
+  // teal ink from the theme (lighter in dark, where raw brand teal
+  // disappears into the card). Species colors from species-colors.ts
+  // are for charts where several species appear together.
+  const colors = useChartColors();
+  const lineColor = colors.primaryInk;
 
   // Build gradient fill for the line
   const createGradient = useCallback(
     (ctx: CanvasRenderingContext2D, chartArea: { top: number; bottom: number }) => {
       const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-      gradient.addColorStop(0, "rgba(15, 96, 100, 0.4)");
-      gradient.addColorStop(1, "rgba(15, 96, 100, 0.02)");
+      gradient.addColorStop(0, colors.withAlpha(lineColor, 0.4));
+      gradient.addColorStop(1, colors.withAlpha(lineColor, 0.02));
       return gradient;
     },
-    [],
+    [colors, lineColor],
   );
 
   const chartData = useMemo(
@@ -284,7 +286,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
           borderColor: lineColor,
           backgroundColor: (context: { chart: ChartJS }) => {
             const { chart } = context;
-            if (!chart.chartArea) return "rgba(15, 96, 100, 0.2)";
+            if (!chart.chartArea) return colors.withAlpha(lineColor, 0.2);
             return createGradient(chart.ctx, chart.chartArea);
           },
           fill: true,
@@ -310,6 +312,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
       normalizedValues,
       movingAverage,
       smoothingLabel,
+      colors,
       lineColor,
       createGradient,
     ],
@@ -324,7 +327,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
         display: true,
         position: "top",
         align: "end",
-        labels: { boxWidth: 24, usePointStyle: false },
+        labels: { boxWidth: 24, usePointStyle: false, color: colors.axis },
       },
       tooltip: {
         // Drop the moving-average's warm-up null points from the tooltip.
@@ -343,15 +346,18 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
         ticks: {
           maxTicksLimit: 12,
           maxRotation: 45,
+          color: colors.axis,
         },
         grid: { display: false },
       },
       y: {
         beginAtZero: true,
-        title: { display: true, text: "Per 100 trap nights" },
+        title: { display: true, text: "Per 100 trap nights", color: colors.axis },
         ticks: {
           callback: (value) => Number(value).toLocaleString(),
+          color: colors.axis,
         },
+        grid: { color: colors.grid },
       },
     },
   };
