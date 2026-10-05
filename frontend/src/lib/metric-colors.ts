@@ -57,7 +57,7 @@ function textOn(bg: [number, number, number]): string {
 export function matrixCellColor(valuePerRow: number): SwatchStyle {
   const t = clamp01(valuePerRow);
   if (t === 0) {
-    return { background: "transparent", color: "var(--color-muted-foreground)" };
+    return { background: "transparent", color: "hsl(var(--muted-foreground))" };
   }
   const rgbTuple = lerp(TEAL_LOW, TEAL_HIGH, t);
   return { background: rgb(rgbTuple), color: textOn(rgbTuple) };
@@ -70,7 +70,7 @@ export function matrixCellColor(valuePerRow: number): SwatchStyle {
  */
 export function f1DivergingColor(value: number | null): SwatchStyle {
   if (value === null) {
-    return { background: "transparent", color: "var(--color-muted-foreground)" };
+    return { background: "transparent", color: "hsl(var(--muted-foreground))" };
   }
   const v = clamp01(value);
   const rgbTuple = v < 0.5
