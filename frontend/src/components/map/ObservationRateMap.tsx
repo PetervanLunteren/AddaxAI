@@ -16,6 +16,8 @@ import L, { latLngBounds } from "leaflet";
 import { Info } from "lucide-react";
 import { MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 
+import { useTheme } from "../../lib/theme";
+
 import { statisticsApi } from "../../api/statistics";
 import type {
   ObservationRateMapFeature,
@@ -90,7 +92,7 @@ function FitBounds({ points }: { points: [number, number][] }) {
   return null;
 }
 
-function getTileLayer(base: BaseLayer) {
+function getTileLayer(base: BaseLayer, dark: boolean) {
   switch (base) {
     case "satellite":
       return {
@@ -107,7 +109,9 @@ function getTileLayer(base: BaseLayer) {
     case "positron":
     default:
       return {
-        url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+        url: dark
+          ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
         attribution:
           '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
       };
@@ -120,6 +124,7 @@ export function ObservationRateMap({
   viewMode,
   baseLayer,
 }: ObservationRateMapProps) {
+  const { resolvedTheme } = useTheme();
   const [zoomLevel, setZoomLevel] = useState(12);
   const [mapBounds, setMapBounds] = useState<L.LatLngBounds | null>(null);
 
@@ -196,7 +201,7 @@ export function ObservationRateMap({
     );
   }
 
-  const tile = getTileLayer(baseLayer);
+  const tile = getTileLayer(baseLayer, resolvedTheme === "dark");
 
   return (
     <div className="flex h-[600px] flex-col overflow-hidden rounded-lg border bg-card">
@@ -207,7 +212,7 @@ export function ObservationRateMap({
         className="min-h-0 flex-1"
       >
         <TileLayer
-          key={baseLayer}
+          key={tile.url}
           attribution={tile.attribution}
           url={tile.url}
         />

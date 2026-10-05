@@ -8,23 +8,30 @@
 
 import { CircleMarker, MapContainer, TileLayer } from "react-leaflet";
 
+import { useTheme } from "../../lib/theme";
+
 interface SiteLocationMapProps {
   latitude: number;
   longitude: number;
   zoom?: number;
 }
 
-const POSITRON = {
-  url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-  attribution:
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-};
+const CARTO_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+
+function positronUrl(dark: boolean): string {
+  return dark
+    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+    : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+}
 
 export function SiteLocationMap({
   latitude,
   longitude,
   zoom = 12,
 }: SiteLocationMapProps) {
+  const { resolvedTheme } = useTheme();
+  const url = positronUrl(resolvedTheme === "dark");
   return (
     <div className="h-[180px] w-full overflow-hidden rounded-md border">
       <MapContainer
@@ -35,7 +42,7 @@ export function SiteLocationMap({
         doubleClickZoom={false}
         zoomControl={false}
       >
-        <TileLayer url={POSITRON.url} attribution={POSITRON.attribution} />
+        <TileLayer key={url} url={url} attribution={CARTO_ATTRIBUTION} />
         <CircleMarker
           center={[latitude, longitude]}
           radius={7}

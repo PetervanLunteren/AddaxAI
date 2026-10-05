@@ -11,6 +11,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Map, Marker, NavigationControl } from "react-map-gl/maplibre";
+
+import { useTheme } from "../../lib/theme";
 import type { StyleSpecification } from "maplibre-gl";
 import { MapPin, MapIcon, Satellite } from "lucide-react";
 import { sitesApi } from "@/api/sites";
@@ -28,6 +30,7 @@ const MAP_STYLES = {
   streets: {
     name: "Streets",
     icon: MapIcon,
+    // Resolved per theme in streetsStyleUrl below.
     url: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
   },
   satellite: {
@@ -59,6 +62,12 @@ const MAP_STYLES = {
 
 type MapStyleKey = keyof typeof MAP_STYLES;
 
+function streetsStyleUrl(dark: boolean): string {
+  return dark
+    ? "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+    : "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+}
+
 interface SiteMapProps {
   projectId: string;
   selectedLocation: { lat: number; lon: number } | null;
@@ -77,6 +86,7 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
 
   // Map style state
   const [mapStyle, setMapStyle] = useState<MapStyleKey>("satellite");
+  const { resolvedTheme } = useTheme();
 
   // Map viewport state
   const [viewState, setViewState] = useState({
@@ -182,7 +192,11 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
         }}
         onLoad={handleMapLoad}
         onClick={handleMapClick}
-        mapStyle={MAP_STYLES[mapStyle].url as string | StyleSpecification}
+        mapStyle={
+          (mapStyle === "streets"
+            ? streetsStyleUrl(resolvedTheme === "dark")
+            : MAP_STYLES[mapStyle].url) as string | StyleSpecification
+        }
         onError={onMapError}
         style={{ width: "100%", height: "100%" }}
       >
