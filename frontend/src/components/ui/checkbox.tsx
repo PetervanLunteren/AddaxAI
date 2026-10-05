@@ -16,10 +16,11 @@ export function Checkbox({ checked, onCheckedChange, indeterminate, className }:
     }
   }, [indeterminate]);
 
-  // Teal colors: #0f6064 (primary - full), #8bb3b4 (lighter - half/indeterminate)
+  // Teal accent from the tokens: full = primary ink, half/indeterminate
+  // = the lighter middle teal. Both adapt to dark via index.css.
   const checkboxStyle = indeterminate
-    ? { accentColor: '#8bb3b4' }
-    : { accentColor: '#0f6064' };
+    ? { accentColor: 'var(--middle)' }
+    : { accentColor: 'var(--primary-ink)' };
 
   return (
     <input
@@ -28,7 +29,7 @@ export function Checkbox({ checked, onCheckedChange, indeterminate, className }:
       checked={checked}
       onChange={(e) => onCheckedChange(e.target.checked)}
       style={checkboxStyle}
-      className={`h-4 w-4 shrink-0 rounded border-gray-300 focus:ring-2 focus:ring-[#0f6064] focus:ring-offset-2 ${className || ""}`}
+      className={`h-4 w-4 shrink-0 rounded border-input focus:ring-2 focus:ring-ring focus:ring-offset-2 ${className || ""}`}
     />
   );
 }

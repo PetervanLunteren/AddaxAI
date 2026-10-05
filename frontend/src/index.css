@@ -105,6 +105,9 @@ html, body {
      photo-tool convention, so night images are judged against a neutral
      surround. Brand fills (primary, destructive) stay identical to light. */
   .dark {
+    /* Native form controls, scrollbars and dialogs follow the theme. */
+    color-scheme: dark;
+
     --background: 0 0% 8.2%;          /* #151515 */
     --foreground: 0 0% 92.2%;         /* #ebebeb */
     --card: 0 0% 11.4%;               /* #1d1d1d */
