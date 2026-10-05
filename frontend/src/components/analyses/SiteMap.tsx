@@ -174,7 +174,7 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
   );
 
   return (
-    <div className="relative h-[400px] w-full rounded-lg overflow-hidden border border-gray-200">
+    <div className="relative h-[400px] w-full rounded-lg overflow-hidden border border-border">
       <Map
         {...viewState}
         onMove={(evt) => {
@@ -257,13 +257,13 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
       </Map>
 
       {/* Help text */}
-      <div className="absolute bottom-2 left-2 bg-white px-3 py-1.5 rounded shadow-md text-xs text-gray-600 max-w-[200px]">
+      <div className="absolute bottom-2 left-2 bg-card px-3 py-1.5 rounded shadow-md text-xs text-muted-foreground max-w-[200px]">
         Click anywhere on the map to place your site marker
       </div>
 
       {/* Coordinates display */}
       {selectedLocation && (
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white px-3 py-1.5 rounded shadow-md text-xs font-mono">
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-card px-3 py-1.5 rounded shadow-md text-xs font-mono">
           {selectedLocation.lat.toFixed(6)}, {selectedLocation.lon.toFixed(6)}
         </div>
       )}

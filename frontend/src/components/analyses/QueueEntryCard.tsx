@@ -29,7 +29,7 @@ export function QueueEntryCard({ entry, onRemove }: QueueEntryCardProps) {
   const folderName = basename(entry.folder_path) || entry.folder_path;
 
   const statusStyles: Record<string, string> = {
-    pending: "bg-white border-gray-200",
+    pending: "bg-card border-border",
     processing: "bg-blue-50 border-blue-300 shadow-md",
     completed: "bg-green-50 border-green-300",
     failed: "bg-red-50 border-red-300",
@@ -46,10 +46,10 @@ export function QueueEntryCard({ entry, onRemove }: QueueEntryCardProps) {
       {/* Header */}
       <div className="p-3">
         <div className="flex items-start gap-2">
-          <FolderOpen className="w-4 h-4 text-gray-500 mt-0.5 shrink-0" />
+          <FolderOpen className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="font-medium text-sm text-gray-900 truncate">{folderName}</p>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="font-medium text-sm text-foreground truncate">{folderName}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
               {new Date(entry.created_at_utc).toLocaleDateString()}
             </p>
           </div>
@@ -82,34 +82,34 @@ export function QueueEntryCard({ entry, onRemove }: QueueEntryCardProps) {
 
       {/* Expanded Details */}
       {isExpanded && (
-        <div className="px-3 pb-3 pt-1 border-t border-gray-200 bg-white/50 space-y-2 text-xs">
+        <div className="px-3 pb-3 pt-1 border-t border-border bg-card/50 space-y-2 text-xs">
           <div className="flex items-start gap-2">
-            <MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
+            <MapPin className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
             <div>
-              <span className="font-medium text-gray-700">Site:</span>{" "}
-              <span className="text-gray-600">{entry.site_id || "Not specified"}</span>
+              <span className="font-medium text-muted-foreground">Site:</span>{" "}
+              <span className="text-muted-foreground">{entry.site_id || "Not specified"}</span>
             </div>
           </div>
           <div className="flex items-start gap-2">
-            <Brain className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
+            <Brain className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
             <div>
-              <span className="font-medium text-gray-700">Detection:</span>{" "}
-              <span className="text-gray-600">
+              <span className="font-medium text-muted-foreground">Detection:</span>{" "}
+              <span className="text-muted-foreground">
                 {entry.detection_model_id || "None"}
               </span>
             </div>
           </div>
           <div className="flex items-start gap-2">
-            <Brain className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
+            <Brain className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
             <div>
-              <span className="font-medium text-gray-700">Classification:</span>{" "}
-              <span className="text-gray-600">
+              <span className="font-medium text-muted-foreground">Classification:</span>{" "}
+              <span className="text-muted-foreground">
                 {entry.classification_model_id || "None"}
               </span>
             </div>
           </div>
-          <div className="pt-1 border-t border-gray-100">
-            <p className="text-gray-500 break-all font-mono">{entry.folder_path}</p>
+          <div className="pt-1 border-t border-border">
+            <p className="text-muted-foreground break-all font-mono">{entry.folder_path}</p>
           </div>
         </div>
       )}

@@ -43,8 +43,8 @@ export function QueueSection({
   if (isLoading) {
     return (
       <div className="text-center py-12">
-        <Loader2 className="w-8 h-8 text-gray-400 animate-spin mx-auto mb-3" />
-        <p className="text-gray-500">Loading queue...</p>
+        <Loader2 className="w-8 h-8 text-muted-foreground animate-spin mx-auto mb-3" />
+        <p className="text-muted-foreground">Loading queue...</p>
       </div>
     );
   }
@@ -66,8 +66,8 @@ export function QueueSection({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-xl font-bold text-gray-900">Analysis queue</h3>
-          <p className="text-sm text-gray-600 mt-1">
+          <h3 className="text-xl font-bold text-foreground">Analysis queue</h3>
+          <p className="text-sm text-muted-foreground mt-1">
             {pendingEntries.length} pending • {processingEntries.length} processing • {completedEntries.length} completed
           </p>
         </div>
@@ -97,9 +97,9 @@ export function QueueSection({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Pending Column */}
         <div className="space-y-3">
-          <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-t-lg">
-            <Clock className="w-4 h-4 text-gray-600" />
-            <h4 className="font-semibold text-gray-900">
+          <div className="flex items-center gap-2 px-4 py-2 bg-muted rounded-t-lg">
+            <Clock className="w-4 h-4 text-muted-foreground" />
+            <h4 className="font-semibold text-foreground">
               Pending ({pendingEntries.length})
             </h4>
           </div>
@@ -108,7 +108,7 @@ export function QueueSection({
               <QueueEntryCard key={entry.id} entry={entry} onRemove={onRemove} />
             ))}
             {pendingEntries.length === 0 && (
-              <div className="p-6 text-center text-sm text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
+              <div className="p-6 text-center text-sm text-muted-foreground border-2 border-dashed border-border rounded-lg">
                 No pending deployments
               </div>
             )}
@@ -128,7 +128,7 @@ export function QueueSection({
               <QueueEntryCard key={entry.id} entry={entry} onRemove={onRemove} />
             ))}
             {processingEntries.length === 0 && (
-              <div className="p-6 text-center text-sm text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
+              <div className="p-6 text-center text-sm text-muted-foreground border-2 border-dashed border-border rounded-lg">
                 No active processing
               </div>
             )}
@@ -151,7 +151,7 @@ export function QueueSection({
               <QueueEntryCard key={entry.id} entry={entry} onRemove={onRemove} />
             ))}
             {completedEntries.length === 0 && failedEntries.length === 0 && (
-              <div className="p-6 text-center text-sm text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
+              <div className="p-6 text-center text-sm text-muted-foreground border-2 border-dashed border-border rounded-lg">
                 No completed analyses
               </div>
             )}

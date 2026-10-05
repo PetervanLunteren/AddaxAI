@@ -47,10 +47,10 @@ export function ProjectModelsInfo({ projectId }: ProjectModelsInfoProps) {
 
   if (projectLoading || !project) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+      <div className="rounded-lg border border-border bg-muted p-4">
         <div className="animate-pulse space-y-2">
-          <div className="h-4 bg-gray-200 rounded w-1/3"></div>
-          <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+          <div className="h-4 bg-border rounded w-1/3"></div>
+          <div className="h-3 bg-border rounded w-1/2"></div>
         </div>
       </div>
     );
@@ -86,10 +86,10 @@ export function ProjectModelsInfo({ projectId }: ProjectModelsInfoProps) {
         </label>
 
         {/* Settings summary */}
-        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+        <div className="rounded-lg border border-border bg-muted p-4 space-y-3">
           {/* Detection model */}
           <div>
-            <p className="text-xs text-gray-600 mb-1">Detection model</p>
+            <p className="text-xs text-muted-foreground mb-1">Detection model</p>
             <div className="flex items-center gap-2">
               {detectionModel && <span className="text-lg">{detectionModel.emoji}</span>}
               <span className="text-sm font-medium">
@@ -100,7 +100,7 @@ export function ProjectModelsInfo({ projectId }: ProjectModelsInfoProps) {
 
           {/* Classification model */}
           <div>
-            <p className="text-xs text-gray-600 mb-1">Classification model</p>
+            <p className="text-xs text-muted-foreground mb-1">Classification model</p>
             <div className="flex items-center gap-2">
               {classificationModel && <span className="text-lg">{classificationModel.emoji}</span>}
               <span className="text-sm font-medium">
@@ -112,7 +112,7 @@ export function ProjectModelsInfo({ projectId }: ProjectModelsInfoProps) {
           {/* Label selection */}
           {project.classification_model_id && (
             <div>
-              <p className="text-xs text-gray-600 mb-1">Label selection</p>
+              <p className="text-xs text-muted-foreground mb-1">Label selection</p>
               <span className="text-sm">
                 {excludedCount > 0 ? `${excludedCount} labels excluded` : "All labels"}
               </span>

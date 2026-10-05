@@ -192,11 +192,11 @@ function LogTable({ rows }: LogTableProps) {
   };
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white">
-      <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-gray-200">
-        <p className="text-sm font-medium text-gray-900">
+    <div className="rounded-lg border border-border bg-card">
+      <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border">
+        <p className="text-sm font-medium text-foreground">
           {rows.length} issue{rows.length === 1 ? "" : "s"}
-          <span className="text-xs font-normal text-gray-500 ml-2">
+          <span className="text-xs font-normal text-muted-foreground ml-2">
             {warningCount > 0 && (
               <span className="text-amber-700">
                 {warningCount} warning{warningCount === 1 ? "" : "s"}
@@ -222,7 +222,7 @@ function LogTable({ rows }: LogTableProps) {
 
       <div className="max-h-64 overflow-auto">
         <table className="w-full table-fixed text-left text-xs">
-          <thead className="bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500 sticky top-0">
+          <thead className="bg-muted text-[11px] uppercase tracking-wide text-muted-foreground sticky top-0">
             <tr>
               <th className="w-[92px] px-3 py-2 font-medium">Severity</th>
               <th className="w-[150px] px-3 py-2 font-medium">Type</th>
@@ -234,13 +234,13 @@ function LogTable({ rows }: LogTableProps) {
             {rows.map((r, i) => (
               <tr key={i}>
                 <td className="px-3 py-2">{severityBadge(r.severity)}</td>
-                <td className="truncate px-3 py-2 text-gray-900" title={r.typeLabel}>
+                <td className="truncate px-3 py-2 text-foreground" title={r.typeLabel}>
                   {r.typeLabel}
                 </td>
-                <td className="truncate px-3 py-2 text-gray-700" title={r.deployment}>
+                <td className="truncate px-3 py-2 text-muted-foreground" title={r.deployment}>
                   {r.deployment}
                 </td>
-                <td className="px-3 py-2 text-gray-700 font-mono" title={r.detail}>
+                <td className="px-3 py-2 text-muted-foreground font-mono" title={r.detail}>
                   {/* Which end to keep depends on what the row is about.
                       A warning names a file, so truncate from the start
                       and let the filename survive. An error is an

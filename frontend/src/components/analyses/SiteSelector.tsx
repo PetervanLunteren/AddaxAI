@@ -168,10 +168,10 @@ export function SiteSelector({
                 return (
                   <SelectItem key={site.id} value={site.id}>
                     <div className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4 text-gray-400" />
+                      <MapPin className="h-4 w-4 text-muted-foreground" />
                       <span>{site.name}</span>
                       {distanceText && (
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-muted-foreground">
                           ({distanceText})
                         </span>
                       )}
@@ -180,7 +180,7 @@ export function SiteSelector({
                 );
               })
             ) : (
-              <div className="p-2 text-sm text-gray-500 text-center">
+              <div className="p-2 text-sm text-muted-foreground text-center">
                 No sites yet, click + to add one
               </div>
             )}

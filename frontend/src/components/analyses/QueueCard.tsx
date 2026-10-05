@@ -120,7 +120,7 @@ export function QueueCard({ projectId }: QueueCardProps) {
       <Card>
         <CardContent className="pt-6">
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 text-gray-400 animate-spin" />
+            <Loader2 className="h-8 w-8 text-muted-foreground animate-spin" />
           </div>
         </CardContent>
       </Card>
@@ -174,15 +174,15 @@ export function QueueCard({ projectId }: QueueCardProps) {
 
         <CardContent>
           {visibleEntries.length > 0 ? (
-            <div className="space-y-3 max-h-[500px] overflow-y-auto border border-gray-200 rounded-lg p-3">
+            <div className="space-y-3 max-h-[500px] overflow-y-auto border border-border rounded-lg p-3">
               {visibleEntries.map((entry) => (
                 <QueueItem key={entry.id} entry={entry} onDelete={handleDelete} />
               ))}
             </div>
           ) : (
-            <div className="border border-gray-200 rounded-lg p-3">
-              <div className="text-center py-12 text-gray-500">
-                <ListTodo className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+            <div className="border border-border rounded-lg p-3">
+              <div className="text-center py-12 text-muted-foreground">
+                <ListTodo className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
                 <p className="text-sm">No deployments in queue</p>
                 <p className="text-xs mt-1">Add deployments using the form on the left</p>
               </div>

@@ -184,11 +184,11 @@ function PhaseRow({
             measures 126px, so a 128px column clears it by 2px here and
             would truncate on a machine whose fonts render a hair wider.
             The 16px comes off the bar, which has it to spare. */}
-        <p className="w-36 shrink-0 truncate text-xs font-medium text-gray-700">
+        <p className="w-36 shrink-0 truncate text-xs font-medium text-muted-foreground">
           {label}
         </p>
         <Progress value={progress} className="h-1.5 flex-1" />
-        <span className="w-9 shrink-0 text-right text-xs text-gray-500 font-mono">
+        <span className="w-9 shrink-0 text-right text-xs text-muted-foreground font-mono">
           {progress.toFixed(0)}%
         </span>
       </div>
@@ -214,13 +214,13 @@ function PhaseRow({
               Details
             </CollapsibleTrigger>
             {!detailsOpen && summary && (
-              <span className="truncate text-[11px] font-mono text-gray-500">
+              <span className="truncate text-[11px] font-mono text-muted-foreground">
                 {summary}
               </span>
             )}
           </div>
           <CollapsibleContent>
-            <div className="mb-1 text-[11px] space-y-0.5 rounded-md bg-gray-50 p-2.5 font-mono text-gray-600">
+            <div className="mb-1 text-[11px] space-y-0.5 rounded-md bg-muted p-2.5 font-mono text-muted-foreground">
           <div className="flex justify-between">
             <span>Processing {unit}:</span>
             <span>
@@ -263,7 +263,7 @@ function PhaseRow({
       )}
 
       {(isStartingUp || isFinalizing) && (
-        <div className="flex items-center gap-2 pb-1 pl-1 text-[11px] font-mono text-gray-500">
+        <div className="flex items-center gap-2 pb-1 pl-1 text-[11px] font-mono text-muted-foreground">
           <Loader2 className="h-3 w-3 animate-spin" style={{ color: "#156065" }} />
           <span className="truncate">
             {_cleanStatusMessage(message) ??
@@ -384,8 +384,8 @@ export function AnalysisProgress({
       {showDeploymentHeader && (
         <>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-gray-600">Deployment</span>
-            <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800">
+            <span className="text-xs font-medium text-muted-foreground">Deployment</span>
+            <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
               {deploymentContext.deploymentIndex} of{" "}
               {deploymentContext.totalDeployments}
             </span>
