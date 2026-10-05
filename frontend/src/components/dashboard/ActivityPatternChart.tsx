@@ -128,7 +128,7 @@ function ActivityClock({ hours, normalized, sunBands }: ActivityClockProps) {
         cy={cy}
         r={innerR + maxBarLength * 0.5}
         fill="none"
-        stroke="rgba(0, 0, 0, 0.08)"
+        stroke="var(--chart-grid)"
         strokeWidth={0.5}
       />
       <circle
@@ -136,7 +136,7 @@ function ActivityClock({ hours, normalized, sunBands }: ActivityClockProps) {
         cy={cy}
         r={outerR}
         fill="none"
-        stroke="rgba(0, 0, 0, 0.08)"
+        stroke="var(--chart-grid)"
         strokeWidth={0.5}
       />
 

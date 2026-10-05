@@ -42,11 +42,11 @@ import {
   type RateScaleDomain,
 } from "../../lib/heat-color-scale";
 
-const BAR_FILL = "#0f6064";
-const CONCURRENT_FILL = "rgba(15, 96, 100, 0.18)";
-const CONCURRENT_STROKE = "#0f6064";
-const GRID_STROKE = "rgba(0, 0, 0, 0.06)";
-const CONNECTOR_STROKE = "rgba(100, 116, 139, 0.55)";
+const BAR_FILL = "var(--primary-ink)";
+const CONCURRENT_FILL = "color-mix(in srgb, var(--primary-ink) 18%, transparent)";
+const CONCURRENT_STROKE = "var(--primary-ink)";
+const GRID_STROKE = "var(--chart-grid)";
+const CONNECTOR_STROKE = "hsl(var(--muted-foreground) / 0.55)";
 
 type Density = "normal" | "compact";
 type ViewMode = "bars" | "heatmap";
@@ -54,7 +54,7 @@ type ViewMode = "bars" | "heatmap";
 /** Faint band behind the heatmap cells marking the configured deployment
  *  period, so a stretch with no cells reads as "deployed, captured
  *  nothing" rather than "no camera here". */
-const HEATMAP_WINDOW_FILL = "rgba(15, 96, 100, 0.08)";
+const HEATMAP_WINDOW_FILL = "color-mix(in srgb, var(--primary-ink) 8%, transparent)";
 
 /** Cell bin sizes in days, smallest first. */
 const BIN_DAYS = [1, 7, 28];
@@ -327,14 +327,14 @@ function HoverLabel({
         height={HOVER_LABEL_HEIGHT}
         rx={3}
         ry={3}
-        fill="white"
+        fill="hsl(var(--card))"
         stroke={CONNECTOR_STROKE}
       />
       <text
         x={boxX + w / 2}
         y={y + 14}
         fontSize={11}
-        fill="#0f172a"
+        fill="hsl(var(--foreground))"
         textAnchor="middle"
       >
         {text}
@@ -704,7 +704,7 @@ export function DeploymentTimelineChart({
                 x={geometry.dateToX(tick.ms)}
                 y={TOP_PADDING + 14}
                 fontSize={11}
-                fill="#64748b"
+                fill="hsl(var(--muted-foreground))"
                 textAnchor="middle"
               >
                 {tick.label}
@@ -722,7 +722,7 @@ export function DeploymentTimelineChart({
           x={geometry.dateToX(geometry.xMin)}
           y={TOP_PADDING + 14}
           fontSize={11}
-          fill="#64748b"
+          fill="hsl(var(--muted-foreground))"
           textAnchor="start"
           fontWeight={500}
           pointerEvents="none"
@@ -733,7 +733,7 @@ export function DeploymentTimelineChart({
           x={geometry.dateToX(geometry.xMax)}
           y={TOP_PADDING + 14}
           fontSize={11}
-          fill="#64748b"
+          fill="hsl(var(--muted-foreground))"
           textAnchor="end"
           fontWeight={500}
           pointerEvents="none"
@@ -837,7 +837,7 @@ export function DeploymentTimelineChart({
                     x={densityConfig.labelWidth - 12}
                     y={rowCenterY + 4}
                     fontSize={12}
-                    fill="#0f172a"
+                    fill="hsl(var(--foreground))"
                     textAnchor="end"
                     style={{ cursor: "pointer" }}
                     onClick={() => handleSiteClick(site)}
@@ -1095,7 +1095,7 @@ export function DeploymentTimelineChart({
               x={geometry.plotRight + 4}
               y={concurrentY(maxConc) + 4}
               fontSize={11}
-              fill="#64748b"
+              fill="hsl(var(--muted-foreground))"
             >
               {maxConc}
             </text>
@@ -1103,7 +1103,7 @@ export function DeploymentTimelineChart({
               x={geometry.plotRight + 4}
               y={geometry.concurrentBottom + 4}
               fontSize={11}
-              fill="#64748b"
+              fill="hsl(var(--muted-foreground))"
             >
               0
             </text>
@@ -1172,7 +1172,7 @@ export function DeploymentTimelineChart({
             x={densityConfig.labelWidth - 8}
             y={concurrentY(maxConc) + 4}
             fontSize={11}
-            fill="#64748b"
+            fill="hsl(var(--muted-foreground))"
             textAnchor="end"
           >
             Concurrent cameras

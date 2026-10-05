@@ -43,7 +43,7 @@ function SlimProgressRow({ label, verified, total }: BarRow) {
       <div className="h-2 rounded-full bg-muted overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-300"
-          style={{ width: `${pct}%`, backgroundColor: "#0f6064" }}
+          style={{ width: `${pct}%`, backgroundColor: "var(--primary-ink)" }}
         />
       </div>
     </div>

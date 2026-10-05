@@ -13,6 +13,9 @@ export interface SwatchStyle {
 }
 
 const TEAL_LOW: [number, number, number] = [227, 240, 240]; // #e3f0f0
+// Dark theme ramp starts just above the card surface (#1d1d1d) so a
+// low-intensity cell reads as faint instead of glowing white.
+const TEAL_LOW_DARK: [number, number, number] = [36, 46, 46];
 const TEAL_HIGH: [number, number, number] = [15, 96, 100]; // #0f6064
 
 const STATUS_BAD: [number, number, number] = [136, 32, 0]; // #882000
@@ -54,13 +57,16 @@ function textOn(bg: [number, number, number]): string {
  * `count / rowMax` in `[0, 1]`. A value of 0 renders transparent so the
  * grid background shows through; any other value gets a coloured swatch.
  */
-export function matrixCellColor(valuePerRow: number): SwatchStyle {
+export function matrixCellColor(
+  valuePerRow: number,
+  dark: boolean,
+): SwatchStyle {
   const t = clamp01(valuePerRow);
   if (t === 0) {
     return { background: "transparent", color: "hsl(var(--muted-foreground))" };
   }
-  const rgbTuple = lerp(TEAL_LOW, TEAL_HIGH, t);
-  return { background: rgb(rgbTuple), color: textOn(rgbTuple) };
+  const rgbTuple = lerp(dark ? TEAL_LOW_DARK : TEAL_LOW, TEAL_HIGH, t);
+  return { background: rgb(rgbTuple), color: dark ? "#ffffff" : textOn(rgbTuple) };
 }
 
 /**
