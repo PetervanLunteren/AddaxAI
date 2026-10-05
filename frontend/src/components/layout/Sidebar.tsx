@@ -179,15 +179,30 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
           )}
         >
           <NavLink to="/" aria-label="Home" title="Home">
-            <img
-              src={
-                collapsed
-                  ? "/branding/logo-mark.png"
-                  : "/branding/logo-wordmark.png"
-              }
-              alt="AddaxAI"
-              className={collapsed ? "h-9 w-9" : "h-14 w-auto"}
-            />
+            {/* The mark (teal squircle) works on both themes; the
+                wordmark's teal text drowns on dark, so the expanded
+                sidebar swaps to the cream-text asset. An asset swap,
+                not a colour, hence the sanctioned dark: classes. */}
+            {collapsed ? (
+              <img
+                src="/branding/logo-mark.png"
+                alt="AddaxAI"
+                className="h-9 w-9"
+              />
+            ) : (
+              <>
+                <img
+                  src="/branding/logo-wordmark.png"
+                  alt="AddaxAI"
+                  className="h-14 w-auto dark:hidden"
+                />
+                <img
+                  src="/branding/logo-wordmark-ondark.png"
+                  alt="AddaxAI"
+                  className="hidden h-14 w-auto dark:block"
+                />
+              </>
+            )}
           </NavLink>
         </div>
 
