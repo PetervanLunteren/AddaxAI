@@ -445,7 +445,13 @@ function App() {
               <Route path="deployments" element={<DeploymentsPage />} />
               <Route path="export" element={<ExportPage />} />
               <Route path="settings" element={<SettingsPage />} />
+              {/* A mistyped or outdated project URL lands on the
+                  dashboard instead of a blank window. */}
+              <Route path="*" element={<Navigate to="dashboard" replace />} />
             </Route>
+
+            {/* Same safety net outside a project. */}
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </SetupGate>
 

@@ -100,12 +100,20 @@ export function useThemeState(): ThemeContextValue {
     return () => mq.removeEventListener("change", onChange);
   }, [pref]);
 
-  // Reconcile with whatever the index.html guard applied, and tell
-  // Electron the stored preference so the menu radio, nativeTheme and
-  // the pre-paint window background match after a fresh launch
-  // (setTheme covers every later change).
+  // Keep the <html> class reconciled with the resolved theme on every
+  // change, not only at mount: a mount-only effect captures the first
+  // render's value and runs AFTER child effects, so a setTheme fired
+  // during a child's mount (the dev theme hash) would be silently
+  // reverted. Re-applying is idempotent and this also reconciles with
+  // whatever the index.html guard applied.
   useEffect(() => {
     applyClass(resolved);
+  }, [resolved]);
+
+  // Tell Electron the stored preference once after launch so the menu
+  // radio, nativeTheme and the pre-paint window background match
+  // (setTheme covers every later change).
+  useEffect(() => {
     window.electronAPI?.setThemeMenuMode?.(pref);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
