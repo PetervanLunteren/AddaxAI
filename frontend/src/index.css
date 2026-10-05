@@ -116,11 +116,14 @@ html, body {
     --popover-foreground: 0 0% 92.2%;
     --primary: 183 74% 23%;           /* #0f6064 - same teal as light mode */
     --primary-foreground: 210 40% 98%;
-    --secondary: 0 0% 13.3%;          /* #222222 */
+    /* Wells and hovers sit a clear step above card (11.4%) and
+       popover (13.7%): at 13.3% they were invisible and chips read
+       as floating text (reported 2026-10-05). */
+    --secondary: 0 0% 17.5%;          /* #2d2d2d */
     --secondary-foreground: 0 0% 92.2%;
-    --muted: 0 0% 13.3%;              /* #222222 */
+    --muted: 0 0% 17.5%;              /* #2d2d2d */
     --muted-foreground: 0 0% 62.7%;   /* #a0a0a0 */
-    --accent: 0 0% 13.7%;             /* hover tint, = popover */
+    --accent: 0 0% 17.5%;             /* hover tint */
     --accent-foreground: 0 0% 92.2%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
