@@ -6,6 +6,7 @@ import 'react-day-picker/style.css'
 import './index.css'
 import App from './App.tsx'
 import { logger } from './lib/logger'
+import { ThemeProvider } from './lib/ThemeProvider'
 
 // Windows' Segoe UI Emoji ships without country flag glyphs by design,
 // so 🇪🇺 / 🇳🇱 / etc. render as the letter pair (e.g. "EU"). The
@@ -61,6 +62,8 @@ window.addEventListener('unhandledrejection', (event) => {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
   </StrictMode>,
 )

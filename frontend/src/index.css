@@ -49,6 +49,13 @@ html, body {
   font-size: inherit;
 }
 
+/* Dark mode: the teal accent lightens to the ink value and the light
+   teal selection tint becomes a translucent one. */
+.dark .rdp-root {
+  --rdp-accent-color: #66b6ba;
+  --rdp-accent-background-color: rgba(102, 182, 186, 0.15);
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -71,28 +78,64 @@ html, body {
     --input: 214.3 31.8% 91.4%;
     --ring: 183 74% 23%;              /* Match primary color */
     --radius: 0.5rem;
+
+    /* Generation-2 tokens: full CSS colour values, consumed as var(--x)
+       (no hsl() wrapper). Two reasons they differ from the triplets
+       above: the dark intent tints carry their own alpha, and chart
+       code reads them via getComputedStyle and needs usable strings.
+       Every colour in the app lives here or in the triplet block;
+       components never carry a hex or a dark: colour variant. */
+    --primary-ink: #0f6064;           /* teal as text/links/icons */
+    --good-ink: #0f6064;              /* status trio as text */
+    --bad-ink: #882000;
+    --middle: #71b7ba;
+
+    /* Intent trios: subtle = tinted surface, ink = text/icon on any
+       surface, border = the tinted surface's border. Light mode keeps
+       the tailwind 50/600/200 look the app already had. */
+    --destructive-subtle: #fef2f2;  --destructive-ink: #dc2626;  --destructive-border: #fecaca;
+    --warning-subtle: #fffbeb;      --warning-ink: #d97706;      --warning-border: #fde68a;
+    --info-subtle: #eff6ff;         --info-ink: #2563eb;         --info-border: #bfdbfe;
+    --success-subtle: #f0fdf4;      --success-ink: #16a34a;      --success-border: #bbf7d0;
+
+    --chart-grid: rgba(0, 0, 0, 0.08);
   }
 
+  /* The "graphite" dark palette: neutral greys with no colour cast, the
+     photo-tool convention, so night images are judged against a neutral
+     surround. Brand fills (primary, destructive) stay identical to light. */
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 183 74% 23%;               /* #0f6064 - Same teal as light mode */
+    --background: 0 0% 8.2%;          /* #151515 */
+    --foreground: 0 0% 92.2%;         /* #ebebeb */
+    --card: 0 0% 11.4%;               /* #1d1d1d */
+    --card-foreground: 0 0% 92.2%;
+    --popover: 0 0% 13.7%;            /* #232323 */
+    --popover-foreground: 0 0% 92.2%;
+    --primary: 183 74% 23%;           /* #0f6064 - same teal as light mode */
     --primary-foreground: 210 40% 98%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --secondary: 0 0% 13.3%;          /* #222222 */
+    --secondary-foreground: 0 0% 92.2%;
+    --muted: 0 0% 13.3%;              /* #222222 */
+    --muted-foreground: 0 0% 62.7%;   /* #a0a0a0 */
+    --accent: 0 0% 13.7%;             /* hover tint, = popover */
+    --accent-foreground: 0 0% 92.2%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --border: 0 0% 20%;               /* #333333 */
+    --input: 0 0% 14.1%;              /* #242424 */
+    --ring: 183 38% 56%;              /* #66b6ba, teal ink */
+
+    --primary-ink: #66b6ba;
+    --good-ink: #4faeb2;
+    --bad-ink: #e0734d;
+    /* --middle unchanged: #71b7ba reads on both themes. */
+
+    --destructive-subtle: rgba(252, 165, 165, 0.09);  --destructive-ink: #fca5a5;  --destructive-border: rgba(252, 165, 165, 0.30);
+    --warning-subtle: rgba(252, 211, 77, 0.09);       --warning-ink: #fcd34d;      --warning-border: rgba(252, 211, 77, 0.30);
+    --info-subtle: rgba(147, 197, 253, 0.09);         --info-ink: #93c5fd;         --info-border: rgba(147, 197, 253, 0.30);
+    --success-subtle: rgba(79, 174, 178, 0.10);       --success-ink: #4faeb2;      --success-border: rgba(79, 174, 178, 0.35);
+
+    --chart-grid: rgba(255, 255, 255, 0.08);
   }
 }
 

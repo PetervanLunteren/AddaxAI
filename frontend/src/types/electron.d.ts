@@ -74,6 +74,12 @@ export interface ElectronAPI {
    */
   setSpeciesNameMenuMode: (mode: "common" | "scientific") => void;
   /**
+   * Report the stored theme preference so the View → Theme radio shows
+   * the correct checkmark and the main process can sync nativeTheme.
+   * One-way; localStorage remains the source of truth.
+   */
+  setThemeMenuMode?: (mode: "system" | "light" | "dark") => void;
+  /**
    * Report whether first-run setup has finished so the setup-only menu
    * items (Home, backup/restore, backups folder, species names) are
    * disabled during the wizard and enabled afterward.
