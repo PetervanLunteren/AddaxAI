@@ -366,13 +366,13 @@ export function TaxonomySheet({
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 rounded-md bg-zinc-50 border border-zinc-200 px-3 py-2">
+                    <div className="flex items-center gap-2 rounded-md bg-muted border border-border px-3 py-2">
                       <span className="text-sm text-muted-foreground">
                         No taxonomy (optional)
                       </span>
                       <button
                         type="button"
-                        className="ml-auto shrink-0 p-1 rounded hover:bg-zinc-100 transition-colors"
+                        className="ml-auto shrink-0 p-1 rounded hover:bg-muted transition-colors"
                         onClick={() => setTaxonomyExpanded(!taxonomyExpanded)}
                       >
                         <Pencil className="h-3.5 w-3.5 text-muted-foreground" />

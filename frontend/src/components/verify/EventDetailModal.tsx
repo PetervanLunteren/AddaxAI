@@ -999,7 +999,7 @@ export function EventDetailModal({
                     ["Esc", "Close"],
                   ].map(([key, action]) => (
                     <div key={key} className="flex items-center text-xs gap-3 h-7">
-                      <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{key.split("+").map((part, i, arr) => <span key={i}>{part}{i < arr.length - 1 && <span className="text-[#bbbbc1]">+</span>}</span>)}</code>
+                      <code className="bg-muted text-muted-foreground px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{key.split("+").map((part, i, arr) => <span key={i}>{part}{i < arr.length - 1 && <span className="text-muted-foreground/60">+</span>}</span>)}</code>
                       <span>{action}</span>
                     </div>
                   ))}

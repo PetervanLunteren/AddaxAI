@@ -148,7 +148,7 @@ export function ProjectsPage() {
                     </div>
                   ) : (
                     <div className="aspect-video rounded-t-lg bg-gradient-to-br from-muted to-border flex items-center justify-center">
-                      <ImageIcon className="h-10 w-10 text-slate-300" />
+                      <ImageIcon className="h-10 w-10 text-muted-foreground/50" />
                     </div>
                   )}
                   <DropdownMenu>

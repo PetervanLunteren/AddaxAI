@@ -43,11 +43,11 @@ interface LabelsKeyboardPopoverProps {
 function ShortcutKey({ keys }: { keys: string }) {
   const parts = keys.split("+").map((p) => p.trim());
   return (
-    <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">
+    <code className="bg-muted text-muted-foreground px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">
       {parts.map((part, i) => (
         <span key={i}>
           {part}
-          {i < parts.length - 1 && <span className="text-[#bbbbc1]"> + </span>}
+          {i < parts.length - 1 && <span className="text-muted-foreground/60"> + </span>}
         </span>
       ))}
     </code>

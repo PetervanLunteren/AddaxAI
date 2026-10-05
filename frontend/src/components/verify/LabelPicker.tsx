@@ -351,7 +351,7 @@ export function LabelPicker({
                       onSelect={() => handleSelect(opt)}
                       className="odd:bg-muted/40"
                     >
-                      <code className="bg-zinc-100 text-zinc-500 px-1 rounded text-[10px] mr-1.5">
+                      <code className="bg-muted text-muted-foreground px-1 rounded text-[10px] mr-1.5">
                         {key}
                       </code>
                       <div

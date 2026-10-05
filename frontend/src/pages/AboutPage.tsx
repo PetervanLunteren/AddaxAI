@@ -122,7 +122,7 @@ export default function AboutPage() {
           </p>
 
           {contributors && contributors.length > 0 && (
-            <div className="mt-4 rounded-lg border bg-zinc-50 p-4">
+            <div className="mt-4 rounded-lg border bg-muted p-4">
               <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
                 Code contributors
               </div>

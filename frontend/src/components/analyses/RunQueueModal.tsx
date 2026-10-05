@@ -567,7 +567,7 @@ export function RunQueueModal({
             const iconColor = failureCount > 0
               ? '#882000'
               : warningCount > 0
-                ? '#b45309'
+                ? 'var(--warning-ink)'
                 : 'var(--primary-ink)';
 
             return (

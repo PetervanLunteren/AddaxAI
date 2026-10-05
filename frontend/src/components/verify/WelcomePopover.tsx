@@ -34,7 +34,7 @@ export function WelcomePopover({ open, onDismiss }: WelcomePopoverProps) {
             shows frames across the clip. Click any to inspect.
           </p>
           <p>
-            Press <code className="bg-zinc-100 px-1 py-0.5 rounded text-xs">Enter</code> to confirm and jump to the next unconfirmed event. Click <CircleHelp className="inline h-3.5 w-3.5 align-text-bottom" /> in the toolbar any time to open the full guide.
+            Press <code className="bg-muted px-1 py-0.5 rounded text-xs">Enter</code> to confirm and jump to the next unconfirmed event. Click <CircleHelp className="inline h-3.5 w-3.5 align-text-bottom" /> in the toolbar any time to open the full guide.
           </p>
         </div>
         <div className="flex items-center justify-between">
