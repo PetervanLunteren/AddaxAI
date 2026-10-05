@@ -8,11 +8,34 @@
  * - Clean shutdown of backend on quit
  */
 
-import { app, BrowserWindow, crashReporter, session, shell, ipcMain, dialog, Menu, powerSaveBlocker } from 'electron';
+import { app, BrowserWindow, crashReporter, session, shell, ipcMain, dialog, Menu, nativeTheme, powerSaveBlocker } from 'electron';
+import Store from 'electron-store';
 import { spawn, execSync, ChildProcess } from 'child_process';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
+
+// Mirror of the renderer's theme preference (its localStorage stays the
+// source of truth). The mirror exists so the window can be created with
+// the right background colour before any renderer code runs: without
+// it, a dark launch flashes white between the splash and the SPA.
+// Updated on every 'menu:theme-mode' message.
+type ThemePref = 'system' | 'light' | 'dark';
+const prefsStore = new Store<{ themePref: ThemePref }>({ name: 'prefs' });
+
+function storedThemePref(): ThemePref {
+  const pref = prefsStore.get('themePref');
+  return pref === 'light' || pref === 'dark' ? pref : 'system';
+}
+
+// Lets nativeTheme resolve shouldUseDarkColors correctly from the first
+// paint (system pref maps to 'system', explicit choices pin it).
+nativeTheme.themeSource = storedThemePref();
+
+function themeBackgroundColor(): string {
+  // Must match --background in frontend/src/index.css for both themes.
+  return nativeTheme.shouldUseDarkColors ? '#151515' : '#ffffff';
+}
 
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
@@ -885,6 +908,9 @@ async function createWindow(): Promise<void> {
     // discoverability wins over aesthetics. No-op on macOS where the menu
     // lives on the system menu bar.
     autoHideMenuBar: false,
+    // Painted before any content loads; keyed to the theme so a dark
+    // launch never flashes white (and a light one never flashes dark).
+    backgroundColor: themeBackgroundColor(),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -1189,6 +1215,17 @@ function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
           },
         ],
       },
+      {
+        id: 'theme',
+        label: 'Theme',
+        submenu: (['system', 'light', 'dark'] as const).map((mode) => ({
+          id: `theme-${mode}`,
+          label: mode.charAt(0).toUpperCase() + mode.slice(1),
+          type: 'radio' as const,
+          checked: storedThemePref() === mode,
+          click: () => sendMenuCommand(`theme-${mode}`),
+        })),
+      },
       { label: 'Language (coming soon)', enabled: false },
       { type: 'separator' },
       { role: 'togglefullscreen' },
@@ -1461,6 +1498,19 @@ ipcMain.on('menu:species-mode', (_event, mode: string) => {
   const id = mode === 'scientific' ? 'species-scientific' : 'species-common';
   const item = Menu.getApplicationMenu()?.getMenuItemById(id);
   if (item) item.checked = true;
+});
+
+// Keep the View → Theme radio, nativeTheme and the stored mirror in sync
+// with the renderer's theme preference. The renderer sends it on mount
+// and after every change. Deliberately NOT setup-gated: the theme works
+// during the first-run wizard too.
+ipcMain.on('menu:theme-mode', (_event, mode: string) => {
+  const pref: ThemePref =
+    mode === 'light' || mode === 'dark' ? mode : 'system';
+  const item = Menu.getApplicationMenu()?.getMenuItemById(`theme-${pref}`);
+  if (item) item.checked = true;
+  nativeTheme.themeSource = pref;
+  prefsStore.set('themePref', pref);
 });
 
 // Enable / disable the setup-gated menu items. The renderer sends its

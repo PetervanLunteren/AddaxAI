@@ -100,9 +100,13 @@ export function useThemeState(): ThemeContextValue {
     return () => mq.removeEventListener("change", onChange);
   }, [pref]);
 
-  // Reconcile with whatever the index.html guard applied, once.
+  // Reconcile with whatever the index.html guard applied, and tell
+  // Electron the stored preference so the menu radio, nativeTheme and
+  // the pre-paint window background match after a fresh launch
+  // (setTheme covers every later change).
   useEffect(() => {
     applyClass(resolved);
+    window.electronAPI?.setThemeMenuMode?.(pref);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

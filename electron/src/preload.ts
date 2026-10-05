@@ -170,6 +170,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   /**
+   * Tell the main process the stored theme preference so the View → Theme
+   * radio, nativeTheme and the pre-paint window background stay in sync.
+   * Sent on mount and after each change. One-way; the renderer's
+   * localStorage stays the single source of truth.
+   */
+  setThemeMenuMode: (mode: 'system' | 'light' | 'dark'): void => {
+    ipcRenderer.send('menu:theme-mode', mode);
+  },
+
+  /**
    * Tell the main process whether first-run setup has finished, so the
    * setup-only menu items (Home, backup/restore, backups folder, species
    * names) can be disabled during the wizard and enabled afterward. Sent

@@ -25,6 +25,7 @@ import { useLatestRelease } from "../../hooks/useLatestRelease";
 import { formatVersion, parseVersion } from "../../lib/version";
 import { exportDiagnosticReport } from "../../lib/diagnostic-export";
 import { getSpeciesNameMode, setSpeciesNameMode } from "../../lib/species-name-mode";
+import { useTheme } from "../../lib/theme";
 import { ResetAppDialog } from "../diagnostics/ResetAppDialog";
 import { BackupNowDialog } from "../diagnostics/BackupNowDialog";
 import { RestoreBackupDialog } from "../diagnostics/RestoreBackupDialog";
@@ -51,6 +52,7 @@ const UPDATE_TOAST_ID = "update-available";
 
 export function MenuCommands() {
   const navigate = useNavigate();
+  const { setTheme } = useTheme();
   const [dialog, setDialog] = useState<DialogId>(null);
   const [version, setVersion] = useState<string>(FALLBACK_VERSION);
   const [legacyDismissed, setLegacyDismissed] = useState(
@@ -76,7 +78,8 @@ export function MenuCommands() {
   // Dev-only: these dialogs are normally opened from the Electron native
   // menu, which doesn't exist in the browser dev server. Open one straight
   // from the URL hash so it can be previewed on localhost, e.g.
-  // http://localhost:5173/#restore (also #backup, #reset, #updates, #legacy).
+  // http://localhost:5173/#restore (also #backup, #reset, #updates,
+  // #legacy, and #theme-system / #theme-light / #theme-dark).
   // Tree-shaken out of production builds (import.meta.env.DEV is false).
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -91,11 +94,14 @@ export function MenuCommands() {
       ) {
         setDialog(h as DialogId);
       }
+      if (h === "theme-system" || h === "theme-light" || h === "theme-dark") {
+        setTheme(h.replace("theme-", "") as "system" | "light" | "dark");
+      }
     };
     openFromHash();
     window.addEventListener("hashchange", openFromHash);
     return () => window.removeEventListener("hashchange", openFromHash);
-  }, []);
+  }, [setTheme]);
 
   // Legacy AddaxAI 6 still on the machine? Ask once per launch, unless
   // the user ticked "don't ask me again". Gated on setup being ready so
@@ -250,9 +256,20 @@ export function MenuCommands() {
         case "species-scientific":
           setSpeciesNameMode("scientific");
           break;
+        // Unlike species names, a theme change never reloads: the
+        // provider re-renders the app in place.
+        case "theme-system":
+          setTheme("system");
+          break;
+        case "theme-light":
+          setTheme("light");
+          break;
+        case "theme-dark":
+          setTheme("dark");
+          break;
       }
     });
-  }, [navigate, setupStatus]);
+  }, [navigate, setupStatus, setTheme]);
 
   return (
     <>
