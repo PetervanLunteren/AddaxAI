@@ -117,9 +117,9 @@ export function QueueSection({
 
         {/* Processing Column */}
         <div className="space-y-3">
-          <div className="flex items-center gap-2 px-4 py-2 bg-blue-100 rounded-t-lg">
-            <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
-            <h4 className="font-semibold text-blue-900">
+          <div className="flex items-center gap-2 px-4 py-2 bg-info-subtle rounded-t-lg">
+            <Loader2 className="w-4 h-4 text-info-ink animate-spin" />
+            <h4 className="font-semibold text-blue-900 dark:text-info-ink">
               Processing ({processingEntries.length})
             </h4>
           </div>
@@ -137,9 +137,9 @@ export function QueueSection({
 
         {/* Completed Column */}
         <div className="space-y-3">
-          <div className="flex items-center gap-2 px-4 py-2 bg-green-100 rounded-t-lg">
-            <CheckCircle2 className="w-4 h-4 text-green-600" />
-            <h4 className="font-semibold text-green-900">
+          <div className="flex items-center gap-2 px-4 py-2 bg-success-subtle rounded-t-lg">
+            <CheckCircle2 className="w-4 h-4 text-success-ink" />
+            <h4 className="font-semibold text-green-900 dark:text-success-ink">
               Completed ({completedEntries.length + failedEntries.length})
             </h4>
           </div>

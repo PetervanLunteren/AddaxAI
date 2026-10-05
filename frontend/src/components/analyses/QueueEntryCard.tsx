@@ -30,9 +30,9 @@ export function QueueEntryCard({ entry, onRemove }: QueueEntryCardProps) {
 
   const statusStyles: Record<string, string> = {
     pending: "bg-card border-border",
-    processing: "bg-blue-50 border-blue-300 shadow-md",
-    completed: "bg-green-50 border-green-300",
-    failed: "bg-red-50 border-red-300",
+    processing: "bg-info-subtle border-info-border shadow-md",
+    completed: "bg-success-subtle border-success-border",
+    failed: "bg-destructive-subtle border-destructive-border",
   };
 
   return (
@@ -72,7 +72,7 @@ export function QueueEntryCard({ entry, onRemove }: QueueEntryCardProps) {
               variant="ghost"
               size="sm"
               onClick={() => onRemove(entry.id)}
-              className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+              className="h-7 w-7 p-0 text-destructive-ink hover:text-destructive-ink hover:bg-destructive-subtle"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </Button>

@@ -174,7 +174,7 @@ export function getObservationBadge(type: string): {
     case "animal":
       return {
         label: "Animal",
-        className: "bg-green-100 text-green-800 border-green-200",
+        className: "bg-success-subtle text-success-ink border-success-border",
       };
     case "person":
       return {
@@ -185,7 +185,7 @@ export function getObservationBadge(type: string): {
     case "vehicle":
       return {
         label: "Vehicle",
-        className: "bg-blue-100 text-blue-800 border-blue-200",
+        className: "bg-info-subtle text-info-ink border-info-border",
       };
     case "blank":
       return {
@@ -195,7 +195,7 @@ export function getObservationBadge(type: string): {
     case "unknown":
       return {
         label: "Unknown",
-        className: "bg-yellow-100 text-yellow-800 border-yellow-200",
+        className: "bg-warning-subtle text-warning-ink border-warning-border",
       };
     default:
       // A category from a detector we know nothing about ("shark",

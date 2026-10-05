@@ -61,17 +61,17 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
         };
       case "processing":
         return {
-          classes: `${baseClasses} bg-teal-50 text-teal-700`,
+          classes: `${baseClasses} bg-primary/10 text-primary-ink`,
           label: "Processing"
         };
       case "completed":
         return {
-          classes: `${baseClasses} bg-green-50 text-green-700`,
+          classes: `${baseClasses} bg-success-subtle text-success-ink`,
           label: "Completed"
         };
       case "failed":
         return {
-          classes: `${baseClasses} bg-red-100 text-red-700`,
+          classes: `${baseClasses} bg-destructive-subtle text-destructive-ink`,
           label: "Failed"
         };
       default:
@@ -129,7 +129,7 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+            className="h-8 w-8 text-destructive-ink hover:text-destructive-ink hover:bg-destructive-subtle"
             onClick={() => onDelete(entry.id)}
             title="Delete"
           >
@@ -244,8 +244,8 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
                 reporting it does not start with hunting through a menu. */}
             {entry.error && (
               <>
-                <dt className="text-red-600 font-medium">Error:</dt>
-                <dd className="text-red-600">
+                <dt className="text-destructive-ink font-medium">Error:</dt>
+                <dd className="text-destructive-ink">
                   {entry.error}
                   <Button
                     variant="outline"

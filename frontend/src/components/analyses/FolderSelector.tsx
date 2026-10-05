@@ -227,7 +227,7 @@ export function FolderSelector({
               isDragOver
                 ? "border-primary bg-primary/5 text-primary"
                 : error
-                  ? "border-red-500 bg-background text-muted-foreground"
+                  ? "border-destructive bg-background text-muted-foreground"
                   : "border-input bg-background text-muted-foreground hover:bg-accent hover:text-foreground"
             }`}
           >
@@ -247,7 +247,7 @@ export function FolderSelector({
               value={value || ""}
               onChange={(e) => onChange(e.target.value)}
               placeholder="/Users/peter/Downloads/example-data/project_Kenya/..."
-              className={`flex-1 font-mono text-sm ${error ? "border-red-500" : ""}`}
+              className={`flex-1 font-mono text-sm ${error ? "border-destructive" : ""}`}
             />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -331,7 +331,7 @@ export function FolderSelector({
                         range is shown up front because it is the only
                         safeguard: a copied folder reads as today. */}
                     {onUseFileMtimeFallbackChange && fileDatesPhrase && (
-                      <label className="flex cursor-pointer items-start gap-3 rounded border border-amber-300 bg-amber-100 p-3">
+                      <label className="flex cursor-pointer items-start gap-3 rounded border border-warning-border bg-warning-subtle p-3">
                         <Checkbox
                           checked={useFileMtimeFallback}
                           onCheckedChange={onUseFileMtimeFallbackChange}
@@ -346,11 +346,11 @@ export function FolderSelector({
 
                     {/* Validation log */}
                     {scanResult.datetime_validation_log && scanResult.datetime_validation_log.length > 0 && (
-                      <details className="mt-2 rounded border border-amber-300 bg-amber-100 p-3">
+                      <details className="mt-2 rounded border border-warning-border bg-warning-subtle p-3">
                         <summary className="cursor-pointer text-sm font-medium">
                           Technical details
                         </summary>
-                        <div className="mt-2 space-y-1 font-mono text-xs text-amber-900">
+                        <div className="mt-2 space-y-1 font-mono text-xs text-amber-900 dark:text-warning-ink">
                           {scanResult.datetime_validation_log.map((log, idx) => (
                             <div key={idx} className="whitespace-pre-wrap break-words">
                               {log}
@@ -505,7 +505,7 @@ function BreadcrumbsRow({
     <div className="flex gap-2">
       <div
         className={`flex-1 flex items-center gap-1.5 rounded-md border bg-background px-3 py-2 text-sm overflow-hidden min-w-0 ${
-          error ? "border-red-500" : "border-input"
+          error ? "border-destructive" : "border-input"
         }`}
         title={path}
       >

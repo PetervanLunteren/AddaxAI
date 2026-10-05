@@ -141,8 +141,8 @@ export function ReEmbedModal({ open, onOpenChange, jobId, onComplete, onError }:
           {/* Error State */}
           {hasError && (
             <div className="flex items-center gap-3">
-              <XCircle className="h-5 w-5 text-red-600" />
-              <span className="text-sm font-medium text-red-600">{errorMessage || "Re-embedding failed"}</span>
+              <XCircle className="h-5 w-5 text-destructive-ink" />
+              <span className="text-sm font-medium text-destructive-ink">{errorMessage || "Re-embedding failed"}</span>
             </div>
           )}
 

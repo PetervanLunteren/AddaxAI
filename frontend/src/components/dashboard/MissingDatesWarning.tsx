@@ -62,7 +62,7 @@ export function MissingDatesIcon({
       <Tooltip>
         <TooltipTrigger asChild>
           <span className="inline-flex">
-            <AlertTriangle className="h-4 w-4 text-yellow-600" />
+            <AlertTriangle className="h-4 w-4 text-warning-ink" />
           </span>
         </TooltipTrigger>
         <TooltipContent className="max-w-xs">

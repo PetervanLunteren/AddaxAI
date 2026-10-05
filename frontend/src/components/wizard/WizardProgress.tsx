@@ -56,9 +56,9 @@ export function WizardProgress({ steps, icons }: WizardProgressProps) {
                   ml-3 mr-4 text-sm font-medium transition-colors duration-300
                   ${
                     isCompleted
-                      ? "text-green-700"
+                      ? "text-success-ink"
                       : isCurrent
-                      ? "text-blue-700"
+                      ? "text-info-ink"
                       : "text-muted-foreground"
                   }
                 `}

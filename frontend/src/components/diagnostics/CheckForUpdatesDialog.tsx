@@ -119,7 +119,7 @@ export function CheckForUpdatesDialog({
                         href={downloadUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-blue-900 underline hover:no-underline"
+                        className="inline-flex items-center gap-1 text-blue-900 dark:text-info-ink underline hover:no-underline"
                       >
                         Download the latest version
                         <ArrowUpRight className="h-3.5 w-3.5" />
@@ -128,7 +128,7 @@ export function CheckForUpdatesDialog({
                         href={ALL_RELEASE_NOTES_URL}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-blue-900 underline hover:no-underline"
+                        className="inline-flex items-center gap-1 text-blue-900 dark:text-info-ink underline hover:no-underline"
                       >
                         All release notes
                         <ArrowUpRight className="h-3.5 w-3.5" />

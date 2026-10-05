@@ -329,7 +329,7 @@ function LeafNavLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
         <item.icon className="h-4 w-4" />
         {item.dot && (
           <span
-            className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-red-600 ring-2 ring-white"
+            className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-destructive ring-2 ring-card"
             aria-hidden
           />
         )}

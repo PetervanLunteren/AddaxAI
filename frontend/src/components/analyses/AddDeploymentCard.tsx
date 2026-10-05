@@ -418,7 +418,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
                     asChild
                     variant="outline"
                     size="sm"
-                    className="shrink-0 border-amber-300 bg-card text-amber-900 hover:bg-amber-100"
+                    className="shrink-0 border-warning-border bg-card text-amber-900 dark:text-warning-ink hover:bg-warning-subtle"
                   >
                     <Link
                       to={`/projects/${projectId}/deployments?info=${blockingDeployment.id}`}

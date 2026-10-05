@@ -37,13 +37,13 @@ export function ModelPreparationErrorView({
       <div className="py-6 space-y-6">
         {/* Error Icon */}
         <div className="flex flex-col items-center gap-4 text-center">
-          <div className="rounded-full bg-red-50 p-4">
-            <AlertTriangle className="h-8 w-8 text-red-600" />
+          <div className="rounded-full bg-destructive-subtle p-4">
+            <AlertTriangle className="h-8 w-8 text-destructive-ink" />
           </div>
 
           {/* Error Message */}
           <div className="space-y-2">
-            <h3 className="font-semibold text-red-900">Preparation failed</h3>
+            <h3 className="font-semibold text-red-900 dark:text-destructive-ink">Preparation failed</h3>
             <p className="text-sm text-muted-foreground max-w-md">{errorMessage}</p>
           </div>
         </div>

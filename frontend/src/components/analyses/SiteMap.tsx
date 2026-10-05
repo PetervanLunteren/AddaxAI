@@ -228,7 +228,7 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
                 anchor="bottom"
               >
                 <div className="relative group">
-                  <MapPin className="h-6 w-6 text-blue-600 drop-shadow-lg" fill="currentColor" />
+                  <MapPin className="h-6 w-6 text-info-ink drop-shadow-lg" fill="currentColor" />
                   {/* Tooltip */}
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                     {site.name}
@@ -246,10 +246,10 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
             anchor="bottom"
           >
             <div className="relative animate-bounce">
-              <MapPin className="h-8 w-8 text-red-600 drop-shadow-lg" fill="currentColor" />
+              <MapPin className="h-8 w-8 text-destructive-ink drop-shadow-lg" fill="currentColor" />
               {/* Pulse effect */}
               <div className="absolute inset-0 h-8 w-8 animate-ping">
-                <MapPin className="h-8 w-8 text-red-600 opacity-75" fill="currentColor" />
+                <MapPin className="h-8 w-8 text-destructive-ink opacity-75" fill="currentColor" />
               </div>
             </div>
           </Marker>

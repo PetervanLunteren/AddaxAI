@@ -269,9 +269,9 @@ export function AddSiteModal({
               id="name"
               {...register("name")}
               placeholder="e.g., Forest ridge north"
-              className={errors.name ? "border-red-500" : ""}
+              className={errors.name ? "border-destructive" : ""}
             />
-            {errors.name && <p className="text-sm text-red-600">{errors.name.message}</p>}
+            {errors.name && <p className="text-sm text-destructive-ink">{errors.name.message}</p>}
           </div>
 
           {/* Offline notice */}
@@ -322,7 +322,7 @@ export function AddSiteModal({
                 placeholder="e.g., 44.4280"
               />
               {errors.latitude && (
-                <p className="text-sm text-red-600">{errors.latitude.message}</p>
+                <p className="text-sm text-destructive-ink">{errors.latitude.message}</p>
               )}
             </div>
 
@@ -336,7 +336,7 @@ export function AddSiteModal({
                 placeholder="e.g., -110.5885"
               />
               {errors.longitude && (
-                <p className="text-sm text-red-600">{errors.longitude.message}</p>
+                <p className="text-sm text-destructive-ink">{errors.longitude.message}</p>
               )}
             </div>
           </div>
@@ -384,7 +384,7 @@ export function AddSiteModal({
 
           {/* Error message */}
           {mutation.isError && (
-            <div className="text-sm text-red-600">
+            <div className="text-sm text-destructive-ink">
               {isEditMode ? "Failed to update site." : "Failed to create site."}{" "}
               {mutation.error instanceof Error
                 ? mutation.error.message

@@ -18,7 +18,7 @@ export function AnalysesPage() {
   if (!projectId) {
     return (
       <div className="p-8">
-        <p className="text-red-600">Project ID missing</p>
+        <p className="text-destructive-ink">Project ID missing</p>
       </div>
     );
   }

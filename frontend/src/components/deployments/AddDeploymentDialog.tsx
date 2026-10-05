@@ -177,7 +177,7 @@ export function AddDeploymentDialog({
           <div className="space-y-3">
             <div className="font-semibold">Preparing model...</div>
             <Progress value={progressValue * 100} className="h-2" />
-            <code className="block overflow-x-auto rounded bg-blue-100 px-2 py-1 font-mono text-xs">
+            <code className="block overflow-x-auto rounded bg-info-subtle px-2 py-1 font-mono text-xs">
               {progressMessage || "Starting..."}
             </code>
           </div>

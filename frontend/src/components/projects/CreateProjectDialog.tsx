@@ -387,7 +387,7 @@ export function CreateProjectDialog({
                       <FormMessage />
                       <p className={`text-xs ${
                         (field.value?.length || 0) > 450
-                          ? "text-orange-600"
+                          ? "text-warning-ink"
                           : "text-muted-foreground"
                       }`}>
                         {field.value?.length || 0} / 500

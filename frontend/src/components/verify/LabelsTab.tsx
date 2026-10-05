@@ -1538,7 +1538,7 @@ export function LabelsTab({
         // the loading branch and spin forever after the error.
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <AlertTriangle className="h-10 w-10 text-amber-500 mb-4" />
+            <AlertTriangle className="h-10 w-10 text-warning-ink mb-4" />
             <p className="text-lg font-medium text-muted-foreground">
               Could not load this view
             </p>

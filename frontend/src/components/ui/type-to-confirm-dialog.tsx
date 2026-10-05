@@ -113,7 +113,7 @@ export function TypeToConfirmDialog({
 
   const canConfirm = confirmText === confirmWord && !disabled && !isPending;
   const iconClass =
-    variant === "warning" ? "text-amber-600" : "text-destructive";
+    variant === "warning" ? "text-warning-ink" : "text-destructive";
   const buttonVariant = variant === "warning" ? "default" : "destructive";
 
   return (
