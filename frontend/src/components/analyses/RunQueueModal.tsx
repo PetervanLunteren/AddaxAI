@@ -568,7 +568,7 @@ export function RunQueueModal({
               ? '#882000'
               : warningCount > 0
                 ? '#b45309'
-                : '#156065';
+                : 'var(--primary-ink)';
 
             return (
               <div className="flex items-start gap-3">

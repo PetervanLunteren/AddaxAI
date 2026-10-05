@@ -122,7 +122,7 @@ export function VerifyProgressPill({
       <div className="relative h-2 w-20 overflow-hidden rounded-full bg-muted">
         <div
           className="h-full transition-all duration-500 ease-out rounded-full"
-          style={{ width: `${clamped}%`, backgroundColor: "#0f6064" }}
+          style={{ width: `${clamped}%`, backgroundColor: "var(--primary-ink)" }}
         />
       </div>
       {Math.round(clamped)}% {label}

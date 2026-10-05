@@ -278,7 +278,7 @@ function MissingModelRow({
           {done && (
             <span
               className="inline-flex items-center gap-1"
-              style={{ color: "#0f6064" }}
+              style={{ color: "var(--primary-ink)" }}
             >
               <Check className="h-4 w-4" />
               Done

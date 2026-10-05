@@ -264,7 +264,7 @@ function PhaseRow({
 
       {(isStartingUp || isFinalizing) && (
         <div className="flex items-center gap-2 pb-1 pl-1 text-[11px] font-mono text-muted-foreground">
-          <Loader2 className="h-3 w-3 animate-spin" style={{ color: "#156065" }} />
+          <Loader2 className="h-3 w-3 animate-spin" style={{ color: "var(--primary-ink)" }} />
           <span className="truncate">
             {_cleanStatusMessage(message) ??
               (isFinalizing ? "Finalizing..." : "Starting up...")}

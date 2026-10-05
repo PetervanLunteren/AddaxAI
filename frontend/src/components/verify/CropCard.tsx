@@ -65,7 +65,7 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
       className={cn(
         "relative group cursor-pointer rounded-lg border bg-card text-card-foreground transition-[box-shadow,transform] duration-150",
         "hover:-translate-y-0.5 hover:shadow-md",
-        selected && "ring-2 ring-offset-2 ring-[#0f6064]"
+        selected && "ring-2 ring-offset-2 ring-offset-background ring-primary"
       )}
       onClick={(e) => onSelect(detection.detection_id, e)}
       onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick?.(detection); }}

@@ -102,21 +102,21 @@ export function ReEmbedModal({ open, onOpenChange, jobId, onComplete, onError }:
     if (status === "Waiting...") {
       return (
         <div className="flex items-center gap-2">
-          <Clock className="h-3.5 w-3.5" style={{ color: '#156065' }} />
+          <Clock className="h-3.5 w-3.5" style={{ color: 'var(--primary-ink)' }} />
           <span>{status}</span>
         </div>
       );
     } else if (status === "Starting up...") {
       return (
         <div className="flex items-center gap-2">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: '#156065' }} />
+          <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: 'var(--primary-ink)' }} />
           <span>{status}</span>
         </div>
       );
     } else if (status === "Complete") {
       return (
         <div className="flex items-center gap-2">
-          <CheckCircle2 className="h-3.5 w-3.5" style={{ color: '#156065' }} />
+          <CheckCircle2 className="h-3.5 w-3.5" style={{ color: 'var(--primary-ink)' }} />
           <span>{status}</span>
         </div>
       );
@@ -149,8 +149,8 @@ export function ReEmbedModal({ open, onOpenChange, jobId, onComplete, onError }:
           {/* Complete State */}
           {isComplete && !hasError && (
             <div className="flex items-center gap-3">
-              <CheckCircle2 className="h-5 w-5" style={{ color: '#156065' }} />
-              <span className="text-sm font-medium" style={{ color: '#156065' }}>
+              <CheckCircle2 className="h-5 w-5" style={{ color: 'var(--primary-ink)' }} />
+              <span className="text-sm font-medium" style={{ color: 'var(--primary-ink)' }}>
                 {message || "Re-embedding complete!"}
               </span>
             </div>
@@ -162,7 +162,7 @@ export function ReEmbedModal({ open, onOpenChange, jobId, onComplete, onError }:
               {/* Spinner while waiting for job */}
               {isWaitingForJob && (
                 <div className="flex items-center gap-3">
-                  <Loader2 className="h-5 w-5 animate-spin" style={{ color: '#0f6064' }} />
+                  <Loader2 className="h-5 w-5 animate-spin" style={{ color: 'var(--primary-ink)' }} />
                   <span className="text-sm font-medium">{message || "Initializing..."}</span>
                 </div>
               )}

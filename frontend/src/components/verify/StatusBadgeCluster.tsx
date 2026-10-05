@@ -34,7 +34,7 @@ export function StatusBadgeCluster({
       {confirmed && (
         <div
           className="relative z-30 w-6 h-6 rounded-full flex items-center justify-center ring-2 ring-background"
-          style={{ backgroundColor: "#0f6064" }}
+          style={{ backgroundColor: "hsl(var(--primary))" }}
           title="Confirmed"
         >
           <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />

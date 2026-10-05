@@ -38,7 +38,7 @@ interface Flavour {
   badge: string;
 }
 
-const BADGE_AUTO = "text-[#0f6064] bg-[#0f6064]/10 border-[#0f6064]/30";
+const BADGE_AUTO = "text-primary-ink bg-primary/10 border-primary/30";
 const BADGE_MANUAL = "text-muted-foreground bg-transparent border-border";
 
 // The badge stays coarse (Automatic vs Manual); the sub-line carries the
@@ -197,18 +197,18 @@ export function RestoreBackupDialog({
                   className={cn(
                     "flex w-full items-center gap-3 rounded-lg border p-2.5 text-left transition-colors",
                     isSel
-                      ? "border-[#0f6064] bg-[#0f6064]/10"
+                      ? "border-primary-ink bg-primary/10"
                       : "hover:border-border hover:bg-muted/50",
                   )}
                 >
                   <span
                     className={cn(
                       "grid h-4 w-4 shrink-0 place-items-center rounded-full border-2",
-                      isSel ? "border-[#0f6064]" : "border-muted-foreground/40",
+                      isSel ? "border-primary-ink" : "border-muted-foreground/40",
                     )}
                   >
                     {isSel && (
-                      <span className="h-2 w-2 rounded-full bg-[#0f6064]" />
+                      <span className="h-2 w-2 rounded-full bg-primary-ink" />
                     )}
                   </span>
                   <span className="min-w-0 flex-1">
@@ -243,9 +243,9 @@ export function RestoreBackupDialog({
           type="button"
           onClick={pick}
           disabled={restore.isPending}
-          className="mt-1 flex w-full items-center gap-3 rounded-lg border border-dashed p-2.5 text-left transition-colors hover:border-[#0f6064]/40 hover:bg-[#0f6064]/5 disabled:opacity-50"
+          className="mt-1 flex w-full items-center gap-3 rounded-lg border border-dashed p-2.5 text-left transition-colors hover:border-primary/40 hover:bg-primary/5 disabled:opacity-50"
         >
-          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-[#0f6064]/10 text-[#0f6064]">
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary/10 text-primary-ink">
             <FileSearch className="h-4 w-4" />
           </span>
           <span className="min-w-0 flex-1">
@@ -259,7 +259,7 @@ export function RestoreBackupDialog({
             </span>
           </span>
           {customPath && (
-            <Check className="h-4 w-4 shrink-0 text-[#0f6064]" />
+            <Check className="h-4 w-4 shrink-0 text-primary-ink" />
           )}
         </button>
         {pickError && <p className="text-sm text-destructive">{pickError}</p>}

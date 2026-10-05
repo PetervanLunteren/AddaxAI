@@ -279,7 +279,7 @@ const FileTile = memo(function FileTile({
         "relative group cursor-pointer rounded-lg border bg-card text-card-foreground",
         "transition-[box-shadow,transform] duration-150",
         "hover:-translate-y-0.5 hover:shadow-md",
-        selected && "ring-2 ring-offset-2 ring-[#0f6064]",
+        selected && "ring-2 ring-offset-2 ring-offset-background ring-primary",
       )}
       data-file-id={item.id}
       onClick={(e) => onSelect(item.id, e)}

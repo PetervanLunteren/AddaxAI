@@ -310,7 +310,7 @@ export function TaxonomySheet({
                         <span className="text-sm">{s.canonical_name}</span>
                         <span className="flex items-center gap-1.5">
                           {isSelected && (
-                            <Check className="h-3.5 w-3.5" style={{ color: "#0f6064" }} />
+                            <Check className="h-3.5 w-3.5" style={{ color: "var(--primary-ink)" }} />
                           )}
                           <span className="text-[10px] text-muted-foreground shrink-0">
                             {s.rank}
@@ -349,9 +349,9 @@ export function TaxonomySheet({
                       className="flex items-start gap-2 rounded-md border px-3 py-2"
                       style={{ backgroundColor: "rgba(15, 96, 100, 0.08)", borderColor: "rgba(15, 96, 100, 0.25)" }}
                     >
-                      <Check className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "#0f6064" }} />
+                      <Check className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "var(--primary-ink)" }} />
                       <div className="min-w-0">
-                        <p className="text-sm font-medium" style={{ color: "#0f6064" }}>Taxonomy set</p>
+                        <p className="text-sm font-medium" style={{ color: "var(--primary-ink)" }}>Taxonomy set</p>
                         <p className="text-xs truncate" style={{ color: "rgba(15, 96, 100, 0.75)" }}>
                           {parts.join(" › ")}
                         </p>
@@ -359,7 +359,7 @@ export function TaxonomySheet({
                       <button
                         type="button"
                         className="ml-auto shrink-0 p-1 rounded transition-colors"
-                        style={{ color: "#0f6064" }}
+                        style={{ color: "var(--primary-ink)" }}
                         onClick={() => setTaxonomyExpanded(!taxonomyExpanded)}
                       >
                         <Pencil className="h-3.5 w-3.5" />

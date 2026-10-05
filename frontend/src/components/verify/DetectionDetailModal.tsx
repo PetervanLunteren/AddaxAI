@@ -770,7 +770,7 @@ export function DetectionDetailModal({
                         muted track. Disagreement is just the unfilled
                         remainder, not a red "wrong" signal. */}
                     <div className="relative h-3 w-full overflow-hidden rounded-full bg-muted-foreground/15">
-                      <div style={{ width: `${pct}%`, backgroundColor: "#0f6064" }} className="h-full transition-all duration-500 ease-out" />
+                      <div style={{ width: `${pct}%`, backgroundColor: "var(--primary-ink)" }} className="h-full transition-all duration-500 ease-out" />
                     </div>
                     <p className="text-xs text-muted-foreground text-center">
                       {count} of 10 similar crops share this label
@@ -802,7 +802,7 @@ export function DetectionDetailModal({
                     return {
                       key: n.detection_id,
                       borderClassName: agrees
-                        ? "border-[#0f6064]"
+                        ? "border-primary-ink"
                         : "border-muted-foreground/30",
                       tile: crop,
                       preview: (
