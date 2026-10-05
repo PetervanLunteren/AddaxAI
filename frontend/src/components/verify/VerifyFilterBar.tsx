@@ -196,7 +196,7 @@ export function VerifyFilterBar({
   const gridCols = showSites ? "lg:grid-cols-5" : "lg:grid-cols-4";
 
   return (
-    <div className="space-y-2 rounded-lg border bg-white px-3 py-2">
+    <div className="space-y-2 rounded-lg border bg-card px-3 py-2">
       <div className={`grid grid-cols-1 sm:grid-cols-2 ${gridCols} gap-3`}>
         {showSites && (
           <div className="space-y-1.5">

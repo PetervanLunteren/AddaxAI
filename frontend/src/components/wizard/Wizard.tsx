@@ -35,9 +35,9 @@ function WizardContent({
   }, [steps.length, setTotalSteps]);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+    <div className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
       {/* Timeline Header */}
-      <div className="bg-gradient-to-br from-gray-50 to-white px-8 pt-8 pb-6 border-b border-gray-100">
+      <div className="bg-gradient-to-br from-gray-50 to-white px-8 pt-8 pb-6 border-b border-border">
         <WizardProgress steps={steps} icons={icons} />
       </div>
 
@@ -45,7 +45,7 @@ function WizardContent({
       <div className="px-8 py-8 min-h-[400px]">{children}</div>
 
       {/* Navigation Footer */}
-      <div className="px-8 py-6 bg-gray-50 border-t border-gray-100">
+      <div className="px-8 py-6 bg-muted border-t border-border">
         <WizardNavigation
           onSubmit={onComplete}
           onReset={onReset}

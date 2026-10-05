@@ -77,10 +77,10 @@ export function ProjectsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="min-h-screen bg-gradient-to-br from-background to-muted">
       {/* Header sits above <main> (relative z-40) so it never paints
           behind the project cards. */}
-      <header className="relative z-40 border-b bg-white/80 backdrop-blur-sm">
+      <header className="relative z-40 border-b bg-card/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -147,7 +147,7 @@ export function ProjectsPage() {
                       />
                     </div>
                   ) : (
-                    <div className="aspect-video rounded-t-lg bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center">
+                    <div className="aspect-video rounded-t-lg bg-gradient-to-br from-muted to-border flex items-center justify-center">
                       <ImageIcon className="h-10 w-10 text-slate-300" />
                     </div>
                   )}

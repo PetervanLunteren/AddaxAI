@@ -424,7 +424,7 @@ export function TreeSelector({
                           needsLine ? (
                             <div
                               key={`a-${idx}`}
-                              className="absolute border-l border-gray-300"
+                              className="absolute border-l border-input"
                               style={{
                                 left: `${idx * INDENT_PX + INDENT_PX / 2 + ROW_INSET_PX}px`,
                                 top: 0,
@@ -434,7 +434,7 @@ export function TreeSelector({
                           ) : null
                         )}
                         <div
-                          className="absolute border-l border-gray-300"
+                          className="absolute border-l border-input"
                           style={{
                             left: `${(depth - 1) * INDENT_PX + INDENT_PX / 2 + ROW_INSET_PX}px`,
                             top: 0,
@@ -442,7 +442,7 @@ export function TreeSelector({
                           }}
                         />
                         <div
-                          className="absolute border-b border-gray-300"
+                          className="absolute border-b border-input"
                           style={{
                             left: `${(depth - 1) * INDENT_PX + INDENT_PX / 2 + ROW_INSET_PX}px`,
                             top: "50%",

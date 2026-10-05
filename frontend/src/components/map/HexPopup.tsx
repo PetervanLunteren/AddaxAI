@@ -25,25 +25,25 @@ export function HexPopup({ hexCell }: HexPopupProps) {
 
   return (
     <div className="p-2 min-w-[280px] max-w-[400px]">
-      <div className="mb-3 pb-2 border-b border-gray-200">
-        <div className="font-semibold text-gray-900 mb-1 text-sm">
+      <div className="mb-3 pb-2 border-b border-border">
+        <div className="font-semibold text-foreground mb-1 text-sm">
           Aggregated metrics
         </div>
         <div className="space-y-1 text-xs">
           <div className="flex justify-between">
-            <span className="text-gray-600">Sites</span>
+            <span className="text-muted-foreground">Sites</span>
             <span className="font-medium">{site_count}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-600">Total trap nights</span>
+            <span className="text-muted-foreground">Total trap nights</span>
             <span className="font-medium">{trap_nights}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-600">Total observations</span>
+            <span className="text-muted-foreground">Total observations</span>
             <span className="font-medium">{observation_count}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-600">Rate</span>
+            <span className="text-muted-foreground">Rate</span>
             <span className="font-medium">
               {rate_per_100.toFixed(2)} / 100 trap nights
             </span>
@@ -52,7 +52,7 @@ export function HexPopup({ hexCell }: HexPopupProps) {
       </div>
 
       <div>
-        <div className="font-semibold text-gray-900 mb-2 text-sm">
+        <div className="font-semibold text-foreground mb-2 text-sm">
           {orderedSites.length === 1 ? "Site" : "Sites"} ({orderedSites.length})
         </div>
         <div className="max-h-[200px] overflow-y-auto space-y-2">
@@ -65,23 +65,23 @@ export function HexPopup({ hexCell }: HexPopupProps) {
             return (
               <div
                 key={site.site_id}
-                className="p-2 bg-gray-50 rounded text-[11px] space-y-0.5"
+                className="p-2 bg-muted rounded text-[11px] space-y-0.5"
               >
-                <div className="font-medium text-gray-900">
+                <div className="font-medium text-foreground">
                   {site.site_name}
-                  <span className="text-gray-500 font-normal">{depSuffix}</span>
+                  <span className="text-muted-foreground font-normal">{depSuffix}</span>
                 </div>
-                <div className="flex justify-between text-gray-700">
+                <div className="flex justify-between text-muted-foreground">
                   <span>Trap nights: {site.trap_nights}</span>
                   <span>
                     Obs: {site.observation_count}
                     {isZero && (
-                      <span className="text-gray-500 ml-1">(empty)</span>
+                      <span className="text-muted-foreground ml-1">(empty)</span>
                     )}
                   </span>
                 </div>
                 {!isZero && (
-                  <div className="text-gray-700">
+                  <div className="text-muted-foreground">
                     Rate: {site.rate_per_100.toFixed(2)} / 100 trap nights
                   </div>
                 )}

@@ -111,7 +111,7 @@ export function PerClassPerformancePage() {
 
   return (
     <>
-      <header className="border-b bg-white/80 backdrop-blur-sm px-4 py-4 sm:px-6 lg:px-8">
+      <header className="border-b bg-card/80 backdrop-blur-sm px-4 py-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <div className="flex items-center justify-between">
             <div>

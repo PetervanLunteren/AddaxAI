@@ -39,7 +39,7 @@ export function AppLayout() {
           expanded one's. */}
       <main
         className={cn(
-          "flex-1 bg-gradient-to-br from-slate-50 to-slate-100 transition-[margin] duration-200",
+          "flex-1 bg-gradient-to-br from-background to-muted transition-[margin] duration-200",
           collapsed ? "ml-[72px]" : "ml-64",
         )}
       >

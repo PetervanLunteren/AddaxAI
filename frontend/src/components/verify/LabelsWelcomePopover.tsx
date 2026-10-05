@@ -18,7 +18,7 @@ export function LabelsWelcomePopover({ open, onDismiss }: LabelsWelcomePopoverPr
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-lg shadow-xl max-w-md mx-4 p-6 space-y-4">
+      <div className="bg-card rounded-lg shadow-xl max-w-md mx-4 p-6 space-y-4">
         <h2 className="text-lg font-semibold">Check the AI's labels</h2>
         <div className="space-y-3 text-sm text-muted-foreground">
           <p>

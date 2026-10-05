@@ -315,7 +315,7 @@ export default function ExportPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b bg-white/80 backdrop-blur-sm">
+      <header className="border-b bg-card/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <h1 className="text-2xl font-bold tracking-tight">Export</h1>
           <p className="text-sm text-muted-foreground">

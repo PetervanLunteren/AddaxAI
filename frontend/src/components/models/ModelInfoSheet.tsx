@@ -107,7 +107,7 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
           {/* Description */}
           <div>
             <h3 className="text-sm font-semibold mb-2">Description</h3>
-            <p className="text-sm text-gray-700 leading-relaxed">{model.description}</p>
+            <p className="text-sm text-muted-foreground leading-relaxed">{model.description}</p>
           </div>
 
           {/* Example picture: what the model expects to see. A URL from the
@@ -136,7 +136,7 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
             <>
               <div>
                 <h3 className="text-sm font-semibold mb-2">Specifications</h3>
-                <p className="text-sm text-gray-700 leading-relaxed">
+                <p className="text-sm text-muted-foreground leading-relaxed">
                   {model.embedding_dim}-dimensional feature vectors
                 </p>
               </div>
@@ -151,7 +151,7 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
                 <h3 className="text-sm font-semibold mb-2">
                   Classes ({classList.length})
                 </h3>
-                <p className="text-sm text-gray-700 leading-relaxed">{formattedClasses}</p>
+                <p className="text-sm text-muted-foreground leading-relaxed">{formattedClasses}</p>
               </div>
               <Separator />
             </>
@@ -162,7 +162,7 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
             <>
               <div>
                 <h3 className="text-sm font-semibold mb-2">Developer</h3>
-                <p className="text-sm text-gray-700 leading-relaxed">{model.developer}</p>
+                <p className="text-sm text-muted-foreground leading-relaxed">{model.developer}</p>
               </div>
               <Separator />
             </>
@@ -173,7 +173,7 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
             <>
               <div>
                 <h3 className="text-sm font-semibold mb-2">Owner</h3>
-                <p className="text-sm text-gray-700 leading-relaxed">{model.owner}</p>
+                <p className="text-sm text-muted-foreground leading-relaxed">{model.owner}</p>
               </div>
               <Separator />
             </>
@@ -240,7 +240,7 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
           {model.min_app_version && currentVersion && (
             <div>
               <h3 className="text-sm font-semibold mb-2">Version requirement</h3>
-              <p className="text-sm text-gray-700 leading-relaxed">
+              <p className="text-sm text-muted-foreground leading-relaxed">
                 {(() => {
                   // Numeric comparison, not string comparison: "7.0.10"
                   // sorts below "7.0.9" character by character, which

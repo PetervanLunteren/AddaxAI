@@ -61,7 +61,7 @@ export default function AboutPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b bg-white/80 backdrop-blur-sm">
+      <header className="border-b bg-card/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <HomeButton />
@@ -82,7 +82,7 @@ export default function AboutPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
-        <section className="rounded-lg border bg-white p-6 shadow-sm">
+        <section className="rounded-lg border bg-card p-6 shadow-sm">
           <h2 className="text-lg font-semibold tracking-tight">What is AddaxAI</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             AddaxAI is an open-source project that makes camera trap
@@ -99,7 +99,7 @@ export default function AboutPage() {
           </p>
         </section>
 
-        <section className="rounded-lg border bg-white p-6 shadow-sm">
+        <section className="rounded-lg border bg-card p-6 shadow-sm">
           <h2 className="text-lg font-semibold tracking-tight">Created by</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             Built and maintained by Peter van Lunteren (
@@ -158,7 +158,7 @@ export default function AboutPage() {
           )}
         </section>
 
-        <section className="rounded-lg border bg-white p-6 shadow-sm">
+        <section className="rounded-lg border bg-card p-6 shadow-sm">
           <h2 className="text-lg font-semibold tracking-tight">Source and license</h2>
           <div className="mt-2 text-sm text-muted-foreground space-y-2">
             <div>
@@ -193,7 +193,7 @@ export default function AboutPage() {
           </div>
         </section>
 
-        <section className="rounded-lg border bg-white p-6 shadow-sm">
+        <section className="rounded-lg border bg-card p-6 shadow-sm">
           <h2 className="text-lg font-semibold tracking-tight">Citation</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             If AddaxAI was useful in a publication, please cite it as:

@@ -103,7 +103,7 @@ export function VerifyDetailShell({
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {toolbar && (
-            <div className="flex flex-col items-center gap-1 px-1.5 py-2 bg-white border-r shrink-0">
+            <div className="flex flex-col items-center gap-1 px-1.5 py-2 bg-card border-r shrink-0">
               {toolbar}
             </div>
           )}
@@ -116,7 +116,7 @@ export function VerifyDetailShell({
             {image}
           </div>
 
-          <div className="w-80 bg-white flex flex-col shrink-0">
+          <div className="w-80 bg-card flex flex-col shrink-0">
             <div className="flex items-center justify-between px-3 py-1.5 shrink-0">
               <div className="flex items-center gap-0.5">
                 {position && (

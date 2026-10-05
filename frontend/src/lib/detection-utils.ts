@@ -190,7 +190,7 @@ export function getObservationBadge(type: string): {
     case "blank":
       return {
         label: "Blank",
-        className: "bg-gray-100 text-gray-600 border-gray-200",
+        className: "bg-muted text-muted-foreground border-border",
       };
     case "unknown":
       return {
@@ -203,7 +203,7 @@ export function getObservationBadge(type: string): {
       // would be a lie: the detector was perfectly clear about it.
       return {
         label: type ? type[0].toUpperCase() + type.slice(1) : "Unclassified",
-        className: "bg-gray-50 text-gray-500 border-gray-200",
+        className: "bg-muted text-muted-foreground border-border",
       };
   }
 }

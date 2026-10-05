@@ -79,7 +79,7 @@ export function CamtrapDPProgressModal({
               className="h-5 w-5 animate-spin shrink-0"
               style={{ color: "#0f6064" }}
             />
-            <span className="text-sm font-medium text-gray-900">
+            <span className="text-sm font-medium text-foreground">
               {total > 0
                 ? `Thumbnail ${current.toLocaleString()} of ${total.toLocaleString()}`
                 : message || "Starting..."}

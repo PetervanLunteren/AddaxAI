@@ -346,7 +346,7 @@ export function EventCountPanel({
               onMouseDown={() => setActiveIndex(index)}
               onFocusCapture={() => setActiveIndex(index)}
               className={cn(
-                "flex flex-col gap-1 rounded border bg-white px-2 py-1.5 text-sm",
+                "flex flex-col gap-1 rounded border bg-card px-2 py-1.5 text-sm",
                 index === activeIndex && "ring-2 ring-primary/40",
               )}
             >
@@ -385,7 +385,7 @@ export function EventCountPanel({
                   type="text"
                   inputMode="numeric"
                   defaultValue={obs.effective_count}
-                  className="w-9 rounded border bg-white px-1 py-0.5 text-center text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-9 rounded border bg-background px-1 py-0.5 text-center text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") e.currentTarget.blur();
                   }}
@@ -439,7 +439,7 @@ export function EventCountPanel({
                   title={label}
                   aria-label={label}
                   className={cn(
-                    "h-6 min-w-0 rounded border bg-white px-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary",
+                    "h-6 min-w-0 rounded border bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary",
                     field === "behavior" ? "flex-[1.5]" : "flex-1",
                     obs[field] === null && "text-muted-foreground",
                   )}
@@ -517,7 +517,7 @@ export function EventCountPanel({
           closes it without saving. */}
       <div className="shrink-0 border-t px-3 py-2 space-y-2">
         {notesExpanded ? (
-          <div className="rounded-md border bg-white p-2">
+          <div className="rounded-md border bg-card p-2">
             <Textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}

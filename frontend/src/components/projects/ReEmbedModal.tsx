@@ -174,13 +174,13 @@ export function ReEmbedModal({ open, onOpenChange, jobId, onComplete, onError }:
               {isProcessing && (
                 <div className="border rounded-lg p-4 space-y-2">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-medium text-gray-700">Embedding</p>
-                    <span className="text-xs text-gray-500 font-mono">{embeddingProgress.toFixed(0)}%</span>
+                    <p className="text-xs font-medium text-muted-foreground">Embedding</p>
+                    <span className="text-xs text-muted-foreground font-mono">{embeddingProgress.toFixed(0)}%</span>
                   </div>
                   <Progress value={embeddingProgress} className="h-2" />
 
                   {showInfoCard ? (
-                    <div className="text-[11px] space-y-0.5 rounded-md bg-gray-50 p-3 font-mono text-gray-600">
+                    <div className="text-[11px] space-y-0.5 rounded-md bg-muted p-3 font-mono text-muted-foreground">
                       <div className="flex justify-between">
                         <span>Processing {metrics.unit || 'crops'}:</span>
                         <span>{metrics.current?.toLocaleString()} of {metrics.total?.toLocaleString()}</span>
@@ -205,13 +205,13 @@ export function ReEmbedModal({ open, onOpenChange, jobId, onComplete, onError }:
                       )}
                       <div className="flex justify-between">
                         <span>Running on:</span>
-                        <span className={computeDevice ? "" : "text-gray-400"}>
+                        <span className={computeDevice ? "" : "text-muted-foreground"}>
                           {computeDevice ?? "detecting..."}
                         </span>
                       </div>
                     </div>
                   ) : (
-                    <div className="text-[11px] rounded-md bg-gray-50 p-3 font-mono text-gray-600">
+                    <div className="text-[11px] rounded-md bg-muted p-3 font-mono text-muted-foreground">
                       {renderStatusWithIcon(embeddingStatus)}
                     </div>
                   )}

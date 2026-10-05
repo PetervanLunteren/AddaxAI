@@ -164,7 +164,7 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
           put. Keep the two in step if either padding changes. */}
       <aside
         className={cn(
-          "fixed left-0 top-0 flex h-screen flex-col border-r bg-white transition-[width] duration-200",
+          "fixed left-0 top-0 flex h-screen flex-col border-r bg-card transition-[width] duration-200",
           collapsed ? "w-[72px]" : "w-64",
         )}
       >

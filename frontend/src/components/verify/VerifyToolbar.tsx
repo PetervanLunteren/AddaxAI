@@ -26,7 +26,7 @@ export function VerifyToolbar({ children, className }: VerifyToolbarProps) {
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-3 min-h-12 py-2 px-3 bg-white rounded-lg border shadow-sm",
+        "flex flex-wrap items-center gap-3 min-h-12 py-2 px-3 bg-card rounded-lg border shadow-sm",
         className,
       )}
     >
