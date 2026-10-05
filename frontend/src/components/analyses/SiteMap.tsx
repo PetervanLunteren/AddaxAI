@@ -13,6 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Map, Marker, NavigationControl } from "react-map-gl/maplibre";
 
 import { useTheme } from "../../lib/theme";
+import { openFreeMapStyleUrl } from "../map/basemap-styles";
 import type { StyleSpecification } from "maplibre-gl";
 import { MapPin, MapIcon, Satellite } from "lucide-react";
 import { sitesApi } from "@/api/sites";
@@ -31,7 +32,7 @@ const MAP_STYLES = {
     name: "Streets",
     icon: MapIcon,
     // Resolved per theme in streetsStyleUrl below.
-    url: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+    url: "https://tiles.openfreemap.org/styles/positron",
   },
   satellite: {
     name: "Satellite",
@@ -63,9 +64,7 @@ const MAP_STYLES = {
 type MapStyleKey = keyof typeof MAP_STYLES;
 
 function streetsStyleUrl(dark: boolean): string {
-  return dark
-    ? "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
-    : "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+  return openFreeMapStyleUrl(dark);
 }
 
 interface SiteMapProps {

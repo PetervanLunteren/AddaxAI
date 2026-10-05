@@ -17,6 +17,13 @@ import { Info } from "lucide-react";
 import { MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 
 import { useTheme } from "../../lib/theme";
+import {
+  OPENFREEMAP_ATTRIBUTION,
+  OSM_LAYER,
+  openFreeMapStyleUrl,
+  supportsWebGL2,
+} from "./basemap-styles";
+import MapLibreGLLayer from "./MapLibreGLLayer";
 
 import { statisticsApi } from "../../api/statistics";
 import type {
@@ -92,7 +99,7 @@ function FitBounds({ points }: { points: [number, number][] }) {
   return null;
 }
 
-function getTileLayer(base: BaseLayer, dark: boolean) {
+function getRasterLayer(base: Exclude<BaseLayer, "positron">) {
   switch (base) {
     case "satellite":
       return {
@@ -101,20 +108,8 @@ function getTileLayer(base: BaseLayer, dark: boolean) {
           "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
       };
     case "osm":
-      return {
-        url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      };
-    case "positron":
     default:
-      return {
-        url: dark
-          ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      };
+      return OSM_LAYER;
   }
 }
 
@@ -201,21 +196,40 @@ export function ObservationRateMap({
     );
   }
 
-  const tile = getTileLayer(baseLayer, resolvedTheme === "dark");
+  // The default street map is an OpenFreeMap vector style (light or
+  // dark with the theme), falling back to OSM raster without WebGL2.
+  // See basemap-styles.ts for why it is not CARTO raster any more.
+  const vectorStreets = baseLayer === "positron" && supportsWebGL2();
+  const styleUrl = openFreeMapStyleUrl(resolvedTheme === "dark");
+  const raster = vectorStreets
+    ? null
+    : getRasterLayer(baseLayer === "positron" ? "osm" : baseLayer);
 
   return (
     <div className="flex h-[600px] flex-col overflow-hidden rounded-lg border bg-card">
       <MapContainer
         center={mapCenter}
         zoom={12}
+        // Set on the container, not only the layers: the zoom range
+        // must be bounded before FitBounds runs on a single point, or
+        // Leaflet zooms to Infinity and MapLibre crashes on init.
+        maxZoom={18}
         style={{ width: "100%" }}
         className="min-h-0 flex-1"
       >
-        <TileLayer
-          key={tile.url}
-          attribution={tile.attribution}
-          url={tile.url}
-        />
+        {vectorStreets ? (
+          <MapLibreGLLayer
+            key={styleUrl}
+            styleUrl={styleUrl}
+            attribution={OPENFREEMAP_ATTRIBUTION}
+          />
+        ) : (
+          <TileLayer
+            key={raster!.url}
+            attribution={raster!.attribution}
+            url={raster!.url}
+          />
+        )}
 
         <MapEventHandler
           onZoomChange={handleZoomChange}

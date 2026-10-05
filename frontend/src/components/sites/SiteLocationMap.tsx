@@ -2,27 +2,26 @@
  * Small single-marker Leaflet preview for the Site info sheet.
  *
  * Non-interactive by default (no scroll-wheel zoom, no double-click
- * zoom), just enough to show where the site is. Reuses the same
- * positron base layer the Map page uses so the visual style matches.
+ * zoom), just enough to show where the site is. Uses the same
+ * OpenFreeMap street style as the Map page so the visual style
+ * matches, with the same OSM raster fallback without WebGL2.
  */
 
 import { CircleMarker, MapContainer, TileLayer } from "react-leaflet";
 
 import { useTheme } from "../../lib/theme";
+import {
+  OPENFREEMAP_ATTRIBUTION,
+  OSM_LAYER,
+  openFreeMapStyleUrl,
+  supportsWebGL2,
+} from "../map/basemap-styles";
+import MapLibreGLLayer from "../map/MapLibreGLLayer";
 
 interface SiteLocationMapProps {
   latitude: number;
   longitude: number;
   zoom?: number;
-}
-
-const CARTO_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
-
-function positronUrl(dark: boolean): string {
-  return dark
-    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-    : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
 }
 
 export function SiteLocationMap({
@@ -31,18 +30,27 @@ export function SiteLocationMap({
   zoom = 12,
 }: SiteLocationMapProps) {
   const { resolvedTheme } = useTheme();
-  const url = positronUrl(resolvedTheme === "dark");
+  const styleUrl = openFreeMapStyleUrl(resolvedTheme === "dark");
   return (
     <div className="h-[180px] w-full overflow-hidden rounded-md border">
       <MapContainer
         center={[latitude, longitude]}
         zoom={zoom}
+        maxZoom={18}
         style={{ height: "100%", width: "100%" }}
         scrollWheelZoom={false}
         doubleClickZoom={false}
         zoomControl={false}
       >
-        <TileLayer key={url} url={url} attribution={CARTO_ATTRIBUTION} />
+        {supportsWebGL2() ? (
+          <MapLibreGLLayer
+            key={styleUrl}
+            styleUrl={styleUrl}
+            attribution={OPENFREEMAP_ATTRIBUTION}
+          />
+        ) : (
+          <TileLayer url={OSM_LAYER.url} attribution={OSM_LAYER.attribution} />
+        )}
         <CircleMarker
           center={[latitude, longitude]}
           radius={7}
