@@ -30,6 +30,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app import __version__
 from app.core.config import get_settings
 from app.core.logging_config import get_logger
+from app.utils.windows_security import smart_app_control_state
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/logs", tags=["Logging"])
@@ -113,6 +114,9 @@ def _collect_system_info() -> dict[str, object]:
             "frozen": getattr(sys, "frozen", False),
         },
         "user_data_dir": str(settings.user_data_dir),
+        # "on" means enforced and likely blocking unsigned env files; see
+        # app/utils/windows_security.py. None off Windows or when unreadable.
+        "smart_app_control": smart_app_control_state(),
         "collected_at_utc": datetime.now(UTC).isoformat(),
     }
     # Card name and VRAM, because "it ran out of memory" is unanswerable
@@ -306,7 +310,8 @@ def _build_diagnostic_zip() -> bytes:
                 "=========================\n\n"
                 "This bundle contains:\n"
                 "  - logs/                 application log files (rotating, last ~7 days)\n"
-                "  - system.json           OS, Python, disk usage, graphics card\n"
+                "  - system.json           OS, Python, disk usage, graphics card,\n"
+                "                          Smart App Control state (Windows)\n"
                 "  - env-status.json       installed conda envs and their validity\n"
                 "  - models.json           installed model directories and manifests\n"
                 "  - db-info.json          schema version, schema check, per-table row counts\n"

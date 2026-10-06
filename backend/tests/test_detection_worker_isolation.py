@@ -198,6 +198,30 @@ async def test_one_failed_deployment_does_not_stop_the_others(db, tmp_path):
     assert db.get(type(job), job.id).status == "completed"
 
 
+async def test_a_failed_entry_carries_the_smart_app_control_hint(
+    db, tmp_path, monkeypatch
+):
+    """The hint rides on the stored error, which is what the receipt shows.
+
+    The real helper appends nothing on CI (not Windows, no Smart App
+    Control), so a sentinel stands in to prove the unexplained-exception
+    path goes through it at all. The hint's own behaviour is pinned in
+    tests/utils/test_windows_security.py.
+    """
+    monkeypatch.setattr(
+        detection_worker,
+        "with_smart_app_control_hint",
+        lambda error: error + " [SAC HINT]",
+    )
+    project, job, entries = _seed(db, tmp_path, [_broken_folder(tmp_path, "one")])
+
+    await _process_batch_job(job.id, project.id, [e.id for e in entries], db)
+
+    failed = db.get(DeploymentQueue, entries[0].id)
+    assert failed.status == "failed"
+    assert failed.error.endswith("[SAC HINT]")
+
+
 async def test_failed_entry_leaves_no_placeholder_deployment(db, tmp_path):
     """The placeholder row is created before the failing step.
 

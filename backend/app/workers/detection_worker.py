@@ -38,6 +38,7 @@ from app.ml.model_storage import ModelStorage
 from app.models import Deployment
 from app.services.folder_scanner import walk_media_files
 from app.utils.fs_hidden import mkdir_hidden_addaxai
+from app.utils.windows_security import with_smart_app_control_hint
 
 logger = get_logger(__name__)
 
@@ -1177,7 +1178,10 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         )
                         db.rollback()
                 queue_crud.update_queue_status(
-                    db, entry_id, status="failed", error=str(e)
+                    db,
+                    entry_id,
+                    status="failed",
+                    error=with_smart_app_control_hint(str(e)),
                 )
 
         # How the run ended is read back off the queue rows themselves,
@@ -1301,7 +1305,12 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
         for entry_id in queue_entry_ids:
             entry = queue_crud.get_queue_entry(db, entry_id)
             if entry and entry.status == "processing":
-                queue_crud.update_queue_status(db, entry_id, status="failed", error=str(e))
+                queue_crud.update_queue_status(
+                    db,
+                    entry_id,
+                    status="failed",
+                    error=with_smart_app_control_hint(str(e)),
+                )
 
         await ws_manager.send_error(job_id, str(e))
         raise
@@ -1382,7 +1391,10 @@ async def process_deployment_analysis(job_id: str) -> None:
                 queue_entry_id = job.payload.get("queue_entry_id")
                 if queue_entry_id:
                     queue_crud.update_queue_status(
-                        db, queue_entry_id, status="failed", error=str(e)
+                        db,
+                        queue_entry_id,
+                        status="failed",
+                        error=with_smart_app_control_hint(str(e)),
                     )
                     logger.info(f"Updated queue entry {queue_entry_id} to failed")
 

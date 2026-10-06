@@ -115,6 +115,37 @@ Then press Try again.
 </FaqItem>
 
 <FaqItem
+  id="windows-smart-app-control-blocks-the-analysis"
+  q="Windows Smart App Control blocks the analysis"
+  summary='Analysis fails, Windows shows "Smart App Control has blocked part of this app". Windows 11 only.'
+>
+
+Analysis fails while AddaxAI itself opens fine. The run ends with an error like `ModuleNotFoundError` or "failed with exit code 1", and Windows shows "Smart App Control has blocked part of this app".
+
+Not sure this is your case? Open Event Viewer and go to Applications and Services Logs, then Microsoft, Windows, CodeIntegrity, Operational. Entries with Event ID 3077 naming files under `C:\Users\<your user name>\AddaxAI\envs\` confirm it.
+
+This is not only a work-computer problem. New Windows 11 computers ship with Smart App Control in an evaluation mode, and Windows can decide to switch it on by itself. That is why it can hit a computer where AddaxAI ran fine the day before.
+
+#### Why it fails
+
+Smart App Control only runs files that are signed or that Microsoft's cloud service recognises as reputable. AddaxAI itself is signed, but the analysis software in the data folder is standard open source Python, downloaded during setup, and most of its compiled files are not signed. Smart App Control judges every file on its own, so it can block a few files and break the analysis while everything around them still works.
+
+There is no way to make an exception for one app, and reinstalling AddaxAI or rebuilding the environment downloads the same files again. This is not something AddaxAI can fix.
+
+#### The fix
+
+Turn Smart App Control off: Windows Security, then App & browser control, then Smart App Control settings. Analysis works again right away, nothing needs to be reinstalled.
+
+Your computer is not left unprotected: Microsoft Defender and SmartScreen stay active.
+
+#### Things to know
+
+- With the April 2026 Windows update or newer you can turn Smart App Control back on later. On older Windows it is a one-way switch: getting it back requires reinstalling Windows, so update Windows first if you want to keep that option.
+- On a managed computer the setting may be greyed out. Then only IT can turn it off.
+
+</FaqItem>
+
+<FaqItem
   id="certificate-errors-during-setup"
   q="Certificate errors during setup"
   summary="CRYPT_E_NO_REVOCATION_CHECK (0x80092012). Windows only. Needs AddaxAI 7.0.12 or newer."
