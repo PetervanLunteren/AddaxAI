@@ -71,8 +71,11 @@ export function RelinkGroupBanner({
   const suggestedPath = group.suggested_path;
   const count = group.items.length;
 
-  // Synthesize the legacy PrefixGroup shape the dialog expects.
-  // Trailing slash matters so replacePrefix can substitute cleanly.
+  // Synthesize the legacy PrefixGroup shape the dialog expects. The
+  // appended "/" is for the dialog's display slice (it trims the prefix
+  // plus one separator off each path); replacePrefix strips trailing
+  // separators of either style itself, so the "/" is safe on Windows
+  // paths too.
   const dialogGroup = useMemo<PrefixGroup<DeploymentPathItem>>(
     () => ({
       prefix: missingPath + "/",

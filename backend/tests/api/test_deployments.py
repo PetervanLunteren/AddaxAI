@@ -574,6 +574,28 @@ def test_relink_refusal_names_a_missing_file(db, tmp_path, caplog):
     assert "Relink refused" in caplog.text
 
 
+def test_relink_to_the_folder_it_was_already_at_says_so(db, tmp_path):
+    """A candidate equal to the current folder means the caller sent the
+    old path back (a frontend substitution bug did, for 69 deployments at
+    once). The refusal must name that, and keep the "Folder not found"
+    prefix the dialog's headline keys on."""
+    import shutil
+
+    from app.api.crud.deployment import relink_deployment
+
+    old = tmp_path / "old"
+    deployment = _deployment_with_files_on_disk(db, old, [("a.jpg", 100)])
+    shutil.rmtree(old)
+
+    result = relink_deployment(db, deployment.id, str(old))
+
+    assert result.success is False
+    assert len(result.verify_result.mismatches) == 1
+    reason = result.verify_result.mismatches[0]
+    assert reason.startswith("Folder not found")
+    assert "already at" in reason
+
+
 def test_relink_refusal_changes_nothing_in_the_database(db, tmp_path):
     """The refusal path must not half-apply. Files keep their old paths and
     the deployment keeps its folder, so retrying with the right folder is

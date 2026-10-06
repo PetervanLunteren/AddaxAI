@@ -1076,6 +1076,19 @@ def relink_deployment(
     # files. Uses the same sampling logic as the startup/modal check.
     result = verify_deployment_folder(deployment, new_folder_path)
     if result.status != "valid":
+        # A candidate equal to the folder the deployment already points at
+        # means the caller sent the old path back, not that the user picked
+        # a wrong folder. A frontend path-substitution bug did exactly that
+        # for every deployment at once, and the plain "Folder not found:
+        # <old path>" it produced sent the diagnosis in circles. Keep the
+        # "Folder not found" prefix: the dialog's headline logic keys on it.
+        if os.path.normcase(os.path.normpath(new_folder_path)) == os.path.normcase(
+            os.path.normpath(deployment.folder_path)
+        ):
+            result.mismatches = [
+                f"Folder not found: {new_folder_path} "
+                f"(this is the folder it was already at)"
+            ]
         # Log every reason. The refusal is otherwise unactionable: the
         # endpoint answers 200 with the mismatch list, so a rejected relink
         # left no trace at all on the server and the user was told only how

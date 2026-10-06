@@ -48,6 +48,8 @@ If you move, rename or unplug a folder of photos, the app can no longer find tho
 
 The folder itself can move, but what is inside it has to stay the same. AddaxAI looks for each photo at its old place inside the folder, so renaming subfolders or shuffling photos between them means it can no longer match them up. If that has happened, delete the deployment and add the folder again.
 
+Moving photos to another disk on the same computer, like an external drive to free up space, needs nothing more than this: move the folders and reconnect. The backup and restore steps below are only for moving to another computer.
+
 <img src="/img/reconnect-folders.webp" alt="Two messages about missing folders. The first suggests a renamed folder and asks you to confirm, the second offers a button to choose the folder yourself" style={{maxWidth: '620px', width: '100%', display: 'block'}} />
 
 ## Moving to another computer
