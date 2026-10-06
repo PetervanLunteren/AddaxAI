@@ -700,6 +700,18 @@ export interface EventObservationItem {
   behavior: string | null;
 }
 
+/** One cohort as "Same as last" copies it: a species, its count and the
+ *  demographics of the individuals on that row. */
+export interface HumanObservationRow {
+  category: string;
+  count: number;
+  label: string | null;
+  label_taxonomy_id: string | null;
+  sex: string | null;
+  life_stage: string | null;
+  behavior: string | null;
+}
+
 /** Partial update of a row's demographics: a missing key leaves the field
  *  alone, null clears it. */
 export interface ObservationAttributesPatch {

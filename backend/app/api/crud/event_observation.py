@@ -818,6 +818,22 @@ def set_event_confirmed(
     return event
 
 
+def _clear_human_layer(db: Session, event_id: str) -> list[EventObservation]:
+    """Drop every human edit to the event's counts in the session, no
+    commit: delete the human-only rows (max_n == 0), clear `human_count`
+    and the demographics on the AI rows. Returns the surviving AI rows in
+    stored order."""
+    ai_rows: list[EventObservation] = []
+    for obs in _rows_in_stored_order(db, event_id):
+        if obs.max_n == 0:
+            db.delete(obs)
+        else:
+            for field, value in _human_layer(None).items():
+                setattr(obs, field, value)
+            ai_rows.append(obs)
+    return ai_rows
+
+
 def reset_event_to_ai(db: Session, event_id: str) -> Event | None:
     """Drop every human edit to the event's counts, back to the AI proposal.
 
@@ -829,17 +845,67 @@ def reset_event_to_ai(db: Session, event_id: str) -> Event | None:
     event = db.get(Event, event_id)
     if event is None:
         return None
-    rows = (
-        db.query(EventObservation)
-        .filter(EventObservation.event_id == event_id)
-        .all()
-    )
-    for obs in rows:
-        if obs.max_n == 0:
-            db.delete(obs)
+    _clear_human_layer(db, event_id)
+    event.confirmed = False
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+def set_human_observations(
+    db: Session, event_id: str, rows: list[dict[str, Any]]
+) -> Event | None:
+    """Replace the event's human layer so its visible cohorts become
+    exactly `rows` ("Same as last" on the Counts page).
+
+    A demographic-free row lands on the event's AI row of that species
+    when it has one, so the AI linkage and its MaxN survive; every other
+    row becomes a human-only row. AI rows for species the rows do not
+    cover get a human count of 0, which hides them and survives a
+    recompute, the same way the X button removes a species. Creation is
+    deliberate appends, never `_find_cohort`: matching would merge two
+    identical cohorts (two "1 male adult" split rows) into one.
+
+    Clears the event's sign-off. One commit. Returns the event, or None
+    when the id is unknown.
+    """
+    event = db.get(Event, event_id)
+    if event is None:
+        return None
+    ai_rows = _clear_human_layer(db, event_id)
+    ai_by_key: dict[str | None, EventObservation] = {}
+    for obs in ai_rows:
+        obs.human_count = 0
+        ai_by_key.setdefault(_species_key(obs), obs)
+    seeded: set[str] = set()
+    for row in rows:
+        label_taxonomy_id = _resolve_taxonomy_id(
+            db, event_id, row.get("label"), row.get("label_taxonomy_id")
+        )
+        demographics = {f: row.get(f) for f in DEMOGRAPHIC_FIELDS}
+        key = label_taxonomy_id or row.get("label") or row["category"]
+        seed = ai_by_key.get(key)
+        if (
+            seed is not None
+            and seed.id not in seeded
+            and not any(demographics.values())
+        ):
+            seed.human_count = row["count"]
+            seeded.add(seed.id)
         else:
-            for field, value in _human_layer(None).items():
-                setattr(obs, field, value)
+            db.add(
+                EventObservation(
+                    id=str(uuid.uuid4()),
+                    event_id=event_id,
+                    label=row.get("label"),
+                    label_taxonomy_id=label_taxonomy_id,
+                    category=row["category"],
+                    max_n=0,
+                    max_n_file_id=None,
+                    human_count=row["count"],
+                    **demographics,
+                )
+            )
     event.confirmed = False
     db.commit()
     db.refresh(event)

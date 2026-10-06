@@ -22,6 +22,7 @@ from app.api.crud.event_observation import (
     set_event_confirmed,
     set_event_notes,
     set_human_count,
+    set_human_observations,
     set_observation_attributes,
     split_observation,
 )
@@ -1116,6 +1117,32 @@ def test_split_makes_two_cohorts_and_both_survive_a_recompute(db):
         (0, 1, "female", "juvenile"),
     ]
     assert [r.label for r in list_event_observations(db, ev.id)] == ["cow", "cow"]
+
+
+def test_same_as_last_rows_survive_a_recompute(db):
+    """set_human_observations writes ordinary human rows, so a rebuild
+    carries them like any other cohort: the seeded AI row keeps its
+    override and the demographic cohorts stay as the person left them."""
+    ev, _cow, _ = _cow_event(db)
+    set_human_observations(db, ev.id, [
+        {"category": "animal", "label": "cow", "count": 2},
+        {
+            "category": "animal", "label": "cow", "count": 1,
+            "sex": "male", "life_stage": "adult",
+        },
+        {"category": "animal", "label": "badger", "count": 1, "sex": "female"},
+    ])
+    assert db.get(Event, ev.id).confirmed is False
+
+    rows = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+    assert [
+        (r.label, r.max_n, r.effective_count, r.sex, r.life_stage) for r in rows
+    ] == [
+        ("cow", 6, 2, None, None),
+        ("cow", 0, 1, "male", "adult"),
+        ("badger", 0, 1, "female", None),
+    ]
 
 
 def test_split_at_one_gives_two_rows_of_one(db):

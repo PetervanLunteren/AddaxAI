@@ -49,6 +49,7 @@ import type {
   EventFilterParams,
   EventWithFiles,
   FileWithDetections,
+  HumanObservationRow,
 } from "../../api/types";
 import { EventFilmstrip } from "./EventFilmstrip";
 import { ViewerToolRail } from "./ViewerToolRail";
@@ -114,6 +115,16 @@ export function EventDetailModal({
   );
   const [boxesHidden, setBoxesHidden] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  // "Same as last": the visible cohort rows of the last non-empty event
+  // confirmed while the modal is open. Deliberately not tied to the camera
+  // or the time, matching Connect: one rule is easier to hold in the head
+  // than a rule with exceptions. Cleared when the modal closes.
+  const [lastConfirmedRows, setLastConfirmedRows] = useState<
+    HumanObservationRow[] | null
+  >(null);
+  useEffect(() => {
+    if (!isOpen) setLastConfirmedRows(null);
+  }, [isOpen]);
   const { imageFilter } = useImageAdjust();
 
   // Filmstrip view settings, persisted per user: the resizable filmstrip
@@ -439,9 +450,31 @@ export function EventDetailModal({
   // Confirm the event (if not already) and jump to the next unconfirmed one.
   // Shared by the Enter key and the count panel's Confirm button.
   const handleConfirmAndAdvance = useCallback(() => {
+    // Snapshot the visible cohorts for "Same as last", armed only once the
+    // confirm is real: a non-empty confirm overwrites it (so confirming a
+    // blank event between two deer events never costs the deer rows), and
+    // a confirm whose request fails arms nothing.
+    const rows = (event?.observations ?? [])
+      .filter((o) => o.effective_count > 0)
+      .map((o) => ({
+        category: o.category,
+        count: o.effective_count,
+        label: o.label,
+        label_taxonomy_id: o.label_taxonomy_id,
+        sex: o.sex,
+        life_stage: o.life_stage,
+        behavior: o.behavior,
+      }));
+    const arm = () => {
+      if (rows.length > 0) setLastConfirmedRows(rows);
+    };
     if (event && !event.confirmed) {
-      eventConfirmMutation.mutateAsync(true).then(handleNextUnconfirmed);
+      eventConfirmMutation.mutateAsync(true).then(() => {
+        arm();
+        handleNextUnconfirmed();
+      });
     } else {
+      arm();
       handleNextUnconfirmed();
     }
   }, [event, eventConfirmMutation, handleNextUnconfirmed]);
@@ -626,8 +659,10 @@ export function EventDetailModal({
             }
           }
           break;
-        case "f":
-        case "F":
+        // T, not F: the count panel's sex keys own F (female), matching
+        // Connect's attribute keys.
+        case "t":
+        case "T":
           e.preventDefault();
           if (currentFile) triage.toggleFlag(currentFile);
           break;
@@ -708,6 +743,7 @@ export function EventDetailModal({
                     : "Download image"
                 }
                 onDownload={handleDownload}
+                flagKey="T"
               >
                 {/* Loop event — cine-loop the event's frames to see
                     motion. The loop glyph keeps it distinct from the
@@ -970,6 +1006,7 @@ export function EventDetailModal({
                 onConfirm={handleConfirmAndAdvance}
                 labelOptions={labelOptions}
                 labelOptionsLoading={labelOptionsLoading}
+                sameAsLastRows={lastConfirmedRows}
               />
             )}
 
@@ -985,7 +1022,10 @@ export function EventDetailModal({
                     ["↑ ↓", "Select species row"],
                     ["0-9", "Set count (type fast for 12, 130…)"],
                     ["+ / −", "Adjust count by 1"],
-                    ["A", "Add species"],
+                    ["A / S / J", "Life stage: adult / subadult / juvenile"],
+                    ["M / F", "Sex: male / female"],
+                    ["C", "Same as last confirmed"],
+                    ["N", "Add species"],
                     ["R", "Change species"],
                     ["← →", "Prev / next event"],
                     ["Shift + ← →", "Prev / next frame"],
@@ -994,7 +1034,7 @@ export function EventDetailModal({
                     ["Scroll", "Zoom the focus"],
                     ["Click", "Focus a thumbnail"],
                     ["P", "Watch focused video"],
-                    ["F", "Flag / unflag"],
+                    ["T", "Flag / unflag"],
                     ["B", "Show / hide AI boxes"],
                     ["Esc", "Close"],
                   ].map(([key, action]) => (

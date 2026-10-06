@@ -6,6 +6,7 @@ import { api } from "../lib/api-client";
 import type {
   EventSummary,
   EventWithFiles,
+  HumanObservationRow,
   ObservationAttributesPatch,
   AdjacentEventsResponse,
   EventFilterParams,
@@ -184,6 +185,17 @@ export const eventsApi = {
     return api.post<EventWithFiles>(
       `/api/events/${eventId}/observations/${observationId}/split`,
     );
+  },
+
+  /** Replace the event's visible cohorts with the given rows ("Same as
+   *  last"). */
+  setHumanObservations: async (
+    eventId: string,
+    observations: HumanObservationRow[],
+  ): Promise<EventWithFiles> => {
+    return api.put<EventWithFiles>(`/api/events/${eventId}/observations`, {
+      observations,
+    });
   },
 
   /** Set the event's free text. Never touches the confirmation. */

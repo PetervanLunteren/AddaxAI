@@ -23,7 +23,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Minus, Plus, RotateCcw, X } from "lucide-react";
+import {
+  Check,
+  ClipboardPaste,
+  Copy,
+  Minus,
+  Plus,
+  RotateCcw,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { eventsApi } from "../../api/events";
 import { cn } from "../../lib/utils";
@@ -38,6 +46,7 @@ import { LabelPicker } from "./LabelPicker";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 import type {
   EventObservationItem,
+  HumanObservationRow,
   ObservationAttributesPatch,
 } from "../../api/types";
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
@@ -46,6 +55,20 @@ import { useSpeciesColorsVersion } from "../../utils/species-colors";
 // "1" then "2" within the window sets 12 instead of 2. Single digits still
 // apply instantly; the next digit just revises the number while it's fresh.
 const DIGIT_WINDOW_MS = 700;
+
+// Connect's attribute keys: one keypress sets the active row's sex or life
+// stage, the same key again sets it back to unknown. A is adult, matching
+// Connect, which is why "add species" sits on N here.
+const ATTRIBUTE_KEYS: Record<
+  string,
+  { field: "sex" | "life_stage"; value: string }
+> = {
+  a: { field: "life_stage", value: "adult" },
+  s: { field: "life_stage", value: "subadult" },
+  j: { field: "life_stage", value: "juvenile" },
+  m: { field: "sex", value: "male" },
+  f: { field: "sex", value: "female" },
+};
 
 interface EventCountPanelProps {
   eventId: string;
@@ -60,6 +83,9 @@ interface EventCountPanelProps {
   onConfirm: () => void;
   labelOptions: LabelOption[];
   labelOptionsLoading: boolean;
+  /** "Same as last": the rows of the last non-empty event confirmed in
+   *  this modal session, or null before any confirm. */
+  sameAsLastRows: HumanObservationRow[] | null;
 }
 
 export function EventCountPanel({
@@ -71,6 +97,7 @@ export function EventCountPanel({
   onConfirm,
   labelOptions,
   labelOptionsLoading,
+  sameAsLastRows,
 }: EventCountPanelProps) {
   // Repaint when the project's colour map lands or changes.
   useSpeciesColorsVersion();
@@ -138,6 +165,12 @@ export function EventCountPanel({
     onSuccess: invalidate,
     onError: onError("save the note"),
   });
+  const sameAsLast = useMutation({
+    mutationFn: (rows: HumanObservationRow[]) =>
+      eventsApi.setHumanObservations(eventId, rows),
+    onSuccess: invalidate,
+    onError: onError("copy the last counts"),
+  });
   // While a request runs the buttons are disabled but not dimmed
   // (`disabled:opacity-100`): with three selects per row the default 50%
   // fade made the whole list blink on every edit. The selects are not
@@ -151,7 +184,8 @@ export function EventCountPanel({
     removeObs.isPending ||
     resetCounts.isPending ||
     setAttributes.isPending ||
-    splitObs.isPending;
+    splitObs.isPending ||
+    sameAsLast.isPending;
 
   // Visible rows = species actually present (count > 0). A count-0 row is a
   // removed species, hidden from the editor.
@@ -206,6 +240,8 @@ export function EventCountPanel({
   visibleRef.current = visible;
   const activeRef = useRef(0);
   activeRef.current = activeIndex;
+  const sameAsLastRef = useRef(sameAsLastRows);
+  sameAsLastRef.current = sameAsLastRows;
   // Digit accumulation for multi-digit count entry (see DIGIT_WINDOW_MS).
   const digitBufferRef = useRef<{ obsId: string; digits: string } | null>(null);
   const digitTimerRef = useRef<number | null>(null);
@@ -242,12 +278,26 @@ export function EventCountPanel({
       ) {
         return;
       }
+      // A chord is the browser's (Cmd+C copies selected text, Cmd+A
+      // selects all), never a panel action.
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       // Add a species — works even with no rows yet (that's when you most
-      // need it), so handle it before the empty-list guard.
-      if (e.key === "a" || e.key === "A") {
+      // need it), so handle it before the empty-list guard. N, because A
+      // is Connect's adult key.
+      if (e.key === "n" || e.key === "N") {
         e.preventDefault();
         clearDigitBuffer();
         setAddOpen(true);
+        return;
+      }
+      // "Same as last" — also before the guard: copying onto an event the
+      // AI called empty is the main use.
+      if (e.key === "c" || e.key === "C") {
+        const last = sameAsLastRef.current;
+        if (!last) return;
+        e.preventDefault();
+        clearDigitBuffer();
+        sameAsLast.mutate(last);
         return;
       }
       const rows = visibleRef.current;
@@ -260,6 +310,22 @@ export function EventCountPanel({
         e.preventDefault();
         clearDigitBuffer();
         setRelabelObs(obs);
+        return;
+      }
+      // Connect's attribute keys on the active row; the same key again
+      // sets the field back to unknown.
+      const attr = ATTRIBUTE_KEYS[e.key.toLowerCase()];
+      if (attr) {
+        const obs = rows[activeRef.current];
+        if (!obs) return;
+        e.preventDefault();
+        clearDigitBuffer();
+        setAttributes.mutate({
+          obsId: obs.id,
+          patch: {
+            [attr.field]: obs[attr.field] === attr.value ? null : attr.value,
+          },
+        });
         return;
       }
       if (e.key === "ArrowUp") {
@@ -474,10 +540,28 @@ export function EventCountPanel({
         <button
           onClick={() => setAddOpen(true)}
           disabled={busy}
+          title="Add a species the AI missed (N)"
           className="flex w-full items-center justify-center gap-1.5 rounded border border-dashed px-2 py-1.5 text-sm text-muted-foreground hover:border-primary/50 hover:text-foreground"
         >
           <Plus className="h-3.5 w-3.5" />
           Add species
+        </button>
+        {/* "Same as last": make this event's rows the rows of the last
+            non-empty event confirmed in this modal session. Replace, not
+            merge; Reset to AI is the undo. Always shown, disabled until
+            something was confirmed, matching Connect. */}
+        <button
+          onClick={() => sameAsLastRows && sameAsLast.mutate(sameAsLastRows)}
+          disabled={busy || !sameAsLastRows}
+          title={
+            sameAsLastRows
+              ? "Same rows as the last confirmed event (C)"
+              : "Nothing confirmed yet in this session"
+          }
+          className="flex w-full items-center justify-center gap-1.5 rounded border border-dashed px-2 py-1.5 text-sm text-muted-foreground hover:border-primary/50 hover:text-foreground disabled:opacity-60 disabled:hover:border-border disabled:hover:text-muted-foreground"
+        >
+          <ClipboardPaste className="h-3.5 w-3.5" />
+          Same as last
         </button>
         <LabelPicker
           headless

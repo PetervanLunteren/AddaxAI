@@ -41,6 +41,9 @@ interface ViewerToolRailProps {
   /** "Download video" / "Download image" / "Download crop". */
   downloadLabel: string;
   onDownload: () => void;
+  /** The flag shortcut shown in the tooltip. The Counts modal says "T"
+   *  because its count panel owns F (sex: female). */
+  flagKey?: string;
   /** Extra rail tools between the box toggle and the flag (the Counts
    *  modal's event loop). */
   children?: ReactNode;
@@ -53,6 +56,7 @@ export function ViewerToolRail({
   triage,
   downloadLabel,
   onDownload,
+  flagKey = "F",
   children,
 }: ViewerToolRailProps) {
   const revealInFolder = useRevealInFolder();
@@ -80,7 +84,7 @@ export function ViewerToolRail({
         className="h-8 w-8"
         onClick={() => file && triage.toggleFlag(file)}
         disabled={!file || triage.pending}
-        title={file?.flagged ? "Remove flag" : "Flag for review (F)"}
+        title={file?.flagged ? "Remove flag" : `Flag for review (${flagKey})`}
       >
         <Flag
           className={cn("h-4 w-4", file?.flagged && "fill-[#71b7ba] text-[#71b7ba]")}

@@ -974,6 +974,112 @@ def test_observation_endpoints_refuse_a_row_from_another_event(client, db):
     assert (unchanged["effective_count"], unchanged["sex"]) == (1, None)
 
 
+def test_set_human_observations_replaces_the_human_layer(client, db):
+    """"Same as last" over the wire: the event's visible rows become
+    exactly the posted cohorts. A demographic-free row lands on the AI row
+    of its species (its MaxN survives), cohorts with demographics become
+    human-only rows, two identical cohorts stay two rows, an AI species
+    the rows do not cover drops to count 0, and the sign-off clears."""
+    from app.api.crud.event_observation import calculate_max_n_for_event
+
+    p = make_project(db, counting_threshold=0.5)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    ev = make_event_with_files(
+        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12)
+    )
+    for _ in range(3):
+        make_detection(
+            db, file_id=ev.files[0].id, category="animal", label="cow",
+            confidence=0.9,
+        )
+    make_detection(
+        db, file_id=ev.files[0].id, category="animal", label="deer",
+        confidence=0.9,
+    )
+    db.flush()
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.commit()
+    client.patch(f"/api/events/{ev.id}/confirm", json={"confirmed": True})
+
+    rows = [
+        {"category": "animal", "label": "cow", "count": 2},
+        {
+            "category": "animal", "label": "cow", "count": 1,
+            "sex": "male", "life_stage": "adult",
+        },
+        {
+            "category": "animal", "label": "cow", "count": 1,
+            "sex": "male", "life_stage": "adult",
+        },
+        {"category": "animal", "label": "badger", "count": 1, "sex": "female"},
+    ]
+    data = client.put(
+        f"/api/events/{ev.id}/observations", json={"observations": rows}
+    ).json()
+    assert data["confirmed"] is False
+    got = [
+        (o["label"], o["max_n"], o["effective_count"], o["sex"], o["life_stage"])
+        for o in data["observations"]
+    ]
+    assert len(got) == 5
+    assert ("cow", 3, 2, None, None) in got
+    assert got.count(("cow", 0, 1, "male", "adult")) == 2
+    assert ("deer", 1, 0, None, None) in got
+    assert ("badger", 0, 1, "female", None) in got
+
+
+def test_set_human_observations_refusals(client, db):
+    """404 for an unknown event; an empty list, a zero count and a value
+    outside the vocabulary are refused with nothing touched."""
+    from app.api.crud.event_observation import calculate_max_n_for_event
+
+    p = make_project(db, counting_threshold=0.5)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    ev = make_event_with_files(
+        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12)
+    )
+    make_detection(
+        db, file_id=ev.files[0].id, category="animal", label="cow",
+        confidence=0.9,
+    )
+    db.flush()
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.commit()
+
+    ok = {"observations": [{"category": "animal", "label": "cow", "count": 1}]}
+    assert client.put("/api/events/nope/observations", json=ok).status_code == 404
+
+    url = f"/api/events/{ev.id}/observations"
+    assert client.put(url, json={"observations": []}).status_code == 422
+    assert client.put(
+        url, json={"observations": [{"category": "animal", "count": 0}]}
+    ).status_code == 422
+    assert client.put(
+        url,
+        json={"observations": [{"category": "animal", "count": 1, "sex": "unknown"}]},
+    ).status_code == 422
+
+    # A label_taxonomy_id that names no row is a 422 naming the field, not
+    # the bare 500 the foreign key used to surface, on every observation
+    # write that accepts the id.
+    (obs,) = client.get(f"/api/events/{ev.id}").json()["observations"]
+    bad_row = {
+        "category": "animal", "label": "cow", "count": 1,
+        "label_taxonomy_id": "not-a-row",
+    }
+    assert client.put(url, json={"observations": [bad_row]}).status_code == 422
+    assert client.post(url, json=bad_row).status_code == 422
+    assert client.patch(
+        f"{url}/{obs['id']}/relabel",
+        json={"category": "animal", "label": "deer", "label_taxonomy_id": "not-a-row"},
+    ).status_code == 422
+
+    (obs,) = client.get(f"/api/events/{ev.id}").json()["observations"]
+    assert (obs["label"], obs["effective_count"], obs["sex"]) == ("cow", 1, None)
+
+
 def test_get_event_labels_files_with_their_camera_for_paired_deployments(client, db):
     """Each file of a paired deployment carries its subfolder name so the
     filmstrip can show which camera it came from. Root files and files of
