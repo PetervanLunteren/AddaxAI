@@ -4,7 +4,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tests.conftest import make_deployment, make_detection, make_file, make_project
+from tests.conftest import (
+    make_deployment,
+    make_detection,
+    make_file,
+    make_project,
+    make_site,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -667,6 +673,171 @@ def test_custom_label_reuses_the_builtin_row(client, db):
     )
     assert len(rows) == 1
     assert rows[0].classification_model_id == BUILTIN_MODEL_ID
+
+
+def test_custom_label_is_global_across_projects(client, db):
+    """A custom label made in one project is offered in every other one.
+
+    Custom labels are shared across all of AddaxAI, so creating "stump" in
+    project A must list, map and resolve in project B too."""
+    from app.ml.taxonomy_db import resolve_taxonomy_id
+
+    a = make_project(db)
+    b = make_project(db)
+
+    created = client.post(
+        f"/api/projects/{a.id}/custom-labels", json={"name": "stump"}
+    ).json()
+    assert created["id"]
+
+    # Listed for B
+    names_b = [r["name"] for r in client.get(
+        f"/api/projects/{b.id}/custom-labels"
+    ).json()]
+    assert "stump" in names_b
+
+    # In B's taxonomy map, and resolvable in B
+    assert "stump" in client.get(f"/api/projects/{b.id}/label-taxonomy-map").json()
+    assert resolve_taxonomy_id("stump", b.id, db) == created["id"]
+
+
+def test_create_custom_label_is_deduped_globally(client, db):
+    """Creating the same name again returns the one global row."""
+    a = make_project(db)
+    b = make_project(db)
+    first = client.post(
+        f"/api/projects/{a.id}/custom-labels", json={"name": "weird stump"}
+    ).json()
+    again = client.post(
+        f"/api/projects/{b.id}/custom-labels", json={"name": "weird stump"}
+    ).json()
+    assert again["id"] == first["id"]
+
+
+def test_delete_custom_label_is_global_and_reports_usage(client, db):
+    """Delete from any project removes the shared label and unlabels its
+    detections in every project; the usage endpoint counts across them."""
+    from datetime import datetime
+
+    a = make_project(db, classification_model_id="MD5A-0-0")
+    b = make_project(db, classification_model_id="MD5A-0-0")
+    created = client.post(
+        f"/api/projects/{a.id}/custom-labels", json={"name": "shared bird"}
+    ).json()
+
+    # A detection in each project pointing at the shared label.
+    dets = []
+    for proj in (a, b):
+        s = make_site(db, project_id=proj.id)
+        dep = make_deployment(db, site_id=s.id)
+        f = make_file(db, deployment_id=dep.id,
+                      captured_at_local=datetime(2024, 6, 1, 12, 0))
+        dets.append(make_detection(
+            db, file_id=f.id, label="shared bird",
+            label_confidence=0.8, label_taxonomy_id=created["id"]))
+    db.flush()
+
+    usage = client.get(
+        f"/api/projects/{b.id}/custom-labels/{created['id']}/usage"
+    ).json()
+    assert usage == {"detection_count": 2, "project_count": 2}
+
+    # Delete via the OTHER project; it is gone everywhere and the boxes in
+    # both projects revert to their category, losing the label.
+    assert client.delete(
+        f"/api/projects/{b.id}/custom-labels/{created['id']}"
+    ).status_code == 204
+    db.expire_all()
+    assert dets[0].label is None
+    assert dets[1].label is None
+    assert dets[0].label_taxonomy_id != created["id"]
+    assert dets[1].label_taxonomy_id != created["id"]
+    assert client.get(f"/api/projects/{a.id}/custom-labels").json() == []
+
+
+def test_delete_custom_label_rebuilds_event_counts(client, db):
+    """Deleting a label rebuilds the counts of events that used it: the
+    species' count row is gone and the box counts as its category again."""
+    from datetime import datetime
+
+    from app.api.crud.event_observation import (
+        calculate_max_n_for_event,
+        list_event_observations,
+    )
+    from tests.conftest import make_event_with_files
+
+    p = make_project(db, counting_threshold=0.5)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    ev = make_event_with_files(
+        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12)
+    )
+    created = client.post(
+        f"/api/projects/{p.id}/custom-labels", json={"name": "rare ibex"}
+    ).json()
+    make_detection(
+        db, file_id=ev.files[0].id, category="animal", label="rare ibex",
+        confidence=0.9, label_confidence=0.9, label_taxonomy_id=created["id"],
+    )
+    db.flush()
+    calculate_max_n_for_event(db, ev.id, 0.5)
+    db.commit()
+    labels_before = {o.label for o in list_event_observations(db, ev.id)}
+    assert "rare ibex" in labels_before
+
+    assert client.delete(
+        f"/api/projects/{p.id}/custom-labels/{created['id']}"
+    ).status_code == 204
+
+    db.expire_all()
+    rows = list_event_observations(db, ev.id)
+    # No row names the deleted species any more; the box now counts as its
+    # category ("animal"), not a dangling "rare ibex".
+    assert all(o.label != "rare ibex" for o in rows)
+
+
+def test_custom_label_name_must_have_substance(client, db):
+    """A whitespace-only name is refused on create and rename. Without the
+    strip-aware check the API happily made a label whose name was the empty
+    string, which rendered as a blank picker row."""
+    p = make_project(db)
+    assert client.post(
+        f"/api/projects/{p.id}/custom-labels", json={"name": "   "}
+    ).status_code == 422
+
+    created = client.post(
+        f"/api/projects/{p.id}/custom-labels", json={"name": "real name"}
+    ).json()
+    assert client.patch(
+        f"/api/projects/{p.id}/custom-labels/{created['id']}",
+        json={"name": "  "},
+    ).status_code == 422
+
+
+def test_rename_collides_with_builtin_and_model_names(client, db):
+    """Renaming a custom label onto a builtin or model-class name is a 409,
+    the same three dedup arms the create path checks. Without it, renaming
+    a custom to "vehicle" made a second identical picker entry beside the
+    builtin row ("one name, one row")."""
+    from app.ml.taxonomy_db import ensure_builtin_labels
+    from app.models.label_taxonomy import LabelTaxonomy
+
+    ensure_builtin_labels(db)
+    p = make_project(db, classification_model_id="tiny-model")
+    db.add(LabelTaxonomy(
+        classification_model_id="tiny-model", name="fox", level="species",
+        is_custom=False, project_id=None,
+    ))
+    db.commit()
+
+    created = client.post(
+        f"/api/projects/{p.id}/custom-labels", json={"name": "myfox"}
+    ).json()
+    url = f"/api/projects/{p.id}/custom-labels/{created['id']}"
+    assert client.patch(url, json={"name": "vehicle"}).status_code == 409
+    assert client.patch(url, json={"name": "FOX"}).status_code == 409
+    # A genuinely free name still renames fine.
+    assert client.patch(url, json={"name": "myfox two"}).status_code == 200
 
 
 # --- Excluding species ---

@@ -8,7 +8,7 @@ the label_taxonomy table in sync with what's in Detection.label.
 import csv
 from pathlib import Path
 
-from sqlalchemy import func
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
@@ -206,6 +206,24 @@ def add_rollup_taxonomy_entry(
 
 BUILTIN_MODEL_ID = "__builtin__"
 
+
+def custom_scope():
+    """The filter clause that selects global custom labels.
+
+    Custom labels are shared across all of AddaxAI: one set, visible in
+    every folder run and every project. They live at `project_id IS NULL`
+    with `is_custom=True` (model-independent, `classification_model_id=""`).
+    This is the single source of truth for that scope; every custom-label
+    read uses it so the scope cannot drift between call sites.
+    """
+    from app.models.label_taxonomy import LabelTaxonomy
+
+    return and_(
+        LabelTaxonomy.is_custom.is_(True),
+        LabelTaxonomy.project_id.is_(None),
+    )
+
+
 BUILTIN_LABELS = [
     {"name": "animal", "category": "animal"},
     {"name": "person", "category": "person"},
@@ -332,7 +350,7 @@ def batch_resolve_taxonomy_ids(
         for tid, name, sci, common in model_rows:
             result[name.lower()] = (tid, sci, common)
 
-    # 2. Custom labels for this project
+    # 2. Custom labels (global, shared across all of AddaxAI)
     custom_rows = (
         db.query(
             LabelTaxonomy.id,
@@ -341,8 +359,7 @@ def batch_resolve_taxonomy_ids(
             LabelTaxonomy.common_name,
         )
         .filter(
-            LabelTaxonomy.project_id == project_id,
-            LabelTaxonomy.is_custom == True,  # noqa: E712
+            custom_scope(),
             LabelTaxonomy.name.in_(lookup_names),
         )
         .all()
@@ -451,7 +468,7 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
             for tid, name, sci, common in model_rows:
                 name_to_taxonomy[name] = (tid, sci, common)
 
-        # 2. Custom labels for this project
+        # 2. Custom labels (global, shared across all of AddaxAI)
         custom_rows = (
             db.query(
                 LabelTaxonomy.id,
@@ -460,8 +477,7 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
                 LabelTaxonomy.common_name,
             )
             .filter(
-                LabelTaxonomy.project_id == project_id,
-                LabelTaxonomy.is_custom == True,  # noqa: E712
+                custom_scope(),
                 LabelTaxonomy.name.in_(lookup_names),
             )
             .all()
@@ -604,12 +620,11 @@ def resolve_taxonomy_id(label_name: str, project_id: str, db: Session) -> str | 
         if row:
             return row[0]
 
-    # 2. Custom labels for this project
+    # 2. Custom labels (global, shared across all of AddaxAI)
     row = (
         db.query(LabelTaxonomy.id)
         .filter(
-            LabelTaxonomy.project_id == project_id,
-            LabelTaxonomy.is_custom == True,  # noqa: E712
+            custom_scope(),
             LabelTaxonomy.name == label_name,
         )
         .first()

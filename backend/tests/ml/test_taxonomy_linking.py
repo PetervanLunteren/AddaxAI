@@ -146,12 +146,13 @@ def test_link_detections_custom_label(db):
     """Links detections to custom label when no model-level match exists."""
     p, dets = _make_project_with_detections(db, ["my_custom_bird"])
 
+    # Custom labels are global: project_id is None, shared across AddaxAI.
     custom_tax = LabelTaxonomy(
         classification_model_id="",
         name="my_custom_bird",
         level="unknown",
         is_custom=True,
-        project_id=p.id,
+        project_id=None,
     )
     db.add(custom_tax)
     db.flush()
@@ -173,7 +174,7 @@ def test_link_detections_model_priority_over_custom(db):
         name="leopard",
         level="species",
         is_custom=True,
-        project_id=p.id,
+        project_id=None,
     )
     db.add(custom_tax)
     db.flush()

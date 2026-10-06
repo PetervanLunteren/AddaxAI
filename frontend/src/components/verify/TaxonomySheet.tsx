@@ -33,7 +33,7 @@ import type {
   CustomLabelUpdate,
   GBIFSuggestion,
 } from "../../api/types";
-import { invalidateLabelQueries } from "../../lib/invalidate-label-queries";
+import { invalidateAfterLabelEdit } from "../../lib/invalidate-label-queries";
 
 interface TaxonomySheetProps {
   customLabel: CustomLabelResponse | null;
@@ -157,8 +157,7 @@ export function TaxonomySheet({
       projectsApi.updateCustomLabel(projectId, customLabel!.id, data),
     onSuccess: () => {
       toast.success("Taxonomy saved");
-      queryClient.invalidateQueries({ queryKey: ["custom-labels", projectId] });
-      invalidateLabelQueries(queryClient);
+      invalidateAfterLabelEdit(queryClient, projectId);
       onOpenChange(false);
     },
     onError: () => {
@@ -183,8 +182,7 @@ export function TaxonomySheet({
       if (!onCreated) {
         toast.success(`Label "${created.name}" created`);
       }
-      queryClient.invalidateQueries({ queryKey: ["custom-labels", projectId] });
-      invalidateLabelQueries(queryClient);
+      invalidateAfterLabelEdit(queryClient, projectId);
       onCreated?.(created);
       onOpenChange(false);
     },
@@ -236,8 +234,8 @@ export function TaxonomySheet({
           </SheetTitle>
           <SheetDescription>
             {isCreateMode
-              ? "Create a custom label. Taxonomy is optional."
-              : "Edit this custom label. Taxonomy is optional."}
+              ? "Create a custom label. Taxonomy is optional. Custom labels are shared across all of AddaxAI."
+              : "Edit this custom label. Taxonomy is optional. Changes apply everywhere it is used."}
           </SheetDescription>
         </SheetHeader>
 

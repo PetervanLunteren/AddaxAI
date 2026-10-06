@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronsUpDown, Pencil, Plus, type LucideIcon } from "lucide-react";
+import { Check, ChevronsUpDown, Pencil, Plus, Trash2, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../../lib/utils";
 import { getCategoryColor } from "../../lib/detection-utils";
@@ -25,6 +25,7 @@ import {
   CommandList,
 } from "../ui/command";
 import { TaxonomySheet } from "./TaxonomySheet";
+import { DeleteCustomLabelDialog } from "./DeleteCustomLabelDialog";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 import type { CustomLabelResponse } from "../../api/types";
 import { invalidateLabelQueries } from "../../lib/invalidate-label-queries";
@@ -140,6 +141,7 @@ export function LabelPicker({
   const [search, setSearch] = useState("");
   const [taxonomyLabel, setTaxonomyLabel] = useState<CustomLabelResponse | null>(null);
   const [taxonomySheetOpen, setTaxonomySheetOpen] = useState(false);
+  const [deleteLabel, setDeleteLabel] = useState<CustomLabelResponse | null>(null);
   const pendingOptionRef = useRef<LabelOption | null>(null);
   // Set by "Add new label" so the taxonomy sheet opens only once this
   // dialog has finished closing (see onCloseAutoFocus below).
@@ -233,6 +235,14 @@ export function LabelPicker({
     // Tell the parent the picker closed. Without this a CONTROLLED
     // parent (BulkActionBar via relabelOpen) keeps thinking the picker
     // is open, and re-opens it the next time the user selects a crop.
+    //
+    // TRAP for hosts: this fires BEFORE the created label arrives via
+    // onSelect (the normal pick path is the other way round: select,
+    // then close). A host that clears its relabel target on
+    // onOpenChange(false) therefore loses it mid-create and the new
+    // label lands on nothing. FileDetailModal keeps the target in a ref
+    // for exactly this reason; do the same, or key the target off
+    // something onOpenChange does not clear.
     onOpenChange?.(false);
     setTaxonomyLabel(null);
     // Defer opening the taxonomy sheet until this command dialog has fully
@@ -493,10 +503,11 @@ export function LabelPicker({
                         <span>{opt.displayName}</span>
                         <TaxonomyCaption commonName={opt.label} caption={opt.taxonomyCaption} />
                       </div>
-                      <span className="ml-auto flex items-center gap-0.5 shrink-0">
+                      <span className="ml-auto flex items-center gap-1.5 shrink-0">
                         <button
                           type="button"
                           className="p-0.5 rounded hover:bg-accent opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Edit label"
                           onClick={(e) => {
                             e.stopPropagation();
                             const cl = customLabelsMap.get(opt.customId!);
@@ -507,6 +518,18 @@ export function LabelPicker({
                           }}
                         >
                           <Pencil className="h-3 w-3 text-muted-foreground" />
+                        </button>
+                        <button
+                          type="button"
+                          className="p-0.5 rounded hover:bg-accent opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Delete label (removed everywhere)"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const cl = customLabelsMap.get(opt.customId!);
+                            if (cl) setDeleteLabel(cl);
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3 text-muted-foreground" />
                         </button>
                         <Check
                           className={cn(
@@ -556,6 +579,16 @@ export function LabelPicker({
           open={taxonomySheetOpen}
           onOpenChange={handleTaxonomySheetClose}
           onCreated={handleTaxonomySheetCreated}
+        />
+      )}
+      {projectId && (
+        <DeleteCustomLabelDialog
+          label={deleteLabel}
+          projectId={projectId}
+          open={deleteLabel !== null}
+          onOpenChange={(next) => {
+            if (!next) setDeleteLabel(null);
+          }}
         />
       )}
     </>

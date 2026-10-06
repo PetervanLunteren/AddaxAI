@@ -35,6 +35,11 @@ def _scalar(engine, sql: str, **params):
         return conn.execute(text(sql), params).scalar()
 
 
+def _rows(engine, sql: str, **params):
+    with engine.connect() as conn:
+        return conn.execute(text(sql), params).all()
+
+
 # ---------------------------------------------------------------------------
 # a1b2c3d4e5f6 — collapse frame File rows onto their parent video
 # ---------------------------------------------------------------------------
@@ -665,3 +670,307 @@ def test_a1b2c3d4e5f7_allows_two_cohorts_of_one_species(engine):
     assert _scalar(
         engine, "SELECT sex FROM event_observations WHERE id = :i", i=second
     ) == "female"
+
+
+# ---------------------------------------------------------------------------
+# c3d4e5f6a7b9 — custom labels become global (per-project rows merged)
+# ---------------------------------------------------------------------------
+
+
+def test_c3d4e5f6a7b9_merges_custom_labels_into_one_global_row(engine) -> None:
+    """Two projects' custom "deer" become one global row, ranks kept.
+
+    Custom labels used to be per-project. This migration merges same-name
+    rows into one shared row (``project_id IS NULL``), keeping the one with
+    taxonomy ranks and repointing the other's detections and observations.
+    Losing a detection's label, or keeping two "deer" rows, would both be
+    wrong.
+    """
+    upgrade_to("b2c3d4e5f6a8")
+
+    with engine.begin() as conn:
+        p1 = insert_row(conn, "projects", name="P1")
+        p2 = insert_row(conn, "projects", name="P2")
+        dep1 = insert_row(conn, "deployments", project_id=p1)
+        dep2 = insert_row(conn, "deployments", project_id=p2)
+        f1 = insert_row(conn, "files", deployment_id=dep1, file_path="/a.jpg")
+        f2 = insert_row(conn, "files", deployment_id=dep2, file_path="/b.jpg")
+        ev2 = insert_row(conn, "events", deployment_id=dep2)
+
+        # Bare custom "deer" in P1 (older), rank-filled custom "deer" in P2.
+        bare = insert_row(
+            conn, "label_taxonomy", name="deer", level="unknown",
+            classification_model_id="", project_id=p1, is_custom=1,
+            created_at_utc="2026-01-01 00:00:00",
+        )
+        ranked = insert_row(
+            conn, "label_taxonomy", name="Deer", level="species",
+            classification_model_id="", project_id=p2, is_custom=1,
+            created_at_utc="2026-02-01 00:00:00",
+            taxon_class="mammalia", taxon_species="elaphus",
+        )
+        det1 = insert_row(
+            conn, "detections", file_id=f1, category="animal",
+            confidence=0.9, label="deer", label_taxonomy_id=bare,
+        )
+        det2 = insert_row(
+            conn, "detections", file_id=f2, category="animal",
+            confidence=0.9, label="deer", label_taxonomy_id=ranked,
+        )
+        obs = insert_row(
+            conn, "event_observations", event_id=ev2, label="deer",
+            label_taxonomy_id=bare, category="animal", max_n=1,
+        )
+
+    upgrade_to("c3d4e5f6a7b9")
+
+    # One global "deer" row survives, and it is the rank-filled one.
+    assert _scalar(
+        engine, "SELECT COUNT(*) FROM label_taxonomy WHERE lower(name)='deer'"
+    ) == 1
+    survivor = _scalar(
+        engine, "SELECT id FROM label_taxonomy WHERE lower(name)='deer'"
+    )
+    assert survivor == ranked
+    assert _scalar(
+        engine, "SELECT project_id FROM label_taxonomy WHERE id=:i", i=ranked
+    ) is None
+    # Both detections and the observation now point at the survivor.
+    assert _scalar(
+        engine, "SELECT label_taxonomy_id FROM detections WHERE id=:i", i=det1
+    ) == ranked
+    assert _scalar(
+        engine, "SELECT label_taxonomy_id FROM detections WHERE id=:i", i=det2
+    ) == ranked
+    assert _scalar(
+        engine, "SELECT label_taxonomy_id FROM event_observations WHERE id=:i", i=obs
+    ) == ranked
+
+
+def test_c3d4e5f6a7b9_clears_project_id_on_a_lone_custom_label(engine) -> None:
+    """A custom label with no same-name sibling just goes global in place."""
+    upgrade_to("b2c3d4e5f6a8")
+
+    with engine.begin() as conn:
+        p1 = insert_row(conn, "projects", name="P1")
+        lone = insert_row(
+            conn, "label_taxonomy", name="stump", level="unknown",
+            classification_model_id="", project_id=p1, is_custom=1,
+        )
+
+    upgrade_to("c3d4e5f6a7b9")
+
+    assert _scalar(
+        engine, "SELECT project_id FROM label_taxonomy WHERE id=:i", i=lone
+    ) is None
+    assert _scalar(
+        engine, "SELECT COUNT(*) FROM label_taxonomy WHERE name='stump'"
+    ) == 1
+
+
+# ---------------------------------------------------------------------------
+# c3d4e5f6a7b9 — exhaustive custom-label merge coverage
+# ---------------------------------------------------------------------------
+#
+# The migration above has focused tests; this one throws the whole matrix at
+# it on one database: many names, many projects, ranked vs bare, mixed case,
+# an already-global row in a group, lone labels, detections and observations
+# on winners and losers, and a bulk of unique labels. It then asserts the
+# global invariants that must hold however the data came in.
+
+
+def _ranks(**kw):
+    """Only the taxon_* columns, so a row can be seeded with or without ranks."""
+    return {k: v for k, v in kw.items() if v is not None}
+
+
+def test_c3d4e5f6a7b9_merge_matrix(engine) -> None:
+    upgrade_to("b2c3d4e5f6a8")
+
+    # Track, per lowercased name: the id we expect to survive, and every
+    # (detection_id / observation_id) that must end up pointing at it.
+    expected_winner: dict[str, str] = {}
+    expected_det: dict[str, list[str]] = {}
+    expected_obs: dict[str, list[str]] = {}
+
+    with engine.begin() as conn:
+        # A handful of projects, each with a deployment + file + event so we
+        # can hang detections and observations off real parents.
+        projects = []
+        for i in range(5):
+            pid = insert_row(conn, "projects", name=f"P{i}")
+            dep = insert_row(conn, "deployments", project_id=pid)
+            fil = insert_row(conn, "files", deployment_id=dep, file_path=f"/{i}.jpg")
+            ev = insert_row(conn, "events", deployment_id=dep)
+            projects.append({"id": pid, "file": fil, "event": ev})
+
+        def custom(name, pid, created, *, project_id="__set__", **ranks):
+            """Insert a custom label row; project_id defaults to the project."""
+            return insert_row(
+                conn, "label_taxonomy", name=name, level="unknown",
+                classification_model_id="", is_custom=1,
+                project_id=(pid if project_id == "__set__" else project_id),
+                created_at_utc=created, **_ranks(**ranks),
+            )
+
+        def det(name, p, taxonomy_id):
+            d = insert_row(
+                conn, "detections", file_id=p["file"], category="animal",
+                confidence=0.9, label=name, label_taxonomy_id=taxonomy_id,
+            )
+            expected_det.setdefault(name.lower(), []).append(d)
+            return d
+
+        def obs(name, p, taxonomy_id):
+            o = insert_row(
+                conn, "event_observations", event_id=p["event"], label=name,
+                category="animal", max_n=1, label_taxonomy_id=taxonomy_id,
+            )
+            expected_obs.setdefault(name.lower(), []).append(o)
+            return o
+
+        # 1. "deer": bare(oldest) / ranked / bare -> ranked wins.
+        d_bare = custom("deer", projects[0]["id"], "2026-01-01 00:00:00")
+        d_rank = custom("deer", projects[1]["id"], "2026-02-01 00:00:00",
+                        taxon_class="mammalia", taxon_species="elaphus")
+        d_bare3 = custom("deer", projects[2]["id"], "2026-03-01 00:00:00")
+        expected_winner["deer"] = d_rank
+        det("deer", projects[0], d_bare)
+        det("deer", projects[1], d_rank)
+        det("deer", projects[2], d_bare3)
+        obs("deer", projects[0], d_bare)      # observation on a loser
+        obs("deer", projects[1], d_rank)      # observation on the winner
+
+        # 2. case-insensitive "Fox"/"fox"/"FOX", no ranks -> oldest wins.
+        f1 = custom("Fox", projects[0]["id"], "2026-02-01 00:00:00")
+        f2 = custom("fox", projects[1]["id"], "2026-01-01 00:00:00")  # oldest
+        f3 = custom("FOX", projects[3]["id"], "2026-03-01 00:00:00")
+        expected_winner["fox"] = f2
+        det("Fox", projects[0], f1)
+        det("fox", projects[1], f2)
+        det("FOX", projects[3], f3)
+
+        # 3. "boar": two ranked rows -> older ranked wins.
+        b_new = custom("boar", projects[1]["id"], "2026-02-01 00:00:00",
+                       taxon_class="mammalia")
+        b_old = custom("boar", projects[2]["id"], "2026-01-01 00:00:00",
+                       taxon_class="mammalia", taxon_genus="sus")
+        expected_winner["boar"] = b_old
+        det("boar", projects[1], b_new)
+        det("boar", projects[2], b_old)
+
+        # 4. "rock": an already-global bare row + a per-project ranked row ->
+        #    ranked wins and goes global, the old global row merges in.
+        r_global = custom("rock", None, "2026-01-01 00:00:00", project_id=None)
+        r_rank = custom("rock", projects[0]["id"], "2026-02-01 00:00:00",
+                        taxon_class="aves")
+        expected_winner["rock"] = r_rank
+        det("rock", projects[0], r_global)    # detection on the old global row
+        obs("rock", projects[0], r_rank)
+
+        # 5. "stump": lone per-project label, no duplicate -> project_id cleared.
+        s_lone = custom("stump", projects[4]["id"], "2026-01-01 00:00:00")
+        expected_winner["stump"] = s_lone
+        det("stump", projects[4], s_lone)
+
+        # 6. "ghost": a duplicate pair neither side referenced by anything.
+        g1 = custom("ghost", projects[0]["id"], "2026-01-01 00:00:00")
+        custom("ghost", projects[1]["id"], "2026-02-01 00:00:00")
+        expected_winner["ghost"] = g1
+
+        # 7. Loads of unique labels across projects (no merge, just go global).
+        bulk_ids = []
+        for i in range(60):
+            p = projects[i % 5]
+            bulk_ids.append(
+                custom(f"bulk_{i:03d}", p["id"], "2026-04-01 00:00:00")
+            )
+
+        # 8. Non-custom rows that must be left completely alone.
+        insert_row(
+            conn, "label_taxonomy", name="leopard", level="species",
+            classification_model_id="SOME-MODEL", is_custom=0, project_id=None,
+            taxon_class="mammalia",
+        )
+        insert_row(
+            conn, "label_taxonomy", name="animal", level="unknown",
+            classification_model_id="__builtin__", is_custom=0, project_id=None,
+        )
+
+    upgrade_to("c3d4e5f6a7b9")
+
+    # --- Per-group: the expected row survived, losers gone, links moved ---
+    for name, winner in expected_winner.items():
+        rows = _rows(
+            engine,
+            "SELECT id FROM label_taxonomy WHERE lower(name)=:n AND is_custom=1",
+            n=name,
+        )
+        assert [r[0] for r in rows] == [winner], f"{name}: wrong survivor set {rows}"
+        for det_id in expected_det.get(name, []):
+            got = _scalar(
+                engine,
+                "SELECT label_taxonomy_id FROM detections WHERE id=:i", i=det_id,
+            )
+            assert got == winner, f"{name}: detection {det_id} -> {got}, want {winner}"
+        for obs_id in expected_obs.get(name, []):
+            got = _scalar(
+                engine,
+                "SELECT label_taxonomy_id FROM event_observations WHERE id=:i",
+                i=obs_id,
+            )
+            assert got == winner, f"{name}: observation {obs_id} -> {got}, want {winner}"
+
+    # --- Global invariants over every custom row ---
+    custom_rows = _rows(
+        engine,
+        "SELECT id, lower(name), project_id FROM label_taxonomy WHERE is_custom=1",
+    )
+    # Every custom row is global now.
+    assert all(r[2] is None for r in custom_rows), "a custom row kept a project_id"
+    # No two custom rows share a name (the unique key would forbid it anyway).
+    names = [r[1] for r in custom_rows]
+    assert len(names) == len(set(names)), "duplicate custom names survived the merge"
+    # The lone + bulk rows all survive (unique names, nothing merged away).
+    assert "stump" in names
+    assert sum(n.startswith("bulk_") for n in names) == 60
+
+    # --- Non-custom rows untouched ---
+    assert _scalar(
+        engine, "SELECT project_id FROM label_taxonomy WHERE name='leopard'"
+    ) is None
+    assert _scalar(
+        engine,
+        "SELECT classification_model_id FROM label_taxonomy WHERE name='leopard'",
+    ) == "SOME-MODEL"
+    assert _scalar(
+        engine,
+        "SELECT COUNT(*) FROM label_taxonomy WHERE name='animal' AND is_custom=0",
+    ) == 1
+
+    # --- The database is structurally sound ---
+    assert _scalar(engine, "PRAGMA integrity_check") == "ok"
+    assert _rows(engine, "PRAGMA foreign_key_check") == []
+
+
+def test_c3d4e5f6a7b9_is_a_noop_when_already_global(engine) -> None:
+    """Running it against an all-global custom set changes nothing."""
+    upgrade_to("b2c3d4e5f6a8")
+    with engine.begin() as conn:
+        insert_row(
+            conn, "label_taxonomy", name="deer", level="unknown",
+            classification_model_id="", is_custom=1, project_id=None,
+        )
+        insert_row(
+            conn, "label_taxonomy", name="fox", level="unknown",
+            classification_model_id="", is_custom=1, project_id=None,
+        )
+
+    upgrade_to("c3d4e5f6a7b9")
+
+    rows = _rows(
+        engine,
+        "SELECT lower(name), project_id FROM label_taxonomy WHERE is_custom=1 "
+        "ORDER BY name",
+    )
+    assert [(r[0], r[1]) for r in rows] == [("deer", None), ("fox", None)]

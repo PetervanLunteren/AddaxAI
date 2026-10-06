@@ -167,6 +167,14 @@ export function FileDetailModal({
   // The boxes the relabel search is open for. A list, because with no
   // box selected the search names every box on the picture.
   const [relabelTargets, setRelabelTargets] = useState<string[] | null>(null);
+  // Survives the intermediate close that "Add new label" triggers: creating
+  // a label closes the picker (clearing relabelTargets) before it applies
+  // the new label, so onSelect reads this ref to still know which box to
+  // label. Without it a drawn box stays "animal" after creating its label.
+  const relabelTargetsRef = useRef<string[] | null>(null);
+  useEffect(() => {
+    if (relabelTargets) relabelTargetsRef.current = relabelTargets;
+  }, [relabelTargets]);
   // The species a newly drawn box gets. Null means an unnamed animal,
   // and the search opens on every new box instead.
   const [activeLabel, setActiveLabel] = useState<LabelOption | null>(null);
@@ -963,8 +971,13 @@ export function FileDetailModal({
             headless
             value={null}
             onSelect={(option) => {
-              const ids = relabelTargets;
+              // Fall back to the ref: creating a new label closes the picker
+              // first (clearing relabelTargets) and applies the label after,
+              // so the live state can be null here even though a box is
+              // waiting for it.
+              const ids = relabelTargets ?? relabelTargetsRef.current;
               setRelabelTargets(null);
+              relabelTargetsRef.current = null;
               // Same advance rule as the keys: a whole-picture relabel
               // is the verdict and moves on; a selected box (including
               // a freshly drawn one, which arrives selected) stays.

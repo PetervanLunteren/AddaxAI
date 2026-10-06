@@ -125,55 +125,61 @@ def test_label_tree_all_linked(db):
 # ---------- Delete custom label sets FK to NULL ----------
 
 
-def test_delete_custom_label_nullifies_fk(client, db):
-    """Deleting a custom label sets label_taxonomy_id to NULL on detections."""
+def test_delete_custom_label_reverts_detections_to_category(client, db):
+    """Deleting a custom label reverts its detections to an unverified box
+    of their own category: label text gone, linked to the builtin category
+    row (not left dangling), and back in the review queue."""
+    from app.ml.taxonomy_db import BUILTIN_MODEL_ID
+
     p = make_project(db, classification_model_id=MODEL_ID)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
     f = make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 6, 1, 12, 0))
 
-    # Create custom taxonomy entry
     custom_tax = LabelTaxonomy(
         classification_model_id="",
         name="my_bird",
         level="unknown",
         is_custom=True,
-        project_id=p.id,
+        project_id=None,
     )
     db.add(custom_tax)
     db.flush()
 
-    # Create detection linked to the custom taxonomy
     det = make_detection(db, file_id=f.id, label="my_bird",
                          label_confidence=0.8,
-                         label_taxonomy_id=custom_tax.id)
+                         label_taxonomy_id=custom_tax.id, verified=True)
     db.flush()
 
-    # Delete via API
     resp = client.delete(f"/api/projects/{p.id}/custom-labels/{custom_tax.id}")
     assert resp.status_code == 204
 
     db.expire_all()
-    # Detection's label string preserved, FK nullified
-    assert det.label == "my_bird"
-    assert det.label_taxonomy_id is None
+    # Reverted to its category, unverified, and the custom row is gone.
+    assert det.label is None
+    assert det.common_name == "Animal"
+    assert det.verified is False
+    tax = db.query(LabelTaxonomy).get(det.label_taxonomy_id)
+    assert tax is not None and tax.classification_model_id == BUILTIN_MODEL_ID
+    assert db.query(LabelTaxonomy).filter(
+        LabelTaxonomy.id == custom_tax.id
+    ).first() is None
 
 
-def test_delete_custom_label_preserves_other_detections(client, db):
-    """Deleting a custom label only nullifies FK on its own detections."""
+def test_delete_custom_label_reverts_only_its_own_detections(client, db):
+    """Deleting one custom label leaves detections of other labels alone."""
     p = make_project(db, classification_model_id=MODEL_ID)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
     f = make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 6, 1, 12, 0))
 
-    # Create two custom taxonomy entries
     tax_a = LabelTaxonomy(
         classification_model_id="", name="bird_a", level="unknown",
-        is_custom=True, project_id=p.id,
+        is_custom=True, project_id=None,
     )
     tax_b = LabelTaxonomy(
         classification_model_id="", name="bird_b", level="unknown",
-        is_custom=True, project_id=p.id,
+        is_custom=True, project_id=None,
     )
     db.add_all([tax_a, tax_b])
     db.flush()
@@ -189,7 +195,8 @@ def test_delete_custom_label_preserves_other_detections(client, db):
     assert resp.status_code == 204
 
     db.expire_all()
-    assert det_a.label_taxonomy_id is None
+    assert det_a.label is None  # reverted
+    assert det_b.label == "bird_b"  # untouched
     assert det_b.label_taxonomy_id == tax_b.id
 
 
@@ -204,7 +211,7 @@ def test_rename_custom_label_relinks_fk(client, db):
     old_tax = _add_taxonomy(db, "cow", "species", taxon_class="mammalia")
     custom_tax = LabelTaxonomy(
         classification_model_id="", name="old_name", level="unknown",
-        is_custom=True, project_id=p.id,
+        is_custom=True, project_id=None,
     )
     db.add(custom_tax)
     db.flush()
@@ -235,7 +242,7 @@ def test_update_custom_label_relinks_stale_fk(client, db):
     stale_tax = _add_taxonomy(db, "cow", "species")
     custom_tax = LabelTaxonomy(
         classification_model_id="", name="my_animal", level="unknown",
-        is_custom=True, project_id=p.id,
+        is_custom=True, project_id=None,
     )
     db.add(custom_tax)
     db.flush()

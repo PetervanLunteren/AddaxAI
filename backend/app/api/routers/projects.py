@@ -14,7 +14,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, text
+from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -564,15 +564,9 @@ def delete_project(project_id: str, db: Session = Depends(get_db)) -> None:
             detail=f"Project with id '{project_id}' not found",
         )
 
-    # Delete custom label taxonomy entries scoped to this project
-    taxonomy_count = (
-        db.query(LabelTaxonomy)
-        .filter(LabelTaxonomy.project_id == project_id)
-        .delete(synchronize_session=False)
-    )
-    if taxonomy_count:
-        db.commit()
-        logger.info(f"Deleted {taxonomy_count} custom labels for project {project_id}")
+    # Custom labels are global (project_id IS NULL), shared across all of
+    # AddaxAI, so project teardown never deletes them. (Model taxonomy rows
+    # are also project_id NULL; neither is scoped to a project any more.)
 
     # Delete jobs associated with this project (after cascade removes detections
     # that have a FK to jobs)
@@ -1010,14 +1004,13 @@ def get_label_taxonomy_map(
 
     model_id = project.classification_model_id
 
+    from app.ml.taxonomy_db import custom_scope
+
     rows = (
         db.query(LabelTaxonomy)
         .filter(
             (LabelTaxonomy.classification_model_id == model_id)
-            | (
-                (LabelTaxonomy.project_id == project_id)
-                & (LabelTaxonomy.is_custom == True)  # noqa: E712
-            )
+            | custom_scope()
         )
         .all()
     )
@@ -1042,18 +1035,14 @@ def list_custom_labels(
     project_id: str, db: Session = Depends(get_db)
 ) -> list[CustomLabelResponse]:
     """
-    List custom labels for a project.
+    List custom labels.
 
-    Returns all user-defined custom label entries for this project.
+    Custom labels are global (shared across all of AddaxAI), so the path
+    project id does not scope the result; it is kept for a stable URL.
     """
-    rows = (
-        db.query(LabelTaxonomy)
-        .filter(
-            LabelTaxonomy.project_id == project_id,
-            LabelTaxonomy.is_custom == True,  # noqa: E712
-        )
-        .all()
-    )
+    from app.ml.taxonomy_db import custom_scope
+
+    rows = db.query(LabelTaxonomy).filter(custom_scope()).all()
     return [CustomLabelResponse.model_validate(r) for r in rows]
 
 
@@ -1084,10 +1073,10 @@ def create_custom_label(
     model_id = db_project.classification_model_id
 
     from app.ml.taxonomic_rollup import format_common_name
-    from app.ml.taxonomy_db import BUILTIN_MODEL_ID
+    from app.ml.taxonomy_db import BUILTIN_MODEL_ID, custom_scope
 
     # Check if already exists (case-insensitive) in the current model
-    # taxonomy, among this project's custom labels, or among the builtin
+    # taxonomy, among the global custom labels, or among the builtin
     # rows (animal / person / vehicle).
     #
     # The builtin arm is not decoration. Without it, "vehicle" here made a
@@ -1096,13 +1085,19 @@ def create_custom_label(
     # one leaf per taxonomy row, so those render as identical entries the
     # user cannot tell apart, and relabelling resolves to whichever the
     # priority order picks. One name, one row.
+    #
+    # Custom labels are global, so the custom arm checks the shared set,
+    # not this project. A name the current model already knows is still
+    # deduped against here; the same name may coincide with a different
+    # model's class in another project, which is accepted (resolve prefers
+    # the model row there).
     existing = (
         db.query(LabelTaxonomy)
         .filter(
             func.lower(LabelTaxonomy.name) == name.lower(),
             (
                 (LabelTaxonomy.classification_model_id == model_id)
-                | (LabelTaxonomy.project_id == project_id)
+                | custom_scope()
                 | (LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID)
             ),
         )
@@ -1112,9 +1107,12 @@ def create_custom_label(
     if existing:
         return CustomLabelResponse.model_validate(existing)
 
+    # project_id is None: custom labels are global, shared across all of
+    # AddaxAI. The dedup above still used this project's model so we never
+    # shadow a class the current model already knows.
     new_label = LabelTaxonomy(
         is_custom=True,
-        project_id=project_id,
+        project_id=None,
         level="unknown",
         name=name,
         classification_model_id="",
@@ -1125,7 +1123,7 @@ def create_custom_label(
     db.commit()
     db.refresh(new_label)
 
-    logger.info(f"Created custom label '{name}' for project {project_id}")
+    logger.info(f"Created global custom label '{name}'")
     return CustomLabelResponse.model_validate(new_label)
 
 
@@ -1159,13 +1157,11 @@ def update_custom_label(
 
     Derives the taxonomy level from the most specific populated field.
     """
+    from app.ml.taxonomy_db import custom_scope
+
     row = (
         db.query(LabelTaxonomy)
-        .filter(
-            LabelTaxonomy.id == label_id,
-            LabelTaxonomy.project_id == project_id,
-            LabelTaxonomy.is_custom == True,  # noqa: E712
-        )
+        .filter(LabelTaxonomy.id == label_id, custom_scope())
         .first()
     )
     if row is None:
@@ -1174,17 +1170,35 @@ def update_custom_label(
             detail="Custom label not found",
         )
 
-    # Handle name update with collision check
+    # Handle name update with collision check. Custom labels are global, so
+    # the check and the relink below span every project, not one.
     if body.name is not None:
         new_name = body.name.strip()
         old_name = row.name
         if new_name.lower() != old_name.lower():
+            # Same three arms as the create dedup, for the same "one name,
+            # one row" reason: another global custom, a builtin row, or a
+            # class of this project's model. Without the last two, renaming
+            # a custom to "vehicle" made a second identical picker entry
+            # beside the builtin one.
+            from app.ml.taxonomy_db import BUILTIN_MODEL_ID
+
+            arms = [
+                custom_scope(),
+                LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID,
+            ]
+            db_project = crud_project.get_project(db, project_id)
+            if db_project and db_project.classification_model_id:
+                arms.append(
+                    LabelTaxonomy.classification_model_id
+                    == db_project.classification_model_id
+                )
             collision = (
                 db.query(LabelTaxonomy)
                 .filter(
                     func.lower(LabelTaxonomy.name) == new_name.lower(),
                     LabelTaxonomy.id != label_id,
-                    LabelTaxonomy.project_id == project_id,
+                    or_(*arms),
                 )
                 .first()
             )
@@ -1194,23 +1208,16 @@ def update_custom_label(
                     detail=f"Label '{new_name}' already exists",
                 )
         if new_name != old_name:
-            # Update all detections in this project that reference the old name
+            # Relink every detection of the old name, across all projects.
             (
                 db.query(Detection)
-                .filter(
-                    Detection.label == old_name,
-                    Detection.file_id.in_(
-                        db.query(File.id)
-                        .join(Deployment)
-                        .filter(Deployment.project_id == project_id)
-                    ),
-                )
+                .filter(Detection.label == old_name)
                 .update(
                     {Detection.label: new_name, Detection.label_taxonomy_id: label_id},
                     synchronize_session=False,
                 )
             )
-            logger.info(f"Renamed detections '{old_name}' -> '{new_name}' in project {project_id}")
+            logger.info(f"Renamed detections '{old_name}' -> '{new_name}' (global)")
         row.name = new_name
 
     row.taxon_class = body.taxon_class
@@ -1236,19 +1243,11 @@ def update_custom_label(
         body.taxon_class,
     )
 
-    # Ensure all detections with this label name point to this taxonomy
-    # row and carry the updated names
-    project_file_ids = (
-        db.query(File.id)
-        .join(Deployment)
-        .filter(Deployment.project_id == project_id)
-    )
+    # Ensure every detection with this label name, across all projects,
+    # points to this taxonomy row and carries the updated names.
     (
         db.query(Detection)
-        .filter(
-            Detection.label == row.name,
-            Detection.file_id.in_(project_file_ids),
-        )
+        .filter(Detection.label == row.name)
         .update(
             {
                 Detection.label_taxonomy_id: label_id,
@@ -1266,6 +1265,47 @@ def update_custom_label(
     return CustomLabelResponse.model_validate(row)
 
 
+@router.get("/{project_id}/custom-labels/{label_id}/usage")
+def get_custom_label_usage(
+    project_id: str,
+    label_id: str,
+    db: Session = Depends(get_db),
+) -> dict[str, int]:
+    """How widely a custom label is used, for the delete confirm.
+
+    Custom labels are global, so deleting one unlabels detections in every
+    project that used it. Returns the detection count and how many distinct
+    projects they sit in.
+    """
+    from app.ml.taxonomy_db import custom_scope
+
+    row = (
+        db.query(LabelTaxonomy)
+        .filter(LabelTaxonomy.id == label_id, custom_scope())
+        .first()
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Custom label not found",
+        )
+
+    detection_count = (
+        db.query(func.count(Detection.id))
+        .filter(Detection.label_taxonomy_id == label_id)
+        .scalar()
+    ) or 0
+    project_count = (
+        db.query(func.count(func.distinct(Deployment.project_id)))
+        .select_from(Detection)
+        .join(File, File.id == Detection.file_id)
+        .join(Deployment, Deployment.id == File.deployment_id)
+        .filter(Detection.label_taxonomy_id == label_id)
+        .scalar()
+    ) or 0
+    return {"detection_count": detection_count, "project_count": project_count}
+
+
 @router.delete(
     "/{project_id}/custom-labels/{label_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -1275,14 +1315,29 @@ def delete_custom_label(
     label_id: str,
     db: Session = Depends(get_db),
 ) -> None:
-    """Delete a custom label from a project."""
+    """Delete a global custom label, removing it from the boxes too.
+
+    Every detection that carried it reverts to an unverified box of its
+    own category via ``clear_classification`` (the one writer for "no
+    species"), human-added count rows of the species are removed, and the
+    affected events' counts are rebuilt. Leaving the text on the boxes
+    made a ghost: the name stayed on canvases and chips while no list or
+    filter could reach it any more.
+    """
+    from app.api.crud.event_observation import (
+        calculate_max_n_for_event,
+        get_event_ids_for_detections,
+    )
+    from app.ml.taxonomy_db import (
+        clear_classification,
+        custom_scope,
+        ensure_builtin_labels,
+    )
+    from app.models.event_observation import EventObservation
+
     row = (
         db.query(LabelTaxonomy)
-        .filter(
-            LabelTaxonomy.id == label_id,
-            LabelTaxonomy.project_id == project_id,
-            LabelTaxonomy.is_custom == True,  # noqa: E712
-        )
+        .filter(LabelTaxonomy.id == label_id, custom_scope())
         .first()
     )
     if row is None:
@@ -1293,16 +1348,69 @@ def delete_custom_label(
 
     name = row.name
 
-    # SET NULL the FK on detections that reference this taxonomy row
-    (
+    # Every box that carries the label: linked by the FK, or holding the
+    # text without a link (a leftover from before deletes cleared text).
+    detections = (
         db.query(Detection)
-        .filter(Detection.label_taxonomy_id == label_id)
-        .update({Detection.label_taxonomy_id: None}, synchronize_session=False)
+        .filter(
+            (Detection.label_taxonomy_id == label_id)
+            | (func.lower(Detection.label) == name.lower())
+        )
+        .all()
     )
 
+    # Events to rebuild afterwards: those holding the detections, plus any
+    # with a human count row for this species. Gather before the clear, so
+    # the links still exist.
+    affected_events = set(
+        get_event_ids_for_detections(db, [d.id for d in detections])
+    )
+    obs_rows = (
+        db.query(EventObservation)
+        .filter(EventObservation.label_taxonomy_id == label_id)
+        .all()
+    )
+    affected_events.update(o.event_id for o in obs_rows)
+
+    # Revert every box to an unverified detection of its own category.
+    # clear_classification is the one writer for "no species"; unverifying
+    # returns the box to the review queue, because its verdict was the very
+    # label now being deleted.
+    builtin_ids = ensure_builtin_labels(db)
+    for det in detections:
+        clear_classification(det, builtin_ids)
+        det.verified = False
+        det.verified_at_utc = None
+    for obs in obs_rows:
+        db.delete(obs)
+    # Flush the reassignments BEFORE deleting the label row. Otherwise the
+    # ORM, handling the parent delete, nulls the FK on the detections it
+    # still sees pointing at it and clobbers the builtin link just set. Once
+    # flushed, the row's children query finds none and the delete is clean.
+    db.flush()
+
     db.delete(row)
+    db.flush()
+
+    # Rebuild each affected event at its OWN project's counting threshold:
+    # the label is global, so the events can span projects.
+    thresholds = dict(
+        db.query(Event.id, Project.counting_threshold)
+        .join(Deployment, Deployment.id == Event.deployment_id)
+        .join(Project, Project.id == Deployment.project_id)
+        .filter(Event.id.in_(affected_events))
+        .all()
+    )
+    for event_id in affected_events:
+        threshold = thresholds.get(event_id)
+        if threshold is not None:
+            calculate_max_n_for_event(db, event_id, threshold)
+
     db.commit()
-    logger.info(f"Deleted custom label '{name}' from project {project_id}")
+    logger.info(
+        f"Deleted global custom label '{name}', reverted "
+        f"{len(detections)} detection(s) to their category"
+    )
 
 
 def _delete_project_embeddings(db: Session, project_id: str) -> int:

@@ -367,13 +367,16 @@ def _resolve_detection_taxonomy(
     if taxonomy_id:
         return taxonomy_id
 
-    # Auto-create a custom taxonomy entry for this label
+    # Auto-create a custom taxonomy entry for this label. Custom labels are
+    # global (project_id None), shared across all of AddaxAI, so a second box
+    # of the same name in any project reuses this row via resolve_taxonomy_id
+    # above rather than colliding on the unique key.
     from app.ml.taxonomic_rollup import format_common_name
     from app.models.label_taxonomy import LabelTaxonomy
 
     new_entry = LabelTaxonomy(
         is_custom=True,
-        project_id=project_id,
+        project_id=None,
         level="unknown",
         name=label_name,
         classification_model_id="",

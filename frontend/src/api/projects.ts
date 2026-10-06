@@ -237,7 +237,17 @@ export const projectsApi = {
     api.patch<CustomLabelResponse>(`/api/projects/${projectId}/custom-labels/${labelId}`, data),
 
   /**
-   * Delete a custom label from a project
+   * How widely a custom label is used (for the delete confirm). Custom
+   * labels are global, so this counts across every project.
+   */
+  getCustomLabelUsage: (projectId: string, labelId: string) =>
+    api.get<{ detection_count: number; project_count: number }>(
+      `/api/projects/${projectId}/custom-labels/${labelId}/usage`,
+    ),
+
+  /**
+   * Delete a custom label. Custom labels are global, so this removes it
+   * everywhere and unlabels its detections across all projects.
    */
   deleteCustomLabel: (projectId: string, labelId: string) =>
     api.delete<void>(`/api/projects/${projectId}/custom-labels/${labelId}`),

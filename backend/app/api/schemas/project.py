@@ -8,10 +8,10 @@ Following DEVELOPERS.md principles:
 """
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator
 
 from app.core.confidence import (
     DEFAULT_CLASSIFICATION_GATE,
@@ -295,8 +295,15 @@ class ProjectWithStats(ProjectResponse):
     trap_nights: int = Field(0, description="Total trap nights across all deployments")
 
 
+# Stripped BEFORE the length check, so a whitespace-only name fails
+# min_length instead of slipping through as an empty-named label row.
+LabelName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
+]
+
+
 class CustomLabelCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=200)
+    name: LabelName
 
 
 class CustomLabelResponse(BaseModel):
@@ -315,7 +322,7 @@ class CustomLabelResponse(BaseModel):
 
 
 class CustomLabelUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: LabelName | None = None
     taxon_class: str | None = Field(None, max_length=100)
     taxon_order: str | None = Field(None, max_length=100)
     taxon_family: str | None = Field(None, max_length=100)
