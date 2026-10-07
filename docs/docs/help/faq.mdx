@@ -234,6 +234,21 @@ Often yes. AddaxAI copies your database every day and before every update, and y
 
 </FaqItem>
 
+<FaqItem id="the-analysis-fails-because-addaxai-cannot-write-to-the-folder" q="The analysis fails because AddaxAI cannot write to the folder">
+
+AddaxAI saves a hidden `.addaxai` folder next to your files, so it needs to be able to write there. It never changes your photos and videos themselves. See [where your files live](../reference/file-locations.md).
+
+On a Mac this almost always means the drive is formatted for Windows (NTFS). macOS can read such a drive but not write to it. Check it in Finder: select the drive, choose File > Get Info, and look at Format. Then pick one of these:
+
+- Install an NTFS driver, such as Paragon NTFS for Mac. Seagate offers one for its own drives. Then run the analysis again, nothing needs to be copied.
+- Copy the folder to your computer's own disk and analyse it there.
+
+Do not reformat the drive to make it writable. That erases everything on it.
+
+On any system the same message appears for a folder your user account may not write to, such as a shared or network folder. Ask whoever manages it for write access, or copy the folder somewhere you can write.
+
+</FaqItem>
+
 <FaqItem id="the-app-says-the-previous-run-did-not-finish" q="The app says the previous run did not finish. Where are my results?">
 
 The run was interrupted, by a crash, a power cut or the app closing. Its results never reached the database, so they are not in any backup either, and restoring one will not bring them back.
