@@ -19,6 +19,7 @@ The module is pure Python: no database, no FastAPI, no numpy. Fed from
 
 from collections.abc import Iterable, Mapping
 from datetime import date, datetime
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from astral import LocationInfo
@@ -65,19 +66,23 @@ def per_date_sun_phases(
         sunrise_h = _hour(s["sunrise"])
         sunset_h = _hour(s["sunset"])
         dusk_h = _hour(s["dusk"])
-        # Near the solstices at high latitudes astral returns dusk at
-        # the *start* of the calendar date (i.e. just past midnight of
-        # the previous night) rather than the natural "after sunset".
-        # Unwrap so phases stay monotonic within the day that owns this
-        # sunrise. Symmetric for dawn in case astral reports it on the
-        # previous evening. Callers that average these (anchor_sun_bands)
-        # must mod 24 the mean to get it back into [0, 24).
-        if dusk_h < sunset_h:
-            dusk_h += 24
+        # Unwrap events astral put on the wrong side of midnight, around
+        # this date's sunrise. See DEVELOPERS.md, "Sun bands are
+        # ordered, not clamped to the clock".
         if dawn_h > sunrise_h:
             dawn_h -= 24
+        if sunset_h < sunrise_h:
+            sunset_h += 24
+        if dusk_h < sunset_h:
+            dusk_h += 24
         out[d] = (dawn_h, sunrise_h, sunset_h, dusk_h)
     return out
+
+
+def in_sun_band(hour: Any, start: float, end: float) -> Any:
+    """Whether `hour` (a float or a numpy array) falls in `[start, end)`
+    on the 24 h circle. Mirrored by `inSunBand` in the frontend."""
+    return (hour - start) % 24 < end - start
 
 
 def compute_anchors(
@@ -102,19 +107,17 @@ def compute_anchor_bands(
     """Mean `(dawn, sunrise, sunset, dusk)` across non-`None` entries.
 
     Returns `None` when every entry is polar. Used to paint twilight
-    bands at the anchor positions on the chart. Dawn and dusk may be
-    stored outside `[0, 24)` by `per_date_sun_phases` to keep phases
-    monotonic across solstice wrap; this function wraps the final mean
-    back into `[0, 24)` for display.
+    bands at the anchor positions on the chart. Left unwrapped like the
+    per-date phases it averages.
     """
     valid = [p for p in phases.values() if p is not None]
     if not valid:
         return None
     return (
-        (sum(p[0] for p in valid) / len(valid)) % 24,
-        (sum(p[1] for p in valid) / len(valid)) % 24,
-        (sum(p[2] for p in valid) / len(valid)) % 24,
-        (sum(p[3] for p in valid) / len(valid)) % 24,
+        sum(p[0] for p in valid) / len(valid),
+        sum(p[1] for p in valid) / len(valid),
+        sum(p[2] for p in valid) / len(valid),
+        sum(p[3] for p in valid) / len(valid),
     )
 
 
@@ -157,10 +160,10 @@ def transform_to_sun_time(
         if day_length == 0 or night_length == 0:
             dropped += 1
             continue
-        if sunrise_d <= t_obs < sunset_d:
+        if in_sun_band(t_obs, sunrise_d, sunset_d):
             t_sun = (
                 anchor_sunrise
-                + (t_obs - sunrise_d) * (anchor_day / day_length)
+                + ((t_obs - sunrise_d) % 24) * (anchor_day / day_length)
             )
         else:
             elapsed_night = (t_obs - sunset_d) % 24

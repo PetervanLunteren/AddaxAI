@@ -41,6 +41,7 @@ import type {
   ActivityOverlapResponse,
   SunBands,
 } from "../../api/statistics";
+import { inSunBand } from "../../lib/sun-bands";
 
 ChartJS.register(
   CategoryScale,
@@ -87,18 +88,26 @@ const twilightBandsPlugin: Plugin<"line"> = {
     const bottom = chartArea.bottom;
 
     const xAt = (h: number) => xScale.getPixelForValue(h);
+    // A band may cross the axis edge (dusk at 24.5), so paint it one
+    // day either side too and let the clip keep what is on the axis.
+    const paintBand = (start: number, end: number) => {
+      for (const shift of [-24, 0, 24]) {
+        const x = xAt(start + shift);
+        ctx.fillRect(x, top, xAt(end + shift) - x, bottom - top);
+      }
+    };
 
     ctx.save();
+    ctx.beginPath();
+    ctx.rect(chartArea.left, top, chartArea.right - chartArea.left, bottom - top);
+    ctx.clip();
 
-    // Night bands: 0..dawn and dusk..24
     ctx.fillStyle = opts.nightFill ?? "rgba(30, 41, 59, 0.06)";
-    ctx.fillRect(chartArea.left, top, xAt(dawn) - chartArea.left, bottom - top);
-    ctx.fillRect(xAt(dusk), top, chartArea.right - xAt(dusk), bottom - top);
+    paintBand(dusk, dawn + 24);
 
-    // Twilight bands: dawn..sunrise and sunset..dusk
     ctx.fillStyle = "rgba(255, 165, 0, 0.10)";
-    ctx.fillRect(xAt(dawn), top, xAt(sunrise) - xAt(dawn), bottom - top);
-    ctx.fillRect(xAt(sunset), top, xAt(dusk) - xAt(sunset), bottom - top);
+    paintBand(dawn, sunrise);
+    paintBand(sunset, dusk);
 
     ctx.restore();
   },
@@ -326,14 +335,16 @@ export function ActivityOverlapChart({
                 // dawn and dusk ticks dropped: they sit so close to
                 // sunrise / sunset that their labels always collide.
                 // The twilight bands themselves still mark those
-                // transitions visually.
+                // transitions visually. A sunset past midnight (Nome,
+                // Alaska in May) lies beyond the axis and is dropped;
+                // its band still paints next to the midnight tick.
                 scale.ticks = [
                   { value: xMin },
                   { value: sunrisePos },
                   { value: noonPos },
                   { value: sunsetPos },
                   { value: xMax },
-                ];
+                ].filter((t) => t.value <= xMax);
               }
             : undefined,
           title: { display: !!xTitle, text: xTitle, color: colors.axis },
@@ -362,10 +373,9 @@ export function ActivityOverlapChart({
             title: (items) => {
               const x = Number(items[0]?.label ?? 0);
               if (isSun) {
-                if (x < dawnPos) return "night";
-                if (x < sunrisePos) return "dawn";
-                if (x < sunsetPos) return "day";
-                if (x < duskPos) return "dusk";
+                if (inSunBand(x, dawnPos, sunrisePos)) return "dawn";
+                if (inSunBand(x, sunrisePos, sunsetPos)) return "day";
+                if (inSunBand(x, sunsetPos, duskPos)) return "dusk";
                 return "night";
               }
               const h = Math.floor(x);

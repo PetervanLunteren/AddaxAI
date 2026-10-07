@@ -22,6 +22,7 @@ import { DashboardAboutPopover } from "./DashboardAboutPopover";
 import { MissingDatesIcon } from "./MissingDatesWarning";
 import { statisticsApi, type SunBands } from "../../api/statistics";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
+import { overlapsSunBand } from "../../lib/sun-bands";
 import type { DateRange } from "./index";
 
 // Time-of-day color bands. Fed by project-specific sunrise/sunset
@@ -49,19 +50,11 @@ const DAY_COLOR = "#71b7ba";
 function getHourColor(hour: number, sunBands: SunBands | null): string {
   if (!sunBands) return DAY_COLOR;
   const { dawn, sunrise, sunset, dusk } = sunBands;
-  const start = hour;
-  const end = hour + 1;
+  const touches = (start: number, end: number) =>
+    overlapsSunBand(hour, hour + 1, start, end);
 
-  // Overlap with either twilight window?
-  const overlapsMorningTwilight = start < sunrise && end > dawn;
-  const overlapsEveningTwilight = start < dusk && end > sunset;
-  if (overlapsMorningTwilight || overlapsEveningTwilight) {
-    return TWILIGHT_COLOR;
-  }
-
-  // Overlap with the daylight window?
-  if (start < sunset && end > sunrise) return DAY_COLOR;
-
+  if (touches(dawn, sunrise) || touches(sunset, dusk)) return TWILIGHT_COLOR;
+  if (touches(sunrise, sunset)) return DAY_COLOR;
   return NIGHT_COLOR;
 }
 

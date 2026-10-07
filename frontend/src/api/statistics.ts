@@ -42,8 +42,9 @@ export interface HourlyCount {
   count: number;
 }
 
+/** Values may leave [0, 24); test membership with `inSunBand` (lib/sun-bands.ts). */
 export interface SunBands {
-  /** Fractional hour (0-24) when civil twilight starts. */
+  /** Fractional hour when civil twilight starts. */
   dawn: number;
   /** Fractional hour when the sun clears the horizon. */
   sunrise: number;

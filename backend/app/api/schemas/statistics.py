@@ -3,7 +3,7 @@
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class CaptureDateCoverage(BaseModel):
@@ -50,12 +50,21 @@ class SunBands(BaseModel):
     site lat/lon, its IANA timezone, and a reference date drawn from
     the filter range midpoint. Fed to the Activity pattern chart so
     the frontend can color each hour bar as night / dawn-dusk / day.
+
+    Ordered within one day, so values may leave [0, 24). See
+    DEVELOPERS.md, "Sun bands are ordered, not clamped to the clock".
     """
 
     dawn: float
     sunrise: float
     sunset: float
     dusk: float
+
+    @model_validator(mode="after")
+    def _ordered_within_one_day(self) -> "SunBands":
+        if not (self.dawn < self.sunrise < self.sunset < self.dusk < self.dawn + 24):
+            raise ValueError(f"sun bands out of order: {self}")
+        return self
 
 
 class ActivityPatternResponse(BaseModel):

@@ -613,34 +613,19 @@ def _compute_sun_bands(
     """Compute fractional-hour dawn / sunrise / sunset / dusk at a
     location and date, in the project's local timezone.
 
-    Uses python-astral (pure math, no network). Returns None if
-    astral raises ValueError for extreme latitudes (polar night/day)
-    or any other input the library refuses to process.
+    One date through `per_date_sun_phases`, so these bands carry the
+    same past-midnight unwrap as the sun-time anchors. Returns None for
+    polar night/day, where astral refuses to compute.
     """
-    from zoneinfo import ZoneInfo
+    from app.ml.sun_time import per_date_sun_phases
 
-    from astral import LocationInfo
-    from astral.sun import sun
-
-    try:
-        location = LocationInfo("project", "project", tz_name, lat, lon)
-        s = sun(
-            location.observer,
-            date=reference_date,
-            tzinfo=ZoneInfo(tz_name),
-        )
-    except ValueError:
+    phases = per_date_sun_phases(
+        [reference_date], lat=lat, lon=lon, tz_name=tz_name
+    )[reference_date]
+    if phases is None:
         return None
-
-    def _to_fractional_hour(dt: datetime) -> float:
-        return dt.hour + dt.minute / 60 + dt.second / 3600
-
-    return SunBands(
-        dawn=_to_fractional_hour(s["dawn"]),
-        sunrise=_to_fractional_hour(s["sunrise"]),
-        sunset=_to_fractional_hour(s["sunset"]),
-        dusk=_to_fractional_hour(s["dusk"]),
-    )
+    dawn, sunrise, sunset, dusk = phases
+    return SunBands(dawn=dawn, sunrise=sunrise, sunset=sunset, dusk=dusk)
 
 
 def get_activity_pattern(

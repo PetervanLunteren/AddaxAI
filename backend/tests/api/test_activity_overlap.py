@@ -13,6 +13,7 @@ Three layers, in order:
 from datetime import date, datetime
 
 import numpy as np
+import pytest
 
 from app.api.crud import statistics as stats_crud
 from app.api.schemas.statistics import SunBands
@@ -166,6 +167,31 @@ def test_classify_diel_cathemeral():
     cls, phases = classify_diel(grid, density, sun)
     assert cls == "cathemeral"
     assert max(phases.values()) < 0.7
+
+
+def test_classify_diel_counts_twilight_past_midnight():
+    """Issue #126: in Oslo at midsummer dusk falls at 00:30. Activity
+    between 00:06 and 00:24 is evening twilight, not night."""
+    sun = stats_crud._compute_sun_bands(
+        lat=59.91, lon=10.75, reference_date=date(2026, 6, 21),
+        tz_name="Europe/Oslo",
+    )
+    assert sun is not None
+    assert sun.sunset < sun.dusk
+    assert sun.dusk > 24.0
+    grid = np.linspace(0.0, 24.0, 240, endpoint=False)
+    density = ((grid >= 0.1) & (grid < 0.4)).astype(float)
+    density /= density.sum() * (grid[1] - grid[0])
+    cls, phases = classify_diel(grid, density, sun)
+    assert cls == "crepuscular"
+    assert phases["twilight"] == pytest.approx(1.0)
+    assert phases["night"] == pytest.approx(0.0)
+
+
+def test_sun_bands_refuse_an_out_of_order_day():
+    """The ordering every consumer relies on is enforced at the type."""
+    with pytest.raises(ValueError):
+        SunBands(dawn=2.1, sunrise=3.9, sunset=22.7, dusk=0.5)
 
 
 def test_classify_diel_falls_back_when_no_sun_bands():
