@@ -13,7 +13,17 @@ The screenshots below come from a demo survey of 12 camera sites across Pennsylv
 
 ## Dashboard
 
-The Dashboard is the quick overview: how many sites, deployments, trap nights, and observations, plus the top species, a trend over time, and the day and night activity pattern.
+The Dashboard has two tabs.
+
+**Overview** shows the whole project, without filters. You see a random animal photo (a new one every time you open the dashboard, or press the refresh button for another), how many files were recorded and how many trap nights that took, a calendar of when your cameras were running (one row per year, one square per week, darker for more cameras), the top ten wildlife taxa, and how much of the work you have verified. Pick a higher rank in the chart to compare groups, such as mammals against birds at class level. Click a bar to explore it.
+
+**Explore** shows every label by default, people and vehicles included, at the sites, site tags and dates you choose. Pick labels in the same tree as on the Counts page to narrow it: one species, a whole family, a set like livestock, or everything except people and vehicles. Every card follows the same choice: the number of events and observations, each per 100 trap nights, random photos, the day and night activity pattern, a trend over time, and a small map of where it was seen.
+
+The photos are picked at random from detections the AI is sure about, so the name under a photo is one the AI is confident of. Click a photo to open the file on the Labels page and check it.
+
+Explore also shows sex, age and behaviour. The AI does not fill these in, so they read Unknown until you set them per event on the Counts page.
+
+The Overview's chart and random animal show wildlife only, which their titles say. Labels like blank or false detection never count anywhere. A class that only comes from the detector, like "shark" from a marine detector without a classifier, counts as wildlife but cannot be picked on its own yet.
 
 <AppShot name="dashboard" />
 

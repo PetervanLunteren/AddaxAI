@@ -179,16 +179,28 @@ def delete_detection(
 @router.get("/{detection_id}/crop")
 def get_detection_crop(
     detection_id: str,
-    size: int = Query(200, ge=32, le=512, description="Crop size in pixels"),
+    size: int = Query(
+        200, ge=32, le=1024, description="Long side of the crop in pixels"
+    ),
+    aspect: float | None = Query(
+        None,
+        ge=0.25,
+        le=4.0,
+        description=(
+            "Width / height of a shaped crop that slides inside the photo; "
+            "omit for the centred square the Labels grid uses"
+        ),
+    ),
     db: Session = Depends(get_db),
 ):
     """
     Serve a cropped thumbnail of a detection.
 
-    Generates and caches a square JPEG crop from the source image
-    at the detection's bounding box location.
+    Generates and caches a JPEG crop from the source image at the
+    detection's bounding box location: a centred square by default, or
+    a frame of the given `aspect` that fills with the photo around it.
     """
-    jpeg_bytes = get_or_create_crop(detection_id, size, db)
+    jpeg_bytes = get_or_create_crop(detection_id, size, db, aspect)
     if not jpeg_bytes:
         raise HTTPException(status_code=404, detail="Could not generate crop")
 

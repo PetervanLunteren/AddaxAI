@@ -105,6 +105,9 @@ export function EventCountPanel({
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["event", eventId] });
     queryClient.invalidateQueries({ queryKey: ["events"] });
+    // Counts and cohort fields feed the dashboard's observation totals
+    // and demographics; mark them stale so the next visit refetches.
+    queryClient.invalidateQueries({ queryKey: ["statistics"] });
   };
   const onError = (verb: string) => (e: Error) =>
     toast.error(`Could not ${verb}`, { description: e.message });

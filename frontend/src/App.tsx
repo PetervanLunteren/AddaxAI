@@ -22,7 +22,9 @@ import { queryClient } from "./lib/query-client";
 import { AppLayout } from "./components/layout/AppLayout";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { AnalysesPage } from "./pages/AnalysesPage";
-import DashboardPage from "./pages/DashboardPage";
+import DashboardLayout from "./pages/dashboard/DashboardLayout";
+import DashboardOverview from "./pages/dashboard/DashboardOverview";
+import DashboardExplore from "./pages/dashboard/DashboardExplore";
 import { MapPage } from "./pages/MapPage";
 import { DeploymentTimelinePage } from "./pages/DeploymentTimelinePage";
 import { ActivityOverlapPage } from "./pages/ActivityOverlapPage";
@@ -434,7 +436,10 @@ function App() {
               <Route path="process" element={<AnalysesPage />} />
               <Route path="labels" element={<LabelsPage />} />
               <Route path="counts" element={<CountsPage />} />
-              <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="dashboard" element={<DashboardLayout />}>
+                <Route index element={<DashboardOverview />} />
+                <Route path="explore" element={<DashboardExplore />} />
+              </Route>
               <Route path="insights" element={<Navigate to="map" replace />} />
               <Route path="insights/map" element={<MapPage />} />
               <Route path="insights/timeline" element={<DeploymentTimelinePage />} />

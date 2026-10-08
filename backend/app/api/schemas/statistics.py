@@ -38,6 +38,56 @@ class SpeciesCount(BaseModel):
     label_taxonomy_ids: list[str] = Field(default_factory=list)
 
 
+class DashboardSummary(BaseModel):
+    """Headline figures for the dashboard tiles.
+
+    `events` counts independent events holding an in-scope observation,
+    `observations` sums their effective counts (human count, else MaxN),
+    the same quantity the map divides by trap nights. `trap_nights` is the
+    plain sum, so a project without capture dates reads 0 rather than 1.
+    """
+
+    events: int
+    observations: int
+    trap_nights: int
+    sites_with_detections: int
+
+
+class AttributeCount(BaseModel):
+    """One value of sex, life stage or behaviour. `value` None is unknown."""
+
+    value: str | None
+    count: int
+
+
+class Demographics(BaseModel):
+    """Observations split by the three cohort attributes. Each list sums
+    to `observations`, because a NULL attribute is counted as unknown."""
+
+    observations: int
+    sex: list[AttributeCount]
+    life_stage: list[AttributeCount]
+    behavior: list[AttributeCount]
+
+
+class AnimalPhoto(BaseModel):
+    """One random confident detection for the dashboard photos.
+
+    `captured_date` is the camera's own calendar date, so it needs no
+    timezone handling on the wire.
+    """
+
+    detection_id: str
+    file_id: str
+    label: str | None
+    category: str
+    scientific_name: str | None
+    common_name: str | None
+    confidence: float
+    site_name: str | None
+    captured_date: date | None
+
+
 class HourlyCount(BaseModel):
     hour: int
     count: int

@@ -48,7 +48,7 @@ export function HomePage() {
   const navigate = useNavigate();
 
   return (
-    <div className="relative min-h-screen overflow-hidden text-white">
+    <div className="relative min-h-screen overflow-hidden text-white" data-full-bleed>
       {/* Background photo + scrim. Decorative, so no alt text. */}
       <div
         className="absolute inset-0 scale-105 bg-cover bg-center"

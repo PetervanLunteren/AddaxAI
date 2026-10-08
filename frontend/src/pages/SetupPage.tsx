@@ -35,7 +35,7 @@ const POLL_INTERVAL_MS = 1500;
  */
 function SetupFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="relative min-h-screen overflow-hidden">
+    <div className="relative min-h-screen overflow-hidden" data-full-bleed>
       {/* Background photo + scrim. Decorative, so no alt text. */}
       <div
         className="absolute inset-0 scale-105 bg-cover bg-center"

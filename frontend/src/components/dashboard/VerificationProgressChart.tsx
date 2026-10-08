@@ -7,16 +7,19 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
+import { Card, CardContent } from "../ui/card";
+import { DashboardCardHeader } from "./DashboardCardHeader";
 import { Separator } from "../ui/separator";
-import { DashboardAboutPopover } from "./DashboardAboutPopover";
 import { eventsApi } from "../../api/events";
 import { labelsApi } from "../../api/labels";
 import { statisticsApi } from "../../api/statistics";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
+import { cn } from "../../lib/utils";
 
 interface VerificationProgressChartProps {
   projectId: string;
+  /** Placement from the page, e.g. flex-1 to fill a column. */
+  className?: string;
   siteIds?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -52,6 +55,7 @@ function SlimProgressRow({ label, verified, total }: BarRow) {
 
 export const VerificationProgressChart: React.FC<VerificationProgressChartProps> = ({
   projectId,
+  className,
   siteIds,
   dateFrom,
   dateTo,
@@ -111,35 +115,36 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
     : null;
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div>
-          <div className="flex items-center gap-1.5">
-            <CardTitle className="text-lg">Verification</CardTitle>
-            <DashboardAboutPopover>
-              <p>
-                Two jobs. "Labels verified" is the percent of labels you
-                have checked on the Labels page: every box above your
-                detection threshold, plus one for each file the AI found
-                nothing in. "Counts confirmed" is the percent of events
-                signed off on the Counts page. The list below covers the
-                boxes only, because a file the AI found nothing in has no
-                species to break down.
-              </p>
-            </DashboardAboutPopover>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Progress overall and per label
-          </p>
-        </div>
-      </CardHeader>
-      <CardContent>
+    <Card className={cn("flex flex-col", className)}>
+      <DashboardCardHeader
+        title="Verification"
+        caption="Progress overall and per label"
+        info={
+          <>
+            <p>
+              Two jobs. "Labels verified" is the percent of labels you
+              have checked on the Labels page: every box above your
+              detection threshold, plus one for each file the AI found
+              nothing in. "Counts confirmed" is the percent of events
+              signed off on the Counts page. The list below covers the
+              boxes only, because a file the AI found nothing in has no
+              species to break down.
+            </p>
+          </>
+        }
+      />
+      <CardContent className="flex flex-1 flex-col">
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
             <p className="text-muted-foreground">Loading...</p>
           </div>
-        ) : labelsRow && countsRow ? (
-          <div className="rounded-lg bg-muted/50 p-3 max-h-80 overflow-y-auto">
+        ) : labelsRow && countsRow && (labelsRow.total > 0 || countsRow.total > 0) ? (
+          // The list takes whatever height the card is given and scrolls
+          // inside it. Absolutely placed so its length never adds to the
+          // card's own height: the Overview stretches this card to end
+          // level with the column beside it, however long the list is.
+          <div className="relative min-h-64 flex-1">
+          <div className="absolute inset-0 overflow-y-auto rounded-lg bg-muted/50 p-3">
             <div className="flex flex-col gap-3">
               <SlimProgressRow {...labelsRow} />
               <SlimProgressRow {...countsRow} />
@@ -163,6 +168,7 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
                 </>
               )}
             </div>
+          </div>
           </div>
         ) : (
           <div className="flex items-center justify-center h-40">

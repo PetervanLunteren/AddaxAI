@@ -5,25 +5,21 @@
  * a circle with hour 0 at the top, color-coded by time of day.
  * Hovering over any bar snaps to the nearest hour and shows the
  * count in the center. Counts are normalized to "per 100 trap
- * nights" when the parent supplies a trapNights prop.
+ * nights" when the parent supplies a trapNights prop. What it counts
+ * comes from the page as one `scope` (taxon, sites, dates).
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
-import { DashboardAboutPopover } from "./DashboardAboutPopover";
+import { Card, CardContent } from "../ui/card";
+import { DashboardCardHeader } from "./DashboardCardHeader";
 import { MissingDatesIcon } from "./MissingDatesWarning";
-import { statisticsApi, type SunBands } from "../../api/statistics";
-import { resolveSpeciesName } from "../../lib/species-name-mode";
+import {
+  statisticsApi,
+  type SunBands,
+  type DashboardScope,
+} from "../../api/statistics";
 import { overlapsSunBand } from "../../lib/sun-bands";
-import type { DateRange } from "./index";
 
 // Time-of-day color bands. Fed by project-specific sunrise/sunset
 // (astral, backend) so the dawn/day/dusk/night boundaries reflect
@@ -225,68 +221,20 @@ function ActivityClock({ hours, normalized, sunBands }: ActivityClockProps) {
 }
 
 interface ActivityPatternChartProps {
-  dateRange: DateRange;
   projectId: string;
-  siteIds?: string;
+  scope: DashboardScope;
+  /** Trap nights in the same scope, so bars read per 100 nights. */
   trapNights?: number;
-  taxonomicRank?: string;
 }
 
 export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
-  dateRange,
   projectId,
-  siteIds,
+  scope,
   trapNights,
-  taxonomicRank,
 }) => {
-  const [selectedSpecies, setSelectedSpecies] = useState("all");
-
-  // Fetch species list for the selector
-  const { data: speciesList } = useQuery({
-    queryKey: [
-      "statistics",
-      "species",
-      projectId,
-      siteIds,
-      dateRange.startDate,
-      dateRange.endDate,
-      taxonomicRank,
-    ],
-    queryFn: () =>
-      statisticsApi.getSpeciesDistribution(
-        projectId,
-        siteIds,
-        dateRange.startDate || undefined,
-        dateRange.endDate || undefined,
-        taxonomicRank,
-      ),
-  });
-
-  // Reset species selection when species list changes
-  useEffect(() => {
-    setSelectedSpecies("all");
-  }, [speciesList]);
-
-  // Fetch activity pattern data
   const { data: activityData, isLoading } = useQuery({
-    queryKey: [
-      "statistics",
-      "activity-pattern",
-      projectId,
-      selectedSpecies,
-      siteIds,
-      dateRange.startDate,
-      dateRange.endDate,
-      taxonomicRank,
-    ],
-    queryFn: () =>
-      statisticsApi.getActivityPattern(projectId, {
-        species: selectedSpecies === "all" ? undefined : selectedSpecies,
-        siteIds,
-        dateFrom: dateRange.startDate || undefined,
-        dateTo: dateRange.endDate || undefined,
-        taxonomicRank,
-      }),
+    queryKey: ["statistics", "activity-pattern", projectId, scope],
+    queryFn: () => statisticsApi.getActivityPattern(projectId, scope),
   });
 
   const normalized = !!trapNights && trapNights > 0;
@@ -311,50 +259,25 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
 
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <div className="flex items-center gap-1.5">
-              <CardTitle className="text-lg">Activity pattern</CardTitle>
-              <MissingDatesIcon projectId={projectId} />
-              <DashboardAboutPopover>
-                <p>
-                  Individuals observed by hour of day (each event's
-                  confirmed count, or the AI's count where not yet
-                  confirmed). Filter by species to compare taxa.
-                </p>
-                <p>
-                  The bands show night, twilight, and day from the site
-                  coordinates and timezone. They are hidden when no site
-                  has coordinates.
-                </p>
-              </DashboardAboutPopover>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Observations by hour of day
+      <DashboardCardHeader
+        title="Activity pattern"
+        caption="Observations by hour of day"
+        marker={<MissingDatesIcon projectId={projectId} />}
+        info={
+          <>
+            <p>
+              Observations by hour of day (each event's confirmed
+              count, or the AI's count where not yet confirmed) of
+              the labels, sites and dates chosen above.
             </p>
-          </div>
-          <Select value={selectedSpecies} onValueChange={setSelectedSpecies}>
-            <SelectTrigger
-              aria-label="Filter by species"
-              className="w-32 h-9 text-sm [&>span]:truncate"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="end">
-              <SelectItem value="all">All</SelectItem>
-              {speciesList?.map((s) => (
-                <SelectItem key={s.species} value={s.species}>
-                  {resolveSpeciesName({
-                    scientific_name: s.species,
-                    common_name: s.common_name,
-                  })}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </CardHeader>
+            <p>
+              The bands show night, twilight, and day from the site
+              coordinates and timezone. They are hidden when no site
+              has coordinates.
+            </p>
+          </>
+        }
+      />
       <CardContent>
         <div className="aspect-square w-full max-h-80 mx-auto">
           {isLoading ? (

@@ -1,8 +1,10 @@
 /**
- * Line chart showing detection trends over time with gradient fill.
+ * Line chart showing observations over time with gradient fill.
  *
- * Supports day/week/month granularity and species filtering.
- * Auto-selects the most observed species and optimal granularity on load.
+ * Supports day/week/month granularity and picks one from the span on load.
+ * What it counts comes from the page: the Explore tab's taxon, sites and
+ * dates, passed in as one `scope`, so this card can never disagree with
+ * the cards beside it.
  */
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
@@ -19,15 +21,13 @@ import {
   Filler,
   type ChartOptions,
 } from "chart.js";
-import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
+import { Card, CardContent } from "../ui/card";
+import { DashboardCardHeader } from "./DashboardCardHeader";
 import { useChartColors } from "../../lib/theme";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { DashboardAboutPopover } from "./DashboardAboutPopover";
 import { MissingDatesIcon } from "./MissingDatesWarning";
 import { statisticsApi } from "../../api/statistics";
-import { resolveSpeciesName } from "../../lib/species-name-mode";
-import type { DateRange } from "./index";
-import type { DetectionTrendPoint } from "../../api/statistics";
+import type { DetectionTrendPoint, DashboardScope } from "../../api/statistics";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
 
@@ -155,67 +155,27 @@ function trailingMovingAverage(
 }
 
 interface DetectionTrendChartProps {
-  dateRange: DateRange;
   projectId: string;
-  siteIds?: string;
+  scope: DashboardScope;
+  /** Trap nights in the same scope, so the line reads per 100 nights. */
   trapNights?: number;
-  taxonomicRank?: string;
 }
 
 export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
-  dateRange,
   projectId,
-  siteIds,
+  scope,
   trapNights,
-  taxonomicRank,
 }) => {
   const [granularity, setGranularity] = useState<Granularity>("day");
-  const [selectedSpecies, setSelectedSpecies] = useState("all");
   const chartRef = useRef<ChartJS<"line"> | null>(null);
+  const rangeStart = scope.dateFrom ?? null;
+  const rangeEnd = scope.dateTo ?? null;
 
   const norm = (n: number) => trapNights && trapNights > 0 ? +(n / trapNights * 100).toFixed(2) : n;
 
-  // Fetch species list for the selector
-  const { data: speciesList } = useQuery({
-    queryKey: ["statistics", "species", projectId, siteIds, dateRange.startDate, dateRange.endDate, taxonomicRank],
-    queryFn: () =>
-      statisticsApi.getSpeciesDistribution(
-        projectId,
-        siteIds,
-        dateRange.startDate || undefined,
-        dateRange.endDate || undefined,
-        taxonomicRank,
-      ),
-  });
-
-  // Auto-select the most observed species on load and when species list changes
-  useEffect(() => {
-    if (speciesList && speciesList.length > 0) {
-      const top = speciesList.reduce((best, s) => (s.count > best.count ? s : best), speciesList[0]);
-      setSelectedSpecies(top.species);
-    }
-  }, [speciesList]);
-
-  // Fetch trend data
   const { data: trendData, isLoading } = useQuery({
-    queryKey: [
-      "statistics",
-      "detection-trend",
-      projectId,
-      selectedSpecies,
-      siteIds,
-      dateRange.startDate,
-      dateRange.endDate,
-      taxonomicRank,
-    ],
-    queryFn: () =>
-      statisticsApi.getDetectionTrend(projectId, {
-        species: selectedSpecies === "all" ? undefined : selectedSpecies,
-        siteIds,
-        dateFrom: dateRange.startDate || undefined,
-        dateTo: dateRange.endDate || undefined,
-        taxonomicRank,
-      }),
+    queryKey: ["statistics", "detection-trend", projectId, scope],
+    queryFn: () => statisticsApi.getDetectionTrend(projectId, scope),
   });
 
   // Auto-select optimal granularity when data arrives. Keyed on the
@@ -224,27 +184,21 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
   // empty days the point count is roughly equal to the span anyway.
   useEffect(() => {
     if (!trendData || trendData.length === 0) return;
-    const first = dateRange.startDate ?? trendData[0].date;
-    const last =
-      dateRange.endDate ?? trendData[trendData.length - 1].date;
+    const first = rangeStart ?? trendData[0].date;
+    const last = rangeEnd ?? trendData[trendData.length - 1].date;
     const days =
       Math.round(
         (new Date(last).getTime() - new Date(first).getTime()) / 86400000,
       ) + 1;
     setGranularity(pickGranularity(days));
-  }, [trendData, dateRange.startDate, dateRange.endDate]);
+  }, [trendData, rangeStart, rangeEnd]);
 
   const { labels, values } = useMemo(
     () =>
       trendData
-        ? groupData(
-            trendData,
-            granularity,
-            dateRange.startDate,
-            dateRange.endDate,
-          )
+        ? groupData(trendData, granularity, rangeStart, rangeEnd)
         : { labels: [], values: [] },
-    [trendData, granularity, dateRange.startDate, dateRange.endDate],
+    [trendData, granularity, rangeStart, rangeEnd],
   );
 
   const normalizedValues = useMemo(() => values.map(norm), [values, trapNights]);
@@ -364,26 +318,22 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
 
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-1.5">
-              <CardTitle className="text-lg">Observation trend</CardTitle>
-              <MissingDatesIcon projectId={projectId} />
-              <DashboardAboutPopover>
-                <p>
-                  Individuals observed per bin (each event's confirmed
-                  count, or the AI's count where not yet confirmed), not
-                  detections. Filter by species. Bin by day, week, or
-                  month.
-                </p>
-              </DashboardAboutPopover>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Observations over time
+      <DashboardCardHeader
+        title="Observation trend"
+        caption="Observations over time"
+        marker={<MissingDatesIcon projectId={projectId} />}
+        info={
+          <>
+            <p>
+              Observations per bin (each event's confirmed count, or
+              the AI's count where not yet confirmed), not
+              detections, per 100 trap nights, of the labels, sites
+              and dates chosen above. Bin by day, week, or month.
             </p>
-          </div>
-          <div className="flex items-center gap-2">
+          </>
+        }
+        actions={
+          <>
             <Select value={granularity} onValueChange={(v) => setGranularity(v as Granularity)}>
               <SelectTrigger className="w-28 h-9 text-sm">
                 <SelectValue />
@@ -394,25 +344,9 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
                 <SelectItem value="month">Monthly</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={selectedSpecies} onValueChange={setSelectedSpecies}>
-              <SelectTrigger className="w-44 h-9 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                {speciesList?.map((s) => (
-                  <SelectItem key={s.species} value={s.species}>
-                    {resolveSpeciesName({
-                      scientific_name: s.species,
-                      common_name: s.common_name,
-                    })}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </CardHeader>
+          </>
+        }
+      />
       <CardContent>
         <div className="h-80">
           {isLoading ? (

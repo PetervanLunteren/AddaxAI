@@ -167,8 +167,15 @@ def get_deployment_timeline(
     site_ids: list[str] | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    include_heatmap: bool = True,
 ) -> TimelineResponse:
-    """Build the Insights → Deployment timeline payload for a project."""
+    """Build the Insights → Deployment timeline payload for a project.
+
+    `include_heatmap=False` skips the per-site daily file counts, by far
+    the largest part of the payload (6.6 of 6.7 MB on a 369k-file
+    project). The dashboard's survey-effort calendar only needs the
+    cameras-running series.
+    """
     query = select(Deployment).where(Deployment.project_id == project_id)
     site_clause = site_ids_filter(site_ids)
     if site_clause is not None:
@@ -195,12 +202,16 @@ def get_deployment_timeline(
     intervals_by_dep = compute_intervals_for_deployments(
         db, deployment_ids, clip_start=date_from, clip_end=date_to
     )
-    heatmap = _daily_file_counts(
-        db,
-        deployment_ids,
-        {d.id: d.site_id for d in deployments},
-        date_from,
-        date_to,
+    heatmap = (
+        _daily_file_counts(
+            db,
+            deployment_ids,
+            {d.id: d.site_id for d in deployments},
+            date_from,
+            date_to,
+        )
+        if include_heatmap
+        else []
     )
 
     # One query for file counts per deployment (tooltip metric).

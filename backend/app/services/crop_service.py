@@ -5,6 +5,12 @@ Crops the source image at the detection's bounding box, expands to a
 square with context padding, and resizes to a thumbnail. When the crop
 extends beyond the image, the overflow is filled with a blurred edge
 extension so the bbox stays centered. Cached in an in-memory LRU.
+
+A caller that shows the crop in a non-square frame (the dashboard's hero
+photo) asks for an `aspect`. The window then takes that shape and slides
+inside the photo, so the rest of the picture fills the frame instead of
+blur. Square crops never slide: the Labels grid draws its bbox overlay
+from a centred square (`_compute_crop_bbox` in similarity_script).
 """
 
 import io
@@ -33,8 +39,16 @@ def compute_expanded_crop_region(
     img_w: int,
     img_h: int,
     padding: float = 0.10,
+    aspect: float | None = None,
 ) -> tuple[int, int, int, int]:
-    """Compute square crop region centered on bbox with padding.
+    """Compute the crop region around a bbox with padding.
+
+    Without `aspect`: a square centered on the bbox. With `aspect`
+    (width / height): the padded bbox widened to that shape, then slid
+    inside the photo so the frame fills with real pixels, the way a
+    camera would pan, rather than with blur. The whole padded bbox stays
+    in view either way. Only a window larger than the photo itself is
+    left centered, and its overflow blurred like a square crop's.
 
     Returns (left, top, right, bottom) in pixel coords. Values may be
     negative or exceed image dimensions — the caller handles overflow
@@ -45,13 +59,31 @@ def compute_expanded_crop_region(
 
     max_side = max(bw, bh)
     pad = max_side * padding
-    crop_side = max_side + 2 * pad
-
     cx, cy = bx + bw / 2, by + bh / 2
-    left = cx - crop_side / 2
-    top = cy - crop_side / 2
 
-    return int(left), int(top), int(left + crop_side), int(top + crop_side)
+    if aspect is None:
+        crop_side = max_side + 2 * pad
+        left = cx - crop_side / 2
+        top = cy - crop_side / 2
+        return int(left), int(top), int(left + crop_side), int(top + crop_side)
+
+    win_w = max(bw + 2 * pad, (bh + 2 * pad) * aspect)
+    win_h = win_w / aspect
+    left = _slide_inside(cx - win_w / 2, win_w, img_w)
+    top = _slide_inside(cy - win_h / 2, win_h, img_h)
+    return int(left), int(top), int(left + win_w), int(top + win_h)
+
+
+def _slide_inside(start: float, length: float, limit: int) -> float:
+    """Move a window along one axis so it lies within [0, limit].
+
+    A window longer than the photo cannot fit, so it keeps its centered
+    start and the overflow is blurred. Sliding a window that contains the
+    bbox toward the inside of the photo keeps the bbox in it.
+    """
+    if length >= limit:
+        return start
+    return min(max(start, 0.0), limit - length)
 
 
 def _crop_with_blur_fill(
@@ -123,14 +155,17 @@ def _resolve_image_path(file: File, detection: Detection) -> Path | None:
     return None
 
 
-def get_or_create_crop(detection_id: str, size: int, db: Session) -> bytes | None:
+def get_or_create_crop(
+    detection_id: str, size: int, db: Session, aspect: float | None = None
+) -> bytes | None:
     """
     Get or create a cropped thumbnail for a detection.
 
-    Returns JPEG bytes from an in-memory LRU cache, or None if the
-    source image is missing.
+    `size` is the long side in pixels; `aspect` (width / height) asks for
+    a shaped crop, see `compute_expanded_crop_region`. Returns JPEG bytes
+    from an in-memory LRU cache, or None if the source image is missing.
     """
-    cache_key = f"{detection_id}_{size}"
+    cache_key = f"{detection_id}_{size}" + (f"_{aspect}" if aspect else "")
 
     if cache_key in _cache:
         _cache.move_to_end(cache_key)
@@ -168,6 +203,7 @@ def get_or_create_crop(detection_id: str, size: int, db: Session) -> bytes | Non
             detection.bbox_height,
             w,
             h,
+            aspect=aspect,
         )
 
         crop_w = right - left
@@ -177,7 +213,13 @@ def get_or_create_crop(detection_id: str, size: int, db: Session) -> bytes | Non
             return None
 
         crop = _crop_with_blur_fill(img, left, top, right, bottom)
-        crop = crop.resize((size, size), Image.LANCZOS)
+        if aspect is None or aspect == 1:
+            out_size = (size, size)
+        elif aspect > 1:
+            out_size = (size, max(1, round(size / aspect)))
+        else:
+            out_size = (max(1, round(size * aspect)), size)
+        crop = crop.resize(out_size, Image.LANCZOS)
 
         buf = io.BytesIO()
         crop.save(buf, "JPEG", quality=85)

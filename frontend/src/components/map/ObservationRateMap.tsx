@@ -16,14 +16,8 @@ import L, { latLngBounds } from "leaflet";
 import { Info } from "lucide-react";
 import { MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 
-import { useTheme } from "../../lib/theme";
-import {
-  OPENFREEMAP_ATTRIBUTION,
-  OSM_LAYER,
-  openFreeMapStyleUrl,
-  supportsWebGL2,
-} from "./basemap-styles";
-import MapLibreGLLayer from "./MapLibreGLLayer";
+import { OSM_LAYER } from "./basemap-styles";
+import { StreetBaseLayer } from "./StreetBaseLayer";
 
 import { statisticsApi } from "../../api/statistics";
 import type {
@@ -119,7 +113,6 @@ export function ObservationRateMap({
   viewMode,
   baseLayer,
 }: ObservationRateMapProps) {
-  const { resolvedTheme } = useTheme();
   const [zoomLevel, setZoomLevel] = useState(12);
   const [mapBounds, setMapBounds] = useState<L.LatLngBounds | null>(null);
 
@@ -196,14 +189,9 @@ export function ObservationRateMap({
     );
   }
 
-  // The default street map is an OpenFreeMap vector style (light or
-  // dark with the theme), falling back to OSM raster without WebGL2.
-  // See basemap-styles.ts for why it is not CARTO raster any more.
-  const vectorStreets = baseLayer === "positron" && supportsWebGL2();
-  const styleUrl = openFreeMapStyleUrl(resolvedTheme === "dark");
-  const raster = vectorStreets
-    ? null
-    : getRasterLayer(baseLayer === "positron" ? "osm" : baseLayer);
+  // The default street map is the shared StreetBaseLayer (OpenFreeMap
+  // vector, OSM raster without WebGL2); the other choices are raster.
+  const raster = baseLayer === "positron" ? null : getRasterLayer(baseLayer);
 
   return (
     <div className="flex h-[600px] flex-col overflow-hidden rounded-lg border bg-card">
@@ -217,17 +205,13 @@ export function ObservationRateMap({
         style={{ width: "100%" }}
         className="min-h-0 flex-1"
       >
-        {vectorStreets ? (
-          <MapLibreGLLayer
-            key={styleUrl}
-            styleUrl={styleUrl}
-            attribution={OPENFREEMAP_ATTRIBUTION}
-          />
+        {raster === null ? (
+          <StreetBaseLayer />
         ) : (
           <TileLayer
-            key={raster!.url}
-            attribution={raster!.attribution}
-            url={raster!.url}
+            key={raster.url}
+            attribution={raster.attribution}
+            url={raster.url}
           />
         )}
 

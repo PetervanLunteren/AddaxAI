@@ -31,10 +31,60 @@ export interface SpeciesCount {
   species: string;
   common_name: string | null;
   count: number;
-  /** Distinct taxonomy IDs this row covers, for deep-linking a dashboard
-   *  bar to the Labels page filtered to these labels. Empty for bars with
-   *  no taxonomy. */
+  /** Distinct taxonomy IDs this row covers: a dashboard bar opens Explore
+   *  filtered to them. Empty for rows with no taxonomy, which therefore
+   *  cannot be picked. */
   label_taxonomy_ids: string[];
+}
+
+/** Headline figures for the dashboard tiles. */
+export interface DashboardSummary {
+  events: number;
+  /** Sum of effective counts (human count, else MaxN). */
+  observations: number;
+  /** Plain sum; 0 when no file has a capture date. */
+  trap_nights: number;
+  sites_with_detections: number;
+}
+
+/** One value of sex, life stage or behaviour. `value` null is unknown. */
+export interface AttributeCount {
+  value: string | null;
+  count: number;
+}
+
+export interface Demographics {
+  observations: number;
+  sex: AttributeCount[];
+  life_stage: AttributeCount[];
+  behavior: AttributeCount[];
+}
+
+/** A random confident detection for the dashboard photos. */
+export interface AnimalPhoto {
+  detection_id: string;
+  file_id: string;
+  label: string | null;
+  category: string;
+  scientific_name: string | null;
+  common_name: string | null;
+  confidence: number;
+  site_name: string | null;
+  /** Camera calendar date, YYYY-MM-DD. */
+  captured_date: string | null;
+}
+
+/**
+ * What a dashboard card is looking at. `labelTaxonomyIds` undefined means
+ * every label, like every label filter in the app; a list narrows it. An
+ * empty array is a bug and the backend answers 422 rather than widening
+ * to everything.
+ */
+export interface DashboardScope {
+  labelTaxonomyIds?: string[];
+  siteIds?: string[];
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export interface HourlyCount {
@@ -211,18 +261,29 @@ export interface ActivityOverlapFilters {
  */
 function buildParams(
   projectId: string,
-  options?: { species?: string; siteIds?: string; dateFrom?: string; dateTo?: string; taxonomicRank?: string }
+  options?: { siteIds?: string; dateFrom?: string; dateTo?: string; taxonomicRank?: string }
 ): string {
   const params = new URLSearchParams();
   params.set("project_id", projectId);
 
-  if (options?.species) params.set("species", options.species);
   if (options?.siteIds) params.set("site_ids", options.siteIds);
   if (options?.dateFrom) params.set("date_from", options.dateFrom);
   if (options?.dateTo) params.set("date_to", options.dateTo);
   if (options?.taxonomicRank) params.set("taxonomic_rank", options.taxonomicRank);
 
   return params.toString();
+}
+
+function scopeParams(projectId: string, scope?: DashboardScope): URLSearchParams {
+  const params = new URLSearchParams();
+  params.set("project_id", projectId);
+  if (scope?.labelTaxonomyIds !== undefined) {
+    params.set("label_taxonomy_ids", scope.labelTaxonomyIds.join(","));
+  }
+  if (scope?.siteIds?.length) params.set("site_ids", scope.siteIds.join(","));
+  if (scope?.dateFrom) params.set("date_from", scope.dateFrom);
+  if (scope?.dateTo) params.set("date_to", scope.dateTo);
+  return params;
 }
 
 // --- API client ---
@@ -251,33 +312,49 @@ export const statisticsApi = {
     const query = buildParams(projectId, { siteIds, dateFrom, dateTo, taxonomicRank });
     const modeParam = countMode ? `&count_mode=${countMode}` : "";
     // wildlife_only drops person/vehicle categories and non-wildlife
-    // labels (blank, bait, human, ...); the dashboard bars use it, the
-    // species pickers keep the full list.
+    // labels (blank, bait, human, ...); the dashboard's wildlife chart
+    // uses it, the activity overlap picker keeps the full list.
     const wildlifeParam = wildlifeOnly ? "&wildlife_only=true" : "";
     // Returns every matching species; the dashboard bars slice to 10 client-side.
     return api.get<SpeciesCount[]>(`/api/statistics/species?${query}${modeParam}${wildlifeParam}`);
   },
 
-  /**
-   * Hourly activity pattern, optionally filtered by species
-   */
-  getActivityPattern: (
-    projectId: string,
-    params?: { species?: string; siteIds?: string; dateFrom?: string; dateTo?: string; taxonomicRank?: string }
-  ) => {
-    const query = buildParams(projectId, params);
-    return api.get<ActivityPatternResponse>(`/api/statistics/activity-pattern?${query}`);
-  },
+  /** Hourly observations for the activity clock. */
+  getActivityPattern: (projectId: string, scope: DashboardScope) =>
+    api.get<ActivityPatternResponse>(
+      `/api/statistics/activity-pattern?${scopeParams(projectId, scope)}`,
+    ),
 
-  /**
-   * Daily detection trend over time, optionally filtered by species
-   */
-  getDetectionTrend: (
+  /** Daily observations for the trend chart. */
+  getDetectionTrend: (projectId: string, scope: DashboardScope) =>
+    api.get<DetectionTrendPoint[]>(
+      `/api/statistics/detection-trend?${scopeParams(projectId, scope)}`,
+    ),
+
+  /** Events, observations, trap nights and sites for the dashboard tiles. */
+  getDashboardSummary: (projectId: string, scope?: DashboardScope) =>
+    api.get<DashboardSummary>(
+      `/api/statistics/summary?${scopeParams(projectId, scope)}`,
+    ),
+
+  /** Observations split by sex, life stage and behaviour. */
+  getDemographics: (projectId: string, scope: DashboardScope) =>
+    api.get<Demographics>(
+      `/api/statistics/demographics?${scopeParams(projectId, scope)}`,
+    ),
+
+  /** Random confident detections, a fresh pick per request. `wildlifeOnly`
+   *  for the Overview's "Gracious random animal". */
+  getAnimalPhotos: (
     projectId: string,
-    params?: { species?: string; siteIds?: string; dateFrom?: string; dateTo?: string; taxonomicRank?: string }
+    limit: number,
+    scope?: DashboardScope,
+    wildlifeOnly = false,
   ) => {
-    const query = buildParams(projectId, params);
-    return api.get<DetectionTrendPoint[]>(`/api/statistics/detection-trend?${query}`);
+    const params = scopeParams(projectId, scope);
+    params.set("limit", String(limit));
+    if (wildlifeOnly) params.set("wildlife_only", "true");
+    return api.get<AnimalPhoto[]>(`/api/statistics/animal-photos?${params}`);
   },
 
   /**

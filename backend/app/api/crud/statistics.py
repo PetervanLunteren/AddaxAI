@@ -21,7 +21,11 @@ from sqlalchemy.orm import Session
 
 from app.api.schemas.statistics import (
     ActivityPatternResponse,
+    AnimalPhoto,
+    AttributeCount,
     DashboardOverview,
+    DashboardSummary,
+    Demographics,
     DetectionCategories,
     DetectionTrendPoint,
     HourlyCount,
@@ -33,6 +37,7 @@ from app.api.schemas.statistics import (
     SunBands,
     VerificationProgressByLabel,
 )
+from app.core.confidence import PHOTO_MIN_CONFIDENCE
 from app.ml.detection_visibility import on_visible_frame
 from app.ml.label_exclusion import (
     NON_WILDLIFE_CLASSES,
@@ -131,6 +136,60 @@ def _get_counting_threshold(db: Session, project_id: str) -> float:
 def _apply_threshold(query: Select, threshold: float) -> Select:
     """The shared scope rule, in this module's query-wrapping shape."""
     return query.where(threshold_or_verified(threshold))
+
+
+def _wildlife_clause(category_col, label_col):
+    """What counts as wildlife, for EventObservation or Detection columns.
+
+    Not a person or vehicle box, and no label that names something other
+    than an animal (blank, bait, false detection, human, ...). A category
+    no detector map calls person or vehicle ("shark") is wildlife, so a
+    marine detector's own classes count without a list of them here.
+    """
+    return and_(
+        category_col.notin_(["person", "vehicle"]),
+        or_(
+            label_col.is_(None),
+            func.lower(label_col).notin_(list(NON_WILDLIFE_CLASSES)),
+        ),
+    )
+
+
+def _scoped_observations_query(
+    columns: list,
+    project_id: str,
+    label_taxonomy_ids: list[str] | None,
+    site_ids: list[str] | None,
+    date_from: str | None,
+    date_to: str | None,
+) -> Select:
+    """EventObservation rows a dashboard card is looking at.
+
+    Every label by default, the same as every label filter in the app;
+    picked labels narrow it, then sites and the event date window. The
+    router turns an empty label list into a 422, so a pick can never
+    quietly widen to everything.
+    """
+    from app.api.crud.deployment import site_ids_filter
+
+    query = (
+        select(*columns)
+        .select_from(EventObservation)
+        .join(Event, Event.id == EventObservation.event_id)
+        .join(Deployment, Event.deployment_id == Deployment.id)
+        .where(Deployment.project_id == project_id)
+    )
+    if label_taxonomy_ids is not None:
+        query = query.where(
+            EventObservation.label_taxonomy_id.in_(label_taxonomy_ids)
+        )
+    site_clause = site_ids_filter(site_ids)
+    if site_clause is not None:
+        query = query.where(site_clause)
+    date_clauses = _event_date_clauses(date_from, date_to)
+    if date_clauses:
+        query = query.where(*date_clauses)
+    return query
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +413,14 @@ def get_dashboard_overview(
     total_sites = db.execute(sites_query).scalar() or 0
 
     # Trap nights
-    trap_nights = get_trap_nights(db, project_id, site_ids, date_from, date_to)
+    # The plain sum, not get_trap_nights: that floors at 1 for callers
+    # that divide, and a project without capture dates has no effort to
+    # show, not one night.
+    trap_nights = sum(
+        get_per_deployment_trap_nights(
+            db, project_id, site_ids, date_from, date_to
+        ).values()
+    )
 
     first_date = file_stats.first_file_date
     last_date = file_stats.last_file_date
@@ -391,12 +457,12 @@ def get_species_distribution(
     count_mode="events": number of independent events per label.
     count_mode="max_n": sum of MaxN across events per label.
 
-    wildlife_only=True drops non-wildlife rows: the person/vehicle
-    detector categories plus labels in NON_WILDLIFE_CLASSES (blank,
-    bait, false detection, human, vehicle, ...). Used by the dashboard
-    "Wildlife detected" bars. The species selectors on the trend,
-    activity, and overlap charts keep the full list so human or vehicle
-    activity can still be plotted.
+    wildlife_only=True drops non-wildlife rows (`_wildlife_clause`): the
+    person/vehicle detector categories plus labels in NON_WILDLIFE_CLASSES
+    (blank, bait, false detection, human, vehicle, ...). Used by the
+    Overview's "Wildlife detected" bars and taxa count. The activity
+    overlap picker keeps the full list so human or vehicle activity can
+    still be plotted.
 
     Returns every matching species (no cap). The dashboard bars trim to
     the top 10 client-side.
@@ -500,13 +566,7 @@ def get_species_distribution(
 
     if wildlife_only:
         query = query.where(
-            EventObservation.category.notin_(["person", "vehicle"]),
-            or_(
-                EventObservation.label.is_(None),
-                func.lower(EventObservation.label).notin_(
-                    list(NON_WILDLIFE_CLASSES)
-                ),
-            ),
+            _wildlife_clause(EventObservation.category, EventObservation.label)
         )
 
     rows = db.execute(query).all()
@@ -631,73 +691,30 @@ def _compute_sun_bands(
 def get_activity_pattern(
     db: Session,
     project_id: str,
-    species: str | None = None,
+    label_taxonomy_ids: list[str] | None = None,
     site_ids: list[str] | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
-    taxonomic_rank: str | None = None,
 ) -> ActivityPatternResponse:
-    """Hourly observation counts (MaxN sum, 0-23) for activity-pattern charts."""
+    """Hourly observation counts (0-23) for the activity clock.
+
+    Scoped like every dashboard card (`_scoped_observations_query`).
+    """
     hour_expr = func.cast(func.strftime("%H", Event.event_start_local), Integer)
 
     query = (
-        select(
-            hour_expr.label("hour"),
-            func.sum(EventObservation.effective_count).label("count"),
+        _scoped_observations_query(
+            [
+                hour_expr.label("hour"),
+                func.sum(EventObservation.effective_count).label("count"),
+            ],
+            project_id, label_taxonomy_ids, site_ids, date_from, date_to,
         )
-        .select_from(EventObservation)
-        .join(Event, Event.id == EventObservation.event_id)
-        .join(Deployment, Event.deployment_id == Deployment.id)
-        .where(Deployment.project_id == project_id)
         # Date-less events (NULL bounds) have no hour; exclude them.
         .where(Event.event_start_local.isnot(None))
         .group_by(hour_expr)
         .order_by(hour_expr)
     )
-
-    if species:
-        if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
-            # Filter by display name (matching species distribution output)
-            display_label = case(
-                (EventObservation.category != "animal", EventObservation.category),
-                else_=func.coalesce(
-                    LabelTaxonomy.scientific_name, EventObservation.label
-                ),
-            )
-            query = query.outerjoin(
-                LabelTaxonomy,
-                LabelTaxonomy.id == EventObservation.label_taxonomy_id,
-            )
-            query = query.where(display_label == species)
-        else:
-            col_name = _RANK_COLUMNS.get(taxonomic_rank)
-            if col_name:
-                rank_col = getattr(LabelTaxonomy, col_name)
-                has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
-                # Species rank matches the binomial shown in the dropdown
-                if taxonomic_rank == "species":
-                    rank_display = species_rank_scientific_sql()
-                else:
-                    rank_display = rank_col
-                label_expr = case(
-                    (EventObservation.category != "animal", EventObservation.category),
-                    (rank_display.isnot(None), rank_display),
-                    (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
-                    else_=literal(NO_TAXONOMY),
-                )
-                query = query.outerjoin(
-                    LabelTaxonomy,
-                    LabelTaxonomy.id == EventObservation.label_taxonomy_id,
-                )
-                query = query.where(label_expr == species)
-            else:
-                query = query.where(EventObservation.label == species)
-
-    from app.api.crud.deployment import site_ids_filter
-
-    site_clause = site_ids_filter(site_ids)
-    if site_clause is not None:
-        query = query.where(site_clause)
 
     rows = db.execute(query).all()
     counts_by_hour = {row.hour: row.count for row in rows}
@@ -1071,73 +1088,30 @@ def get_activity_overlap(
 def get_detection_trend(
     db: Session,
     project_id: str,
-    species: str | None = None,
+    label_taxonomy_ids: list[str] | None = None,
     site_ids: list[str] | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
-    taxonomic_rank: str | None = None,
 ) -> list[DetectionTrendPoint]:
-    """Daily observation counts (MaxN sum) for trend charts."""
+    """Daily observation counts for the trend chart.
+
+    Scoped like every dashboard card (`_scoped_observations_query`).
+    """
     date_expr = func.strftime("%Y-%m-%d", Event.event_start_local)
 
     query = (
-        select(
-            date_expr.label("date"),
-            func.sum(EventObservation.effective_count).label("count"),
+        _scoped_observations_query(
+            [
+                date_expr.label("date"),
+                func.sum(EventObservation.effective_count).label("count"),
+            ],
+            project_id, label_taxonomy_ids, site_ids, date_from, date_to,
         )
-        .select_from(EventObservation)
-        .join(Event, Event.id == EventObservation.event_id)
-        .join(Deployment, Event.deployment_id == Deployment.id)
-        .where(Deployment.project_id == project_id)
         # Date-less events (NULL bounds) have no date; exclude them.
         .where(Event.event_start_local.isnot(None))
         .group_by(date_expr)
         .order_by(date_expr.asc())
     )
-
-    if species:
-        if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
-            # Filter by display name (matching species distribution output)
-            display_label = case(
-                (EventObservation.category != "animal", EventObservation.category),
-                else_=func.coalesce(
-                    LabelTaxonomy.scientific_name, EventObservation.label
-                ),
-            )
-            query = query.outerjoin(
-                LabelTaxonomy,
-                LabelTaxonomy.id == EventObservation.label_taxonomy_id,
-            )
-            query = query.where(display_label == species)
-        else:
-            col_name = _RANK_COLUMNS.get(taxonomic_rank)
-            if col_name:
-                rank_col = getattr(LabelTaxonomy, col_name)
-                has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
-                # Species rank matches the binomial shown in the dropdown
-                if taxonomic_rank == "species":
-                    rank_display = species_rank_scientific_sql()
-                else:
-                    rank_display = rank_col
-                label_expr = case(
-                    (EventObservation.category != "animal", EventObservation.category),
-                    (rank_display.isnot(None), rank_display),
-                    (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
-                    else_=literal(NO_TAXONOMY),
-                )
-                query = query.outerjoin(
-                    LabelTaxonomy,
-                    LabelTaxonomy.id == EventObservation.label_taxonomy_id,
-                )
-                query = query.where(label_expr == species)
-            else:
-                query = query.where(EventObservation.label == species)
-
-    from app.api.crud.deployment import site_ids_filter
-
-    site_clause = site_ids_filter(site_ids)
-    if site_clause is not None:
-        query = query.where(site_clause)
 
     rows = db.execute(query).all()
     return [
@@ -1488,3 +1462,169 @@ def get_observation_rate_map(
         features=features,
         deployments_without_site=deployments_without_site,
     )
+
+
+# ---------------------------------------------------------------------------
+# 8. Dashboard: summary, demographics, random photos
+# ---------------------------------------------------------------------------
+
+
+def get_dashboard_summary(
+    db: Session,
+    project_id: str,
+    label_taxonomy_ids: list[str] | None = None,
+    site_ids: list[str] | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> DashboardSummary:
+    """Headline figures for the dashboard tiles.
+
+    The Overview reads its trap nights from it, the Explore tab its events,
+    observations and sites for the current selection. Trap nights are
+    effort, so labels do not narrow them.
+    """
+    row = db.execute(
+        _scoped_observations_query(
+            [
+                func.count(distinct(Event.id)).label("events"),
+                func.coalesce(
+                    func.sum(EventObservation.effective_count), 0
+                ).label("observations"),
+                func.count(distinct(Deployment.site_id)).label("sites"),
+            ],
+            project_id, label_taxonomy_ids, site_ids, date_from, date_to,
+        )
+    ).one()
+    per_deployment = get_per_deployment_trap_nights(
+        db, project_id, site_ids, date_from, date_to
+    )
+    return DashboardSummary(
+        events=row.events,
+        observations=row.observations,
+        trap_nights=sum(per_deployment.values()),
+        sites_with_detections=row.sites,
+    )
+
+
+def get_demographics(
+    db: Session,
+    project_id: str,
+    label_taxonomy_ids: list[str] | None = None,
+    site_ids: list[str] | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> Demographics:
+    """Observations split by sex, life stage and behaviour.
+
+    Each split sums `effective_count` per value over every in-scope
+    cohort row. People fill these fields in on the Counts page and the AI
+    never does, so NULL is common and counted as unknown rather than
+    left out: each split adds up to the same total.
+    """
+    def split(column) -> list[AttributeCount]:
+        rows = db.execute(
+            _scoped_observations_query(
+                [
+                    column.label("value"),
+                    func.sum(EventObservation.effective_count).label("count"),
+                ],
+                project_id, label_taxonomy_ids, site_ids, date_from, date_to,
+            ).group_by(column)
+        ).all()
+        return [
+            AttributeCount(value=r.value, count=r.count)
+            for r in rows
+            if r.count
+        ]
+
+    sex = split(EventObservation.sex)
+    return Demographics(
+        observations=sum(c.count for c in sex),
+        sex=sex,
+        life_stage=split(EventObservation.life_stage),
+        behavior=split(EventObservation.behavior),
+    )
+
+
+def get_animal_photos(
+    db: Session,
+    project_id: str,
+    limit: int,
+    label_taxonomy_ids: list[str] | None = None,
+    site_ids: list[str] | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    wildlife_only: bool = False,
+) -> list[AnimalPhoto]:
+    """Random confident detections, for the dashboard photos.
+
+    Every label by default, picked labels narrow it, `wildlife_only` for
+    the Overview's "Gracious random animal". Rejected boxes never. No
+    ranking: a real detection whose box passes the project's scope at a floor
+    of at least PHOTO_MIN_CONFIDENCE, its species name (when it has one)
+    reaches the same floor or a person verified it, and the crop endpoint
+    can draw it (a bbox, and for a video the saved best frame). Among
+    those the pick is random, so every dashboard visit shows another one.
+    """
+    floor = max(PHOTO_MIN_CONFIDENCE, _get_counting_threshold(db, project_id))
+    query = (
+        select(
+            Detection.id.label("detection_id"),
+            Detection.file_id,
+            Detection.label,
+            Detection.category,
+            Detection.scientific_name,
+            Detection.common_name,
+            Detection.confidence,
+            Site.name.label("site_name"),
+            File.captured_at_local,
+        )
+        .select_from(Detection)
+        .join(File, File.id == Detection.file_id)
+        .join(Deployment, File.deployment_id == Deployment.id)
+        .outerjoin(Site, Site.id == Deployment.site_id)
+        .where(Detection.bbox_x.isnot(None))
+        .where(is_a_real_detection())
+        .where(threshold_or_verified(floor))
+        .where(
+            or_(
+                Detection.verified == True,  # noqa: E712
+                Detection.label_confidence.is_(None),
+                Detection.label_confidence >= PHOTO_MIN_CONFIDENCE,
+            )
+        )
+        .where(
+            or_(
+                File.file_type == "image",
+                and_(
+                    File.file_type == "video",
+                    Detection.frame_number == File.best_frame_number,
+                    File.best_frame_path.isnot(None),
+                ),
+            )
+        )
+        .order_by(func.random())
+        .limit(limit)
+    )
+    if label_taxonomy_ids is not None:
+        query = query.where(Detection.label_taxonomy_id.in_(label_taxonomy_ids))
+    if wildlife_only:
+        query = query.where(_wildlife_clause(Detection.category, Detection.label))
+    query = _apply_filters(query, project_id, site_ids, date_from, date_to)
+
+    return [
+        AnimalPhoto(
+            detection_id=r.detection_id,
+            file_id=r.file_id,
+            label=r.label,
+            category=r.category,
+            scientific_name=r.scientific_name,
+            common_name=r.common_name,
+            confidence=r.confidence,
+            site_name=r.site_name,
+            captured_date=(
+                r.captured_at_local.date() if r.captured_at_local else None
+            ),
+        )
+        for r in db.execute(query).all()
+    ]

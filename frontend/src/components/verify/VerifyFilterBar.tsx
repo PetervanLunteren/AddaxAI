@@ -20,7 +20,6 @@
 
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
 
 import { eventsApi } from "../../api/events";
 import { projectsApi } from "../../api/projects";
@@ -33,7 +32,6 @@ import type {
   EventFilterParams,
   VerificationFilter,
 } from "../../api/types";
-import { Button } from "../ui/button";
 import { DateRangePicker } from "../ui/date-range-picker";
 import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
 import {
@@ -44,7 +42,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { FilterChips } from "./FilterChips";
-import { LabelFilterModal } from "./LabelFilterModal";
+import { LabelFilterField } from "./LabelFilterField";
 import { VerifyMoreFilters } from "./VerifyMoreFilters";
 
 export interface VerificationOption {
@@ -125,7 +123,6 @@ export function VerifyFilterBar({
   showLabels = true,
   clampReason,
 }: VerifyFilterBarProps) {
-  const [labelModalOpen, setLabelModalOpen] = useState(false);
 
   // Event scope (Counts page) confirms; detection/file scope (Labels)
   // verifies. Drives the verification filter's wording.
@@ -157,24 +154,6 @@ export function VerifyFilterBar({
     enabled: !!projectId,
   });
 
-  const { data: labelTree } = useQuery({
-    queryKey: [
-      "label-tree",
-      projectId,
-      countBy,
-      filters.site_ids,
-      filters.date_from,
-      filters.date_to,
-    ],
-    queryFn: () =>
-      eventsApi.getLabelTree(projectId, countBy, {
-        siteIds: filters.site_ids,
-        dateFrom: filters.date_from,
-        dateTo: filters.date_to,
-      }),
-    enabled: !!projectId,
-  });
-  const hasTaxonomy = !!labelTree?.tree?.length;
 
   // Id → name map for the active-filter chips' site labels.
   const siteNames: Record<string, string> = {};
@@ -185,12 +164,6 @@ export function VerifyFilterBar({
     noSite?.count ?? 0,
   );
 
-  const labelNames = filterOptions ? speciesLabelMap(filterOptions) : {};
-  const labelFilterOptions: MultiSelectOption[] =
-    filterOptions?.labels.map((lbl) => ({
-      value: lbl,
-      label: labelNames[lbl] ?? lbl,
-    })) ?? [];
 
   // Four controls without Sites (folder runs), five with it (projects).
   const gridCols = showSites ? "lg:grid-cols-5" : "lg:grid-cols-4";
@@ -231,51 +204,15 @@ export function VerifyFilterBar({
         {showLabels && (
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">Labels</label>
-          {hasTaxonomy ? (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full h-9 justify-start text-sm font-normal"
-                onClick={() => setLabelModalOpen(true)}
-              >
-                <span className="truncate">
-                  {filters.labels?.length
-                    ? `${filters.labels.length} labels`
-                    : "All labels"}
-                </span>
-              </Button>
-              <LabelFilterModal
-                preBuiltTree={labelTree!.tree}
-                allLeafIds={labelTree!.all_leaf_ids}
-                selectedLabels={filters.labels ?? []}
-                onApply={(labels) => {
-                  const allLeafs = labelTree!.all_leaf_ids;
-                  const isAll = labels.length >= allLeafs.length;
-                  onChange({
-                    ...filters,
-                    labels: isAll ? undefined : labels.length ? labels : undefined,
-                  });
-                }}
-                open={labelModalOpen}
-                onOpenChange={setLabelModalOpen}
-                countUnit={labelTree!.count_unit}
-              />
-            </>
-          ) : (
-            <MultiSelect
-              options={labelFilterOptions}
-              value={filters.labels ?? []}
-              onChange={(v) =>
-                onChange({ ...filters, labels: v.length ? v : undefined })
-              }
-              placeholder="All labels"
-              searchPlaceholder="Search labels..."
-              emptyMessage="No labels found."
-              summary={(n) => `${n} labels`}
-              capitalize
-            />
-          )}
+          <LabelFilterField
+            projectId={projectId}
+            value={filters.labels}
+            onChange={(labels) => onChange({ ...filters, labels })}
+            countBy={countBy}
+            siteIds={filters.site_ids}
+            dateFrom={filters.date_from}
+            dateTo={filters.date_to}
+          />
         </div>
         )}
 

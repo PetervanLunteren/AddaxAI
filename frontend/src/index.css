@@ -19,6 +19,22 @@
  * macOS or Linux where the polyfill detects native flag support and
  * never installs the @font-face in the first place.
  */
+/* Always reserve the scrollbar's width. Where scrollbars take space (a
+ * mouse on macOS, Windows, Linux) a page that grows past the window
+ * otherwise narrows by ~15px and the centred content jumps sideways,
+ * e.g. when switching between the dashboard's Overview and Explore.
+ * No effect where scrollbars overlay the content.
+ *
+ * Pages whose photo fills the window (home, setup) never scroll, and a
+ * reserved gutter there is an empty white strip beside the photo, so
+ * they opt out with `data-full-bleed` on their root. */
+html {
+  scrollbar-gutter: stable;
+}
+html:has([data-full-bleed]) {
+  scrollbar-gutter: auto;
+}
+
 html, body {
   font-family: "Twemoji Country Flags", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
@@ -89,6 +105,15 @@ html, body {
     --good-ink: #0f6064;              /* status trio as text */
     --bad-ink: #882000;
     --middle: #71b7ba;
+    /* The four-value palette (FRONTEND_CONVENTIONS) as fills, assigned
+       by position to categories that are names, not magnitudes. Their
+       own tokens, not the inks: in dark mode teal ink sits next to
+       --middle and bad ink next to the orange, and two categories
+       became one colour. */
+    --chart-1: #0f6064;
+    --chart-2: #ff8945;
+    --chart-3: #71b7ba;
+    --chart-4: #882000;
 
     /* Intent trios: subtle = tinted surface, ink = text/icon on any
        surface, border = the tinted surface's border. Light mode keeps
@@ -134,7 +159,10 @@ html, body {
     --primary-ink: #66b6ba;
     --good-ink: #4faeb2;
     --bad-ink: #e0734d;
-    /* --middle unchanged: #71b7ba reads on both themes. */
+    /* --middle unchanged: #71b7ba reads on both themes. Of the chart
+       fills only the darkest needs lifting off the dark card; it stays
+       red so it cannot be taken for the orange. */
+    --chart-4: #c23a3a;
 
     --destructive-subtle: rgba(252, 165, 165, 0.09);  --destructive-ink: #fca5a5;  --destructive-border: rgba(252, 165, 165, 0.30);
     --warning-subtle: rgba(252, 211, 77, 0.09);       --warning-ink: #fcd34d;      --warning-border: rgba(252, 211, 77, 0.30);

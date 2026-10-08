@@ -405,6 +405,29 @@ def test_heatmap_counts_files_per_site_and_day(db):
     assert all(p.site_id == site.id for p in response.heatmap)
 
 
+def test_heatmap_can_be_left_out_without_changing_the_rest(client, db):
+    """The dashboard calendar asks for heatmap=false: the heaviest part of
+    the payload goes, the cameras-running series and metrics stay."""
+    project = make_project(db)
+    site = make_site(db, project_id=project.id, name="Pooled")
+    _make_dep_with_files(
+        db,
+        site_id=site.id,
+        project_id=project.id,
+        folder="/data/pooled/cam_a",
+        dates=[date(2024, 1, 1), date(2024, 1, 2)],
+    )
+
+    full = client.get(f"/api/statistics/timeline?project_id={project.id}").json()
+    light = client.get(
+        f"/api/statistics/timeline?project_id={project.id}&heatmap=false"
+    ).json()
+
+    assert full["heatmap"] and light["heatmap"] == []
+    assert light["concurrent_cameras"] == full["concurrent_cameras"]
+    assert light["metrics"] == full["metrics"]
+
+
 def test_heatmap_respects_clip_window(db):
     project = make_project(db)
     site = make_site(db, project_id=project.id, name="Clip")

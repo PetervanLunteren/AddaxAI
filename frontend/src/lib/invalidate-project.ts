@@ -34,6 +34,8 @@ export function invalidateProjectData(
     ["project-label-stats"],
     ["observations-stats", projectId],
     ["observation-rate-map", projectId],
+    // The deployment timeline page and the dashboard's effort calendar.
+    ["timeline", projectId],
     ["labels-unprocessed", projectId],
     // The Labels page's photo-level progress bar, and the files list
     // itself: a reprocess or a threshold change moves which photos count

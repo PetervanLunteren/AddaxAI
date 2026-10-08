@@ -94,6 +94,12 @@ Good / active   = #0f6064
 3 = #71b7ba
 4 = #882000
 
+In components use the tokens `var(--chart-1)` to `var(--chart-4)` from
+`src/index.css`, never the hex. They are fills for categories that are
+names, not magnitudes (sex, behaviour), assigned by position. They are
+separate from the inks on purpose: in dark mode teal ink sits next to
+`--middle` and bad ink next to the orange, so two categories read as one.
+
 ### Use this gradient if you need a gradient somewhere
 For example for gradients in heatmaps or other multi level color scales
 from (dark, first alphabetically) = #0f6064
@@ -264,6 +270,17 @@ const [open, setOpen] = useState(false);
   </DialogContent>
 </Dialog>
 ```
+
+### Card help: subtitle always, (i) only for method
+
+Every dashboard and insights card has a short subtitle under its title
+that says what it shows. A card gets an (i) popover
+(`DashboardAboutPopover`) only when its numbers rest on a method a reader
+needs to trust them: what an observation is, MaxN, frequency against
+abundance, what "verified" counts, what the day and night bands mean.
+Never add an (i) that repeats the subtitle: empty ones teach people to
+skip the useful ones. Form fields follow the same idea with inline
+captions instead of (i) tooltips.
 
 ### API Query Pattern
 

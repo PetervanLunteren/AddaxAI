@@ -63,6 +63,13 @@ CONFIDENCE_SCALE_MIN = 0.01
 # confidence policy sits in one file.
 ROLLUP_THRESHOLD = 0.65
 
+# PHOTO_MIN_CONFIDENCE — the floor for the random animal photos on the
+# dashboard. Both the box and, when there is one, the species name must
+# reach it (or a person verified the box), so the photo shows an animal
+# under a name the AI is sure of. Display only: it filters nothing that
+# is counted.
+PHOTO_MIN_CONFIDENCE = 0.8
+
 
 def effective_floor(
     counting_threshold: float, min_confidence: float | None

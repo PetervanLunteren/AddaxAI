@@ -7,16 +7,9 @@
  * matches, with the same OSM raster fallback without WebGL2.
  */
 
-import { CircleMarker, MapContainer, TileLayer } from "react-leaflet";
+import { CircleMarker, MapContainer } from "react-leaflet";
 
-import { useTheme } from "../../lib/theme";
-import {
-  OPENFREEMAP_ATTRIBUTION,
-  OSM_LAYER,
-  openFreeMapStyleUrl,
-  supportsWebGL2,
-} from "../map/basemap-styles";
-import MapLibreGLLayer from "../map/MapLibreGLLayer";
+import { StreetBaseLayer } from "../map/StreetBaseLayer";
 
 interface SiteLocationMapProps {
   latitude: number;
@@ -29,8 +22,6 @@ export function SiteLocationMap({
   longitude,
   zoom = 12,
 }: SiteLocationMapProps) {
-  const { resolvedTheme } = useTheme();
-  const styleUrl = openFreeMapStyleUrl(resolvedTheme === "dark");
   return (
     <div className="h-[180px] w-full overflow-hidden rounded-md border">
       <MapContainer
@@ -42,15 +33,7 @@ export function SiteLocationMap({
         doubleClickZoom={false}
         zoomControl={false}
       >
-        {supportsWebGL2() ? (
-          <MapLibreGLLayer
-            key={styleUrl}
-            styleUrl={styleUrl}
-            attribution={OPENFREEMAP_ATTRIBUTION}
-          />
-        ) : (
-          <TileLayer url={OSM_LAYER.url} attribution={OSM_LAYER.attribution} />
-        )}
+        <StreetBaseLayer />
         <CircleMarker
           center={[latitude, longitude]}
           radius={7}

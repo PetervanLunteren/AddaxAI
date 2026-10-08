@@ -12,7 +12,6 @@
  * layer).
  */
 
-import { useState } from "react";
 import {
   InsightsFilterBarShell,
   type FilterChip,
@@ -22,7 +21,6 @@ import {
   Circle,
   Group,
   Hexagon,
-  ListTodo,
   Map as MapIcon,
   Navigation,
   Satellite,
@@ -30,12 +28,10 @@ import {
 
 import { eventsApi } from "../../api/events";
 import { sitesApi } from "../../api/sites";
-import { speciesLabelMap } from "../../lib/species-name-mode";
-import { Button } from "../ui/button";
 import { DateRangePicker } from "../ui/date-range-picker";
 import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
 import { SegmentedControl } from "../ui/segmented-control";
-import { LabelFilterModal } from "../verify/LabelFilterModal";
+import { LabelFilterField } from "../verify/LabelFilterField";
 
 export type ViewMode = "hexbins" | "points" | "clusters";
 export type BaseLayer = "positron" | "satellite" | "osm";
@@ -71,7 +67,6 @@ export function MapFilterBar({
   baseLayer,
   onBaseLayerChange,
 }: MapFilterBarProps) {
-  const [labelModalOpen, setLabelModalOpen] = useState(false);
 
   const { data: sites } = useQuery({
     queryKey: ["sites", projectId],
@@ -85,34 +80,10 @@ export function MapFilterBar({
     enabled: !!projectId,
   });
 
-  const { data: labelTree } = useQuery({
-    queryKey: [
-      "label-tree",
-      projectId,
-      "event",
-      filters.site_ids,
-      filters.date_from,
-      filters.date_to,
-    ],
-    queryFn: () =>
-      eventsApi.getLabelTree(projectId, "event", {
-        siteIds: filters.site_ids,
-        dateFrom: filters.date_from,
-        dateTo: filters.date_to,
-      }),
-    enabled: !!projectId,
-  });
-  const hasTaxonomy = !!labelTree?.tree?.length;
 
   const siteOptions: MultiSelectOption[] =
     sites?.map((s) => ({ value: s.id, label: s.name })) ?? [];
 
-  const labelNames = filterOptions ? speciesLabelMap(filterOptions) : {};
-  const labelFlatOptions: MultiSelectOption[] =
-    filterOptions?.labels.map((lbl) => ({
-      value: lbl,
-      label: labelNames[lbl] ?? lbl,
-    })) ?? [];
 
   return (
     <InsightsFilterBarShell chips={chips} onClearAll={onClearAll}>
@@ -171,56 +142,14 @@ export function MapFilterBar({
           <label className="text-xs font-medium text-muted-foreground">
             Labels
           </label>
-          {hasTaxonomy ? (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full h-9 justify-start text-sm font-normal"
-                onClick={() => setLabelModalOpen(true)}
-              >
-                <ListTodo className="h-4 w-4 mr-2 text-muted-foreground shrink-0" />
-                <span className="truncate">
-                  {filters.labels?.length
-                    ? `${filters.labels.length} labels`
-                    : "All labels"}
-                </span>
-              </Button>
-              <LabelFilterModal
-                preBuiltTree={labelTree!.tree}
-                allLeafIds={labelTree!.all_leaf_ids}
-                selectedLabels={filters.labels ?? []}
-                onApply={(labels) => {
-                  const allLeafs = labelTree!.all_leaf_ids;
-                  const isAll = labels.length >= allLeafs.length;
-                  onChange({
-                    ...filters,
-                    labels: isAll
-                      ? undefined
-                      : labels.length
-                        ? labels
-                        : undefined,
-                  });
-                }}
-                open={labelModalOpen}
-                onOpenChange={setLabelModalOpen}
-                countUnit={labelTree!.count_unit}
-              />
-            </>
-          ) : (
-            <MultiSelect
-              options={labelFlatOptions}
-              value={filters.labels ?? []}
-              onChange={(v) =>
-                onChange({ ...filters, labels: v.length ? v : undefined })
-              }
-              placeholder="All labels"
-              searchPlaceholder="Search labels..."
-              emptyMessage="No labels found."
-              summary={(n) => `${n} labels`}
-              capitalize
-            />
-          )}
+          <LabelFilterField
+            projectId={projectId}
+            value={filters.labels}
+            onChange={(labels) => onChange({ ...filters, labels })}
+            siteIds={filters.site_ids}
+            dateFrom={filters.date_from}
+            dateTo={filters.date_to}
+          />
         </div>
 
         {/* Map style */}

@@ -114,3 +114,80 @@ def test_get_or_create_crop_returns_none_off_the_best_frame(db, tmp_path):
 
     assert get_or_create_crop(on_best.id, 200, db) is not None
     assert get_or_create_crop(off_best.id, 200, db) is None
+
+
+# ---------------------------------------------------------------------------
+# Shaped crops: the window takes the frame's shape and slides inside the
+# photo, so the dashboard's wide hero fills with the scene, not with blur.
+# ---------------------------------------------------------------------------
+
+import io  # noqa: E402
+
+from app.services.crop_service import compute_expanded_crop_region  # noqa: E402
+
+W, H = 1000, 600
+
+
+def _contains_box(region, bbox):
+    left, top, right, bottom = region
+    bx, by, bw, bh = bbox
+    return (
+        left <= bx * W and right >= (bx + bw) * W
+        and top <= by * H and bottom >= (by + bh) * H
+    )
+
+
+def test_a_square_crop_is_unchanged_and_still_centred():
+    """The Labels grid overlay is computed from a centred square; the
+    shaped path must not have moved it, even off the photo's edge."""
+    region = compute_expanded_crop_region(0.0, 0.4, 0.1, 0.2, W, H)
+
+    # box 100x120 px, padding 12, side 144, centre (50, 300)
+    assert region == (-22, 228, 122, 372)
+
+
+def test_a_shaped_crop_has_the_asked_shape_and_holds_the_whole_box():
+    bbox = (0.4, 0.3, 0.1, 0.3)
+    left, top, right, bottom = compute_expanded_crop_region(
+        *bbox, W, H, aspect=1.6
+    )
+
+    assert abs((right - left) / (bottom - top) - 1.6) < 0.02
+    assert _contains_box((left, top, right, bottom), bbox)
+
+
+def test_a_box_at_the_edge_slides_the_window_into_the_photo():
+    """No blur where the photo has pixels: the frame pans inward."""
+    bbox = (0.0, 0.4, 0.1, 0.2)
+    region = compute_expanded_crop_region(*bbox, W, H, aspect=1.6)
+
+    left, top, right, bottom = region
+    assert left == 0 and top >= 0 and right <= W and bottom <= H
+    assert _contains_box(region, bbox)
+
+
+def test_a_window_larger_than_the_photo_stays_centred():
+    """A tall box in a wide frame needs more width than the photo has;
+    nothing can slide, so it falls back to the square's blurred edges."""
+    bbox = (0.45, 0.0, 0.1, 1.0)
+    left, top, right, bottom = compute_expanded_crop_region(
+        *bbox, W, H, aspect=2.0
+    )
+
+    assert right - left > W
+    assert abs((left + right) / 2 - 500) <= 1
+    assert _contains_box((left, top, right, bottom), bbox)
+
+
+def test_a_shaped_crop_comes_out_at_that_shape(db, tmp_path):
+    photo = _jpeg(tmp_path, "wide.jpg", size=(1000, 600))
+    dep = make_deployment(db, project_id=make_project(db).id)
+    f = make_file(db, deployment_id=dep.id, file_path=str(photo))
+    d = make_detection(db, file_id=f.id, bbox_x=0.0, bbox_y=0.4,
+                       bbox_width=0.1, bbox_height=0.2)
+
+    square = Image.open(io.BytesIO(get_or_create_crop(d.id, 200, db)))
+    wide = Image.open(io.BytesIO(get_or_create_crop(d.id, 320, db, aspect=1.6)))
+
+    assert square.size == (200, 200)
+    assert wide.size == (320, 200)
