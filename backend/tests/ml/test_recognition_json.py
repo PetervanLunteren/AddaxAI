@@ -725,3 +725,16 @@ def test_no_failure_entries_when_everything_was_readable(db, tmp_path):
     data = _load_json(tmp_path / "out")
 
     assert all("failure" not in i for i in data["images"])
+
+
+def test_same_second_images_follow_file_names_and_undated_last(db, tmp_path):
+    from tests.api.test_export import _burst_with_an_undated_photo
+
+    folder = tmp_path / "cam"
+    project = _burst_with_an_undated_photo(db, str(folder))
+
+    write_recognition_json(db, project.id, tmp_path / "out")
+
+    assert [i["file"] for i in _load_json(tmp_path / "out")["images"]] == [
+        "RCNX0001.JPG", "RCNX0002.JPG", "RCNX0003.JPG", "RCNX0000.JPG",
+    ]

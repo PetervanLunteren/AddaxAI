@@ -2681,3 +2681,49 @@ def test_export_camtrap_dp_drops_rejected_boxes(client, db):
 
     for_mixed = [r for r in body if r[media_id] == mixed.id and r[level] == "media"]
     assert len(for_mixed) == 1 and for_mixed[0][obs_type] == "animal"
+
+
+def _burst_with_an_undated_photo(db, folder: str):
+    """Three photos in one second, inserted out of shooting order, with
+    ids whose order is the reverse of the file names, plus one photo
+    without a capture time. Only a file-name tie-break reads 0001-0003."""
+    project = make_project(db)
+    dep = make_deployment(db, project_id=project.id, folder_path=folder)
+    second = datetime(2024, 11, 22, 16, 51, 18)
+    for name, fid in [("RCNX0003", "a"), ("RCNX0001", "c"), ("RCNX0002", "b")]:
+        make_file(
+            db,
+            id=fid * 32,
+            deployment_id=dep.id,
+            file_path=f"{folder}/{name}.JPG",
+            captured_at_local=second,
+        )
+    undated = make_file(
+        db, id="0" * 32, deployment_id=dep.id, file_path=f"{folder}/RCNX0000.JPG"
+    )
+    undated.captured_at_local = None
+    db.commit()
+    return project
+
+
+def test_same_second_files_export_in_file_name_order_and_undated_last(client, db):
+    project = _burst_with_an_undated_photo(db, "/cam")
+
+    _, rows = _csv_table(client, project.id, "files")
+
+    assert [r["relative_path"] for r in rows] == [
+        "RCNX0001.JPG", "RCNX0002.JPG", "RCNX0003.JPG", "RCNX0000.JPG",
+    ]
+
+
+def test_boxes_on_one_photo_export_strongest_first(client, db):
+    project = make_project(db)
+    dep = make_deployment(db, project_id=project.id, folder_path="/cam")
+    f = make_file(db, deployment_id=dep.id, file_path="/cam/RCNX0001.JPG")
+    weak = make_detection(db, id="a" * 32, file_id=f.id, confidence=0.3)
+    strong = make_detection(db, id="b" * 32, file_id=f.id, confidence=0.9)
+    db.commit()
+
+    _, rows = _csv_table(client, project.id, "detections")
+
+    assert [r["detection_id"] for r in rows] == [strong.id, weak.id]

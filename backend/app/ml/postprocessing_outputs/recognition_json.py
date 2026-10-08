@@ -50,6 +50,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import __version__ as APP_VERSION
+from app.api.crud.ordering import detection_order_in_file, file_time_order
 from app.core.logging_config import get_logger
 from app.models import Deployment, Detection, File, LabelTaxonomy, Project
 
@@ -230,7 +231,7 @@ def write_recognition_json(
         select(File)
         .join(Deployment, File.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
-        .order_by(File.captured_at_local.asc())
+        .order_by(*file_time_order(newest_first=False))
     ).scalars().all()
 
     # Build a stable label -> id map as we walk detections, mirroring
@@ -246,16 +247,10 @@ def write_recognition_json(
     classification_total = 0
 
     for file in files:
-        # Frame order first so a video's detections read sequentially
-        # (frame_number is NULL for images, so they all tie and fall back
-        # to the confidence order MegaDetector's image format expects).
         detections = db.execute(
             select(Detection)
             .where(Detection.file_id == file.id)
-            .order_by(
-                Detection.frame_number.asc(),
-                Detection.confidence.desc(),
-            )
+            .order_by(*detection_order_in_file())
         ).scalars().all()
 
         det_objs: list[dict] = []

@@ -14,6 +14,7 @@ from app.api.crud.event_observation import (
     get_event_ids_for_files,
     recalculate_max_n_for_events,
 )
+from app.api.crud.ordering import file_time_order
 from app.api.schemas.file import FileUpdate
 from app.core.confidence import effective_floor
 from app.ml.detection_visibility import on_visible_frame, on_visible_frame_of
@@ -79,11 +80,8 @@ def get_files(
     query = db.query(File)
     if observation_type:
         query = query.filter(File.observation_type == observation_type)
-    # file_path tiebreak (here and in the sibling queries below): burst
-    # shots share one second-resolution timestamp, and offset pagination
-    # over a non-unique sort key can skip or repeat rows across pages.
     return (
-        query.order_by(File.captured_at_local.desc(), File.file_path.desc())
+        query.order_by(*file_time_order(newest_first=True))
         .offset(skip)
         .limit(limit)
         .all()
@@ -114,7 +112,7 @@ def get_files_by_deployment(
     if observation_type:
         query = query.filter(File.observation_type == observation_type)
     return (
-        query.order_by(File.captured_at_local.desc(), File.file_path.desc())
+        query.order_by(*file_time_order(newest_first=True))
         .offset(skip)
         .limit(limit)
         .all()
@@ -150,7 +148,7 @@ def get_files_by_project(
     if observation_type:
         query = query.filter(File.observation_type == observation_type)
     return (
-        query.order_by(File.captured_at_local.desc(), File.file_path.desc())
+        query.order_by(*file_time_order(newest_first=True))
         .offset(skip)
         .limit(limit)
         .all()
@@ -290,21 +288,13 @@ def get_labels_files(
 
     total = query.count()
 
-    # File.id breaks every tie, so paging is stable. Files with no
-    # capture time sort last rather than wherever SQLite puts NULL.
-    undated_last = File.captured_at_local.is_(None).asc()
-    # Same-second ties resolve by file name, not by row id: a burst shot
-    # within one second must come back in shooting order, and camera
-    # filenames are sequential. Lexicographic, which equals human order
-    # for the fixed-width names cameras write (IMG_0102); a true natural
-    # sort would need a computed key and no real data has asked for it.
-    name_break = [File.file_path.asc(), File.id.asc()]
+    # Time sorts share one rule with the exports (see crud/ordering.py).
     if sort == "path":
         order = [File.file_path.asc(), File.id.asc()]
     elif sort == "newest":
-        order = [undated_last, File.captured_at_local.desc(), *name_break]
+        order = file_time_order(newest_first=True)
     elif sort == "oldest":
-        order = [undated_last, File.captured_at_local.asc(), *name_break]
+        order = file_time_order(newest_first=False)
     elif sort == "random":
         if seed is None:
             raise ValueError("random sort requires a seed")
@@ -336,9 +326,7 @@ def get_labels_files(
             event_start_sq.is_(None).asc(),
             event_start_sq.desc(),
             event_id_sq.asc(),
-            undated_last,
-            File.captured_at_local.asc(),
-            *name_break,
+            *file_time_order(newest_first=False),
         ]
     else:
         raise ValueError(f"unknown sort: {sort}")

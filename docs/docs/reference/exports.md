@@ -33,6 +33,8 @@ If you do want every box on every frame, use the recognition file described at t
 
 Counts, Detections and Files repeat the site, the camera period and the event on every row, in the same columns and the same order: `site_name`, `latitude`, `longitude`, `site_tags`, then `deployment_id`, `deployment_start`, `deployment_end`, `deployment_tags`, then `event_id`, `event_start`, `event_end`. Detections also carries its file: `file_id`, `relative_path`, `datetime`, `image_width`, `image_height`. So you can filter one table on a site, a tag or a date in Excel without looking anything up in another table. The ids are still there if you prefer to join.
 
+Detections and Files are in capture order. Photos taken in the same second follow their file names, which is the order the camera took them in, and photos without a capture time come last. Boxes on one photo or video frame are listed strongest first. The recognition file uses the same order.
+
 ## Summary
 
 One row per species, plus one row each for people, vehicles and animals without a species. The first sheet of the workbook, so you see what was found before anything else. Each count column counts one of the other tables, so the numbers can always be traced back.

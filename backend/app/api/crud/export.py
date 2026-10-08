@@ -34,6 +34,7 @@ from sqlalchemy import Row, and_, func, or_, select
 from sqlalchemy.orm import Session, defer
 
 from app.api.crud.export_formats import slugify
+from app.api.crud.ordering import detection_order_in_file, file_time_order
 from app.core.logging_config import get_logger
 from app.core.observation_attributes import LIFE_STAGES, SEXES
 from app.db.sql_params import iter_id_chunks
@@ -367,7 +368,9 @@ def get_scoped_detection_rows(
         )
         .where(Deployment.project_id == project.id)
         .where(File.file_type.in_(("image", "video")))
-        .order_by(File.captured_at_local.asc(), File.id, Detection.id)
+        .order_by(
+            *file_time_order(newest_first=False), *detection_order_in_file()
+        )
     )
 
     # Optional export scope: narrow to a subset of the project's
