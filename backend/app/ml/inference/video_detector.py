@@ -39,15 +39,18 @@ def _build_process_video_cmd(
     output_json: Path,
     time_sample: float,
     confidence_threshold: float,
+    batch_size: int | None,
     image_size: int | None,
     augment: bool,
 ) -> list[str]:
     """Assemble the ``process_video`` command line.
 
     Pure and side-effect free so the flag logic is unit-testable without
-    spawning the subprocess. Optional inference flags (image size, augment)
-    are appended only when set, mirroring the image detector; process_video
-    accepts them as ``--image_size N`` and ``--augment`` (store_true).
+    spawning the subprocess. Optional inference flags (batch size, image
+    size, augment) are appended only when set, mirroring the image
+    detector; process_video accepts them as ``--batch_size N``,
+    ``--image_size N`` and ``--augment`` (store_true). It batches frames
+    within one video and falls back to 1 on CPU by itself.
     """
     command = [
         str(python_path),
@@ -63,6 +66,8 @@ def _build_process_video_cmd(
         "--json_confidence_threshold",
         str(confidence_threshold),
     ]
+    if batch_size is not None:
+        command += ["--batch_size", str(batch_size)]
     if image_size is not None:
         command += ["--image_size", str(image_size)]
     if augment:
@@ -112,6 +117,7 @@ class VideoDetectionModel:
         output_json: Path,
         fps: float,
         confidence_threshold: float,
+        batch_size: int | None = None,
         image_size: int | None = None,
         augment: bool = False,
         progress_callback: Callable[[str, float], None] | None = None,
@@ -129,6 +135,8 @@ class VideoDetectionModel:
             output_json: Path to output JSON file
             fps: Frames per second to extract (converted to time_sample)
             confidence_threshold: Minimum confidence for detections
+            batch_size: Frames per inference batch, from the project's
+                detection batch size. None means MegaDetector's default (1).
             image_size: Override the detector's long-edge resize size. None
                 means use MegaDetector's model-native default.
             augment: Run detection with image augmentation (slower, may add
@@ -157,6 +165,7 @@ class VideoDetectionModel:
             output_json=output_json,
             time_sample=time_sample,
             confidence_threshold=confidence_threshold,
+            batch_size=batch_size,
             image_size=image_size,
             augment=augment,
         )

@@ -424,6 +424,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                             output_json=_vjp,
                             fps=project.video_fps,
                             confidence_threshold=MD_OUTPUT_CONFIDENCE_THRESHOLD,
+                            batch_size=project.detection_batch_size,
                             image_size=project.detection_image_size,
                             augment=project.detection_augment,
                             progress_callback=sync_video_detection_progress,

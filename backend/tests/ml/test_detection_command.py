@@ -35,6 +35,7 @@ def _video_cmd(**overrides) -> list[str]:
         output_json=Path("out.json"),
         time_sample=0.5,
         confidence_threshold=0.005,
+        batch_size=None,
         image_size=None,
         augment=False,
     )
@@ -89,6 +90,7 @@ def test_video_cmd_defaults_add_no_inference_flags():
     cmd = _video_cmd()
     assert "--image_size" not in cmd
     assert "--augment" not in cmd
+    assert "--batch_size" not in cmd
     # Base process_video flags are still present.
     assert "megadetector.detection.process_video" in cmd
     assert cmd[cmd.index("--json_confidence_threshold") + 1] == "0.005"
@@ -98,6 +100,14 @@ def test_video_cmd_image_size_and_augment():
     cmd = _video_cmd(image_size=2560, augment=True)
     assert cmd[cmd.index("--image_size") + 1] == "2560"
     assert "--augment" in cmd
+
+
+def test_video_cmd_batch_size():
+    """The project's detection batch size reaches videos too, which
+    process_video supports since megadetector 10.0.26."""
+    cmd = _video_cmd(batch_size=8, image_size=2560)
+    assert cmd[cmd.index("--batch_size") + 1] == "8"
+    assert cmd[cmd.index("--image_size") + 1] == "2560"
 
 
 def test_video_cmd_augment_only():
