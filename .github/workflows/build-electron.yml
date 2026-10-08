@@ -136,7 +136,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
+          # Pinned so a release builds with the tooling the last one was
+          # tested with. Unpinned, every release got whatever was newest
+          # that day, and two builds of the same code could differ.
+          pip install pyinstaller==6.22.3 pyinstaller-hooks-contrib==2026.8
 
       - name: Install frontend deps
         working-directory: frontend
