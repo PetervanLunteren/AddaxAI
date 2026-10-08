@@ -18,7 +18,7 @@ Setup downloads from these. They need to be reachable, and not inspected.
 
 | Address | What it is used for | If it is blocked |
 |---|---|---|
-| `micro.mamba.pm` | the program that builds the analysis environment | setup cannot start |
+| `micro.mamba.pm` and `api.anaconda.org` | the program that builds the analysis environment | setup cannot start |
 | `conda.anaconda.org` | the packages that environment is built from | setup fails |
 | `pypi.org` and `files.pythonhosted.org` | more packages | setup fails |
 | `download.pytorch.org` | the parts that use your graphics card | setup fails |
@@ -215,7 +215,7 @@ Some organizations do not open the firewall, but do run their own copy of the pu
 | PyTorch | `ADDAXAI_PYTORCH_INDEX_URL` | your copy of `https://download.pytorch.org/whl` |
 | conda packages | `MAMBA_CHANNEL_ALIAS` | your conda-forge mirror |
 
-Two things have no mirror setting. `micro.mamba.pm` is fetched from a fixed address, and the model files that `huggingface.co` redirects to have to come through the same endpoint you set. If neither can be reached, use the section below instead.
+Two things have no mirror setting. `micro.mamba.pm` is fetched from a fixed address, and redirects to `api.anaconda.org`, and the model files that `huggingface.co` redirects to have to come through the same endpoint you set. If neither can be reached, use the section below instead.
 
 #### Before you deploy it
 

@@ -11,11 +11,13 @@ Following DEVELOPERS.md principles:
 """
 
 import hashlib
+import io
 import os
 import platform
 import re
 import shutil
 import subprocess
+import tarfile
 import threading
 import time
 import urllib.request
@@ -30,7 +32,12 @@ from app.core.job_cancellation import JobCancelledError, is_cancel_requested
 from app.core.logging_config import get_logger
 from app.ml.schemas.model_manifest import ModelManifest
 from app.utils.subprocess_env import clean_python_env
-from app.utils.subprocess_runner import log_subprocess_failure, stream_with_tail
+from app.utils.subprocess_runner import (
+    StreamedResult,
+    is_memory_fault,
+    log_subprocess_failure,
+    stream_with_tail,
+)
 
 logger = get_logger(__name__)
 
@@ -366,6 +373,40 @@ def parse_micromamba_progress(
     return current_progress, line[:80]
 
 
+# micromamba is pinned, never `latest`: an upstream release must not reach
+# users before it has been tested here. The version is part of the binary's
+# filename, so bumping it makes every install, old or new, download the new
+# build once. Each hash is the sha256 of the conda-forge archive that
+# micro.mamba.pm redirects to (listed per platform at
+# https://api.anaconda.org/package/conda-forge/micromamba/files). To bump:
+# change the version and replace all five hashes.
+MICROMAMBA_VERSION = "2.9.0"
+_MICROMAMBA_SHA256 = {
+    "win-64": "97a336f4ab794bd96a6a4da5e6ed63e75a1d31830414a182419b23d3b36f3fe0",
+    "osx-arm64": "500f5074feb8d02c4296ef9921c3650ed2874171805a9fbb8fbb53896433646b",
+    "osx-64": "0426ecdc41636d369f57b8fe6acbf4385a69eca45b56d9ee7d3a840a9965d44f",
+    "linux-64": "8761c382127e6363bd9e0a2451aa3ef90d071a79133f736e2f759a3bf13040dd",
+    "linux-aarch64": "e705ffeed90ce0659eb546e4b1e1028c9eaf0bc9cc854867b19ac5ce0ba5852f",
+}
+MICROMAMBA_FILENAME = f"micromamba-{MICROMAMBA_VERSION}" + (
+    ".exe" if platform.system() == "Windows" else ""
+)
+
+
+def _micromamba_subdir() -> str:
+    """The conda platform name of the micromamba build for this machine."""
+    system, machine = platform.system(), platform.machine()
+    if system == "Windows":
+        return "win-64"
+    if system == "Darwin":
+        return "osx-arm64" if machine == "arm64" else "osx-64"
+    if system == "Linux":
+        return "linux-aarch64" if machine == "aarch64" else "linux-64"
+    raise RuntimeError(
+        f"Unsupported platform: {system} {machine}. Please install micromamba manually."
+    )
+
+
 class EnvironmentManager:
     """
     Manages micromamba environments using static YAML files.
@@ -381,6 +422,12 @@ class EnvironmentManager:
     # serialise on the same per-env lock no matter who owns the instance.
     _env_locks: ClassVar[dict[str, threading.Lock]] = {}
     _env_locks_registry_lock: ClassVar[threading.Lock] = threading.Lock()
+
+    # Opening the setup screen constructs several managers within a second
+    # (startup sync, setup status, model updates). Each used to find the
+    # binary missing and download it to the same path; the late ones then
+    # failed with a 500, unable to overwrite the copy already running.
+    _micromamba_lock: ClassVar[threading.Lock] = threading.Lock()
 
     @classmethod
     def _env_build_lock(cls, env_name: str) -> threading.Lock:
@@ -398,15 +445,16 @@ class EnvironmentManager:
 
         Args:
             envs_dir: Directory to store environments (default: <user data dir>/envs)
-            micromamba_path: Path to micromamba binary (default: <user data dir>/bin/micromamba)
+            micromamba_path: Path to micromamba binary
+                (default: <user data dir>/bin/<MICROMAMBA_FILENAME>)
         """
         user_data_dir = get_settings().user_data_dir
         self.envs_dir = envs_dir or (user_data_dir / "envs")
-
-        bin_dir = user_data_dir / "bin"
-        # Windows uses .exe extension
-        micromamba_name = "micromamba.exe" if platform.system() == "Windows" else "micromamba"
-        self.micromamba_path = micromamba_path or (bin_dir / micromamba_name)
+        self.micromamba_path = micromamba_path or (user_data_dir / "bin" / MICROMAMBA_FILENAME)
+        # micromamba's own cache (packages and package index). Inside the
+        # app's data dir so a reinstall or Reset starts truly clean; see
+        # MAMBA_ROOT_PREFIX in _create_env.
+        self.mamba_root_prefix = user_data_dir / "mamba"
 
         self._ensure_runtime_dirs()
 
@@ -421,76 +469,49 @@ class EnvironmentManager:
         """
         self.envs_dir.mkdir(parents=True, exist_ok=True)
         self.micromamba_path.parent.mkdir(parents=True, exist_ok=True)
-        if not self.micromamba_path.exists():
-            logger.info("Micromamba not found, downloading...")
-            self._download_micromamba()
+        with self._micromamba_lock:
+            if not self.micromamba_path.exists():
+                logger.info("Micromamba not found, downloading...")
+                self._download_micromamba()
 
-    def _download_micromamba(self):
-        """Download micromamba binary for the current platform."""
-        system = platform.system()
-        machine = platform.machine()
+    def _download_micromamba(self) -> None:
+        """Download the pinned micromamba build and install it atomically.
 
-        # Determine download URL based on platform
-        if system == "Darwin":
-            if machine == "arm64":
-                url = "https://micro.mamba.pm/api/micromamba/osx-arm64/latest"
-            else:
-                url = "https://micro.mamba.pm/api/micromamba/osx-64/latest"
-        elif system == "Linux":
-            if machine == "aarch64":
-                url = "https://micro.mamba.pm/api/micromamba/linux-aarch64/latest"
-            else:
-                url = "https://micro.mamba.pm/api/micromamba/linux-64/latest"
-        elif system == "Windows":
-            url = "https://micro.mamba.pm/api/micromamba/win-64/latest"
-        else:
-            raise RuntimeError(
-                f"Unsupported platform: {system} {machine}. " f"Please install micromamba manually."
-            )
-
-        logger.info(f"Downloading micromamba from {url}")
+        The binary is written next to its final path and renamed into
+        place only once it is complete, so a download that dies half way
+        never leaves a file that counts as installed.
+        """
+        subdir = _micromamba_subdir()
+        url = f"https://micro.mamba.pm/api/micromamba/{subdir}/{MICROMAMBA_VERSION}"
+        member = "Library/bin/micromamba.exe" if subdir.startswith("win") else "bin/micromamba"
+        partial = self.micromamba_path.with_name(self.micromamba_path.name + ".download")
+        logger.info(f"Downloading micromamba {MICROMAMBA_VERSION} from {url}")
 
         try:
-            # Download the compressed tar archive
             with urllib.request.urlopen(url, timeout=60) as response:
-                compressed_content = response.read()
+                archive = response.read()
+            logger.info(f"Downloaded {len(archive)} bytes")
 
-            logger.info(f"Downloaded {len(compressed_content)} bytes")
+            digest = hashlib.sha256(archive).hexdigest()
+            if digest != _MICROMAMBA_SHA256[subdir]:
+                raise RuntimeError(
+                    f"the download does not match the checksum of micromamba "
+                    f"{MICROMAMBA_VERSION} for {subdir} (got sha256 {digest}), "
+                    f"so it was cut off or altered on the way"
+                )
 
-            # Decompress bz2
-            import bz2
-            import tarfile
-            import tempfile
+            with tarfile.open(fileobj=io.BytesIO(archive), mode="r:bz2") as tar:
+                extracted = tar.extractfile(member)
+                if extracted is None:
+                    raise RuntimeError(f"{member} in the archive is not a file")
+                partial.write_bytes(extracted.read())
 
-            tar_content = bz2.decompress(compressed_content)
-            logger.info(f"Decompressed to {len(tar_content)} bytes")
-
-            # Extract bin/micromamba from tar archive
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".tar") as tmp_tar:
-                tmp_tar.write(tar_content)
-                tmp_tar_path = tmp_tar.name
-
-            try:
-                with tarfile.open(tmp_tar_path, "r") as tar:
-                    # Windows uses Library/bin/micromamba.exe, others use bin/micromamba
-                    if system == "Windows":
-                        member_path = "Library/bin/micromamba.exe"
-                    else:
-                        member_path = "bin/micromamba"
-                    member = tar.getmember(member_path)
-                    member_file = tar.extractfile(member)
-                    if member_file:
-                        with open(self.micromamba_path, "wb") as f:
-                            f.write(member_file.read())
-                        logger.info(f"Extracted micromamba binary from {member_path}")
-            finally:
-                Path(tmp_tar_path).unlink()
-
-            # Make executable
-            self.micromamba_path.chmod(0o755)
+            partial.chmod(0o755)
+            os.replace(partial, self.micromamba_path)
             logger.info(f"Micromamba installed successfully at {self.micromamba_path}")
 
         except Exception as e:
+            partial.unlink(missing_ok=True)
             raise RuntimeError(f"Failed to download micromamba: {e}") from e
 
     def get_env_yaml_path(self, env_name: str) -> Path:
@@ -796,6 +817,16 @@ class EnvironmentManager:
             env["MAMBA_REMOTE_CONNECT_TIMEOUT_SECS"] = "120"
             env["MAMBA_REMOTE_READ_TIMEOUT_SECS"] = "120"
             env["MAMBA_REMOTE_MAX_RETRIES"] = "5"
+            # Without a root prefix micromamba caches packages and the
+            # package index in %APPDATA%\mamba or ~/.mamba, outside
+            # anything a reinstall or Reset removes, and shared with any
+            # other conda install the user has. A malformed cached shard
+            # index crashes micromamba 2.9.0 on every run (memory fault,
+            # no output), and a bad cache there would survive anything a
+            # user tries; users on 7.11.0 reported that crash signature
+            # through reinstalls (2026-10). Overrides a root prefix the
+            # user set for something else.
+            env["MAMBA_ROOT_PREFIX"] = str(self.mamba_root_prefix)
             # Windows schannel refuses a certificate whose revocation it
             # cannot check, and a network that inspects TLS re-signs with
             # certificates carrying no CRL or OCSP pointer, so every
@@ -872,19 +903,47 @@ class EnvironmentManager:
                     progress_callback(caption, current_progress)
                 logger.debug(f"micromamba: {line}")
 
-            try:
+            def run_micromamba() -> StreamedResult:
                 # Keep more than the default 300 lines. The failure we
                 # translate into an actionable error is a schannel line
                 # that micromamba prints while fetching the package
                 # index, and anything printed after it pushes it out of
                 # the window. Costs a few kilobytes of memory.
-                result = stream_with_tail(
+                return stream_with_tail(
                     cmd,
                     env=env,
                     on_line=on_micromamba_line,
                     job_id=job_id,
                     max_tail=1000,
                 )
+
+            try:
+                result = run_micromamba()
+                # micromamba 2.9.0 dies of a memory fault, with no output,
+                # when it parses a malformed shard index (mamba #4419).
+                # Users on 7.11.0 reported that crash signature at the
+                # first setup step (2026-10), cause unproven. Without
+                # shards it downloads the
+                # full repodata.json and parses it with other code, so
+                # one retry that way gets past a bad index wherever it
+                # came from. Not after a cancel, and not into a half-built
+                # env that could not be removed.
+                if (
+                    is_memory_fault(result.returncode)
+                    and not (job_id is not None and is_cancel_requested(job_id))
+                    and self._discard_temp_env(temp_env_path, "crashed")
+                ):
+                    log_subprocess_failure("micromamba create", cmd, result)
+                    logger.warning(
+                        f"micromamba crashed (exit {result.returncode}); "
+                        f"retrying once without sharded repodata"
+                    )
+                    env["MAMBA_USE_SHARDED_REPODATA"] = "false"
+                    result = run_micromamba()
+                    logger.info(
+                        f"micromamba create without sharded repodata exited "
+                        f"{result.returncode}"
+                    )
             finally:
                 yaml_copy_path.unlink(missing_ok=True)
                 shutil.rmtree(pip_tmp_dir, ignore_errors=True)

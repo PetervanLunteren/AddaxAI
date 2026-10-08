@@ -117,3 +117,27 @@ def test_user_site_packages_stay_out(captured_env: dict[str, str]) -> None:
     user's own site-packages or a globally exported PYTHONPATH."""
     assert captured_env["PYTHONNOUSERSITE"] == "1"
     assert "PYTHONPATH" not in captured_env
+
+
+def test_micromamba_keeps_its_cache_in_the_app_data_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Left to itself micromamba caches packages and the package index in
+    a folder of its own (%APPDATA%\\mamba, ~/.mamba), which a reinstall
+    or Reset never touches. A malformed cached shard index crashes
+    micromamba 2.9.0 on every run, so a bad cache there outlived every
+    fix a user could try. It also overrides a root prefix the user set
+    for some other conda install."""
+    monkeypatch.setenv("ADDAXAI_USER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("MAMBA_ROOT_PREFIX", str(tmp_path / "someone-elses"))
+
+    env = capture_env(tmp_path, monkeypatch)
+
+    assert env["MAMBA_ROOT_PREFIX"] == str(tmp_path / "mamba")
+
+
+def test_reset_clears_the_micromamba_cache() -> None:
+    """Reset means start clean, and the cache is part of what must go."""
+    from app.api.routers.setup import _WIPE_DIRS
+
+    assert "mamba" in _WIPE_DIRS

@@ -26,14 +26,9 @@ from app.core.subprocess_group import popen_group
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.gpu_guard import cuda_guard_overrides
 from app.utils.subprocess_env import clean_python_env
+from app.utils.subprocess_runner import WINDOWS_ACCESS_VIOLATION
 
 logger = get_logger(__name__)
-
-# Windows exit code 0xC0000005 (access violation). OpenCV's FFmpeg
-# backend dies with it on videos whose pixel format changes mid-stream
-# (Bushnell MJPEG AVIs: frame 0 is yuvj422p, the rest yuvj420p). See
-# "Mixed pixel format videos" in DEVELOPERS.md.
-_WINDOWS_ACCESS_VIOLATION = 3221225477
 
 
 def _build_process_video_cmd(
@@ -178,7 +173,9 @@ class VideoDetectionModel:
             )
 
             cancelled = is_cancel_requested(job_id) if job_id else False
-            if return_code == _WINDOWS_ACCESS_VIOLATION and not cancelled:
+            # Windows only, deliberately: the fallback below makes cv2 pick
+            # MSMF, which exists only there.
+            if return_code == WINDOWS_ACCESS_VIOLATION and not cancelled:
                 # OpenCV's FFmpeg backend takes the whole subprocess down
                 # on a mixed-pixel-format video. Deprioritising FFmpeg
                 # makes cv2 pick MSMF, which decodes those files (with a

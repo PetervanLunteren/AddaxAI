@@ -20,6 +20,7 @@ Adopt this for any subprocess where the failure mode is "exit with a
 non-zero code after some stderr/stdout we'd want to see."
 """
 
+import signal
 import subprocess
 import time
 from collections import deque
@@ -31,6 +32,16 @@ from typing import Any
 from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# Exit code 0xC0000005: Windows' report of a native program that read or
+# wrote memory it does not own (access violation). Not an error the
+# program chose to return, so it comes with no message of its own.
+WINDOWS_ACCESS_VIOLATION = 3221225477
+
+
+def is_memory_fault(returncode: int) -> bool:
+    """A native crash: an access violation on Windows, SIGSEGV elsewhere."""
+    return returncode in (WINDOWS_ACCESS_VIOLATION, -signal.SIGSEGV)
 
 
 @dataclass

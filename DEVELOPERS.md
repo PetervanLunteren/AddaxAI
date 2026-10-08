@@ -1028,6 +1028,20 @@ Without it, a first launch on a network that blocks `raw.githubusercontent.com` 
 
 `tests/ml/test_bundled_wheels.py` keeps the YAML the single source of truth: it reads the filename and sha256 out of every env YAML and checks the shipped file matches, fails if a pinned wheel is absent, and fails if a shipped wheel is pinned by nothing. Change the YAML pin first and the test tells you which file to put in place.
 
+## The micromamba binary and its cache
+
+`environment_manager.py` downloads micromamba itself on first use, into `bin/`. Four rules, each the cure for something users hit.
+
+**Pinned, never `latest`.** `MICROMAMBA_VERSION` plus one sha256 per platform in `_MICROMAMBA_SHA256`, the hashes of the conda-forge archives that `micro.mamba.pm/api/micromamba/<platform>/<version>` redirects to (listed at `api.anaconda.org/package/conda-forge/micromamba/files`). A download that does not match is refused. To bump, change the version and all five hashes, then build an environment on every platform.
+
+**The version is in the filename** (`bin/micromamba-2.9.0`, `.exe` on Windows). A bump therefore reaches existing installs as a missing binary, so they download the new build once instead of keeping the old one forever. The old file stays until the next Reset; it is 12 MB and deleting it is not worth the code.
+
+**One download, written atomically.** Opening the setup screen constructs three managers within a second, and each used to download micromamba to the same path; the late two failed with a 500, unable to overwrite the copy already running. `_micromamba_lock` serialises the check and the download, and the binary is written to `<name>.download` and renamed into place, so a download that dies half way never counts as installed. `tests/ml/test_micromamba_download.py`.
+
+**Its cache lives in the app's data dir.** `MAMBA_ROOT_PREFIX` is `<user data dir>/mamba`, which Reset wipes. Left alone, micromamba caches packages and the package index in `%APPDATA%\mamba` or `~/.mamba`, outside anything a reinstall or Reset removes and shared with any other conda install. That mattered in October 2026: users on 7.11.0 hit `micromamba create failed (exit 3221225477): (no output)` at the first setup step, on four machines, and reinstalling did not help. micromamba 2.9.0 segfaults with no output when it parses a malformed shard index (mamba issue #4419, reproduced here by planting one in its cache), and it reuses a cached index for about a day without fetching it again. Ordinary damage (truncated, zeroed, random or empty files) is detected and fetched again; only a well-formed index with a wrong value type crashes it. Neither of two rounds on a Windows test machine, with the real app and a cold cache, reproduced the crash, so where the users' bad index came from is unknown.
+
+**A crash is retried once without shards.** If micromamba dies of a memory fault (`is_memory_fault`: 0xC0000005 on Windows, SIGSEGV elsewhere), `_create_env` discards the half-built env and runs the same command once more with `MAMBA_USE_SHARDED_REPODATA=false`. micromamba then downloads the full `repodata.json` (20 to 30 MB per subdir instead of a few hundred KB) and parses it with other code. Not after a cancel, and not into a temp env that could not be removed. Both runs are logged, so a user's log shows whether the retry was what got them through. `tests/ml/test_env_crash_retry.py`.
+
 ## Why the PyTorch index is ours to replace
 
 `ADDAXAI_PYTORCH_INDEX_URL` swaps `https://download.pytorch.org/whl/` in the YAML copy for a mirror, keeping whatever CUDA suffix follows so one replacement covers the cu128 and cu118 lines.

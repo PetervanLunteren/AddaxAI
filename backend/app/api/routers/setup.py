@@ -524,7 +524,7 @@ def _legacy_disk_hint() -> str:
 # Items wiped inline on POST /reset. None of these conflict with the
 # running backend process: even if a worker is mid-write into a log or
 # env, we're about to shut down anyway.
-_WIPE_DIRS = ("logs", "envs", "models", "bin", "thumbnails", "crash-dumps")
+_WIPE_DIRS = ("logs", "envs", "models", "bin", "mamba", "thumbnails", "crash-dumps")
 _WIPE_FILES = (".last-shutdown-clean", ".last-launch-status.json")
 
 # Read by lifespan() before init_db() on the next launch.

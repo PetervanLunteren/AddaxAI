@@ -15,10 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from app.ml.inference.video_detector import (
-    _WINDOWS_ACCESS_VIOLATION,
-    VideoDetectionModel,
-)
+from app.ml.inference.video_detector import VideoDetectionModel
+from app.utils.subprocess_runner import WINDOWS_ACCESS_VIOLATION
 
 
 class _FakeEnvManager:
@@ -49,7 +47,7 @@ def test_access_violation_retries_once_with_ffmpeg_deprioritised(
     def fake_stream(command, env, progress_callback, job_id):
         call_envs.append(env)
         if len(call_envs) == 1:
-            return _WINDOWS_ACCESS_VIOLATION
+            return WINDOWS_ACCESS_VIOLATION
         output_json.write_text("{}")
         return 0
 
@@ -94,11 +92,11 @@ def test_second_access_violation_surfaces_the_error(
 
     def fake_stream(command, env, progress_callback, job_id):
         calls.append(env)
-        return _WINDOWS_ACCESS_VIOLATION
+        return WINDOWS_ACCESS_VIOLATION
 
     monkeypatch.setattr(model, "_stream_process", fake_stream)
 
-    with pytest.raises(RuntimeError, match=str(_WINDOWS_ACCESS_VIOLATION)):
+    with pytest.raises(RuntimeError, match=str(WINDOWS_ACCESS_VIOLATION)):
         model.detect_videos_to_json(
             video_folder=tmp_path,
             output_json=tmp_path / "out.json",
