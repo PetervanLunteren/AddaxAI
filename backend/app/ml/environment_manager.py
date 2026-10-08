@@ -374,12 +374,14 @@ def parse_micromamba_progress(
 
 
 # micromamba is pinned, never `latest`: an upstream release must not reach
-# users before it has been tested here. The version is part of the binary's
-# filename, so bumping it makes every install, old or new, download the new
-# build once. Each hash is the sha256 of the conda-forge archive that
-# micro.mamba.pm redirects to (listed per platform at
-# https://api.anaconda.org/package/conda-forge/micromamba/files). To bump:
-# change the version and replace all five hashes.
+# users before it has been tested here. The binary lives in bin/<version>/,
+# so bumping the version makes every install, old or new, download the new
+# build once. The version goes in the directory, never the filename:
+# micromamba's activation hook only works when the binary is called exactly
+# micromamba (see MICROMAMBA_FILENAME). Each hash is the sha256 of the
+# conda-forge archive that micro.mamba.pm redirects to (listed per platform
+# at https://api.anaconda.org/package/conda-forge/micromamba/files). To
+# bump: change the version and replace all five hashes.
 MICROMAMBA_VERSION = "2.9.0"
 _MICROMAMBA_SHA256 = {
     "win-64": "97a336f4ab794bd96a6a4da5e6ed63e75a1d31830414a182419b23d3b36f3fe0",
@@ -388,9 +390,11 @@ _MICROMAMBA_SHA256 = {
     "linux-64": "8761c382127e6363bd9e0a2451aa3ef90d071a79133f736e2f759a3bf13040dd",
     "linux-aarch64": "e705ffeed90ce0659eb546e4b1e1028c9eaf0bc9cc854867b19ac5ce0ba5852f",
 }
-MICROMAMBA_FILENAME = f"micromamba-{MICROMAMBA_VERSION}" + (
-    ".exe" if platform.system() == "Windows" else ""
-)
+# Exactly this name. micromamba's shell hook takes the basename of
+# MAMBA_EXE minus its extension and does nothing for anything other than
+# `micromamba` or `mamba`, so `micromamba run`, and the pip step of
+# `micromamba create`, then use whichever python is first on PATH.
+MICROMAMBA_FILENAME = "micromamba.exe" if platform.system() == "Windows" else "micromamba"
 
 
 def _micromamba_subdir() -> str:
@@ -446,11 +450,13 @@ class EnvironmentManager:
         Args:
             envs_dir: Directory to store environments (default: <user data dir>/envs)
             micromamba_path: Path to micromamba binary
-                (default: <user data dir>/bin/<MICROMAMBA_FILENAME>)
+                (default: <user data dir>/bin/<MICROMAMBA_VERSION>/<MICROMAMBA_FILENAME>)
         """
         user_data_dir = get_settings().user_data_dir
         self.envs_dir = envs_dir or (user_data_dir / "envs")
-        self.micromamba_path = micromamba_path or (user_data_dir / "bin" / MICROMAMBA_FILENAME)
+        self.micromamba_path = micromamba_path or (
+            user_data_dir / "bin" / MICROMAMBA_VERSION / MICROMAMBA_FILENAME
+        )
         # micromamba's own cache (packages and package index). Inside the
         # app's data dir so a reinstall or Reset starts truly clean; see
         # MAMBA_ROOT_PREFIX in _create_env.

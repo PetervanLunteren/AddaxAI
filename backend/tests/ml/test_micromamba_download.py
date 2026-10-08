@@ -132,6 +132,17 @@ def test_a_download_that_fails_its_checksum_installs_nothing(
     assert list(mgr.micromamba_path.parent.iterdir()) == []
 
 
+def test_the_binary_has_the_name_micromambas_shell_hook_requires() -> None:
+    """micromamba's activation hook takes the basename of MAMBA_EXE, strips
+    its last extension (`${__exe_name%.*}`) and only works when what is
+    left is `micromamba` or `mamba`. Under any other name it prints
+    "Error unknown MAMBA_EXE" and does not activate the env, so
+    `micromamba run` and the pip step of `micromamba create` run whichever
+    python is first on PATH. 0d260bb9 named the binary micromamba-2.9.0
+    and broke exactly that; the version now lives in the directory."""
+    assert Path(MICROMAMBA_FILENAME).stem == "micromamba"
+
+
 @pytest.mark.parametrize(
     ("system", "machine", "subdir"),
     [

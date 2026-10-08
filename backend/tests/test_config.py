@@ -130,15 +130,14 @@ def test_environment_manager_paths_follow_user_data_dir(
     clean_env.setenv("ADDAXAI_USER_DATA_DIR", str(tmp_path))
     # Pre-create the micromamba binary; a missing one triggers a real
     # network download at construction time.
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir(parents=True)
-    (bin_dir / MICROMAMBA_FILENAME).touch()
+    binary = tmp_path / "bin" / MICROMAMBA_VERSION / MICROMAMBA_FILENAME
+    binary.parent.mkdir(parents=True)
+    binary.touch()
     manager = EnvironmentManager()
     assert manager.envs_dir == tmp_path / "envs"
-    # The version is in the name, so a version bump reaches existing
+    # The version is in the path, so a version bump reaches existing
     # installs as a missing binary rather than leaving the old one in use.
-    assert manager.micromamba_path == bin_dir / MICROMAMBA_FILENAME
-    assert MICROMAMBA_VERSION in MICROMAMBA_FILENAME
+    assert manager.micromamba_path == binary
 
 
 def test_model_managers_follow_models_dir(
