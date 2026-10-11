@@ -222,3 +222,27 @@ def test_the_endpoint_takes_the_page_filters(client, db):
 
     assert resp.status_code == 200
     assert _leaf_counts(resp.json()) == {fox.id: 3, deer.id: 0}
+
+
+def test_a_one_day_range_reaches_the_grid(file_db):
+    """End to end through the grid's own SQL: the day's boxes are found
+    with the range set to that single day."""
+    from app.ml.inference.similarity_script import do_sort
+    from app.services.label_service import _apply_project_threshold, _filters_to_dict
+
+    path, session = file_db
+    project, fox, deer = _seed(session)
+    # The day as the Labels page sends it: a date, parsed into a datetime
+    # at midnight by LabelFilters, serialised for the worker by the
+    # service, the same path the request takes.
+    filters = LabelFilters(date_from=datetime(2024, 6, 3), date_to=datetime(2024, 6, 3))
+
+    grid = do_sort(
+        path, project.id,
+        {"filters": _filters_to_dict(_apply_project_threshold(filters, project.id, session)),
+         "sort": "events"},
+    )
+    counts = count_detections_by_label(session, project.id, filters)
+
+    assert grid["total_matching"] == 1
+    assert counts == {fox.id: 1}

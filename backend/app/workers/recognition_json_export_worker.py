@@ -82,21 +82,27 @@ async def process_recognition_json_export_job(job_id: str) -> None:
 
         result = RecognitionJsonExportResult(written=[], skipped=[])
         loop = asyncio.get_event_loop()
-        for i, dep in enumerate(deployments, start=1):
+
+        # Progress counts folders done, so "n of N" and the bar agree
+        # (reporting the one in hand read 25% before anything was written).
+        async def _report(done: int) -> None:
             await ws_manager.send_progress(
                 job_id,
-                f"Writing {Path(dep.folder_path).name if dep.folder_path else '?'}"
-                f" ({i}/{total})",
-                (i - 1) / total,
-                data={"metrics": {"current": i, "total": total, "unit": "deployment"}},
+                f"{done}/{total} deployment folders written",
+                done / total if total else 1.0,
+                data={"metrics": {"current": done, "total": total, "unit": "deployment"}},
             )
+
+        await _report(0)
+        for i, dep in enumerate(deployments, start=1):
             # The write is minutes of SQL and JSON on a big deployment;
-            # off the loop so the progress above actually reaches the UI.
+            # off the loop so the progress actually reaches the UI.
             outcome = await loop.run_in_executor(None, _write_one, db, project_id, dep)
             if isinstance(outcome, RecognitionJsonWritten):
                 result.written.append(outcome)
             else:
                 result.skipped.append(outcome)
+            await _report(i)
 
         refreshed = job_crud.get_job(db, job_id)
         if refreshed is not None:

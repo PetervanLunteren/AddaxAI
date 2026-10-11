@@ -2811,3 +2811,25 @@ def test_recognition_json_export_honours_the_scope(client, db, tmp_path):
     assert [w["deployment_id"] for w in result["written"]] == [deps[1].id]
     assert not (tmp_path / "a" / "addaxai-recognitions.json").exists()
     assert (tmp_path / "b" / "addaxai-recognitions.json").is_file()
+
+
+def test_recognition_json_progress_counts_folders_done(client, db, tmp_path, monkeypatch):
+    """The bar and its label read the same thing: folders written so far.
+    Reporting the folder in hand read "1 of 4" at 25% before anything
+    was written."""
+    from app.core.websocket_manager import ws_manager
+
+    project = make_project(db)
+    for name in ("a", "b"):
+        (tmp_path / name).mkdir()
+        make_deployment(db, project_id=project.id, folder_path=str(tmp_path / name))
+    seen: list[tuple[int, float]] = []
+
+    async def _record(job_id, message, progress, **kw):
+        seen.append((kw["data"]["metrics"]["current"], progress))
+
+    monkeypatch.setattr(ws_manager, "send_progress", _record)
+
+    _run_recognition_json_export(client, db, project.id)
+
+    assert seen == [(0, 0.0), (1, 0.5), (2, 1.0)]

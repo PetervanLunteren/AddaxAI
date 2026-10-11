@@ -324,7 +324,9 @@ export function TreeSelector({
       const suffix = excludedHere > 0 ? ` (${excludedHere} excluded)` : "";
       return `Currently included ${includedCount} of ${totalCategories}${suffix}`;
     }
-    const selectedCount = selectedIds.size;
+    // Only leaves that can be ticked count: a selection carried over from
+    // another filter may hold a dead leaf, which is not a chosen category.
+    const selectedCount = [...selectedIds].filter((id) => allLeafIds.has(id)).length;
     let text = `${selectedCount} of ${totalCategories} ${pluralize("category", totalCategories)} selected`;
     if (countUnit) {
       const selectedItemCount = sumLeafCounts(tree, selectedIds);

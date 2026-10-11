@@ -10,9 +10,9 @@
 
 export type WildlifeCountMode = "events" | "max_n";
 
-const UNIT: Record<WildlifeCountMode, { axis: string; noun: string }> = {
-  events: { axis: "Independent events", noun: "events" },
-  max_n: { axis: "Observations", noun: "individuals" },
+const UNIT: Record<WildlifeCountMode, { axis: string; one: string; many: string }> = {
+  events: { axis: "Independent events", one: "event", many: "events" },
+  max_n: { axis: "Observations", one: "individual", many: "individuals" },
 };
 
 export function wildlifeBarValue(count: number, trapNights: number): number {
@@ -34,7 +34,8 @@ export function wildlifeTooltipLabel(
   count: number,
   trapNights: number,
 ): string {
-  const plain = `${count.toLocaleString()} ${UNIT[mode].noun}`;
+  const unit = UNIT[mode];
+  const plain = `${count.toLocaleString()} ${count === 1 ? unit.one : unit.many}`;
   if (trapNights <= 0) return plain;
   const rate = wildlifeBarValue(count, trapNights).toLocaleString();
   const nights = `${trapNights.toLocaleString()} trap night${trapNights === 1 ? "" : "s"}`;

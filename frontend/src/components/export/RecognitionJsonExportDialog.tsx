@@ -117,7 +117,7 @@ export function RecognitionJsonExportDialog({
                 <Loader2 className="h-5 w-5 shrink-0 animate-spin text-primary-ink" />
                 <span className="font-medium">
                   {total > 0
-                    ? `Deployment ${current.toLocaleString()} of ${total.toLocaleString()}`
+                    ? `${current.toLocaleString()} of ${total.toLocaleString()} folders written`
                     : "Starting..."}
                 </span>
                 {total > 0 && (

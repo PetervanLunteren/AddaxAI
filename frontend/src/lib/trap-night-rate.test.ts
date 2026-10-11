@@ -24,6 +24,12 @@ describe("with trap nights", () => {
     expect(wildlifeTooltipLabel("events", 45, 1)).toBe(
       "4,500 per 100 trap nights (45 events over 1 trap night)",
     );
+    expect(wildlifeTooltipLabel("max_n", 1, 84)).toBe(
+      "1.19 per 100 trap nights (1 individual over 84 trap nights)",
+    );
+    expect(wildlifeTooltipLabel("events", 1, 84)).toBe(
+      "1.19 per 100 trap nights (1 event over 84 trap nights)",
+    );
     expect(wildlifeAxisTitle("events", 365)).toBe(
       "Independent events per 100 trap nights",
     );
