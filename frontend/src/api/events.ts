@@ -3,6 +3,22 @@
  */
 
 import { api } from "../lib/api-client";
+
+/** The filters a page is applying, for the label tree's counts. The
+ *  same vocabulary as the list endpoints. */
+export interface LabelTreeScope {
+  siteIds?: string[];
+  dateFrom?: string;
+  dateTo?: string;
+  verification?: string;
+  flagged?: string;
+  favorited?: string;
+  empty?: string;
+  minConfidence?: number;
+  maxConfidence?: number;
+  minLabelConfidence?: number;
+  maxLabelConfidence?: number;
+}
 import type {
   EventSummary,
   EventWithFiles,
@@ -252,17 +268,33 @@ export const eventsApi = {
   },
 
   /** Get the label filter tree (pre-built from label_taxonomy table).
-   *  Counts are scoped to the optional site + date filters. */
+   *  The count beside each label follows the page's active filters,
+   *  given as `scope`: it is what the page shows with that label ticked
+   *  alone. An "all" value is the same as leaving the filter out. */
   getLabelTree: async (
     projectId: string,
     countBy?: string,
-    scope?: { siteIds?: string[]; dateFrom?: string; dateTo?: string }
+    scope?: LabelTreeScope
   ): Promise<LabelTreeResponse | null> => {
     const search = new URLSearchParams({ project_id: projectId });
     if (countBy) search.set("count_by", countBy);
     if (scope?.siteIds?.length) search.set("site_ids", scope.siteIds.join(","));
     if (scope?.dateFrom) search.set("date_from", scope.dateFrom);
     if (scope?.dateTo) search.set("date_to", scope.dateTo);
+    const choice = (key: string, value: string | undefined) => {
+      if (value && value !== "all") search.set(key, value);
+    };
+    choice("verification", scope?.verification);
+    choice("flagged", scope?.flagged);
+    choice("favorited", scope?.favorited);
+    choice("empty", scope?.empty);
+    const range = (key: string, value: number | undefined) => {
+      if (value !== undefined) search.set(key, String(value));
+    };
+    range("min_confidence", scope?.minConfidence);
+    range("max_confidence", scope?.maxConfidence);
+    range("min_label_confidence", scope?.minLabelConfidence);
+    range("max_label_confidence", scope?.maxLabelConfidence);
     return api.get<LabelTreeResponse | null>(
       `/api/events/label-tree?${search.toString()}`
     );

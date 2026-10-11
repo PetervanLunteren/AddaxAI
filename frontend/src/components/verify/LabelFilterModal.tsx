@@ -8,6 +8,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from "react";
 import type { TaxonomyNode } from "../../api/types";
+import { collectLiveLeafIds } from "../../lib/taxonomy-utils";
 import { TreeSelector } from "../taxonomy/TreeSelector";
 import { Button } from "../ui/button";
 import {
@@ -46,14 +47,20 @@ export function LabelFilterModal({
   // Working copy — initialized from props each time the modal opens
   const [workingSet, setWorkingSet] = useState<Set<string>>(new Set());
 
-  const allLeafIdSet = useMemo(() => new Set(allLeafIds), [allLeafIds]);
+  // "No filter" means every label the page can show: the live leaves.
+  // A dead leaf (nothing under the page's filters) is never ticked here;
+  // `allLeafIds` is what the tree would be with no counts at all.
+  const liveLeafIds = useMemo(
+    () => (preBuiltTree.length ? collectLiveLeafIds(preBuiltTree) : new Set(allLeafIds)),
+    [preBuiltTree, allLeafIds],
+  );
 
   // Re-initialize working set each time the modal opens
   useEffect(() => {
     if (open) {
       // No filter active -> start with all labels selected
       if (selectedLabels.length === 0) {
-        setWorkingSet(new Set(allLeafIdSet));
+        setWorkingSet(new Set(liveLeafIds));
       } else {
         setWorkingSet(new Set(selectedLabels));
       }

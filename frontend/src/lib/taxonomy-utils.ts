@@ -60,3 +60,29 @@ export function collectLeafIds(nodes: TaxonomyNode[]): Set<string> {
   walk(nodes);
   return ids;
 }
+
+/**
+ * A leaf the page's filters leave nothing of. It stays in the tree so
+ * the reader sees it is there, but cannot be ticked: ticking it would
+ * add nothing. A leaf without a count (a tree built without counts)
+ * is never dead.
+ */
+export function isDeadLeaf(node: TaxonomyNode): boolean {
+  return (!node.children || node.children.length === 0) && node.count === 0;
+}
+
+/** The leaf ids that can be ticked: every leaf that is not dead. */
+export function collectLiveLeafIds(nodes: TaxonomyNode[]): Set<string> {
+  const ids = new Set<string>();
+  const walk = (nodeList: TaxonomyNode[]) => {
+    for (const node of nodeList) {
+      if (!node.children || node.children.length === 0) {
+        if (!isDeadLeaf(node)) ids.add(node.id);
+      } else {
+        walk(node.children);
+      }
+    }
+  };
+  walk(nodes);
+  return ids;
+}

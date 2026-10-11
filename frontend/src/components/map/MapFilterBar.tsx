@@ -146,9 +146,11 @@ export function MapFilterBar({
             projectId={projectId}
             value={filters.labels}
             onChange={(labels) => onChange({ ...filters, labels })}
-            siteIds={filters.site_ids}
-            dateFrom={filters.date_from}
-            dateTo={filters.date_to}
+            scope={{
+              siteIds: filters.site_ids,
+              dateFrom: filters.date_from,
+              dateTo: filters.date_to,
+            }}
           />
         </div>
 

@@ -115,9 +115,11 @@ export function ExploreFilterBar({
             projectId={projectId}
             value={filters.labels}
             onChange={(labels) => update({ labels })}
-            siteIds={scopeSiteIds}
-            dateFrom={filters.dateFrom}
-            dateTo={filters.dateTo}
+            scope={{
+              siteIds: scopeSiteIds,
+              dateFrom: filters.dateFrom,
+              dateTo: filters.dateTo,
+            }}
           />
         </Field>
         <Field label="Sites">
