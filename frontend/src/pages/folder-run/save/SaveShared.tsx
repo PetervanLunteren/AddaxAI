@@ -445,7 +445,7 @@ export function ExportBody({
         checked={exportOpts.recognitionJson}
         onChange={(v) => setExportOpts({ ...exportOpts, recognitionJson: v })}
         label="JSON"
-        caption="Recognition file for Timelapse, detections only"
+        caption="Recognition file for Timelapse, MegaDetector output format, detections only"
       />
       <CaptionedCheckbox
         checked={exportOpts.summary}

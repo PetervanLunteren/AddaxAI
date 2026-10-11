@@ -18,6 +18,9 @@ Streaming endpoints, one per export type:
   one file.
 - ``/spatial``: GIS layers in GeoJSON / Shapefile (ZIP) / GeoPackage.
 - ``/camtrap-dp``: Camera Trap Data Package v1.0 (GBIF-compatible) as a ZIP.
+- ``/recognition-json/prepare``: not a download. A job that writes the
+  Timelapse recognition file into each deployment folder in scope and
+  reports per deployment on completion.
 
 See ``app/api/crud/export.py`` for the data layer and
 ``app/api/crud/export_formats.py`` for the serializers.
@@ -386,3 +389,44 @@ async def download_camtrap_dp(
         filename=f"{base}.zip",
         headers=_attachment_headers(f"{base}.zip"),
     )
+
+
+@router.post("/recognition-json/prepare", status_code=202)
+async def prepare_recognition_json(
+    project_id: str,
+    site_ids: str | None = Query(None),
+    deployment_ids: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Start writing ``addaxai-recognitions.json`` into each deployment
+    folder in scope, paths relative to that folder: the same file and the
+    same writer as a folder run's save step.
+
+    Into the folders rather than a download because that is where
+    Timelapse looks for it, and a project's deployments sit on several
+    drives, some of them unplugged: a ZIP the user unpacks into the right
+    folders by hand is the error-prone version of this. A job, because a
+    project can hold hundreds of deployments; the client follows it over
+    WebSocket and gets the written/skipped list on completion. An
+    existing file is replaced, as a folder-run save replaces it.
+    """
+    project = _resolve_project(project_id, db)
+    scope = export_crud.resolve_scope_deployment_ids(
+        db, project, _parse_ids(site_ids), _parse_ids(deployment_ids)
+    )
+    job = job_crud.create_job(
+        db,
+        JobCreate(
+            type="recognition_json_export",
+            payload={"project_id": project.id, "deployment_ids": scope},
+        ),
+    )
+
+    from app.workers.recognition_json_export_worker import (
+        process_recognition_json_export_job,
+    )
+
+    ws_manager.register_start(
+        job.id, lambda jid=job.id: process_recognition_json_export_job(jid)
+    )
+    return {"job_id": job.id}

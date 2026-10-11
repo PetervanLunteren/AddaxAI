@@ -5,10 +5,25 @@
  * We don't use the shared `api` wrapper because it assumes JSON responses.
  */
 
-import { API_BASE_URL, ApiError } from "../lib/api-client";
+import { API_BASE_URL, ApiError, api } from "../lib/api-client";
 import { logger } from "../lib/logger";
 
 export type ObservationFormat = "csv" | "tsv" | "xlsx";
+
+/** What the recognition-file export did, per deployment in scope. */
+export interface RecognitionJsonExportResult {
+  written: {
+    deployment_id: string;
+    folder_path: string;
+    output_path: string;
+    image_count: number;
+  }[];
+  skipped: {
+    deployment_id: string;
+    folder_path: string | null;
+    reason: string;
+  }[];
+}
 export type SpatialFormat = "geojson" | "shapefile" | "gpkg";
 
 /** Optional export scope. Empty / omitted = whole project. Picking a site
@@ -143,5 +158,16 @@ export const exportApi = {
   downloadCamtrapDPZip: (projectId: string, jobId: string): Promise<Blob> =>
     fetchBlob(
       `/api/projects/${projectId}/export/camtrap-dp/download?job_id=${jobId}`,
+    ),
+
+  /** Not a download: starts a job that writes addaxai-recognitions.json
+   *  into each deployment folder in scope. The job's completion payload
+   *  is a RecognitionJsonExportResult. */
+  prepareRecognitionJson: (
+    projectId: string,
+    scope?: ExportScope,
+  ): Promise<{ job_id: string }> =>
+    api.post<{ job_id: string }>(
+      withScope(`/api/projects/${projectId}/export/recognition-json/prepare`, scope),
     ),
 };

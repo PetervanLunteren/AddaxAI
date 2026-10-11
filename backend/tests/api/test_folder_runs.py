@@ -922,6 +922,10 @@ def test_unticking_run_details_does_not_write_the_run_info_file(
     source = tmp_path / "src"
     source.mkdir()
     run_id = _create_run(client, str(source))
+    # The analysis that normally precedes a save leaves the run's one
+    # deployment behind; the recognition file is written relative to it.
+    make_deployment(db, project_id=run_id, folder_path=str(source))
+    db.commit()
 
     resp = client.post(
         f"/api/folder-runs/{run_id}/save-outputs",

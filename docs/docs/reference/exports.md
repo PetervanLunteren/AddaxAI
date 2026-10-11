@@ -180,15 +180,16 @@ In the three tables a folder run writes, the site and camera period columns (`si
 
 ## Recognition file (JSON)
 
-A folder run also writes `addaxai-recognitions.json`. This is the file Timelapse reads.
+A folder run writes `addaxai-recognitions.json` into its output folder, and a project writes one into each deployment folder from the Export page. This is the file Timelapse reads.
 
-It follows the MegaDetector output format, version 1.6, which is [documented here](https://microsoft.github.io/MegaDetector/output_format/). Four things are worth knowing on top of that spec:
+It follows the MegaDetector output format, version 1.6, which is [documented here](https://microsoft.github.io/MegaDetector/output_format/). Six things are worth knowing on top of that spec:
 
 1. The `info` block carries an extra `addaxai` section with the app version and the settings the run used, such as smoothing, rollup and the independence interval. So the file records how it was produced.
 2. Each detection keeps only the top classification, not the full list the format allows.
 3. Nothing is filtered by a threshold. Every detection AddaxAI stored is in the file.
 4. File paths are relative to the folder the JSON sits in.
 5. The `exif_metadata` block per image is the file's raw EXIF, copied verbatim. A date correction made with Adjust dates does not change it: the corrected timestamps are in the `datetime` column of the files table, while this block stays in sync with what the image files themselves say, which is also what Timelapse reads from them.
+6. Your corrections are in it. A relabelled box carries the label you gave it, and every box has a `verified` flag. A box you rejected stays in the file with the label `false detection` and `verified: true`, so a program reading the file can tell it apart from a box the AI called an animal. The file is a snapshot: correct more, then export again to replace it.
 
 ## Spatial
 

@@ -2727,3 +2727,87 @@ def test_boxes_on_one_photo_export_strongest_first(client, db):
     _, rows = _csv_table(client, project.id, "detections")
 
     assert [r["detection_id"] for r in rows] == [strong.id, weak.id]
+
+
+def _run_recognition_json_export(client, db, project_id: str, query: str = ""):
+    """Prepare, then drive the worker directly, the way
+    `_run_camtrap_dp_export` does: no WebSocket in tests, and the worker
+    gets its own session on the shared engine so its close() cannot
+    detach the fixture's."""
+    prepare = client.post(
+        f"/api/projects/{project_id}/export/recognition-json/prepare{query}"
+    )
+    assert prepare.status_code == 202, prepare.text
+    job_id = prepare.json()["job_id"]
+
+    from sqlalchemy.orm import sessionmaker
+
+    from app.api.crud import job as job_crud
+    from app.workers import recognition_json_export_worker
+    from tests.conftest import _engine  # noqa: PLC2701 — shared in-memory engine
+
+    worker_session_factory = sessionmaker(bind=_engine)
+
+    def _fake_get_db():
+        s = worker_session_factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    db.commit()
+    with patch.object(recognition_json_export_worker, "get_db", _fake_get_db):
+        asyncio.run(
+            recognition_json_export_worker.process_recognition_json_export_job(job_id)
+        )
+    job = job_crud.get_job(db, job_id)
+    assert job is not None and job.status == "completed", job.status
+    return job.payload["result"]
+
+
+def test_recognition_json_is_written_into_each_deployment_folder(
+    client, db, tmp_path
+):
+    """One recognition file per deployment, in that deployment's folder,
+    each naming only its own files relative to that folder. A deployment
+    whose folder is gone (an unplugged drive) is reported and the others
+    are still written."""
+    project = make_project(db)
+    here = make_deployment(db, project_id=project.id, folder_path=str(tmp_path / "a"))
+    gone = make_deployment(db, project_id=project.id, folder_path=str(tmp_path / "gone"))
+    (tmp_path / "a").mkdir()
+    for dep, name in ((here, "a"), (gone, "gone")):
+        make_file(
+            db,
+            deployment_id=dep.id,
+            file_path=str(tmp_path / name / f"{name}.jpg"),
+        )
+
+    result = _run_recognition_json_export(client, db, project.id)
+
+    assert [w["deployment_id"] for w in result["written"]] == [here.id]
+    assert [(s["deployment_id"], s["reason"]) for s in result["skipped"]] == [
+        (gone.id, "Folder not found")
+    ]
+    with open(tmp_path / "a" / "addaxai-recognitions.json") as f:
+        payload = json.load(f)
+    assert [i["file"] for i in payload["images"]] == ["a.jpg"]
+    assert payload["info"]["addaxai"]["export_source"] == "project"
+
+
+def test_recognition_json_export_honours_the_scope(client, db, tmp_path):
+    project = make_project(db)
+    deps = []
+    for name in ("a", "b"):
+        (tmp_path / name).mkdir()
+        deps.append(
+            make_deployment(db, project_id=project.id, folder_path=str(tmp_path / name))
+        )
+
+    result = _run_recognition_json_export(
+        client, db, project.id, f"?deployment_ids={deps[1].id}"
+    )
+
+    assert [w["deployment_id"] for w in result["written"]] == [deps[1].id]
+    assert not (tmp_path / "a" / "addaxai-recognitions.json").exists()
+    assert (tmp_path / "b" / "addaxai-recognitions.json").is_file()

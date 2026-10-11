@@ -2,18 +2,17 @@
  * Export page (project mode) — one Card with a row per export.
  *
  * Each row reads left to right: title + caption (half width), an optional
- * filters slot (quarter width, currently the site/deployment scope on the
- * Spreadsheet row), and a single "Download" dropdown of formats (quarter
- * width). The dropdown pattern is used for every export, including
- * single-option ones, so the page reads as one tidy column of controls.
- * Layout follows AddaxAI Connect's ExportsPage; the filters column is
- * WebUI-specific and reserved for more filters later.
+ * filters slot (quarter width, the site/deployment scope), and one control
+ * (quarter width): a "Download" dropdown of formats, or a plain button for
+ * a row with a single action (the recognition file, which writes into the
+ * deployment folders). Layout follows AddaxAI Connect's ExportsPage; the
+ * filters column is WebUI-specific and reserved for more filters later.
  */
 
 import React, { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, ChevronDown, Download, Loader2 } from "lucide-react";
+import { AlertCircle, ChevronDown, Download, FileJson, Loader2 } from "lucide-react";
 
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -35,6 +34,7 @@ import { ExportScopeSelect } from "../components/export/ExportScopeSelect";
 import { SpatialExportConfirmDialog } from "../components/export/SpatialExportConfirmDialog";
 import { CamtrapDPExportConfirmDialog } from "../components/export/CamtrapDPExportConfirmDialog";
 import { CamtrapDPProgressModal } from "../components/export/CamtrapDPProgressModal";
+import { RecognitionJsonExportDialog } from "../components/export/RecognitionJsonExportDialog";
 import { downloadBlob } from "../lib/download";
 
 interface DownloadOption {
@@ -58,6 +58,7 @@ const CAMTRAP_MEDIA_OPTIONS: DownloadOption[] = [
   { value: "metadata", label: "Metadata only" },
   { value: "thumbnails", label: "Include thumbnails" },
 ];
+
 
 function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -119,6 +120,7 @@ function ExportRow({
   onSelect,
   error,
   disabled = false,
+  action,
 }: {
   title: string;
   description: React.ReactNode;
@@ -128,6 +130,8 @@ function ExportRow({
   onSelect: (value: string) => void;
   error: string | null;
   disabled?: boolean;
+  /** A single action instead of the format dropdown. */
+  action?: { label: string; onClick: () => void };
 }) {
   return (
     <div>
@@ -138,12 +142,24 @@ function ExportRow({
         </div>
         <div className="w-full sm:w-1/4">{filters}</div>
         <div className="w-full sm:w-1/4 sm:flex sm:justify-end">
-          <DownloadDropdown
-            options={options}
-            onSelect={onSelect}
-            isLoading={isLoading}
-            disabled={disabled}
-          />
+          {action ? (
+            <Button
+              type="button"
+              className="gap-2"
+              disabled={disabled}
+              onClick={action.onClick}
+            >
+              <FileJson className="h-4 w-4" />
+              {action.label}
+            </Button>
+          ) : (
+            <DownloadDropdown
+              options={options}
+              onSelect={onSelect}
+              isLoading={isLoading}
+              disabled={disabled}
+            />
+          )}
         </div>
       </div>
       {error && (
@@ -172,6 +188,11 @@ export default function ExportPage() {
   // Export scope reported by the picker. Undefined = whole project.
   // Applies only to the Spreadsheet export, not spatial or CamTrap DP.
   const [tableScope, setTableScope] = useState<ExportScope | undefined>(undefined);
+  // The recognition-file row has its own picker: it writes into the
+  // chosen deployments' folders, and a project's folders sit on several
+  // drives, so which ones matters more here than for a download.
+  const [jsonScope, setJsonScope] = useState<ExportScope | undefined>(undefined);
+  const [jsonDialogOpen, setJsonDialogOpen] = useState(false);
 
   // Spatial / CamTrap DP carry a selection into their confirm dialogs.
   const [spatialFormat, setSpatialFormat] = useState<SpatialFormat>("geojson");
@@ -200,6 +221,7 @@ export default function ExportPage() {
   // the button already reads "Nothing selected", so the disabled state
   // needs no wording of its own.
   const nothingSelected = tableScope?.deploymentIds?.length === 0;
+  const jsonNothingSelected = jsonScope?.deploymentIds?.length === 0;
 
   // One "Spreadsheet" download covering five tables. XLSX is a single
   // workbook; CSV / TSV save one file per table (browsers may show a
@@ -366,6 +388,27 @@ export default function ExportPage() {
               onSelect={handleCamtrapSelect}
               error={dpError}
             />
+
+            <div className="my-6 border-t" />
+
+            <ExportRow
+              title="Recognition file"
+              description="The file Timelapse reads, in the MegaDetector output format, with your labels and corrections. Written as addaxai-recognitions.json into each deployment folder."
+              filters={
+                projectId ? (
+                  <ExportScopeSelect
+                    projectId={projectId}
+                    onChange={setJsonScope}
+                  />
+                ) : undefined
+              }
+              options={[]}
+              isLoading={false}
+              onSelect={() => undefined}
+              error={null}
+              disabled={jsonNothingSelected}
+              action={{ label: "Write JSON", onClick: () => setJsonDialogOpen(true) }}
+            />
           </CardContent>
         </Card>
       </main>
@@ -397,6 +440,13 @@ export default function ExportPage() {
             includesThumbnails={dpIncludesThumbnails}
             onComplete={finalizeCamtrapDPExport}
             onError={abortCamtrapDPExport}
+          />
+
+          <RecognitionJsonExportDialog
+            projectId={projectId}
+            scope={jsonScope}
+            open={jsonDialogOpen}
+            onOpenChange={setJsonDialogOpen}
           />
         </>
       )}

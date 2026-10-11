@@ -63,6 +63,7 @@ from app.ml.postprocessing_outputs.tables_csv import (
 from app.ml.postprocessing_outputs.tables_xlsx import (
     write_tables_xlsx,
 )
+from app.models import Deployment
 from app.services.folder_scanner import OUTPUT_DIR_MARKER
 from app.utils.fs_remove import safe_rmtree
 from app.utils.process_memory import rss_mb
@@ -231,7 +232,7 @@ async def process_save_outputs_job(job_id: str) -> None:
         # the folder_runs router for the rationale.
         from sqlalchemy import func, select
 
-        from app.models import Deployment, File
+        from app.models import File
 
         # The label filter scopes the MEDIA outputs only (separate /
         # visualise / anonymise). Data exports (CSV / XLSX / recognition
@@ -347,10 +348,18 @@ async def process_save_outputs_job(job_id: str) -> None:
                         progress_cb=cb,
                     ).to_dict()
                 if m == "recognition_json":
+                    # A folder run is one deployment by construction;
+                    # `one()` holds that rather than picking a first.
+                    deployment = (
+                        db.query(Deployment)
+                        .filter(Deployment.project_id == project.id)
+                        .one()
+                    )
                     return write_recognition_json(
                         db,
                         project.id,
                         output_root,
+                        deployment_id=deployment.id,
                     ).to_dict()
                 if m == "csv":
                     return write_tables_csv(
