@@ -267,6 +267,26 @@ def _apply_project_threshold(
     return filters
 
 
+def count_detections_by_label(
+    db: Session, project_id: str, filters: LabelFilters
+) -> dict[str, int]:
+    """Boxes per label under every filter except the label filter: what
+    the Labels grid would show if that label were ticked alone. Built
+    from the grid's own SQL (``_build_query`` in the sort script, run on
+    this session's connection), so the tree cannot drift from the grid.
+    """
+    from app.ml.inference.similarity_script import COUNT_BY_LABEL_SQL, _build_query
+
+    scoped = _apply_project_threshold(
+        filters.model_copy(update={"labels": None}), project_id, db
+    )
+    sql, params = _build_query(project_id, _filters_to_dict(scoped), COUNT_BY_LABEL_SQL)
+    sql += " GROUP BY d.label_taxonomy_id"
+    db.flush()
+    raw = db.connection().connection.dbapi_connection
+    return {tid: n for tid, n in raw.execute(sql, params).fetchall() if tid}
+
+
 def _build_sort_params(
     project_id: str, body: SortRequest, db: Session
 ) -> dict[str, Any]:

@@ -158,6 +158,177 @@ def get_files_by_project(
 LABELS_FILES_SORT_VALUES = frozenset({"path", "newest", "oldest", "random"})
 
 
+def _passing_box_clauses(floor: float) -> list:
+    """What makes a box count on the Files tab: on the visible surface, a
+    real detection, and at or above ``floor`` or verified."""
+    return [
+        on_visible_frame(),
+        is_a_real_detection(),
+        or_(
+            Detection.confidence >= floor,
+            Detection.verified == True,  # noqa: E712
+        ),
+    ]
+
+
+def _box_range_clauses(
+    floor: float,
+    min_confidence: float | None,
+    max_confidence: float | None,
+    min_label_confidence: float | None,
+    max_label_confidence: float | None,
+) -> list:
+    """The Detections tab's range rules lifted to boxes on the Files tab.
+
+    ``min_confidence`` at or below the floor is a no-op: the Files slider
+    is clamped at the project threshold ("empty" is defined by that one
+    setting, never by a transient slider), so a lower value can only
+    arrive from a stale URL. Above the floor it is literal, exactly as
+    the sort worker applies it, so a verified low-confidence box cannot
+    satisfy a narrowed range there either. The classifier-score range is
+    classified boxes only, an unclassified box passes it (see
+    ``classification_score_in_range``), the same as the sort worker."""
+    clauses = []
+    if min_confidence is not None and min_confidence > floor:
+        clauses.append(Detection.confidence >= min_confidence)
+    if max_confidence is not None:
+        clauses.append(Detection.confidence <= max_confidence)
+    if min_label_confidence is not None or max_label_confidence is not None:
+        clauses.append(
+            classification_score_in_range(min_label_confidence, max_label_confidence)
+        )
+    return clauses
+
+
+def _labels_files_query(
+    db: Session,
+    project_id: str,
+    *,
+    floor: float,
+    empty: str,
+    site_ids: list[str] | None,
+    date_from: datetime | None,
+    date_to: datetime | None,
+    verification: str | None,
+    flagged: str | None,
+    favorited: str | None,
+    labels: list[str] | None,
+    min_confidence: float | None,
+    max_confidence: float | None,
+    min_label_confidence: float | None,
+    max_label_confidence: float | None,
+):
+    """The Files tab's filtered file query, before ordering and paging.
+    Shared by the page itself and by the label tree's counts, so the
+    number beside a label is what ticking it would list."""
+    from app.api.crud.deployment import site_ids_filter
+
+    passing = (
+        select(Detection.id)
+        .where(Detection.file_id == File.id)
+        .where(*_passing_box_clauses(floor))
+    )
+    query = (
+        db.query(File)
+        .join(Deployment, Deployment.id == File.deployment_id)
+        .filter(Deployment.project_id == project_id)
+    )
+    if empty == "show_only":
+        query = query.filter(~passing.exists())
+    elif empty == "hide":
+        query = query.filter(passing.exists())
+
+    # Box-level filters, the Detections tab's rules lifted to files: a
+    # file shows when ONE box matches all of them together (species AND
+    # confidence range), on the same `passing` scope as the empty
+    # partition, so an invisible box can never match. One combined
+    # EXISTS, not one per filter: a file with dog@0.9 and cat@0.3 must
+    # not match "dogs below 40%" off two different boxes. Files without
+    # any box only appear while no box filter is active (or through
+    # "Show only empty").
+    box_filters = _box_range_clauses(
+        floor, min_confidence, max_confidence,
+        min_label_confidence, max_label_confidence,
+    )
+    if labels:
+        box_filters.append(Detection.label_taxonomy_id.in_(labels))
+    if box_filters:
+        query = query.filter(passing.where(*box_filters).exists())
+
+    site_clause = site_ids_filter(site_ids)
+    if site_clause is not None:
+        query = query.filter(site_clause)
+    if date_from is not None:
+        query = query.filter(File.captured_at_local >= date_from)
+    if date_to is not None:
+        # Include the whole end day, matching the event filters.
+        query = query.filter(
+            File.captured_at_local
+            <= datetime.combine(date_to.date(), time.max)
+        )
+    if verification == "verified":
+        query = query.filter(File.verified.is_(True))
+    elif verification == "unverified":
+        query = query.filter(File.verified.is_(False))
+    # Triage marks live on the file itself, so unlike the events
+    # endpoint no EXISTS is needed. Anything else (None, "all") means
+    # no clause, matching `get_events`.
+    if flagged in ("flagged", "not_flagged"):
+        query = query.filter(File.flagged.is_(flagged == "flagged"))
+    if favorited in ("favorited", "not_favorited"):
+        query = query.filter(File.favorited.is_(favorited == "favorited"))
+    return query
+
+
+def count_labels_files_by_label(
+    db: Session,
+    project_id: str,
+    *,
+    floor: float,
+    empty: str = "all",
+    site_ids: list[str] | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    verification: str | None = None,
+    flagged: str | None = None,
+    favorited: str | None = None,
+    min_confidence: float | None = None,
+    max_confidence: float | None = None,
+    min_label_confidence: float | None = None,
+    max_label_confidence: float | None = None,
+) -> dict[str, int]:
+    """Files per label under every filter except the label filter: what
+    the Files tab would list if that label were ticked alone. The file
+    set comes from the tab's own query, the boxes from its own passing
+    rule, so the two cannot disagree."""
+    files = _labels_files_query(
+        db, project_id, floor=floor, empty=empty, site_ids=site_ids,
+        date_from=date_from, date_to=date_to, verification=verification,
+        flagged=flagged, favorited=favorited, labels=None,
+        min_confidence=min_confidence, max_confidence=max_confidence,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
+    ).with_entities(File.id).subquery()
+    rows = (
+        db.query(
+            Detection.label_taxonomy_id,
+            func.count(func.distinct(Detection.file_id)),
+        )
+        .filter(Detection.file_id.in_(select(files.c.id)))
+        .filter(Detection.label_taxonomy_id.isnot(None))
+        .filter(*_passing_box_clauses(floor))
+        .filter(
+            *_box_range_clauses(
+                floor, min_confidence, max_confidence,
+                min_label_confidence, max_label_confidence,
+            )
+        )
+        .group_by(Detection.label_taxonomy_id)
+        .all()
+    )
+    return {tid: n for tid, n in rows}
+
+
 def get_labels_files(
     db: Session,
     project_id: str,
@@ -205,86 +376,14 @@ def get_labels_files(
     deployment folder. Reviewing files means scanning the same scene
     over and over, and capture-time order interleaves cameras.
     """
-    from app.api.crud.deployment import site_ids_filter
-
-    passing = (
-        select(Detection.id)
-        .where(Detection.file_id == File.id)
-        .where(on_visible_frame())
-        .where(is_a_real_detection())
-        .where(
-            or_(
-                Detection.confidence >= floor,
-                Detection.verified == True,  # noqa: E712
-            )
-        )
+    query = _labels_files_query(
+        db, project_id, floor=floor, empty=empty, site_ids=site_ids,
+        date_from=date_from, date_to=date_to, verification=verification,
+        flagged=flagged, favorited=favorited, labels=labels,
+        min_confidence=min_confidence, max_confidence=max_confidence,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
     )
-    query = (
-        db.query(File)
-        .join(Deployment, Deployment.id == File.deployment_id)
-        .filter(Deployment.project_id == project_id)
-    )
-    if empty == "show_only":
-        query = query.filter(~passing.exists())
-    elif empty == "hide":
-        query = query.filter(passing.exists())
-
-    # Box-level filters, the Detections tab's rules lifted to files: a
-    # file shows when ONE box matches all of them together (species AND
-    # confidence range), on the same `passing` scope as the empty
-    # partition, so an invisible box can never match. One combined
-    # EXISTS, not one per filter: a file with dog@0.9 and cat@0.3 must
-    # not match "dogs below 40%" off two different boxes.
-    #
-    # `min_confidence` at or below the floor is a no-op: the Files
-    # slider is clamped at the project threshold ("empty" is defined by
-    # that one setting, never by a transient slider), so a lower value
-    # can only arrive from a stale URL. Above the floor it is literal,
-    # exactly as the sort worker applies it, so a verified
-    # low-confidence box cannot satisfy a narrowed range there either.
-    # Files without any box only appear while no box filter is active
-    # (or through "Show only empty").
-    box_filters = []
-    if labels:
-        box_filters.append(Detection.label_taxonomy_id.in_(labels))
-    if min_confidence is not None and min_confidence > floor:
-        box_filters.append(Detection.confidence >= min_confidence)
-    if max_confidence is not None:
-        box_filters.append(Detection.confidence <= max_confidence)
-    # Classifier-score range: classified boxes only, an unclassified box
-    # passes it (see `classification_score_in_range`), the same as the
-    # Detections sort worker.
-    if min_label_confidence is not None or max_label_confidence is not None:
-        box_filters.append(
-            classification_score_in_range(
-                min_label_confidence, max_label_confidence
-            )
-        )
-    if box_filters:
-        query = query.filter(passing.where(*box_filters).exists())
-
-    site_clause = site_ids_filter(site_ids)
-    if site_clause is not None:
-        query = query.filter(site_clause)
-    if date_from is not None:
-        query = query.filter(File.captured_at_local >= date_from)
-    if date_to is not None:
-        # Include the whole end day, matching the event filters.
-        query = query.filter(
-            File.captured_at_local
-            <= datetime.combine(date_to.date(), time.max)
-        )
-    if verification == "verified":
-        query = query.filter(File.verified.is_(True))
-    elif verification == "unverified":
-        query = query.filter(File.verified.is_(False))
-    # Triage marks live on the file itself, so unlike the events
-    # endpoint no EXISTS is needed. Anything else (None, "all") means
-    # no clause, matching `get_events`.
-    if flagged in ("flagged", "not_flagged"):
-        query = query.filter(File.flagged.is_(flagged == "flagged"))
-    if favorited in ("favorited", "not_favorited"):
-        query = query.filter(File.favorited.is_(favorited == "favorited"))
 
     total = query.count()
 
