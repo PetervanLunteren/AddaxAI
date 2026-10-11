@@ -34,6 +34,12 @@ import {
   DEFAULT_TAXONOMIC_RANK,
   RANK_OPTIONS,
 } from "../../lib/taxonomic-rank";
+import {
+  type WildlifeCountMode,
+  wildlifeAxisTitle,
+  wildlifeBarValue,
+  wildlifeTooltipLabel,
+} from "../../lib/trap-night-rate";
 import { useChartColors } from "../../lib/theme";
 import { Card, CardContent } from "../ui/card";
 import { DashboardCardHeader } from "./DashboardCardHeader";
@@ -49,8 +55,6 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
 
 const TOP_N = 10;
 
-type CountMode = "events" | "max_n";
-
 interface WildlifeChartProps {
   projectId: string;
   /** Project trap nights, so bars read per 100 nights. */
@@ -61,7 +65,7 @@ export function WildlifeChart({ projectId, trapNights }: WildlifeChartProps) {
   const navigate = useNavigate();
   const colors = useChartColors();
   const [rank, setRank] = useState<string>(DEFAULT_TAXONOMIC_RANK);
-  const [countMode, setCountMode] = useState<CountMode>("max_n");
+  const [countMode, setCountMode] = useState<WildlifeCountMode>("max_n");
 
   const { data: species, isLoading } = useQuery({
     queryKey: ["statistics", "species", "wildlife", projectId, rank, countMode],
@@ -78,12 +82,7 @@ export function WildlifeChart({ projectId, trapNights }: WildlifeChartProps) {
   });
 
   const top = (species ?? []).slice(0, TOP_N);
-  const perHundred = (n: number) =>
-    trapNights > 0 ? +((n / trapNights) * 100).toFixed(2) : n;
-  const axisLabel =
-    countMode === "events"
-      ? "Independent events per 100 trap nights"
-      : "Observations per 100 trap nights";
+  const axisLabel = wildlifeAxisTitle(countMode, trapNights);
   const clickable = (index: number) =>
     (top[index]?.label_taxonomy_ids.length ?? 0) > 0;
 
@@ -103,7 +102,17 @@ export function WildlifeChart({ projectId, trapNights }: WildlifeChartProps) {
       target.style.cursor =
         index !== undefined && clickable(index) ? "pointer" : "default";
     },
-    plugins: { legend: { display: false } },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          // The bar is a rate; the count it came from is what a reader
+          // checks it against, so both are on the hover.
+          label: (context) =>
+            wildlifeTooltipLabel(countMode, top[context.dataIndex].count, trapNights),
+        },
+      },
+    },
     scales: {
       x: {
         beginAtZero: true,
@@ -122,7 +131,7 @@ export function WildlifeChart({ projectId, trapNights }: WildlifeChartProps) {
     datasets: [
       {
         label: axisLabel,
-        data: top.map((s) => perHundred(s.count)),
+        data: top.map((s) => wildlifeBarValue(s.count, trapNights)),
         // One colour: the name is already on the axis, so per-bar
         // colours would only suggest a meaning they do not have.
         backgroundColor: colors.withAlpha(colors.primaryInk, 0.18),
@@ -178,7 +187,7 @@ export function WildlifeChart({ projectId, trapNights }: WildlifeChartProps) {
             </Select>
             <Select
               value={countMode}
-              onValueChange={(v) => setCountMode(v as CountMode)}
+              onValueChange={(v) => setCountMode(v as WildlifeCountMode)}
             >
               <SelectTrigger className="h-9 w-[120px] text-sm" aria-label="Count by">
                 <SelectValue />
