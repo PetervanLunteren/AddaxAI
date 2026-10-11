@@ -1,6 +1,6 @@
 """Unit tests for the subfolder-aware trap-nights helper."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from app.api.crud.trap_nights import (
     compute_trap_nights_for_deployment,
@@ -176,17 +176,16 @@ def test_video_only_deployment_counts(db):
     assert compute_trap_nights_for_deployment(db, d.id) == 5
 
 
-def test_rollover_shared_boundary_collapsed_via_subtraction(db):
+def test_rollover_shared_boundary_is_one_session(db):
     """
     Bushnell / Reconyx rollover: `100MEDIA` and `101MEDIA` are the same
     camera running continuously, and the day the camera rolls over sits
     in both subfolders. Naive per-subfolder summation would double-count
-    that day; the boundary-match subtraction collapses it.
+    that day; the two folders are joined into one session.
 
     Camera actually runs Jan 1 .. Jan 30 = 30 nights. 100MEDIA covers
     Jan 1 .. Jan 15, 101MEDIA covers Jan 15 .. Jan 30. Per-subfolder
-    sum is 15 + 16 = 31; subtracting 1 for the Jan 15 end↔start match
-    gives 30.
+    sum would be 15 + 16 = 31; as one session Jan 1 .. Jan 30 it is 30.
     """
     p = make_project(db)
     d = make_deployment(db, project_id=p.id, folder_path="/data/cam")
@@ -225,7 +224,7 @@ def test_genuine_multi_day_overlap_sums_as_parallel_cameras(db):
             captured_at_local=_dt(2024, 1, day),
         )
     # Folder B: Jan 5 .. Jan 15 (11 days). Overlap days are Jan 5-10.
-    # A.end (Jan 10) != B.start (Jan 5) → no boundary subtraction.
+    # A.end (Jan 10) != B.start (Jan 5) → not a rollover, no join.
     for day in range(5, 16):
         make_file(
             db,
@@ -242,7 +241,7 @@ def test_parallel_cameras_bundled_as_deployment_counts_each_camera(db):
     """Ten parallel cameras analysed as one deployment: each subfolder
     spans Jan 1 .. Jan 10 (10 days). Every subfolder shares both start
     and end dates with every other subfolder, but not end↔start — so no
-    boundary subtraction. Result is 10 * 10 = 100 camera-days, matching
+    join. Result is 10 * 10 = 100 camera-days, matching
     the true survey effort. The previous merge algorithm silently
     collapsed these to 10."""
     p = make_project(db)
@@ -260,12 +259,13 @@ def test_parallel_cameras_bundled_as_deployment_counts_each_camera(db):
     assert compute_trap_nights_for_deployment(db, d.id) == 100
 
 
-def test_triple_boundary_day_over_subtracts_by_one(db):
-    """Pinning a known, rare edge case honestly. Three subfolders all
-    share Jan 15 as a boundary: SD1 ends Jan 15, SD2 is Jan 15 only,
-    SD3 starts Jan 15. Pairwise end↔start matches = 3, so we subtract 3,
-    but Jan 15 only needs to be collapsed to 1 occurrence (not 0).
-    Result is off by 1. Rare; not worth special-casing."""
+def test_single_day_rollover_folder_joins_the_chain(db):
+    """Three subfolders share Jan 15 as a boundary: SD1 ends Jan 15, SD2
+    is Jan 15 only (a busy day rolled the card over twice), SD3 starts
+    Jan 15. One camera session, Jan 1 .. Jan 31 = 31. The pair
+    subtraction this replaced counted 30 here, and the test pinned that
+    off-by-one as "rare"; a Reconyx card rolls over every 10k photos,
+    so a single-day folder is ordinary."""
     p = make_project(db)
     d = make_deployment(db, project_id=p.id, folder_path="/data/cam")
     for day in range(1, 16):
@@ -289,10 +289,53 @@ def test_triple_boundary_day_over_subtracts_by_one(db):
             captured_at_local=_dt(2024, 1, day),
         )
     db.commit()
-    # Per-subfolder: 15 + 1 + 17 = 33. Boundary matches: (a.end=b.start),
-    # (a.end=c.start), (b.end=c.start) → 3. Result = 30. True answer
-    # Jan 1 .. Jan 31 = 31 — off by 1.
-    assert compute_trap_nights_for_deployment(db, d.id) == 30
+    assert compute_trap_nights_for_deployment(db, d.id) == 31
+
+
+def test_cameras_swapped_on_the_same_day_each_keep_their_own_nights(db):
+    """A season of cameras bundled as one deployment, every card swapped
+    on the same days (Jan 15 and Feb 1): each camera's folders roll over
+    into each other, the cameras never into one another. Three cameras
+    for Jan 1 .. Feb 15 = 3 x 46. The pair subtraction matched every
+    camera's end against every camera's start (9 pairs per swap day) and
+    went negative on a real 50-camera deployment."""
+    p = make_project(db)
+    d = make_deployment(db, project_id=p.id, folder_path="/data/season")
+    cards = [("100RECNX", 1, 15), ("101RECNX", 15, 32), ("102RECNX", 32, 46)]
+    for cam in ("MS3", "MS11", "MS26"):
+        for folder, first, last in cards:
+            for day in (first, last):
+                make_file(
+                    db,
+                    deployment_id=d.id,
+                    file_path=f"/data/season/{cam}/{folder}/RCNX{day:04d}.JPG",
+                    captured_at_local=_dt(2024, 1, 1) + timedelta(days=day - 1),
+                )
+    db.commit()
+    assert compute_trap_nights_for_deployment(db, d.id) == 3 * 46
+
+
+def test_folders_under_different_parents_do_not_join(db):
+    """Two cameras whose folders sit under different parents, one ending
+    on the day the other starts: a coincidence, not a rollover. 15 + 17."""
+    p = make_project(db)
+    d = make_deployment(db, project_id=p.id, folder_path="/data/two")
+    for day in range(1, 16):
+        make_file(
+            db,
+            deployment_id=d.id,
+            file_path=f"/data/two/north/100RECNX/img_{day:02d}.jpg",
+            captured_at_local=_dt(2024, 1, day),
+        )
+    for day in range(15, 32):
+        make_file(
+            db,
+            deployment_id=d.id,
+            file_path=f"/data/two/south/100RECNX/img_{day:02d}.jpg",
+            captured_at_local=_dt(2024, 1, day),
+        )
+    db.commit()
+    assert compute_trap_nights_for_deployment(db, d.id) == 32
 
 
 def test_adjacent_non_overlapping_intervals_stay_separate(db):
