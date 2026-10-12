@@ -32,12 +32,7 @@ from app.core.job_cancellation import JobCancelledError, is_cancel_requested
 from app.core.logging_config import get_logger
 from app.ml.schemas.model_manifest import ModelManifest
 from app.utils.subprocess_env import clean_python_env
-from app.utils.subprocess_runner import (
-    StreamedResult,
-    is_memory_fault,
-    log_subprocess_failure,
-    stream_with_tail,
-)
+from app.utils.subprocess_runner import log_subprocess_failure, stream_with_tail
 
 logger = get_logger(__name__)
 
@@ -934,47 +929,19 @@ class EnvironmentManager:
                     progress_callback(caption, current_progress)
                 logger.debug(f"micromamba: {line}")
 
-            def run_micromamba() -> StreamedResult:
+            try:
                 # Keep more than the default 300 lines. The failure we
                 # translate into an actionable error is a schannel line
                 # that micromamba prints while fetching the package
                 # index, and anything printed after it pushes it out of
                 # the window. Costs a few kilobytes of memory.
-                return stream_with_tail(
+                result = stream_with_tail(
                     cmd,
                     env=env,
                     on_line=on_micromamba_line,
                     job_id=job_id,
                     max_tail=1000,
                 )
-
-            try:
-                result = run_micromamba()
-                # micromamba 2.9.0 dies of a memory fault, with no output,
-                # when it parses a malformed shard index (mamba #4419).
-                # Without shards it downloads the full repodata.json and
-                # parses it with other code, so one retry that way gets
-                # past a bad index wherever it came from. The same exit
-                # code at start-up is an old C++ runtime instead, which
-                # this retry cannot fix (see VC_RUNTIME_DLLS). Not after a
-                # cancel, and not into a half-built env that could not be
-                # removed.
-                if (
-                    is_memory_fault(result.returncode)
-                    and not (job_id is not None and is_cancel_requested(job_id))
-                    and self._discard_temp_env(temp_env_path, "crashed")
-                ):
-                    log_subprocess_failure("micromamba create", cmd, result)
-                    logger.warning(
-                        f"micromamba crashed (exit {result.returncode}); "
-                        f"retrying once without sharded repodata"
-                    )
-                    env["MAMBA_USE_SHARDED_REPODATA"] = "false"
-                    result = run_micromamba()
-                    logger.info(
-                        f"micromamba create without sharded repodata exited "
-                        f"{result.returncode}"
-                    )
             finally:
                 yaml_copy_path.unlink(missing_ok=True)
                 shutil.rmtree(pip_tmp_dir, ignore_errors=True)

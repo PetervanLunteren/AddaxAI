@@ -4,13 +4,8 @@ Microsoft's Visual C++ runtime, copied next to `micromamba.exe` on Windows
 (`_install_vc_runtime` in `../environment_manager.py`). Not used on macOS or
 Linux.
 
-| File | sha256 |
-|---|---|
-| `msvcp140.dll` | `8f141b4454fa78db34bc1f28c571b4da0e00cd2c43f7ad0e282f313036826aae` |
-| `vcruntime140.dll` | `0205071c36c17f1efbd70178c852cb7d49985c484202752b8704b7ac6b184e60` |
-| `vcruntime140_1.dll` | `963e45edd064545962e216c12d68071ced94dc8e11862a18f07f14eb2690a57c` |
-
-All three are version 14.44.35208.0, taken unmodified from conda-forge
+`msvcp140.dll`, `vcruntime140.dll` and `vcruntime140_1.dll`, all version
+14.44.35208.0, taken unmodified from conda-forge
 `vc14_runtime-14.44.35208-h818238b_41.conda` (package sha256
 `ec706fe9368b837fbd05af4851f5ebef12bef8c471a273f4805f7af788407317`). They
 import nothing but each other and `kernel32.dll`, so the three are the whole
@@ -34,7 +29,14 @@ dependency, and a download is one more thing a locked-down network can block.
 (the Visual Studio "Distributable Code" terms, app-local deployment).
 conda-forge redistributes them the same way.
 
-**Replacing them.** Only when micromamba is rebuilt with a newer toolset: read
-its linker version (`MajorLinkerVersion.MinorLinkerVersion` in the PE header),
-take the matching `vc14_runtime` from conda-forge, and update the hashes here
-and in `tests/ml/test_vc_runtime.py`.
+**We own their updates.** Windows Update services the runtime in System32, not
+copies next to a program, which is why Microsoft prefers the system-wide
+installer. That needs admin rights, and AddaxAI installs without them. The
+exposure is small: these DLLs only load into micromamba while an environment
+is built.
+
+**Replacing them.** When micromamba is bumped, or for a Microsoft security fix
+in the runtime. Read micromamba's linker version
+(`MajorLinkerVersion.MinorLinkerVersion` in the PE header), take a
+`vc14_runtime` from conda-forge at least that new, and update the hashes in
+`tests/ml/test_vc_runtime.py`, the one record of what ships here.

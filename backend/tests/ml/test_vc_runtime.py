@@ -5,9 +5,8 @@ runtime (msvcp140.dll, vcruntime140.dll, vcruntime140_1.dll), and it is
 built with toolset 14.44. A machine whose own msvcp140.dll is older than
 14.40 makes it die at start-up with 0xC0000005 and no output, inside
 std::mutex. Users on 7.11.0 to 7.13.0 hit exactly that at the first setup
-step, the retry without shards included (October 2026). Windows looks in
-the program's own directory first, so a copy next to micromamba.exe wins
-over whatever the machine has.
+step (October 2026). Windows looks in the program's own directory first,
+so a copy next to micromamba.exe wins over whatever the machine has.
 """
 
 import hashlib

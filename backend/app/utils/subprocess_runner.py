@@ -20,7 +20,6 @@ Adopt this for any subprocess where the failure mode is "exit with a
 non-zero code after some stderr/stdout we'd want to see."
 """
 
-import signal
 import subprocess
 import time
 from collections import deque
@@ -37,11 +36,6 @@ logger = get_logger(__name__)
 # wrote memory it does not own (access violation). Not an error the
 # program chose to return, so it comes with no message of its own.
 WINDOWS_ACCESS_VIOLATION = 3221225477
-
-
-def is_memory_fault(returncode: int) -> bool:
-    """A native crash: an access violation on Windows, SIGSEGV elsewhere."""
-    return returncode in (WINDOWS_ACCESS_VIOLATION, -signal.SIGSEGV)
 
 
 @dataclass
