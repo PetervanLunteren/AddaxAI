@@ -396,6 +396,17 @@ _MICROMAMBA_SHA256 = {
 # `micromamba create`, then use whichever python is first on PATH.
 MICROMAMBA_FILENAME = "micromamba.exe" if platform.system() == "Windows" else "micromamba"
 
+# Microsoft's C++ runtime, copied next to micromamba.exe on Windows. The
+# Windows micromamba loads msvcp140.dll and vcruntime140(_1).dll from the
+# machine and is built with toolset 14.44; an msvcp140.dll older than 14.40
+# makes it die at start-up with 0xC0000005 and no output (std::mutex). That
+# is the crash users on 7.11.0 to 7.13.0 hit at the first setup step. Our
+# own backend ships no msvcp140.dll, so the machine's copy decided. Windows
+# looks in the program's directory first, so these win. See
+# vc-runtime/README.md for where they come from.
+VC_RUNTIME_DIR = Path(__file__).resolve().parent / "vc-runtime"
+VC_RUNTIME_DLLS = ("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll")
+
 
 def _micromamba_subdir() -> str:
     """The conda platform name of the micromamba build for this machine."""
@@ -479,6 +490,21 @@ class EnvironmentManager:
             if not self.micromamba_path.exists():
                 logger.info("Micromamba not found, downloading...")
                 self._download_micromamba()
+            if platform.system() == "Windows":
+                self._install_vc_runtime()
+
+    def _install_vc_runtime(self) -> None:
+        """Copy the shipped C++ runtime next to micromamba.exe (see
+        VC_RUNTIME_DLLS). Each file is copied under a temporary name and
+        renamed into place, so a half-written DLL never counts as present."""
+        for name in VC_RUNTIME_DLLS:
+            target = self.micromamba_path.parent / name
+            if target.exists():
+                continue
+            partial = target.with_name(name + ".copy")
+            shutil.copyfile(VC_RUNTIME_DIR / name, partial)
+            os.replace(partial, target)
+            logger.info(f"Installed {name} next to micromamba")
 
     def _download_micromamba(self) -> None:
         """Download the pinned micromamba build and install it atomically.
@@ -829,9 +855,8 @@ class EnvironmentManager:
             # other conda install the user has. A malformed cached shard
             # index crashes micromamba 2.9.0 on every run (memory fault,
             # no output), and a bad cache there would survive anything a
-            # user tries; users on 7.11.0 reported that crash signature
-            # through reinstalls (2026-10). Overrides a root prefix the
-            # user set for something else.
+            # user tries. Overrides a root prefix the user set for
+            # something else.
             env["MAMBA_ROOT_PREFIX"] = str(self.mamba_root_prefix)
             # Windows schannel refuses a certificate whose revocation it
             # cannot check, and a network that inspects TLS re-signs with
@@ -927,13 +952,13 @@ class EnvironmentManager:
                 result = run_micromamba()
                 # micromamba 2.9.0 dies of a memory fault, with no output,
                 # when it parses a malformed shard index (mamba #4419).
-                # Users on 7.11.0 reported that crash signature at the
-                # first setup step (2026-10), cause unproven. Without
-                # shards it downloads the
-                # full repodata.json and parses it with other code, so
-                # one retry that way gets past a bad index wherever it
-                # came from. Not after a cancel, and not into a half-built
-                # env that could not be removed.
+                # Without shards it downloads the full repodata.json and
+                # parses it with other code, so one retry that way gets
+                # past a bad index wherever it came from. The same exit
+                # code at start-up is an old C++ runtime instead, which
+                # this retry cannot fix (see VC_RUNTIME_DLLS). Not after a
+                # cancel, and not into a half-built env that could not be
+                # removed.
                 if (
                     is_memory_fault(result.returncode)
                     and not (job_id is not None and is_cancel_requested(job_id))
