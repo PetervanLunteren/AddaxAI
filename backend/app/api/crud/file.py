@@ -3,7 +3,7 @@ CRUD operations for files.
 """
 
 from collections.abc import Iterable
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime
 from typing import NamedTuple
 
 from sqlalchemy import Integer, and_, func, or_, select
@@ -14,6 +14,7 @@ from app.api.crud.event_observation import (
     get_event_ids_for_files,
     recalculate_max_n_for_events,
 )
+from app.api.crud.file_filters import file_flag_clauses, tri_state
 from app.api.crud.ordering import file_time_order
 from app.api.schemas.file import FileUpdate
 from app.core.confidence import effective_floor
@@ -258,25 +259,19 @@ def _labels_files_query(
     site_clause = site_ids_filter(site_ids)
     if site_clause is not None:
         query = query.filter(site_clause)
-    if date_from is not None:
-        query = query.filter(File.captured_at_local >= date_from)
-    if date_to is not None:
-        # Include the whole end day, matching the event filters.
-        query = query.filter(
-            File.captured_at_local
-            <= datetime.combine(date_to.date(), time.max)
+    # Date range and the triage marks: one definition, shared with the
+    # media export (`file_filters.py`). The marks live on the file
+    # itself, so unlike the events endpoint no EXISTS is needed; None
+    # and "all" mean no clause, matching `get_events`.
+    query = query.filter(
+        *file_flag_clauses(
+            date_from=date_from,
+            date_to=date_to,
+            verified=tri_state(verification, "verified", "unverified"),
+            flagged=tri_state(flagged, "flagged", "not_flagged"),
+            favorited=tri_state(favorited, "favorited", "not_favorited"),
         )
-    if verification == "verified":
-        query = query.filter(File.verified.is_(True))
-    elif verification == "unverified":
-        query = query.filter(File.verified.is_(False))
-    # Triage marks live on the file itself, so unlike the events
-    # endpoint no EXISTS is needed. Anything else (None, "all") means
-    # no clause, matching `get_events`.
-    if flagged in ("flagged", "not_flagged"):
-        query = query.filter(File.flagged.is_(flagged == "flagged"))
-    if favorited in ("favorited", "not_favorited"):
-        query = query.filter(File.favorited.is_(favorited == "favorited"))
+    )
     return query
 
 
@@ -559,14 +554,9 @@ def get_label_progress(
         site_clause = site_ids_filter(site_ids)
         if site_clause is not None:
             query = query.filter(site_clause)
-        if date_from is not None:
-            query = query.filter(File.captured_at_local >= date_from)
-        if date_to is not None:
-            query = query.filter(
-                File.captured_at_local
-                <= datetime.combine(date_to.date(), time.max)
-            )
-        return query
+        return query.filter(
+            *file_flag_clauses(date_from=date_from, date_to=date_to)
+        )
 
     verified_sum = func.coalesce(
         func.sum(func.cast(Detection.verified, Integer)), 0

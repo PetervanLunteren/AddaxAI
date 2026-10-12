@@ -7,6 +7,7 @@
 
 import { API_BASE_URL, ApiError, api } from "../lib/api-client";
 import { logger } from "../lib/logger";
+import type { OutputPreview, SeparateGroupBy } from "./folder-runs";
 
 export type ObservationFormat = "csv" | "tsv" | "xlsx";
 
@@ -25,6 +26,33 @@ export interface RecognitionJsonExportResult {
   }[];
 }
 export type SpatialFormat = "geojson" | "shapefile" | "gpkg";
+
+/** Body of the image copies preview: the folder-run media options plus
+ *  which files. Mirrors `MediaExportOptions` on the backend. */
+export interface ImageCopiesOptions {
+  media_threshold: number;
+  separate_group_by: SeparateGroupBy;
+  group_events: boolean;
+  separate_species_last: boolean;
+  include_empty: boolean;
+  /** Labels to leave out (LabelTaxonomy ids or raw label strings). */
+  excluded_label_ids: string[];
+  draw_bboxes: boolean;
+  anonymise: boolean;
+  name_mode: "common" | "scientific";
+  /** Omitted = whole project. Never send an empty list: the backend
+   *  refuses it, and the row is disabled in that state anyway. */
+  deployment_ids?: string[];
+  favorited_only: boolean;
+  verified_only: boolean;
+  /** ISO dates (YYYY-MM-DD), inclusive on whole days. */
+  date_from?: string;
+  date_to?: string;
+}
+
+export interface ImageCopiesRequest extends ImageCopiesOptions {
+  output_dir: string;
+}
 
 /** Optional export scope. Empty / omitted = whole project. Picking a site
  *  includes all its deployments (resolved server-side). */
@@ -170,4 +198,22 @@ export const exportApi = {
     api.post<{ job_id: string }>(
       withScope(`/api/projects/${projectId}/export/recognition-json/prepare`, scope),
     ),
+
+  /** What the image copies export would write (counts, bytes, folder
+   *  tree), for the dialog's summary line. Same shape as the folder-run
+   *  Save step's preview. */
+  previewImageCopies: (
+    projectId: string,
+    body: ImageCopiesOptions,
+  ): Promise<OutputPreview> =>
+    api.post<OutputPreview>(`/api/projects/${projectId}/export/media/preview`, body),
+
+  /** Not a download: starts the save-outputs job that copies the images
+   *  into `output_dir/addaxai-media`. The job's completion payload is a
+   *  SaveOutputsResult. */
+  prepareImageCopies: (
+    projectId: string,
+    body: ImageCopiesRequest,
+  ): Promise<{ job_id: string }> =>
+    api.post<{ job_id: string }>(`/api/projects/${projectId}/export/media/prepare`, body),
 };

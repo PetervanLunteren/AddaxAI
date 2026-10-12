@@ -66,6 +66,7 @@ from app.models import Deployment, Detection, File, Project
 from ._exif_writer import ExifBatch, build_tag_set, is_image_path
 from ._label_filter import file_is_dropped_by_filter
 from ._output_context import OutputContext
+from ._scope import MediaScope
 from ._visualisation_style import (
     PILL_BG_RGBA,
     STROKE_ALPHA,
@@ -485,9 +486,15 @@ def write_annotated_copies(
     name_mode: str = "common",
     copy_unchanged: bool = False,
     progress_cb: Callable[[int, int], None] | None = None,
+    scope: MediaScope | None = None,
 ) -> AnnotatedCopiesResult:
     """Apply the requested per-file effects and write the result to
     every destination the file lives at under ``ctx``.
+
+    ``scope`` must be the same object separation ran with: a file in
+    this module's scope that separation did not place is written to a
+    fallback name at the media root (``_resolve_destinations``), so a
+    wider scope here leaks out-of-scope files there.
 
     ``media_threshold`` is the Save step's media-output confidence:
     only detections at or above it (or verified) get drawn / blurred,
@@ -527,6 +534,7 @@ def write_annotated_copies(
         select(File)
         .join(Deployment, File.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
+        .where(*(scope.file_clauses() if scope else []))
     ).scalars().all()
 
     result = AnnotatedCopiesResult()

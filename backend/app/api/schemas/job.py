@@ -24,6 +24,7 @@ JobType = Literal[
     "camtrap_export",
     "recognition_json_export",
     "folder_run_save_outputs",
+    "media_export",
 ]
 JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 

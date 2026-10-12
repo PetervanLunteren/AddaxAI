@@ -21,6 +21,9 @@ Streaming endpoints, one per export type:
 - ``/recognition-json/prepare``: not a download. A job that writes the
   Timelapse recognition file into each deployment folder in scope and
   reports per deployment on completion.
+- ``/media/preview`` and ``/media/prepare``: the image copies export.
+  The same media modules and worker as a folder run's Save step, scoped
+  to deployments and file filters, writing into a folder the user picks.
 
 See ``app/api/crud/export.py`` for the data layer and
 ``app/api/crud/export_formats.py`` for the serializers.
@@ -28,6 +31,7 @@ See ``app/api/crud/export.py`` for the data layer and
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date
 from io import BytesIO
 from pathlib import Path
@@ -40,9 +44,16 @@ from sqlalchemy.orm import Session
 from app.api.crud import export as export_crud
 from app.api.crud import export_formats
 from app.api.crud import job as job_crud
+from app.api.schemas.export import (
+    MediaExportOptions,
+    MediaExportRequest,
+    OutputPreviewResponse,
+)
 from app.api.schemas.job import JobCreate
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
+from app.ml.postprocessing_outputs._scope import MediaScope
+from app.ml.postprocessing_outputs.output_preview import build_output_preview
 from app.models import Deployment, Project
 from app.utils.datetime_serialization import set_active_project_timezone
 
@@ -428,5 +439,132 @@ async def prepare_recognition_json(
 
     ws_manager.register_start(
         job.id, lambda jid=job.id: process_recognition_json_export_job(jid)
+    )
+    return {"job_id": job.id}
+
+
+def _media_scope(
+    db: Session, project: Project, body: MediaExportOptions
+) -> MediaScope:
+    """The one scope object both media endpoints hand to the modules.
+
+    An explicit empty id list is refused: `resolve_scope_deployment_ids`
+    reads it as "no scope", so it would copy the whole project, and an
+    empty export would still replace a previous one in that folder. The
+    Export page disables the button in that state; this is the server's
+    own guard. Ids are resolved through the same helper the tables use,
+    so ids from another project are dropped.
+    """
+    if body.deployment_ids is not None and len(body.deployment_ids) == 0:
+        raise HTTPException(status_code=422, detail="No deployments selected")
+    resolved = export_crud.resolve_scope_deployment_ids(
+        db, project, None, body.deployment_ids
+    )
+    scope = MediaScope.from_payload(body.model_dump(mode="json"))
+    if resolved is None:
+        return scope
+    return MediaScope(
+        deployment_ids=tuple(resolved),
+        favorited_only=scope.favorited_only,
+        verified_only=scope.verified_only,
+        date_from=scope.date_from,
+        date_to=scope.date_to,
+    )
+
+
+@router.post("/media/preview", response_model=OutputPreviewResponse)
+def preview_media_export(
+    project_id: str,
+    body: MediaExportOptions,
+    db: Session = Depends(get_db),
+) -> OutputPreviewResponse:
+    """What the image copies export would write: file counts, bytes and
+    the folder tree, for the dialog's summary line.
+
+    Sync on purpose, like the folder-run preview: it loads every detection
+    in scope and loops in Python, which must not sit on the event loop.
+    Nothing here returns an observational datetime.
+    """
+    project = _resolve_project(project_id, db)
+    scope = _media_scope(db, project, body)
+    preview = build_output_preview(
+        db,
+        project.id,
+        media_threshold=body.media_threshold,
+        excluded_label_ids=(
+            frozenset(body.excluded_label_ids)
+            if body.excluded_label_ids
+            else None
+        ),
+        include_empty=body.include_empty,
+        name_mode=body.name_mode,
+        group_events=body.group_events,
+        group_by=body.separate_group_by,
+        species_last=body.separate_species_last,
+        # With blur on a video is written as its blurred still.
+        videos_as_stills=body.anonymise,
+        scope=scope,
+        deployment_folder_in_path=True,
+    )
+    return OutputPreviewResponse(**preview.to_dict())
+
+
+@router.post("/media/prepare", status_code=202)
+async def prepare_media_export(
+    project_id: str,
+    body: MediaExportRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Start the image copies export: the folder-run save-outputs job
+    with only the media modules, a scope, and the deployment folder name
+    kept in the layout (the worker derives that from `project.mode`).
+
+    Copies go into `output_dir/addaxai-media`. The worker owns the marker
+    there and replaces a previous export's subfolder; this endpoint never
+    stamps it (the marker is the wipe's proof of ownership).
+    """
+    project = _resolve_project(project_id, db)
+    scope = _media_scope(db, project, body)
+
+    output_root = Path(body.output_dir)
+    try:
+        # Off the loop: the user picked this folder, and a network drive
+        # that is asleep answers a mkdir in seconds, not microseconds.
+        await asyncio.to_thread(output_root.mkdir, parents=True, exist_ok=True)
+    except OSError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot create the output folder: {e}",
+        ) from e
+
+    job = job_crud.create_job(
+        db,
+        JobCreate(
+            type="media_export",
+            payload={
+                **body.model_dump(mode="json"),
+                "project_id": project.id,
+                "deployment_ids": (
+                    list(scope.deployment_ids)
+                    if scope.deployment_ids is not None
+                    else None
+                ),
+                "output_dir": str(output_root),
+                # The worker runs whatever is ticked. Copies always; the
+                # run readme defaults to on when the key is missing
+                # (`payload.get("run_readme", True)` there), and it would
+                # write an addaxai-run-info.txt into the user's folder.
+                "separate_folders": True,
+                "run_readme": False,
+            },
+        ),
+    )
+
+    from app.workers.folder_run_save_outputs_worker import (
+        process_save_outputs_job,
+    )
+
+    ws_manager.register_start(
+        job.id, lambda jid=job.id: process_save_outputs_job(jid)
     )
     return {"job_id": job.id}

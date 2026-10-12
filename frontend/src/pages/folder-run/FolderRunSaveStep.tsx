@@ -15,7 +15,6 @@
  * focused on layout.
  */
 
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -32,20 +31,15 @@ import {
   OutputFolderField,
 } from "./save/SaveShared";
 import { OutputPreviewPanel } from "./save/OutputPreviewPanel";
-import {
-  excludedLabelIds,
-  useSaveOutputsForm,
-} from "./save/useSaveOutputsForm";
+import { excludedLabelIds } from "./save/media-options";
+import { useSaveOutputsForm } from "./save/useSaveOutputsForm";
 import { useFolderRun } from "./FolderRunLayout";
 import { getSpeciesNameMode } from "../../lib/species-name-mode";
 import { JobProgressModal } from "../../components/folder-run/JobProgressModal";
 import { SaveOutputsProgress } from "../../components/folder-run/SaveOutputsProgress";
 import { StepHeader } from "../../components/folder-run/StepHeader";
-import {
-  folderRunsApi,
-  type SaveOutputsResult,
-} from "../../api/folder-runs";
-import { useTaskProgress } from "../../hooks/useTaskProgress";
+import { useSaveOutputsProgress } from "../../components/folder-run/useSaveOutputsProgress";
+import { folderRunsApi } from "../../api/folder-runs";
 
 export function FolderRunSaveStep() {
   const navigate = useNavigate();
@@ -57,45 +51,13 @@ export function FolderRunSaveStep() {
     projectThreshold: run?.project?.counting_threshold,
   });
 
-  // Job-progress state driven by the worker's WebSocket events.
-  // Each event carries the ordered module list, the active module
-  // (or null at start / end), and the index into the list — enough
-  // for SaveOutputsProgress to render the checklist.
-  const [modules, setModules] = useState<string[]>([]);
-  const [currentModule, setCurrentModule] = useState<string | null>(
-    null,
-  );
-  const [moduleIndex, setModuleIndex] = useState(0);
-  const [totalModules, setTotalModules] = useState(0);
-  const [isCancelling, setIsCancelling] = useState(false);
-
-  const progress = useTaskProgress({
-    taskId: form.jobId,
-    onProgress: (msg) => {
-      const d = msg.data ?? {};
-      if (Array.isArray(d.modules)) setModules(d.modules as string[]);
-      if ("current_module" in d) {
-        setCurrentModule(d.current_module as string | null);
-      }
-      if (typeof d.module_index === "number") {
-        setModuleIndex(d.module_index);
-      }
-      if (typeof d.total_modules === "number") {
-        setTotalModules(d.total_modules);
-      }
-    },
-    onComplete: (data) => {
-      form.onJobComplete(data as unknown as SaveOutputsResult);
-      setIsCancelling(false);
-    },
-    onError: (msg) => {
-      form.onJobError(msg);
-      setIsCancelling(false);
-    },
-    onCancelled: (msg) => {
-      form.onJobCancelled(msg);
-      setIsCancelling(false);
-    },
+  // Job progress driven by the worker's WebSocket events, decoded for
+  // the per-module checklist by the hook the image copies dialog shares.
+  const progress = useSaveOutputsProgress({
+    jobId: form.jobId,
+    onComplete: form.onJobComplete,
+    onError: form.onJobError,
+    onCancelled: form.onJobCancelled,
   });
 
   // Every media control that changes what lands on disk is part of the
@@ -216,17 +178,14 @@ export function FolderRunSaveStep() {
       <JobProgressModal
         open={!!form.jobId}
         title="Saving outputs"
-        isCancelling={isCancelling}
-        onCancel={() => {
-          setIsCancelling(true);
-          progress.cancel();
-        }}
+        isCancelling={progress.isCancelling}
+        onCancel={progress.cancel}
       >
         <SaveOutputsProgress
-          modules={modules}
-          currentModule={currentModule}
-          moduleIndex={moduleIndex}
-          totalModules={totalModules}
+          modules={progress.modules}
+          currentModule={progress.currentModule}
+          moduleIndex={progress.moduleIndex}
+          totalModules={progress.totalModules}
           message={progress.message}
           phaseProgress={progress.phaseProgress}
         />

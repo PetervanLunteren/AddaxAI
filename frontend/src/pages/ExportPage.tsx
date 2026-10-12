@@ -12,7 +12,15 @@
 import React, { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, ChevronDown, Download, FileJson, Loader2 } from "lucide-react";
+import {
+  AlertCircle,
+  ChevronDown,
+  Download,
+  FileJson,
+  Images,
+  Loader2,
+  type LucideIcon,
+} from "lucide-react";
 
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -35,6 +43,7 @@ import { SpatialExportConfirmDialog } from "../components/export/SpatialExportCo
 import { CamtrapDPExportConfirmDialog } from "../components/export/CamtrapDPExportConfirmDialog";
 import { CamtrapDPProgressModal } from "../components/export/CamtrapDPProgressModal";
 import { RecognitionJsonExportDialog } from "../components/export/RecognitionJsonExportDialog";
+import { ImageCopiesDialog } from "../components/export/ImageCopiesDialog";
 import { downloadBlob } from "../lib/download";
 
 interface DownloadOption {
@@ -131,8 +140,9 @@ function ExportRow({
   error: string | null;
   disabled?: boolean;
   /** A single action instead of the format dropdown. */
-  action?: { label: string; onClick: () => void };
+  action?: { label: string; onClick: () => void; icon?: LucideIcon };
 }) {
+  const ActionIcon = action?.icon ?? FileJson;
   return (
     <div>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
@@ -149,7 +159,7 @@ function ExportRow({
               disabled={disabled}
               onClick={action.onClick}
             >
-              <FileJson className="h-4 w-4" />
+              <ActionIcon className="h-4 w-4" />
               {action.label}
             </Button>
           ) : (
@@ -193,6 +203,9 @@ export default function ExportPage() {
   // drives, so which ones matters more here than for a download.
   const [jsonScope, setJsonScope] = useState<ExportScope | undefined>(undefined);
   const [jsonDialogOpen, setJsonDialogOpen] = useState(false);
+  // Image copies: its own picker too, for the same reason.
+  const [mediaScope, setMediaScope] = useState<ExportScope | undefined>(undefined);
+  const [mediaDialogOpen, setMediaDialogOpen] = useState(false);
 
   // Spatial / CamTrap DP carry a selection into their confirm dialogs.
   const [spatialFormat, setSpatialFormat] = useState<SpatialFormat>("geojson");
@@ -222,6 +235,7 @@ export default function ExportPage() {
   // needs no wording of its own.
   const nothingSelected = tableScope?.deploymentIds?.length === 0;
   const jsonNothingSelected = jsonScope?.deploymentIds?.length === 0;
+  const mediaNothingSelected = mediaScope?.deploymentIds?.length === 0;
 
   // One "Spreadsheet" download covering five tables. XLSX is a single
   // workbook; CSV / TSV save one file per table (browsers may show a
@@ -409,6 +423,31 @@ export default function ExportPage() {
               disabled={jsonNothingSelected}
               action={{ label: "Write JSON", onClick: () => setJsonDialogOpen(true) }}
             />
+
+            <div className="my-6 border-t" />
+
+            <ExportRow
+              title="Image copies"
+              description="Copies of your images in species folders, with your labels in the image metadata. Optional boxes and blur."
+              filters={
+                projectId ? (
+                  <ExportScopeSelect
+                    projectId={projectId}
+                    onChange={setMediaScope}
+                  />
+                ) : undefined
+              }
+              options={[]}
+              isLoading={false}
+              onSelect={() => undefined}
+              error={null}
+              disabled={mediaNothingSelected}
+              action={{
+                label: "Choose options",
+                icon: Images,
+                onClick: () => setMediaDialogOpen(true),
+              }}
+            />
           </CardContent>
         </Card>
       </main>
@@ -447,6 +486,13 @@ export default function ExportPage() {
             scope={jsonScope}
             open={jsonDialogOpen}
             onOpenChange={setJsonDialogOpen}
+          />
+
+          <ImageCopiesDialog
+            projectId={projectId}
+            scope={mediaScope}
+            open={mediaDialogOpen}
+            onOpenChange={setMediaDialogOpen}
           />
         </>
       )}

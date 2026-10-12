@@ -2833,3 +2833,139 @@ def test_recognition_json_progress_counts_folders_done(client, db, tmp_path, mon
     _run_recognition_json_export(client, db, project.id)
 
     assert seen == [(0, 0.0), (1, 0.5), (2, 1.0)]
+
+
+# ---------------------------------------------------------------------------
+# Image copies (media export)
+# ---------------------------------------------------------------------------
+
+
+def _two_camera_project(db, tmp_path):
+    """Two deployments with one dog photo each; cam01's is liked."""
+    project = make_project(db, name="media", counting_threshold=0.5)
+    deps = {}
+    for name, liked in (("cam01", True), ("cam02", False)):
+        folder = tmp_path / "drive" / name
+        folder.mkdir(parents=True)
+        dep = make_deployment(db, project_id=project.id, folder_path=str(folder))
+        src = folder / "IMG_1.jpg"
+        src.write_bytes(b"x")
+        f = make_file(
+            db,
+            deployment_id=dep.id,
+            file_path=str(src),
+            observation_type="animal",
+            favorited=liked,
+        )
+        make_detection(db, file_id=f.id, confidence=0.9, label="dog")
+        deps[name] = dep
+    db.commit()
+    return project, deps
+
+
+def _run_media_export(client, db, project_id: str, body: dict) -> dict:
+    """Prepare, then drive the save-outputs worker directly, as the other
+    job exports do: no WebSocket in tests."""
+    prepare = client.post(f"/api/projects/{project_id}/export/media/prepare", json=body)
+    assert prepare.status_code == 202, prepare.text
+    job_id = prepare.json()["job_id"]
+
+    from sqlalchemy.orm import sessionmaker
+
+    from app.api.crud import job as job_crud
+    from app.workers import folder_run_save_outputs_worker as worker
+    from tests.conftest import _engine  # noqa: PLC2701 — shared in-memory engine
+
+    worker_session_factory = sessionmaker(bind=_engine)
+
+    def _fake_get_db():
+        s = worker_session_factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    db.commit()
+    with patch.object(worker, "get_db", _fake_get_db):
+        asyncio.run(worker.process_save_outputs_job(job_id))
+    job = job_crud.get_job(db, job_id)
+    assert job is not None and job.status == "completed", job.error
+    return job
+
+
+def test_media_preview_counts_the_scope_with_the_deployment_folder_in_the_tree(
+    client, db, tmp_path
+):
+    project, deps = _two_camera_project(db, tmp_path)
+
+    whole = client.post(
+        f"/api/projects/{project.id}/export/media/preview", json={"media_threshold": 0.5}
+    )
+    assert whole.status_code == 200, whole.text
+    assert whole.json()["in_scope_files"] == 2
+    assert whole.json()["by_media_tree"] == {"dog/cam01": 1, "dog/cam02": 1}
+
+    liked = client.post(
+        f"/api/projects/{project.id}/export/media/preview",
+        json={
+            "media_threshold": 0.5,
+            "deployment_ids": [deps["cam01"].id, deps["cam02"].id],
+            "favorited_only": True,
+        },
+    )
+    assert liked.json()["in_scope_files"] == 1
+    assert liked.json()["by_media_tree"] == {"dog/cam01": 1}
+
+
+def test_media_prepare_refuses_an_empty_deployment_list(client, db, tmp_path):
+    """An empty list would resolve to the whole project and still wipe a
+    previous export's folder, so the server refuses it itself."""
+    project, _ = _two_camera_project(db, tmp_path)
+    resp = client.post(
+        f"/api/projects/{project.id}/export/media/prepare",
+        json={"output_dir": str(tmp_path / "out"), "deployment_ids": []},
+    )
+    assert resp.status_code == 422
+    assert "No deployments" in resp.json()["detail"]
+
+    assert (
+        client.post(
+            "/api/projects/nope/export/media/prepare",
+            json={"output_dir": str(tmp_path / "out")},
+        ).status_code
+        == 404
+    )
+
+
+def test_media_prepare_queues_the_save_job_and_the_worker_writes_the_scope(
+    client, db, tmp_path
+):
+    project, deps = _two_camera_project(db, tmp_path)
+    out = tmp_path / "out"
+
+    job = _run_media_export(
+        client,
+        db,
+        project.id,
+        {
+            "output_dir": str(out),
+            "deployment_ids": [deps["cam01"].id, "not-mine"],
+            "media_threshold": 0.5,
+            "separate_group_by": "flat",
+        },
+    )
+
+    assert job.type == "media_export"
+    payload = job.payload
+    assert payload["project_id"] == project.id
+    assert payload["deployment_ids"] == [deps["cam01"].id]
+    assert payload["separate_folders"] is True
+    assert payload["run_readme"] is False
+    assert payload["output_dir"] == str(out)
+    assert "csv" not in payload
+
+    media = out / "addaxai-media"
+    assert sorted(p.relative_to(media).as_posix() for p in media.rglob("*.jpg")) == [
+        "dog/cam01/IMG_1.jpg"
+    ]
+    assert [p.name for p in out.iterdir()] == ["addaxai-media"]

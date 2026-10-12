@@ -33,6 +33,12 @@ interface LabelFilterModalProps {
   onOpenChange: (open: boolean) => void;
   /** Count unit label, e.g. "event" or "detection". */
   countUnit?: string;
+  /** An empty `selectedLabels` normally means "no filter" and opens with
+   * every live leaf ticked. Set this where an empty selection means
+   * "nothing picked yet" (the project image copies dialog), so the
+   * modal opens with nothing ticked and "Select all" is the deliberate
+   * step. */
+  startEmpty?: boolean;
 }
 
 export function LabelFilterModal({
@@ -43,6 +49,7 @@ export function LabelFilterModal({
   open,
   onOpenChange,
   countUnit,
+  startEmpty = false,
 }: LabelFilterModalProps) {
   // Working copy — initialized from props each time the modal opens
   const [workingSet, setWorkingSet] = useState<Set<string>>(new Set());
@@ -58,8 +65,9 @@ export function LabelFilterModal({
   // Re-initialize working set each time the modal opens
   useEffect(() => {
     if (open) {
-      // No filter active -> start with all labels selected
-      if (selectedLabels.length === 0) {
+      // No filter active -> start with all labels selected, unless the
+      // caller says an empty selection is "nothing picked yet".
+      if (selectedLabels.length === 0 && !startEmpty) {
         setWorkingSet(new Set(liveLeafIds));
       } else {
         setWorkingSet(new Set(selectedLabels));

@@ -191,6 +191,21 @@ It follows the MegaDetector output format, version 1.6, which is [documented her
 5. The `exif_metadata` block per image is the file's raw EXIF, copied verbatim. A date correction made with Adjust dates does not change it: the corrected timestamps are in the `datetime` column of the files table, while this block stays in sync with what the image files themselves say, which is also what Timelapse reads from them.
 6. Your corrections are in it. A relabelled box carries the label you gave it, and every box has a `verified` flag. A box you rejected stays in the file with the label `false detection` and `verified: true`, so a program reading the file can tell it apart from a box the AI called an animal. The file is a snapshot: correct more, then export again to replace it.
 
+## Image copies
+
+Copies of your images and videos, sorted into folders, for browsing or sharing in another program. A folder run writes them from its save step; a project writes them from the Export page, where "Image copies" takes the deployments you picked and the same options.
+
+What you get, in an `addaxai-media` folder inside the folder you choose:
+
+- One folder per species, or nested by taxonomy (class, order, family, genus, species), or no species folders at all. Each file goes into one folder only, the species of its strongest detection, or the species its event was mostly verified as when "Keep events together" is on. People, vehicles and empty files get their own folders.
+- Under the species folder, your own folder structure. A folder run keeps the subfolders of the folder it analysed. A project puts the deployment's folder name first, then its subfolders, so `wolf/CAM07/100RECNX/IMG_0012.JPG` says which camera the photo came from. With "Species folder last" the order flips: `CAM07/100RECNX/wolf/IMG_0012.JPG`. Two deployments whose folders have the same name land in the same folder, and a file that would overwrite another gets a `_2` suffix.
+- The species in the image metadata: the XMP subject tag, which digiKam, Lightroom and most photo managers read as keywords, plus a caption with every detection. Your originals are never changed, only the copies carry the tags.
+- Optionally boxes drawn on each image, and people and vehicles blurred. A video cannot be drawn on, so it gets a still image with the boxes next to it; with blur on, a video is written as its blurred still only.
+
+In a project you can narrow the export: to the deployments you picked, to the files you liked or verified on the Labels page, to a date range, and to the labels you choose. The dialog starts with no label picked, so copying a whole project is a deliberate choice. A file without a capture time is left out as soon as a date is set. The count and the size of what will be written are shown before you start.
+
+Exporting again into the same folder replaces its `addaxai-media` folder. Pick another folder if you want to keep both.
+
 ## Spatial
 
 Projects can also export point layers for GIS tools such as QGIS and ArcGIS, as GeoJSON, Shapefile or GeoPackage. You get two layers: one point per camera, and one point per camera per species. Deployments with no site coordinates are left out.

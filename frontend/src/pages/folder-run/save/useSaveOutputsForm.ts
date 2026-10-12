@@ -21,8 +21,13 @@ import {
   folderRunsApi,
   type SaveOutputsRequest,
   type SaveOutputsResult,
-  type SeparateGroupBy,
 } from "../../../api/folder-runs";
+import {
+  excludedLabelIds,
+  type AnonymiseState,
+  type SeparateState,
+  type VisualiseState,
+} from "./media-options";
 import { eventsApi } from "../../../api/events";
 import { projectsApi } from "../../../api/projects";
 import type { LabelTreeResponse } from "../../../api/types";
@@ -33,35 +38,6 @@ import {
   loadLastUsedSaveOutputs,
   saveLastUsedSaveOutputs,
 } from "../../../lib/folderRunSettings";
-
-export interface SeparateState {
-  enabled: boolean;
-  groupBy: SeparateGroupBy;
-  /** Keep a burst together: every file in an event shares one folder
-   * (the event's main species). */
-  groupEvents: boolean;
-  /** Put the species folder inside the user's original folders instead of
-   * on top (camtrapR-style ``station/species/`` layout). */
-  speciesLast: boolean;
-  /** Copy empty captures (no detections) too. Off = skip them. */
-  copyEmpties: boolean;
-  /** Media-output confidence: detections below it (unless verified)
-   * are left out of the copies, drawn boxes, and blurs. The data
-   * exports always contain everything regardless. */
-  mediaThreshold: number;
-  /** Leaf ids the user chose to include (empty = all species). The
-   * request sends the complement as ``excluded_label_ids``; the data
-   * exports ignore it. */
-  includedLabelIds: string[];
-}
-
-export interface VisualiseState {
-  enabled: boolean;
-}
-
-export interface AnonymiseState {
-  enabled: boolean;
-}
 
 export type SpreadsheetFormat = "csv" | "xlsx";
 
@@ -121,23 +97,19 @@ function buildRequest(
   };
 }
 
-/** The label exclusion set sent to the backend: every leaf NOT included
- * by the user. Empty when all species are included (no filter) or the
- * tree hasn't loaded yet. The data exports ignore this entirely. */
-export function excludedLabelIds(
-  separate: SeparateState,
-  allLabelIds: string[],
-): string[] {
-  const { includedLabelIds } = separate;
-  if (
-    includedLabelIds.length === 0 ||
-    includedLabelIds.length >= allLabelIds.length
-  ) {
-    return [];
-  }
-  const included = new Set(includedLabelIds);
-  return allLabelIds.filter((id) => !included.has(id));
-}
+/** The slice of the form the media controls read. `MediaBody` is typed
+ * on this rather than the whole hook result, so the project image
+ * copies dialog can hand it plain state. */
+export type MediaFormHandles = Pick<
+  UseSaveOutputsFormResult,
+  | "separate"
+  | "setSeparate"
+  | "labelTree"
+  | "visualise"
+  | "setVisualise"
+  | "anonymise"
+  | "setAnonymise"
+>;
 
 export interface UseSaveOutputsFormParams {
   runId: string;

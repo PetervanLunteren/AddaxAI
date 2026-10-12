@@ -46,8 +46,11 @@ import {
 import { PromoteDialog } from "../../../components/folder-run/PromoteDialog";
 import { LabelFilterModal } from "../../../components/verify/LabelFilterModal";
 import { FolderSelector } from "../../../components/analyses/FolderSelector";
-import type { SaveOutputsResult } from "../../../api/folder-runs";
-import type { UseSaveOutputsFormResult } from "./useSaveOutputsForm";
+import { collectIssues, type EmptySelectionMeans } from "./media-options";
+import type {
+  MediaFormHandles,
+  UseSaveOutputsFormResult,
+} from "./useSaveOutputsForm";
 
 // ─────────────────────────────────────────────────────────────────
 // Small primitives
@@ -60,7 +63,7 @@ import type { UseSaveOutputsFormResult } from "./useSaveOutputsForm";
  * right, vertically centred against the two-line text. Shared by the
  * export and media cards so every option lines up the same way. The
  * parent wraps these in a ``divide-y`` list for the hairline rules. */
-function CaptionedCheckbox({
+export function CaptionedCheckbox({
   checked,
   onChange,
   label,
@@ -153,8 +156,11 @@ export function OutputFolderField({
 
 export function MediaBody({
   form,
+  emptyMeans = "all",
 }: {
-  form: UseSaveOutputsFormResult;
+  form: MediaFormHandles;
+  /** What no picked label means; see `EmptySelectionMeans`. */
+  emptyMeans?: EmptySelectionMeans;
 }) {
   const {
     separate,
@@ -241,7 +247,11 @@ export function MediaBody({
       )}
 
       {labelTree && labelTree.tree.length > 0 && (
-        <LabelFilterRow form={form} labelTree={labelTree} />
+        <LabelFilterRow
+          form={form}
+          labelTree={labelTree}
+          emptyMeans={emptyMeans}
+        />
       )}
 
       <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
@@ -304,22 +314,33 @@ export function MediaBody({
 
 /** Row that opens the shared label-tree modal to limit which labels
  * (species, higher taxa, person, vehicle) get copied and visualised.
- * Inclusion model: an empty selection means "all", so the request only
- * sends a filter when the user picks a real subset. The data exports
- * are never filtered. */
+ * Inclusion model. Under `emptyMeans: "all"` (the folder-run step) an
+ * empty selection means every label, so the request only sends a
+ * filter when the user picks a real subset; under `"none"` (the
+ * project image copies dialog) it means nothing is picked yet, and the
+ * modal opens with nothing ticked. The data exports are never
+ * filtered. */
 function LabelFilterRow({
   form,
   labelTree,
+  emptyMeans,
 }: {
-  form: UseSaveOutputsFormResult;
-  labelTree: NonNullable<UseSaveOutputsFormResult["labelTree"]>;
+  form: MediaFormHandles;
+  labelTree: NonNullable<MediaFormHandles["labelTree"]>;
+  emptyMeans: EmptySelectionMeans;
 }) {
   const { separate, setSeparate } = form;
   const [open, setOpen] = useState(false);
 
   const allCount = labelTree.all_leaf_ids.length;
   const includedCount = separate.includedLabelIds.length;
-  const isAll = includedCount === 0 || includedCount >= allCount;
+  const isAll =
+    (includedCount === 0 && emptyMeans === "all") || includedCount >= allCount;
+  const buttonText = isAll
+    ? "All labels"
+    : includedCount === 0
+      ? "No labels picked"
+      : `${includedCount} of ${allCount} labels`;
 
   return (
     <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
@@ -334,18 +355,20 @@ function LabelFilterRow({
         className="w-full justify-between font-normal"
         onClick={() => setOpen(true)}
       >
-        <span className="truncate text-left">
-          {isAll ? "All labels" : `${includedCount} of ${allCount} labels`}
-        </span>
+        <span className="truncate text-left">{buttonText}</span>
         <SlidersHorizontal className="ml-1.5 h-3.5 w-3.5 shrink-0 opacity-50" />
       </Button>
       <LabelFilterModal
         preBuiltTree={labelTree.tree}
         allLeafIds={labelTree.all_leaf_ids}
         selectedLabels={separate.includedLabelIds}
+        startEmpty={emptyMeans === "none"}
         onApply={(labels) => {
-          // Treat "all selected" as no filter so the request stays empty.
-          const next = labels.length >= allCount ? [] : labels;
+          // Under "all", every label ticked is no filter, so the state
+          // stays empty. Under "none" an empty state is "nothing
+          // picked", so every label ticked has to stay the full list.
+          const next =
+            emptyMeans === "all" && labels.length >= allCount ? [] : labels;
           setSeparate({ ...separate, includedLabelIds: next });
         }}
         open={open}
@@ -580,27 +603,7 @@ export function CompletionDialog({
   );
 }
 
-/** Roll every module's reported errors + missing-source counts into a
- * flat list. Returns an empty array when nothing went wrong, which
- * is the case the completion screen optimises for: no banner. */
-function collectIssues(result: SaveOutputsResult): string[] {
-  // Per-module errors[], one line per file. A missing source is listed
-  // by path here by both media modules, so there is no separate count
-  // line: it repeated what the path lines already say. Deduplicated,
-  // because separation and annotation both notice the same missing
-  // file in the same words.
-  const all = [
-    ...(result.separate_folders?.errors ?? []),
-    ...(result.annotated_copies?.errors ?? []),
-    ...(result.recognition_json?.errors ?? []),
-    ...(result.csv?.errors ?? []),
-    ...(result.xlsx?.errors ?? []),
-    ...(result.run_readme?.errors ?? []),
-  ];
-  return Array.from(new Set(all));
-}
-
-function IssuesPanel({ issues }: { issues: string[] }) {
+export function IssuesPanel({ issues }: { issues: string[] }) {
   const shown = issues.slice(0, 5);
   const extra = issues.length - shown.length;
   return (
