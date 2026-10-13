@@ -93,7 +93,7 @@ function DownloadDropdown({
         <Button
           type="button"
           disabled={isLoading || disabled}
-          className="gap-2"
+          className="w-full gap-2"
         >
           {isLoading ? (
             <>
@@ -145,17 +145,21 @@ function ExportRow({
   const ActionIcon = action?.icon ?? FileJson;
   return (
     <div>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
-        <div className="w-full sm:w-1/2 sm:shrink-0">
+      {/* Text takes the room; the picker and the button each get a fixed
+          slot so every row's controls sit at the same place and every
+          button has the same width. A row without a picker leaves its
+          slot empty rather than shifting the button. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_12rem] sm:items-center sm:gap-4">
+        <div>
           <h3 className="text-sm font-medium">{title}</h3>
           <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         </div>
-        <div className="w-full sm:w-1/4">{filters}</div>
-        <div className="w-full sm:w-1/4 sm:flex sm:justify-end">
+        <div>{filters}</div>
+        <div>
           {action ? (
             <Button
               type="button"
-              className="gap-2"
+              className="w-full gap-2"
               disabled={disabled}
               onClick={action.onClick}
             >
@@ -368,6 +372,7 @@ export default function ExportPage() {
                   <ExportScopeSelect
                     projectId={projectId}
                     onChange={setTableScope}
+                    className="w-full min-w-0"
                   />
                 ) : undefined
               }
@@ -410,6 +415,7 @@ export default function ExportPage() {
                   <ExportScopeSelect
                     projectId={projectId}
                     onChange={setJsonScope}
+                    className="w-full min-w-0"
                   />
                 ) : undefined
               }
