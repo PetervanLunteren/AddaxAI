@@ -1,56 +1,38 @@
 /**
- * Image copies: the folder-run media options for a project, in one
- * dialog on the Export page.
+ * Image copies: the folder-run media card and its tree preview, for a
+ * project, in one dialog on the Export page.
  *
- * Pick where the copies go, which files (liked, verified, a date
- * range), which labels, and the same folder / boxes / blur options a
- * folder run offers. A summary line from the preview endpoint says how
- * many files and bytes will be written before anything is. Starting
- * runs the same save-outputs job a folder run uses; progress and the
- * result screen reuse its pieces.
+ * Nothing here is the dialog's own except the output folder and the
+ * Start button: the options, the preview and the persistence come from
+ * `useMediaOptions`, the hook the folder-run Save step composes too, so
+ * a user learns one form. Starting runs the same save-outputs job a
+ * folder run uses; progress and the result screen reuse its pieces.
  *
- * The label picker starts with nothing picked on purpose: a project can
- * hold a million files, so copying all of them is a deliberate click on
- * "Select all", not the default.
+ * The form is mounted only while the dialog is open, so every opening
+ * starts from the remembered layout and look with the snapshot filters
+ * (deployments, labels, dates, liked, verified) cleared. The job state
+ * lives outside it and survives the dialog closing while a job runs.
  */
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, FolderOpen } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FolderOpen } from "lucide-react";
 
-import { eventsApi } from "../../api/events";
-import {
-  exportApi,
-  type ExportScope,
-  type ImageCopiesOptions,
-} from "../../api/export";
+import { exportApi } from "../../api/export";
 import type { SaveOutputsResult } from "../../api/folder-runs";
+import { collectIssues } from "../../pages/folder-run/save/media-options";
+import { OutputPreviewPanel } from "../../pages/folder-run/save/OutputPreviewPanel";
 import {
-  FILTER_DEBOUNCE_MS,
-  useDebouncedValue,
-} from "../../hooks/useDebouncedValue";
-import { DEFAULT_COUNTING_THRESHOLD } from "../../lib/confidence";
-import { getSpeciesNameMode } from "../../lib/species-name-mode";
-import {
-  collectIssues,
-  excludedLabelIds,
-  type AnonymiseState,
-  type SeparateState,
-  type VisualiseState,
-} from "../../pages/folder-run/save/media-options";
-import {
-  CaptionedCheckbox,
   IssuesPanel,
   MediaBody,
+  OutputFolderField,
 } from "../../pages/folder-run/save/SaveShared";
-import { FolderSelector } from "../analyses/FolderSelector";
+import { useMediaOptions } from "../../pages/folder-run/save/useMediaOptions";
 import { JobProgressModal } from "../folder-run/JobProgressModal";
 import { SaveOutputsProgress } from "../folder-run/SaveOutputsProgress";
 import { useSaveOutputsProgress } from "../folder-run/useSaveOutputsProgress";
 import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
-import { DateRangePicker } from "../ui/date-range-picker";
-import { formatBytes } from "../ui/info-sheet-parts";
+import { Card, CardContent } from "../ui/card";
 import {
   Dialog,
   DialogContent,
@@ -63,93 +45,19 @@ import { NextStepRow } from "../ui/next-step-row";
 
 interface ImageCopiesDialogProps {
   projectId: string;
-  /** Undefined = whole project. The row is disabled when the picker
-   *  reports an empty list, so the dialog never sees one. */
-  scope: ExportScope | undefined;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-const INITIAL_SEPARATE: SeparateState = {
-  enabled: true,
-  groupBy: "flat",
-  groupEvents: true,
-  speciesLast: false,
-  copyEmpties: false,
-  mediaThreshold: DEFAULT_COUNTING_THRESHOLD,
-  includedLabelIds: [],
-};
-
 export function ImageCopiesDialog({
   projectId,
-  scope,
   open,
   onOpenChange,
 }: ImageCopiesDialogProps) {
-  const [outputDir, setOutputDir] = useState("");
-  const [separate, setSeparate] = useState<SeparateState>(INITIAL_SEPARATE);
-  const [visualise, setVisualise] = useState<VisualiseState>({ enabled: false });
-  const [anonymise, setAnonymise] = useState<AnonymiseState>({ enabled: false });
-  const [likedOnly, setLikedOnly] = useState(false);
-  const [verifiedOnly, setVerifiedOnly] = useState(false);
-  const [dateFrom, setDateFrom] = useState<string | undefined>(undefined);
-  const [dateTo, setDateTo] = useState<string | undefined>(undefined);
-
   const [jobId, setJobId] = useState<string | null>(null);
-  const [starting, setStarting] = useState(false);
   const [result, setResult] = useState<SaveOutputsResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  // Project-wide label tree, counted by file so the modal reads "N
-  // files" per species. Not narrowed to the picked deployments: a
-  // species absent from them simply yields no files.
-  const { data: labelTree } = useQuery({
-    queryKey: ["label-tree", projectId, "file"],
-    queryFn: () => eventsApi.getLabelTree(projectId, "file"),
-    enabled: open,
-  });
-  const allLabelIds = labelTree?.all_leaf_ids ?? [];
-
-  // Date bounds for the picker, the same source the Labels page uses.
-  const { data: filterOptions } = useQuery({
-    queryKey: ["event-filter-options", projectId],
-    queryFn: () => eventsApi.getFilterOptions(projectId),
-    enabled: open,
-  });
-
-  const nameMode = getSpeciesNameMode();
-  const nothingPicked = separate.includedLabelIds.length === 0;
-  // A drag on the slider fires one preview call after it settles.
-  const mediaThreshold = useDebouncedValue(
-    separate.mediaThreshold,
-    FILTER_DEBOUNCE_MS,
-  );
-
-  const options: ImageCopiesOptions = {
-    media_threshold: mediaThreshold,
-    separate_group_by: separate.groupBy,
-    group_events: separate.groupEvents,
-    separate_species_last: separate.speciesLast,
-    include_empty: separate.copyEmpties,
-    // "none": while nothing is picked every label is excluded, so the
-    // summary honestly reads 0 files instead of promising everything.
-    excluded_label_ids: excludedLabelIds(separate, allLabelIds, "none"),
-    draw_bboxes: visualise.enabled,
-    anonymise: anonymise.enabled,
-    name_mode: nameMode,
-    deployment_ids: scope?.deploymentIds,
-    favorited_only: likedOnly,
-    verified_only: verifiedOnly,
-    date_from: dateFrom,
-    date_to: dateTo,
-  };
-
-  const { data: preview, isFetching: previewLoading } = useQuery({
-    queryKey: ["image-copies-preview", projectId, options],
-    queryFn: () => exportApi.previewImageCopies(projectId, options),
-    enabled: open && !nothingPicked,
-    staleTime: 30_000,
-  });
+  // An error from the job itself, shown on the next opening of the form.
+  const [startError, setStartError] = useState<string | null>(null);
 
   const progress = useSaveOutputsProgress({
     jobId,
@@ -158,47 +66,22 @@ export function ImageCopiesDialog({
       setJobId(null);
     },
     onError: (msg) => {
-      setError(msg);
+      setResult(null);
       setJobId(null);
+      setStartError(msg);
     },
     onCancelled: () => setJobId(null),
   });
 
   const running = jobId !== null;
-  const inScope = preview?.in_scope_files ?? 0;
-  const canStart =
-    !!outputDir &&
-    !nothingPicked &&
-    inScope > 0 &&
-    !previewLoading &&
-    !starting &&
-    !running;
 
   const close = (next: boolean) => {
     if (running) return;
     if (!next) {
       setResult(null);
-      setError(null);
+      setStartError(null);
     }
     onOpenChange(next);
-  };
-
-  const start = async () => {
-    setError(null);
-    setStarting(true);
-    try {
-      const { job_id } = await exportApi.prepareImageCopies(projectId, {
-        ...options,
-        // Not the debounced value: what the slider shows is what runs.
-        media_threshold: separate.mediaThreshold,
-        output_dir: outputDir,
-      });
-      setJobId(job_id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Export failed");
-    } finally {
-      setStarting(false);
-    }
   };
 
   const openResults = async () => {
@@ -212,26 +95,23 @@ export function ImageCopiesDialog({
   // before those, so it overstates.
   const copied = result?.separate_folders?.written_count ?? 0;
 
-  const summary = nothingPicked
-    ? "Pick at least one label to copy."
-    : previewLoading || !preview
-      ? "Counting..."
-      : inScope === 0
-        ? "Nothing to copy with these filters."
-        : `${inScope.toLocaleString()} ${inScope === 1 ? "file" : "files"}, ${formatBytes(
-            preview.in_scope_bytes,
-          )}`;
-
   return (
     <>
       <Dialog open={open && !running} onOpenChange={close}>
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        {/* Same width as the folder-run step content (max-w-7xl in
+            FolderRunLayout) and the same two columns below, so the dialog
+            is the Save step the user already knows, in a frame. */}
+        <DialogContent className="max-h-[90vh] max-w-7xl overflow-y-auto">
           {result ? (
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-primary-ink" />
-                  Copies written
+                  {copied > 0 ? (
+                    <CheckCircle2 className="h-5 w-5 text-primary-ink" />
+                  ) : (
+                    <AlertTriangle className="h-5 w-5 text-muted-foreground" />
+                  )}
+                  {copied > 0 ? "Copies written" : "Nothing copied"}
                 </DialogTitle>
                 <DialogDescription>
                   {copied.toLocaleString()} {copied === 1 ? "file" : "files"}{" "}
@@ -265,112 +145,17 @@ export function ImageCopiesDialog({
               </DialogFooter>
             </>
           ) : (
-            <>
-              <DialogHeader>
-                <DialogTitle>Image copies</DialogTitle>
-                <DialogDescription>
-                  Copies of your images in species folders, with your labels
-                  in the image metadata. Originals are never touched.
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-5 text-sm">
-                <div className="space-y-2">
-                  <span className="block font-medium">Output folder</span>
-                  <FolderSelector
-                    value={outputDir || null}
-                    onChange={setOutputDir}
-                    hideLabel
-                    hideScanResult
-                    noScan
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Copies go into an addaxai-media folder inside the folder
-                    you pick, as species / camera folder / your subfolders.
-                    Exporting again into the same folder replaces it.
-                  </p>
-                </div>
-
-                <div className="space-y-1">
-                  <span className="block font-medium">Which files</span>
-                  <div className="divide-y [&>*:last-child]:pb-0">
-                    <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3">
-                      <span>
-                        Capture dates
-                        <span className="mt-0.5 block text-xs text-muted-foreground">
-                          Files without a capture time are left out once a
-                          date is set
-                        </span>
-                      </span>
-                      <DateRangePicker
-                        from={dateFrom}
-                        to={dateTo}
-                        onChange={(r) => {
-                          setDateFrom(r.from);
-                          setDateTo(r.to);
-                        }}
-                        minDate={filterOptions?.date_range?.min}
-                        maxDate={filterOptions?.date_range?.max}
-                      />
-                    </div>
-                    <CaptionedCheckbox
-                      checked={likedOnly}
-                      onChange={setLikedOnly}
-                      label="Only liked files"
-                      caption="The files you marked with a heart on the Labels page"
-                    />
-                    <CaptionedCheckbox
-                      checked={verifiedOnly}
-                      onChange={setVerifiedOnly}
-                      label="Only verified files"
-                      caption="Files where every box was verified"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <span className="block font-medium">Copies</span>
-                  <MediaBody
-                    form={{
-                      separate,
-                      setSeparate,
-                      labelTree: labelTree ?? null,
-                      visualise,
-                      setVisualise,
-                      anonymise,
-                      setAnonymise,
-                    }}
-                    emptyMeans="none"
-                  />
-                </div>
-
-                {error && (
-                  <Callout variant="error" size="compact">
-                    {error}
-                  </Callout>
-                )}
-              </div>
-
-              <DialogFooter className="items-center gap-3 sm:justify-between">
-                <span className="text-sm text-muted-foreground">{summary}</span>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => close(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => void start()}
-                    disabled={!canStart}
-                  >
-                    {starting ? "Starting..." : "Start"}
-                  </Button>
-                </div>
-              </DialogFooter>
-            </>
+            open && (
+              <ImageCopiesForm
+                projectId={projectId}
+                initialError={startError}
+                onStarted={(id) => {
+                  setStartError(null);
+                  setJobId(id);
+                }}
+                onCancel={() => close(false)}
+              />
+            )
           )}
         </DialogContent>
       </Dialog>
@@ -390,6 +175,100 @@ export function ImageCopiesDialog({
           phaseProgress={progress.phaseProgress}
         />
       </JobProgressModal>
+    </>
+  );
+}
+
+/** The options and the Start button. Mounted per opening: its state is
+ * one export's worth of choices. */
+function ImageCopiesForm({
+  projectId,
+  initialError,
+  onStarted,
+  onCancel,
+}: {
+  projectId: string;
+  initialError: string | null;
+  onStarted: (jobId: string) => void;
+  onCancel: () => void;
+}) {
+  const [outputDir, setOutputDir] = useState("");
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(initialError);
+  const media = useMediaOptions({ projectId, alwaysEnabled: true });
+
+  const canStart = !!outputDir && media.hasFilesToCopy && !starting;
+
+  const start = async () => {
+    setError(null);
+    setStarting(true);
+    media.remember();
+    try {
+      const { job_id } = await exportApi.prepareImageCopies(projectId, {
+        ...media.requestFields,
+        output_dir: outputDir,
+      });
+      onStarted(job_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  // Nothing in scope can only mean the deployment picker, which shows
+  // with more than one deployment; an empty label pick is "all".
+  const emptyMessage = "Pick at least one deployment to see the preview";
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Image copies</DialogTitle>
+        <DialogDescription>
+          Copies of your images in species folders, with your labels in the
+          image metadata. Originals are never touched.
+        </DialogDescription>
+      </DialogHeader>
+
+      {/* Same two columns as the folder-run Save step: options left, the
+          tree they produce right. */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+        <div className="space-y-6">
+          <OutputFolderField
+            value={outputDir}
+            onChange={setOutputDir}
+            caption="Copies go into an addaxai-media folder inside the folder you pick. Exporting again replaces it. Your originals are never touched."
+          />
+          <Card>
+            <CardContent className="p-6">
+              <MediaBody form={media} />
+            </CardContent>
+          </Card>
+          {error && (
+            <Callout variant="error" size="compact">
+              {error}
+            </Callout>
+          )}
+        </div>
+
+        <OutputPreviewPanel
+          media={media}
+          outputDir={outputDir}
+          fallbackName="output-folder"
+          preview={media.preview}
+          isLoading={media.previewLoading}
+          emptyMessage={emptyMessage}
+        />
+      </div>
+
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="button" onClick={() => void start()} disabled={!canStart}>
+          {starting ? "Starting..." : "Start"}
+        </Button>
+      </DialogFooter>
     </>
   );
 }

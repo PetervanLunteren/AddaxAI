@@ -309,6 +309,11 @@ def count_labels_files_by_label(
             Detection.label_taxonomy_id,
             func.count(func.distinct(Detection.file_id)),
         )
+        # ``on_visible_frame`` reads File columns. Without this join
+        # SQLite paired every detection with every file: ten minutes and
+        # "database or disk is full" on 40k files, and a video's frame
+        # rule satisfied by any image in the project.
+        .join(File, File.id == Detection.file_id)
         .filter(Detection.file_id.in_(select(files.c.id)))
         .filter(Detection.label_taxonomy_id.isnot(None))
         .filter(*_passing_box_clauses(floor))

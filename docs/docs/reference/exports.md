@@ -193,7 +193,7 @@ It follows the MegaDetector output format, version 1.6, which is [documented her
 
 ## Image copies
 
-Copies of your images and videos, sorted into folders, for browsing or sharing in another program. A folder run writes them from its save step; a project writes them from the Export page, where "Image copies" takes the deployments you picked and the same options.
+Copies of your images and videos, sorted into folders, for browsing or sharing in another program. A folder run writes them from its save step; a project writes them from the Export page, under "Image copies". Both show the same options.
 
 What you get, in an `addaxai-media` folder inside the folder you choose:
 
@@ -202,7 +202,7 @@ What you get, in an `addaxai-media` folder inside the folder you choose:
 - The species in the image metadata: the XMP subject tag, which digiKam, Lightroom and most photo managers read as keywords, plus a caption with every detection. Your originals are never changed, only the copies carry the tags.
 - Optionally boxes drawn on each image, and people and vehicles blurred. A video cannot be drawn on, so it gets a still image with the boxes next to it; with blur on, a video is written as its blurred still only.
 
-In a project you can narrow the export: to the deployments you picked, to the files you liked or verified on the Labels page, to a date range, and to the labels you choose. The dialog starts with no label picked, so copying a whole project is a deliberate choice. A file without a capture time is left out as soon as a date is set. The count and the size of what will be written are shown before you start.
+You can narrow what is copied, in a folder run and in a project alike: to the labels you choose, to the files you liked or verified on the Labels page, and to a date range. A project with several cameras also lets you pick which of them. Both start with every label and every camera in, so check the count beside the options before you copy a whole project. A file without a capture time is left out as soon as a date is set. The folder tree, the count and the size of what will be written are shown beside the options before you start.
 
 Exporting again into the same folder replaces its `addaxai-media` folder. Pick another folder if you want to keep both.
 

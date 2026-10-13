@@ -54,6 +54,7 @@ from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.ml.postprocessing_outputs._scope import MediaScope
 from app.ml.postprocessing_outputs.output_preview import build_output_preview
+from app.ml.postprocessing_outputs.separate_folders import keeps_deployment_folder
 from app.models import Deployment, Project
 from app.utils.datetime_serialization import set_active_project_timezone
 
@@ -504,7 +505,7 @@ def preview_media_export(
         # With blur on a video is written as its blurred still.
         videos_as_stills=body.anonymise,
         scope=scope,
-        deployment_folder_in_path=True,
+        deployment_folder_in_path=keeps_deployment_folder(project.mode),
     )
     return OutputPreviewResponse(**preview.to_dict())
 

@@ -26,6 +26,7 @@ from app.ml.postprocessing_outputs.output_preview import (
     build_output_preview,
 )
 from app.ml.postprocessing_outputs.separate_folders import (
+    keeps_deployment_folder,
     separate_into_folders,
 )
 from app.models import Event
@@ -281,3 +282,12 @@ def test_from_payload_reads_the_job_row_shape():
     )
     assert MediaScope.from_payload({}) == MediaScope()
     assert MediaScope.from_payload({"run_id": "x"}).file_clauses() == []
+
+
+def test_the_layout_rule_follows_the_mode_not_the_deployment_count():
+    """A folder run reproduces its own subfolders; every other mode keeps
+    the deployment folder's name in the path. Tied to the mode so a
+    one-camera project's layout does not flip when a camera is added."""
+    assert keeps_deployment_folder("folder_run") is False
+    assert keeps_deployment_folder("research") is True
+    assert keeps_deployment_folder("monitoring") is True

@@ -570,6 +570,20 @@ def _media_source(
     return p, p.name
 
 
+def keeps_deployment_folder(project_mode: str) -> bool:
+    """Whether the deployment folder's own name is kept in the copy path.
+
+    A folder run reproduces the subfolders of the folder it analysed; a
+    project keeps each deployment folder's name under the species folder
+    because it has many of them. The rule follows the mode, not the
+    number of deployments: a count-based rule would flip the layout of a
+    one-camera project's next export the day a second camera is added.
+    The worker and the preview endpoint both read this, so the preview
+    shows the tree the save will write.
+    """
+    return project_mode != "folder_run"
+
+
 def build_deployment_folders(
     db: Session, project_id: str, *, parent_as_root: bool = False
 ) -> dict[str, str]:
@@ -741,20 +755,6 @@ def separate_into_folders(
             # worker throttles these before they reach the WebSocket.
             if progress_cb is not None:
                 progress_cb(i, total)
-            source, out_name = _media_source(file, videos_as_stills)
-            if source is None:
-                result.skipped_missing_source += 1
-                result.errors.append(
-                    f"Video has no best frame on disk: {file.file_path}"
-                )
-                continue
-            if not source.exists():
-                result.skipped_missing_source += 1
-                result.errors.append(
-                    f"Source file no longer on disk: {source}"
-                )
-                continue
-
             if file_is_dropped_by_filter(
                 db, file, threshold, excluded_label_ids
             ):
@@ -778,6 +778,24 @@ def separate_into_folders(
 
             # Empties are skipped from the copies unless opted in.
             if not include_empty and obs_type == "blank":
+                continue
+
+            # The disk checks come after the filters, so a file the user
+            # left out is never reported as missing: an export of one
+            # species from an unplugged drive lists that species' files,
+            # not the whole deployment.
+            source, out_name = _media_source(file, videos_as_stills)
+            if source is None:
+                result.skipped_missing_source += 1
+                result.errors.append(
+                    f"Video has no best frame on disk: {file.file_path}"
+                )
+                continue
+            if not source.exists():
+                result.skipped_missing_source += 1
+                result.errors.append(
+                    f"Source file no longer on disk: {source}"
+                )
                 continue
 
             folder = _folder_for_file(

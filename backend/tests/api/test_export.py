@@ -2969,3 +2969,116 @@ def test_media_prepare_queues_the_save_job_and_the_worker_writes_the_scope(
         "dog/cam01/IMG_1.jpg"
     ]
     assert [p.name for p in out.iterdir()] == ["addaxai-media"]
+
+# ---------------------------------------------------------------------------
+# Media preview for a folder run: the one preview endpoint serves both
+# surfaces. Moved here from test_folder_runs.py when the folder-run
+# endpoint was removed.
+# ---------------------------------------------------------------------------
+
+
+def test_output_preview_endpoint_returns_counts(client, db):
+    """A folder run previews through the shared project endpoint. The
+    response shape matches the schema, and the tree keeps the folder-run
+    layout: no deployment folder segment, because the endpoint reads the
+    layout rule off the project mode, as the worker does."""
+    from tests.conftest import (
+        make_deployment,
+        make_detection,
+        make_file,
+        make_project,
+    )
+
+    project = make_project(
+        db, name="preview-endpoint", mode="folder_run"
+    )
+    dep = make_deployment(db, project_id=project.id)
+    f = make_file(
+        db,
+        deployment_id=dep.id,
+        observation_type="animal",
+        size_bytes=1234,
+    )
+    make_detection(db, file_id=f.id, confidence=0.95, label="dog")
+
+    resp = client.post(
+        f"/api/projects/{project.id}/export/media/preview",
+        json={"separate_group_by": "taxonomic"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total_files"] == 1
+    assert data["image_count"] == 1
+    assert data["video_count"] == 0
+    assert data["total_bytes"] == 1234
+    assert data["files_with_known_size"] == 1
+    assert data["dropped_by_filter"] == 0
+    assert data["in_scope_files"] == 1
+    # Unmapped label under taxonomic grouping → other/<label> (slugged),
+    # no source subfolder so no extra path segment.
+    assert data["by_media_tree"] == {"other/dog": 1}
+
+
+def test_output_preview_honours_excluded_label_ids(client, db):
+    """Excluding the only species drops the file from in-scope."""
+    from tests.conftest import (
+        make_deployment,
+        make_detection,
+        make_file,
+        make_project,
+    )
+
+    project = make_project(
+        db, name="preview-filter", mode="folder_run"
+    )
+    dep = make_deployment(db, project_id=project.id)
+    f = make_file(
+        db,
+        deployment_id=dep.id,
+        observation_type="animal",
+        size_bytes=1234,
+    )
+    make_detection(db, file_id=f.id, confidence=0.95, label="dog")
+
+    resp = client.post(
+        f"/api/projects/{project.id}/export/media/preview",
+        json={"excluded_label_ids": ["dog"]},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["dropped_by_filter"] == 1
+    assert data["in_scope_files"] == 0
+    assert data["by_media_tree"] == {}
+
+
+def test_output_preview_anonymise_reaches_the_estimate(client, db, tmp_path):
+    """``anonymise`` must be declared on the request schema. Pydantic drops
+    a field it does not know without a word (the `run_readme` story), and
+    the footer would then quote the container size for a save that writes
+    blurred stills."""
+    from tests.conftest import make_deployment, make_file, make_project
+
+    project = make_project(db, name="preview-blur", mode="folder_run")
+    dep = make_deployment(db, project_id=project.id)
+    frame = tmp_path / "frame.jpg"
+    frame.write_bytes(b"x" * 100)
+    make_file(
+        db,
+        deployment_id=dep.id,
+        file_path="/cam/clip.mp4",
+        file_type="video",
+        file_format="mp4",
+        observation_type="blank",
+        size_bytes=5000,
+        best_frame_number=0,
+        best_frame_path=str(frame),
+    )
+    url = f"/api/projects/{project.id}/export/media/preview"
+
+    whole = client.post(url, json={"include_empty": True})
+    assert whole.status_code == 200
+    assert whole.json()["in_scope_bytes"] == 5000
+
+    blurred = client.post(url, json={"include_empty": True, "anonymise": True})
+    assert blurred.status_code == 200
+    assert blurred.json()["in_scope_bytes"] == 100

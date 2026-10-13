@@ -64,6 +64,7 @@ from app.ml.postprocessing_outputs.recognition_json import (
 )
 from app.ml.postprocessing_outputs.run_readme import write_run_readme
 from app.ml.postprocessing_outputs.separate_folders import (
+    keeps_deployment_folder,
     separate_into_folders,
 )
 from app.ml.postprocessing_outputs.tables_csv import (
@@ -139,11 +140,10 @@ async def process_save_outputs_job(job_id: str) -> None:
             raise ValueError(f"Project not found: {project_id}")
 
         # Which files, and how they are laid out. A folder-run payload
-        # carries no scope keys and yields the everything-scope; a
-        # project export keeps each deployment folder's name under the
-        # species folder because it has many of them.
+        # without filters yields the everything-scope; the layout rule
+        # lives next to `build_deployment_folders`.
         scope = MediaScope.from_payload(payload)
-        deployment_folder_in_path = project.mode != "folder_run"
+        deployment_folder_in_path = keeps_deployment_folder(project.mode)
 
         # Layout: loose ``addaxai-*`` data files at the output root
         # (which defaults to the source folder itself), media copies

@@ -1,11 +1,14 @@
 /**
  * Form state + submit logic for the Save outputs step.
  *
- * Owns the option state (groups + output dir + filter), spawns the
- * save-outputs background job, and holds the final result payload
- * the JobProgressModal hands back on completion. The page component
- * is responsible for the WebSocket subscription (``useTaskProgress``)
- * and the modal rendering — this hook just exposes the handles.
+ * Owns the export options, the output dir and the run's threshold,
+ * spawns the save-outputs background job, and holds the final result
+ * payload the JobProgressModal hands back on completion. The media
+ * options, their preview and their persistence come from
+ * `useMediaOptions`, the hook the project image copies dialog shares;
+ * this one spreads its handles so the Save step reads one form. The
+ * page component is responsible for the WebSocket subscription
+ * (``useTaskProgress``) and the modal rendering.
  *
  * The output dir defaults to the source folder itself. That is safe
  * because the backend writes media copies into an ``addaxai-media``
@@ -16,28 +19,22 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   folderRunsApi,
   type SaveOutputsRequest,
   type SaveOutputsResult,
 } from "../../../api/folder-runs";
-import {
-  excludedLabelIds,
-  type AnonymiseState,
-  type SeparateState,
-  type VisualiseState,
-} from "./media-options";
-import { eventsApi } from "../../../api/events";
 import { projectsApi } from "../../../api/projects";
-import type { LabelTreeResponse } from "../../../api/types";
 import { DEFAULT_COUNTING_THRESHOLD } from "../../../lib/confidence";
 import { isElectron } from "../../../lib/platform";
-import { getSpeciesNameMode } from "../../../lib/species-name-mode";
 import {
   loadLastUsedSaveOutputs,
   saveLastUsedSaveOutputs,
 } from "../../../lib/folderRunSettings";
+import { useMediaOptions, type MediaFormHandles } from "./useMediaOptions";
+
+export type { MediaFormHandles } from "./useMediaOptions";
 
 export type SpreadsheetFormat = "csv" | "xlsx";
 
@@ -56,61 +53,6 @@ export interface ExportState {
   summary: boolean;
 }
 
-function buildRequest(
-  outputDir: string,
-  separate: SeparateState,
-  visualise: VisualiseState,
-  anonymise: AnonymiseState,
-  exportOpts: ExportState,
-  allLabelIds: string[],
-): SaveOutputsRequest {
-  return {
-    output_dir: outputDir,
-    media_threshold: separate.mediaThreshold,
-    separate_folders: separate.enabled,
-    separate_group_by: separate.groupBy,
-    group_events: separate.groupEvents,
-    separate_species_last: separate.speciesLast,
-    // Visualise / anonymise / copy-empties / species-filter are facets
-    // of the media copy: only emit them when the media output is on.
-    draw_bboxes: separate.enabled && visualise.enabled,
-    anonymise: separate.enabled && anonymise.enabled,
-    include_empty: separate.enabled && separate.copyEmpties,
-    excluded_label_ids: separate.enabled
-      ? excludedLabelIds(separate, allLabelIds)
-      : [],
-    // The backend still takes one flag per format, so the picker maps
-    // onto the two booleans here and no worker code has to change.
-    csv:
-      exportOpts.enabled &&
-      exportOpts.spreadsheet &&
-      exportOpts.format === "csv",
-    xlsx:
-      exportOpts.enabled &&
-      exportOpts.spreadsheet &&
-      exportOpts.format === "xlsx",
-    recognition_json: exportOpts.enabled && exportOpts.recognitionJson,
-    run_readme: exportOpts.enabled && exportOpts.summary,
-    // Burn the user's current name preference into the visualised images
-    // (EXIF still carries both names regardless).
-    name_mode: getSpeciesNameMode(),
-  };
-}
-
-/** The slice of the form the media controls read. `MediaBody` is typed
- * on this rather than the whole hook result, so the project image
- * copies dialog can hand it plain state. */
-export type MediaFormHandles = Pick<
-  UseSaveOutputsFormResult,
-  | "separate"
-  | "setSeparate"
-  | "labelTree"
-  | "visualise"
-  | "setVisualise"
-  | "anonymise"
-  | "setAnonymise"
->;
-
 export interface UseSaveOutputsFormParams {
   runId: string;
   sourceFolder: string | undefined;
@@ -119,22 +61,13 @@ export interface UseSaveOutputsFormParams {
   projectThreshold: number | undefined;
 }
 
-export interface UseSaveOutputsFormResult {
+export interface UseSaveOutputsFormResult extends MediaFormHandles {
   outputDir: string;
   setOutputDir: (v: string) => void;
   /** The dir the form will submit. Defaults to the source folder
    * itself; equal to ``outputDir``. */
   effectiveOutputDir: string;
 
-  separate: SeparateState;
-  setSeparate: (s: SeparateState) => void;
-  /** The run's label tree for the species filter modal, or null when the
-   * run has no taxonomy (filter row hidden). */
-  labelTree: LabelTreeResponse | null;
-  visualise: VisualiseState;
-  setVisualise: (s: VisualiseState) => void;
-  anonymise: AnonymiseState;
-  setAnonymise: (s: AnonymiseState) => void;
   exportOpts: ExportState;
   setExportOpts: (s: ExportState) => void;
 
@@ -208,7 +141,7 @@ export function useSaveOutputsForm({
       setDraggedThreshold(null);
       queryClient.invalidateQueries({ queryKey: ["folder-run", runId] });
       queryClient.invalidateQueries({
-        queryKey: ["folder-run-output-preview"],
+        queryKey: ["media-preview"],
       });
     },
   });
@@ -264,7 +197,7 @@ export function useSaveOutputsForm({
         .then(() => {
           queryClient.invalidateQueries({ queryKey: ["folder-run", runId] });
           queryClient.invalidateQueries({
-            queryKey: ["folder-run-output-preview"],
+            queryKey: ["media-preview"],
           });
         })
         .catch(() => {});
@@ -303,26 +236,12 @@ export function useSaveOutputsForm({
     setOutputDir((cur) => (cur ? cur : sourceFolder));
   }, [sourceFolder]);
 
-  // Seed the option state from the last-used choices (persisted on
-  // Save), falling back to the defaults. Loaded once on mount.
+  // The media card, shared with the project image copies dialog. Its
+  // state is seeded from the same last-used record the export options
+  // below read.
+  const media = useMediaOptions({ projectId: runId });
   const [persisted] = useState(loadLastUsedSaveOutputs);
 
-  const [separate, setSeparate] = useState<SeparateState>(() => ({
-    enabled: persisted?.mediaEnabled ?? false,
-    groupBy: persisted?.groupBy ?? "flat",
-    groupEvents: persisted?.groupEvents ?? true,
-    speciesLast: persisted?.speciesLast ?? false,
-    copyEmpties: persisted?.copyEmpties ?? false,
-    mediaThreshold:
-      persisted?.mediaThreshold ?? DEFAULT_COUNTING_THRESHOLD,
-    includedLabelIds: [],
-  }));
-  const [visualise, setVisualise] = useState<VisualiseState>(() => ({
-    enabled: persisted?.drawBoxes ?? false,
-  }));
-  const [anonymise, setAnonymise] = useState<AnonymiseState>(() => ({
-    enabled: persisted?.blur ?? false,
-  }));
   const [exportOpts, setExportOpts] = useState<ExportState>(() => ({
     enabled: persisted?.exportEnabled ?? true,
     // `spreadsheet` / `format` replaced an older `csv` / `xlsx` pair, so
@@ -339,15 +258,6 @@ export function useSaveOutputsForm({
     recognitionJson: persisted?.recognitionJson ?? true,
     summary: persisted?.summary ?? true,
   }));
-
-  // Label tree for the species filter. Counts by file so the modal
-  // shows "N files" per species. null when the run has no taxonomy.
-  const { data: labelTree } = useQuery({
-    queryKey: ["label-tree", runId, "file"],
-    queryFn: () => eventsApi.getLabelTree(runId, "file"),
-    enabled: !!runId,
-  });
-  const allLabelIds = labelTree?.all_leaf_ids ?? [];
 
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -367,33 +277,36 @@ export function useSaveOutputsForm({
     // reads the project row when it runs, so spawning the job before the
     // PATCH lands is a race the user always loses silently.
     await flushCountingThreshold();
-    // Remember these choices for the next run's Save step (not the
-    // output folder, which is derived per run from the source).
+    // Remember these choices for the next save (not the output folder,
+    // which is derived per run from the source). Each half from the
+    // hook that owns it; the store merges.
     saveLastUsedSaveOutputs({
       exportEnabled: exportOpts.enabled,
       spreadsheet: exportOpts.spreadsheet,
       format: exportOpts.format,
       recognitionJson: exportOpts.recognitionJson,
       summary: exportOpts.summary,
-      mediaEnabled: separate.enabled,
-      groupBy: separate.groupBy,
-      groupEvents: separate.groupEvents,
-      speciesLast: separate.speciesLast,
-      copyEmpties: separate.copyEmpties,
-      mediaThreshold: separate.mediaThreshold,
-      drawBoxes: visualise.enabled,
-      blur: anonymise.enabled,
     });
-    spawn.mutate(
-      buildRequest(
-        effectiveOutputDir,
-        separate,
-        visualise,
-        anonymise,
-        exportOpts,
-        allLabelIds,
-      ),
-    );
+    media.remember();
+    const request: SaveOutputsRequest = {
+      output_dir: effectiveOutputDir,
+      // The same fields the preview was counted with.
+      ...media.requestFields,
+      separate_folders: media.separate.enabled,
+      // The backend still takes one flag per format, so the picker maps
+      // onto the two booleans here and no worker code has to change.
+      csv:
+        exportOpts.enabled &&
+        exportOpts.spreadsheet &&
+        exportOpts.format === "csv",
+      xlsx:
+        exportOpts.enabled &&
+        exportOpts.spreadsheet &&
+        exportOpts.format === "xlsx",
+      recognition_json: exportOpts.enabled && exportOpts.recognitionJson,
+      run_readme: exportOpts.enabled && exportOpts.summary,
+    };
+    spawn.mutate(request);
   };
 
   const saveAll = () => {
@@ -434,23 +347,23 @@ export function useSaveOutputsForm({
     (exportOpts.spreadsheet ||
       exportOpts.recognitionJson ||
       exportOpts.summary);
+  // The media card, when on, must have something to copy: the job wipes
+  // the previous addaxai-media before it writes, so a save with nothing
+  // in scope would only delete. The rule is the shared hook's; the
+  // image copies dialog applies the same one.
+  const mediaOk = !media.separate.enabled || media.hasFilesToCopy;
   const canSave =
     !!effectiveOutputDir &&
     !spawn.isPending &&
     jobId === null &&
-    (separate.enabled || exportPicked);
+    mediaOk &&
+    (media.separate.enabled || exportPicked);
 
   return {
+    ...media,
     outputDir,
     setOutputDir,
     effectiveOutputDir,
-    separate,
-    setSeparate,
-    labelTree: labelTree ?? null,
-    visualise,
-    setVisualise,
-    anonymise,
-    setAnonymise,
     exportOpts,
     setExportOpts,
     countingThreshold,

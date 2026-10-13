@@ -46,11 +46,11 @@ import {
 import { PromoteDialog } from "../../../components/folder-run/PromoteDialog";
 import { LabelFilterModal } from "../../../components/verify/LabelFilterModal";
 import { FolderSelector } from "../../../components/analyses/FolderSelector";
-import { collectIssues, type EmptySelectionMeans } from "./media-options";
-import type {
-  MediaFormHandles,
-  UseSaveOutputsFormResult,
-} from "./useSaveOutputsForm";
+import { ExportScopeSelect } from "../../../components/export/ExportScopeSelect";
+import { DateRangePicker } from "../../../components/ui/date-range-picker";
+import { collectIssues } from "./media-options";
+import type { MediaFormHandles } from "./useMediaOptions";
+import type { UseSaveOutputsFormResult } from "./useSaveOutputsForm";
 
 // ─────────────────────────────────────────────────────────────────
 // Small primitives
@@ -92,6 +92,33 @@ export function CaptionedCheckbox({
   );
 }
 
+/** A settings row with a control on the right: title + muted caption on
+ * the left, the control in a fixed-width column. Fixed, not a fraction,
+ * so a row inside `ChildRows` (indented) gets a control exactly as wide
+ * as the rows around it; with `2fr_1fr` the indent used to shrink the
+ * child's control and the dropdowns no longer lined up. */
+export function SettingRow({
+  title,
+  caption,
+  children,
+}: {
+  title: string;
+  caption: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_16rem] items-center gap-3 py-3 text-sm">
+      <span>
+        {title}
+        <span className="mt-0.5 block text-xs text-muted-foreground">
+          {caption}
+        </span>
+      </span>
+      {children}
+    </div>
+  );
+}
+
 /** Rows that exist only because of the row above them, and that govern
  * only that row's output.
  *
@@ -111,7 +138,13 @@ function ChildRows({ children }: { children: React.ReactNode }) {
   // the full-width rules above and below the group. That difference in
   // length is what the eye reads, and it needs no rule, elbow or dot
   // drawn on top of it: those repeat something already said once.
-  return <div className="pl-6 [&>*+*]:border-t">{children}</div>;
+  // When the group closes a panel, its own last row drops its bottom
+  // padding too, so the panel ends with the same space it starts with.
+  return (
+    <div className="pl-6 [&>*+*]:border-t [&:last-child>*:last-child]:pb-0">
+      {children}
+    </div>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -119,28 +152,29 @@ function ChildRows({ children }: { children: React.ReactNode }) {
 // ─────────────────────────────────────────────────────────────────
 
 export function OutputFolderField({
-  form,
+  value,
+  onChange,
+  caption,
 }: {
-  form: UseSaveOutputsFormResult;
+  value: string;
+  onChange: (v: string) => void;
+  /** What lands there and what is safe. Each surface says its own: the
+   * folder run defaults to the analysed folder and writes data files at
+   * its root too; the project dialog writes only addaxai-media. */
+  caption: string;
 }) {
   return (
     <Card>
       <CardContent className="space-y-3 p-6">
         <div>
           <span className="block text-sm font-semibold">Output folder</span>
-          {/* "images and videos", not "originals": saving again DOES
-              overwrite the addaxai-* data files from a previous save. The
-              promise only holds for the user's own media, which is copied,
-              never modified in place (the worker pins separate_folders to
-              copy mode, and EXIF tags are written to the copy). */}
           <span className="mt-0.5 block text-xs text-muted-foreground">
-            Where everything gets written. Defaults to the folder you
-            analysed. Your original images and videos are never overwritten.
+            {caption}
           </span>
         </div>
         <FolderSelector
-          value={form.outputDir || null}
-          onChange={form.setOutputDir}
+          value={value || null}
+          onChange={onChange}
           hideLabel
           hideScanResult
           noScan
@@ -154,14 +188,7 @@ export function OutputFolderField({
 // Group bodies — used inside every variant
 // ─────────────────────────────────────────────────────────────────
 
-export function MediaBody({
-  form,
-  emptyMeans = "all",
-}: {
-  form: MediaFormHandles;
-  /** What no picked label means; see `EmptySelectionMeans`. */
-  emptyMeans?: EmptySelectionMeans;
-}) {
+export function MediaBody({ form }: { form: MediaFormHandles }) {
   const {
     separate,
     setSeparate,
@@ -170,186 +197,239 @@ export function MediaBody({
     setVisualise,
     anonymise,
     setAnonymise,
+    showDeploymentPicker,
+    dateBounds,
   } = form;
   // Grouping only makes sense once there are species subfolders; with
   // "No subfolders" every file lands flat at the root.
   const showGrouping = separate.groupBy !== "none";
-  // Rows read as three blocks: where the copies go (folder structure and
-  // the two rows it gates), what gets copied (labels, confidence,
-  // empties), then what the copies look like (boxes, blur). The rows
-  // carry no headings, so the order is the only thing grouping them.
+  // Three headed blocks: where the copies go, which files are copied,
+  // what the copies look like. The same body serves the folder-run Save
+  // step and the project image copies dialog, so a user learns it once.
   return (
-    <div className="divide-y [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
-      <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
-        <span>
-          Folder structure
-          <span className="mt-0.5 block text-xs text-muted-foreground">
-            How the copies are organised
-          </span>
-        </span>
-        <Select
-          value={separate.groupBy}
-          onValueChange={(v) =>
-            setSeparate({ ...separate, groupBy: v as typeof separate.groupBy })
-          }
+    <div className="space-y-4">
+      <Block title="Folders">
+        <SettingRow
+          title="Folder structure"
+          caption="How the copies are organised"
         >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">No subfolders</SelectItem>
-            <SelectItem value="flat">One folder per species</SelectItem>
-            <SelectItem value="taxonomic">Nested by taxonomy</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+          <Select
+            value={separate.groupBy}
+            onValueChange={(v) =>
+              setSeparate({ ...separate, groupBy: v as typeof separate.groupBy })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No subfolders</SelectItem>
+              <SelectItem value="flat">One folder per species</SelectItem>
+              <SelectItem value="taxonomic">Nested by taxonomy</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingRow>
 
-      {/* Both only exist once there are species subfolders, so they are
-          children of the row above rather than siblings of it. */}
-      {showGrouping && (
-        <ChildRows>
-          <CaptionedCheckbox
-            checked={separate.groupEvents}
-            onChange={(v) => setSeparate({ ...separate, groupEvents: v })}
-            label="Keep events together"
-            caption="Every file in a burst goes to one folder: the species you verified most often, or else the strongest detection"
-          />
-          <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
-            <span>
-              Folder order
-              <span className="mt-0.5 block text-xs text-muted-foreground">
-                Whether species or your original folders sit on top
-              </span>
-            </span>
-            <Select
-              value={separate.speciesLast ? "species-last" : "species-first"}
-              onValueChange={(v) =>
-                setSeparate({
-                  ...separate,
-                  speciesLast: v === "species-last",
-                })
-              }
+        {/* Both only exist once there are species subfolders, so they are
+            children of the row above rather than siblings of it. */}
+        {showGrouping && (
+          <ChildRows>
+            <CaptionedCheckbox
+              checked={separate.groupEvents}
+              onChange={(v) => setSeparate({ ...separate, groupEvents: v })}
+              label="Keep events together"
+              caption="Every file in an event goes to one folder: the species you verified most often, or else the strongest detection"
+            />
+            <SettingRow
+              title="Folder order"
+              caption="Whether species or your original folders sit on top"
             >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="species-first">
-                  Species folder first
-                </SelectItem>
-                <SelectItem value="species-last">
-                  Species folder last
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </ChildRows>
-      )}
+              <Select
+                value={separate.speciesLast ? "species-last" : "species-first"}
+                onValueChange={(v) =>
+                  setSeparate({
+                    ...separate,
+                    speciesLast: v === "species-last",
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="species-first">
+                    Species folder first
+                  </SelectItem>
+                  <SelectItem value="species-last">
+                    Species folder last
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </SettingRow>
+          </ChildRows>
+        )}
+      </Block>
 
-      {labelTree && labelTree.tree.length > 0 && (
-        <LabelFilterRow
-          form={form}
-          labelTree={labelTree}
-          emptyMeans={emptyMeans}
-        />
-      )}
+      <Block title="Which files">
+        {/* Only when there is something to pick: a folder run has one
+            deployment, a one-camera project too, and neither sees this
+            row. The picker owns its selection and reports the ids. */}
+        {showDeploymentPicker && (
+          <SettingRow
+            title="Deployments"
+            caption="Which cameras to copy from"
+          >
+            <ExportScopeSelect
+              projectId={form.projectId}
+              onChange={(scope) =>
+                setSeparate({ ...separate, deploymentIds: scope?.deploymentIds })
+              }
+              className="w-full min-w-0"
+            />
+          </SettingRow>
+        )}
 
-      <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
+        {labelTree && labelTree.tree.length > 0 && (
+          <LabelFilterRow form={form} labelTree={labelTree} />
+        )}
+
         {/* Named for the media on purpose: the Export results card above
             carries the run's own threshold, and two rows both called
             "Confidence" on one screen is how you get the wrong one. */}
-        <span>
-          Media confidence
-          <span className="mt-0.5 block text-xs text-muted-foreground">
-            Detections below this score are left out of the copies, except
-            ones you verified.
-          </span>
-        </span>
-        <ConfidenceSlider
-          value={separate.mediaThreshold}
-          onChange={(vals) =>
-            setSeparate({ ...separate, mediaThreshold: vals[0] })
-          }
-          adviseBelow={DETECTION_CONFIDENCE_ADVICE}
-          valueLabel={
-            <span className="min-w-[3rem] shrink-0 text-right text-sm font-medium">
-              {formatConfidencePct(separate.mediaThreshold)}
-            </span>
-          }
-          onReset={() =>
-            setSeparate({
-              ...separate,
-              mediaThreshold: DEFAULT_COUNTING_THRESHOLD,
-            })
-          }
-          resetDisabled={
-            Math.abs(separate.mediaThreshold - DEFAULT_COUNTING_THRESHOLD) <
-            1e-6
-          }
+        <SettingRow
+          title="Media confidence"
+          caption="Detections below this score are left out of the copies, except ones you verified."
+        >
+          <ConfidenceSlider
+            value={separate.mediaThreshold}
+            onChange={(vals) =>
+              setSeparate({ ...separate, mediaThreshold: vals[0] })
+            }
+            adviseBelow={DETECTION_CONFIDENCE_ADVICE}
+            valueLabel={
+              <span className="min-w-[3rem] shrink-0 text-right text-sm font-medium">
+                {formatConfidencePct(separate.mediaThreshold)}
+              </span>
+            }
+            onReset={() =>
+              setSeparate({
+                ...separate,
+                mediaThreshold: DEFAULT_COUNTING_THRESHOLD,
+              })
+            }
+            resetDisabled={
+              Math.abs(separate.mediaThreshold - DEFAULT_COUNTING_THRESHOLD) <
+              1e-6
+            }
+          />
+        </SettingRow>
+
+        <SettingRow
+          title="Capture dates"
+          caption="Files without a capture time are left out once a date is set"
+        >
+          <DateRangePicker
+            from={separate.dateFrom}
+            to={separate.dateTo}
+            onChange={(r) =>
+              setSeparate({ ...separate, dateFrom: r.from, dateTo: r.to })
+            }
+            minDate={dateBounds?.min}
+            maxDate={dateBounds?.max}
+          />
+        </SettingRow>
+
+        <CaptionedCheckbox
+          checked={separate.likedOnly}
+          onChange={(v) => setSeparate({ ...separate, likedOnly: v })}
+          label="Only liked files"
+          caption="The files you marked with a heart on the Labels page"
         />
+        <CaptionedCheckbox
+          checked={separate.verifiedOnly}
+          onChange={(v) => setSeparate({ ...separate, verifiedOnly: v })}
+          label="Only verified files"
+          caption="Files where every box was verified"
+        />
+
+        <CaptionedCheckbox
+          checked={separate.copyEmpties}
+          onChange={(v) => setSeparate({ ...separate, copyEmpties: v })}
+          label="Copy empty files"
+          caption="Images and videos with no animals, people, or vehicles"
+        />
+      </Block>
+
+      <Block title="Boxes and blur">
+        <CaptionedCheckbox
+          checked={visualise.enabled}
+          onChange={(v) => setVisualise({ enabled: v })}
+          label="Draw detection boxes"
+          caption="Boxes and labels drawn on each image. A video gets a still image with the boxes next to it, the video itself is not changed"
+        />
+        <CaptionedCheckbox
+          checked={anonymise.enabled}
+          onChange={(v) => setAnonymise({ enabled: v })}
+          label="Blur people and vehicles"
+          caption="People and vehicles blurred on each image. A video cannot be blurred, so it is saved as a blurred still image only"
+        />
+      </Block>
+    </div>
+  );
+}
+
+/** A group of rows in an inset panel with a header strip. The frame and
+ * fill are the ones the preview panel and the "Saved to" box use, so
+ * the step has one inset style. Chosen over a bare caps label, which
+ * nothing else in the app uses, and over whitespace alone, which left
+ * twelve rows without a signpost. */
+function Block({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="overflow-hidden rounded-md border bg-muted/30">
+      <p className="border-b bg-muted/50 px-4 py-2 text-sm font-medium">
+        {title}
+      </p>
+      <div className="divide-y px-4 py-3 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
+        {children}
       </div>
-
-      <CaptionedCheckbox
-        checked={separate.copyEmpties}
-        onChange={(v) => setSeparate({ ...separate, copyEmpties: v })}
-        label="Copy empty files"
-        caption="Images and videos with no animals, people, or vehicles"
-      />
-
-      <CaptionedCheckbox
-        checked={visualise.enabled}
-        onChange={(v) => setVisualise({ enabled: v })}
-        label="Draw detection boxes"
-        caption="Boxes and labels drawn on each image. A video gets a still image with the boxes next to it, the video itself is not changed"
-      />
-      <CaptionedCheckbox
-        checked={anonymise.enabled}
-        onChange={(v) => setAnonymise({ enabled: v })}
-        label="Blur people and vehicles"
-        caption="People and vehicles blurred on each image. A video cannot be blurred, so it is saved as a blurred still image only"
-      />
     </div>
   );
 }
 
 /** Row that opens the shared label-tree modal to limit which labels
  * (species, higher taxa, person, vehicle) get copied and visualised.
- * Inclusion model. Under `emptyMeans: "all"` (the folder-run step) an
- * empty selection means every label, so the request only sends a
- * filter when the user picks a real subset; under `"none"` (the
- * project image copies dialog) it means nothing is picked yet, and the
- * modal opens with nothing ticked. The data exports are never
- * filtered. */
+ * Inclusion model: an empty selection means every label, so the
+ * request only sends a filter when the user picks a real subset. The
+ * same on both surfaces; the preview count is what tells the user how
+ * much a whole-project copy is. The data exports are never filtered. */
 function LabelFilterRow({
   form,
   labelTree,
-  emptyMeans,
 }: {
   form: MediaFormHandles;
   labelTree: NonNullable<MediaFormHandles["labelTree"]>;
-  emptyMeans: EmptySelectionMeans;
 }) {
   const { separate, setSeparate } = form;
   const [open, setOpen] = useState(false);
 
   const allCount = labelTree.all_leaf_ids.length;
   const includedCount = separate.includedLabelIds.length;
-  const isAll =
-    (includedCount === 0 && emptyMeans === "all") || includedCount >= allCount;
+  const isAll = includedCount === 0 || includedCount >= allCount;
   const buttonText = isAll
     ? "All labels"
-    : includedCount === 0
-      ? "No labels picked"
-      : `${includedCount} of ${allCount} labels`;
+    : `${includedCount} of ${allCount} labels`;
 
   return (
-    <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
-      <span>
-        Labels
-        <span className="mt-0.5 block text-xs text-muted-foreground">
-          Which labels to copy and draw boxes for
-        </span>
-      </span>
+    <SettingRow
+      title="Labels"
+      caption="Which labels to copy and draw boxes for"
+    >
       <Button
         variant="outline"
         className="w-full justify-between font-normal"
@@ -362,20 +442,16 @@ function LabelFilterRow({
         preBuiltTree={labelTree.tree}
         allLeafIds={labelTree.all_leaf_ids}
         selectedLabels={separate.includedLabelIds}
-        startEmpty={emptyMeans === "none"}
         onApply={(labels) => {
-          // Under "all", every label ticked is no filter, so the state
-          // stays empty. Under "none" an empty state is "nothing
-          // picked", so every label ticked has to stay the full list.
-          const next =
-            emptyMeans === "all" && labels.length >= allCount ? [] : labels;
+          // Every label ticked is no filter, so the state stays empty.
+          const next = labels.length >= allCount ? [] : labels;
           setSeparate({ ...separate, includedLabelIds: next });
         }}
         open={open}
         onOpenChange={setOpen}
         countUnit={labelTree.count_unit}
       />
-    </div>
+    </SettingRow>
   );
 }
 
@@ -395,13 +471,10 @@ export function ExportBody({
       />
       {exportOpts.spreadsheet && (
         <ChildRows>
-          <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
-            <span>
-              Format
-              <span className="mt-0.5 block text-xs text-muted-foreground">
-                The same tables either way
-              </span>
-            </span>
+          <SettingRow
+            title="Format"
+            caption="The same tables either way"
+          >
             <Select
               value={exportOpts.format}
               onValueChange={(v) =>
@@ -421,7 +494,7 @@ export function ExportBody({
                 </SelectItem>
               </SelectContent>
             </Select>
-          </div>
+          </SettingRow>
           {/* Nested because it governs these tables and not the
               recognition file below, which is unfiltered by design. The
               caption carries the other half: this is the run's own
@@ -429,14 +502,10 @@ export function ExportBody({
               counts with it. It is one number, not an export-only copy,
               which is what keeps the tables from ever disagreeing with
               what the user signed off in step 2. */}
-          <div className="grid grid-cols-[2fr_1fr] items-center gap-3 py-3 text-sm">
-            <span>
-              Detections included
-              <span className="mt-0.5 block text-xs text-muted-foreground">
-                Everything at this detection confidence or above, plus
-                everything you verified.
-              </span>
-            </span>
+          <SettingRow
+            title="Detections included"
+            caption="Everything at this detection confidence or above, plus everything you verified."
+          >
             <ConfidenceSlider
               value={form.countingThreshold}
               onChange={(vals) => form.setCountingThreshold(vals[0])}
@@ -461,7 +530,7 @@ export function ExportBody({
                 ) < 1e-6
               }
             />
-          </div>
+          </SettingRow>
         </ChildRows>
       )}
       <CaptionedCheckbox

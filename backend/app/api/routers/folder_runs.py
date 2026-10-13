@@ -40,7 +40,7 @@ from app.api.schemas.deployment_queue import (
     DeploymentQueueCreate,
     DeploymentQueueResponse,
 )
-from app.api.schemas.export import MediaOptions, OutputPreviewResponse
+from app.api.schemas.export import MediaOptions
 from app.api.schemas.job import JobCreate
 from app.api.schemas.project import ProjectCreate, ProjectResponse
 from app.core.confidence import DEFAULT_COUNTING_THRESHOLD
@@ -49,9 +49,6 @@ from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.ml import detection_checkpoint as ckpt
 from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
-from app.ml.postprocessing_outputs.output_preview import (
-    build_output_preview,
-)
 from app.models import (
     Deployment,
     DeploymentQueue,
@@ -231,18 +228,6 @@ class SaveOutputsRequest(MediaOptions):
     # ``payload.get("run_readme", True)`` fell back to writing it. The
     # checkbox never did anything from the day it shipped.
     run_readme: bool = True
-
-
-class OutputPreviewRequest(MediaOptions):
-    """Body for POST /api/folder-runs/{id}/output-preview.
-
-    The same ``MediaOptions`` as the save request, so the preview counts
-    match what the save will write: the label exclusion set, the media
-    threshold, empties, the name mode, event grouping, the folder layout,
-    and blur (with blur on a video is written as its blurred still, so
-    the byte total and the filename sample follow). ``draw_bboxes`` rides
-    along unused: boxes change no placement and no size.
-    """
 
 
 class DetectionResume(BaseModel):
@@ -916,51 +901,6 @@ def rerun_folder_run(
         f"({time.perf_counter() - started:.1f}s)"
     )
     return _load_run(db, run_id)
-
-
-@router.post(
-    "/{run_id}/output-preview", response_model=OutputPreviewResponse
-)
-def get_output_preview(
-    run_id: str,
-    payload: OutputPreviewRequest | None = None,
-    db: Session = Depends(get_db),
-) -> OutputPreviewResponse:
-    """Return the file / placement counts the Save step uses to
-    render a live folder-tree preview.
-
-    POST so the request body can carry the species exclusion set —
-    a long species list as a query string would be awkward. Pure
-    read; no side effects.
-    """
-    project = crud_project.get_project(db, run_id)
-    if project is None or project.mode != "folder_run":
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Folder run with id '{run_id}' not found",
-        )
-    excluded = (
-        frozenset(payload.excluded_label_ids)
-        if payload and payload.excluded_label_ids
-        else None
-    )
-    preview = build_output_preview(
-        db,
-        run_id,
-        media_threshold=(
-            payload.media_threshold if payload else DEFAULT_COUNTING_THRESHOLD
-        ),
-        excluded_label_ids=excluded,
-        include_empty=bool(payload.include_empty) if payload else False,
-        name_mode=payload.name_mode if payload else "common",
-        group_events=payload.group_events if payload else True,
-        group_by=payload.separate_group_by if payload else "flat",
-        species_last=(
-            payload.separate_species_last if payload else False
-        ),
-        videos_as_stills=bool(payload.anonymise) if payload else False,
-    )
-    return OutputPreviewResponse(**preview.to_dict())
 
 
 @router.post("/{run_id}/save-outputs", response_model=SaveOutputsResponse)

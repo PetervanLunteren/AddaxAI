@@ -203,8 +203,6 @@ export default function ExportPage() {
   // drives, so which ones matters more here than for a download.
   const [jsonScope, setJsonScope] = useState<ExportScope | undefined>(undefined);
   const [jsonDialogOpen, setJsonDialogOpen] = useState(false);
-  // Image copies: its own picker too, for the same reason.
-  const [mediaScope, setMediaScope] = useState<ExportScope | undefined>(undefined);
   const [mediaDialogOpen, setMediaDialogOpen] = useState(false);
 
   // Spatial / CamTrap DP carry a selection into their confirm dialogs.
@@ -235,7 +233,6 @@ export default function ExportPage() {
   // needs no wording of its own.
   const nothingSelected = tableScope?.deploymentIds?.length === 0;
   const jsonNothingSelected = jsonScope?.deploymentIds?.length === 0;
-  const mediaNothingSelected = mediaScope?.deploymentIds?.length === 0;
 
   // One "Spreadsheet" download covering five tables. XLSX is a single
   // workbook; CSV / TSV save one file per table (browsers may show a
@@ -426,22 +423,16 @@ export default function ExportPage() {
 
             <div className="my-6 border-t" />
 
+            {/* No scope picker in the row: which deployments is one of
+                the "which files" choices and sits with the others in the
+                dialog, where it only shows when there is more than one. */}
             <ExportRow
               title="Image copies"
               description="Copies of your images in species folders, with your labels in the image metadata. Optional boxes and blur."
-              filters={
-                projectId ? (
-                  <ExportScopeSelect
-                    projectId={projectId}
-                    onChange={setMediaScope}
-                  />
-                ) : undefined
-              }
               options={[]}
               isLoading={false}
               onSelect={() => undefined}
               error={null}
-              disabled={mediaNothingSelected}
               action={{
                 label: "Choose options",
                 icon: Images,
@@ -490,7 +481,6 @@ export default function ExportPage() {
 
           <ImageCopiesDialog
             projectId={projectId}
-            scope={mediaScope}
             open={mediaDialogOpen}
             onOpenChange={setMediaDialogOpen}
           />

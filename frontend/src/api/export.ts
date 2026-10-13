@@ -7,7 +7,8 @@
 
 import { API_BASE_URL, ApiError, api } from "../lib/api-client";
 import { logger } from "../lib/logger";
-import type { OutputPreview, SeparateGroupBy } from "./folder-runs";
+import type { OutputPreview } from "./folder-runs";
+import type { MediaOptionsRequest } from "../pages/folder-run/save/media-options";
 
 export type ObservationFormat = "csv" | "tsv" | "xlsx";
 
@@ -27,28 +28,11 @@ export interface RecognitionJsonExportResult {
 }
 export type SpatialFormat = "geojson" | "shapefile" | "gpkg";
 
-/** Body of the image copies preview: the folder-run media options plus
- *  which files. Mirrors `MediaExportOptions` on the backend. */
-export interface ImageCopiesOptions {
-  media_threshold: number;
-  separate_group_by: SeparateGroupBy;
-  group_events: boolean;
-  separate_species_last: boolean;
-  include_empty: boolean;
-  /** Labels to leave out (LabelTaxonomy ids or raw label strings). */
-  excluded_label_ids: string[];
-  draw_bboxes: boolean;
-  anonymise: boolean;
-  name_mode: "common" | "scientific";
-  /** Omitted = whole project. Never send an empty list: the backend
-   *  refuses it, and the row is disabled in that state anyway. */
-  deployment_ids?: string[];
-  favorited_only: boolean;
-  verified_only: boolean;
-  /** ISO dates (YYYY-MM-DD), inclusive on whole days. */
-  date_from?: string;
-  date_to?: string;
-}
+/** Body of the image copies preview, and the media half of a folder-run
+ *  save: one mapper on the frontend (`mediaRequestFields`), one schema on
+ *  the backend (`MediaExportOptions`). A folder run previews through the
+ *  same endpoint; it just never sends `deployment_ids`. */
+export type ImageCopiesOptions = MediaOptionsRequest;
 
 export interface ImageCopiesRequest extends ImageCopiesOptions {
   output_dir: string;
@@ -199,9 +183,9 @@ export const exportApi = {
       withScope(`/api/projects/${projectId}/export/recognition-json/prepare`, scope),
     ),
 
-  /** What the image copies export would write (counts, bytes, folder
-   *  tree), for the dialog's summary line. Same shape as the folder-run
-   *  Save step's preview. */
+  /** What the media copies would write (counts, bytes, folder tree),
+   *  for the tree preview beside the options. The one preview endpoint:
+   *  the folder-run Save step calls it with its run id as the project. */
   previewImageCopies: (
     projectId: string,
     body: ImageCopiesOptions,

@@ -61,12 +61,13 @@ export function LabelFilterField({
 
   // Every live label ticked is the same as no filter, and keeps the URL
   // clean. Dead leaves (nothing under the page's filters) cannot be
-  // ticked, so they do not count towards "everything".
+  // ticked, so they do not count towards "everything". The modal never
+  // applies an empty pick.
   const apply = (labels: string[]) => {
     const live = labelTree ? collectLiveLeafIds(labelTree.tree) : null;
     const everything =
       live !== null && [...live].every((id) => labels.includes(id));
-    onChange(labels.length === 0 || everything ? undefined : labels);
+    onChange(everything ? undefined : labels);
   };
 
   if (labelTree !== undefined && !hasTree) {

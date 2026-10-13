@@ -38,10 +38,11 @@ class RecognitionJsonExportResult(BaseModel):
 
 class MediaOptions(BaseModel):
     """The options behind the media copies, shared by the folder-run Save
-    step (``SaveOutputsRequest``, ``OutputPreviewRequest``) and the
-    project image copies export. One definition, so the two surfaces
-    cannot offer different knobs, and the field names are the keys the
-    save-outputs worker reads off the job payload."""
+    step (``SaveOutputsRequest``) and the project image copies export
+    (``MediaExportOptions``, which both surfaces also use for the
+    preview). One definition, so the two surfaces cannot offer different
+    knobs, and the field names are the keys the save-outputs worker reads
+    off the job payload."""
 
     # Media-output confidence: detections below it (unless verified) are
     # left out of the separated copies, drawn boxes, blurs, and EXIF
@@ -83,22 +84,25 @@ class MediaOptions(BaseModel):
     # the saved images match what the user sees. EXIF metadata always
     # carries both names regardless of this choice.
     name_mode: Literal["common", "scientific"] = "common"
+    # Which files, on top of the label filter and the threshold: the
+    # files the user liked or verified on the Labels page, and a capture
+    # date range, inclusive on whole days. Files without a capture time
+    # drop out as soon as either date is set. Read by the worker through
+    # ``MediaScope.from_payload`` for a folder run and a project alike.
+    favorited_only: bool = False
+    verified_only: bool = False
+    date_from: date | None = None
+    date_to: date | None = None
 
 
 class MediaExportOptions(MediaOptions):
     """Body of ``POST .../export/media/preview``: the media options plus
-    which files. Mirrored by ``MediaScope`` on the worker side."""
+    which deployments. A folder run has one deployment and sends none."""
 
-    # None = every deployment of the project. The Export page's scope
-    # picker sends ids only; an empty list is refused by the prepare
-    # endpoint (see there).
+    # None = every deployment of the project. The media form's picker
+    # sends ids only; an empty list is refused by the prepare endpoint
+    # (see there).
     deployment_ids: list[str] | None = None
-    favorited_only: bool = False
-    verified_only: bool = False
-    # Inclusive on whole days. Files without a capture time drop out as
-    # soon as either is set.
-    date_from: date | None = None
-    date_to: date | None = None
 
 
 class MediaExportRequest(MediaExportOptions):

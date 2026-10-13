@@ -327,6 +327,29 @@ def test_media_export_job_copies_only_the_scope_and_no_data_files(
     assert [p.name for p in out.iterdir()] == [MEDIA_SUBDIR]
 
 
+def test_folder_run_save_honours_the_shared_file_filters(
+    db, tmp_path, monkeypatch
+):
+    """The liked / verified / date filters are plain media options, so a
+    folder run sends them like a project does and the worker's scope
+    reads them off a `run_id` payload. One of two files is verified: one
+    copy, in the folder-run layout (no deployment folder segment)."""
+    from app.models import File
+
+    project_id, out = _seed_run(db, tmp_path, n_files=2)
+    first = db.query(File).order_by(File.file_path).first()
+    first.verified = True
+    db.commit()
+
+    job = _run_save(db, monkeypatch, project_id, out, verified_only=True)
+
+    assert job.status == "completed", job.error
+    media = out / MEDIA_SUBDIR
+    copies = sorted(p.relative_to(media).as_posix() for p in media.rglob("*.jpg"))
+    assert copies == ["person/IMG_000.jpg"]
+    assert job.result["source_file_count"] == 1
+
+
 def test_cancel_lands_inside_a_module_not_only_between_them(
     db, tmp_path, monkeypatch
 ):
