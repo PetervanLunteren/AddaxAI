@@ -224,4 +224,4 @@ What you set on the Counts page goes into the same fields: `sex`, `lifeStage` an
 
 ## AddaxAI bundle
 
-A folder with your labels, corrections and counts for some or all deployments, which another AddaxAI opens. It is named after the project and ends in `.addaxai-bundle`. See [work as a team or on another computer](../guides/work-as-a-team.mdx).
+A folder with your labels, corrections and counts for some or all deployments, which another AddaxAI opens. It is named after the project and ends in `.addaxai-bundle`. See [work as a team](../guides/work-as-a-team.mdx).
