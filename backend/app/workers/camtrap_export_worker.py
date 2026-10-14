@@ -1,21 +1,21 @@
-"""Camtrap DP export worker — builds a Camtrap DP ZIP with progress.
+"""Camtrap DP export worker: builds a Camtrap DP ZIP with progress and
+writes it into the folder the user picked, as
+``camtrap-dp-<project>-<date>.zip`` (``_2`` and up when the name is taken).
 
-Runs async so the frontend can show real-time progress via the
-existing ws_manager / useTaskProgress plumbing. The finished ZIP is
-written to a temp file; the router streams it back when the browser
-follows up to the /download endpoint.
+Runs async so the frontend can show real-time progress via the existing
+ws_manager / useTaskProgress plumbing.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json as _json
-import tempfile
 from pathlib import Path
 
 from app.api.crud import export as export_crud
 from app.api.crud import export_formats
 from app.api.crud import job as job_crud
+from app.api.schemas.job import JobUpdate
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
@@ -35,8 +35,10 @@ async def process_camtrap_export_job(job_id: str) -> None:
         payload = job.payload or {}
         project_id = payload.get("project_id")
         include_thumbnails = bool(payload.get("include_thumbnails", False))
-        if not project_id:
-            raise ValueError("Missing project_id in job payload")
+        deployment_ids = payload.get("deployment_ids")
+        output_dir = payload.get("output_dir")
+        if not project_id or not output_dir:
+            raise ValueError("Missing project_id / output_dir in job payload")
 
         project = db.query(Project).filter(Project.id == project_id).first()
         if project is None:
@@ -47,14 +49,16 @@ async def process_camtrap_export_job(job_id: str) -> None:
         job_crud.update_job_status(db, job_id, "running")
         await ws_manager.send_progress(job_id, "Building tables...", 0.0)
 
-        scoped = export_crud.get_scoped_detection_rows(db, project)
+        scoped = export_crud.get_scoped_detection_rows(
+            db, project, deployment_ids=deployment_ids
+        )
         (
             deps_rows,
             media_rows,
             obs_rows,
             datapackage,
             skipped_deployment_ids,
-        ) = export_crud.build_camtrap_dp_tables(db, project, scoped)
+        ) = export_crud.build_camtrap_dp_tables(db, project, scoped, deployment_ids)
         deps_h, media_h, obs_h = export_crud.camtrap_dp_headers()
 
         thumbnails: dict[str, bytes] | None = None
@@ -132,33 +136,22 @@ async def process_camtrap_export_job(job_id: str) -> None:
             thumbnails=thumbnails,
         )
 
-        tmp_dir = Path(tempfile.gettempdir()) / "addaxai-camtrap-exports"
-        tmp_dir.mkdir(parents=True, exist_ok=True)
-        tmp_path = tmp_dir / f"{job_id}.zip"
-        tmp_path.write_bytes(zip_bytes)
+        path = export_formats.unique_export_path(
+            Path(output_dir),
+            export_formats.export_file_name(project.name, "camtrap-dp", "zip"),
+        )
+        path.write_bytes(zip_bytes)
+        result = {"output_dir": output_dir, "files": [path.name]}
 
-        # Store the temp path on the job so the /download endpoint can
-        # find it later. Overwrite payload to keep it simple.
-        refreshed = job_crud.get_job(db, job_id)
-        if refreshed is not None:
-            refreshed.payload = {
-                **(refreshed.payload or {}),
-                "zip_path": str(tmp_path),
-                "total_files": len(media_rows),
-                "skipped_deployment_ids": list(skipped_deployment_ids),
-            }
-            db.commit()
-
-        job_crud.update_job_status(db, job_id, "completed")
+        job_crud.update_job(
+            db, job_id, JobUpdate(status="completed", result=result)
+        )
         await ws_manager.send_complete(
-            job_id=job_id,
-            success=True,
-            message="Export ready",
-            data={"download_ready": True, "total_files": len(media_rows)},
+            job_id=job_id, success=True, message="Export written", data=result
         )
         logger.info(
             f"CamtrapDP export job {job_id} done: {len(media_rows)} media rows, "
-            f"thumbnails={len(thumbnails) if thumbnails else 0}, path={tmp_path}"
+            f"thumbnails={len(thumbnails) if thumbnails else 0}, path={path}"
         )
 
     except Exception as e:

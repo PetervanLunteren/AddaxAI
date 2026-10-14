@@ -27,6 +27,8 @@ JobType = Literal[
     "recognition_json_export",
     "folder_run_save_outputs",
     "media_export",
+    "package_export",
+    "package_import",
 ]
 JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 

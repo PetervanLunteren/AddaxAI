@@ -1,8 +1,8 @@
-"""Schemas for the project export endpoints that answer with JSON rather
-than a file: the recognition-file export, which writes into the
-deployment folders and reports what it did per deployment, and the
-image copies export, which shares its media options with the folder-run
-Save step."""
+"""Schemas for the project export endpoints. Every export writes into a
+folder: the tables, spatial layers and Camtrap DP into the folder the
+user picks (`ExportTarget`), the recognition file into each deployment
+folder, the image copies into `addaxai-media` inside the picked folder
+(their options are shared with the folder-run Save step)."""
 
 from datetime import date
 from typing import Literal
@@ -132,3 +132,34 @@ class OutputPreviewResponse(BaseModel):
     in_scope_bytes: int
     by_media_tree: dict[str, int]
     root_files: list[str]
+
+
+class ExportTarget(BaseModel):
+    """Where an export goes and which deployments it covers."""
+
+    output_dir: str = Field(..., min_length=1)
+    # None = every deployment of the project. An empty list is refused.
+    deployment_ids: list[str] | None = None
+
+
+class TablesExportRequest(ExportTarget):
+    """XLSX: one workbook with five sheets. CSV / TSV: five files."""
+
+    format: Literal["xlsx", "csv", "tsv"] = "xlsx"
+
+
+class SpatialExportRequest(ExportTarget):
+    format: Literal["gpkg", "geojson", "shapefile"] = "gpkg"
+
+
+class CamtrapExportRequest(ExportTarget):
+    # JPEG thumbnails bundled under `media/` in the ZIP, so the package
+    # stands on its own.
+    include_thumbnails: bool = False
+
+
+class WrittenFiles(BaseModel):
+    """What an export wrote: the folder and the file names in it."""
+
+    output_dir: str
+    files: list[str]

@@ -8,13 +8,19 @@ schema at head. So the helpers here work in raw SQL against whatever
 the schema happens to be at the revision under test.
 """
 
+import sqlite3
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 from sqlalchemy import Connection, create_engine, text
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings
+from app.db.migrations import upgrade_to_head
+from app.ml.taxonomy_db import ensure_builtin_labels
 
 
 @pytest.fixture()
@@ -114,3 +120,43 @@ def seed_deployment(conn: Connection) -> tuple[str, str]:
     project_id = insert_row(conn, "projects", name="Test project")
     deployment_id = insert_row(conn, "deployments", project_id=project_id)
     return project_id, deployment_id
+
+
+# ---------------------------------------------------------------------------
+# Machines: a whole AddaxAI data dir in a temp folder, for the project
+# package tests, which move rows between two real database files.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Machine:
+    settings: Settings
+    engine: Engine
+    sessions: sessionmaker[Session]
+
+    @property
+    def db_path(self) -> Path:
+        return self.settings.user_data_dir / "addaxai.db"
+
+    def session(self) -> Session:
+        return self.sessions()
+
+    def rows(self, table: str) -> list[tuple]:
+        with sqlite3.connect(self.db_path) as conn:
+            return conn.execute(f"SELECT * FROM {table} ORDER BY 1").fetchall()  # noqa: S608
+
+    def count(self, table: str) -> int:
+        return len(self.rows(table))
+
+
+def make_machine(root: Path) -> Machine:
+    root.mkdir(parents=True, exist_ok=True)
+    settings = Settings(
+        user_data_dir=root, database_url=f"sqlite:///{root / 'addaxai.db'}"
+    )
+    upgrade_to_head(settings.database_url)
+    engine = create_engine(settings.database_url, future=True)
+    sessions = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    with sessions() as db:
+        ensure_builtin_labels(db)
+    return Machine(settings=settings, engine=engine, sessions=sessions)

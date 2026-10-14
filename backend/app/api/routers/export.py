@@ -1,30 +1,22 @@
 """
-Export endpoints for project data.
+Export endpoints for project data. Every export writes into a folder and
+answers with what it wrote; nothing is a browser download.
 
-Streaming endpoints, one per export type:
+- ``/tables``: Summary, Counts, Detections, Files and Deployments, as one
+  XLSX workbook or five CSV / TSV files.
+- ``/spatial``: GIS layers as GeoPackage, GeoJSON or a Shapefile ZIP.
+- ``/camtrap-dp/prepare``: a job writing a Camera Trap Data Package ZIP.
+- ``/recognition-json/prepare``: a job writing the Timelapse recognition
+  file into each deployment folder in scope.
+- ``/media/preview`` and ``/media/prepare``: the image copies export, the
+  folder-run Save step's media modules, scoped and into a picked folder.
+- ``/package/size`` and ``/package/prepare``: the project package, a
+  folder another AddaxAI imports (``app/services/project_package.py``).
 
-- ``/deployments``: one row per deployment (location + effort: site,
-  coordinates, date span, trap-nights) in CSV / TSV / XLSX.
-- ``/files``: one row per media file, including empties (the membership
-  table) in CSV / TSV / XLSX.
-- ``/detections``: flat one-row-per-detection (the labels grain) in
-  CSV / TSV / XLSX.
-- ``/observations``: event-level one-row-per-species-per-event with the
-  effective count (the Counts grain) in CSV / TSV / XLSX.
-- ``/summary``: one row per species / category with counts over the other
-  tables (the overview) in CSV / TSV / XLSX.
-- ``/spreadsheet``: combined XLSX with Summary, Counts, Detections, Files
-  and Deployments sheets for the one format that holds several tables in
-  one file.
-- ``/spatial``: GIS layers in GeoJSON / Shapefile (ZIP) / GeoPackage.
-- ``/camtrap-dp``: Camera Trap Data Package v1.0 (GBIF-compatible) as a ZIP.
-- ``/recognition-json/prepare``: not a download. A job that writes the
-  Timelapse recognition file into each deployment folder in scope and
-  reports per deployment on completion.
-- ``/media/preview`` and ``/media/prepare``: the image copies export.
-  The same media modules and worker as a folder run's Save step, scoped
-  to deployments and file filters, writing into a folder the user picks.
-
+Every export takes the same ``ExportTarget``: a folder that must exist,
+and the deployments to cover. A file never overwrites one already there
+(``export_formats.unique_export_path``); names are
+``<kind>-<project>-<date>.<ext>`` (``export_formats.export_file_name``).
 See ``app/api/crud/export.py`` for the data layer and
 ``app/api/crud/export_formats.py`` for the serializers.
 """
@@ -32,30 +24,38 @@ See ``app/api/crud/export.py`` for the data layer and
 from __future__ import annotations
 
 import asyncio
-from datetime import date
-from io import BytesIO
+from collections.abc import Callable
 from pathlib import Path
-from typing import Literal
+from typing import TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.api.crud import export as export_crud
 from app.api.crud import export_formats
 from app.api.crud import job as job_crud
 from app.api.schemas.export import (
+    CamtrapExportRequest,
     MediaExportOptions,
     MediaExportRequest,
     OutputPreviewResponse,
+    SpatialExportRequest,
+    TablesExportRequest,
+    WrittenFiles,
 )
 from app.api.schemas.job import JobCreate
+from app.api.schemas.package import (
+    PackageExportRequest,
+    PackageSizeResponse,
+)
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.ml.postprocessing_outputs._scope import MediaScope
 from app.ml.postprocessing_outputs.output_preview import build_output_preview
 from app.ml.postprocessing_outputs.separate_folders import keeps_deployment_folder
-from app.models import Deployment, Project
+from app.models import Deployment, File, Project
+from app.services.project_package import PackageError, package_destination
 from app.utils.datetime_serialization import set_active_project_timezone
 
 router = APIRouter(prefix="/api/projects/{project_id}/export", tags=["Export"])
@@ -81,271 +81,179 @@ def _resolve_project(project_id: str, db: Session) -> Project:
     return project
 
 
-def _filename_base(project: Project, kind: str) -> str:
-    slug = export_formats.slugify(project.name)
-    today = date.today().isoformat()
-    return f"{kind}-{slug}-{today}"
+def _scope(
+    db: Session, project: Project, deployment_ids: list[str] | None
+) -> list[str] | None:
+    """The deployments an export covers: the picked ones, or None for the
+    whole project.
+
+    An explicit empty list is refused: `resolve_scope_deployment_ids`
+    reads it as "no scope", so it would export the whole project. The
+    dialogs disable Start in that state; this is the server's own guard.
+    Ids from another project are dropped by the same helper.
+    """
+    if deployment_ids is not None and len(deployment_ids) == 0:
+        raise HTTPException(status_code=422, detail="No deployments selected")
+    return export_crud.resolve_scope_deployment_ids(db, project, None, deployment_ids)
 
 
-def _attachment_headers(filename: str) -> dict[str, str]:
-    return {"Content-Disposition": f'attachment; filename="{filename}"'}
+async def _output_dir(path: str) -> Path:
+    """The picked folder, which must exist. Checked off the loop: a
+    network drive that is asleep answers a stat in seconds."""
+    folder = Path(path)
+    if not await asyncio.to_thread(folder.is_dir):
+        raise HTTPException(
+            status_code=400, detail="Choose a folder to save the export in"
+        )
+    return folder
 
 
-def _tabular_response(
-    headers: list[str],
-    rows: list[list[object]],
-    base: str,
-    sheet_title: str,
-    format: str,
-) -> StreamingResponse:
-    """Serialize (headers, rows) to CSV / TSV / XLSX as a download."""
-    if format == "xlsx":
-        try:
-            payload = export_formats.serialize_xlsx(
-                headers, rows, sheet_title=sheet_title
-            )
-        except export_formats.XlsxRowLimitError as e:
-            # The message names the table, its size and the CSV way out,
-            # and `fetchBlob` in the frontend surfaces a string `detail`
-            # verbatim in the Export page's error box.
-            raise HTTPException(status_code=422, detail=str(e)) from e
-        return StreamingResponse(
-            BytesIO(payload),
-            media_type=(
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+def _require_a_site(
+    db: Session, project: Project, scope: list[str] | None, export: str
+) -> None:
+    """422 when no deployment in scope has a site. Both location exports
+    leave deployments without coordinates out, so with none left they
+    would write an empty file."""
+    with_site = db.query(Deployment.id).filter(
+        Deployment.project_id == project.id, Deployment.site_id.isnot(None)
+    )
+    if scope is not None:
+        with_site = with_site.filter(Deployment.id.in_(scope))
+    if with_site.first() is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"{export} needs at least one deployment with a camera site: "
+                "deployments without a site have no coordinates and are left out."
             ),
-            headers=_attachment_headers(f"{base}.xlsx"),
         )
-    if format == "tsv":
-        payload = export_formats.serialize_tsv(headers, rows)
-        return StreamingResponse(
-            BytesIO(payload),
-            media_type="text/tab-separated-values",
-            headers=_attachment_headers(f"{base}.tsv"),
-        )
-    payload = export_formats.serialize_csv(headers, rows)
-    return StreamingResponse(
-        BytesIO(payload),
-        media_type="text/csv",
-        headers=_attachment_headers(f"{base}.csv"),
-    )
 
 
-@router.get("/deployments")
-async def export_deployments(
+_T = TypeVar("_T")
+
+
+async def _write(build_and_write: Callable[[], _T]) -> _T:
+    """Build an export and write it, off the event loop: a large project
+    must not freeze every other request, and the thread inherits the
+    project timezone. A folder the user cannot write to is a 400 that
+    says why, not a bare 500."""
+    try:
+        return await asyncio.to_thread(build_and_write)
+    except OSError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not write to that folder: {e.strerror or e}",
+        ) from e
+
+
+# The five tables, in the workbook's sheet order, as the kind in their
+# CSV / TSV file names.
+_TABLE_FILE_NAMES = {
+    "Summary": "summary",
+    "Counts": "counts",
+    "Detections": "detections",
+    "Files": "files",
+    "Deployments": "deployments",
+}
+
+
+@router.post("/tables", response_model=WrittenFiles)
+async def export_tables(
     project_id: str,
-    format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
-    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
-    deployment_ids: str | None = Query(
-        None, description="Comma-separated deployment IDs"
-    ),
+    body: TablesExportRequest,
     db: Session = Depends(get_db),
-) -> StreamingResponse:
-    """Location / effort table: one row per deployment (site + trap-nights)."""
-    project = _resolve_project(project_id, db)
-    scope = export_crud.resolve_scope_deployment_ids(
-        db, project, _parse_ids(site_ids), _parse_ids(deployment_ids)
-    )
-    headers, rows = export_crud.build_deployments_rows(db, project, scope)
-    base = _filename_base(project, "deployments")
-    return _tabular_response(headers, rows, base, "Deployments", format)
+) -> WrittenFiles:
+    """Summary, Counts, Detections, Files and Deployments.
 
-
-@router.get("/files")
-async def export_files(
-    project_id: str,
-    format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
-    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
-    deployment_ids: str | None = Query(
-        None, description="Comma-separated deployment IDs"
-    ),
-    db: Session = Depends(get_db),
-) -> StreamingResponse:
-    """Media / membership table: one row per file, including empties."""
-    project = _resolve_project(project_id, db)
-    scope = export_crud.resolve_scope_deployment_ids(
-        db, project, _parse_ids(site_ids), _parse_ids(deployment_ids)
-    )
-    headers, rows = export_crud.build_files_rows(db, project, scope)
-    base = _filename_base(project, "files")
-    return _tabular_response(headers, rows, base, "Files", format)
-
-
-@router.get("/detections")
-async def export_detections(
-    project_id: str,
-    format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
-    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
-    deployment_ids: str | None = Query(
-        None, description="Comma-separated deployment IDs"
-    ),
-    db: Session = Depends(get_db),
-) -> StreamingResponse:
-    """Flat detections: one row per detection (the labels grain)."""
-    project = _resolve_project(project_id, db)
-    scope = export_crud.resolve_scope_deployment_ids(
-        db, project, _parse_ids(site_ids), _parse_ids(deployment_ids)
-    )
-    scoped = export_crud.get_scoped_detection_rows(
-        db, project, deployment_ids=scope
-    )
-    headers, rows = export_crud.build_detection_rows(db, project, scoped)
-    base = _filename_base(project, "detections")
-    return _tabular_response(headers, rows, base, "Detections", format)
-
-
-@router.get("/observations")
-async def export_observations(
-    project_id: str,
-    format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
-    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
-    deployment_ids: str | None = Query(
-        None, description="Comma-separated deployment IDs"
-    ),
-    db: Session = Depends(get_db),
-) -> StreamingResponse:
-    """Event-level observations: one row per species per event with count."""
-    project = _resolve_project(project_id, db)
-    scope = export_crud.resolve_scope_deployment_ids(
-        db, project, _parse_ids(site_ids), _parse_ids(deployment_ids)
-    )
-    headers, rows = export_crud.build_observation_rows(db, project, scope)
-    base = _filename_base(project, "counts")
-    return _tabular_response(headers, rows, base, "Counts", format)
-
-
-@router.get("/summary")
-async def export_summary(
-    project_id: str,
-    format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
-    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
-    deployment_ids: str | None = Query(
-        None, description="Comma-separated deployment IDs"
-    ),
-    db: Session = Depends(get_db),
-) -> StreamingResponse:
-    """Summary: one row per species / category with counts over the other tables."""
-    project = _resolve_project(project_id, db)
-    scope = export_crud.resolve_scope_deployment_ids(
-        db, project, _parse_ids(site_ids), _parse_ids(deployment_ids)
-    )
-    scoped = export_crud.get_scoped_detection_rows(
-        db, project, deployment_ids=scope
-    )
-    headers, rows = export_crud.build_summary_rows(db, project, scoped, scope)
-    base = _filename_base(project, "summary")
-    return _tabular_response(headers, rows, base, "Summary", format)
-
-
-@router.get("/spreadsheet")
-async def export_spreadsheet(
-    project_id: str,
-    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
-    deployment_ids: str | None = Query(
-        None, description="Comma-separated deployment IDs"
-    ),
-    db: Session = Depends(get_db),
-) -> StreamingResponse:
-    """Combined workbook: Summary, Counts, Detections, Files and Deployments
-    sheets.
-
-    XLSX only, the one format that holds several tables in a single file.
-    For CSV / TSV the client downloads the five single-table endpoints
-    instead, in the same order.
+    XLSX writes one workbook with five sheets, streamed to disk; CSV and
+    TSV write five files.
     """
     project = _resolve_project(project_id, db)
-    scope = export_crud.resolve_scope_deployment_ids(
-        db, project, _parse_ids(site_ids), _parse_ids(deployment_ids)
-    )
-    sheets = export_crud.build_spreadsheet_sheets(db, project, scope)
+    scope = _scope(db, project, body.deployment_ids)
+    folder = await _output_dir(body.output_dir)
+
+    def build_and_write() -> list[str]:
+        sheets = export_crud.build_spreadsheet_sheets(db, project, scope)
+        if body.format == "xlsx":
+            path = export_formats.unique_export_path(
+                folder, export_formats.export_file_name(project.name, "spreadsheet", "xlsx")
+            )
+            export_formats.write_xlsx_multi(sheets, path)
+            return [path.name]
+        serialize = (
+            export_formats.serialize_csv
+            if body.format == "csv"
+            else export_formats.serialize_tsv
+        )
+        names = []
+        for title, headers, rows in sheets:
+            path = export_formats.unique_export_path(
+                folder,
+                export_formats.export_file_name(
+                    project.name, _TABLE_FILE_NAMES[title], body.format
+                ),
+            )
+            path.write_bytes(serialize(headers, rows))
+            names.append(path.name)
+        return names
+
     try:
-        payload = export_formats.serialize_xlsx_multi(sheets)
+        files = await _write(build_and_write)
     except export_formats.XlsxRowLimitError as e:
+        # The message names the table, its size and the CSV way out.
         raise HTTPException(status_code=422, detail=str(e)) from e
-    base = _filename_base(project, "spreadsheet")
-    return StreamingResponse(
-        BytesIO(payload),
-        media_type=(
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        ),
-        headers=_attachment_headers(f"{base}.xlsx"),
-    )
+    return WrittenFiles(output_dir=str(folder), files=files)
 
 
-@router.get("/spatial")
+_SPATIAL_WRITERS = {
+    "gpkg": ("gpkg", export_formats.serialize_geopackage),
+    "geojson": ("geojson", export_formats.serialize_geojson),
+    "shapefile": ("zip", export_formats.serialize_shapefile_zip),
+}
+
+
+@router.post("/spatial", response_model=WrittenFiles)
 async def export_spatial(
     project_id: str,
-    format: Literal["geojson", "shapefile", "gpkg"] = Query("geojson"),
+    body: SpatialExportRequest,
     db: Session = Depends(get_db),
-) -> StreamingResponse:
-    """Spatial layers (deployments, species summary)."""
+) -> WrittenFiles:
+    """Spatial layers (deployments, species summary). Deployments without
+    a site have no coordinates and are left out; the dialog says so."""
     project = _resolve_project(project_id, db)
-    scoped = export_crud.get_scoped_detection_rows(db, project)
-    # Deployments with no site are dropped from the layers (GeoJSON needs
-    # coordinates). Their ids are not returned to the client: the Export
-    # page already warns before the download, via SpatialExportConfirmDialog
-    # driven by /deployments-without-site, so a response header saying the
-    # same thing had no reader and was dead weight on the API.
-    layers, _skipped_deployment_ids = export_crud.build_spatial_layers(
-        db, project, scoped
-    )
+    scope = _scope(db, project, body.deployment_ids)
+    _require_a_site(db, project, scope, "A spatial export")
+    folder = await _output_dir(body.output_dir)
+    extension, serialize = _SPATIAL_WRITERS[body.format]
 
-    base = _filename_base(project, "spatial")
-    if format == "shapefile":
-        payload = export_formats.serialize_shapefile_zip(layers)
-        media_type = "application/zip"
-        filename = f"{base}.zip"
-    elif format == "gpkg":
-        payload = export_formats.serialize_geopackage(layers)
-        media_type = "application/geopackage+sqlite3"
-        filename = f"{base}.gpkg"
-    else:
-        payload = export_formats.serialize_geojson(layers)
-        media_type = "application/geo+json"
-        filename = f"{base}.geojson"
+    def build_and_write() -> str:
+        scoped = export_crud.get_scoped_detection_rows(db, project, deployment_ids=scope)
+        layers, _skipped = export_crud.build_spatial_layers(db, project, scoped, scope)
+        path = export_formats.unique_export_path(
+            folder, export_formats.export_file_name(project.name, "spatial", extension)
+        )
+        path.write_bytes(serialize(layers))
+        return path.name
 
-    return StreamingResponse(
-        BytesIO(payload),
-        media_type=media_type,
-        headers=_attachment_headers(filename),
-    )
+    name = await _write(build_and_write)
+    return WrittenFiles(output_dir=str(folder), files=[name])
 
 
 @router.post("/camtrap-dp/prepare", status_code=202)
 async def prepare_camtrap_dp(
     project_id: str,
-    include_thumbnails: bool = Query(
-        False,
-        description=(
-            "When true, generate JPEG thumbnails for every media file and "
-            "bundle them under `media/` in the ZIP with paths rewritten to "
-            "relative names. Resulting package is self-contained."
-        ),
-    ),
+    body: CamtrapExportRequest,
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
-    """Start a CamTrap DP export job. Returns `job_id` the client uses
-    to track progress via WebSocket and then follow the `/download`
-    endpoint to fetch the finished ZIP.
+    """Start a Camtrap DP job. It writes ``camtrap-dp-<project>-<date>.zip``
+    into the picked folder and reports it on completion over the job WebSocket.
     """
     project = _resolve_project(project_id, db)
+    scope = _scope(db, project, body.deployment_ids)
+    folder = await _output_dir(body.output_dir)
 
-    has_deployment_with_site = (
-        db.query(Deployment.id)
-        .filter(Deployment.project_id == project.id)
-        .filter(Deployment.site_id.isnot(None))
-        .first()
-        is not None
-    )
-    if not has_deployment_with_site:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "Camtrap DP requires at least one deployment with a camera "
-                "site (deployments without a site have no lat/lon and are "
-                "excluded from this format)."
-            ),
-        )
+    _require_a_site(db, project, scope, "Camtrap DP")
 
     job = job_crud.create_job(
         db,
@@ -353,7 +261,9 @@ async def prepare_camtrap_dp(
             type="camtrap_export",
             payload={
                 "project_id": project.id,
-                "include_thumbnails": include_thumbnails,
+                "deployment_ids": scope,
+                "output_dir": str(folder),
+                "include_thumbnails": body.include_thumbnails,
             },
         ),
     )
@@ -364,43 +274,6 @@ async def prepare_camtrap_dp(
         job.id, lambda jid=job.id: process_camtrap_export_job(jid)
     )
     return {"job_id": job.id}
-
-
-@router.get("/camtrap-dp/download")
-async def download_camtrap_dp(
-    project_id: str,
-    job_id: str = Query(..., description="Job id returned by /camtrap-dp/prepare"),
-    db: Session = Depends(get_db),
-) -> FileResponse:
-    """Fetch the finished CamTrap DP ZIP for a completed export job."""
-    project = _resolve_project(project_id, db)
-
-    job = job_crud.get_job(db, job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Export job not found")
-    payload = job.payload or {}
-    if payload.get("project_id") != project.id:
-        raise HTTPException(status_code=404, detail="Export job not found")
-    if job.status != "completed":
-        raise HTTPException(
-            status_code=409,
-            detail=f"Export not ready (status={job.status})",
-        )
-    zip_path = payload.get("zip_path")
-    if not zip_path or not Path(zip_path).exists():
-        raise HTTPException(status_code=410, detail="Export ZIP expired")
-
-    base = _filename_base(project, "camtrap-dp")
-    # Deployments with no site are absent from the package (Camtrap DP
-    # requires lat/lon). The user is told before the download, by
-    # CamtrapDPExportConfirmDialog on the Export page, so this response
-    # carried a header naming them that nothing ever read.
-    return FileResponse(
-        zip_path,
-        media_type="application/zip",
-        filename=f"{base}.zip",
-        headers=_attachment_headers(f"{base}.zip"),
-    )
 
 
 @router.post("/recognition-json/prepare", status_code=202)
@@ -449,18 +322,10 @@ def _media_scope(
 ) -> MediaScope:
     """The one scope object both media endpoints hand to the modules.
 
-    An explicit empty id list is refused: `resolve_scope_deployment_ids`
-    reads it as "no scope", so it would copy the whole project, and an
-    empty export would still replace a previous one in that folder. The
-    Export page disables the button in that state; this is the server's
-    own guard. Ids are resolved through the same helper the tables use,
-    so ids from another project are dropped.
+    Deployments through `_scope`, like every export; the file filters
+    from the media options.
     """
-    if body.deployment_ids is not None and len(body.deployment_ids) == 0:
-        raise HTTPException(status_code=422, detail="No deployments selected")
-    resolved = export_crud.resolve_scope_deployment_ids(
-        db, project, None, body.deployment_ids
-    )
+    resolved = _scope(db, project, body.deployment_ids)
     scope = MediaScope.from_payload(body.model_dump(mode="json"))
     if resolved is None:
         return scope
@@ -527,16 +392,7 @@ async def prepare_media_export(
     project = _resolve_project(project_id, db)
     scope = _media_scope(db, project, body)
 
-    output_root = Path(body.output_dir)
-    try:
-        # Off the loop: the user picked this folder, and a network drive
-        # that is asleep answers a mkdir in seconds, not microseconds.
-        await asyncio.to_thread(output_root.mkdir, parents=True, exist_ok=True)
-    except OSError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot create the output folder: {e}",
-        ) from e
+    output_root = await _output_dir(body.output_dir)
 
     job = job_crud.create_job(
         db,
@@ -567,5 +423,100 @@ async def prepare_media_export(
 
     ws_manager.register_start(
         job.id, lambda jid=job.id: process_save_outputs_job(jid)
+    )
+    return {"job_id": job.id}
+
+
+def _package_scope(db: Session, project: Project, deployment_ids: list[str] | None) -> list[str]:
+    """The deployment ids a package covers: the picked ones, or all. A
+    package lists its deployments, so None becomes the full list."""
+    resolved = _scope(db, project, deployment_ids)
+    if resolved is not None:
+        return resolved
+    return list(
+        db.execute(
+            select(Deployment.id).where(Deployment.project_id == project.id)
+        ).scalars()
+    )
+
+
+@router.get("/package/size", response_model=PackageSizeResponse)
+def package_size(
+    project_id: str,
+    deployment_ids: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> PackageSizeResponse:
+    """How much the export dialog is about to write: files and media
+    bytes of the selected deployments, from the sizes recorded at
+    ingest, no filesystem walk.
+
+    The data is an estimate: the database's used pages times the
+    selection's share of all files. Rows and embeddings grow with the
+    files, so this lands in the right order of magnitude without
+    measuring every table; it spreads embeddings evenly over projects
+    that have them and projects that do not."""
+    project = _resolve_project(project_id, db)
+    scope = _package_scope(db, project, _parse_ids(deployment_ids))
+    files, media_bytes = db.execute(
+        select(func.count(File.id), func.coalesce(func.sum(File.size_bytes), 0)).where(
+            File.deployment_id.in_(scope)
+        )
+    ).one()
+    all_files = db.execute(select(func.count(File.id))).scalar_one()
+    page_size, page_count, free_pages = (
+        db.execute(text(f"PRAGMA {name}")).scalar_one()
+        for name in ("page_size", "page_count", "freelist_count")
+    )
+    used_bytes = page_size * (page_count - free_pages)
+    return PackageSizeResponse(
+        deployments=len(scope),
+        files=int(files),
+        media_bytes=int(media_bytes),
+        data_bytes=used_bytes * files // all_files if all_files else 0,
+    )
+
+
+@router.post("/package/prepare", status_code=202)
+async def prepare_package_export(
+    project_id: str,
+    body: PackageExportRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Start writing a project package into `output_dir`. The folder the
+    package goes in must exist; the package folder itself must not."""
+    project = _resolve_project(project_id, db)
+    if project.mode != "research":
+        raise HTTPException(
+            status_code=400, detail="Only projects can be exported as a bundle"
+        )
+    scope = _package_scope(db, project, body.deployment_ids)
+    output_dir = await _output_dir(body.output_dir)
+    folders = [
+        f for f in db.execute(
+            select(Deployment.folder_path).where(Deployment.id.in_(scope))
+        ).scalars() if f
+    ]
+    try:
+        await asyncio.to_thread(package_destination, output_dir, project.name, folders)
+    except PackageError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    job = job_crud.create_job(
+        db,
+        JobCreate(
+            type="package_export",
+            payload={
+                "project_id": project.id,
+                "deployment_ids": scope,
+                "output_dir": str(output_dir),
+                "include_media": body.include_media,
+            },
+        ),
+    )
+
+    from app.workers.project_package_worker import process_package_export_job
+
+    ws_manager.register_start(
+        job.id, lambda jid=job.id: process_package_export_job(jid)
     )
     return {"job_id": job.id}

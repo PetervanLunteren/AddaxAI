@@ -36,6 +36,19 @@ def get_jobs(
     return list(result.scalars().all())
 
 
+def has_active_jobs(db: Session) -> bool:
+    """True while any job is running or waiting to run.
+
+    A package import holds one write transaction for as long as it
+    takes, and the engine's busy timeout is 30 s, so an analysis writing
+    at the same time would fail. The import endpoint refuses instead.
+    """
+    row = db.execute(
+        select(Job.id).where(Job.status.in_(("running", "pending"))).limit(1)
+    ).first()
+    return row is not None
+
+
 def get_job(db: Session, job_id: str) -> Job | None:
     """
     Get job by ID.

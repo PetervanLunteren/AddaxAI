@@ -1,0 +1,48 @@
+---
+sidebar_position: 5
+title: Work as a team or on another computer
+---
+
+# Work as a team or on another computer
+
+An AddaxAI bundle is a folder with your labels, corrections and counts for some or all deployments of a project. Another AddaxAI opens it. Use it to continue on another computer, or to let team members check part of the photos and send their work back.
+
+## Export a bundle
+
+1. Open the project, go to **Export** and press **Export…** next to **AddaxAI bundle**.
+2. Pick the deployments. For a team member, pick only their deployments.
+3. Choose the contents:
+   - **Data only** is small. The photos must already be on the other computer, where you reconnect each folder once.
+   - **With photos and videos** copies the deployment folders into the bundle, so it opens anywhere. It is as large as those folders.
+4. Pick a folder under **Save in** and press **Start**.
+
+You get a folder named after the project, ending in `.addaxai-bundle`. Copy it to the other computer.
+
+<img src="https://github.com/user-attachments/assets/00d5ca7e-a15d-4fe6-a216-d2c86b5d24c3" alt="The AddaxAI bundle export window, with two of four deployments picked and Data only selected" style={{maxWidth: '560px', width: '100%', display: 'block'}} />
+
+## Import a bundle
+
+1. On the other computer, choose **File > Import bundle…**.
+2. Pick the folder that ends in `.addaxai-bundle`. AddaxAI shows what it will add.
+3. Press **Import**.
+
+The first import creates the project. A later bundle of the same project adds to it. When a deployment is already there, you choose: replace it with the bundle's version, or leave it as it is. AddaxAI backs up the database before it imports.
+
+<img src="https://github.com/user-attachments/assets/e0d3ddcb-80bd-4d17-94ed-16e5310eef18" alt="The Import bundle window, with the choice to replace the deployments already on this computer or leave them" style={{maxWidth: '560px', width: '100%', display: 'block'}} />
+
+## Split the checking over a team
+
+1. One person creates the project and runs the AI.
+2. They export a bundle for each team member, with only that person's deployments and the photos included.
+3. Each member imports their bundle, checks the labels, and exports a data-only bundle back.
+4. The lead imports those bundles and chooses **Replace**.
+
+Give each deployment to one person. An import replaces a deployment as a whole, so two people's work on the same deployment cannot be combined.
+
+## Good to know
+
+- Keep a bundle with photos where it is after the import. The imported deployments use the photos inside it.
+- Save a bundle outside the camera folders it contains. AddaxAI refuses a folder inside one.
+- A bundle from a newer AddaxAI cannot be imported. Update first. A bundle from an older version is updated during the import.
+- You cannot import while an analysis is running.
+- To move every project at once, use a database backup. See [moving to another computer](../reference/file-locations.md#moving-to-another-computer).

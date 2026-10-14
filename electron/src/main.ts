@@ -1165,6 +1165,7 @@ function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
     label: 'File',
     submenu: [
       { id: 'new-project', label: 'New project…', click: () => sendMenuCommand('new-project') },
+      { id: 'import-package', label: 'Import bundle…', click: () => sendMenuCommand('import-package') },
       { id: 'new-folder-run', label: 'Analyse a folder…', click: () => sendMenuCommand('new-folder-run') },
       { type: 'separator' },
       { id: 'nav-home', label: 'Home', click: () => sendMenuCommand('nav-home') },
@@ -1286,6 +1287,7 @@ function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
 // enabled so a stuck setup can still be inspected or recovered.
 const SETUP_GATED_MENU_IDS = [
   'new-project',
+  'import-package',
   'new-folder-run',
   'nav-home',
   'open-backups',
@@ -1331,11 +1333,16 @@ function setupApplicationMenu(): void {
 // is open, nor open two pickers in parallel by double-clicking the
 // drop zone. Resolves the sender's window via event.sender so the
 // handler attaches to whichever window made the call.
-ipcMain.handle('dialog:selectFolder', async (event) => {
+// Folder picker. `opts.title` names what the folder is for; the
+// default is the analysis case. Window-modal to the calling window.
+ipcMain.handle(
+  'dialog:selectFolder',
+  async (event, opts?: { title?: string; defaultPath?: string }) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const options: Electron.OpenDialogOptions = {
     properties: ['openDirectory'],
-    title: 'Select folder with camera trap images',
+    title: opts?.title ?? 'Select folder with camera trap images',
+    defaultPath: opts?.defaultPath,
   };
   const result = win
     ? await dialog.showOpenDialog(win, options)
@@ -1346,7 +1353,8 @@ ipcMain.handle('dialog:selectFolder', async (event) => {
   }
 
   return result.filePaths[0] || null;
-});
+  },
+);
 
 // Handle single-file selection dialog. Caller can pass `filters` to
 // constrain the picker (e.g. .db files for the Restore-from-backup flow).

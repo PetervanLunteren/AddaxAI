@@ -22,6 +22,7 @@ import sqlite3
 import struct
 import tempfile
 import zipfile
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -104,6 +105,32 @@ def _check_xlsx_row_limit(
             )
 
 
+# How much of a project name goes into an export's file or folder name. A
+# project name may be 255 characters, and so may a file name on every
+# filesystem, in bytes: the full name plus a kind, a date or a suffix does
+# not fit. 60 keeps the name recognisable and leaves room for both, also
+# for three-byte scripts and a deep folder on Windows.
+EXPORT_NAME_MAX_CHARS = 60
+
+
+def export_file_name(project_name: str, kind: str, extension: str) -> str:
+    """``<kind>-<project>-<date>.<ext>``, e.g. ``files-kenya-2026-10-14.csv``:
+    two projects exported into one folder stay apart, and a later export
+    sorts next to an earlier one."""
+    slug = slugify(project_name)[:EXPORT_NAME_MAX_CHARS].rstrip("-")
+    return f"{kind}-{slug}-{date.today().isoformat()}.{extension}"
+
+
+def unique_export_path(folder: Path, name: str) -> Path:
+    """Where an export file called ``name`` goes in a folder the user
+    picked: that name, or ``<stem>_2<ext>`` and up when it is taken. An
+    export never overwrites a file in a folder it does not own; the same
+    rule and helper as the image copies."""
+    from app.ml.postprocessing_outputs.separate_folders import _unique_destination
+
+    return _unique_destination(folder, name)[0]
+
+
 def serialize_csv(headers: list[str], rows: list[list[Any]]) -> bytes:
     output = io.StringIO()
     writer = csv.writer(output)
@@ -120,30 +147,12 @@ def serialize_tsv(headers: list[str], rows: list[list[Any]]) -> bytes:
     return output.getvalue().encode("utf-8")
 
 
-def serialize_xlsx(
-    headers: list[str], rows: list[list[Any]], sheet_title: str = "Sheet1"
-) -> bytes:
-    return serialize_xlsx_multi([(sheet_title, headers, rows)])
-
-
-def serialize_xlsx_multi(
-    sheets: list[tuple[str, list[str], list[list[Any]]]],
-) -> bytes:
-    """One workbook with several sheets, as bytes (for HTTP responses)."""
-    buf = io.BytesIO()
-    _build_xlsx_workbook(sheets).save(buf)
-    return buf.getvalue()
-
-
 def write_xlsx_multi(
     sheets: list[tuple[str, list[str], list[list[Any]]]],
     path: Path,
 ) -> None:
-    """One workbook with several sheets, saved straight to ``path``.
-
-    For disk targets, so the zipped workbook never has to exist as one
-    in-memory bytes blob the way ``serialize_xlsx_multi`` requires.
-    """
+    """One workbook with several sheets, saved straight to ``path``, so
+    the zipped workbook never has to exist as one in-memory bytes blob."""
     _build_xlsx_workbook(sheets).save(str(path))
 
 
@@ -161,8 +170,8 @@ def _build_xlsx_workbook(
 
     Raises ``XlsxRowLimitError`` when any sheet is too tall for the
     format. Every XLSX writer in the app funnels through here, so the
-    single-table endpoints, the combined project spreadsheet and the
-    folder-run workbook all inherit the guard.
+    project spreadsheet and the folder-run workbook both inherit the
+    guard.
     """
     from openpyxl import Workbook
 

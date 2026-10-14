@@ -1419,9 +1419,8 @@ def build_spreadsheet_sheets(
     metadata. Summary leads because "which species, and how many" is the
     question the file is opened for; Counts follows as the analysis-ready
     table `docs/docs/reference/exports.md` tells people to start with.
-    Keep the two in step, and note the CSV / TSV path downloads the same
-    five tables one file at a time from `ExportPage.tsx`, in an order
-    written out there separately.
+    Keep the two in step. The CSV / TSV export writes these same five
+    tables as five files, in this order.
 
     ``deployment_ids`` narrows every sheet to a subset of the project's
     deployments; None exports everything."""
@@ -1452,7 +1451,10 @@ def build_spreadsheet_sheets(
 
 
 def build_spatial_layers(
-    db: Session, project: Project, scoped_rows: Sequence[Row[Any]]
+    db: Session,
+    project: Project,
+    scoped_rows: Sequence[Row[Any]],
+    deployment_ids: list[str] | None = None,
 ) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
     """Build the two spatial layers: deployments and species_summary.
 
@@ -1488,12 +1490,14 @@ def build_spatial_layers(
     # detections). Outer join on Site so null-site deployments are not
     # filtered out here; we skip them below when building features
     # (GeoJSON needs coordinates) and record them separately.
-    all_deployments = (
+    deployments_query = (
         db.query(Deployment, Site)
         .outerjoin(Site, Deployment.site_id == Site.id)
         .filter(Deployment.project_id == project.id)
-        .all()
     )
+    if deployment_ids is not None:
+        deployments_query = deployments_query.filter(Deployment.id.in_(deployment_ids))
+    all_deployments = deployments_query.all()
 
     from app.api.crud.trap_nights import compute_trap_nights_for_deployments
 
@@ -1611,7 +1615,10 @@ def build_spatial_layers(
 
 
 def build_camtrap_dp_tables(
-    db: Session, project: Project, scoped_rows: Sequence[Row[Any]]
+    db: Session,
+    project: Project,
+    scoped_rows: Sequence[Row[Any]],
+    deployment_ids: list[str] | None = None,
 ) -> tuple[
     list[list[Any]],
     list[list[Any]],
@@ -1647,13 +1654,14 @@ def build_camtrap_dp_tables(
     # deploymentLocation (lat/lon). The caller receives their ids via
     # the returned `camtrap_skipped_deployment_ids` list.
     camtrap_skipped_deployment_ids: list[str] = []
-    for deployment, site in (
+    deployments_query = (
         db.query(Deployment, Site)
         .outerjoin(Site, Deployment.site_id == Site.id)
         .filter(Deployment.project_id == project.id)
-        .order_by(Deployment.start_date_local)
-        .all()
-    ):
+    )
+    if deployment_ids is not None:
+        deployments_query = deployments_query.filter(Deployment.id.in_(deployment_ids))
+    for deployment, site in deployments_query.order_by(Deployment.start_date_local).all():
         if site is None:
             camtrap_skipped_deployment_ids.append(deployment.id)
             continue

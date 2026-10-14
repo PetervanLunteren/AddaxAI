@@ -7,6 +7,10 @@ title: Exports
 
 What is in the files AddaxAI writes. Most of this page covers the columns in the CSV and XLSX tables, which hold the same columns either way; XLSX just puts each table on its own sheet. The recognition file is described at the end.
 
+In a project, every export on the Export page works the same way: press Export, choose which deployments, pick the variant, pick a folder, Start. The files are written into that folder and the last screen opens it. An export never replaces a file that is already there: a second spreadsheet of the same project on the same day is saved with `_2` in the name. The recognition file is the one exception, it goes into each deployment folder and replaces the previous one, because that is where Timelapse looks.
+
+Files are named after what they hold, the project and the date, for example `spreadsheet-kenya-2026-10-14.xlsx`. The spreadsheet is either one XLSX workbook with the five tables as sheets, or the same five tables as CSV or TSV files (`summary-…`, `counts-…`, `detections-…`, `files-…`, `deployments-…`).
+
 One limit to know if your project is large: an Excel sheet holds at most 1,048,576 rows, so a table bigger than that cannot be saved as XLSX. AddaxAI tells you when this happens instead of writing a file Excel cannot open. Pick CSV for those projects, it has no row limit.
 
 AddaxAI exports five tables. Which one you want depends on the question you are asking. A folder run has no [sites, no deployments](../understanding/how-a-project-is-organised.mdx) and no confirmed counts, so two of them are projects only.
@@ -208,12 +212,16 @@ Exporting again into the same folder replaces its `addaxai-media` folder. Pick a
 
 ## Spatial
 
-Projects can also export point layers for GIS tools such as QGIS and ArcGIS, as GeoJSON, Shapefile or GeoPackage. You get two layers: one point per camera, and one point per camera per species. Deployments with no site coordinates are left out.
+Projects can also export point layers for GIS tools such as QGIS and ArcGIS, as GeoPackage, GeoJSON or Shapefile (`spatial-<project>-<date>.gpkg`, `.geojson` or `.zip`). You get two layers: one point per camera, and one point per camera per species. Only the deployments you pick are in it, and deployments with no site coordinates are left out; the dialog says how many.
 
 ## Camtrap DP
 
-Projects can also export Camtrap DP, a standard format for camera trap data. It uses its own column names and a fixed structure, so other tools and archives can read your data without knowing anything about AddaxAI. Use it when you share data or deposit it in a repository.
+Projects can also export Camtrap DP (`camtrap-dp-<project>-<date>.zip`), a standard format for camera trap data, for the deployments you pick. It uses its own column names and a fixed structure, so other tools and archives can read your data without knowing anything about AddaxAI. Use it when you share data or deposit it in a repository.
 
 For models that predict below species level (adult or juvenile fox, for example), `scientificName` always carries the real species name. The variant goes into `lifeStage` (adult, subadult, juvenile) or `sex` (female, male) when it fits those fields, and into `observationComments` otherwise.
 
 What you set on the Counts page goes into the same fields: `sex`, `lifeStage` and `behavior` per row, and your note on the event into `observationComments` of each of its rows. Unknown stays empty. A favourite file gets `favorite` set to true in the media table.
+
+## AddaxAI bundle
+
+A folder with your labels, corrections and counts for some or all deployments, which another AddaxAI opens. It is named after the project and ends in `.addaxai-bundle`. See [work as a team or on another computer](../guides/work-as-a-team.mdx).

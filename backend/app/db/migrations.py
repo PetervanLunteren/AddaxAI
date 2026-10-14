@@ -109,14 +109,26 @@ def _resolve_backend_dir() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
-def _alembic_config():
-    """Build an Alembic Config wired to our DB and migration script dir."""
+def _alembic_config(database_url: str | None = None):
+    """Build an Alembic Config wired to a database and the script dir.
+
+    Defaults to the live database. A project package (see
+    `app/services/project_package.py`) passes its own file, both to
+    create the package schema at head and to bring an older package up
+    to date before importing it. `alembic/env.py` only falls back to
+    `get_settings()` when the URL here is empty, so this is the one
+    place that decides which file alembic touches.
+    """
     from alembic.config import Config
 
     backend_dir = _resolve_backend_dir()
     cfg = Config(str(backend_dir / "alembic.ini"))
     cfg.set_main_option("script_location", str(backend_dir / "alembic"))
-    cfg.set_main_option("sqlalchemy.url", get_settings().database_url)
+    # Config options go through ConfigParser interpolation, where a bare
+    # `%` is a syntax error. A user data dir with one in its name would
+    # otherwise crash every launch.
+    url = database_url or get_settings().database_url
+    cfg.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
     return cfg
 
 
@@ -151,8 +163,9 @@ def needs_upgrade(engine: Engine) -> bool:
     return get_current_revision(engine) != get_head_revision()
 
 
-def upgrade_to_head() -> None:
-    """Run `alembic upgrade head` against the configured database.
+def upgrade_to_head(database_url: str | None = None) -> None:
+    """Run `alembic upgrade head` against the configured database, or
+    against `database_url` when given (a project package file).
 
     A stamped revision that is not on disk (an app downgrade, a
     hand-edited version row) makes alembic raise `CommandError` while
@@ -164,10 +177,23 @@ def upgrade_to_head() -> None:
     from alembic.util.exc import CommandError
 
     try:
-        command.upgrade(_alembic_config(), "head")
+        command.upgrade(_alembic_config(database_url), "head")
     except CommandError as e:
         logger.critical(f"Alembic could not upgrade this database: {e}")
         raise SchemaError(_FOREIGN_DB_MESSAGE) from e
+
+
+def revision_is_known(revision: str) -> bool:
+    """True when `revision` is one of the migrations on disk.
+
+    A revision this build does not know comes from a newer AddaxAI. The
+    chain is linear, so a known revision that is not head is simply
+    older and can be upgraded.
+    """
+    from alembic.script import ScriptDirectory
+
+    script_dir = ScriptDirectory.from_config(_alembic_config())
+    return any(r.revision == revision for r in script_dir.walk_revisions())
 
 
 def _has_user_tables(engine: Engine) -> bool:

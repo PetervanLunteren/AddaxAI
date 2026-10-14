@@ -158,9 +158,8 @@ export function OutputFolderField({
 }: {
   value: string;
   onChange: (v: string) => void;
-  /** What lands there and what is safe. Each surface says its own: the
-   * folder run defaults to the analysed folder and writes data files at
-   * its root too; the project dialog writes only addaxai-media. */
+  /** What lands there and what is safe: the folder run defaults to the
+   * analysed folder and writes data files at its root too. */
   caption: string;
 }) {
   return (
@@ -178,6 +177,7 @@ export function OutputFolderField({
           hideLabel
           hideScanResult
           noScan
+          pickerTitle="Output folder"
         />
       </CardContent>
     </Card>
@@ -203,73 +203,12 @@ export function MediaBody({ form }: { form: MediaFormHandles }) {
   // Grouping only makes sense once there are species subfolders; with
   // "No subfolders" every file lands flat at the root.
   const showGrouping = separate.groupBy !== "none";
-  // Three headed blocks: where the copies go, which files are copied,
-  // what the copies look like. The same body serves the folder-run Save
+  // Three headed blocks: which files are copied, where they go, what
+  // the copies look like. Which files leads, so the deployment picker
+  // comes first here as in every other export dialog. The same body serves the folder-run Save
   // step and the project image copies dialog, so a user learns it once.
   return (
     <div className="space-y-4">
-      <Block title="Folders">
-        <SettingRow
-          title="Folder structure"
-          caption="How the copies are organised"
-        >
-          <Select
-            value={separate.groupBy}
-            onValueChange={(v) =>
-              setSeparate({ ...separate, groupBy: v as typeof separate.groupBy })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No subfolders</SelectItem>
-              <SelectItem value="flat">One folder per species</SelectItem>
-              <SelectItem value="taxonomic">Nested by taxonomy</SelectItem>
-            </SelectContent>
-          </Select>
-        </SettingRow>
-
-        {/* Both only exist once there are species subfolders, so they are
-            children of the row above rather than siblings of it. */}
-        {showGrouping && (
-          <ChildRows>
-            <CaptionedCheckbox
-              checked={separate.groupEvents}
-              onChange={(v) => setSeparate({ ...separate, groupEvents: v })}
-              label="Keep events together"
-              caption="Every file in an event goes to one folder: the species you verified most often, or else the strongest detection"
-            />
-            <SettingRow
-              title="Folder order"
-              caption="Whether species or your original folders sit on top"
-            >
-              <Select
-                value={separate.speciesLast ? "species-last" : "species-first"}
-                onValueChange={(v) =>
-                  setSeparate({
-                    ...separate,
-                    speciesLast: v === "species-last",
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="species-first">
-                    Species folder first
-                  </SelectItem>
-                  <SelectItem value="species-last">
-                    Species folder last
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </SettingRow>
-          </ChildRows>
-        )}
-      </Block>
-
       <Block title="Which files">
         {/* Only when there is something to pick: a folder run has one
             deployment, a one-camera project too, and neither sees this
@@ -358,6 +297,68 @@ export function MediaBody({ form }: { form: MediaFormHandles }) {
           label="Copy empty files"
           caption="Images and videos with no animals, people, or vehicles"
         />
+      </Block>
+
+      <Block title="Folders">
+        <SettingRow
+          title="Folder structure"
+          caption="How the copies are organised"
+        >
+          <Select
+            value={separate.groupBy}
+            onValueChange={(v) =>
+              setSeparate({ ...separate, groupBy: v as typeof separate.groupBy })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No subfolders</SelectItem>
+              <SelectItem value="flat">One folder per species</SelectItem>
+              <SelectItem value="taxonomic">Nested by taxonomy</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingRow>
+
+        {/* Both only exist once there are species subfolders, so they are
+            children of the row above rather than siblings of it. */}
+        {showGrouping && (
+          <ChildRows>
+            <CaptionedCheckbox
+              checked={separate.groupEvents}
+              onChange={(v) => setSeparate({ ...separate, groupEvents: v })}
+              label="Keep events together"
+              caption="Every file in an event goes to one folder: the species you verified most often, or else the strongest detection"
+            />
+            <SettingRow
+              title="Folder order"
+              caption="Whether species or your original folders sit on top"
+            >
+              <Select
+                value={separate.speciesLast ? "species-last" : "species-first"}
+                onValueChange={(v) =>
+                  setSeparate({
+                    ...separate,
+                    speciesLast: v === "species-last",
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="species-first">
+                    Species folder first
+                  </SelectItem>
+                  <SelectItem value="species-last">
+                    Species folder last
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </SettingRow>
+          </ChildRows>
+        )}
       </Block>
 
       <Block title="Boxes and blur">
