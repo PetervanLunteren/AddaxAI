@@ -58,20 +58,17 @@ import { ModelSelect } from "../models/ModelSelect";
 import { ModelSelectItem } from "../models/ModelSelectItem";
 import { toApiModelId } from "@/lib/model-id";
 import { NoClassifierNotice } from "../models/NoClassifierNotice";
-import { DataTypeToggle } from "../models/DataTypeToggle";
 import { FieldHeader } from "../ui/field-header";
-import { Label } from "../ui/label";
 import {
   loadLastUsedSettings,
   saveLastUsedSettings,
 } from "../../lib/folderRunSettings";
 import {
-  applyDataType,
+  fitFormToDataType,
   DEFAULT_DETECTOR,
   dataTypeOf,
-  loadDataType,
+  getDataType,
   modelsForDataType,
-  savedDataType,
 } from "../../lib/data-type";
 import { SETTING_CAPTIONS } from "../../lib/settingCaptions";
 import { projectDescriptionField } from "./project-form";
@@ -152,7 +149,7 @@ export function CreateProjectDialog({
       name: "",
       description: "",
       detection_model_id:
-        lastSelection?.detection_model_id ?? DEFAULT_DETECTOR[loadDataType()],
+        lastSelection?.detection_model_id ?? DEFAULT_DETECTOR[getDataType()],
       classification_model_id: lastSelection?.classification_model_id ?? null,
       embedding_model_id: lastSelection?.embedding_model_id ?? "DINOV2-VITS14",
       excluded_classes: lastSelection?.excluded_classes ?? [],
@@ -166,9 +163,9 @@ export function CreateProjectDialog({
     },
   });
 
-  // A new project starts on the saved data type: once both model lists are
-  // in, swap any pre-filled model that does not fit it. Once per opening,
-  // so a toggle click inside the dialog is never undone.
+  // A new project starts on the user's data type: once both model lists
+  // are in, swap any pre-filled model that does not fit it. Once per
+  // opening; the pre-filled models come from the last project made.
   const appliedDataTypeRef = useRef(false);
   useEffect(() => {
     if (!open) {
@@ -178,13 +175,7 @@ export function CreateProjectDialog({
     if (appliedDataTypeRef.current) return;
     if (!detectionModelsLoaded || !classificationModelsLoaded) return;
     appliedDataTypeRef.current = true;
-    // Before any choice was made, the pre-filled detector decides.
-    const detector = detectionModels.find(
-      (m) => m.model_id === form.getValues("detection_model_id"),
-    );
-    const target = savedDataType() ?? dataTypeOf(detector);
-    if (!target) return;
-    applyDataType(target, form, {
+    fitFormToDataType(getDataType(), form, {
       detectors: detectionModels,
       classifiers: classificationModels,
     });
@@ -199,9 +190,9 @@ export function CreateProjectDialog({
 
   const detectionModelId = form.watch("detection_model_id");
   const detectionModel = detectionModels.find((m) => m.model_id === detectionModelId);
-  // The form's data type is its detector's; the saved choice stands in
+  // The form's data type is its detector's; the preference stands in
   // until the detector list has loaded.
-  const dataType = dataTypeOf(detectionModel) ?? loadDataType();
+  const dataType = dataTypeOf(detectionModel) ?? getDataType();
   const classifiersForType = modelsForDataType(classificationModels, dataType);
 
   const { data: detectionModelStatus } = useQuery({
@@ -429,24 +420,6 @@ export function CreateProjectDialog({
             <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <TooltipProvider>
-              {/* Data type first: it decides which models the fields
-                  below offer. */}
-              <div className="space-y-2">
-                <FieldHeader
-                  label={<Label>Data type</Label>}
-                  caption={SETTING_CAPTIONS.dataType}
-                />
-                <DataTypeToggle
-                  value={dataType}
-                  onChange={(next) =>
-                    applyDataType(next, form, {
-                      detectors: detectionModels,
-                      classifiers: classificationModels,
-                    })
-                  }
-                />
-              </div>
-
               <FormField
                 control={form.control}
                 name="name"

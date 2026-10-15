@@ -1,13 +1,19 @@
 /**
  * First-run setup wizard API.
  *
- * Backend gates the wizard: until env-addaxai-base is installed, the rest
- * of the app is unreachable. Default model weights are already on disk by
- * the time the wizard runs (copied from the bundle by app/main.py
- * lifespan), so the wizard's only real job is to install the conda env.
+ * Backend gates the wizard: until the environment is installed, the rest
+ * of the app is unreachable. The wizard installs that environment and
+ * downloads the default model weights, which do not ship in the
+ * installer.
+ *
+ * Both calls carry the data type the user picked, because it decides
+ * which detector and which environments setup needs, and therefore what
+ * "ready" means. Camera trap is the default, so a caller that passes
+ * nothing gets the behaviour from before the choice existed.
  */
 
 import { api } from "../lib/api-client";
+import type { DataType } from "../lib/data-type";
 
 export interface SetupStatus {
   ready: boolean;
@@ -44,13 +50,20 @@ export interface LegacyInstallStatus {
 }
 
 export const setupApi = {
-  getStatus: () => api.get<SetupStatus>("/api/setup/status"),
-  installEnv: () => api.post<{ status: string }>("/api/setup/install-env", {}),
+  getStatus: (dataType: DataType) =>
+    api.get<SetupStatus>(`/api/setup/status?data_type=${dataType}`),
+  installEnv: (dataType: DataType) =>
+    api.post<{ status: string }>("/api/setup/install-env", {
+      data_type: dataType,
+    }),
   /** Wipe and rebuild specific environments (the env-drift "Update now"
-   *  button). Same endpoint as installEnv, with force_envs set. */
-  rebuildEnvs: (forceEnvs: string[]) =>
+   *  button). Same endpoint as installEnv, with force_envs set. The data
+   *  type goes along because the same call also installs anything else
+   *  that data type is missing. */
+  rebuildEnvs: (forceEnvs: string[], dataType: DataType) =>
     api.post<{ status: string }>("/api/setup/install-env", {
       force_envs: forceEnvs,
+      data_type: dataType,
     }),
 
   /**

@@ -8,9 +8,9 @@
  * start button before the modal opened).
  *
  * Main fields (always visible):
- * - Data type (camera trap / underwater), first, before the folder. It
- *   filters the two model pickers below (lib/data-type.ts)
- * - Detection model + status badge
+ * - Detection model + status badge. The two model pickers offer the
+ *   models of the user's data type only (lib/data-type.ts), which is
+ *   set at first-run setup and in View -> Data type
  * - Classification model ("Model details" link + status badge + grouped
  *   items), or a notice when the data type has no classifier
  * - Label selection (LabelSelectionField with country / state
@@ -125,14 +125,11 @@ import {
 } from "../../components/taxonomy/LabelSelectionField";
 import { ModelSelect } from "../../components/models/ModelSelect";
 import { NoClassifierNotice } from "../../components/models/NoClassifierNotice";
-import { DataTypeToggle } from "../../components/models/DataTypeToggle";
-import { Label } from "../../components/ui/label";
 import {
-  applyDataType,
   dataTypeOf,
-  loadDataType,
+  fitFormToDataType,
+  getDataType,
   modelsForDataType,
-  savedDataType,
 } from "../../lib/data-type";
 
 import { useFolderScan } from "../../hooks/useFolderScan";
@@ -352,7 +349,7 @@ export function FolderRunModelStep() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]);
 
-  // Brand-new run: square the restored models with the saved data type
+  // Brand-new run: square the restored models with the user's data type
   // once the model lists are in (the type of a model is in the catalog).
   // Declared after the restore effect so it runs after it. A resumed run
   // is left alone: it shows its own type, read from its detector.
@@ -361,13 +358,7 @@ export function FolderRunModelStep() {
     if (runId || hasAppliedDataTypeRef.current) return;
     if (detectionModelsLoading || classificationModelsLoading) return;
     hasAppliedDataTypeRef.current = true;
-    // Before any choice was made, the restored detector decides.
-    const detector = detectionModels.find(
-      (m) => m.model_id === form.getValues("detection_model_id"),
-    );
-    const target = savedDataType() ?? dataTypeOf(detector);
-    if (!target) return;
-    applyDataType(target, form, {
+    fitFormToDataType(getDataType(), form, {
       detectors: detectionModels,
       classifiers: classificationModels,
     });
@@ -457,7 +448,10 @@ export function FolderRunModelStep() {
   );
   // The form's data type is its detector's. The saved choice only stands
   // in while the detector is unknown to the catalog.
-  const dataType = dataTypeOf(detectionModel) ?? loadDataType();
+  // The run's own detector decides, so a resumed run of the other type
+  // still shows its own models; the preference only covers a new run
+  // whose detector is not loaded yet.
+  const dataType = dataTypeOf(detectionModel) ?? getDataType();
   const detectorsForType = modelsForDataType(detectionModels, dataType);
   const classifiersForType = modelsForDataType(classificationModels, dataType);
   // A full-image classifier skips MegaDetector, so the detector row and
@@ -950,30 +944,11 @@ export function FolderRunModelStep() {
                     of the divider between them. */}
                 <div>
                 <div className="space-y-0">
-                  {/* Data type first: it decides which models the rows
-                      below offer, so it is answered before anything else. */}
-                  <div className="grid grid-cols-2 items-center gap-8 pb-6 border-b">
-                    <div className="space-y-1">
-                      <Label>Data type</Label>
-                      <p className="text-sm text-muted-foreground">
-                        {SETTING_CAPTIONS.dataType}
-                      </p>
-                    </div>
-                    <DataTypeToggle
-                      value={dataType}
-                      onChange={(next) =>
-                        applyDataType(next, form, {
-                          detectors: detectionModels,
-                          classifiers: classificationModels,
-                        })
-                      }
-                    />
-                  </div>
                   <FormField
                     control={form.control}
                     name="folder_path"
                     render={({ field }) => (
-                      <div className="grid grid-cols-2 items-center gap-8 py-6 border-b">
+                      <div className="grid grid-cols-2 items-center gap-8 pb-6 border-b">
                         <div className="space-y-1">
                           <FormLabel>Folder</FormLabel>
                           <FormDescription className="text-sm">

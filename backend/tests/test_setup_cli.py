@@ -100,13 +100,13 @@ def test_list_models_empty_catalog_fails(monkeypatch, capsys):
 
 
 def test_run_setup_noop_when_everything_present(monkeypatch, tmp_path):
-    for spec in setup_router._DEFAULT_MODELS:
+    for spec in setup_router._DEFAULT_MODELS["camera_trap"]:
         weight = (
             tmp_path / "models" / spec["type_dir"] / spec["model_id"] / spec["model_fname"]
         )
         weight.parent.mkdir(parents=True)
         weight.write_bytes(b"x")
-    monkeypatch.setattr(setup_router, "_env_present", lambda: True)
+    monkeypatch.setattr(setup_router, "_env_present", lambda name=None: True)
     monkeypatch.setattr(
         setup_router,
         "_get_env_manager",
@@ -123,7 +123,7 @@ def test_install_env_blocking_success_passes_force_envs(monkeypatch):
     monkeypatch.setattr(
         setup_router,
         "run_setup",
-        lambda cb, force_envs=(): calls.append(force_envs),
+        lambda cb, force_envs=(), data_type="camera_trap": calls.append(force_envs),
     )
 
     setup_router._install_env_blocking(("pytorch",))
@@ -133,7 +133,7 @@ def test_install_env_blocking_success_passes_force_envs(monkeypatch):
 
 
 def test_install_env_blocking_records_error(monkeypatch):
-    def boom(cb, force_envs=()):
+    def boom(cb, force_envs=(), data_type="camera_trap"):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(setup_router, "run_setup", boom)

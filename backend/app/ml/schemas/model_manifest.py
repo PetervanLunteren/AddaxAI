@@ -145,8 +145,8 @@ class ModelManifest(BaseModel):
     # `underwater`. Every detector and every classifier declares it (the
     # catalog test enforces that, like `classes`); embedders work on any
     # crop and declare none. Three readers: the track post-filter's values
-    # (`app/ml/track_filter.py`, from the detector), the setup forms' "Data
-    # type" toggle, which offers only the models of the chosen type, and
+    # (`app/ml/track_filter.py`, from the detector), the user's data type,
+    # which offers only the models of the chosen type, and
     # the project API, which refuses a detector and a classifier from
     # different domains (`routers/projects.py`). A plain string on
     # purpose: a value this schema rejected would make ManifestManager

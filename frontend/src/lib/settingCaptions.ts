@@ -27,11 +27,6 @@ const batchSizeCaption = (subject: string): string =>
   "Leave it unless you know what you are doing.";
 
 export const SETTING_CAPTIONS = {
-  // The toggle filters the model pickers below it. Says so, and says the
-  // choice is remembered, since it silently shapes the next run too.
-  dataType:
-    "Where your images and videos come from. Only the models made for this " +
-    "type are offered, and AddaxAI remembers your choice for the next analysis.",
   // Detector row caption. True for every detector: MegaDetector finds
   // animals, people and vehicles, SharkTrack sharks and rays, the fish
   // detector fish, so it names none of those classes.

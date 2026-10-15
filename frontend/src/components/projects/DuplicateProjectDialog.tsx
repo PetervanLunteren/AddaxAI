@@ -28,7 +28,7 @@ import { ClassificationModelGroupedItems } from "../models/ClassificationModelGr
 import { ModelSelect } from "../models/ModelSelect";
 import { NoClassifierNotice } from "../models/NoClassifierNotice";
 import { ModelInfoSheet } from "../models/ModelInfoSheet";
-import { dataTypeOf, loadDataType, modelsForDataType } from "../../lib/data-type";
+import { dataTypeOf, getDataType, modelsForDataType } from "../../lib/data-type";
 import {
   LabelSelectionField,
   toApiCountryCode,
@@ -153,7 +153,7 @@ export function DuplicateProjectDialog({
   // only classifiers of that type are offered (lib/data-type.ts).
   const dataType =
     dataTypeOf(detectionModels.find((m) => m.model_id === source?.detection_model_id)) ??
-    loadDataType();
+    getDataType();
   const classifiersForType = modelsForDataType(classificationModels, dataType);
 
   const classificationModelId = form.watch("classification_model_id");

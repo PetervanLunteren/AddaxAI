@@ -26,6 +26,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, Check, RefreshCw } from "lucide-react";
 import { setupApi } from "../../api/setup";
+import { getDataType } from "../../lib/data-type";
 import { Button } from "../ui/button";
 import { Progress } from "../ui/progress";
 import {
@@ -53,8 +54,8 @@ export function EnvRebuildButton({ envNames, onDone }: EnvRebuildButtonProps) {
   const sawInProgress = useRef(false);
 
   const { data: status } = useQuery({
-    queryKey: ["setup-status", "env-rebuild"],
-    queryFn: setupApi.getStatus,
+    queryKey: ["setup-status", "env-rebuild", getDataType()],
+    queryFn: () => setupApi.getStatus(getDataType()),
     enabled: phase === "rebuilding",
     refetchInterval: phase === "rebuilding" ? 1500 : false,
   });
@@ -94,7 +95,7 @@ export function EnvRebuildButton({ envNames, onDone }: EnvRebuildButtonProps) {
     sawInProgress.current = false;
     setPhase("rebuilding");
     try {
-      await setupApi.rebuildEnvs(envNames);
+      await setupApi.rebuildEnvs(envNames, getDataType());
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not start the rebuild",

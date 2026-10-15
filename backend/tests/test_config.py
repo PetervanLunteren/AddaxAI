@@ -18,7 +18,16 @@ from app.core.config import Settings
 
 @pytest.fixture()
 def clean_env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
-    """Remove the path env vars so each test controls them explicitly."""
+    """Remove every ambient source of these settings so each test
+    controls them explicitly: the env vars, and `backend/.env`.
+
+    The `.env` file has to go too. Settings reads it (`env_file` in
+    `model_config`), it is a real file on real machines (a developer
+    pointing a worktree at its own data dir, an IT deployment setting
+    ADDAXAI_USER_DATA_DIR machine-wide), and a test that deletes the env
+    var and then asserts the home default would read that file instead
+    and fail on the author's machine only.
+    """
     for name in (
         "ADDAXAI_USER_DATA_DIR",
         "ADDAXAI_DATABASE_URL",
@@ -29,6 +38,7 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
         "HF_TOKEN",
     ):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
     return monkeypatch
 
 

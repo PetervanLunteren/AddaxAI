@@ -22,6 +22,7 @@ import shutil
 import threading
 from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
@@ -42,32 +43,64 @@ from app.utils.fs_remove import safe_rmtree
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/setup", tags=["Setup"])
 
-# Default models the wizard installs from HuggingFace. Held inline rather
-# than read from the catalog so first-run setup works even if the catalog
-# updater is still running or unreachable. The HF repos sit under the
-# Addax-Data-Science org (same convention ModelStorage falls back to).
-_DEFAULT_MODELS: tuple[dict, ...] = (
-    {
-        "type_dir": "det",
-        "category": "detection",
-        "model_id": "MD5A-0-0",
-        "friendly_name": "MegaDetector v5A",
-        "emoji": "🦌",
-        "model_fname": "md_v5a.0.0.pt",
-        "hf_repo": "Addax-Data-Science/MD5A-0-0",
-    },
-    {
-        "type_dir": "emb",
-        "category": "embedding",
-        "model_id": "DINOV2-VITS14",
-        "friendly_name": "DINOv2 ViT-S/14",
-        "emoji": "🧠",
-        "model_fname": "dinov2_vits14_pretrain.pth",
-        "hf_repo": "Addax-Data-Science/DINOV2-VITS14",
-    },
-)
+# What footage the user said they work on, at first-run setup. The two
+# values are the catalog's `ModelManifest.domain` values, spelled out
+# here rather than imported from it for the same reason the default
+# models below are inline: setup has to work with no catalog.
+DataType = Literal["camera_trap", "underwater"]
+DEFAULT_DATA_TYPE: DataType = "camera_trap"
 
 _REQUIRED_ENV = APP_ENV
+
+# The embedder is domain-free (it embeds any crop) and runs in the base
+# env, so both data types install it.
+_EMBEDDER: dict = {
+    "type_dir": "emb",
+    "category": "embedding",
+    "model_id": "DINOV2-VITS14",
+    "friendly_name": "DINOv2 ViT-S/14",
+    "emoji": "🧠",
+    "model_fname": "dinov2_vits14_pretrain.pth",
+    "hf_repo": "Addax-Data-Science/DINOV2-VITS14",
+    "env": _REQUIRED_ENV,
+}
+
+# Default models the wizard installs from HuggingFace, per data type.
+# Held inline rather than read from the catalog so first-run setup works
+# even if the catalog updater is still running or unreachable. The HF
+# repos sit under the Addax-Data-Science org (same convention
+# ModelStorage falls back to). One detector each: the general-purpose
+# model of that domain, the same default the setup forms start on.
+_DEFAULT_MODELS: dict[DataType, tuple[dict, ...]] = {
+    "camera_trap": (
+        {
+            "type_dir": "det",
+            "category": "detection",
+            "model_id": "MD5A-0-0",
+            "friendly_name": "MegaDetector v5A",
+            "emoji": "🦌",
+            "model_fname": "md_v5a.0.0.pt",
+            "hf_repo": "Addax-Data-Science/MD5A-0-0",
+            "env": _REQUIRED_ENV,
+        },
+        _EMBEDDER,
+    ),
+    "underwater": (
+        {
+            "type_dir": "det",
+            "category": "detection",
+            "model_id": "CFD-NANO-1-0",
+            "friendly_name": "Community Fish Detector nano",
+            "emoji": "🐟",
+            "model_fname": (
+                "cfd-rf-detr-nano-640-2026.02.02.cp-011.20260706-release.pth"
+            ),
+            "hf_repo": "Addax-Data-Science/CFD-NANO-1-0",
+            "env": "marine",
+        },
+        _EMBEDDER,
+    ),
+}
 
 
 class _InstallState:
@@ -122,22 +155,44 @@ def _get_env_manager() -> EnvironmentManager:
     return _env_manager
 
 
-def _models_present(models_dir: Path) -> bool:
-    for spec in _DEFAULT_MODELS:
+def _models_present(models_dir: Path, data_type: DataType = DEFAULT_DATA_TYPE) -> bool:
+    for spec in _DEFAULT_MODELS[data_type]:
         weight = models_dir / spec["type_dir"] / spec["model_id"] / spec["model_fname"]
         if not weight.is_file():
             return False
     return True
 
 
-def _env_present() -> bool:
+def _required_envs(data_type: DataType = DEFAULT_DATA_TYPE) -> tuple[str, ...]:
+    """
+    Every environment this data type's setup needs, base env first.
+
+    The base env is in every list whatever the user picked: the app's
+    ffmpeg lives in it (`utils/ffmpeg_bin.APP_ENV`), so it is what
+    decodes any video frame a user looks at, and the default embedder
+    runs in it too. Underwater adds `env-marine`, which both underwater
+    detectors share, so it is worth installing before the user has
+    chosen between them.
+    """
+    envs = [_REQUIRED_ENV]
+    for spec in _DEFAULT_MODELS[data_type]:
+        if spec["env"] not in envs:
+            envs.append(spec["env"])
+    return tuple(envs)
+
+
+def _env_present(env_name: str = _REQUIRED_ENV) -> bool:
     em = _get_env_manager()
-    env_path = em.envs_dir / f"env-{_REQUIRED_ENV}"
+    env_path = em.envs_dir / f"env-{env_name}"
     if not env_path.exists():
         return False
     # Reuse env_manager's own validation so a half-installed env counts
     # as missing and the wizard re-runs cleanly.
     return em._validate_env(env_path)
+
+
+def _envs_present(data_type: DataType = DEFAULT_DATA_TYPE) -> bool:
+    return all(_env_present(name) for name in _required_envs(data_type))
 
 
 class SetupStatus(BaseModel):
@@ -158,12 +213,19 @@ class SetupStatus(BaseModel):
 
 
 @router.get("/status", response_model=SetupStatus)
-def get_setup_status() -> SetupStatus:
+def get_setup_status(data_type: DataType = DEFAULT_DATA_TYPE) -> SetupStatus:
+    """
+    Readiness for one data type: its default models and the envs they
+    need. The caller passes what the user picked at setup (the frontend
+    keeps that choice), so a marine install is not reported unready for
+    missing MegaDetector, and a camera trap install is not held up by an
+    env it will never use.
+    """
     settings = get_settings()
     models_dir = settings.models_dir
 
-    models_ok = _models_present(models_dir)
-    env_ok = _env_present()
+    models_ok = _models_present(models_dir, data_type)
+    env_ok = _envs_present(data_type)
 
     return SetupStatus(
         ready=models_ok and env_ok,
@@ -211,7 +273,7 @@ def _build_default_model_manifest(spec: dict) -> ModelManifest:
         model_id=spec["model_id"],
         friendly_name=spec["friendly_name"],
         emoji=spec["emoji"],
-        env=_REQUIRED_ENV,
+        env=spec["env"],
         model_fname=spec["model_fname"],
         hf_repo=spec["hf_repo"],
         description=f"Default {spec['category']} model installed by the setup wizard.",
@@ -223,19 +285,20 @@ def _build_default_model_manifest(spec: dict) -> ModelManifest:
     return m
 
 
-def setup_complete() -> bool:
-    """True when the base env and the default model weights are present."""
+def setup_complete(data_type: DataType = DEFAULT_DATA_TYPE) -> bool:
+    """True when this data type's envs and default model weights are present."""
     settings = get_settings()
-    return _env_present() and _models_present(settings.models_dir)
+    return _envs_present(data_type) and _models_present(settings.models_dir, data_type)
 
 
 def run_setup(
     progress_cb: Callable[[str, float], None],
     force_envs: tuple[str, ...] = (),
+    data_type: DataType = DEFAULT_DATA_TYPE,
 ) -> None:
     """
-    Run setup synchronously: base env install plus HF downloads of the
-    default model weights. All steps are idempotent so retrying after a
+    Run setup synchronously: the envs this data type needs plus HF
+    downloads of its default model weights. All steps are idempotent so retrying after a
     partial failure picks up where it left off. Raises on failure.
 
     Progress is reported as progress_cb(message, fraction 0..1). Shared
@@ -273,17 +336,30 @@ def run_setup(
     # complete so retries go straight to whatever's missing.
     steps: list[tuple[str, Callable[[Callable[[str, float], None]], None]]] = []
 
-    if not _env_present():
-        def _env_step(cb: Callable[[str, float], None]) -> None:
-            _get_env_manager().get_or_create_env(_build_env_manifest(), cb)
-        steps.append(("Analysis environment", _env_step))
+    queued_envs: list[str] = []
+    for env_name in _required_envs(data_type):
+        if _env_present(env_name):
+            continue
+        queued_envs.append(env_name)
+        label = (
+            "Analysis environment"
+            if env_name == _REQUIRED_ENV
+            else f"Environment ({env_name})"
+        )
 
-    # Add explicit rebuild steps for any forced env that isn't the
-    # default one (the default is already covered above via
-    # _env_present()). Order doesn't matter for correctness; users
-    # see them sequentially in the progress modal.
+        def _env_step(
+            cb: Callable[[str, float], None], _name: str = env_name
+        ) -> None:
+            _get_env_manager().get_or_create_env(_build_env_manifest(_name), cb)
+
+        steps.append((label, _env_step))
+
+    # Add explicit rebuild steps for any forced env not already queued
+    # above (a missing one is covered by the loop above, which installs
+    # it rather than rebuilding it). Order doesn't matter for
+    # correctness; users see them sequentially in the progress modal.
     for env_name in force_envs:
-        if env_name == _REQUIRED_ENV:
+        if env_name in queued_envs:
             continue
         def _force_env_step(
             cb: Callable[[str, float], None],
@@ -294,7 +370,7 @@ def run_setup(
             )
         steps.append((f"Environment ({env_name})", _force_env_step))
 
-    for spec in _DEFAULT_MODELS:
+    for spec in _DEFAULT_MODELS[data_type]:
         weight = (
             models_dir / spec["type_dir"] / spec["model_id"] / spec["model_fname"]
         )
@@ -337,13 +413,16 @@ def run_setup(
         run(cb)
 
 
-def _install_env_blocking(force_envs: tuple[str, ...] = ()) -> None:
+def _install_env_blocking(
+    force_envs: tuple[str, ...] = (),
+    data_type: DataType = DEFAULT_DATA_TYPE,
+) -> None:
     """
     Wizard wrapper around run_setup. Runs in a thread and mirrors
     progress and the outcome into _install_state for the polling UI.
     """
     try:
-        run_setup(_install_state.update, force_envs)
+        run_setup(_install_state.update, force_envs, data_type)
         _install_state.finish(error=None)
     except TlsRevocationCheckError as e:
         # Carries wording written for the user plus a remedy the wizard
@@ -360,12 +439,14 @@ class InstallEnvRequest(BaseModel):
     """
     Request body for POST /install-env.
 
-    First-run setup posts an empty body. The drift-rebuild flow posts
+    First-run setup posts the data type the user picked, which decides
+    the detector and the envs installed. The drift-rebuild flow posts
     `force_envs` to wipe and recreate specific envs; useful when a
     bundled YAML moved on but the env on disk wasn't picked up.
     """
 
     force_envs: list[str] | None = None
+    data_type: DataType = DEFAULT_DATA_TYPE
 
 
 @router.post("/install-env", status_code=status.HTTP_202_ACCEPTED)
@@ -383,17 +464,18 @@ async def install_env(
     """
     settings = get_settings()
     force_envs = tuple(request.force_envs or ()) if request else ()
+    data_type = request.data_type if request else DEFAULT_DATA_TYPE
 
     # Skip-fast applies only when nothing is being forced. A force
     # request always triggers the install loop.
-    if not force_envs and setup_complete():
+    if not force_envs and setup_complete(data_type):
         return {"status": "already_installed"}
 
     # Disk-space pre-flight. Unpacked env (~3 GB) plus default model
     # weights (~2 GB) plus pip working space pushes the real footprint
     # past 7 GB. Failing fast with a clear message beats a cryptic
     # OSError two minutes into a download.
-    _check_disk_space(settings.user_data_dir)
+    _check_disk_space(settings.user_data_dir, data_type)
 
     if not _install_state.start():
         raise HTTPException(
@@ -403,7 +485,7 @@ async def install_env(
 
     # Run blocking install in a thread so the event loop stays responsive.
     asyncio.create_task(
-        asyncio.to_thread(_install_env_blocking, force_envs)
+        asyncio.to_thread(_install_env_blocking, force_envs, data_type)
     )
     return {"status": "started"}
 
@@ -424,14 +506,25 @@ def allow_no_revocation_check() -> dict[str, str]:
 
 
 # Required free space at the user-data drive before the install starts.
-# Headroom for env (~3 GB) + default models (~2 GB) + pip working space.
+# Headroom for one env (~3 GB) + default models (~2 GB) + pip working
+# space, plus the same env headroom again for each further env this data
+# type needs: underwater installs env-marine next to the base env, and a
+# disk that fits one does not necessarily fit two.
 _REQUIRED_FREE_BYTES = 7 * 1024**3
+_PER_EXTRA_ENV_BYTES = 3 * 1024**3
 
 
-def _check_disk_space(user_data_dir: Path) -> None:
+def _required_free_bytes(data_type: DataType = DEFAULT_DATA_TYPE) -> int:
+    return _REQUIRED_FREE_BYTES + _PER_EXTRA_ENV_BYTES * (len(_required_envs(data_type)) - 1)
+
+
+def _check_disk_space(
+    user_data_dir: Path, data_type: DataType = DEFAULT_DATA_TYPE
+) -> None:
     """
     Raise HTTPException 507 (Insufficient Storage) if the volume backing
-    the user data directory has less than _REQUIRED_FREE_BYTES free.
+    the user data directory has less free space than this data type's
+    install needs.
 
     Falls back silently if disk_usage isn't supported on the path (e.g.
     a network mount during edge-case Windows configurations); we'd
@@ -453,9 +546,10 @@ def _check_disk_space(user_data_dir: Path) -> None:
         )
         return
 
-    if free < _REQUIRED_FREE_BYTES:
+    required = _required_free_bytes(data_type)
+    if free < required:
         free_gb = free / 1024**3
-        required_gb = _REQUIRED_FREE_BYTES / 1024**3
+        required_gb = required / 1024**3
         raise HTTPException(
             status_code=507,
             detail=(

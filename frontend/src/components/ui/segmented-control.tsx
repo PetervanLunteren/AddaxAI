@@ -4,8 +4,8 @@
  * The active option gets the primary fill, the rest are muted and
  * highlight on hover. The filter bars use it icon-only, with the long name
  * on the `title` attribute so it surfaces as a native tooltip (and is read
- * by screen readers via aria-label). The setup forms' Data type toggle
- * passes a `label` instead, which is shown as text.
+ * by screen readers via aria-label). The setup screen's data type
+ * question passes a `label` instead, which is shown as text.
  */
 
 import { cn } from "../../lib/utils";

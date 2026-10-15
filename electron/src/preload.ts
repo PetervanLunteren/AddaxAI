@@ -170,6 +170,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   /**
+   * Same for the data type, so the View → Data type radio matches the
+   * stored preference. Sent on mount; a change reloads the page, so the
+   * post-reload mount re-syncs it.
+   */
+  setDataTypeMenuMode: (dataType: 'camera_trap' | 'underwater'): void => {
+    ipcRenderer.send('menu:data-type', dataType);
+  },
+
+  /**
    * Tell the main process whether first-run setup has finished, so the
    * setup-only menu items (Home, backup/restore, backups folder, species
    * names) can be disabled during the wizard and enabled afterward. Sent

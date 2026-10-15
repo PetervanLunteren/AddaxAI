@@ -1189,6 +1189,26 @@ function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
           },
         ],
       },
+      {
+        id: 'data-type',
+        label: 'Data type',
+        submenu: [
+          {
+            id: 'data-type-camera-trap',
+            label: 'Camera trap',
+            type: 'radio',
+            checked: true,
+            click: () => sendMenuCommand('data-type-camera-trap'),
+          },
+          {
+            id: 'data-type-underwater',
+            label: 'Underwater',
+            type: 'radio',
+            checked: false,
+            click: () => sendMenuCommand('data-type-underwater'),
+          },
+        ],
+      },
       { label: 'Language (coming soon)', enabled: false },
       { type: 'separator' },
       { role: 'togglefullscreen' },
@@ -1459,6 +1479,15 @@ ipcMain.handle('app:getVersion', () => {
 // renderer, never the reverse.
 ipcMain.on('menu:species-mode', (_event, mode: string) => {
   const id = mode === 'scientific' ? 'species-scientific' : 'species-common';
+  const item = Menu.getApplicationMenu()?.getMenuItemById(id);
+  if (item) item.checked = true;
+});
+
+// Same for View → Data type: which footage the user works on, which
+// decides the models the app offers. Renderer-owned like the mode above.
+ipcMain.on('menu:data-type', (_event, dataType: string) => {
+  const id =
+    dataType === 'underwater' ? 'data-type-underwater' : 'data-type-camera-trap';
   const item = Menu.getApplicationMenu()?.getMenuItemById(id);
   if (item) item.checked = true;
 });

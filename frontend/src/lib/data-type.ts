@@ -1,23 +1,30 @@
 /**
- * The "Data type" toggle: camera trap or underwater.
+ * The data type: camera trap or underwater.
  *
- * One rule, shared by the three setup forms (folder-run setup, create
- * project, project settings):
+ * One device-global preference, picked on the first-run setup screen and
+ * changed in View -> Data type. Stored in localStorage, the same shape as
+ * `species-name-mode.ts`: a module-level cache so non-React code can read
+ * it synchronously, and a reload on change so every filtered list
+ * re-renders consistently. Changing it is rare: next to nobody analyses
+ * both camera trap and underwater footage.
  *
- *   - A form's data type is its detector's catalog `domain`. Nothing else
- *     is stored on the project, so the two can never disagree.
- *   - The toggle shows only the detectors and classifiers of that type.
- *     Choosing a type swaps any model that does not fit it
- *     (`applyDataType`).
- *   - The user's last choice is remembered on this machine and is where a
- *     new folder run or project starts. An existing project or a resumed
- *     run shows its own type, read from its detector.
+ * What it does:
  *
- * Why the filtering is not cosmetic: classification runs on every box that
- * is not a person or vehicle, and a box whose top class is "blank" is
- * never loaded. A camera trap classifier on an underwater detector would
- * drop sharks without a word. The project API refuses that pair too
- * (`_refuse_mixed_domains` in backend `routers/projects.py`).
+ *   - It decides what first-run setup installs (the detector and the
+ *     environments; see `routers/setup.py`).
+ *   - It picks the detector a new folder run or new project starts on,
+ *     and filters the model pickers to that type.
+ *
+ * What it does not do: decide what an existing project is. A project's
+ * data type is its detector's catalog `domain`, read from the project
+ * itself, so the two can never disagree and a user whose preference says
+ * camera trap still sees an underwater project exactly as it is.
+ *
+ * Why the filtering is not cosmetic: classification runs on every box
+ * that is not a person or vehicle, and a box whose top class is "blank"
+ * is never loaded. A camera trap classifier on an underwater detector
+ * would drop sharks without a word. The project API refuses that pair
+ * too (`_refuse_mixed_domains` in backend `routers/projects.py`).
  */
 
 import type {
@@ -29,7 +36,6 @@ import type {
 } from "react-hook-form";
 
 import type { ModelInfo } from "../api/types";
-import { loadLastUsedSettings, saveLastUsedSettings } from "./folderRunSettings";
 import { NO_MODEL_VALUE } from "./model-id";
 
 export type DataType = "camera_trap" | "underwater";
@@ -40,17 +46,57 @@ export const DATA_TYPE_OPTIONS: readonly { value: DataType; label: string }[] = 
   { value: "underwater", label: "Underwater" },
 ];
 
-/** The detector a form moves to when its detector does not fit the chosen
- *  type: the general-purpose model of each type. */
+/** The detector a new form starts on, per type: the general-purpose
+ *  model of each. The same two ids are the setup wizard's defaults. */
 export const DEFAULT_DETECTOR: Record<DataType, string> = {
   camera_trap: "MD5A-0-0",
   underwater: "CFD-NANO-1-0",
 };
 
+const STORAGE_KEY = "addaxai:data-type";
 const FALLBACK_DATA_TYPE: DataType = "camera_trap";
 
 function isDataType(value: unknown): value is DataType {
   return value === "camera_trap" || value === "underwater";
+}
+
+function readStored(): DataType {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return isDataType(stored) ? stored : FALLBACK_DATA_TYPE;
+  } catch {
+    // localStorage can throw in locked-down contexts; fall back.
+    return FALLBACK_DATA_TYPE;
+  }
+}
+
+let current: DataType = readStored();
+
+/** The user's data type. Camera trap until they say otherwise, which is
+ *  what keeps every existing install working exactly as before. */
+export function getDataType(): DataType {
+  return current;
+}
+
+/**
+ * Store the choice. `reload` is for changing it in a running app: a full
+ * reload re-renders every model list with no stale caches, the same
+ * bargain `species-name-mode` makes for the same reason. The setup
+ * screen leaves it off, because nothing is rendered from the preference
+ * yet and a reload there would restart the install poll for nothing.
+ */
+export function setDataType(
+  dataType: DataType,
+  { reload = false }: { reload?: boolean } = {},
+): void {
+  if (dataType === current) return;
+  current = dataType;
+  try {
+    localStorage.setItem(STORAGE_KEY, dataType);
+  } catch {
+    // Ignore persistence failure; the in-memory value still applies.
+  }
+  if (reload) window.location.reload();
 }
 
 /** The data type a model is for, or null when the catalog does not say. */
@@ -64,23 +110,9 @@ export function modelsForDataType(models: ModelInfo[], dataType: DataType): Mode
   return models.filter((m) => m.domain === dataType);
 }
 
-/** The user's last choice on this machine, or null before they made one. */
-export function savedDataType(): DataType | null {
-  const saved = loadLastUsedSettings()?.data_type;
-  return isDataType(saved) ? saved : null;
-}
-
-/** The user's last choice, camera trap when there is none. For display
- *  only while a form's detector is unknown; a new form squares itself with
- *  `savedDataType()` so that, before any choice was made, the restored
- *  detector decides (an underwater user from before the toggle keeps
- *  their fish detector). */
-export function loadDataType(): DataType {
-  return savedDataType() ?? FALLBACK_DATA_TYPE;
-}
-
-/** The fields a data type switch touches. Every setup form carries them;
- *  the form type itself stays generic, as in `restoreAdvancedDefaults`. */
+/** The fields squaring a form with a data type touches. Every setup form
+ *  carries them; the form type itself stays generic, as in
+ *  `restoreAdvancedDefaults`. */
 type DataTypeFields = {
   detection_model_id: string;
   classification_model_id?: string | null;
@@ -90,20 +122,22 @@ type DataTypeFields = {
 };
 
 /**
- * Put a form on `dataType`: keep every model that fits it, swap the rest.
- * A detector of another type becomes the type's default detector; a
- * classifier of another type becomes none, and its species selection goes
- * with it. Remembers the choice for the next new run or project.
+ * Square a new form with the user's data type: keep every model that
+ * fits it, swap the rest. A detector of another type becomes the type's
+ * default detector; a classifier of another type becomes none, and its
+ * species selection goes with it.
  *
- * Idempotent, so it is also how a new form is squared with the saved
- * choice once the model lists have loaded.
+ * This is for restored values, not for a choice made in the form: the
+ * last-used settings of a run from before the preference changed can
+ * carry models of the other type, and offering them would let the user
+ * start a run the backend refuses. Idempotent, so it is safe to run on
+ * every mount.
  */
-export function applyDataType<T extends FieldValues>(
+export function fitFormToDataType<T extends FieldValues>(
   dataType: DataType,
   form: { getValues: UseFormGetValues<T>; setValue: UseFormSetValue<T> },
   models: { detectors: ModelInfo[]; classifiers: ModelInfo[] },
 ): void {
-  saveLastUsedSettings({ data_type: dataType });
   const set = (key: keyof DataTypeFields, value: DataTypeFields[keyof DataTypeFields]) =>
     form.setValue(key as Path<T>, value as PathValue<T, Path<T>>, { shouldDirty: true });
 
@@ -129,16 +163,4 @@ export function applyDataType<T extends FieldValues>(
       set("state_code", null);
     }
   }
-}
-
-/** True when switching to `dataType` would drop the chosen classifier.
- *  The project Settings page asks before it does. */
-export function switchDropsClassifier(
-  dataType: DataType,
-  classifierId: string | null | undefined,
-  classifiers: ModelInfo[],
-): boolean {
-  if (!classifierId || classifierId === NO_MODEL_VALUE) return false;
-  const classifier = classifiers.find((m) => m.model_id === classifierId);
-  return dataTypeOf(classifier) !== dataType;
 }

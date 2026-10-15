@@ -20,6 +20,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { setupApi } from "../../api/setup";
+import { getDataType, setDataType } from "../../lib/data-type";
 import { backupApi } from "../../api/backup";
 import { useLatestRelease } from "../../hooks/useLatestRelease";
 import { formatVersion, parseVersion } from "../../lib/version";
@@ -60,8 +61,8 @@ export function MenuCommands() {
   // Cached once; "Open user data folder" needs an absolute path that
   // varies per OS.
   const { data: setupStatus } = useQuery({
-    queryKey: ["setup-status"],
-    queryFn: setupApi.getStatus,
+    queryKey: ["setup-status", getDataType()],
+    queryFn: () => setupApi.getStatus(getDataType()),
     staleTime: Infinity,
   });
 
@@ -173,6 +174,12 @@ export function MenuCommands() {
     window.electronAPI?.setSpeciesNameMenuMode?.(getSpeciesNameMode());
   }, []);
 
+  // Same for the data type. Both are device-global preferences whose
+  // only home in the running app is this menu.
+  useEffect(() => {
+    window.electronAPI?.setDataTypeMenuMode?.(getDataType());
+  }, []);
+
   // Gate the setup-only menu items on the wizard finishing. The query
   // shares its cache key with SetupGate (which polls), so `ready` flips to
   // true once setup completes and this re-runs to enable the items.
@@ -249,6 +256,14 @@ export function MenuCommands() {
           break;
         case "species-scientific":
           setSpeciesNameMode("scientific");
+          break;
+        // Reload: every model list on screen is filtered on this, and
+        // the setup status is cached per data type.
+        case "data-type-camera-trap":
+          setDataType("camera_trap", { reload: true });
+          break;
+        case "data-type-underwater":
+          setDataType("underwater", { reload: true });
           break;
       }
     });

@@ -74,6 +74,11 @@ export interface ElectronAPI {
    */
   setSpeciesNameMenuMode: (mode: "common" | "scientific") => void;
   /**
+   * Report the active data type so the View → Data type radio shows the
+   * correct checkmark. One-way, like the species-name mode above.
+   */
+  setDataTypeMenuMode: (dataType: "camera_trap" | "underwater") => void;
+  /**
    * Report whether first-run setup has finished so the setup-only menu
    * items (Home, backup/restore, backups folder, species names) are
    * disabled during the wizard and enabled afterward.

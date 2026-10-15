@@ -103,15 +103,10 @@ import { ConfidenceSlider } from "../components/ui/confidence-slider";
 import { SETTING_CAPTIONS } from "../lib/settingCaptions";
 import { ClassificationModelGroupedItems } from "../components/models/ClassificationModelGroupedItems";
 import { ModelSelectItem } from "../components/models/ModelSelectItem";
-import { DataTypeToggle } from "../components/models/DataTypeToggle";
-import { Label } from "../components/ui/label";
 import {
-  applyDataType,
-  type DataType,
   dataTypeOf,
-  loadDataType,
+  getDataType,
   modelsForDataType,
-  switchDropsClassifier,
 } from "../lib/data-type";
 import { BatchSizeRow } from "../components/analyses/BatchSizeRow";
 import { ImageSizeRow } from "../components/analyses/ImageSizeRow";
@@ -191,11 +186,8 @@ export default function SettingsPage() {
     newThreshold: number;
   } | null>(null);
 
-  // Classification model removal confirmation. Also asked when a Data type
-  // switch would drop the classifier; `pendingDataType` is then the type
-  // the confirm applies.
+  // Classification model removal confirmation.
   const [removeClsConfirmOpen, setRemoveClsConfirmOpen] = useState(false);
-  const [pendingDataType, setPendingDataType] = useState<DataType | null>(null);
 
   // Re-embed confirmation + progress state
   const [reEmbedConfirmOpen, setReEmbedConfirmOpen] = useState(false);
@@ -317,22 +309,13 @@ export default function SettingsPage() {
   // Check if a classification model is selected
   const hasClassificationModel = !!classificationModelId && classificationModelId !== "none";
 
-  // The project's data type is its detector's; the saved choice only
-  // stands in while the detector is unknown to the catalog.
+  // The project's data type is its detector's, so the pickers below
+  // offer that project's own models whatever the user's preference says.
+  // It only stands in while the detector is unknown to the catalog.
   const dataType =
     dataTypeOf(detectionModels.find((m) => m.model_id === detectionModelId)) ??
-    loadDataType();
+    getDataType();
   const classifiersForType = modelsForDataType(classificationModels, dataType);
-  const models = { detectors: detectionModels, classifiers: classificationModels };
-  const handleDataTypeChange = (next: DataType) => {
-    if (next === dataType) return;
-    if (switchDropsClassifier(next, classificationModelId, classificationModels)) {
-      setPendingDataType(next);
-      setRemoveClsConfirmOpen(true);
-      return;
-    }
-    applyDataType(next, form, models);
-  };
 
   // Fetch taxonomy for selected classification model
   const { data: taxonomy } = useQuery({
@@ -816,18 +799,6 @@ export default function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-0 divide-y border-t">
-                {/* Data type: this project's own, read from its detector.
-                    It filters the two model pickers below. */}
-                <div className="grid grid-cols-2 items-center gap-8 py-6">
-                  <div className="space-y-1">
-                    <Label>Data type</Label>
-                    <p className="text-sm text-muted-foreground">
-                      {SETTING_CAPTIONS.dataType}
-                    </p>
-                  </div>
-                  <DataTypeToggle value={dataType} onChange={handleDataTypeChange} />
-                </div>
-
                 {/* Detection Model */}
                 <FormField
                   control={form.control}
@@ -1567,29 +1538,19 @@ export default function SettingsPage() {
         {/* Classification Model Removal Confirmation */}
         <AlertDialog
           open={removeClsConfirmOpen}
-          onOpenChange={(isOpen) => {
-            setRemoveClsConfirmOpen(isOpen);
-            if (!isOpen) setPendingDataType(null);
-          }}
+          onOpenChange={setRemoveClsConfirmOpen}
         >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Remove classification model?</AlertDialogTitle>
               <AlertDialogDescription>
-                {pendingDataType &&
-                  "The chosen classification model is made for another data type, so switching removes it. "}
                 Existing classifications will remain, but no new ones will be generated for future deployments. You can re-enable classification at any time.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction onClick={() => {
-                if (pendingDataType) {
-                  applyDataType(pendingDataType, form, models);
-                } else {
-                  form.setValue("classification_model_id", "none", { shouldDirty: true });
-                }
-                setPendingDataType(null);
+                form.setValue("classification_model_id", "none", { shouldDirty: true });
                 setRemoveClsConfirmOpen(false);
               }}>
                 Remove model

@@ -6,6 +6,21 @@
  * and reopening mid-install leaves the user back here with a Resume
  * button, since the backend's env_manager is idempotent.
  *
+ * It also asks the one question that has to be answered before anything
+ * is downloaded: camera trap or underwater footage. That decides the
+ * detector and the environments installed here, and it is the same
+ * device-global preference the model pickers filter on afterwards
+ * (lib/data-type.ts). It is pre-answered with camera trap and changeable
+ * later, so the majority press one button and the rest flip one control.
+ * One screen rather than a multi-step wizard: two settings with safe
+ * defaults do not need steps, and every extra screen is one more place
+ * to abandon a first launch.
+ *
+ * This screen is also where a user lands who switches data type later
+ * and does not have that type's models yet: readiness is per data type,
+ * so the gate sends them here, the question is already on their new
+ * answer, and one button installs what is missing.
+ *
  * Visual: the same treatment as the home screen, a blurred forest photo
  * behind a scrim, so the first screen a new user meets looks like the
  * app rather than like a blank page. The card itself is deliberately
@@ -15,12 +30,19 @@
  * shadow is deepened, because `shadow-sm` disappears over a photo.
  */
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { setupApi } from "../api/setup";
+import {
+  DATA_TYPE_OPTIONS,
+  type DataType,
+  getDataType,
+  setDataType,
+} from "../lib/data-type";
 import { Button } from "../components/ui/button";
 import { Progress } from "../components/ui/progress";
+import { SegmentedControl } from "../components/ui/segmented-control";
 import { Callout } from "../components/ui/callout";
 import { LogoPlate } from "../components/layout/LogoPlate";
 import { ContinueWithoutRevocationChecks } from "../components/setup/ContinueWithoutRevocationChecks";
@@ -59,14 +81,23 @@ export default function SetupPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  // Stored as the user flips it, so the poll below, the install and
+  // every model list afterwards read one value. No reload here: nothing
+  // on screen is rendered from the preference yet.
+  const [dataType, setDataTypeChoice] = useState<DataType>(getDataType());
+  const chooseDataType = (next: DataType) => {
+    setDataType(next);
+    setDataTypeChoice(next);
+  };
+
   const { data: status } = useQuery({
-    queryKey: ["setup-status"],
-    queryFn: setupApi.getStatus,
+    queryKey: ["setup-status", dataType],
+    queryFn: () => setupApi.getStatus(dataType),
     refetchInterval: POLL_INTERVAL_MS,
   });
 
   const install = useMutation({
-    mutationFn: setupApi.installEnv,
+    mutationFn: () => setupApi.installEnv(dataType),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["setup-status"] });
     },
@@ -131,6 +162,29 @@ export default function SetupPage() {
           download and can take 10 to 30 minutes depending on your internet
           connection.
         </p>
+
+        {/* The one question, and only while there is a button to press:
+            a resumed or running install must not show a control that
+            would contradict what is already on disk. */}
+        {showStartButton && (
+          <div className="mt-6 space-y-2">
+            <h2 className="text-sm font-medium">What will you be working on?</h2>
+            <SegmentedControl
+              options={DATA_TYPE_OPTIONS.map((o) => ({
+                value: o.value,
+                title: o.label,
+                label: o.label,
+              }))}
+              value={dataType}
+              onChange={(v) => chooseDataType(v as DataType)}
+            />
+            <p className="text-xs text-muted-foreground">
+              This decides which AI models are installed and offered.
+              Camera trap is the usual answer. You can change it later in
+              the View menu.
+            </p>
+          </div>
+        )}
 
         <div className="mt-6 space-y-2 text-sm">
           <Row label="Analysis environment" ok={status.env_installed} />

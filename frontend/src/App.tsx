@@ -49,6 +49,7 @@ import { EnvRebuildButton } from "./components/layout/EnvRebuildButton";
 import { Toaster } from "./components/ui/sonner";
 import { api } from "./lib/api-client";
 import { setupApi } from "./api/setup";
+import { getDataType } from "./lib/data-type";
 import { projectsApi } from "./api/projects";
 import AboutPage from "./pages/AboutPage";
 
@@ -303,8 +304,8 @@ function SetupGate({ children }: { children: ReactNode }) {
   const everReadyRef = useRef(false);
 
   const { data, isLoading, isError, errorUpdatedAt, dataUpdatedAt, refetch } = useQuery({
-    queryKey: ["setup-status"],
-    queryFn: setupApi.getStatus,
+    queryKey: ["setup-status", getDataType()],
+    queryFn: () => setupApi.getStatus(getDataType()),
     refetchInterval: 5000,
   });
 
