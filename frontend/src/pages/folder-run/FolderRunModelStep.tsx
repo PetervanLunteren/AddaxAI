@@ -130,6 +130,7 @@ import {
   fitFormToDataType,
   getDataType,
   modelsForDataType,
+  useDataType,
 } from "../../lib/data-type";
 
 import { useFolderScan } from "../../hooks/useFolderScan";
@@ -446,12 +447,11 @@ export function FolderRunModelStep() {
   const classificationModel = classificationModels.find(
     (m) => m.model_id === classificationModelId,
   );
-  // The form's data type is its detector's. The saved choice only stands
-  // in while the detector is unknown to the catalog.
   // The run's own detector decides, so a resumed run of the other type
-  // still shows its own models; the preference only covers a new run
-  // whose detector is not loaded yet.
-  const dataType = dataTypeOf(detectionModel) ?? getDataType();
+  // still shows its own models; the preference only stands in for a new
+  // run whose detector is not loaded yet.
+  const storedDataType = useDataType();
+  const dataType = dataTypeOf(detectionModel) ?? storedDataType;
   const detectorsForType = modelsForDataType(detectionModels, dataType);
   const classifiersForType = modelsForDataType(classificationModels, dataType);
   // A full-image classifier skips MegaDetector, so the detector row and

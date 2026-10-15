@@ -27,6 +27,7 @@
  * too (`_refuse_mixed_domains` in backend `routers/projects.py`).
  */
 
+import { useSyncExternalStore } from "react";
 import type {
   FieldValues,
   Path,
@@ -71,19 +72,50 @@ function readStored(): DataType {
 }
 
 let current: DataType = readStored();
+const listeners = new Set<() => void>();
 
-/** The user's data type. Camera trap until they say otherwise, which is
- *  what keeps every existing install working exactly as before. */
+/**
+ * The user's data type, read once. Camera trap until they say otherwise,
+ * which is what keeps every existing install working exactly as before.
+ *
+ * This is the snapshot: right for an effect, a form's initial values, or
+ * any non-React caller. A component that *renders* the data type uses
+ * `useDataType` instead, or it will not re-render when the setup screen
+ * changes it.
+ */
 export function getDataType(): DataType {
   return current;
 }
 
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
 /**
- * Store the choice. `reload` is for changing it in a running app: a full
- * reload re-renders every model list with no stale caches, the same
- * bargain `species-name-mode` makes for the same reason. The setup
- * screen leaves it off, because nothing is rendered from the preference
- * yet and a reload there would restart the install poll for nothing.
+ * The data type, as a React value. A plain module variable read during
+ * render is invisible to React: the setup screen changes the type without
+ * reloading, and anything that had already rendered would keep showing
+ * the old answer until something else happened to re-render it. This is
+ * the subscription React asks for (`useSyncExternalStore`), so every
+ * reader updates together.
+ */
+export function useDataType(): DataType {
+  return useSyncExternalStore(subscribe, getDataType);
+}
+
+/**
+ * Store the choice and tell every subscriber.
+ *
+ * `reload` is for changing it from the menu of a running app. The
+ * subscription above keeps every reader of the value in step by itself,
+ * but a form that is already filled in is a different matter: its models
+ * were chosen for the old type, and a reload is the simplest way to
+ * start them over, the same bargain `species-name-mode` makes. The setup
+ * screen leaves it off: there is no filled-in form there, and a reload
+ * would restart the install poll for nothing.
  */
 export function setDataType(
   dataType: DataType,
@@ -96,6 +128,7 @@ export function setDataType(
   } catch {
     // Ignore persistence failure; the in-memory value still applies.
   }
+  listeners.forEach((listener) => listener());
   if (reload) window.location.reload();
 }
 

@@ -49,7 +49,7 @@ import { EnvRebuildButton } from "./components/layout/EnvRebuildButton";
 import { Toaster } from "./components/ui/sonner";
 import { api } from "./lib/api-client";
 import { setupApi } from "./api/setup";
-import { getDataType } from "./lib/data-type";
+import { useDataType } from "./lib/data-type";
 import { projectsApi } from "./api/projects";
 import AboutPage from "./pages/AboutPage";
 
@@ -303,9 +303,12 @@ function SetupGate({ children }: { children: ReactNode }) {
   // back to the wizard mid-task.
   const everReadyRef = useRef(false);
 
+  // Readiness is per data type, so the gate has to follow the live
+  // value: the setup screen changes it without reloading.
+  const dataType = useDataType();
   const { data, isLoading, isError, errorUpdatedAt, dataUpdatedAt, refetch } = useQuery({
-    queryKey: ["setup-status", getDataType()],
-    queryFn: () => setupApi.getStatus(getDataType()),
+    queryKey: ["setup-status", dataType],
+    queryFn: () => setupApi.getStatus(dataType),
     refetchInterval: 5000,
   });
 

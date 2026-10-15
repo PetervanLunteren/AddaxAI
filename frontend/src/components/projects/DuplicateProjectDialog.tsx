@@ -28,7 +28,7 @@ import { ClassificationModelGroupedItems } from "../models/ClassificationModelGr
 import { ModelSelect } from "../models/ModelSelect";
 import { NoClassifierNotice } from "../models/NoClassifierNotice";
 import { ModelInfoSheet } from "../models/ModelInfoSheet";
-import { dataTypeOf, getDataType, modelsForDataType } from "../../lib/data-type";
+import { dataTypeOf, modelsForDataType, useDataType } from "../../lib/data-type";
 import {
   LabelSelectionField,
   toApiCountryCode,
@@ -151,9 +151,10 @@ export function DuplicateProjectDialog({
   });
   // A duplicate keeps the source's detector, and with it its data type, so
   // only classifiers of that type are offered (lib/data-type.ts).
+  const storedDataType = useDataType();
   const dataType =
     dataTypeOf(detectionModels.find((m) => m.model_id === source?.detection_model_id)) ??
-    getDataType();
+    storedDataType;
   const classifiersForType = modelsForDataType(classificationModels, dataType);
 
   const classificationModelId = form.watch("classification_model_id");

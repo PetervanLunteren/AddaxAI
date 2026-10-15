@@ -69,6 +69,7 @@ import {
   dataTypeOf,
   getDataType,
   modelsForDataType,
+  useDataType,
 } from "../../lib/data-type";
 import { SETTING_CAPTIONS } from "../../lib/settingCaptions";
 import { projectDescriptionField } from "./project-form";
@@ -188,11 +189,12 @@ export function CreateProjectDialog({
     form,
   ]);
 
+  const storedDataType = useDataType();
   const detectionModelId = form.watch("detection_model_id");
   const detectionModel = detectionModels.find((m) => m.model_id === detectionModelId);
   // The form's data type is its detector's; the preference stands in
   // until the detector list has loaded.
-  const dataType = dataTypeOf(detectionModel) ?? getDataType();
+  const dataType = dataTypeOf(detectionModel) ?? storedDataType;
   const classifiersForType = modelsForDataType(classificationModels, dataType);
 
   const { data: detectionModelStatus } = useQuery({

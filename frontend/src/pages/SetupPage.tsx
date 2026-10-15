@@ -30,21 +30,22 @@
  * shadow is deepened, because `shadow-sm` disappears over a photo.
  */
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { setupApi } from "../api/setup";
 import {
   DATA_TYPE_OPTIONS,
   type DataType,
-  getDataType,
   setDataType,
+  useDataType,
 } from "../lib/data-type";
 import { Button } from "../components/ui/button";
 import { Progress } from "../components/ui/progress";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Callout } from "../components/ui/callout";
 import { LogoPlate } from "../components/layout/LogoPlate";
+import { PhotoBackdrop } from "../components/layout/PhotoBackdrop";
 import { ContinueWithoutRevocationChecks } from "../components/setup/ContinueWithoutRevocationChecks";
 
 const POLL_INTERVAL_MS = 1500;
@@ -57,19 +58,7 @@ const POLL_INTERVAL_MS = 1500;
 function SetupFrame({ children }: { children: ReactNode }) {
   return (
     <div className="relative min-h-screen overflow-hidden">
-      {/* Background photo + scrim. Decorative, so no alt text. */}
-      <div
-        className="absolute inset-0 scale-105 bg-cover bg-center"
-        style={{ backgroundImage: "url('/setup-background.webp')" }}
-      />
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(120% 90% at 50% 0%, rgba(10,30,28,0.25), transparent 60%)," +
-            "linear-gradient(180deg, rgba(8,22,20,0.55) 0%, rgba(8,22,20,0.30) 35%, rgba(8,22,20,0.66) 100%)",
-        }}
-      />
+      <PhotoBackdrop screen="setup" />
       <div className="relative z-10 flex min-h-screen flex-col items-center justify-center px-4 py-8">
         {children}
       </div>
@@ -82,13 +71,11 @@ export default function SetupPage() {
   const queryClient = useQueryClient();
 
   // Stored as the user flips it, so the poll below, the install and
-  // every model list afterwards read one value. No reload here: nothing
-  // on screen is rendered from the preference yet.
-  const [dataType, setDataTypeChoice] = useState<DataType>(getDataType());
-  const chooseDataType = (next: DataType) => {
-    setDataType(next);
-    setDataTypeChoice(next);
-  };
+  // every model list afterwards read one value. The store is the state:
+  // `setDataType` notifies its subscribers, so this screen, the photo
+  // behind it and the gate around it all move together, without a
+  // reload and without a second copy of the answer.
+  const dataType = useDataType();
 
   const { data: status } = useQuery({
     queryKey: ["setup-status", dataType],
@@ -176,12 +163,11 @@ export default function SetupPage() {
                 label: o.label,
               }))}
               value={dataType}
-              onChange={(v) => chooseDataType(v as DataType)}
+              onChange={(v) => setDataType(v as DataType)}
             />
             <p className="text-xs text-muted-foreground">
-              This decides which AI models are installed and offered.
-              Camera trap is the usual answer. You can change it later in
-              the View menu.
+              This decides which AI models are installed and offered. You
+              can change it later.
             </p>
           </div>
         )}
@@ -204,7 +190,7 @@ export default function SetupPage() {
                   ? "Resume setup"
                   : "Start setup"}
             </Button>
-            <p className="mt-2 text-center text-xs text-muted-foreground">
+            <p className="mt-2 text-xs text-muted-foreground">
               {hasPartialProgress
                 ? "Some pieces are already installed. Resuming picks up "
                   + "where the last attempt stopped; finished downloads "
@@ -223,7 +209,7 @@ export default function SetupPage() {
             >
               {status.message || "Installing..."}
             </p>
-            <p className="text-center text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               {Math.round(status.progress_pct)}% complete. You can close the
               app and resume later; finished downloads are kept.
             </p>

@@ -20,7 +20,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { setupApi } from "../../api/setup";
-import { getDataType, setDataType } from "../../lib/data-type";
+import { setDataType, useDataType } from "../../lib/data-type";
 import { backupApi } from "../../api/backup";
 import { useLatestRelease } from "../../hooks/useLatestRelease";
 import { formatVersion, parseVersion } from "../../lib/version";
@@ -58,11 +58,13 @@ export function MenuCommands() {
     () => localStorage.getItem(LEGACY_PROMPT_DISMISSED) === "true",
   );
 
+  const dataType = useDataType();
+
   // Cached once; "Open user data folder" needs an absolute path that
   // varies per OS.
   const { data: setupStatus } = useQuery({
-    queryKey: ["setup-status", getDataType()],
-    queryFn: () => setupApi.getStatus(getDataType()),
+    queryKey: ["setup-status", dataType],
+    queryFn: () => setupApi.getStatus(dataType),
     staleTime: Infinity,
   });
 
@@ -174,11 +176,11 @@ export function MenuCommands() {
     window.electronAPI?.setSpeciesNameMenuMode?.(getSpeciesNameMode());
   }, []);
 
-  // Same for the data type. Both are device-global preferences whose
-  // only home in the running app is this menu.
+  // Same for the data type, except this one re-sends on change: the
+  // setup screen can change it without reloading the page.
   useEffect(() => {
-    window.electronAPI?.setDataTypeMenuMode?.(getDataType());
-  }, []);
+    window.electronAPI?.setDataTypeMenuMode?.(dataType);
+  }, [dataType]);
 
   // Gate the setup-only menu items on the wizard finishing. The query
   // shares its cache key with SetupGate (which polls), so `ready` flips to

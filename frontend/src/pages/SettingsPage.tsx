@@ -105,8 +105,8 @@ import { ClassificationModelGroupedItems } from "../components/models/Classifica
 import { ModelSelectItem } from "../components/models/ModelSelectItem";
 import {
   dataTypeOf,
-  getDataType,
   modelsForDataType,
+  useDataType,
 } from "../lib/data-type";
 import { BatchSizeRow } from "../components/analyses/BatchSizeRow";
 import { ImageSizeRow } from "../components/analyses/ImageSizeRow";
@@ -309,12 +309,13 @@ export default function SettingsPage() {
   // Check if a classification model is selected
   const hasClassificationModel = !!classificationModelId && classificationModelId !== "none";
 
+  const storedDataType = useDataType();
   // The project's data type is its detector's, so the pickers below
   // offer that project's own models whatever the user's preference says.
   // It only stands in while the detector is unknown to the catalog.
   const dataType =
     dataTypeOf(detectionModels.find((m) => m.model_id === detectionModelId)) ??
-    getDataType();
+    storedDataType;
   const classifiersForType = modelsForDataType(classificationModels, dataType);
 
   // Fetch taxonomy for selected classification model
