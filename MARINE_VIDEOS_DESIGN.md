@@ -431,3 +431,51 @@ Mentioned only, not fixed:
 ## Summary in plain English
 
 AddaxAI does not need a separate marine app. It needs to follow each animal through a video instead of looking at one frame. So we add a tracker as an option, put the shark and fish detectors in the normal model list, and make each followed animal one card on the Labels page. The counting rule the marine world uses, the most animals seen together in one frame, is already how AddaxAI counts; we only stop hiding species that were never on the single best frame, and we show the peak frame on the Counts page. Camera trap users notice nothing unless they switch tracking on. The work splits in two: first the models, the tracker and the per track review; then the MaxN frame and time in the counts and exports. The main costs are one new Python environment for the fish detector and one JPEG per tracked animal on the user's drive.
+
+## Before this branch merges into main
+
+Written 2026-10-12, after four weeks in which main gained 95 commits, shipped
+v7.8.0 to v7.14.0, and changed 79 of the files this branch also changes. The
+list is what must happen in or around the merge, not during the branch's own
+work. Deleting this section is the last item on it.
+
+1. **Renumber the migrations.** Both branches added a migration with the id
+   `c3d4e5f6a7b9`: main's "global custom labels" (shipped in v7.12.0, so
+   immutable) and this branch's "video tracking". Give this branch's four
+   migrations fresh ids and chain them onto main's head, one linear chain.
+   Not `alembic merge`: that resolves two heads, not two files claiming one
+   id. Renaming them invalidates the stamp on any database that already ran
+   them, so the marine dev database starts fresh afterwards.
+2. **`min_app_version` on the four marine models.** It says 7.8.0, which
+   shipped in September without them. Set it to the release that ships this.
+3. **The MegaDetector pin.** Main moved to 10.0.26 for faster video
+   detection; `env-addaxai-base` and `env-marine` here still pin 10.0.24.
+   Align both, then re-test the tracking script.
+4. **Dark mode.** Main's theme sweep (2026-10-05) tokenised the colours and
+   `FRONTEND_CONVENTIONS.md` now forbids `bg-white` and the gray / zinc /
+   slate classes. The surfaces this branch added or rewrote still use them:
+   `TrackTimeline`, `VideoPlayer`, `EventCountPanel`, `EventDetailModal`,
+   `ModelInfoSheet`, `RunQueueModal`. Pass over them, then redo the
+   end-to-end UX check, since styling fixed before the merge is fixed twice.
+5. **The dev-only files of this worktree.** `backend/.env` points the
+   branch at `~/AddaxAI-marine` so main's database is never migrated by
+   it, and `frontend/.env.local` puts it on ports 8001 and 5174 so both
+   checkouts can run at once (see the note in each file). Delete both,
+   and the data directory. Two more local leftovers, neither tracked:
+   the `electron/node_modules` symlink to the main checkout, and the
+   `electron/node_modules` line added to `.git/info/exclude` that hides
+   it. The port support in `frontend/vite.config.ts` is deliberate and
+   stays: it defaults to 8000 and 5173, so it changes nothing for a
+   single checkout.
+6. **One stale doc line.** `docs/docs/help/faq.mdx` still says a frame every
+   half second; the default is 3 fps.
+7. **Two parked user requests**, both waiting on this branch landing: the
+   track export question, and Jamie McKaughan's file-level "what is on any
+   frame" columns (2026-09-18). Both are in the local TODO.
+8. **The Ultralytics licence decision.** Ultralytics already ships as a
+   MegaDetector dependency, but this branch makes its BoT-SORT tracker a
+   core feature for every video. AGPL against an MIT app is a question for
+   the release that ships tracking, not for the merge.
+9. **`camera-trap-tracking-count-benchmark.md`** sits untracked in the
+   worktree. Commit it beside `TRACKING_BENCHMARK_RESULTS.md` or drop it.
+10. **Delete this section.**
