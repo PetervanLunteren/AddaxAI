@@ -166,8 +166,8 @@ async def export_tables(
 ) -> WrittenFiles:
     """Summary, Counts, Detections, Files and Deployments.
 
-    XLSX writes one workbook with five sheets, streamed to disk; CSV and
-    TSV write five files.
+    XLSX writes one workbook with five sheets, CSV and TSV write five
+    files; either way every table is streamed to disk row by row.
     """
     project = _resolve_project(project_id, db)
     scope = _scope(db, project, body.deployment_ids)
@@ -181,11 +181,7 @@ async def export_tables(
             )
             export_formats.write_xlsx_multi(sheets, path)
             return [path.name]
-        serialize = (
-            export_formats.serialize_csv
-            if body.format == "csv"
-            else export_formats.serialize_tsv
-        )
+        delimiter = "," if body.format == "csv" else "\t"
         names = []
         for title, headers, rows in sheets:
             path = export_formats.unique_export_path(
@@ -194,7 +190,7 @@ async def export_tables(
                     project.name, _TABLE_FILE_NAMES[title], body.format
                 ),
             )
-            path.write_bytes(serialize(headers, rows))
+            export_formats.write_csv(path, headers, rows, delimiter=delimiter)
             names.append(path.name)
         return names
 
@@ -228,8 +224,7 @@ async def export_spatial(
     extension, serialize = _SPATIAL_WRITERS[body.format]
 
     def build_and_write() -> str:
-        scoped = export_crud.get_scoped_detection_rows(db, project, deployment_ids=scope)
-        layers, _skipped = export_crud.build_spatial_layers(db, project, scoped, scope)
+        layers, _skipped = export_crud.build_spatial_layers(db, project, scope)
         path = export_formats.unique_export_path(
             folder, export_formats.export_file_name(project.name, "spatial", extension)
         )

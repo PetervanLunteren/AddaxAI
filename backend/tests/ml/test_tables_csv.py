@@ -216,10 +216,7 @@ def test_projects_mode_builders_keep_every_column(db, tmp_path):
     )
 
     files_headers, _rows = export_crud.build_files_rows(db, project)
-    scoped = export_crud.get_scoped_detection_rows(db, project)
-    det_headers, _det_rows = export_crud.build_detection_rows(
-        db, project, scoped
-    )
+    det_headers, _det_rows = export_crud.build_detection_rows(db, project)
 
     assert "deployment_id" in files_headers
     assert "notes" in files_headers

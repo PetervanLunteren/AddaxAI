@@ -1693,31 +1693,42 @@ def test_summary_endpoint_csv_and_xlsx(client, db):
 # ---------------------------------------------------------------------------
 
 
-def test_xlsx_accepts_a_sheet_filled_to_the_row_limit():
+def test_xlsx_accepts_a_sheet_filled_to_the_row_limit(tmp_path):
     """The header counts as a row, so the last accepted workbook holds
     XLSX_MAX_ROWS - 1 data rows. Pinning the boundary from below is what
-    stops a future off-by-one from refusing exports that fit."""
-    rows = [[i] for i in range(export_formats.XLSX_MAX_ROWS - 1)]
-    # Only the counting is under test; building the real workbook here
-    # would cost a gigabyte of XML for one assertion.
-    export_formats._check_xlsx_row_limit([("Detections", ["n"], rows)])
+    stops a future off-by-one from refusing exports that fit. A small
+    limit stands in for the real one: a million real rows would cost a
+    gigabyte of XML for one assertion."""
+    target = tmp_path / "fits.xlsx"
+    with patch.object(export_formats, "XLSX_MAX_ROWS", 3):
+        written = export_formats.write_xlsx_multi(
+            [("Detections", ["n"], iter([[1], [2]]))], target
+        )
+    assert written == 2
+    assert target.is_file()
 
 
-def test_xlsx_refuses_one_row_past_the_limit():
+def test_xlsx_refuses_one_row_past_the_limit_and_writes_nothing(tmp_path):
     """openpyxl does not check this itself: in write-only mode it accepts
     any number of rows and saves a file whose row indexes run past the
     cap, which Excel then refuses to open. Without this guard the user
-    gets a corrupt download and no explanation."""
-    rows = [[i] for i in range(export_formats.XLSX_MAX_ROWS)]
-    with pytest.raises(export_formats.XlsxRowLimitError) as excinfo:
-        export_formats._check_xlsx_row_limit([("Detections", ["n"], rows)])
+    gets a corrupt file and no explanation. The rows are streamed, so the
+    refusal comes while appending, and it must still leave no file."""
+    target = tmp_path / "too-big.xlsx"
+    with (
+        patch.object(export_formats, "XLSX_MAX_ROWS", 3),
+        pytest.raises(export_formats.XlsxRowLimitError) as excinfo,
+    ):
+        export_formats.write_xlsx_multi(
+            [("Detections", ["n"], iter([[1], [2], [3]]))], target
+        )
 
+    assert not target.exists()
     message = str(excinfo.value)
     # The message is shown to the user verbatim, as the 422 detail and as
-    # a folder-run module error, so it has to name the table, its size
+    # a folder-run module error, so it has to name the table, the limit
     # and the way out.
     assert "detections table" in message
-    assert f"{export_formats.XLSX_MAX_ROWS:,}" in message
     assert "CSV" in message
 
 
@@ -2152,16 +2163,27 @@ def test_make_gpkg_point_blob_layout():
     assert int.from_bytes(blob[9:13], "little") == 1
 
 
-def test_serialize_csv_roundtrip():
-    payload = export_formats.serialize_csv(
-        ["a", "b"], [[1, "x"], [2, "y,z"]]
+def test_write_csv_roundtrip(tmp_path):
+    """Rows stream from a generator into the file; the count is of data
+    rows; line ends stay \\r\\n and there is no BOM, as before."""
+    target = tmp_path / "t.csv"
+    written = export_formats.write_csv(
+        target, ["a", "b"], (r for r in [[1, "x"], [2, "y,z"]])
     )
-    rows = list(csv.reader(io.StringIO(payload.decode("utf-8"))))
-    assert rows == [["a", "b"], ["1", "x"], ["2", "y,z"]]
+    raw = target.read_bytes()
+    assert written == 2
+    assert raw == b'a,b\r\n1,x\r\n2,"y,z"\r\n'
+
+
+def test_write_csv_writes_tsv(tmp_path):
+    target = tmp_path / "t.tsv"
+    export_formats.write_csv(target, ["a", "b"], [[1, "x y"]], delimiter="\t")
+    assert target.read_bytes() == b"a\tb\r\n1\tx y\r\n"
 
 
 def test_scoped_rows_defer_exif_blob(db):
-    """get_scoped_detection_rows must not pull File.exif_data into the sort.
+    """iter_scoped_files must not pull File.exif_data into the sort, nor
+    decode File.frames_processed on every joined row.
 
     The export never reads the per-file EXIF JSON blob, so it is deferred.
     Loading it dragged ~70k blobs through SQLite's ORDER BY sorter and
@@ -2170,7 +2192,7 @@ def test_scoped_rows_defer_exif_blob(db):
     """
     from sqlalchemy import inspect
 
-    from app.api.crud.export import get_scoped_detection_rows
+    from app.api.crud.export import iter_scoped_files
 
     project = make_project(db)
     site = make_site(db, project_id=project.id)
@@ -2187,41 +2209,15 @@ def test_scoped_rows_defer_exif_blob(db):
     # defer() has nothing to unload.
     db.expire_all()
 
-    rows = get_scoped_detection_rows(db, project)
+    files = list(iter_scoped_files(db, project))
 
-    assert rows, "expected at least one scoped row"
-    returned_file = rows[0][0]
+    assert files, "expected at least one scoped file"
+    returned_file = files[0].file
     # Deferred: exif_data is not loaded until explicitly touched.
     assert "exif_data" in inspect(returned_file).unloaded
+    assert "frames_processed" in inspect(returned_file).unloaded
     # But it is still reachable when something does ask for it.
     assert returned_file.exif_data["Make"] == "RECONYX"
-
-
-def test_build_files_rows_accepts_prefetched_rows(db):
-    """Passing the default-query scoped rows must yield exactly the rows
-    the self-fetching call produces. Pins the reuse path that
-    build_spreadsheet_sheets takes to avoid running the same query twice."""
-    from app.api.crud.export import (
-        build_files_rows,
-        get_scoped_detection_rows,
-    )
-
-    project = make_project(db)
-    site = make_site(db, project_id=project.id)
-    deployment = make_deployment(db, project_id=project.id, site_id=site.id)
-    with_box = make_file(db, deployment_id=deployment.id)
-    make_detection(db, file_id=with_box.id, category="animal", confidence=0.9)
-    make_file(db, deployment_id=deployment.id)  # empty file, blank row
-
-    headers_direct, rows_direct = build_files_rows(db, project)
-    scoped = get_scoped_detection_rows(db, project)
-    headers_reused, rows_reused = build_files_rows(
-        db, project, scoped_rows=scoped
-    )
-
-    assert headers_reused == headers_direct
-    assert rows_reused == rows_direct
-    assert len(rows_reused) == 2
 
 
 def test_write_xlsx_multi_roundtrip(tmp_path):
@@ -3229,3 +3225,229 @@ def test_a_folder_without_write_access_is_a_readable_error(client, db, tmp_path)
             assert resp.json()["detail"] == "Could not write to that folder: Permission denied"
     finally:
         tmp_path.chmod(0o755)
+
+
+# ---------------------------------------------------------------------------
+# Which boxes the shared export query reads
+# ---------------------------------------------------------------------------
+
+
+def _video_with_boxes_on_three_frames(db, deployment):
+    """A video saved at frame 3 with a fox there, a fox on frame 7 that
+    nobody can open, and a verified fox on frame 9."""
+    f = make_file(
+        db,
+        deployment_id=deployment.id,
+        file_type="video",
+        file_format="mp4",
+        best_frame_number=3,
+        observation_type="animal",
+    )
+    on_frame = make_detection(db, file_id=f.id, frame_number=3, label="fox")
+    off_frame = make_detection(db, file_id=f.id, frame_number=7, label="fox")
+    verified = make_detection(
+        db, file_id=f.id, frame_number=9, label="fox", verified=True
+    )
+    db.commit()
+    return f, on_frame, off_frame, verified
+
+
+def test_the_scoped_query_reads_only_the_visible_frame(db):
+    """The tables show a video's saved frame, plus verified boxes on any
+    frame, so the query does not read the rest: reading them only to drop
+    them in Python is what ran a 6,000-video export out of memory."""
+    from app.api.crud import export as export_crud
+
+    project, _site, deployment = _build_simple_project(db)
+    _f, on_frame, off_frame, verified = _video_with_boxes_on_three_frames(db, deployment)
+
+    ids = {
+        det.id
+        for sf in export_crud.iter_scoped_files(db, project)
+        for det, _tax in sf.detections
+    }
+
+    assert ids == {on_frame.id, verified.id}
+    assert off_frame.id not in ids
+
+
+def test_the_archival_query_still_reads_every_frame(db):
+    """Camtrap DP keeps every frame, so visible_only=False must too."""
+    from app.api.crud import export as export_crud
+
+    project, _site, deployment = _build_simple_project(db)
+    _f, on_frame, off_frame, verified = _video_with_boxes_on_three_frames(db, deployment)
+
+    files = export_crud.iter_scoped_files(db, project, visible_only=False)
+    ids = {det.id for sf in files for det, _tax in sf.detections}
+
+    assert ids == {on_frame.id, off_frame.id, verified.id}
+
+
+def test_a_file_whose_boxes_are_all_excluded_keeps_its_files_row(client, db):
+    """The species exclusion removes boxes, not files. A photo of only an
+    excluded species is listed like any other file, without a species."""
+    project, _site, deployment = _build_simple_project(db)
+    project.excluded_classes = ["rat"]
+    f = make_file(db, deployment_id=deployment.id, observation_type="animal")
+    make_detection(db, file_id=f.id, label="rat", confidence=0.9)
+    db.commit()
+
+    headers, by_id = _files_rows(client, project.id)
+
+    assert f.id in by_id
+    assert _species(headers, by_id[f.id]) == ["", "", ""]
+    det = _export(client, project.id, "detections", "csv")
+    assert f.id not in det.content.decode("utf-8")
+
+
+def test_the_exclusion_keeps_boxes_without_a_taxonomy_row(db):
+    """An unclassified box has no taxonomy id. The exclusion test must
+    read that as "not excluded", not as SQL NULL, which would drop it."""
+    from app.api.crud import export as export_crud
+
+    project, _site, deployment = _build_simple_project(db)
+    project.excluded_classes = ["rat"]
+    f = make_file(db, deployment_id=deployment.id)
+    unclassified = make_detection(db, file_id=f.id, label=None, label_taxonomy_id=None)
+    labelled = make_detection(db, file_id=f.id, label="fox", label_taxonomy_id=None)
+    db.commit()
+
+    ids = {
+        det.id
+        for sf in export_crud.iter_scoped_files(db, project)
+        for det, _tax in sf.detections
+    }
+
+    assert ids == {unclassified.id, labelled.id}
+
+
+def test_spatial_species_totals_add_up_to_the_deployment_total(client, db):
+    """Both spatial layers count the same boxes: the visible frame. Before,
+    the species layer counted every frame of a video and could read three
+    times the deployment's own number."""
+    project, _site, deployment = _build_simple_project(db)
+    _video_with_boxes_on_three_frames(db, deployment)
+
+    resp = _export(client, project.id, "spatial", "geojson")
+    assert resp.status_code == 200
+    features = json.loads(resp.content)["features"]
+    deployment_total = sum(
+        f["properties"]["detection_count"]
+        for f in features
+        if f["properties"]["layer"] == "deployments"
+    )
+    species_total = sum(
+        f["properties"]["total_count"]
+        for f in features
+        if f["properties"]["layer"] == "species_summary"
+    )
+
+    assert deployment_total == species_total == 2
+
+
+def test_camtrap_lists_an_excluded_only_photo_without_calling_it_blank(client, db):
+    """A blank observation claims there is no animal. A photo whose only
+    box is an excluded species shows one, so it keeps its media row and
+    gets no observation at all ("not annotated")."""
+    project, _site, deployment = _build_simple_project(db)
+    project.excluded_classes = ["rat"]
+    rat_photo = make_file(db, deployment_id=deployment.id, observation_type="animal")
+    make_detection(db, file_id=rat_photo.id, label="rat", confidence=0.9)
+    empty_photo = make_file(db, deployment_id=deployment.id, observation_type="blank")
+    db.commit()
+
+    resp = _run_camtrap_dp_export(client, db, project.id)
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        media = list(csv.DictReader(io.StringIO(zf.read("media.csv").decode())))
+        obs = list(csv.DictReader(io.StringIO(zf.read("observations.csv").decode())))
+
+    assert {m["mediaID"] for m in media} == {rat_photo.id, empty_photo.id}
+    by_media = {o["mediaID"]: o for o in obs}
+    assert rat_photo.id not in by_media
+    assert by_media[empty_photo.id]["observationType"] == "blank"
+
+
+def test_a_batch_is_capped_by_rows_not_files(monkeypatch):
+    """A batch holds its files' boxes too. Capping it by files let a
+    thousand all-frames videos (425 boxes each) sit in memory at once, a
+    gigabyte for Camtrap DP. Capped by rows, a file with many boxes gets
+    a batch of its own and a run of empty files shares one."""
+    from app.api.crud import export as export_crud
+
+    monkeypatch.setattr(export_crud, "STREAM_BATCH", 4)
+
+    def scoped(n_boxes):
+        return export_crud.ScopedFile(None, None, None, [(None, None)] * n_boxes)
+
+    files = [scoped(0), scoped(0), scoped(10), scoped(1), scoped(0), scoped(3), scoped(0)]
+    sizes = [
+        [len(f.detections) for f in batch] for batch in export_crud._batched(files)
+    ]
+
+    assert sizes == [[0, 0, 10], [1, 0, 3], [0]]
+
+
+@pytest.mark.parametrize("failure", ["row limit", "error while writing"])
+def test_a_refused_xlsx_leaves_no_temp_files(tmp_path, monkeypatch, failure):
+    """openpyxl's write-only sheets stream into temp files that it deletes
+    only on save(). A workbook that is refused is never saved, so its temp
+    files must be removed by us: at the real row limit that is 1.7 GB per
+    attempt, and in the backend they outlived a shutdown."""
+    temp_dir = tmp_path / "temp"
+    temp_dir.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(temp_dir))
+
+    def rows():
+        yield [1]
+        yield [2]
+        if failure == "error while writing":
+            raise RuntimeError("database went away")
+        yield [3]
+
+    with (
+        patch.object(export_formats, "XLSX_MAX_ROWS", 3),
+        pytest.raises((export_formats.XlsxRowLimitError, RuntimeError)),
+    ):
+        export_formats.write_xlsx_multi(
+            [("Summary", ["n"], [[0]]), ("Detections", ["n"], rows())],
+            tmp_path / "out.xlsx",
+        )
+
+    assert list(temp_dir.iterdir()) == []
+    assert not (tmp_path / "out.xlsx").exists()
+
+
+def _only_file(folder: Path) -> str:
+    """The name of the one file in ``folder``."""
+    (name,) = [p.name for p in folder.iterdir()]
+    return name
+
+
+def test_camtrap_stages_its_files_inside_the_output_folder(client, db, monkeypatch):
+    """The package is staged on the drive the user picked, never in the
+    system temp folder: a full system drive used to fail the export while
+    the chosen folder had room. The staging folder is gone afterwards."""
+    from app.workers import camtrap_export_worker
+
+    project, _site, deployment = _build_simple_project(db)
+    f = make_file(db, deployment_id=deployment.id)
+    make_detection(db, file_id=f.id, label="fox")
+    db.commit()
+
+    staged_in: list[Path] = []
+    real_stage = camtrap_export_worker._stage_package
+
+    def spy(db_, project_, deployment_ids, staging, on_thumbnail):
+        staged_in.append(staging)
+        return real_stage(db_, project_, deployment_ids, staging, on_thumbnail)
+
+    monkeypatch.setattr(camtrap_export_worker, "_stage_package", spy)
+    resp = _run_camtrap_dp_export(client, db, project.id)
+
+    # The helper also checks the folder holds nothing but the ZIP.
+    assert resp.status_code == 200
+    (staging,) = staged_in
+    assert staging.name.startswith(".addaxai-camtrap-")
+    assert (staging.parent / _only_file(staging.parent)).is_file()
+    assert not staging.exists()

@@ -25,20 +25,21 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
-from sqlalchemy import Row, and_, func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, defer
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.api.crud.export_formats import slugify
 from app.api.crud.ordering import detection_order_in_file, file_time_order
 from app.core.logging_config import get_logger
 from app.core.observation_attributes import LIFE_STAGES, SEXES
 from app.db.sql_params import iter_id_chunks
-from app.ml.detection_visibility import visible_detections
+from app.ml.detection_visibility import on_visible_frame
 from app.ml.label_exclusion import is_non_label, threshold_or_verified
 from app.ml.observation_type import strongest_passing_detection
 from app.ml.taxonomic_rollup import format_scientific_name_from_taxonomy_row
@@ -309,40 +310,120 @@ def resolve_scope_deployment_ids(
     return [r[0] for r in rows]
 
 
-def get_scoped_detection_rows(
+def _excluded_box(project: Project) -> ColumnElement[bool] | None:
+    """True for a box the project's species exclusion removes from the
+    exports, or None when nothing is excluded.
+
+    An unverified animal box whose taxonomy name OR raw label matches
+    ``Project.excluded_classes`` (case-insensitive). The taxonomy is
+    matched through a subquery, so the clause needs no LabelTaxonomy join.
+    ``coalesce`` keeps a NULL taxonomy id or label from turning the test
+    NULL. Verified boxes are never removed: a human relabel to an excluded
+    species (possible when the species selection hid the true class from
+    the classifier) outranks the exclusion config, same as the threshold
+    override.
+    """
+    excluded = [s.lower() for s in (project.excluded_classes or [])]
+    if not excluded:
+        return None
+    excluded_taxonomy_ids = select(LabelTaxonomy.id).where(
+        func.lower(LabelTaxonomy.name).in_(excluded)
+    )
+    return and_(
+        Detection.category == "animal",
+        Detection.verified == False,  # noqa: E712
+        or_(
+            func.coalesce(Detection.label_taxonomy_id, "").in_(excluded_taxonomy_ids),
+            func.lower(func.coalesce(Detection.label, "")).in_(excluded),
+        ),
+    )
+
+
+def _files_with_excluded_boxes(
+    db: Session, project: Project, file_ids: Iterable[str]
+) -> set[str]:
+    """Which of ``file_ids`` hold a passing box the species exclusion
+    removed. Such a file arrives with no detections, the same as a file
+    the detector found empty, and Camtrap DP must not call it blank: a
+    blank observation claims there is no animal. Chunked like
+    ``_events_by_file``."""
+    removed = _excluded_box(project)
+    if removed is None:
+        return set()
+    found: set[str] = set()
+    for chunk in iter_id_chunks(file_ids):
+        stmt = (
+            select(Detection.file_id)
+            .distinct()
+            .where(Detection.file_id.in_(chunk))
+            .where(threshold_or_verified(project.counting_threshold))
+            .where(removed)
+        )
+        found.update(db.scalars(stmt))
+    return found
+
+
+class ScopedFile(NamedTuple):
+    """One media file in an export's scope, with the boxes that count."""
+
+    file: File
+    deployment: Deployment
+    site: Site | None
+    detections: list[tuple[Detection, LabelTaxonomy | None]]
+
+
+# How many rows the scoped query fetches at a time, and about how many rows
+# (boxes, or the file itself when it has none) one batch of files holds
+# for the lookups of their events and camera cells. Memory per batch, not
+# per project; small enough to stay flat, large enough that the per-batch
+# lookups cost nothing next to the rows.
+STREAM_BATCH = 1000
+
+
+def iter_scoped_files(
     db: Session,
     project: Project,
     *,
-    extra_excluded: list[str] | None = None,
     deployment_ids: list[str] | None = None,
-) -> list[Row[Any]]:
+    visible_only: bool = True,
+) -> Iterator[ScopedFile]:
+    """Every media file in scope for ``project``, one at a time, with its
+    boxes that count. The one source of every table export.
+
+    **Streamed, never collected.** The query is read ``STREAM_BATCH`` rows
+    at a time and regrouped as it goes, so an export holds one batch, not
+    the project. Holding it all is what ran a 3.2-million-box export out
+    of memory (2026-10-14). The regrouping relies on the ORDER BY ending
+    in ``File.id`` (``file_time_order``) and then the detection order, so
+    a file's rows are adjacent. The session's identity map holds its
+    objects weakly, so a file is freed once its consumer moves on.
+
+    **Which boxes count.** A LEFT JOIN on Detection, and every rule sits in
+    that join's condition, never in WHERE: a file whose boxes all fail a
+    rule still arrives (with no detections), so the Files table lists it
+    as the empty file it is for this export.
+
+    - Threshold + verified override (DEVELOPERS.md), always. There used to
+      be an ``apply_threshold=False`` escape hatch for the folder-run
+      tables; it produced sheets that disagreed with each other and with
+      the Labels step. The complete record is ``addaxai-recognitions.json``.
+    - ``visible_only`` keeps a video's boxes to its saved frame, plus
+      verified boxes on any frame (``on_visible_frame``): the boxes a user
+      can see, open and correct, and the only ones every table but Camtrap
+      DP shows. Reading the rest only to drop them cost 50 to 100 times the
+      rows on a video project. Camtrap DP passes False: it is the archival
+      export and keeps every frame.
+    - The species exclusion (``_excluded_box``).
     """
-    Return every (File, Detection, Deployment, Site, LabelTaxonomy) row
-    in scope for ``project``.
-
-    LEFT JOIN on Detection: keeps files with zero in-scope detections so
-    the caller can emit a blank row.
-
-    ``extra_excluded`` augments ``project.excluded_classes`` with a
-    per-call exclusion list. The folder-run Save step uses this so the
-    user's "exclude these species from outputs" choice on the Save
-    page applies to exports without mutating the project's persistent
-    exclusion list.
-
-    **One scope, both modes.** The threshold + verified-override rule
-    (DEVELOPERS.md) always applies. There used to be an
-    ``apply_threshold=False`` escape hatch that the folder-run table
-    writers passed, on the argument that their data exports are the
-    complete record of the run. It produced a spreadsheet whose sheets
-    disagreed with each other and with the app: ``addaxai-files.csv``
-    was thresholded while ``addaxai-detections.csv`` beside it was not,
-    and both sat next to a Labels step that shows neither the
-    sub-threshold boxes nor the off-best-frame ones. Users read that as
-    the export inventing species they could not find or fix. The
-    complete record is ``addaxai-recognitions.json``, which still
-    carries every stored detection on every frame.
-    """
-    threshold_clause = threshold_or_verified(project.counting_threshold)
+    detection_scope = [
+        Detection.file_id == File.id,
+        threshold_or_verified(project.counting_threshold),
+    ]
+    if visible_only:
+        detection_scope.append(on_visible_frame())
+    removed_by_exclusion = _excluded_box(project)
+    if removed_by_exclusion is not None:
+        detection_scope.append(~removed_by_exclusion)
 
     # Outer join on Site so deployments without an assigned site still
     # appear in the export; the CSV serializer emits blank lat/lon cells
@@ -350,19 +431,18 @@ def get_scoped_detection_rows(
     # skipped_deployment_ids list.
     query = (
         select(File, Detection, Deployment, Site, LabelTaxonomy)
-        # Drop File.exif_data: the full per-file EXIF JSON blob is never read
-        # by any export builder (CamTrap's exifData column is emitted blank).
-        # Without this, SQLite drags ~70k EXIF blobs through the ORDER BY
-        # sorter's temp file and hits SQLITE_FULL ("database or disk is full")
-        # on large projects even with plenty of free space on the data drive.
-        .options(defer(File.exif_data))
+        # Two File columns no export builder reads, so they stay out of
+        # every row. exif_data: without this, SQLite drags ~70k EXIF blobs
+        # through the ORDER BY sorter's temp file and hits SQLITE_FULL
+        # ("database or disk is full") on large projects; the camera cells
+        # read it in their own query (``_camera_cells_by_file``).
+        # frames_processed: a JSON list per video, decoded again on every
+        # joined row.
+        .options(defer(File.exif_data), defer(File.frames_processed))
         .select_from(File)
         .join(Deployment, File.deployment_id == Deployment.id)
         .outerjoin(Site, Deployment.site_id == Site.id)
-        .outerjoin(
-            Detection,
-            and_(Detection.file_id == File.id, threshold_clause),
-        )
+        .outerjoin(Detection, and_(*detection_scope))
         .outerjoin(
             LabelTaxonomy, LabelTaxonomy.id == Detection.label_taxonomy_id
         )
@@ -371,40 +451,29 @@ def get_scoped_detection_rows(
         .order_by(
             *file_time_order(newest_first=False), *detection_order_in_file()
         )
+        .execution_options(yield_per=STREAM_BATCH)
     )
-
     # Optional export scope: narrow to a subset of the project's
     # deployments (see resolve_scope_deployment_ids). None = whole project.
     if deployment_ids is not None:
         query = query.where(Deployment.id.in_(deployment_ids))
 
-    excluded = [s.lower() for s in (project.excluded_classes or [])]
-    if extra_excluded:
-        excluded = list({*excluded, *(s.lower() for s in extra_excluded)})
-    if excluded:
-        # Drop animal detections whose taxonomy name OR raw label matches
-        # the excluded list (case-insensitive). ``coalesce`` turns null
-        # taxonomy/label into an empty string so ``in_`` behaves predictably
-        # instead of returning SQL NULL. Verified detections always
-        # survive: a human relabel to an excluded species (possible when
-        # the species selection hid the true class from the classifier)
-        # outranks the exclusion config, same as the threshold override.
-        taxonomy_name_lower = func.lower(func.coalesce(LabelTaxonomy.name, ""))
-        detection_label_lower = func.lower(func.coalesce(Detection.label, ""))
-        excluded_match = or_(
-            taxonomy_name_lower.in_(excluded),
-            detection_label_lower.in_(excluded),
-        )
-        query = query.where(
-            or_(
-                Detection.id.is_(None),
-                Detection.category != "animal",
-                Detection.verified.is_(True),
-                ~excluded_match,
-            )
-        )
-
-    return list(db.execute(query).all())
+    result = db.execute(query)
+    try:
+        current: ScopedFile | None = None
+        for file_obj, detection, deployment, site, taxonomy in result:
+            if current is None or current.file.id != file_obj.id:
+                if current is not None:
+                    yield current
+                current = ScopedFile(file_obj, deployment, site, [])
+            if detection is not None:
+                current.detections.append((detection, taxonomy))
+        if current is not None:
+            yield current
+    finally:
+        # A consumer that stops early (the XLSX row limit) must not leave
+        # the cursor open on the connection.
+        result.close()
 
 
 # ---------------------------------------------------------------------------
@@ -412,29 +481,27 @@ def get_scoped_detection_rows(
 # ---------------------------------------------------------------------------
 
 
-def _group_rows_by_file(
-    scoped_rows: Sequence[Row[Any]],
-) -> list[tuple[File, Deployment, Site, list[tuple[Detection, LabelTaxonomy | None]]]]:
-    """Regroup the LEFT-JOIN output into one entry per File."""
-    out: list[
-        tuple[File, Deployment, Site, list[tuple[Detection, LabelTaxonomy | None]]]
-    ] = []
-    current_file_id: str | None = None
-    current_entry: (
-        tuple[File, Deployment, Site, list[tuple[Detection, LabelTaxonomy | None]]] | None
-    ) = None
+def _batched(files: Iterable[ScopedFile]) -> Iterator[list[ScopedFile]]:
+    """``files`` in lists of about ``STREAM_BATCH`` rows, for the lookups
+    made once per batch rather than once per project.
 
-    for row in scoped_rows:
-        file_obj, detection, deployment, site, taxonomy = row
-        if current_file_id != file_obj.id:
-            current_entry = (file_obj, deployment, site, [])
-            out.append(current_entry)
-            current_file_id = file_obj.id
-        assert current_entry is not None
-        if detection is not None:
-            current_entry[3].append((detection, taxonomy))
-
-    return out
+    Counted in rows, not files: a batch holds its files' boxes too, and a
+    video with every frame kept (Camtrap DP) carries hundreds. A thousand
+    such files per batch was a gigabyte of box objects at once (measured
+    on 6,000 videos x 425 boxes, 2026-10-15). So memory stays bounded by
+    the batch plus the single largest file, whatever the project looks
+    like.
+    """
+    batch: list[ScopedFile] = []
+    rows = 0
+    for scoped in files:
+        batch.append(scoped)
+        rows += max(1, len(scoped.detections))
+        if rows >= STREAM_BATCH:
+            yield batch
+            batch, rows = [], 0
+    if batch:
+        yield batch
 
 
 def _species_label(detection: Detection, taxonomy: LabelTaxonomy | None) -> str:
@@ -573,19 +640,6 @@ def _camtrap_cohort_fields(
     )
 
 
-def _file_event(
-    db: Session, file_id: str
-) -> Event | None:
-    """Fetch the event a file belongs to (max one; event_files has no multi-row case today)."""
-    stmt = (
-        select(Event)
-        .join(event_files, event_files.c.event_id == Event.id)
-        .where(event_files.c.file_id == file_id)
-        .limit(1)
-    )
-    return db.execute(stmt).scalars().first()
-
-
 def _events_by_file(
     db: Session, file_ids: Sequence[str]
 ) -> dict[str, Event]:
@@ -666,10 +720,12 @@ def _iso_datetime(dt: datetime | None, tz_name: str) -> str:
 
 
 def build_detection_rows(
-    db: Session, project: Project, scoped_rows: Sequence[Row[Any]]
-) -> tuple[list[str], list[list[Any]]]:
+    db: Session, project: Project, deployment_ids: list[str] | None = None
+) -> tuple[list[str], Iterator[list[Any]]]:
     """
-    Build `(headers, rows)` for the flat Detections export.
+    Build `(headers, rows)` for the flat Detections export. ``rows`` is
+    a generator: nothing is read until a writer pulls it, and it is read
+    once.
 
     Grain: one row per detection (the box view). Carries the context block
     (site, deployment, event, file) so a row reads on its own, and the FK
@@ -683,42 +739,36 @@ def build_detection_rows(
     sampled frame, but the app writes and shows exactly one frame per
     video, so a box on any other frame has no picture anywhere: it cannot
     be seen in the Labels grid, filtered to, or relabelled. Emitting them
-    here handed users a species list they could not act on, which is what
-    ``visible_detections`` exists to prevent everywhere else. The per-frame
-    boxes are not lost: ``addaxai-recognitions.json`` carries all of them,
-    with their frame numbers, which is the file built to be the complete
-    record. Verified boxes pass on any frame, per the usual exception.
+    here handed users a species list they could not act on. The rows come
+    from ``iter_scoped_files`` with ``visible_only`` on, so those boxes
+    never arrive. The per-frame boxes are not lost:
+    ``addaxai-recognitions.json`` carries all of them, with their frame
+    numbers, which is the file built to be the complete record. Verified
+    boxes pass on any frame, per the usual exception.
     """
-    grouped = list(_group_rows_by_file(scoped_rows))
-    event_map = _events_by_file(db, [f.id for f, _d, _s, _dets in grouped])
+    return _FLAT_DETECTION_HEADERS, _detection_rows(db, project, deployment_ids)
 
+
+def _detection_rows(
+    db: Session, project: Project, deployment_ids: list[str] | None
+) -> Iterator[list[Any]]:
     tz_name = project.timezone
-    rows: list[list[Any]] = []
-    for file_obj, deployment, site, detections in grouped:
-        event = event_map.get(file_obj.id)
-        # Built once per file, not once per box: the same cells repeat on
-        # every detection row of the file.
-        context = [
-            *_site_cells(site),
-            *_deployment_cells(deployment),
-            *_event_cells(event, tz_name),
-            file_obj.id,
-            *_file_cells(file_obj, deployment, tz_name),
-        ]
-        shown = {
-            d.id
-            for d in visible_detections(
-                file_obj, [det for det, _tax in detections]
-            )
-        }
-        for detection, taxonomy in detections:
-            if detection.id not in shown:
-                continue
-            rows.append(
-                [detection.id, *context] + _detection_cells(detection, taxonomy)
-            )
-
-    return _FLAT_DETECTION_HEADERS, rows
+    files = iter_scoped_files(db, project, deployment_ids=deployment_ids)
+    for batch in _batched(files):
+        event_map = _events_by_file(db, [sf.file.id for sf in batch])
+        for file_obj, deployment, site, detections in batch:
+            event = event_map.get(file_obj.id)
+            # Built once per file, not once per box: the same cells repeat on
+            # every detection row of the file.
+            context = [
+                *_site_cells(site),
+                *_deployment_cells(deployment),
+                *_event_cells(event, tz_name),
+                file_obj.id,
+                *_file_cells(file_obj, deployment, tz_name),
+            ]
+            for detection, taxonomy in detections:
+                yield [detection.id, *context] + _detection_cells(detection, taxonomy)
 
 
 def _round_or_blank(value: float | None, ndigits: int) -> float | str:
@@ -1000,7 +1050,7 @@ def _camera_cells_by_file(
     """The four camera cells (make, model, temperature, serial) per file id.
 
     Fetched in a separate chunked query rather than through
-    ``get_scoped_detection_rows``: that query defers ``File.exif_data`` so
+    ``iter_scoped_files``: that query defers ``File.exif_data`` so
     the blobs stay out of its ORDER BY sorter (the SQLITE_FULL fix noted
     there), and this one has no ORDER BY, so reading them here is safe.
     Only the four small strings are kept; files with no stored EXIF are
@@ -1028,34 +1078,27 @@ def build_files_rows(
     db: Session,
     project: Project,
     deployment_ids: list[str] | None = None,
-    scoped_rows: Sequence[Row[Any]] | None = None,
-) -> tuple[list[str], list[list[Any]]]:
+) -> tuple[list[str], Iterator[list[Any]]]:
     """Build `(headers, rows)` for the Files export: one row per media file,
     including files with no detections (the effort table). `event_id`
-    answers "which files are in this event".
+    answers "which files are in this event". ``rows`` is a generator, read
+    once, like ``build_detection_rows``'."""
+    return _FILES_HEADERS, _files_rows(db, project, deployment_ids)
 
-    ``scoped_rows`` lets a caller that already fetched the scoped rows for
-    the same ``deployment_ids`` reuse them instead of paying the query
-    twice. There is only one scope now, so any rows from
-    ``get_scoped_detection_rows`` for the same deployments are valid
-    here."""
+
+def _files_rows(
+    db: Session, project: Project, deployment_ids: list[str] | None
+) -> Iterator[list[Any]]:
     tz_name = project.timezone
-
-    if scoped_rows is None:
-        scoped_rows = get_scoped_detection_rows(
-            db, project, deployment_ids=deployment_ids
-        )
-    grouped = list(_group_rows_by_file(scoped_rows))
-    file_ids = [f.id for f, _d, _s, _dets in grouped]
-    event_map = _events_by_file(db, file_ids)
-    camera_map = _camera_cells_by_file(db, file_ids)
-
-    rows: list[list[Any]] = []
-    for file_obj, deployment, site, detections in grouped:
-        event = event_map.get(file_obj.id)
-        relative_path, *file_rest = _file_cells(file_obj, deployment, tz_name)
-        rows.append(
-            [
+    files = iter_scoped_files(db, project, deployment_ids=deployment_ids)
+    for batch in _batched(files):
+        file_ids = [sf.file.id for sf in batch]
+        event_map = _events_by_file(db, file_ids)
+        camera_map = _camera_cells_by_file(db, file_ids)
+        for file_obj, deployment, site, detections in batch:
+            event = event_map.get(file_obj.id)
+            relative_path, *file_rest = _file_cells(file_obj, deployment, tz_name)
+            yield [
                 file_obj.id,
                 *_site_cells(site),
                 *_deployment_cells(deployment),
@@ -1072,9 +1115,6 @@ def build_files_rows(
                 "TRUE" if file_obj.flagged else "FALSE",
                 file_obj.notes or "",
             ]
-        )
-
-    return _FILES_HEADERS, rows
 
 
 def _strongest_species_cells(
@@ -1097,12 +1137,10 @@ def _strongest_species_cells(
     Gated to the file's visible surface, so for a video this is its best
     frame. That is the same rule ``observation_type`` beside it now uses,
     which is what keeps the whole block describing one box, and a box the
-    user can actually open. The gate runs in Python rather than in
-    ``get_scoped_detection_rows`` because that query is also shared with
-    the CamTrap DP builder, which keeps every frame by design (an
-    archival export must not lose a video whose best frame is empty).
+    user can actually open. The gate is the ``visible_only`` condition in
+    ``iter_scoped_files``, so ``detections`` holds only those boxes.
 
-    The threshold is passed explicitly even though ``get_scoped_detection_rows``
+    The threshold is passed explicitly even though ``iter_scoped_files``
     already applied the same predicate in SQL. Re-applying it costs one pass
     over a handful of already-loaded objects and keeps these columns tied to
     the same threshold ``observation_type`` uses, so a later change to that
@@ -1116,8 +1154,9 @@ def _strongest_species_cells(
     that a box with no species still names itself: ``Person``, ``Vehicle``,
     ``Animal``, per ``resolve_label_names``.
     """
-    visible = visible_detections(file_obj, [det for det, _tax in detections])
-    best = strongest_passing_detection(visible, project.counting_threshold)
+    best = strongest_passing_detection(
+        [det for det, _tax in detections], project.counting_threshold
+    )
     if best is None:
         # Nothing passed, so there is no box to describe. Blank, never 0.0:
         # a zero would read as "the detector scored nothing" and would
@@ -1194,9 +1233,10 @@ def build_observation_rows(
     db: Session,
     project: Project,
     deployment_ids: list[str] | None = None,
-) -> tuple[list[str], list[list[Any]]]:
+) -> tuple[list[str], Iterator[list[Any]]]:
     """
     Build `(headers, rows)` for the event-level Observations export.
+    ``rows`` is a generator, read once.
 
     Grain: one row per event x cohort (a species, or one demographic group
     of it), carrying the effective count (human-confirmed if set, else the
@@ -1204,12 +1244,18 @@ def build_observation_rows(
     removed) are skipped. This maps to the Counts page; the per-detection
     grain lives in the Detections export.
     """
+    return _OBSERVATIONS_HEADERS, _observation_rows(db, project, deployment_ids)
+
+
+def _observation_rows(
+    db: Session, project: Project, deployment_ids: list[str] | None
+) -> Iterator[list[Any]]:
     from app.api.crud.trap_nights import compute_trap_nights_for_deployments
 
     tz_name = project.timezone
 
     query = (
-        db.query(EventObservation, Event, Deployment, Site, LabelTaxonomy)
+        select(EventObservation, Event, Deployment, Site, LabelTaxonomy)
         .join(Event, Event.id == EventObservation.event_id)
         .join(Deployment, Deployment.id == Event.deployment_id)
         .outerjoin(Site, Site.id == Deployment.site_id)
@@ -1217,27 +1263,32 @@ def build_observation_rows(
             LabelTaxonomy,
             LabelTaxonomy.id == EventObservation.label_taxonomy_id,
         )
-        .filter(Deployment.project_id == project.id)
+        .where(Deployment.project_id == project.id)
         .order_by(Event.event_start_local.asc(), Event.id)
     )
     if deployment_ids is not None:
-        query = query.filter(Deployment.id.in_(deployment_ids))
-    results = query.all()
+        query = query.where(Deployment.id.in_(deployment_ids))
 
-    seen_deployment_ids = sorted({dep.id for _o, _e, dep, _s, _t in results})
+    # Trap nights for the deployments the rows will name, asked for before
+    # the rows are streamed rather than collected from them.
+    seen_deployment_ids = sorted(
+        db.scalars(
+            query.with_only_columns(Deployment.id).distinct().order_by(None)
+        )
+    )
     trap_nights = (
         compute_trap_nights_for_deployments(db, seen_deployment_ids)
         if seen_deployment_ids
         else {}
     )
 
-    rows: list[list[Any]] = []
-    for obs, event, deployment, site, taxonomy in results:
-        count = obs.effective_count
-        if count <= 0:
-            continue
-        rows.append(
-            [
+    result = db.execute(query.execution_options(yield_per=STREAM_BATCH))
+    try:
+        for obs, event, deployment, site, taxonomy in result:
+            count = obs.effective_count
+            if count <= 0:
+                continue
+            yield [
                 event.id,
                 *_site_cells(site),
                 *_deployment_cells(deployment),
@@ -1258,9 +1309,8 @@ def build_observation_rows(
                 event.notes or "",
                 "TRUE" if event.confirmed else "FALSE",
             ]
-        )
-
-    return _OBSERVATIONS_HEADERS, rows
+    finally:
+        result.close()
 
 
 # ---------------------------------------------------------------------------
@@ -1308,7 +1358,6 @@ def _summary_key(category: str, label: str | None) -> tuple[str, str]:
 def build_summary_rows(
     db: Session,
     project: Project,
-    scoped_rows: Sequence[Row[Any]],
     deployment_ids: list[str] | None = None,
 ) -> tuple[list[str], list[list[Any]]]:
     """
@@ -1323,8 +1372,8 @@ def build_summary_rows(
     - ``n_individuals``: the sum of ``count`` in the Counts table (the
       confirmed number where one was set, else the AI's MaxN).
 
-    The rows come from the same ``scoped_rows`` and the same visibility gate
-    as ``build_detection_rows``, so the two tables cannot disagree. That is
+    The rows come from the same ``iter_scoped_files`` stream and scope as
+    ``build_detection_rows``, so the two tables cannot disagree. That is
     also why a species that only exists in the Counts table (added by hand
     on the Counts page, or an excluded species with a leftover observation
     row) gets no row here: it has no detection to count.
@@ -1336,40 +1385,42 @@ def build_summary_rows(
 
     Both sides key through ``_summary_key``, which treats a label that only
     repeats the category as "no species"; see there for why.
-    """
-    grouped = list(_group_rows_by_file(scoped_rows))
-    event_map = _events_by_file(db, [f.id for f, _d, _s, _dets in grouped])
 
+    Built in one pass over the stream, holding one counter per species.
+    Each file arrives once, so the files per species are counted per file
+    without keeping their ids; the events per species do need a set of
+    ``(species, event)`` pairs, which grows with the events in scope, not
+    with the boxes.
+    """
     name_cells: dict[tuple[str, str], list[Any]] = {}
-    images: dict[tuple[str, str], set[str]] = defaultdict(set)
-    videos: dict[tuple[str, str], set[str]] = defaultdict(set)
+    n_images: dict[tuple[str, str], int] = defaultdict(int)
+    n_videos: dict[tuple[str, str], int] = defaultdict(int)
     events: dict[tuple[str, str], set[str]] = defaultdict(set)
     n_detections: dict[tuple[str, str], int] = defaultdict(int)
 
-    for file_obj, _deployment, _site, detections in grouped:
-        event = event_map.get(file_obj.id)
-        shown = {
-            d.id
-            for d in visible_detections(
-                file_obj, [det for det, _tax in detections]
-            )
-        }
-        for detection, taxonomy in detections:
-            if detection.id not in shown or is_non_label(detection.label):
-                continue
-            key = _summary_key(detection.category, detection.label)
-            if key not in name_cells:
-                name_cells[key] = [
-                    *_taxon_ranks(taxonomy),
-                    _export_scientific_name(taxonomy, detection.scientific_name),
-                    detection.common_name or "",
-                ]
-            n_detections[key] += 1
-            (videos if file_obj.file_type == "video" else images)[key].add(
-                file_obj.id
-            )
-            if event is not None:
-                events[key].add(event.id)
+    files = iter_scoped_files(db, project, deployment_ids=deployment_ids)
+    for batch in _batched(files):
+        event_map = _events_by_file(db, [sf.file.id for sf in batch])
+        for file_obj, _deployment, _site, detections in batch:
+            event = event_map.get(file_obj.id)
+            keys_in_file: set[tuple[str, str]] = set()
+            for detection, taxonomy in detections:
+                if is_non_label(detection.label):
+                    continue
+                key = _summary_key(detection.category, detection.label)
+                if key not in name_cells:
+                    name_cells[key] = [
+                        *_taxon_ranks(taxonomy),
+                        _export_scientific_name(taxonomy, detection.scientific_name),
+                        detection.common_name or "",
+                    ]
+                n_detections[key] += 1
+                keys_in_file.add(key)
+            per_type = n_videos if file_obj.file_type == "video" else n_images
+            for key in keys_in_file:
+                per_type[key] += 1
+                if event is not None:
+                    events[key].add(event.id)
 
     individuals: dict[tuple[str, str], int] = defaultdict(int)
     obs_headers, obs_rows = build_observation_rows(db, project, deployment_ids)
@@ -1388,8 +1439,8 @@ def build_summary_rows(
                 category,
                 label,
                 *names,
-                len(images[key]),
-                len(videos[key]),
+                n_images[key],
+                n_videos[key],
                 n_detections[key],
                 len(events[key]),
                 individuals[key],
@@ -1405,7 +1456,7 @@ def build_spreadsheet_sheets(
     db: Session,
     project: Project,
     deployment_ids: list[str] | None = None,
-) -> list[tuple[str, list[str], list[list[Any]]]]:
+) -> list[tuple[str, list[str], Iterable[list[Any]]]]:
     """The tables that make up the project Export page's combined
     spreadsheet: Summary, Counts, Detections, Files, and Deployments. The
     folder-run Save step writes its own three-sheet workbook (Summary +
@@ -1423,19 +1474,17 @@ def build_spreadsheet_sheets(
     tables as five files, in this order.
 
     ``deployment_ids`` narrows every sheet to a subset of the project's
-    deployments; None exports everything."""
-    scoped = get_scoped_detection_rows(db, project, deployment_ids=deployment_ids)
-    dep_headers, dep_rows = build_deployments_rows(db, project, deployment_ids)
-    # Same query, same threshold, same scope as the fetch above — reuse
-    # the rows instead of running it a second time.
-    files_headers, files_rows = build_files_rows(
-        db, project, deployment_ids, scoped_rows=scoped
-    )
-    det_headers, det_rows = build_detection_rows(db, project, scoped)
-    summary_headers, summary_rows = build_summary_rows(
-        db, project, scoped, deployment_ids
-    )
+    deployments; None exports everything.
+
+    The big sheets are generators: each runs its own query when its writer
+    reaches it, one after the other, so memory holds one batch rather than
+    the project. That reads the scoped files three times (Summary, then
+    Detections, then Files), the price of never holding them."""
+    summary_headers, summary_rows = build_summary_rows(db, project, deployment_ids)
     obs_headers, obs_rows = build_observation_rows(db, project, deployment_ids)
+    det_headers, det_rows = build_detection_rows(db, project, deployment_ids)
+    files_headers, files_rows = build_files_rows(db, project, deployment_ids)
+    dep_headers, dep_rows = build_deployments_rows(db, project, deployment_ids)
     return [
         ("Summary", summary_headers, summary_rows),
         ("Counts", obs_headers, obs_rows),
@@ -1453,7 +1502,6 @@ def build_spreadsheet_sheets(
 def build_spatial_layers(
     db: Session,
     project: Project,
-    scoped_rows: Sequence[Row[Any]],
     deployment_ids: list[str] | None = None,
 ) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
     """Build the two spatial layers: deployments and species_summary.
@@ -1468,22 +1516,41 @@ def build_spatial_layers(
     contains deployments that were excluded from the GeoJSON /
     Shapefile / GeoPackage because they have no site coordinates.
     """
-    # Build a deployment-level detection count map from the scoped rows so
-    # we don't re-query. Also build trap-days per deployment.
+    # One pass over the scoped files for both layers' counts: boxes per
+    # deployment, and boxes per (site, species). Both hold only what the
+    # user can reach (``visible_only``), so a map bubble agrees with the
+    # Labels grid and detections.csv, and the species points of a site add
+    # up to its deployments.
+    #
+    # The species layer aggregates classified detections only -- person,
+    # vehicle, unclassified, and blank rows have no label and don't belong
+    # on a species map. It carries the common label, the latin name, and
+    # the taxon ranks for readable map labelling and taxonomic filtering
+    # in GIS.
     det_count_by_dep: dict[str, int] = defaultdict(int)
-    site_by_deployment: dict[str, Site | None] = {}
-    deployments_seen: dict[str, Deployment] = {}
-    for row in scoped_rows:
-        file_obj, detection, deployment, site, _taxonomy = row
-        deployments_seen[deployment.id] = deployment
-        site_by_deployment[deployment.id] = site
-        # Count only what the user can reach, so a map bubble agrees with
-        # the Labels grid and detections.csv. The shared query keeps every
-        # frame for the CamTrap builder, so the gate belongs here rather
-        # than in the SQL. One box at a time is the honest reuse of the
-        # list helper: it cannot drift from the rule the rest applies.
-        if detection is not None and visible_detections(file_obj, [detection]):
-            det_count_by_dep[deployment.id] += 1
+    summary_bucket: dict[tuple[str, str], dict[str, Any]] = {}
+    for _file, deployment, site, detections in iter_scoped_files(
+        db, project, deployment_ids=deployment_ids
+    ):
+        det_count_by_dep[deployment.id] += len(detections)
+        if site is None:
+            continue
+        for detection, taxonomy in detections:
+            label = detection.label
+            if not label:
+                continue
+            key = (site.id, label)
+            bucket = summary_bucket.get(key)
+            if bucket is None:
+                bucket = {
+                    "site_name": site.name,
+                    "classification_label": label,
+                    "scientific_name": _scientific_name(detection, taxonomy),
+                    "taxon_ranks": _taxon_ranks(taxonomy),
+                    "total_count": 0,
+                }
+                summary_bucket[key] = bucket
+            bucket["total_count"] += 1
 
     # Include project deployments that had no in-scope files (so the
     # deployments layer lists every deployment, not only those with
@@ -1538,11 +1605,8 @@ def build_spatial_layers(
             }
         )
 
-    # Species summary: one point per (site, species). Aggregates classified
-    # detections only -- person, vehicle, unclassified, and blank rows have
-    # no label and don't belong on a species map. Carries the common label,
-    # the latin name, and the taxon ranks for readable map labelling and
-    # taxonomic filtering in GIS.
+    # Species summary: one point per (site, species), from the buckets
+    # counted above.
     trap_days_by_site: dict[str, int] = defaultdict(int)
     site_coords: dict[str, tuple[float, float]] = {}
     for deployment, site in all_deployments:
@@ -1550,27 +1614,6 @@ def build_spatial_layers(
             continue
         trap_days_by_site[site.id] += trap_days_by_dep.get(deployment.id, 0)
         site_coords[site.id] = (site.longitude, site.latitude)
-
-    summary_bucket: dict[tuple[str, str], dict[str, Any]] = {}
-    for row in scoped_rows:
-        _file_obj, detection, _deployment, site, taxonomy = row
-        if detection is None or site is None:
-            continue
-        label = detection.label
-        if not label:
-            continue
-        key = (site.id, label)
-        bucket = summary_bucket.get(key)
-        if bucket is None:
-            bucket = {
-                "site_name": site.name,
-                "classification_label": label,
-                "scientific_name": _scientific_name(detection, taxonomy),
-                "taxon_ranks": _taxon_ranks(taxonomy),
-                "total_count": 0,
-            }
-            summary_bucket[key] = bucket
-        bucket["total_count"] += 1
 
     species_summary_features: list[dict[str, Any]] = []
     for (site_id, _label), data in summary_bucket.items():
@@ -1614,145 +1657,218 @@ def build_spatial_layers(
 # ---------------------------------------------------------------------------
 
 
-def build_camtrap_dp_tables(
-    db: Session,
-    project: Project,
-    scoped_rows: Sequence[Row[Any]],
-    deployment_ids: list[str] | None = None,
-) -> tuple[
-    list[list[Any]],
-    list[list[Any]],
-    list[list[Any]],
-    dict[str, Any],
-    list[str],
-]:
+class CamtrapDpBuilder:
+    """The Camtrap DP tables, built while they are written.
+
+    Camtrap DP is the archival export, so it reads every frame
+    (``visible_only=False``) and on a video project it is the largest
+    table export there is. Nothing is collected: the writer pulls
+
+    1. ``deployments_rows``, one per camera, built up front,
+    2. ``media()``, one ``(media_row, observation_rows)`` per file, from
+       the scoped stream,
+    3. ``event_observations()``, one per species per event, and
+    4. ``datapackage()``,
+
+    in that order. 3 and 4 summarise what 2 saw (events, taxa, dates), so
+    they can only be asked for after 2 is exhausted.
+
+    Deployments without a site are skipped because Camtrap DP requires
+    lat/lon; ``skipped_deployment_ids`` lists them for the caller.
     """
-    Build CamTrap DP deployments/media/observations rows and datapackage dict.
 
-    Returns (deployments_rows, media_rows, observations_rows, datapackage_dict,
-    skipped_deployment_ids). Deployments without a site are skipped
-    because CamtrapDP requires lat/lon; the caller can surface the list
-    to the user.
-    """
-    tz_name = project.timezone
-    classified_by = _classifier_label(project)
-    not_reviewed = f"{classified_by}, not reviewed"
+    def __init__(
+        self,
+        db: Session,
+        project: Project,
+        deployment_ids: list[str] | None = None,
+    ) -> None:
+        self._db = db
+        self._project = project
+        self._deployment_ids = deployment_ids
+        self._tz_name = project.timezone
+        self._classified_by = _classifier_label(project)
+        self._not_reviewed = f"{self._classified_by}, not reviewed"
 
-    deployments_rows: list[list[Any]] = []
-    media_rows: list[list[Any]] = []
-    observations_rows: list[list[Any]] = []
-    observed_taxa: dict[str, tuple[LabelTaxonomy | None, str]] = {}
-    # Events in scope, for the event-level (per-species count) observation
-    # rows emitted after the per-file media rows.
-    events_in_scope: dict[str, dict[str, str]] = {}
-    first_captured: datetime | None = None
-    last_captured: datetime | None = None
-    sites_seen: dict[str, Site] = {}
+        self._observed_taxa: dict[str, tuple[LabelTaxonomy | None, str]] = {}
+        # Events in scope, for the event-level (per-species count) rows
+        # emitted after the per-file media rows.
+        self._events_in_scope: dict[str, dict[str, str]] = {}
+        self._first_captured: datetime | None = None
+        self._last_captured: datetime | None = None
+        self._sites_seen: dict[str, Site] = {}
+        self._media_done = False
 
-    # deployments.csv: every deployment in the project with a site.
-    # Null-site deployments are skipped because CamtrapDP requires
-    # deploymentLocation (lat/lon). The caller receives their ids via
-    # the returned `camtrap_skipped_deployment_ids` list.
-    camtrap_skipped_deployment_ids: list[str] = []
-    deployments_query = (
-        db.query(Deployment, Site)
-        .outerjoin(Site, Deployment.site_id == Site.id)
-        .filter(Deployment.project_id == project.id)
-    )
-    if deployment_ids is not None:
-        deployments_query = deployments_query.filter(Deployment.id.in_(deployment_ids))
-    for deployment, site in deployments_query.order_by(Deployment.start_date_local).all():
-        if site is None:
-            camtrap_skipped_deployment_ids.append(deployment.id)
-            continue
-        sites_seen[site.id] = site
-        camera_model = deployment.camera_model or ""
-        camera_id = deployment.camera_serial or deployment.camera_model or deployment.id
-        # Camtrap DP defines a deployment as one camera. A paired-cameras
-        # deployment holds several, so say so in deploymentTags.
-        deployment_tags = dict(deployment.tags or {})
-        if deployment.paired_cameras:
-            deployment_tags["paired_cameras"] = "true"
-        # Row order must match _CAMTRAP_DEPLOYMENTS_HEADERS exactly.
-        deployments_rows.append(
-            [
-                deployment.id,                                                # deploymentID
-                "",                                                           # locationID
-                site.name or "",                                              # locationName
-                site.latitude,                                                # latitude
-                site.longitude,                                               # longitude
-                "",                                                          # coordinateUncertainty
-                _iso_date_at_midnight(deployment.start_date_local, tz_name),  # deploymentStart
-                _iso_date_at_midnight(
-                    deployment.end_date_local or date.today(), tz_name
-                ),                                                            # deploymentEnd
-                "",                                                           # setupBy
-                camera_id,                                                    # cameraID
-                camera_model,                                                 # cameraModel
-                "",                                                           # cameraDelay
-                "",                                                           # cameraHeight
-                "",                                                           # cameraDepth
-                "",                                                           # cameraTilt
-                "",                                                           # cameraHeading
-                "",                                                           # detectionDistance
-                "",                                                           # timestampIssues
-                "",                                                           # baitUse
-                "",                                                           # featureType
-                site.habitat_type or "",                                      # habitat
-                "",                                                           # deploymentGroups
-                _format_tags(deployment_tags),                                # deploymentTags
-                deployment.notes or "",                                       # deploymentComments
-            ]
+        self.deployments_rows: list[list[Any]] = []
+        self.skipped_deployment_ids: list[str] = []
+        self._build_deployments()
+
+    def _build_deployments(self) -> None:
+        """deployments.csv: every deployment in scope with a site.
+        Null-site deployments are skipped because Camtrap DP requires
+        deploymentLocation (lat/lon)."""
+        tz_name = self._tz_name
+        deployments_query = (
+            self._db.query(Deployment, Site)
+            .outerjoin(Site, Deployment.site_id == Site.id)
+            .filter(Deployment.project_id == self._project.id)
         )
+        if self._deployment_ids is not None:
+            deployments_query = deployments_query.filter(
+                Deployment.id.in_(self._deployment_ids)
+            )
+        for deployment, site in deployments_query.order_by(
+            Deployment.start_date_local
+        ).all():
+            if site is None:
+                self.skipped_deployment_ids.append(deployment.id)
+                continue
+            self._sites_seen[site.id] = site
+            camera_model = deployment.camera_model or ""
+            camera_id = deployment.camera_serial or deployment.camera_model or deployment.id
+            # Camtrap DP defines a deployment as one camera. A paired-cameras
+            # deployment holds several, so say so in deploymentTags.
+            deployment_tags = dict(deployment.tags or {})
+            if deployment.paired_cameras:
+                deployment_tags["paired_cameras"] = "true"
+            # Row order must match _CAMTRAP_DEPLOYMENTS_HEADERS exactly.
+            self.deployments_rows.append(
+                [
+                    deployment.id,                                                # deploymentID
+                    "",                                                           # locationID
+                    site.name or "",                                              # locationName
+                    site.latitude,                                                # latitude
+                    site.longitude,                                               # longitude
+                    "",                                                      # coordinateUncertainty
+                    _iso_date_at_midnight(deployment.start_date_local, tz_name),  # deploymentStart
+                    _iso_date_at_midnight(
+                        deployment.end_date_local or date.today(), tz_name
+                    ),                                                            # deploymentEnd
+                    "",                                                           # setupBy
+                    camera_id,                                                    # cameraID
+                    camera_model,                                                 # cameraModel
+                    "",                                                           # cameraDelay
+                    "",                                                           # cameraHeight
+                    "",                                                           # cameraDepth
+                    "",                                                           # cameraTilt
+                    "",                                                           # cameraHeading
+                    "",                                                          # detectionDistance
+                    "",                                                           # timestampIssues
+                    "",                                                           # baitUse
+                    "",                                                           # featureType
+                    site.habitat_type or "",                                      # habitat
+                    "",                                                           # deploymentGroups
+                    _format_tags(deployment_tags),                                # deploymentTags
+                    deployment.notes or "",                                     # deploymentComments
+                ]
+            )
 
-    # media.csv + observations.csv: iterate scoped rows grouped by file.
-    # Files whose deployment has no site were already skipped at the
-    # deployments.csv stage (CamtrapDP requires lat/lon). Skip their
-    # media and observations rows here so the package stays consistent.
-    skipped_dep_set = set(camtrap_skipped_deployment_ids)
-    files_without_date = 0
-    for file_obj, deployment, _site, detections in _group_rows_by_file(scoped_rows):
-        if deployment.id in skipped_dep_set:
-            continue
-        # media.timestamp and observations.eventStart / eventEnd are
-        # required datetime fields in the CamtrapDP schema, so a file
-        # with no capture date cannot be represented: an empty string
-        # there fails validation in the camtrapdp R package and GBIF
-        # ingestion, poisoning the whole package. The export dialog
-        # warns about these via /files-without-date.
-        if file_obj.captured_at_local is None:
-            files_without_date += 1
-            continue
-        if first_captured is None or file_obj.captured_at_local < first_captured:
-            first_captured = file_obj.captured_at_local
-        if last_captured is None or file_obj.captured_at_local > last_captured:
-            last_captured = file_obj.captured_at_local
-
-        # Row order must match _CAMTRAP_MEDIA_HEADERS exactly.
-        media_rows.append(
-            [
-                file_obj.id,                                        # mediaID
-                deployment.id,                                      # deploymentID
-                "activityDetection",                                # captureMethod
-                _iso_datetime(file_obj.captured_at_local, tz_name), # timestamp
-                file_obj.file_path,                                 # filePath
-                "false",                                            # filePublic
-                "",                                                 # fileName
-                _media_type_for(file_obj.file_format),              # fileMediatype
-                "",                                                 # exifData
-                "true" if file_obj.favorited else "",               # favorite
-                "",                                                 # mediaComments
-            ]
+    def media_count(self) -> int:
+        """How many rows ``media()`` will yield, for a progress bar: files
+        in scope with a capture date, in a deployment with a site."""
+        query = (
+            select(func.count(File.id))
+            .join(Deployment, File.deployment_id == Deployment.id)
+            .where(Deployment.project_id == self._project.id)
+            .where(Deployment.site_id.isnot(None))
+            .where(File.file_type.in_(("image", "video")))
+            .where(File.captured_at_local.isnot(None))
         )
+        if self._deployment_ids is not None:
+            query = query.where(Deployment.id.in_(self._deployment_ids))
+        return self._db.scalar(query) or 0
 
+    def media(self) -> Iterator[tuple[list[Any], list[list[Any]]]]:
+        """One ``(media_row, observation_rows)`` per file in scope.
+
+        Files whose deployment has no site were already skipped at the
+        deployments.csv stage (Camtrap DP requires lat/lon), so their media
+        and observations are skipped here too and the package stays
+        consistent.
+        """
+        tz_name = self._tz_name
+        skipped_dep_set = set(self.skipped_deployment_ids)
+        files_without_date = 0
+        files = iter_scoped_files(
+            self._db,
+            self._project,
+            deployment_ids=self._deployment_ids,
+            visible_only=False,
+        )
+        for batch in _batched(files):
+            file_ids = [sf.file.id for sf in batch]
+            event_map = _events_by_file(self._db, file_ids)
+            excluded_only = _files_with_excluded_boxes(self._db, self._project, file_ids)
+            for file_obj, deployment, _site, detections in batch:
+                if deployment.id in skipped_dep_set:
+                    continue
+                # media.timestamp and observations.eventStart / eventEnd are
+                # required datetime fields in the Camtrap DP schema, so a file
+                # with no capture date cannot be represented: an empty string
+                # there fails validation in the camtrapdp R package and GBIF
+                # ingestion, poisoning the whole package. The export dialog
+                # warns about these via /files-without-date.
+                if file_obj.captured_at_local is None:
+                    files_without_date += 1
+                    continue
+                if (
+                    self._first_captured is None
+                    or file_obj.captured_at_local < self._first_captured
+                ):
+                    self._first_captured = file_obj.captured_at_local
+                if (
+                    self._last_captured is None
+                    or file_obj.captured_at_local > self._last_captured
+                ):
+                    self._last_captured = file_obj.captured_at_local
+
+                # Row order must match _CAMTRAP_MEDIA_HEADERS exactly.
+                media_row = [
+                    file_obj.id,                                        # mediaID
+                    deployment.id,                                      # deploymentID
+                    "activityDetection",                                # captureMethod
+                    _iso_datetime(file_obj.captured_at_local, tz_name), # timestamp
+                    file_obj.file_path,                                 # filePath
+                    "false",                                            # filePublic
+                    "",                                                 # fileName
+                    _media_type_for(file_obj.file_format),              # fileMediatype
+                    "",                                                 # exifData
+                    "true" if file_obj.favorited else "",               # favorite
+                    "",                                                 # mediaComments
+                ]
+                yield media_row, self._file_observations(
+                    file_obj,
+                    deployment,
+                    detections,
+                    event_map.get(file_obj.id),
+                    excluded_only=file_obj.id in excluded_only,
+                )
+
+        if files_without_date:
+            logger.info(
+                f"CamtrapDP export: left out {files_without_date} file(s) with no "
+                f"capture date (schema requires a timestamp per record)"
+            )
+        self._media_done = True
+
+    def _file_observations(
+        self,
+        file_obj: File,
+        deployment: Deployment,
+        detections: list[tuple[Detection, LabelTaxonomy | None]],
+        event: Event | None,
+        *,
+        excluded_only: bool,
+    ) -> list[list[Any]]:
+        """The media-level observation rows of one file."""
+        tz_name = self._tz_name
         # Unlike files.csv / detections.csv, a missing event here falls back
-        # to the file id on purpose. CamTrap-DP has no events resource:
+        # to the file id on purpose. Camtrap DP has no events resource:
         # eventID is a grouping key inside observations.csv, paired with the
         # eventStart / eventEnd written just below (the file's own capture
         # time). So an unclustered file is its own single-media event and the
         # row stays self-consistent. A blank eventID would instead merge every
         # unclustered file into one event under a GROUP BY.
-        event = _file_event(db, file_obj.id)
         event_id = event.id if event else file_obj.id
         event_start = _iso_datetime(
             event.event_start_local if event else file_obj.captured_at_local, tz_name
@@ -1762,7 +1878,7 @@ def build_camtrap_dp_tables(
         )
         captured_iso = _iso_datetime(file_obj.captured_at_local, tz_name)
         if event is not None:
-            events_in_scope.setdefault(
+            self._events_in_scope.setdefault(
                 event_id,
                 {
                     "deployment_id": deployment.id,
@@ -1787,23 +1903,30 @@ def build_camtrap_dp_tables(
         # now: a video whose best frame is empty but which still has
         # passing boxes on other frames would take the blank branch and
         # lose every per-box row from an archival export.
+        #
+        # A file left without boxes by the species exclusion is not blank
+        # either: it shows an animal the user chose not to export. It keeps
+        # its media row and gets no observation, which in Camtrap DP reads
+        # as "not annotated" rather than "nothing there".
+        if not detections and excluded_only:
+            return []
         if not detections:
-            observations_rows.append(
+            return [
                 _camtrap_blank_row(
                     file_obj,
                     deployment.id,
                     event_id,
                     event_start or captured_iso,
                     event_end or captured_iso,
-                    not_reviewed,
+                    self._not_reviewed,
                 )
-            )
-            continue
+            ]
 
+        rows: list[list[Any]] = []
         for detection, taxonomy in detections:
             # Media-level rows are the per-box detections (one row per
             # bounding box). Box-less species are carried by the
-            # event-level rows emitted after this loop, so skip any here.
+            # event-level rows, so skip any here.
             if detection.bbox_x is None:
                 continue
             obs_type = _obs_type_from_category(detection.category)
@@ -1814,11 +1937,11 @@ def build_camtrap_dp_tables(
             )
             species_name = _species_label(detection, taxonomy)
             if detection.category == "animal" and species_name:
-                observed_taxa.setdefault(species_name, (taxonomy, species_name))
+                self._observed_taxa.setdefault(species_name, (taxonomy, species_name))
 
             obs_id_prefix = "obs-human" if detection.verified else "obs-ai"
             method = "human" if detection.verified else "machine"
-            comments = "Human identification" if detection.verified else not_reviewed
+            comments = "Human identification" if detection.verified else self._not_reviewed
             life_stage, sex, variant_comment = _camtrap_variant_fields(taxonomy)
             if variant_comment:
                 comments = (
@@ -1834,7 +1957,7 @@ def build_camtrap_dp_tables(
 
             # Row order must match _CAMTRAP_OBS_HEADERS exactly. One
             # media-level row per bounding box (observationLevel="media").
-            observations_rows.append(
+            rows.append(
                 [
                     f"{obs_id_prefix}-{detection.id}",    # observationID
                     deployment.id,                         # deploymentID
@@ -1859,65 +1982,57 @@ def build_camtrap_dp_tables(
                     round(detection.bbox_width, 6),        # bboxWidth
                     round(detection.bbox_height, 6),       # bboxHeight
                     method,                                # classificationMethod
-                    classified_by,                         # classifiedBy
+                    self._classified_by,                   # classifiedBy
                     "",                                    # classificationTimestamp
                     prob,                                  # classificationProbability
                     "",                                    # observationTags
                     comments,                              # observationComments
                 ]
             )
+        return rows
 
-    # Event-level observations: one row per species per event carrying the
-    # effective count (human override, else MaxN). Mutually exclusive and
-    # summable, the Camtrap-DP shape for "N individuals in this sequence".
-    # The per-box media rows above remain for spatial detail.
-    # Chunked over the event ids to stay under SQLite's bound-parameter limit
-    # (a large project can have >32k events in scope).
-    for chunk in iter_id_chunks(events_in_scope.keys()):
-        for obs, taxonomy in (
-            db.query(EventObservation, LabelTaxonomy)
-            .outerjoin(
-                LabelTaxonomy,
-                LabelTaxonomy.id == EventObservation.label_taxonomy_id,
-            )
-            .filter(EventObservation.event_id.in_(chunk))
-            .all()
-        ):
-            count = obs.effective_count
-            if count <= 0:
-                continue
-            ctx = events_in_scope[obs.event_id]
-            sci_name = _camtrap_taxonomy_name(taxonomy) or (obs.label or "")
-            species_name = (taxonomy.name if taxonomy else None) or obs.label
-            if obs.category == "animal" and species_name:
-                observed_taxa.setdefault(species_name, (taxonomy, species_name))
-            observations_rows.append(
-                _camtrap_event_row(
-                    obs, ctx, count, sci_name, classified_by, taxonomy
+    def event_observations(self) -> Iterator[list[Any]]:
+        """Event-level observations: one row per species per event carrying
+        the effective count (human override, else MaxN). Mutually exclusive
+        and summable, the Camtrap DP shape for "N individuals in this
+        sequence". The per-box media rows remain for spatial detail.
+        Chunked over the event ids to stay under SQLite's bound-parameter
+        limit (a large project can have >32k events in scope)."""
+        if not self._media_done:
+            raise RuntimeError("event_observations() needs media() to be read first")
+        for chunk in iter_id_chunks(self._events_in_scope.keys()):
+            for obs, taxonomy in (
+                self._db.query(EventObservation, LabelTaxonomy)
+                .outerjoin(
+                    LabelTaxonomy,
+                    LabelTaxonomy.id == EventObservation.label_taxonomy_id,
                 )
-            )
+                .filter(EventObservation.event_id.in_(chunk))
+                .all()
+            ):
+                count = obs.effective_count
+                if count <= 0:
+                    continue
+                ctx = self._events_in_scope[obs.event_id]
+                sci_name = _camtrap_taxonomy_name(taxonomy) or (obs.label or "")
+                species_name = (taxonomy.name if taxonomy else None) or obs.label
+                if obs.category == "animal" and species_name:
+                    self._observed_taxa.setdefault(species_name, (taxonomy, species_name))
+                yield _camtrap_event_row(
+                    obs, ctx, count, sci_name, self._classified_by, taxonomy
+                )
 
-    if files_without_date:
-        logger.info(
-            f"CamtrapDP export: left out {files_without_date} file(s) with no "
-            f"capture date (schema requires a timestamp per record)"
+    def datapackage(self) -> dict[str, Any]:
+        """``datapackage.json``: coverage and taxa of everything written."""
+        if not self._media_done:
+            raise RuntimeError("datapackage() needs media() to be read first")
+        return _build_datapackage(
+            self._project,
+            self._sites_seen.values(),
+            self._first_captured,
+            self._last_captured,
+            self._observed_taxa,
         )
-
-    datapackage = _build_datapackage(
-        project,
-        sites_seen.values(),
-        first_captured,
-        last_captured,
-        observed_taxa,
-    )
-
-    return (
-        deployments_rows,
-        media_rows,
-        observations_rows,
-        datapackage,
-        camtrap_skipped_deployment_ids,
-    )
 
 
 def _camtrap_event_row(

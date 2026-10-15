@@ -1,0 +1,24 @@
+{
+  "by_category": {
+    "animal": 12,
+    "person": 1
+  },
+  "top_species": [
+    [
+      "red fox",
+      6
+    ],
+    [
+      "bird",
+      1
+    ],
+    [
+      "rat",
+      1
+    ],
+    [
+      "red fox juvenile",
+      1
+    ]
+  ]
+}

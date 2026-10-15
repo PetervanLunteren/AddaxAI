@@ -25,11 +25,13 @@ AddaxAI exports five tables. Which one you want depends on the question you are 
 
 ## What the tables contain
 
-All five tables hold the same set of detections, and it is the same set the app shows you. Two rules decide it, and they work the same way in a project and in a folder run.
+All five tables hold the same set of detections, and it is the same set the app shows you. Three rules decide it, and they work the same way in a project and in a folder run.
 
 Anything below your [counting threshold](../understanding/confidence-and-verification.md) is left out, unless you verified it yourself. A detection you verified always stays in, whatever it scored, because your decision outranks the score.
 
 For videos, only the frame AddaxAI saved is included. A video is analysed frame by frame, but only one frame is kept as a picture, so a box on any other frame has no image you could ever look at. Those boxes are left out of the tables rather than listed as animals you cannot find.
+
+Species you left out of the project's species selection are left out of the tables too, unless you verified them. A photo that only shows such a species still has its row in the Files table, without a species.
 
 If you do want every box on every frame, use the recognition file described at the end of this page. That one is complete on purpose.
 
@@ -212,11 +214,13 @@ Exporting again into the same folder replaces its `addaxai-media` folder. Pick a
 
 ## Spatial
 
-Projects can also export point layers for GIS tools such as QGIS and ArcGIS, as GeoPackage, GeoJSON or Shapefile (`spatial-<project>-<date>.gpkg`, `.geojson` or `.zip`). You get two layers: one point per camera, and one point per camera per species. Only the deployments you pick are in it, and deployments with no site coordinates are left out; the dialog says how many.
+Projects can also export point layers for GIS tools such as QGIS and ArcGIS, as GeoPackage, GeoJSON or Shapefile (`spatial-<project>-<date>.gpkg`, `.geojson` or `.zip`). You get two layers: one point per camera, and one point per camera per species. Only the deployments you pick are in it, and deployments with no site coordinates are left out; the dialog says how many. Both layers count the same detections as the tables, so the species points of a camera add up to its total.
 
 ## Camtrap DP
 
 Projects can also export Camtrap DP (`camtrap-dp-<project>-<date>.zip`), a standard format for camera trap data, for the deployments you pick. It uses its own column names and a fixed structure, so other tools and archives can read your data without knowing anything about AddaxAI. Use it when you share data or deposit it in a repository.
+
+Camtrap DP keeps the boxes of every video frame, not only the saved one, because it is meant as the full record. A photo whose only animal is a species you left out of the species selection keeps its media row but gets no observation: an empty observation would claim there was nothing there.
 
 For models that predict below species level (adult or juvenile fox, for example), `scientificName` always carries the real species name. The variant goes into `lifeStage` (adult, subadult, juvenile) or `sex` (female, male) when it fits those fields, and into `observationComments` otherwise.
 

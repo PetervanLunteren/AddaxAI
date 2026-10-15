@@ -63,35 +63,17 @@ def write_tables_xlsx(
     # workbook holds what the Labels step showed (matches tables_csv).
     # ``addaxai-recognitions.json`` stays the complete record of the run.
     #
-    # Built before the files sheet and released right after, so this row
-    # set and build_files_rows' own never sit in memory together: on a
-    # large run each is the biggest allocation in the whole save job. The
-    # summary is a handful of rows off the same fetch.
-    scoped = export_crud.get_scoped_detection_rows(db, project)
-    det_headers, det_rows = folder_run_table(
-        *export_crud.build_detection_rows(db, project, scoped)
-    )
-    summary_headers, summary_rows = folder_run_table(
-        *export_crud.build_summary_rows(db, project, scoped)
-    )
-    del scoped
-    files_headers, files_rows = folder_run_table(
-        *export_crud.build_files_rows(db, project)
-    )
-    # Summary first: a workbook opens on its first sheet, and this is the
-    # one that answers "what was found" (same rule as the projects export).
+    # The big sheets are generators, each streamed from its own query into
+    # the workbook when its turn comes. Summary first: a workbook opens on
+    # its first sheet, and this is the one that answers "what was found"
+    # (same rule as the projects export).
     sheets = [
-        ("Summary", summary_headers, summary_rows),
-        ("Files", files_headers, files_rows),
-        ("Detections", det_headers, det_rows),
+        ("Summary", *folder_run_table(*export_crud.build_summary_rows(db, project))),
+        ("Files", *folder_run_table(*export_crud.build_files_rows(db, project))),
+        ("Detections", *folder_run_table(*export_crud.build_detection_rows(db, project))),
     ]
 
-    total_rows = sum(len(rows) for _title, _headers, rows in sheets)
-
     output_path = target_dir / XLSX_FILENAME
-    # Saved straight to disk; the bytes-returning serializer would hold
-    # the whole zipped workbook in memory first.
-    #
     # A run too big for the XLSX format reports the reason and writes
     # nothing, rather than raising. Raising would fail the whole save
     # job, and by the time this module runs the expensive work
@@ -106,12 +88,10 @@ def write_tables_xlsx(
     # message has to name CSV as the way out: choosing it and saving
     # again is the user's only route to the data.
     try:
-        export_formats.write_xlsx_multi(sheets, output_path)
+        total_rows = export_formats.write_xlsx_multi(sheets, output_path)
     except export_formats.XlsxRowLimitError as e:
-        logger.warning(
-            f"tables_xlsx: project={project_id} rows={total_rows} skipped: {e}"
-        )
-        return TablesXlsxResult(row_count=total_rows, errors=[str(e)])
+        logger.warning(f"tables_xlsx: project={project_id} skipped: {e}")
+        return TablesXlsxResult(errors=[str(e)])
 
     logger.info(
         f"tables_xlsx: project={project_id} rows={total_rows} path={output_path}"

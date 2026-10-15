@@ -37,6 +37,7 @@ when it was. A key a user can group on is not a figure.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
 from typing import Any
 
 # Columns the shared builders emit that say nothing in a folder run.
@@ -60,15 +61,16 @@ OMITTED_COLUMNS = frozenset(
 
 def folder_run_table(
     headers: list[str],
-    rows: list[list[Any]],
-) -> tuple[list[str], list[list[Any]]]:
+    rows: Iterable[list[Any]],
+) -> tuple[list[str], Iterator[list[Any]]]:
     """Return `(headers, rows)` without `OMITTED_COLUMNS`.
 
-    Input is not mutated. Tables that carry none of the omitted columns
-    pass through unchanged.
+    ``rows`` is mapped lazily, one row at a time, so a streamed table stays
+    streamed. Input is not mutated. Tables that carry none of the omitted
+    columns pass through unchanged.
     """
     keep = [i for i, h in enumerate(headers) if h not in OMITTED_COLUMNS]
     return (
         [headers[i] for i in keep],
-        [[row[i] for i in keep] for row in rows],
+        ([row[i] for i in keep] for row in rows),
     )
