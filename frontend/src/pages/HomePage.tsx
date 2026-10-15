@@ -29,6 +29,7 @@
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, ExternalLink, LayoutDashboard, FolderOpen } from "lucide-react";
 import { buttonVariants } from "../components/ui/button";
+import { PhotoBackdrop } from "../components/layout/PhotoBackdrop";
 import { LogoPlate } from "../components/layout/LogoPlate";
 import { cn } from "../lib/utils";
 
@@ -50,19 +51,7 @@ export function HomePage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden text-white">
-      {/* Background photo + scrim. Decorative, so no alt text. */}
-      <div
-        className="absolute inset-0 scale-105 bg-cover bg-center"
-        style={{ backgroundImage: "url('/home-background.webp')" }}
-      />
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(120% 90% at 50% 0%, rgba(10,30,28,0.25), transparent 60%)," +
-            "linear-gradient(180deg, rgba(8,22,20,0.55) 0%, rgba(8,22,20,0.30) 35%, rgba(8,22,20,0.66) 100%)",
-        }}
-      />
+      <PhotoBackdrop screen="home" />
 
       <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-7 lg:px-8">
         {/* Centered logo, heading, and the two glass cards. Top-aligned
