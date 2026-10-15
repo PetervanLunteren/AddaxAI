@@ -310,6 +310,16 @@ Legacy writes nothing outside that tree. Its analysis outputs land in the user's
 
 The junction branch cannot be tested on the Linux and macOS CI runners, so it is verified by hand on Windows.
 
+## The Windows installer never touches the data folder
+
+electron-builder's uninstaller ends with `RMDir /r $INSTDIR`, and an update runs the *old* version's uninstaller before installing. The installer lets the user pick any folder, so an app installed in `%USERPROFILE%\AddaxAI` deleted the whole data folder on its next update, database and backups included. That happened to a user on 2026-10-13 (7.8 to 7.14), and nothing could be recovered.
+
+**The rule:** the install folder and the data folder (`ADDAXAI_USER_DATA_DIR`, else `%USERPROFILE%\AddaxAI`) are never the same and neither lies inside the other. `AddaxAIOverlapsDataDir` in `electron/build/installer.nsh` is the one implementation, and the comment block above it says where it is checked and why. In short: an existing install in the data folder has its uninstall entry and `Uninstall AddaxAI.exe` removed before the old uninstaller can run, an interactive install is sent back to the folder page, and a silent one exits with code 3 and writes `%TEMP%\AddaxAI-Setup-error.txt`. A silent install is never redirected to another folder.
+
+**Why no `customRemoveFiles`.** It would make our own uninstaller delete only what it installed, but it cannot help the users who need it: on an update the uninstaller that runs is the one already on their disk. With the checks above, `RMDir /r` only ever runs on a folder without data.
+
+**Testing.** There is no test harness for NSIS. `electron-builder --win nsis` compiles the script with `-WX` (it also runs on macOS and fetches its own tools for an unsigned build), which catches syntax and reference errors. Behaviour is checked by hand on Windows: a fresh install into the data folder, an update of a 7.15.0 install that sits in it (interactive and `/S`), a normal update, and an uninstall.
+
 ## Background photos
 
 Two screens sit on a full-bleed photo: the home screen (`home-background.webp`) and the setup screen (`setup-background.webp`), both in `frontend/public/`. Both are heavily blurred, which is what keeps them cheap: there is no fine detail left for the encoder to spend bits on, and because the result is soft, the browser stretching the image across a much wider window is invisible. That is why these land in the tens of KB while the phone photos they came from are several hundred.
