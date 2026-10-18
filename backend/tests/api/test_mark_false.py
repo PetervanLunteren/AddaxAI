@@ -26,7 +26,6 @@ from app.api.crud.event_observation import calculate_max_n_for_event
 from app.api.crud.export import (
     build_detection_rows,
     build_files_rows,
-    get_scoped_detection_rows,
 )
 from app.models import Event, EventObservation, File
 from tests.conftest import (
@@ -74,7 +73,7 @@ def test_the_files_export_carries_no_species_for_it(client, db):
     db.expire_all()
 
     headers, rows = build_files_rows(db, db.merge(project))
-    row = dict(zip(headers, rows[0], strict=False))
+    row = dict(zip(headers, next(rows), strict=False))
     assert row["observation_type"] == "blank"
     # The species block comes off the deciding box. There is no deciding
     # box now, so naming one would be inventing a species for a file the
@@ -101,7 +100,7 @@ def test_a_real_animal_beside_it_still_decides_the_file(client, db):
 
     assert db.get(File, f.id).observation_type == "animal"
     headers, rows = build_files_rows(db, db.merge(project))
-    assert dict(zip(headers, rows[0], strict=False))["classification_label"] == "deer"
+    assert dict(zip(headers, next(rows), strict=False))["classification_label"] == "deer"
     assert real.id  # the survivor is the one that named it
 
 
@@ -115,9 +114,8 @@ def test_the_rejected_box_is_still_in_the_detections_export(client, db):
     db.expire_all()
 
     project = db.merge(project)
-    headers, rows = build_detection_rows(
-        db, project, get_scoped_detection_rows(db, project)
-    )
+    headers, rows_iter = build_detection_rows(db, project)
+    rows = list(rows_iter)
     assert len(rows) == 1
     row = dict(zip(headers, rows[0], strict=False))
     assert row["classification_label"] == "false detection"

@@ -17,11 +17,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
 
   /**
-   * Open native folder picker dialog
+   * Open native folder picker dialog. `title` says what the folder is
+   * for (defaults to the camera-trap wording).
    * @returns Selected folder path, or null if cancelled
    */
-  selectFolder: async (): Promise<string | null> => {
-    return await ipcRenderer.invoke('dialog:selectFolder');
+  selectFolder: async (opts?: {
+    title?: string;
+    defaultPath?: string;
+  }): Promise<string | null> => {
+    return await ipcRenderer.invoke('dialog:selectFolder', opts);
   },
 
   /**

@@ -6,16 +6,14 @@ annotated with event counts. Replaces the frontend's two-query + client-side
 pruning approach.
 """
 
-from sqlalchemy import func
+from datetime import datetime
+
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
-from app.ml.detection_visibility import on_visible_frame
-from app.ml.label_exclusion import threshold_or_verified
 from app.ml.taxonomic_rank import NO_TAXONOMY, species_binomial, to_display_case
 from app.ml.taxonomic_rollup import format_leaf_annotation
-from app.models import Deployment, Detection, Event, File, Project
-from app.models.event import event_files
+from app.models import Project
 from app.models.label_taxonomy import LabelTaxonomy
 
 logger = get_logger(__name__)
@@ -30,112 +28,121 @@ def build_label_filter_tree(
     site_ids: list[str] | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    *,
+    verification: str | None = None,
+    flagged: str | None = None,
+    favorited: str | None = None,
+    empty: str | None = None,
+    min_confidence: float | None = None,
+    max_confidence: float | None = None,
+    min_label_confidence: float | None = None,
+    max_label_confidence: float | None = None,
 ) -> dict | None:
     """
     Build the label filter tree for a project from label_taxonomy + detections.
 
+    The leaves are every label present in the project (`present_label_rows`,
+    the same query the species colours use). The count beside a leaf
+    follows every other filter of the page the tree is on: it is what that
+    page would show if the label were ticked alone, the label filter itself
+    left out, as a faceted search does. A label the filters leave nothing
+    of stays in the tree at 0, so a fully verified species is still there
+    to pick under "Unverified". Each page's count comes from that page's
+    own query (`count_detections_by_label`, `count_labels_files_by_label`,
+    `count_events_by_label`), so the tree cannot promise what the page
+    cannot show; this was the mismatch a tester hit with "20 detections"
+    beside an empty grid, all twenty verified under the Unverified filter.
+
     Args:
-        count_by: "event" (default) counts distinct events per label;
-                  "file" counts distinct files per label (videos resolved
-                  via Detection.file_id's source_video_id on frame rows);
-                  "detection" counts individual detections per label.
-        site_ids: optional list of site IDs to scope counts to.
-        date_from / date_to: optional ISO date strings to scope counts by
-                  File.captured_at_local.
+        count_by: "event" (default) counts distinct events per label (the
+                  Counts page); "file" distinct files (the Files tab);
+                  "detection" boxes (the Labels grid).
+        site_ids, date_from, date_to, and the keyword filters: the page's
+                  active filters, in the list endpoints' vocabulary.
 
     Returns:
         Dict with tree, all_leaf_ids, label_event_counts, count_unit; or None if no taxonomy.
     """
+    from app.api.crud.event import count_events_by_label, present_label_rows
+    from app.api.crud.file import count_labels_files_by_label
+    from app.api.schemas.label import LabelFilters
+    from app.services.label_service import count_detections_by_label
+
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         return None
 
     threshold = project.counting_threshold
-
-    # Scope the counts to the active site + date filters so the tree matches
-    # the slice the user has narrowed to (see SIMON_FEEDBACK B11). Both clauses
-    # ride on joins every count query already has (Deployment, File). Date
-    # compares against File.captured_at_local with raw ISO strings, matching
-    # the dashboard stats in crud/statistics.py.
-    def _apply_scope(query):
-        if site_ids:
-            query = query.filter(Deployment.site_id.in_(site_ids))
-        if date_from:
-            query = query.filter(File.captured_at_local >= date_from)
-        if date_to:
-            query = query.filter(File.captured_at_local <= date_to)
-        return query
-
-    # Count by label_taxonomy_id (authoritative FK).
-    # Only count detections at or above the project's confidence threshold
-    # so the tree matches what the verify page actually displays.
-    if count_by == "detection":
-        query = (
-            db.query(
-                Detection.label_taxonomy_id,
-                func.count(Detection.id),
-            )
-            .join(File, File.id == Detection.file_id)
-            .join(Deployment, Deployment.id == File.deployment_id)
-            .filter(Deployment.project_id == project_id)
-            .filter(Detection.label_taxonomy_id.isnot(None))
-            .filter(threshold_or_verified(threshold))
-            # Only detections the user can actually reach. Without
-            # this the tree promised counts the grid cannot show.
-            .filter(on_visible_frame())
-        )
-        label_count_rows = (
-            _apply_scope(query).group_by(Detection.label_taxonomy_id).all()
-        )
-    elif count_by == "file":
-        # Count distinct media items (image/video), resolving frame rows up
-        # to their parent video so a video isn't undercounted once per frame.
-        media_id = func.coalesce(File.source_video_id, File.id)
-        query = (
-            db.query(
-                Detection.label_taxonomy_id,
-                func.count(func.distinct(media_id)),
-            )
-            .join(File, File.id == Detection.file_id)
-            .join(Deployment, Deployment.id == File.deployment_id)
-            .filter(Deployment.project_id == project_id)
-            .filter(Detection.label_taxonomy_id.isnot(None))
-            .filter(threshold_or_verified(threshold))
-            # Only detections the user can actually reach. Without
-            # this the tree promised counts the grid cannot show.
-            .filter(on_visible_frame())
-        )
-        label_count_rows = (
-            _apply_scope(query).group_by(Detection.label_taxonomy_id).all()
-        )
-    else:
-        query = (
-            db.query(
-                Detection.label_taxonomy_id,
-                func.count(func.distinct(Event.id)),
-            )
-            .join(File, File.id == Detection.file_id)
-            .join(event_files, event_files.c.file_id == File.id)
-            .join(Event, Event.id == event_files.c.event_id)
-            .join(Deployment, Deployment.id == Event.deployment_id)
-            .filter(Deployment.project_id == project_id)
-            .filter(Detection.label_taxonomy_id.isnot(None))
-            .filter(threshold_or_verified(threshold))
-            # Only detections the user can actually reach. Without
-            # this the tree promised counts the grid cannot show.
-            .filter(on_visible_frame())
-        )
-        label_count_rows = (
-            _apply_scope(query).group_by(Detection.label_taxonomy_id).all()
-        )
-
-    if not label_count_rows:
+    present_ids = {
+        row[0] for row in present_label_rows(db, project_id, threshold)
+    }
+    if not present_ids:
         return None
 
-    taxonomy_id_counts = {
-        tid: count for tid, count in label_count_rows if tid
-    }
-    detected_taxonomy_ids = set(taxonomy_id_counts.keys())
+    def _dt(value: str | None) -> datetime | None:
+        return datetime.fromisoformat(value) if value else None
+
+    if count_by == "detection":
+        counts = count_detections_by_label(
+            db,
+            project_id,
+            LabelFilters(
+                site_ids=site_ids,
+                date_from=_dt(date_from),
+                date_to=_dt(date_to),
+                min_confidence=min_confidence,
+                max_confidence=max_confidence,
+                min_label_confidence=min_label_confidence,
+                max_label_confidence=max_label_confidence,
+                verified=(
+                    None if verification in (None, "all")
+                    else verification == "verified"
+                ),
+                flagged=flagged if flagged in ("flagged", "not_flagged") else None,
+                favorited=(
+                    favorited if favorited in ("favorited", "not_favorited") else None
+                ),
+            ),
+        )
+    elif count_by == "file":
+        counts = count_labels_files_by_label(
+            db,
+            project_id,
+            # The Files tab never lowers its floor below the project
+            # threshold (routers/labels.py), unlike the Detections tab.
+            floor=threshold,
+            empty=empty or "all",
+            site_ids=site_ids,
+            date_from=_dt(date_from),
+            date_to=_dt(date_to),
+            verification=verification,
+            flagged=flagged,
+            favorited=favorited,
+            min_confidence=min_confidence,
+            max_confidence=max_confidence,
+            min_label_confidence=min_label_confidence,
+            max_label_confidence=max_label_confidence,
+        )
+    else:
+        counts = count_events_by_label(
+            db,
+            project_id,
+            project_floor=threshold,
+            site_ids=site_ids,
+            date_from=_dt(date_from),
+            date_to=_dt(date_to),
+            verification=verification,
+            flagged=flagged,
+            favorited=favorited,
+            empty=empty,
+            min_confidence=min_confidence,
+            max_confidence=max_confidence,
+            min_label_confidence=min_label_confidence,
+            max_label_confidence=max_label_confidence,
+        )
+
+    taxonomy_id_counts = {tid: counts.get(tid, 0) for tid in present_ids}
+    detected_taxonomy_ids = present_ids
 
     # Load taxonomy rows for all detected taxonomy IDs
     taxonomy_rows_raw = (

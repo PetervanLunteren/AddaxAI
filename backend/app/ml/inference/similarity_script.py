@@ -154,6 +154,17 @@ FROM detections d
 {_COMMON_JOINS}
 """
 
+# The label filter tree's counts: boxes per label under every other
+# filter, from the grid's own scope and clauses, so the number beside a
+# label is what ticking that label alone would show. Run by the backend
+# (``label_service.count_detections_by_label``), not by this script; the
+# caller appends the GROUP BY after ``_build_query``'s AND clauses.
+COUNT_BY_LABEL_SQL = f"""
+SELECT d.label_taxonomy_id AS label_taxonomy_id, COUNT(*) AS n
+FROM detections d
+{_COMMON_JOINS}
+"""
+
 # Which filtered detections have an embedding — ids only, no vectors. Used
 # by "Sort by event" to pick one representative per event without loading
 # every embedded vector.

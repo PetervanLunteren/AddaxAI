@@ -19,7 +19,7 @@ def test_drops_deployment_id_and_notes():
     out_headers, out_rows = folder_run_table(headers, rows)
 
     assert out_headers == ["file_id", "event_id", "file_type"]
-    assert out_rows == [["f1", "e1", "image"]]
+    assert list(out_rows) == [["f1", "e1", "image"]]
 
 
 def test_omitted_columns_is_the_documented_set():
@@ -42,7 +42,7 @@ def test_keeps_event_id():
     out_headers, out_rows = folder_run_table(headers, rows)
 
     assert out_headers == ["file_id", "event_id"]
-    assert out_rows == [["f1", "e1"]]
+    assert list(out_rows) == [["f1", "e1"]]
 
 
 def test_does_not_mutate_input_rows():
@@ -61,7 +61,7 @@ def test_table_without_omitted_columns_passes_through():
     out_headers, out_rows = folder_run_table(headers, rows)
 
     assert out_headers == headers
-    assert out_rows == rows
+    assert list(out_rows) == rows
 
 
 def test_preserves_column_order():
@@ -71,4 +71,4 @@ def test_preserves_column_order():
     out_headers, out_rows = folder_run_table(headers, rows)
 
     assert out_headers == ["a", "b", "c"]
-    assert out_rows == [[1, 3, 5]]
+    assert list(out_rows) == [[1, 3, 5]]

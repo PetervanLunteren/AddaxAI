@@ -223,6 +223,10 @@ export function MenuCommands() {
         case "new-folder-run":
           navigate("/folder-runs/new");
           break;
+        case "import-package":
+          // Same route as new-project: ProjectsPage owns the dialog.
+          navigate("/projects?import=1");
+          break;
         case "about":
           navigate("/about");
           break;

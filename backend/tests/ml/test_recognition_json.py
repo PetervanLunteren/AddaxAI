@@ -15,7 +15,7 @@ from app.ml.postprocessing_outputs.recognition_json import (
     RECOGNITION_JSON_FILENAME,
     write_recognition_json,
 )
-from app.models import LabelTaxonomy
+from app.models import Deployment, LabelTaxonomy
 from tests.conftest import (
     make_deployment,
     make_detection,
@@ -72,7 +72,7 @@ def test_output_has_canonical_top_level_keys(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_recognition_json(db, project.id, target)
+    write_recognition_json(db, project.id, target, deployment_id=dep.id)
 
     payload = _load_json(target)
     assert set(payload.keys()) >= {
@@ -100,13 +100,14 @@ def test_info_block_carries_reproducibility_settings(db, tmp_path):
     project = make_project(
         db,
         name="rj-repro",
+        mode="folder_run",
         taxonomic_rollup=True,
         country_code="NLD",
     )
-    make_deployment(db, project_id=project.id, folder_path=str(tmp_path / "src"))
+    dep = make_deployment(db, project_id=project.id, folder_path=str(tmp_path / "src"))
 
     target = tmp_path / "out"
-    write_recognition_json(db, project.id, target)
+    write_recognition_json(db, project.id, target, deployment_id=dep.id)
     payload = _load_json(target)
 
     addaxai = payload["info"]["addaxai"]
@@ -154,7 +155,7 @@ def test_detection_serialisation_matches_canonical_shape(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_recognition_json(db, project.id, target)
+    write_recognition_json(db, project.id, target, deployment_id=dep.id)
     payload = _load_json(target)
 
     assert len(payload["images"]) == 1
@@ -206,7 +207,7 @@ def test_video_detections_are_emitted_in_frame_order(db, tmp_path):
         )
 
     target = tmp_path / "out"
-    write_recognition_json(db, project.id, target)
+    write_recognition_json(db, project.id, target, deployment_id=dep.id)
     payload = _load_json(target)
 
     dets = payload["images"][0]["detections"]
@@ -258,7 +259,7 @@ def test_classification_categories_map_built_from_labels(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_recognition_json(db, project.id, target)
+    write_recognition_json(db, project.id, target, deployment_id=dep.id)
     payload = _load_json(target)
 
     # Both labels show up with monotonic string ids.
@@ -301,7 +302,7 @@ def test_classification_category_descriptions_carry_taxonomy(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_recognition_json(db, project.id, target)
+    write_recognition_json(db, project.id, target, deployment_id=dep.id)
     payload = _load_json(target)
 
     classes = payload["classification_categories"]
@@ -339,7 +340,7 @@ def test_custom_label_without_ranks_has_no_description(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_recognition_json(db, project.id, target)
+    write_recognition_json(db, project.id, target, deployment_id=dep.id)
     payload = _load_json(target)
 
     assert "fake-bird" in payload["classification_categories"].values()
@@ -373,7 +374,7 @@ def test_image_carries_exif_and_dimensions(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_recognition_json(db, project.id, target)
+    write_recognition_json(db, project.id, target, deployment_id=dep.id)
     payload = _load_json(target)
 
     img = payload["images"][0]
@@ -401,7 +402,7 @@ def test_image_without_exif_omits_the_keys(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_recognition_json(db, project.id, target)
+    write_recognition_json(db, project.id, target, deployment_id=dep.id)
     payload = _load_json(target)
 
     img = payload["images"][0]
@@ -436,7 +437,7 @@ def test_detection_without_label_omits_classifications(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_recognition_json(db, project.id, target)
+    write_recognition_json(db, project.id, target, deployment_id=dep.id)
     payload = _load_json(target)
 
     det = payload["images"][0]["detections"][0]
@@ -466,7 +467,7 @@ def test_a_box_the_model_rejected_is_in_the_file(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_recognition_json(db, project.id, target)
+    write_recognition_json(db, project.id, target, deployment_id=dep.id)
     payload = _load_json(target)
 
     (det,) = payload["images"][0]["detections"]
@@ -501,7 +502,7 @@ def test_verified_flag_per_detection(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_recognition_json(db, project.id, target)
+    write_recognition_json(db, project.id, target, deployment_id=dep.id)
     payload = _load_json(target)
 
     dets = payload["images"][0]["detections"]
@@ -537,7 +538,7 @@ def test_video_frame_number_preserved(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_recognition_json(db, project.id, target)
+    write_recognition_json(db, project.id, target, deployment_id=dep.id)
     payload = _load_json(target)
 
     det = payload["images"][0]["detections"][0]
@@ -572,7 +573,7 @@ def test_video_frame_rate_and_frames_processed_emitted(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_recognition_json(db, project.id, target)
+    write_recognition_json(db, project.id, target, deployment_id=dep.id)
     payload = _load_json(target)
 
     entries = {e["file"]: e for e in payload["images"]}
@@ -608,7 +609,7 @@ def test_legacy_video_without_frames_processed_omits_field(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_recognition_json(db, project.id, target)
+    write_recognition_json(db, project.id, target, deployment_id=dep.id)
     payload = _load_json(target)
 
     entry = payload["images"][0]
@@ -643,7 +644,7 @@ def test_event_level_observation_dropped(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_recognition_json(db, project.id, target)
+    write_recognition_json(db, project.id, target, deployment_id=dep.id)
     payload = _load_json(target)
 
     assert len(payload["images"]) == 1
@@ -652,10 +653,10 @@ def test_event_level_observation_dropped(db, tmp_path):
 
 def test_filename_is_canonical(db, tmp_path):
     project = make_project(db, name="rj-filename")
-    make_deployment(db, project_id=project.id, folder_path=str(tmp_path / "src"))
+    dep = make_deployment(db, project_id=project.id, folder_path=str(tmp_path / "src"))
 
     target = tmp_path / "out"
-    result = write_recognition_json(db, project.id, target)
+    result = write_recognition_json(db, project.id, target, deployment_id=dep.id)
 
     # One canonical filename, so existing downstream scripts (and the
     # Timelapse Analyser) find it.
@@ -665,7 +666,9 @@ def test_filename_is_canonical(db, tmp_path):
 
 def test_unknown_project_raises(db, tmp_path):
     with pytest.raises(ValueError, match="not found"):
-        write_recognition_json(db, "no-such-id", tmp_path / "out")
+        write_recognition_json(
+            db, "no-such-id", tmp_path / "out", deployment_id="none"
+        )
 
 
 def test_unreadable_files_are_emitted_as_failure_entries(db, tmp_path):
@@ -696,7 +699,7 @@ def test_unreadable_files_are_emitted_as_failure_entries(db, tmp_path):
     ]
     db.commit()
 
-    write_recognition_json(db, project.id, tmp_path / "out")
+    write_recognition_json(db, project.id, tmp_path / "out", deployment_id=dep.id)
     data = _load_json(tmp_path / "out")
 
     by_file = {i["file"]: i for i in data["images"]}
@@ -721,7 +724,71 @@ def test_no_failure_entries_when_everything_was_readable(db, tmp_path):
     )
     db.commit()
 
-    write_recognition_json(db, project.id, tmp_path / "out")
+    write_recognition_json(db, project.id, tmp_path / "out", deployment_id=dep.id)
     data = _load_json(tmp_path / "out")
 
     assert all("failure" not in i for i in data["images"])
+
+
+def test_same_second_images_follow_file_names_and_undated_last(db, tmp_path):
+    from tests.api.test_export import _burst_with_an_undated_photo
+
+    folder = tmp_path / "cam"
+    project = _burst_with_an_undated_photo(db, str(folder))
+    dep = db.query(Deployment).filter(Deployment.project_id == project.id).one()
+
+    write_recognition_json(db, project.id, tmp_path / "out", deployment_id=dep.id)
+
+    assert [i["file"] for i in _load_json(tmp_path / "out")["images"]] == [
+        "RCNX0001.JPG", "RCNX0002.JPG", "RCNX0003.JPG", "RCNX0000.JPG",
+    ]
+
+
+def test_one_file_per_deployment_relative_to_its_own_folder(db, tmp_path):
+    """A project writes one recognition file per deployment: each names
+    only its own files, relative to its own folder, and carries only its
+    own unreadable-file entries. The folder-run path is the same call
+    with the run's single deployment."""
+    project = make_project(db, name="rj-two")
+    deps = {}
+    for name in ("north", "south"):
+        folder = tmp_path / name
+        deps[name] = make_deployment(
+            db,
+            project_id=project.id,
+            folder_path=str(folder),
+            warnings=[
+                {
+                    "type": "video_processing_failure",
+                    "path": str(folder / f"{name}-broken.avi"),
+                    "reason": "decode",
+                }
+            ],
+        )
+        make_file(
+            db,
+            deployment_id=deps[name].id,
+            file_path=str(folder / "100RECNX" / f"{name}.jpg"),
+        )
+    db.commit()
+
+    write_recognition_json(
+        db, project.id, tmp_path / "north", deployment_id=deps["north"].id
+    )
+    payload = _load_json(tmp_path / "north")
+
+    assert [i["file"] for i in payload["images"]] == [
+        str(Path("100RECNX") / "north.jpg"),
+        "north-broken.avi",
+    ]
+    assert payload["info"]["addaxai"]["export_source"] == "project"
+
+
+def test_a_deployment_of_another_project_is_refused(db, tmp_path):
+    mine = make_project(db, name="rj-mine")
+    other = make_project(db, name="rj-other")
+    dep = make_deployment(db, project_id=other.id, folder_path=str(tmp_path))
+    db.commit()
+
+    with pytest.raises(ValueError, match="not found in project"):
+        write_recognition_json(db, mine.id, tmp_path / "out", deployment_id=dep.id)

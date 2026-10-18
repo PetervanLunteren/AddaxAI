@@ -64,6 +64,9 @@
 ; 3. Offer to clear the per-user data folder on uninstall (existing
 ;    behavior, see customUnInstall below).
 ;
+; 4. Keep the app out of the data folder. See "The install folder never
+;    overlaps the data folder" below.
+;
 ; ---------------------------------------------------------------------
 ; Timelapse locator key
 ; ---------------------------------------------------------------------
@@ -138,6 +141,256 @@
   FileWrite $0 "  $\"%ADDAXAI_EXE%$\"$\r$\n"
   FileWrite $0 ")$\r$\n"
   FileClose $0
+!macroend
+
+; ---------------------------------------------------------------------
+; The install folder never overlaps the data folder
+; ---------------------------------------------------------------------
+;
+; The data folder (database, backups, models, envs, logs) is
+; %ADDAXAI_USER_DATA_DIR% when set, else $PROFILE\AddaxAI, the same
+; rule as resolveUserDataDir in src/main.ts. The installer lets the user
+; pick any install folder, and electron-builder's uninstaller ends with
+; `RMDir /r $INSTDIR`. An update runs the OLD version's uninstaller
+; first, so an app installed in the data folder deletes all of it on the
+; next update. That happened on 2026-10-13: 7.8 to 7.14, one user lost
+; every project and every backup.
+;
+; One rule: the install folder and the data folder are never the same,
+; and neither lies inside the other. AddaxAIOverlapsDataDir is the only
+; implementation, checked in three places:
+;
+;   - customInit, for an install that is already in the data folder:
+;     its uninstall registry entry is removed before electron-builder's
+;     uninstallOldVersion runs, so that uninstaller is never called. Its
+;     own "Uninstall AddaxAI.exe" goes too, since that file alone could
+;     still wipe the folder later. The other old app files stay; they
+;     are harmless. An interactive run says so and proposes the
+;     default folder on the folder page.
+;   - customInit again, for a silent install into the data folder:
+;     refused with exit code 3 and a reason in
+;     %TEMP%\AddaxAI-Setup-error.txt. Never redirected somewhere else.
+;   - the guard page after the folder page, for an interactive install:
+;     the user is sent back to pick another folder.
+;
+; No customRemoveFiles: with these checks, `RMDir /r $INSTDIR` only ever
+; runs on a folder that holds no data.
+
+!ifndef BUILD_UNINSTALLER
+  !include LogicLib.nsh
+  !include nsDialogs.nsh
+
+  ; "1" when customInit found the previous install inside the data folder.
+  Var AddaxAIPrevInDataDir
+!endif
+
+; The functions live in customHeader rather than at the top of this file:
+; electron-builder writes this file into the script header, possibly
+; before its plugin directory line, and System::Call needs that line.
+; customHeader is inserted after every include.
+!macro customHeader
+!ifndef BUILD_UNINSTALLER
+; Push PATH, Call, Pop the full path without a trailing backslash.
+; kernel32's GetFullPathNameW, because NSIS's own GetFullPathName fails
+; on a folder that does not exist yet, which every new install folder is.
+Function AddaxAINormalizePath
+  Exch $0
+  Push $1
+  Push $2
+  System::Call 'kernel32::GetFullPathNameW(w r0, i ${NSIS_MAX_STRLEN}, w .r1, p 0) i .r2'
+  ${If} $2 <> 0
+    StrCpy $0 $1
+  ${EndIf}
+  StrCpy $1 $0 1 -1
+  ${If} $1 == "\"
+    StrCpy $0 $0 -1
+  ${EndIf}
+  Pop $2
+  Pop $1
+  Exch $0
+FunctionEnd
+
+; Push CHILD, push PARENT, Call, Pop "1" when CHILD is PARENT or lies
+; inside it. Both normalised. LogicLib's == is case-insensitive, like
+; Windows paths. The backslash check keeps C:\AddaxAI2 out of C:\AddaxAI.
+Function AddaxAIIsSameOrInside
+  Exch $1
+  Exch
+  Exch $0
+  Push $2
+  Push $3
+  StrLen $2 $1
+  StrCpy $3 $0 $2
+  ${If} $3 == $1
+    StrCpy $3 $0 1 $2
+    ${If} $3 == ""
+    ${OrIf} $3 == "\"
+      StrCpy $0 "1"
+    ${Else}
+      StrCpy $0 ""
+    ${EndIf}
+  ${Else}
+    StrCpy $0 ""
+  ${EndIf}
+  Pop $3
+  Pop $2
+  Exch $0
+  Exch
+  Pop $1
+FunctionEnd
+
+; Push PATH, Call, Pop "1" when PATH and the data folder overlap.
+Function AddaxAIOverlapsDataDir
+  Exch $0
+  Push $1
+  Push $2
+  Push $0
+  Call AddaxAINormalizePath
+  Pop $0
+
+  ; The data folder. An ADDAXAI_USER_DATA_DIR that is not absolute
+  ; (no "X:\" and no leading slash) is ignored, as resolveUserDataDir
+  ; ignores it.
+  ReadEnvStr $1 ADDAXAI_USER_DATA_DIR
+  StrCpy $2 $1 1 1
+  ${If} $2 == ":"
+    StrCpy $2 $1 1 2
+  ${Else}
+    StrCpy $2 $1 1
+  ${EndIf}
+  ${If} $2 != "\"
+  ${AndIf} $2 != "/"
+    StrCpy $1 "$PROFILE\AddaxAI"
+  ${EndIf}
+  Push $1
+  Call AddaxAINormalizePath
+  Pop $1
+
+  Push $0
+  Push $1
+  Call AddaxAIIsSameOrInside
+  Pop $2
+  ${If} $2 != "1"
+    Push $1
+    Push $0
+    Call AddaxAIIsSameOrInside
+    Pop $2
+  ${EndIf}
+
+  StrCpy $0 $2
+  Pop $2
+  Pop $1
+  Exch $0
+FunctionEnd
+!endif
+!macroend
+
+; Forget a previous install that sits in the data folder, so
+; uninstallOldVersion finds no UninstallString and runs nothing. The
+; InstallLocation value goes too, or the install-mode page proposes the
+; data folder again and the next run treats it as an existing install.
+!macro AddaxAIReleasePreviousInstall ROOT
+  Push $0
+  Push $1
+  ReadRegStr $0 ${ROOT} "${INSTALL_REGISTRY_KEY}" InstallLocation
+  ${If} $0 != ""
+    Push $0
+    Call AddaxAIOverlapsDataDir
+    Pop $1
+    ${If} $1 == "1"
+      DeleteRegKey ${ROOT} "${UNINSTALL_REGISTRY_KEY}"
+      !ifdef UNINSTALL_REGISTRY_KEY_2
+        DeleteRegKey ${ROOT} "${UNINSTALL_REGISTRY_KEY_2}"
+      !endif
+      DeleteRegValue ${ROOT} "${INSTALL_REGISTRY_KEY}" InstallLocation
+      Delete "$0\${UNINSTALL_FILENAME}"
+      StrCpy $AddaxAIPrevInDataDir "1"
+    ${EndIf}
+  ${EndIf}
+  Pop $1
+  Pop $0
+!macroend
+
+!macro customInit
+  ; A silent install has no folder page to send the user back to, so it
+  ; stops here, before anything is changed. Running it again without /D
+  ; fails the same way; it never lands somewhere the caller did not ask.
+  ${If} ${Silent}
+    Push $INSTDIR
+    Call AddaxAIOverlapsDataDir
+    Pop $0
+    ${If} $0 == "1"
+      FileOpen $0 "$TEMP\AddaxAI-Setup-error.txt" w
+      FileWrite $0 "AddaxAI was not installed. The install folder $INSTDIR is the AddaxAI data folder or overlaps it. That folder holds the database, models and backups, and an update or uninstall would delete it. Run the installer again with /D set to another folder, for example /D=$LOCALAPPDATA\Programs\AddaxAI$\r$\n"
+      FileClose $0
+      SetErrorLevel 3
+      Quit
+    ${EndIf}
+  ${EndIf}
+
+  ; HKCU only in the outer instance: an elevated inner instance runs
+  ; .onInit again, possibly as another account. HKLM only when we may
+  ; write it.
+  ${IfNot} ${UAC_IsInnerInstance}
+    !insertmacro AddaxAIReleasePreviousInstall HKCU
+  ${EndIf}
+  ${If} ${UAC_IsAdmin}
+    !insertmacro AddaxAIReleasePreviousInstall HKLM
+  ${EndIf}
+
+  ; Tell the user why the folder changes, once (not again in an elevated
+  ; inner instance), then propose the default folder on the folder page,
+  ; where they still see it and can change it.
+  ${If} $AddaxAIPrevInDataDir == "1"
+  ${AndIfNot} ${Silent}
+  ${AndIfNot} ${UAC_IsInnerInstance}
+    Push $INSTDIR
+    Call AddaxAIOverlapsDataDir
+    Pop $0
+    ${If} $0 == "1"
+      StrCpy $INSTDIR "$LOCALAPPDATA\Programs\${APP_FILENAME}"
+    ${EndIf}
+    MessageBox MB_OK|MB_ICONINFORMATION "AddaxAI is installed in your data folder, next to your projects, models and backups. Updating it there would delete them, so AddaxAI moves to a new folder:$\r$\n$\r$\n$INSTDIR$\r$\n$\r$\nThe installer has already selected that folder. Click Next to accept it, or pick another one. Your data is safe and stays where it is."
+  ${EndIf}
+!macroend
+
+; The guard page, right after the folder page. A plain `Page custom`, not
+; a MUI_PAGE_* macro: those would take electron-builder's pending
+; MUI_PAGE_CUSTOMFUNCTION_PRE, which belongs to the install page.
+; instFilesPre is electron-builder's own "append \AddaxAI" rule, called
+; here so the check sees the folder that will really be used; it is
+; idempotent, and the install page calls it again.
+;
+; Next is disabled and the leave function refuses, so Back to the folder
+; page is the only way on.
+!macro customPageAfterChangeDir
+  Page custom AddaxAIGuardCreate AddaxAIGuardLeave
+
+  Function AddaxAIGuardCreate
+    Call instFilesPre
+    Push $INSTDIR
+    Call AddaxAIOverlapsDataDir
+    Pop $0
+    ${If} $0 != "1"
+      Abort
+    ${EndIf}
+
+    !insertmacro MUI_HEADER_TEXT "Choose another folder" "$INSTDIR"
+    nsDialogs::Create 1018
+    Pop $1
+    ${If} $1 == error
+      Abort
+    ${EndIf}
+    ${NSD_CreateLabel} 0 0 100% 48u "This folder holds your AddaxAI data: projects, models and backups. AddaxAI cannot be installed there, because an update or uninstall would delete that data.$\r$\n$\r$\nGo back and choose another folder."
+    Pop $1
+    GetDlgItem $1 $HWNDPARENT 1
+    EnableWindow $1 0
+    nsDialogs::Show
+  FunctionEnd
+
+  Function AddaxAIGuardLeave
+    Abort
+  FunctionEnd
 !macroend
 
 !macro customInstall

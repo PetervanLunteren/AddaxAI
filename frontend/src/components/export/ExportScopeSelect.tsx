@@ -7,7 +7,7 @@
  *  - all deployments checked  → undefined (whole project, no URL filter)
  *  - a strict subset checked   → { deploymentIds: [...] }
  *  - nothing checked           → { deploymentIds: [] } (exports nothing)
- * Project mode only.
+ * Shown wherever a project has more than one deployment to pick from.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -18,6 +18,7 @@ import { deploymentsApi } from "../../api/deployments";
 import type { ExportScope } from "../../api/export";
 import type { DeploymentResponse } from "../../api/types";
 import { basename } from "../../lib/path-utils";
+import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
@@ -32,6 +33,9 @@ interface ExportScopeSelectProps {
   projectId: string;
   /** Reports the resolved scope whenever the selection changes. */
   onChange: (scope: ExportScope | undefined) => void;
+  /** Extra classes on the trigger, for a caller that lays it into a
+   * grid column instead of a toolbar. */
+  className?: string;
 }
 
 function deploymentLabel(d: DeploymentResponse): string {
@@ -41,6 +45,7 @@ function deploymentLabel(d: DeploymentResponse): string {
 export function ExportScopeSelect({
   projectId,
   onChange,
+  className,
 }: ExportScopeSelectProps) {
   const { data: sites } = useQuery({
     queryKey: ["sites", projectId],
@@ -135,7 +140,11 @@ export function ExportScopeSelect({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="justify-between gap-2 min-w-[200px]">
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn("justify-between gap-2 min-w-[200px]", className)}
+        >
           <span className="truncate">{triggerLabel}</span>
           <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
         </Button>

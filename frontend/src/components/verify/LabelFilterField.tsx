@@ -12,7 +12,8 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { eventsApi } from "../../api/events";
+import { eventsApi, type LabelTreeScope } from "../../api/events";
+import { collectLiveLeafIds } from "../../lib/taxonomy-utils";
 import { speciesLabelMap } from "../../lib/species-name-mode";
 import { Button } from "../ui/button";
 import { MultiSelect } from "../ui/multi-select";
@@ -25,10 +26,9 @@ interface LabelFilterFieldProps {
   onChange: (labels: string[] | undefined) => void;
   /** Unit the tree's counts are in; the Labels page varies it per tab. */
   countBy?: string;
-  /** Narrow the tree's counts to what the page is looking at. */
-  siteIds?: string[];
-  dateFrom?: string;
-  dateTo?: string;
+  /** The page's other active filters: the count beside a label is what
+   *  the page shows with that label ticked alone. */
+  scope?: LabelTreeScope;
 }
 
 export function LabelFilterField({
@@ -36,16 +36,13 @@ export function LabelFilterField({
   value,
   onChange,
   countBy = "event",
-  siteIds,
-  dateFrom,
-  dateTo,
+  scope,
 }: LabelFilterFieldProps) {
   const [open, setOpen] = useState(false);
 
   const { data: labelTree } = useQuery({
-    queryKey: ["label-tree", projectId, countBy, siteIds, dateFrom, dateTo],
-    queryFn: () =>
-      eventsApi.getLabelTree(projectId, countBy, { siteIds, dateFrom, dateTo }),
+    queryKey: ["label-tree", projectId, countBy, scope],
+    queryFn: () => eventsApi.getLabelTree(projectId, countBy, scope),
     enabled: !!projectId,
   });
   const hasTree = !!labelTree?.tree?.length;
@@ -62,10 +59,15 @@ export function LabelFilterField({
     [filterOptions],
   );
 
-  // Everything ticked is the same as no filter, and keeps the URL clean.
+  // Every live label ticked is the same as no filter, and keeps the URL
+  // clean. Dead leaves (nothing under the page's filters) cannot be
+  // ticked, so they do not count towards "everything". The modal never
+  // applies an empty pick.
   const apply = (labels: string[]) => {
-    const all = labelTree?.all_leaf_ids.length ?? Infinity;
-    onChange(labels.length === 0 || labels.length >= all ? undefined : labels);
+    const live = labelTree ? collectLiveLeafIds(labelTree.tree) : null;
+    const everything =
+      live !== null && [...live].every((id) => labels.includes(id));
+    onChange(everything ? undefined : labels);
   };
 
   if (labelTree !== undefined && !hasTree) {

@@ -1,0 +1,213 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          5.1,
+          52.1
+        ]
+      },
+      "properties": {
+        "site_name": "north",
+        "deployment_id": "dep-a-0000",
+        "start_date": "2024-06-01",
+        "end_date": "2024-06-10",
+        "trap_days": 4,
+        "detection_count": 7,
+        "detection_rate_per_100": 175.0,
+        "layer": "deployments"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.9,
+          51.9
+        ]
+      },
+      "properties": {
+        "site_name": "south",
+        "deployment_id": "dep-b-0000",
+        "start_date": "2024-06-02",
+        "end_date": "2024-06-12",
+        "trap_days": 3,
+        "detection_count": 3,
+        "detection_rate_per_100": 100.0,
+        "layer": "deployments"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          5.1,
+          52.1
+        ]
+      },
+      "properties": {
+        "site_name": "north",
+        "classification_label": "red fox",
+        "scientific_name": "Vulpes vulpes",
+        "taxon_class": "mammalia",
+        "taxon_order": "carnivora",
+        "taxon_family": "canidae",
+        "taxon_genus": "vulpes",
+        "taxon_species": "vulpes",
+        "taxon_variant": "",
+        "total_count": 3,
+        "detection_rate_per_100": 75.0,
+        "layer": "species_summary"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          5.1,
+          52.1
+        ]
+      },
+      "properties": {
+        "site_name": "north",
+        "classification_label": "person",
+        "scientific_name": "",
+        "taxon_class": "",
+        "taxon_order": "",
+        "taxon_family": "",
+        "taxon_genus": "",
+        "taxon_species": "",
+        "taxon_variant": "",
+        "total_count": 1,
+        "detection_rate_per_100": 25.0,
+        "layer": "species_summary"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          5.1,
+          52.1
+        ]
+      },
+      "properties": {
+        "site_name": "north",
+        "classification_label": "bird",
+        "scientific_name": "",
+        "taxon_class": "aves",
+        "taxon_order": "",
+        "taxon_family": "",
+        "taxon_genus": "",
+        "taxon_species": "",
+        "taxon_variant": "",
+        "total_count": 1,
+        "detection_rate_per_100": 25.0,
+        "layer": "species_summary"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          5.1,
+          52.1
+        ]
+      },
+      "properties": {
+        "site_name": "north",
+        "classification_label": "rat",
+        "scientific_name": "Rattus rattus",
+        "taxon_class": "mammalia",
+        "taxon_order": "rodentia",
+        "taxon_family": "muridae",
+        "taxon_genus": "rattus",
+        "taxon_species": "rattus",
+        "taxon_variant": "",
+        "total_count": 1,
+        "detection_rate_per_100": 25.0,
+        "layer": "species_summary"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          5.1,
+          52.1
+        ]
+      },
+      "properties": {
+        "site_name": "north",
+        "classification_label": "false detection",
+        "scientific_name": "",
+        "taxon_class": "",
+        "taxon_order": "",
+        "taxon_family": "",
+        "taxon_genus": "",
+        "taxon_species": "",
+        "taxon_variant": "",
+        "total_count": 1,
+        "detection_rate_per_100": 25.0,
+        "layer": "species_summary"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.9,
+          51.9
+        ]
+      },
+      "properties": {
+        "site_name": "south",
+        "classification_label": "red fox",
+        "scientific_name": "Vulpes vulpes",
+        "taxon_class": "mammalia",
+        "taxon_order": "carnivora",
+        "taxon_family": "canidae",
+        "taxon_genus": "vulpes",
+        "taxon_species": "vulpes",
+        "taxon_variant": "",
+        "total_count": 2,
+        "detection_rate_per_100": 66.67,
+        "layer": "species_summary"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.9,
+          51.9
+        ]
+      },
+      "properties": {
+        "site_name": "south",
+        "classification_label": "red fox juvenile",
+        "scientific_name": "Vulpes vulpes (juvenile)",
+        "taxon_class": "mammalia",
+        "taxon_order": "carnivora",
+        "taxon_family": "canidae",
+        "taxon_genus": "vulpes",
+        "taxon_species": "vulpes",
+        "taxon_variant": "juvenile",
+        "total_count": 1,
+        "detection_rate_per_100": 33.33,
+        "layer": "species_summary"
+      }
+    }
+  ]
+}

@@ -12,6 +12,7 @@ shipping fixture JPEGs; the visual style is covered separately in
 
 from pathlib import Path
 
+import exiftool
 import pytest
 from PIL import Image
 
@@ -82,6 +83,71 @@ def test_visualise_only_writes_bboxes_and_skips_blur(db, tmp_path):
     assert result.bbox_count == 1
     assert result.blurred_box_count == 0
     assert (target / "animal.jpg").is_file()
+
+
+def test_annotated_copy_keeps_the_source_xmp_iptc_and_drops_the_thumbnail(
+    db, tmp_path
+):
+    """A re-encoded copy carries the original's whole metadata, not just
+    its EXIF block: keywords and creator from a photo manager survive.
+    Its embedded thumbnail does not, because it shows the original
+    pixels, which is an unblurred person on a blurred copy. AddaxAI's
+    species replace an existing subject list, as on a plain copy."""
+    src_path = tmp_path / "src" / "tagged.jpg"
+    src_path.parent.mkdir(parents=True, exist_ok=True)
+    exif = Image.Exif()
+    exif[0x010F] = "RECONYX"                 # Make
+    Image.new("RGB", (200, 200), (180, 200, 220)).save(
+        src_path, format="JPEG", exif=exif
+    )
+    thumb = tmp_path / "src" / "thumb.jpg"
+    Image.new("RGB", (20, 20), (10, 10, 10)).save(thumb, format="JPEG")
+    with exiftool.ExifToolHelper() as et:
+        et.set_tags(
+            [str(src_path)],
+            tags={
+                "XMP-dc:Creator": "Field team",
+                "IPTC:Keywords": "stump",
+                "XMP-dc:Subject": "old keyword",
+            },
+            params=["-overwrite_original"],
+        )
+        et.execute(f"-ThumbnailImage<={thumb}", "-overwrite_original", str(src_path))
+
+    project = make_project(db, name="xmp-keep", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    file = make_file(
+        db, deployment_id=dep.id, file_path=str(src_path), observation_type="animal"
+    )
+    make_detection(
+        db, file_id=file.id, category="animal", confidence=0.9, label="dog",
+        common_name="Dog",
+    )
+
+    target = tmp_path / "out"
+    result = write_annotated_copies(
+        db,
+        project.id,
+        _ctx(target),
+        draw_bboxes=True,
+        anonymise=False,
+        media_threshold=0.5,
+    )
+
+    assert result.written_count == 1
+    with exiftool.ExifToolHelper() as et:
+        source_tags = et.get_tags([str(src_path)], ["EXIF:ThumbnailImage"])[0]
+        copied = et.get_tags(
+            [str(target / "tagged.jpg")],
+            ["EXIF:Make", "XMP:Creator", "IPTC:Keywords", "XMP:Subject",
+             "EXIF:ThumbnailImage"],
+        )[0]
+    assert "EXIF:ThumbnailImage" in source_tags
+    assert copied["EXIF:Make"] == "RECONYX"
+    assert copied["XMP:Creator"] == "Field team"
+    assert copied["IPTC:Keywords"] == "stump"
+    assert copied["XMP:Subject"] == "Dog"
+    assert "EXIF:ThumbnailImage" not in copied
 
 
 def test_annotated_copy_keeps_the_source_exif(db, tmp_path):

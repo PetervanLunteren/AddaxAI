@@ -12,8 +12,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.schemas.site import SiteCreate, SiteUpdate
+from app.core.logging_config import get_logger
 from app.models import Deployment, Project, Site
 from app.utils.timezone_from_coords import tz_from_coords
+
+logger = get_logger(__name__)
 
 
 def get_sites(db: Session, project_id: str | None = None) -> list[Site]:
@@ -61,12 +64,25 @@ def _apply_project_timezone_from_site(db: Session, db_site: Site) -> None:
     sited site wins; later sites never change it). Coordinates are the
     authoritative source for the sun-based insights, replacing the old
     browser-timezone guess. A failed lookup leaves the timezone unset.
+
+    The site is already committed when this runs, so a lookup that raises
+    is logged, not propagated: answering 500 for a site that was saved
+    sent users to retry a site that already existed (packaged Windows
+    build, 2026-10).
     """
     project = db.get(Project, db_site.project_id)
     if project is None or project.timezone is not None:
         return
 
-    derived = tz_from_coords(db_site.latitude, db_site.longitude)
+    try:
+        derived = tz_from_coords(db_site.latitude, db_site.longitude)
+    except Exception:
+        logger.error(
+            f"Could not derive a timezone for project {project.id} from site "
+            f"{db_site.id}; left unset",
+            exc_info=True,
+        )
+        return
     if derived is None:
         return
 

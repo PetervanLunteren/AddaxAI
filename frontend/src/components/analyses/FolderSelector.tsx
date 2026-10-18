@@ -73,6 +73,9 @@ interface FolderSelectorProps {
   onAdjustDates?: () => void;
   /** Hide the built-in "Folder" label (when the parent provides its own). */
   hideLabel?: boolean;
+  /** Title of the native picker. Defaults to the camera-trap wording,
+   * which is wrong for an output folder or a package. */
+  pickerTitle?: string;
   /** Optional caption under the built-in "Folder" label. Ignored when
    *  hideLabel is set (the parent supplies its own). Use it to clarify what
    *  the folder is for, since the selector is reused for source and
@@ -109,6 +112,7 @@ export function FolderSelector({
   cameraOffsets = {},
   onAdjustDates,
   hideLabel = false,
+  pickerTitle,
   caption,
   hideScanResult = false,
   compactScanResult = false,
@@ -159,7 +163,9 @@ export function FolderSelector({
   const handleElectronSelect = async () => {
     if (!window.electronAPI) return;
 
-    const folderPath = await window.electronAPI.selectFolder();
+    const folderPath = await window.electronAPI.selectFolder(
+      pickerTitle ? { title: pickerTitle } : undefined,
+    );
     if (folderPath) {
       onChange(folderPath);
     }

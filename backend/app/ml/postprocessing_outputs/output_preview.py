@@ -51,6 +51,7 @@ from app.models import (
     Project,
 )
 
+from ._scope import MediaScope
 from .separate_folders import (
     NameMode,
     SeparateGroupBy,
@@ -155,8 +156,14 @@ def build_output_preview(
     group_by: SeparateGroupBy = "flat",
     species_last: bool = False,
     videos_as_stills: bool = False,
+    scope: MediaScope | None = None,
+    deployment_folder_in_path: bool = False,
 ) -> OutputPreviewResult:
     """Aggregate the counts the Save step needs for its live preview.
+
+    ``scope`` and ``deployment_folder_in_path`` mean what they mean for
+    ``separate_into_folders``, and must be the same values the run will
+    get, or the preview counts a different set than the run writes.
 
     Mirrors ``separate_folders`` exactly: every file is bucketed into its
     one destination folder; ``excluded_label_ids`` drops a file when
@@ -193,6 +200,7 @@ def build_output_preview(
         )
         .join(Deployment, File.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
+        .where(*(scope.file_clauses() if scope else []))
         # Stable order so the filename sample doesn't flicker between
         # preview refreshes.
         .order_by(File.file_path)
@@ -200,7 +208,9 @@ def build_output_preview(
 
     # Source folders per deployment, to show the preserved subfolder
     # path in the "No subfolders" filename sample.
-    dep_folders = build_deployment_folders(db, project_id)
+    dep_folders = build_deployment_folders(
+        db, project_id, parent_as_root=deployment_folder_in_path
+    )
 
     # Every detection in the project, confidence descending. One query
     # feeds two derivations: the passing identified detections (a label
@@ -220,6 +230,11 @@ def build_output_preview(
         .join(File, Detection.file_id == File.id)
         .join(Deployment, File.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
+        # Deployment part of the scope only; the rows are read per file
+        # id below, so the file filters need not repeat here. Without
+        # it a one-deployment preview loads every detection of the
+        # project on each slider move.
+        .where(*(scope.deployment_clauses() if scope else []))
         # A video is written to disk as one frame, so only that frame's
         # boxes may decide its type or its folder. Gating the query rather
         # than each derivation below covers both consumers at once: the
@@ -273,7 +288,7 @@ def build_output_preview(
     event_primary: dict[str, str] = {}
     if group_events:
         event_primary = build_event_primary_labels(
-            db, project_id, threshold, excluded or None
+            db, project_id, threshold, excluded or None, scope
         )
 
     result = OutputPreviewResult()
