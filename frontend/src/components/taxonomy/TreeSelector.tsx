@@ -17,7 +17,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { CheckCheck, X, ChevronDown, ChevronRight, Search } from "lucide-react";
 import type { TaxonomyNode } from "../../api/types";
-import { collectLeafIds } from "../../lib/taxonomy-utils";
+import { collectLiveLeafIds, isDeadLeaf } from "../../lib/taxonomy-utils";
 import { Checkbox } from "../ui/checkbox";
 import { Button } from "../ui/button";
 
@@ -143,23 +143,35 @@ function pluralize(unit: string, n: number): string {
   return unit + "s";
 }
 
-/** Compute checkbox state for a node (recursive for parents). */
+/** Compute checkbox state for a node (recursive for parents).
+
+ * A dead leaf (see `isDeadLeaf`) cannot be ticked, and a parent whose
+ * every descendant is dead is dead too. Dead leaves do not count
+ * towards a parent's all/any-checked state, so a genus whose live
+ * species are all ticked reads as ticked. */
 function getCheckState(
   node: TaxonomyNode,
   selectedIds: Set<string>,
   excludedMode: boolean,
-): { checked: boolean; indeterminate: boolean } {
+): { checked: boolean; indeterminate: boolean; dead: boolean } {
   const isLeaf = !node.children || node.children.length === 0;
   if (isLeaf) {
     const isInSet = selectedIds.has(node.id);
-    return { checked: excludedMode ? !isInSet : isInSet, indeterminate: false };
+    return {
+      checked: excludedMode ? !isInSet : isInSet,
+      indeterminate: false,
+      dead: isDeadLeaf(node),
+    };
   }
 
   let allChecked = true;
   let anyChecked = false;
+  let anyLive = false;
 
   for (const child of node.children) {
     const state = getCheckState(child, selectedIds, excludedMode);
+    if (state.dead) continue;
+    anyLive = true;
     if (state.checked && !state.indeterminate) {
       anyChecked = true;
     } else {
@@ -170,9 +182,10 @@ function getCheckState(
     }
   }
 
-  if (allChecked) return { checked: true, indeterminate: false };
-  if (anyChecked) return { checked: false, indeterminate: true };
-  return { checked: false, indeterminate: false };
+  if (!anyLive) return { checked: false, indeterminate: false, dead: true };
+  if (allChecked) return { checked: true, indeterminate: false, dead: false };
+  if (anyChecked) return { checked: false, indeterminate: true, dead: false };
+  return { checked: false, indeterminate: false, dead: false };
 }
 
 const ROW_HEIGHT = 32;
@@ -217,14 +230,19 @@ export function TreeSelector({
   });
 
   // All leaf IDs in the full tree (for bulk actions)
-  const allLeafIds = useMemo(() => collectLeafIds(tree), [tree]);
+  // The leaves that can be ticked; dead ones are never added by a bulk
+  // action or a parent tick, and never counted as a category.
+  const allLeafIds = useMemo(() => collectLiveLeafIds(tree), [tree]);
 
   // Toggle a node and all its descendant leaves
   const toggleNodeAndDescendants = useCallback(
     (node: TaxonomyNode, add: boolean, set: Set<string>) => {
       if (!node.children || node.children.length === 0) {
-        if (add) set.add(node.id);
-        else set.delete(node.id);
+        if (add) {
+          if (!isDeadLeaf(node)) set.add(node.id);
+        } else {
+          set.delete(node.id);
+        }
       } else {
         for (const child of node.children) {
           toggleNodeAndDescendants(child, add, set);
@@ -306,7 +324,9 @@ export function TreeSelector({
       const suffix = excludedHere > 0 ? ` (${excludedHere} excluded)` : "";
       return `Currently included ${includedCount} of ${totalCategories}${suffix}`;
     }
-    const selectedCount = selectedIds.size;
+    // Only leaves that can be ticked count: a selection carried over from
+    // another filter may hold a dead leaf, which is not a chosen category.
+    const selectedCount = [...selectedIds].filter((id) => allLeafIds.has(id)).length;
     let text = `${selectedCount} of ${totalCategories} ${pluralize("category", totalCategories)} selected`;
     if (countUnit) {
       const selectedItemCount = sumLeafCounts(tree, selectedIds);
@@ -397,7 +417,9 @@ export function TreeSelector({
               const hasChildren = node.children && node.children.length > 0;
               const isLeaf = !hasChildren;
               const expanded = expandedNodes.has(node.id);
-              const { checked, indeterminate } = getCheckState(node, selectedIds, excludedMode);
+              const { checked, indeterminate, dead } = getCheckState(
+                node, selectedIds, excludedMode,
+              );
               const indent = depth * INDENT_PX;
 
               return (
@@ -413,9 +435,13 @@ export function TreeSelector({
                   }}
                 >
                   <div
-                    className="flex items-center h-full px-3 hover:bg-accent rounded cursor-pointer relative"
+                    className={`flex items-center h-full px-3 rounded relative ${
+                      dead ? "cursor-default" : "hover:bg-accent cursor-pointer"
+                    }`}
                     style={{ paddingLeft: `${indent + ROW_INSET_PX}px` }}
-                    onClick={() => handleToggle(node.id, !checked)}
+                    onClick={() => {
+                      if (!dead) handleToggle(node.id, !checked);
+                    }}
                   >
                     {/* Tree connector lines */}
                     {depth > 0 && (
@@ -471,11 +497,18 @@ export function TreeSelector({
                     <Checkbox
                       checked={checked}
                       indeterminate={indeterminate}
+                      disabled={dead}
                       onCheckedChange={(newChecked) => handleToggle(node.id, !!newChecked)}
                     />
 
-                    {/* Node label */}
-                    <span className="ml-2 text-sm truncate">
+                    {/* Node label. A dead node (nothing under the page's
+                        filters) stays in the tree, muted and not
+                        tickable; its count says why. */}
+                    <span
+                      className={`ml-2 text-sm truncate${
+                        dead ? " text-muted-foreground" : ""
+                      }`}
+                    >
                       {node.name}
                       {node.annotation && (
                         <>

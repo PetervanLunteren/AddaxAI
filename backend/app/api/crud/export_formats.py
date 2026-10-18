@@ -22,6 +22,9 @@ import sqlite3
 import struct
 import tempfile
 import zipfile
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -71,13 +74,19 @@ XLSX_MAX_ROWS = 1_048_576
 class XlsxRowLimitError(ValueError):
     """A sheet holds more rows than the XLSX format can carry.
 
-    Raised before anything is written. openpyxl does not check this
-    itself: in write-only mode it accepts any number of rows and saves a
-    file whose row indexes run past the cap (verified against openpyxl
+    Raised while the rows are appended, the moment a sheet passes the cap,
+    and before the workbook is saved: openpyxl's write-only mode assembles
+    the file only on ``save()``, so a refused workbook leaves no file
+    behind, and its sheets' temporary files are deleted
+    (``_discard_sheet_files``). The rows are streamed, so counting them up front would mean a
+    second query that has to apply every builder rule the same way; the
+    rows being written are the only exact count. openpyxl does not check
+    the cap itself: in write-only mode it accepts any number of rows and
+    saves a file whose row indexes run past it (verified against openpyxl
     3.1.5, which happily wrote index 1048600), and Excel then refuses to
-    open it. So without this guard the user gets a corrupt download and
-    no explanation, which is the silent failure the export is supposed
-    to be incapable of.
+    open it. So without this guard the user gets a corrupt file and no
+    explanation, which is the silent failure the export is supposed to be
+    incapable of.
 
     The message is written for the end user: every caller surfaces it
     verbatim, the export endpoints as the 422 detail and the folder-run
@@ -85,96 +94,132 @@ class XlsxRowLimitError(ValueError):
     """
 
 
-def _check_xlsx_row_limit(
-    sheets: list[tuple[str, list[str], list[list[Any]]]],
-) -> None:
-    """Refuse a workbook that cannot be written as valid XLSX.
-
-    Checked up front for every sheet: the rows are already in memory by
-    this point, so counting them is free and nothing is written before we
-    know the whole workbook fits.
-    """
-    for title, _headers, rows in sheets:
-        total = len(rows) + 1  # the header occupies a row too
-        if total > XLSX_MAX_ROWS:
-            raise XlsxRowLimitError(
-                f"The {title.lower()} table has {len(rows):,} rows. An Excel "
-                f"file can hold {XLSX_MAX_ROWS:,}, so this export cannot be "
-                f"saved as XLSX. Export as CSV instead, it has no row limit."
-            )
+def _xlsx_row_limit_error(title: str) -> XlsxRowLimitError:
+    return XlsxRowLimitError(
+        f"The {title.lower()} table has more rows than an Excel sheet can hold "
+        f"({XLSX_MAX_ROWS:,}), so this export cannot be saved as XLSX. Export "
+        f"as CSV instead, it has no row limit."
+    )
 
 
-def serialize_csv(headers: list[str], rows: list[list[Any]]) -> bytes:
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(headers)
-    writer.writerows(rows)
-    return output.getvalue().encode("utf-8")
+# How much of a project name goes into an export's file or folder name. A
+# project name may be 255 characters, and so may a file name on every
+# filesystem, in bytes: the full name plus a kind, a date or a suffix does
+# not fit. 60 keeps the name recognisable and leaves room for both, also
+# for three-byte scripts and a deep folder on Windows.
+EXPORT_NAME_MAX_CHARS = 60
 
 
-def serialize_tsv(headers: list[str], rows: list[list[Any]]) -> bytes:
-    output = io.StringIO()
-    writer = csv.writer(output, delimiter="\t")
-    writer.writerow(headers)
-    writer.writerows(rows)
-    return output.getvalue().encode("utf-8")
+def export_file_name(project_name: str, kind: str, extension: str) -> str:
+    """``<kind>-<project>-<date>.<ext>``, e.g. ``files-kenya-2026-10-14.csv``:
+    two projects exported into one folder stay apart, and a later export
+    sorts next to an earlier one."""
+    slug = slugify(project_name)[:EXPORT_NAME_MAX_CHARS].rstrip("-")
+    return f"{kind}-{slug}-{date.today().isoformat()}.{extension}"
 
 
-def serialize_xlsx(
-    headers: list[str], rows: list[list[Any]], sheet_title: str = "Sheet1"
-) -> bytes:
-    return serialize_xlsx_multi([(sheet_title, headers, rows)])
+def unique_export_path(folder: Path, name: str) -> Path:
+    """Where an export file called ``name`` goes in a folder the user
+    picked: that name, or ``<stem>_2<ext>`` and up when it is taken. An
+    export never overwrites a file in a folder it does not own; the same
+    rule and helper as the image copies."""
+    from app.ml.postprocessing_outputs.separate_folders import _unique_destination
+
+    return _unique_destination(folder, name)[0]
 
 
-def serialize_xlsx_multi(
-    sheets: list[tuple[str, list[str], list[list[Any]]]],
-) -> bytes:
-    """One workbook with several sheets, as bytes (for HTTP responses)."""
-    buf = io.BytesIO()
-    _build_xlsx_workbook(sheets).save(buf)
-    return buf.getvalue()
+@contextmanager
+def csv_writer(
+    path: Path, headers: list[str], *, delimiter: str = ","
+) -> Iterator[Any]:
+    """An open ``csv.writer`` on ``path`` with the header row written, for
+    a caller that writes rows as they come. The one place the export CSV
+    format is set: the default ``csv`` dialect, ``\\r\\n`` line ends,
+    UTF-8 without a BOM. ``delimiter="\\t"`` makes it a TSV."""
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f, delimiter=delimiter)
+        writer.writerow(headers)
+        yield writer
+
+
+def write_csv(
+    path: Path,
+    headers: list[str],
+    rows: Iterable[list[Any]],
+    *,
+    delimiter: str = ",",
+) -> int:
+    """Write a table to ``path`` row by row and return the number of data
+    rows. ``rows`` may be a generator: nothing is held beyond the row
+    being written."""
+    count = 0
+    with csv_writer(path, headers, delimiter=delimiter) as writer:
+        for row in rows:
+            writer.writerow(row)
+            count += 1
+    return count
 
 
 def write_xlsx_multi(
-    sheets: list[tuple[str, list[str], list[list[Any]]]],
+    sheets: list[tuple[str, list[str], Iterable[list[Any]]]],
     path: Path,
-) -> None:
-    """One workbook with several sheets, saved straight to ``path``.
+) -> int:
+    """One workbook with several sheets, saved straight to ``path``, and
+    the number of data rows written over all sheets.
 
-    For disk targets, so the zipped workbook never has to exist as one
-    in-memory bytes blob the way ``serialize_xlsx_multi`` requires.
-    """
-    _build_xlsx_workbook(sheets).save(str(path))
+    Each entry is ``(sheet_title, headers, rows)``; sheets are added in
+    order and each ``rows`` is read once, so a sheet's generator runs its
+    query only when its turn comes. Uses openpyxl's ``write_only`` mode:
+    rows go to a temporary file as they are appended instead of building
+    an in-memory cell graph, so memory stays flat for any size.
 
-
-def _build_xlsx_workbook(
-    sheets: list[tuple[str, list[str], list[list[Any]]]],
-) -> Workbook:
-    """Each entry is ``(sheet_title, headers, rows)``; sheets are added
-    in order.
-
-    Uses openpyxl's ``write_only`` mode: rows are streamed straight into the
-    sheet instead of building an in-memory cell graph, so memory stays flat
-    for large exports (the whole point of the Detections / Files grains).
-    A write-only workbook has no default sheet, so every sheet is created
-    explicitly.
-
-    Raises ``XlsxRowLimitError`` when any sheet is too tall for the
-    format. Every XLSX writer in the app funnels through here, so the
-    single-table endpoints, the combined project spreadsheet and the
-    folder-run workbook all inherit the guard.
+    Raises ``XlsxRowLimitError`` the moment a sheet passes the format's
+    cap, before ``save()``, so nothing is written to ``path``. Every XLSX
+    writer in the app funnels through here, so the project spreadsheet
+    and the folder-run workbook both inherit the guard.
     """
     from openpyxl import Workbook
 
-    _check_xlsx_row_limit(sheets)
-
     wb = Workbook(write_only=True)
-    for title, headers, rows in sheets:
-        ws = wb.create_sheet(title=title)
-        ws.append(headers)
-        for row in rows:
-            ws.append(row)
-    return wb
+    total = 0
+    try:
+        for title, headers, rows in sheets:
+            ws = wb.create_sheet(title=title)
+            ws.append(headers)
+            written = 1  # the header occupies a row too
+            for row in rows:
+                written += 1
+                if written > XLSX_MAX_ROWS:
+                    raise _xlsx_row_limit_error(title)
+                ws.append(row)
+            total += written - 1
+    except BaseException:
+        _discard_sheet_files(wb)
+        raise
+    wb.save(str(path))
+    return total
+
+
+def _discard_sheet_files(wb: Workbook) -> None:
+    """Delete the temporary files of a write-only workbook that will not be
+    saved.
+
+    Write-only sheets stream their rows into one temp file each, and
+    openpyxl deletes those only on ``save()``. A refused workbook is never
+    saved, so without this every refusal left its rows behind: 1.7 GB for
+    a sheet stopped at the row limit, and in the backend they outlived
+    even a normal shutdown (2026-10-15). On Windows ``%TEMP%`` is never
+    cleared, so each retry added another 1.7 GB. ``close()`` first, so the
+    file is no longer open (Windows refuses to delete an open file);
+    ``cleanup()`` is openpyxl's own removal, and
+    ``test_a_refused_xlsx_leaves_no_temp_files`` fails if an upgrade moves
+    it.
+    """
+    for ws in wb.worksheets:
+        if ws._writer is None:
+            continue
+        ws.close()
+        ws._writer.cleanup()
 
 
 # ---------------------------------------------------------------------------
@@ -485,29 +530,26 @@ def serialize_geopackage(layers: dict[str, list[dict[str, Any]]]) -> bytes:
 # ---------------------------------------------------------------------------
 
 
-def build_camtrap_dp_zip(
-    datapackage_json: bytes,
-    deployments_csv: bytes,
-    media_csv: bytes,
-    observations_csv: bytes,
-    thumbnails: dict[str, bytes] | None = None,
-) -> bytes:
-    """Assemble the four CamTrap DP files into a single ZIP at the root.
+# The package's files, in the order they go into the ZIP. Thumbnails, when
+# any, follow under media/.
+CAMTRAP_DP_FILES = ("datapackage.json", "deployments.csv", "media.csv", "observations.csv")
 
-    If `thumbnails` is provided, each entry is written under `media/` with
-    the dict key as the filename. Callers must rewrite `filePath` in
-    `media.csv` to match these relative paths before calling.
+
+def write_camtrap_dp_zip(path: Path, staging: Path) -> None:
+    """ZIP a Camtrap DP package staged in the folder ``staging`` into
+    ``path``: the four files at the root, thumbnails under ``media/``.
+
+    Every file is added from disk (``ZipFile.write`` streams it), so the
+    package never sits in memory, whatever its size. The caller writes
+    ``media.csv`` with each ``filePath`` already pointing at its thumbnail.
     """
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("datapackage.json", datapackage_json)
-        zf.writestr("deployments.csv", deployments_csv)
-        zf.writestr("media.csv", media_csv)
-        zf.writestr("observations.csv", observations_csv)
-        if thumbnails:
-            for name, data in thumbnails.items():
-                zf.writestr(f"media/{name}", data)
-    return buf.getvalue()
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name in CAMTRAP_DP_FILES:
+            zf.write(staging / name, name)
+        media_dir = staging / "media"
+        if media_dir.is_dir():
+            for thumbnail in sorted(media_dir.iterdir()):
+                zf.write(thumbnail, f"media/{thumbnail.name}")
 
 
 def generate_thumbnail(

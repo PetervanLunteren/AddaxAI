@@ -467,7 +467,9 @@ export type JobType =
   | "ml_inference"
   | "export"
   | "event_computation"
-  | "postprocessing";
+  | "postprocessing"
+  | "package_export"
+  | "package_import";
 
 export type JobStatus =
   | "pending"

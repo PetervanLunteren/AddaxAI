@@ -29,6 +29,8 @@ import subprocess
 import threading
 import time
 from collections.abc import AsyncIterator, Iterator
+from datetime import datetime
+from datetime import time as dtime
 from pathlib import Path
 from typing import Any
 
@@ -84,10 +86,18 @@ def _filters_to_dict(filters: LabelFilters) -> dict[str, Any]:
         ]
     if filters.site_ids:
         d["site_ids"] = filters.site_ids
+    # The sort worker compares these as text against what SQLite stores,
+    # 'YYYY-MM-DD HH:MM:SS.ffffff'. `isoformat()` put a 'T' in the middle,
+    # which sorts after the space, so the first day fell out of the range;
+    # and a bare day as the upper bound sorts before any time on that day,
+    # so the last day fell out too. Same shape as the stored value, and the
+    # end day whole, as the Files tab and the Counts page do it.
     if filters.date_from is not None:
-        d["date_from"] = filters.date_from.isoformat()
+        d["date_from"] = filters.date_from.strftime("%Y-%m-%d %H:%M:%S")
     if filters.date_to is not None:
-        d["date_to"] = filters.date_to.isoformat()
+        d["date_to"] = datetime.combine(filters.date_to.date(), dtime.max).strftime(
+            "%Y-%m-%d %H:%M:%S.%f"
+        )
     if filters.min_confidence is not None:
         d["min_confidence"] = filters.min_confidence
     if filters.max_confidence is not None:
@@ -265,6 +275,26 @@ def _apply_project_threshold(
         )
         filters = filters.model_copy(update={"project_floor": floor})
     return filters
+
+
+def count_detections_by_label(
+    db: Session, project_id: str, filters: LabelFilters
+) -> dict[str, int]:
+    """Boxes per label under every filter except the label filter: what
+    the Labels grid would show if that label were ticked alone. Built
+    from the grid's own SQL (``_build_query`` in the sort script, run on
+    this session's connection), so the tree cannot drift from the grid.
+    """
+    from app.ml.inference.similarity_script import COUNT_BY_LABEL_SQL, _build_query
+
+    scoped = _apply_project_threshold(
+        filters.model_copy(update={"labels": None}), project_id, db
+    )
+    sql, params = _build_query(project_id, _filters_to_dict(scoped), COUNT_BY_LABEL_SQL)
+    sql += " GROUP BY d.label_taxonomy_id"
+    db.flush()
+    raw = db.connection().connection.dbapi_connection
+    return {tid: n for tid, n in raw.execute(sql, params).fetchall() if tid}
 
 
 def _build_sort_params(

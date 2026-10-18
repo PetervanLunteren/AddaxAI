@@ -35,20 +35,27 @@ import { DuplicateProjectDialog } from "../components/projects/DuplicateProjectD
 import { EditProjectDialog } from "../components/projects/EditProjectDialog";
 
 import { DeleteProjectDialog } from "../components/projects/DeleteProjectDialog";
+import { ImportPackageDialog } from "../components/projects/ImportPackageDialog";
 
 export function ProjectsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectWithStats | null>(null);
   const [duplicatingProject, setDuplicatingProject] = useState<ProjectWithStats | null>(null);
   const [deletingProject, setDeletingProject] = useState<ProjectWithStats | null>(null);
 
-  // The "New project…" app-menu item navigates here with ?new=1; open the
-  // create dialog and drop the param so a refresh doesn't reopen it.
+  // The "New project…" and "Import bundle…" app-menu items navigate here
+  // with ?new=1 / ?import=1; open the dialog and drop the param so a
+  // refresh doesn't reopen it. Import has no button: it is rare, and the
+  // File menu is where the guide sends people.
   useEffect(() => {
     if (searchParams.get("new") === "1") {
       setCreateDialogOpen(true);
+      setSearchParams({}, { replace: true });
+    } else if (searchParams.get("import") === "1") {
+      setImportDialogOpen(true);
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams]);
@@ -255,6 +262,11 @@ export function ProjectsPage() {
       <CreateProjectDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
+      />
+
+      <ImportPackageDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
       />
 
       <DuplicateProjectDialog

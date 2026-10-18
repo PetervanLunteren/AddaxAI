@@ -9,7 +9,10 @@ export interface ElectronAPI {
    * an IPC round-trip.
    */
   platform: NodeJS.Platform;
-  selectFolder: () => Promise<string | null>;
+  selectFolder: (opts?: {
+    title?: string;
+    defaultPath?: string;
+  }) => Promise<string | null>;
   /**
    * Open a single-file picker. `filters` is the standard Electron
    * file-filter shape; the dialog rejects extensions not listed.

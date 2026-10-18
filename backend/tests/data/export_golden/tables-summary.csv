@@ -1,0 +1,6 @@
+detection_category,classification_label,taxon_class,taxon_order,taxon_family,taxon_genus,taxon_species,taxon_variant,scientific_name,common_name,n_images,n_videos,n_detections,n_events,n_individuals
+animal,red fox,mammalia,carnivora,canidae,vulpes,vulpes,,Vulpes vulpes,Red fox,4,1,6,2,4
+animal,bird,aves,,,,,,Aves,Bird,1,0,1,0,0
+animal,rat,mammalia,rodentia,muridae,rattus,rattus,,Rattus rattus,,1,0,1,0,0
+animal,red fox juvenile,mammalia,carnivora,canidae,vulpes,vulpes,juvenile,Vulpes vulpes (juvenile),,0,1,1,1,0
+person,,,,,,,,Person,Person,1,0,1,1,1

@@ -1,0 +1,168 @@
+## datapackage.json
+{
+  "contributors": [
+    {
+      "role": "publisher",
+      "title": "AddaxAI WebUI"
+    }
+  ],
+  "created": "<now>",
+  "description": "",
+  "id": "<uuid>",
+  "licenses": [
+    {
+      "name": "CC-BY-4.0",
+      "scope": "data"
+    },
+    {
+      "name": "CC-BY-4.0",
+      "scope": "media"
+    }
+  ],
+  "name": "addaxai-golden-project",
+  "profile": "https://raw.githubusercontent.com/tdwg/camtrap-dp/1.0/camtrap-dp-profile.json",
+  "project": {
+    "captureMethod": [
+      "activityDetection"
+    ],
+    "id": "project-0000",
+    "individualAnimals": false,
+    "observationLevel": [
+      "media",
+      "event"
+    ],
+    "samplingDesign": "opportunistic",
+    "title": "Golden project"
+  },
+  "resources": [
+    {
+      "encoding": "utf-8",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "name": "deployments",
+      "path": "deployments.csv",
+      "profile": "tabular-data-resource",
+      "schema": "https://raw.githubusercontent.com/tdwg/camtrap-dp/1.0/deployments-table-schema.json"
+    },
+    {
+      "encoding": "utf-8",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "name": "media",
+      "path": "media.csv",
+      "profile": "tabular-data-resource",
+      "schema": "https://raw.githubusercontent.com/tdwg/camtrap-dp/1.0/media-table-schema.json"
+    },
+    {
+      "encoding": "utf-8",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "name": "observations",
+      "path": "observations.csv",
+      "profile": "tabular-data-resource",
+      "schema": "https://raw.githubusercontent.com/tdwg/camtrap-dp/1.0/observations-table-schema.json"
+    }
+  ],
+  "spatial": {
+    "bbox": [
+      4.9,
+      51.9,
+      5.1,
+      52.1
+    ],
+    "coordinates": [
+      [
+        [
+          4.9,
+          51.9
+        ],
+        [
+          5.1,
+          51.9
+        ],
+        [
+          5.1,
+          52.1
+        ],
+        [
+          4.9,
+          52.1
+        ],
+        [
+          4.9,
+          51.9
+        ]
+      ]
+    ],
+    "type": "Polygon"
+  },
+  "taxonomic": [
+    {
+      "scientificName": "Aves",
+      "taxonRank": "class",
+      "vernacularNames": {
+        "en": "Aves"
+      }
+    },
+    {
+      "scientificName": "Vulpes vulpes",
+      "taxonRank": "species",
+      "vernacularNames": {
+        "en": "V. vulpes"
+      }
+    },
+    {
+      "scientificName": "Rattus rattus",
+      "taxonRank": "species",
+      "vernacularNames": {
+        "en": "rat"
+      }
+    }
+  ],
+  "temporal": {
+    "end": "2024-06-09",
+    "start": "2024-06-03"
+  },
+  "title": "Golden project",
+  "version": "1.0.0"
+}
+## deployments.csv
+deploymentID,locationID,locationName,latitude,longitude,coordinateUncertainty,deploymentStart,deploymentEnd,setupBy,cameraID,cameraModel,cameraDelay,cameraHeight,cameraDepth,cameraTilt,cameraHeading,detectionDistance,timestampIssues,baitUse,featureType,habitat,deploymentGroups,deploymentTags,deploymentComments
+dep-a-0000,,north,52.1,5.1,,2024-06-01T00:00:00+02:00,2024-06-10T00:00:00+02:00,,SN-1,Cam-X,,,,,,,,,,,,bait:none,
+dep-b-0000,,south,51.9,4.9,,2024-06-02T00:00:00+02:00,2024-06-12T00:00:00+02:00,,dep-b-0000,,,,,,,,,,,,,paired_cameras:true,two cameras facing
+
+## media.csv
+mediaID,deploymentID,captureMethod,timestamp,filePath,filePublic,fileName,fileMediatype,exifData,favorite,mediaComments
+img-fox-0000,dep-a-0000,activityDetection,2024-06-03T21:15:00+02:00,/data/cam-a/fox.jpg,false,,image/jpeg,,true,
+img-fox-2-0000,dep-a-0000,activityDetection,2024-06-03T21:16:00+02:00,/data/cam-a/fox-2.jpg,false,,image/jpeg,,,
+img-rat-only-0000,dep-a-0000,activityDetection,2024-06-03T23:15:00+02:00,/data/cam-a/rat-only.jpg,false,,image/jpeg,,,
+img-rat-and-bird-0000,dep-a-0000,activityDetection,2024-06-03T23:30:00+02:00,/data/cam-a/rat-and-bird.jpg,false,,image/jpeg,,,
+img-rat-verified-0000,dep-a-0000,activityDetection,2024-06-04T21:15:00+02:00,/data/cam-a/rat-verified.jpg,false,,image/jpeg,,,
+img-empty-0000,dep-a-0000,activityDetection,2024-06-05T21:15:00+02:00,/data/cam-a/empty.jpg,false,,image/jpeg,,,
+img-rejected-0000,dep-a-0000,activityDetection,2024-06-06T21:15:00+02:00,/data/cam-a/rejected.jpg,false,,image/jpeg,,,
+img-low-verified-0000,dep-a-0000,activityDetection,2024-06-06T22:15:00+02:00,/data/cam-a/low-verified.jpg,false,,image/jpeg,,,
+vid-walk-0000,dep-b-0000,activityDetection,2024-06-07T21:15:00+02:00,/data/cam-b/walk.mp4,false,,video/mp4,,,
+vid-empty-best-0000,dep-b-0000,activityDetection,2024-06-08T21:15:00+02:00,/data/cam-b/empty-best.mp4,false,,video/mp4,,,
+vid-no-best-0000,dep-b-0000,activityDetection,2024-06-09T21:15:00+02:00,/data/cam-b/no-best.mp4,false,,video/mp4,,,
+
+## observations.csv
+observationID,deploymentID,mediaID,eventID,eventStart,eventEnd,observationLevel,observationType,cameraSetupType,scientificName,count,lifeStage,sex,behavior,individualID,individualPositionRadius,individualPositionAngle,individualSpeed,bboxX,bboxY,bboxWidth,bboxHeight,classificationMethod,classifiedBy,classificationTimestamp,classificationProbability,observationTags,observationComments
+obs-ai-det-fox-strong-0000,dep-a-0000,img-fox-0000,ev-fox-0000,2024-06-03T21:15:00+02:00,2024-06-03T21:15:00+02:00,media,animal,,Vulpes vulpes,1,,,,,,,,0.11,0.21,0.2,0.2,machine,GOLDEN-MODEL,,0.88,,"GOLDEN-MODEL, not reviewed"
+obs-ai-det-fox-2-0000,dep-a-0000,img-fox-2-0000,ev-fox-0000,2024-06-03T21:15:00+02:00,2024-06-03T21:15:00+02:00,media,animal,,Vulpes vulpes,1,,,,,,,,0.1,0.1,0.2,0.2,machine,GOLDEN-MODEL,,0.88,,"GOLDEN-MODEL, not reviewed"
+obs-ai-det-fox-2-person-0000,dep-a-0000,img-fox-2-0000,ev-fox-0000,2024-06-03T21:15:00+02:00,2024-06-03T21:15:00+02:00,media,human,,,1,,,,,,,,0.1,0.1,0.2,0.2,machine,GOLDEN-MODEL,,,,"GOLDEN-MODEL, not reviewed"
+obs-ai-det-bird-0000,dep-a-0000,img-rat-and-bird-0000,img-rat-and-bird-0000,2024-06-03T23:30:00+02:00,2024-06-03T23:30:00+02:00,media,animal,,,1,,,,,,,,0.1,0.1,0.2,0.2,machine,GOLDEN-MODEL,,0.6,,"GOLDEN-MODEL, not reviewed"
+obs-human-det-rat-verified-0000,dep-a-0000,img-rat-verified-0000,img-rat-verified-0000,2024-06-04T21:15:00+02:00,2024-06-04T21:15:00+02:00,media,animal,,Rattus rattus,1,,,,,,,,0.1,0.1,0.2,0.2,human,GOLDEN-MODEL,,1.0,,Human identification
+obs-blank-img-empty-0000,dep-a-0000,img-empty-0000,img-empty-0000,2024-06-05T21:15:00+02:00,2024-06-05T21:15:00+02:00,media,blank,,,,,,,,,,,,,,,human,,,,,Human identification
+obs-blank-img-rejected-0000,dep-a-0000,img-rejected-0000,img-rejected-0000,2024-06-06T21:15:00+02:00,2024-06-06T21:15:00+02:00,media,blank,,,,,,,,,,,,,,,machine,,,,,"GOLDEN-MODEL, not reviewed"
+obs-human-det-low-verified-0000,dep-a-0000,img-low-verified-0000,img-low-verified-0000,2024-06-06T22:15:00+02:00,2024-06-06T22:15:00+02:00,media,animal,,Vulpes vulpes,1,,,,,,,,0.1,0.1,0.2,0.2,human,GOLDEN-MODEL,,0.88,,Human identification
+obs-ai-det-vid-f1-0000,dep-b-0000,vid-walk-0000,ev-walk-0000,2024-06-07T21:15:00+02:00,2024-06-07T21:15:00+02:00,media,animal,,Vulpes vulpes,1,,,,,,,,0.1,0.1,0.2,0.2,machine,GOLDEN-MODEL,,0.88,,"GOLDEN-MODEL, not reviewed"
+obs-ai-det-vid-f3-0000,dep-b-0000,vid-walk-0000,ev-walk-0000,2024-06-07T21:15:00+02:00,2024-06-07T21:15:00+02:00,media,animal,,Vulpes vulpes,1,,,,,,,,0.1,0.1,0.2,0.2,machine,GOLDEN-MODEL,,0.88,,"GOLDEN-MODEL, not reviewed"
+obs-ai-det-vid-f3b-0000,dep-b-0000,vid-walk-0000,ev-walk-0000,2024-06-07T21:15:00+02:00,2024-06-07T21:15:00+02:00,media,animal,,Vulpes vulpes,1,,,,,,,,0.5,0.1,0.2,0.2,machine,GOLDEN-MODEL,,0.88,,"GOLDEN-MODEL, not reviewed"
+obs-ai-det-vid-f5-0000,dep-b-0000,vid-walk-0000,ev-walk-0000,2024-06-07T21:15:00+02:00,2024-06-07T21:15:00+02:00,media,animal,,Vulpes vulpes,1,,,,,,,,0.1,0.1,0.2,0.2,machine,GOLDEN-MODEL,,0.88,,"GOLDEN-MODEL, not reviewed"
+obs-human-det-vid-f6-verified-0000,dep-b-0000,vid-walk-0000,ev-walk-0000,2024-06-07T21:15:00+02:00,2024-06-07T21:15:00+02:00,media,animal,,Vulpes vulpes,1,juvenile,,,,,,,0.1,0.1,0.2,0.2,human,GOLDEN-MODEL,,1.0,,Human identification
+obs-ai-det-vid2-f0-vehicle-0000,dep-b-0000,vid-empty-best-0000,vid-empty-best-0000,2024-06-08T21:15:00+02:00,2024-06-08T21:15:00+02:00,media,vehicle,,,1,,,,,,,,0.1,0.1,0.2,0.2,machine,GOLDEN-MODEL,,,,"GOLDEN-MODEL, not reviewed"
+obs-ai-det-vid2-f4-0000,dep-b-0000,vid-empty-best-0000,vid-empty-best-0000,2024-06-08T21:15:00+02:00,2024-06-08T21:15:00+02:00,media,animal,,Vulpes vulpes,1,,,,,,,,0.1,0.1,0.2,0.2,machine,GOLDEN-MODEL,,0.88,,"GOLDEN-MODEL, not reviewed"
+obs-ai-det-vid3-f2-0000,dep-b-0000,vid-no-best-0000,vid-no-best-0000,2024-06-09T21:15:00+02:00,2024-06-09T21:15:00+02:00,media,animal,,Vulpes vulpes,1,,,,,,,,0.1,0.1,0.2,0.2,machine,GOLDEN-MODEL,,0.88,,"GOLDEN-MODEL, not reviewed"
+obs-event-obs-fox-0000,dep-a-0000,,ev-fox-0000,2024-06-03T21:15:00+02:00,2024-06-03T21:15:00+02:00,event,animal,,Vulpes vulpes,2,,female,,,,,,,,,,human,GOLDEN-MODEL,,,,two foxes
+obs-event-obs-fox-person-0000,dep-a-0000,,ev-fox-0000,2024-06-03T21:15:00+02:00,2024-06-03T21:15:00+02:00,event,human,,,1,,,,,,,,,,,,machine,GOLDEN-MODEL,,,,two foxes
+obs-event-obs-walk-0000,dep-b-0000,,ev-walk-0000,2024-06-07T21:15:00+02:00,2024-06-07T21:15:00+02:00,event,animal,,Vulpes vulpes,2,,,,,,,,,,,,machine,GOLDEN-MODEL,,,,

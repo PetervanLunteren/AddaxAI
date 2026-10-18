@@ -179,6 +179,32 @@ def _sort_adjacency_predicates(
     return next_pred, prev_pred, next_order, prev_order
 
 
+def _event_box_clauses(
+    project_floor: float | None,
+    min_confidence: float | None,
+    max_confidence: float | None,
+    min_label_confidence: float | None,
+    max_label_confidence: float | None,
+) -> list:
+    """What makes a box count for the Counts page's label and confidence
+    filters: the project floor through `threshold_or_verified` (the
+    global override rule), the user's detector range applied LITERALLY,
+    and the classifier-score range on classified boxes only. Shared by
+    the event filters and the label tree's counts."""
+    clauses = []
+    if project_floor is not None:
+        clauses.append(threshold_or_verified(project_floor))
+    if min_confidence is not None:
+        clauses.append(Detection.confidence >= min_confidence)
+    if max_confidence is not None:
+        clauses.append(Detection.confidence <= max_confidence)
+    if min_label_confidence is not None or max_label_confidence is not None:
+        clauses.append(
+            classification_score_in_range(min_label_confidence, max_label_confidence)
+        )
+    return clauses
+
+
 def _apply_event_filters(
     query,
     db: Session,
@@ -245,56 +271,31 @@ def _apply_event_filters(
         )
         query = query.filter(Event.event_start_local <= end_of_day)
 
+    box_clauses = _event_box_clauses(
+        project_floor, min_confidence, max_confidence,
+        min_label_confidence, max_label_confidence,
+    )
     if labels:
         # EXISTS subquery: event has at least one file with a detection
-        # matching the given labels. Labels are taxonomy UUIDs when
-        # available, falling back to string matching.
+        # matching the given labels. Labels are taxonomy UUIDs.
         label_subq = (
             select(event_files.c.event_id)
             .join(File, File.id == event_files.c.file_id)
             .join(Detection, Detection.file_id == File.id)
             .where(event_files.c.event_id == Event.id)
             .where(Detection.label_taxonomy_id.in_(labels))
+            .where(*box_clauses)
         )
-        if project_floor is not None:
-            label_subq = label_subq.where(threshold_or_verified(project_floor))
-        if min_confidence is not None:
-            label_subq = label_subq.where(Detection.confidence >= min_confidence)
-        if max_confidence is not None:
-            label_subq = label_subq.where(Detection.confidence <= max_confidence)
-        if min_label_confidence is not None or max_label_confidence is not None:
-            label_subq = label_subq.where(
-                classification_score_in_range(
-                    min_label_confidence, max_label_confidence
-                )
-            )
         query = query.filter(exists(label_subq))
-    elif (
-        min_confidence is not None
-        or max_confidence is not None
-        or min_label_confidence is not None
-        or max_label_confidence is not None
-        or project_floor is not None
-    ):
+    elif box_clauses:
         # Standalone confidence filter: event has at least one detection in range
         conf_subq = (
             select(event_files.c.event_id)
             .join(File, File.id == event_files.c.file_id)
             .join(Detection, Detection.file_id == File.id)
             .where(event_files.c.event_id == Event.id)
+            .where(*box_clauses)
         )
-        if project_floor is not None:
-            conf_subq = conf_subq.where(threshold_or_verified(project_floor))
-        if min_confidence is not None:
-            conf_subq = conf_subq.where(Detection.confidence >= min_confidence)
-        if max_confidence is not None:
-            conf_subq = conf_subq.where(Detection.confidence <= max_confidence)
-        if min_label_confidence is not None or max_label_confidence is not None:
-            conf_subq = conf_subq.where(
-                classification_score_in_range(
-                    min_label_confidence, max_label_confidence
-                )
-            )
         query = query.filter(exists(conf_subq))
 
     if verification in ("verified", "unverified"):
@@ -1461,3 +1462,69 @@ def get_filter_options(db: Session, project_id: str) -> dict:
         "common_labels": common_labels,
         "min_label_confidence": min_label_confidence,
     }
+
+
+def count_events_by_label(
+    db: Session,
+    project_id: str,
+    *,
+    project_floor: float | None,
+    site_ids: list[str] | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    verification: str | None = None,
+    flagged: str | None = None,
+    favorited: str | None = None,
+    empty: str | None = None,
+    min_confidence: float | None = None,
+    max_confidence: float | None = None,
+    min_label_confidence: float | None = None,
+    max_label_confidence: float | None = None,
+) -> dict[str, int]:
+    """Events per label under every filter except the label filter: what
+    the Counts page would list if that label were ticked alone. The
+    event set comes from the page's own filters, the boxes from its own
+    clauses, so the two cannot disagree.
+
+    "Show only empty" is the one exception: the page then ignores the
+    label filter altogether (an empty event has no species), so every
+    label reads 0 rather than the number of empty events.
+    """
+    if empty == "show_only":
+        return {}
+    events = _apply_event_filters(
+        db.query(Event).join(Deployment).filter(Deployment.project_id == project_id),
+        db,
+        site_ids=site_ids,
+        date_from=date_from,
+        date_to=date_to,
+        labels=None,
+        verification=verification,
+        min_confidence=min_confidence,
+        max_confidence=max_confidence,
+        flagged=flagged,
+        favorited=favorited,
+        empty=empty,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
+        project_floor=project_floor,
+    ).with_entities(Event.id).subquery()
+    rows = (
+        db.query(
+            Detection.label_taxonomy_id,
+            func.count(func.distinct(event_files.c.event_id)),
+        )
+        .join(File, File.id == Detection.file_id)
+        .join(event_files, event_files.c.file_id == File.id)
+        .filter(event_files.c.event_id.in_(select(events.c.id)))
+        .filter(Detection.label_taxonomy_id.isnot(None))
+        .filter(
+            *_event_box_clauses(
+                project_floor, min_confidence, max_confidence,
+                min_label_confidence, max_label_confidence,
+            )
+        )
+        .group_by(Detection.label_taxonomy_id)
+        .all()
+    )
+    return {tid: n for tid, n in rows}

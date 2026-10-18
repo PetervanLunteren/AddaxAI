@@ -42,6 +42,7 @@ user's own files.
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -50,6 +51,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import __version__ as APP_VERSION
+from app.api.crud.ordering import detection_order_in_file, file_time_order
 from app.core.logging_config import get_logger
 from app.models import Deployment, Detection, File, LabelTaxonomy, Project
 
@@ -102,7 +104,7 @@ def _relative_path(file_path: str, base: str | None) -> str:
         return file_path
 
 
-def _failure_entries(db: Session, project_id: str) -> list[dict]:
+def _failure_entries(deployment: Deployment) -> list[dict]:
     """MegaDetector-format entries for files that could not be read.
 
     Sourced from ``Deployment.warnings``, the durable record the analysis
@@ -111,22 +113,18 @@ def _failure_entries(db: Session, project_id: str) -> list[dict]:
     perfectly well and has a real File row already in ``images``.
     """
     entries: list[dict] = []
-    deployments = db.execute(
-        select(Deployment).where(Deployment.project_id == project_id)
-    ).scalars().all()
-    for deployment in deployments:
-        for warning in deployment.warnings or []:
-            if warning.get("type") != "video_processing_failure":
-                continue
-            path = warning.get("path")
-            if not path:
-                continue
-            entries.append(
-                {
-                    "file": _relative_path(path, deployment.folder_path),
-                    "failure": warning.get("reason") or "Could not be read",
-                }
-            )
+    for warning in deployment.warnings or []:
+        if warning.get("type") != "video_processing_failure":
+            continue
+        path = warning.get("path")
+        if not path:
+            continue
+        entries.append(
+            {
+                "file": _relative_path(path, deployment.folder_path),
+                "failure": warning.get("reason") or "Could not be read",
+            }
+        )
     return entries
 
 
@@ -188,9 +186,18 @@ def write_recognition_json(
     project_id: str,
     target_dir: Path,
     *,
+    deployment_id: str,
     excluded_species: list[str] | None = None,
 ) -> RecognitionJsonResult:
-    """Serialise the project's analysis results to the canonical JSON shape.
+    """Serialise one deployment's analysis results to the canonical JSON
+    shape, with file paths relative to that deployment's folder.
+
+    One file per deployment because that is the shape Timelapse reads:
+    the recognition file sits in the folder it describes and names the
+    files below it. A folder run has one deployment and writes it into
+    the output folder; a project writes one into each deployment folder
+    (`POST /export/recognition-json`). Both go through here, so the two
+    cannot drift.
 
     The output is written to `target_dir/addaxai-recognitions.json`.
     The directory is created if it does not exist. An existing file
@@ -205,6 +212,11 @@ def write_recognition_json(
     project = db.get(Project, project_id)
     if project is None:
         raise ValueError(f"Project {project_id!r} not found")
+    deployment = db.get(Deployment, deployment_id)
+    if deployment is None or deployment.project_id != project_id:
+        raise ValueError(
+            f"Deployment {deployment_id!r} not found in project {project_id!r}"
+        )
 
     excluded = (
         frozenset(excluded_species)
@@ -214,24 +226,24 @@ def write_recognition_json(
 
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    # Use the first deployment's folder_path as the base for relative
-    # file paths. A folder run has exactly one deployment by
-    # construction; research projects may have several, in which case
-    # the JSON will end up with a mix of relative + absolute paths,
-    # which is acceptable for an interoperability export.
-    deployment_row = db.execute(
-        select(Deployment).where(Deployment.project_id == project_id).limit(1)
-    ).scalar_one_or_none()
-    base_folder = (
-        deployment_row.folder_path if deployment_row is not None else None
-    )
+    base_folder = deployment.folder_path
 
     files = db.execute(
         select(File)
-        .join(Deployment, File.deployment_id == Deployment.id)
-        .where(Deployment.project_id == project_id)
-        .order_by(File.captured_at_local.asc())
+        .where(File.deployment_id == deployment.id)
+        .order_by(*file_time_order(newest_first=False))
     ).scalars().all()
+
+    # Every box of the deployment in one query, grouped per file, instead
+    # of one query per file: a deployment can hold 100k files.
+    detections_by_file: dict[str, list[Detection]] = defaultdict(list)
+    for det in db.execute(
+        select(Detection)
+        .join(File, File.id == Detection.file_id)
+        .where(File.deployment_id == deployment.id)
+        .order_by(*detection_order_in_file())
+    ).scalars():
+        detections_by_file[det.file_id].append(det)
 
     # Build a stable label -> id map as we walk detections, mirroring
     # the unified mapping merge_json_files produces. Alongside it, remember
@@ -246,17 +258,7 @@ def write_recognition_json(
     classification_total = 0
 
     for file in files:
-        # Frame order first so a video's detections read sequentially
-        # (frame_number is NULL for images, so they all tie and fall back
-        # to the confidence order MegaDetector's image format expects).
-        detections = db.execute(
-            select(Detection)
-            .where(Detection.file_id == file.id)
-            .order_by(
-                Detection.frame_number.asc(),
-                Detection.confidence.desc(),
-            )
-        ).scalars().all()
+        detections = detections_by_file.get(file.id, [])
 
         det_objs: list[dict] = []
         for det in detections:
@@ -346,7 +348,7 @@ def write_recognition_json(
     # results.json holds; re-emit them so this file is a complete account of
     # the folder and a downstream tool can tell "nothing found" apart from
     # "never looked at".
-    images_out.extend(_failure_entries(db, project_id))
+    images_out.extend(_failure_entries(deployment))
 
     classification_categories = {
         cid: name for name, cid in label_to_id.items()
@@ -389,7 +391,9 @@ def write_recognition_json(
         "format_version": "1.6",
         "addaxai": {
             "version": APP_VERSION,
-            "export_source": "folder-run",
+            "export_source": (
+                "folder-run" if project.mode == "folder_run" else "project"
+            ),
             "classification_completion_time": (
                 datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
             ),

@@ -84,10 +84,11 @@ export function loadLastUsedSettings(): PersistedAnalysisSettings | null {
 // ── Save outputs step ───────────────────────────────────────────────
 //
 // Same idea as above: remember the last-used output choices so the next
-// run's Save step starts where the user left off. Saved on Save (the
-// moment the user commits the outputs), not on every toggle. The output
-// folder is deliberately not stored — it's derived per run from the
-// source folder, not a sticky preference.
+// save starts where the user left off, in the folder-run Save step and
+// the project image copies dialog alike. Saved on Save (the moment the
+// user commits the outputs), not on every toggle. The output folder,
+// the labels, the deployments and the file filters are deliberately not
+// stored: they describe one export, not a preference.
 
 const SAVE_OUTPUTS_KEY = "addaxai.folderRun.lastSaveOutputs";
 
@@ -116,11 +117,19 @@ export interface PersistedSaveOutputsSettings {
   mediaThreshold?: number;
 }
 
+/**
+ * Merge `patch` into the stored choices, like `saveLastUsedSettings`
+ * above. The media hook writes the media fields and the folder-run form
+ * writes the export fields, each from the surface that owns them, so a
+ * project image copies export and a folder-run save share one record
+ * without either wiping the other's half.
+ */
 export function saveLastUsedSaveOutputs(
-  settings: PersistedSaveOutputsSettings,
+  patch: Partial<PersistedSaveOutputsSettings>,
 ): void {
   try {
-    localStorage.setItem(SAVE_OUTPUTS_KEY, JSON.stringify(settings));
+    const prev = loadLastUsedSaveOutputs() ?? {};
+    localStorage.setItem(SAVE_OUTPUTS_KEY, JSON.stringify({ ...prev, ...patch }));
   } catch {
     // Convenience only; ignore storage failures.
   }

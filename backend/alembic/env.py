@@ -48,9 +48,12 @@ if (
 ):
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
-# Get database URL from application settings
-settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Database URL: the live database unless the caller already set one.
+# `_alembic_config(database_url)` in app/db/migrations.py sets it for a
+# project package file; alembic.ini ships it empty, so the dev CLI and
+# the app's own startup still land on the settings URL.
+if not config.get_main_option("sqlalchemy.url"):
+    config.set_main_option("sqlalchemy.url", get_settings().database_url)
 
 # Add your model's MetaData object here for 'autogenerate' support
 target_metadata = Base.metadata

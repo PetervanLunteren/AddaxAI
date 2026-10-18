@@ -177,15 +177,24 @@ def get_label_tree(
     site_ids: str | None = Query(None, description="Comma-separated site IDs"),
     date_from: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
     date_to: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
+    verification: str | None = Query(None, description="Verification filter"),
+    flagged: str | None = Query(None, description="Flagged filter"),
+    favorited: str | None = Query(None, description="Favorited filter"),
+    empty: str | None = Query(None, description="Empty filter"),
+    min_confidence: float | None = Query(None, ge=0, le=1),
+    max_confidence: float | None = Query(None, ge=0, le=1),
+    min_label_confidence: float | None = Query(None, ge=0, le=1),
+    max_label_confidence: float | None = Query(None, ge=0, le=1),
     db: Session = Depends(get_db),
 ) -> LabelTreeResponse | None:
     """
     Get the label filter tree built from the label_taxonomy table.
 
-    Returns a pre-built tree with only detected labels, annotated with counts.
-    Counts are scoped to the active site + date filters so the tree matches the
-    slice the user has narrowed to. Returns null if no taxonomy data is
-    available (frontend falls back to flat list).
+    Every label present in the project is a leaf; the count beside it
+    follows the page's active filters (the same parameters the list
+    endpoints take), the label filter itself left out, so the number is
+    what ticking that label alone would show. Returns null if no taxonomy
+    data is available (frontend falls back to flat list).
     """
     if count_by not in ("event", "file", "detection"):
         raise HTTPException(
@@ -199,6 +208,14 @@ def get_label_tree(
         site_ids=site_ids.split(",") if site_ids else None,
         date_from=date_from,
         date_to=date_to,
+        verification=verification,
+        flagged=flagged,
+        favorited=favorited,
+        empty=empty,
+        min_confidence=min_confidence,
+        max_confidence=max_confidence,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
     )
     if result is None:
         return None

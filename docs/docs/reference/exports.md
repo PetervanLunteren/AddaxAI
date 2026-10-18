@@ -7,6 +7,10 @@ title: Exports
 
 What is in the files AddaxAI writes. Most of this page covers the columns in the CSV and XLSX tables, which hold the same columns either way; XLSX just puts each table on its own sheet. The recognition file is described at the end.
 
+In a project, every export on the Export page works the same way: press Export, choose which deployments, pick the variant, pick a folder, Start. The files are written into that folder and the last screen opens it. An export never replaces a file that is already there: a second spreadsheet of the same project on the same day is saved with `_2` in the name. The recognition file is the one exception, it goes into each deployment folder and replaces the previous one, because that is where Timelapse looks.
+
+Files are named after what they hold, the project and the date, for example `spreadsheet-kenya-2026-10-14.xlsx`. The spreadsheet is either one XLSX workbook with the five tables as sheets, or the same five tables as CSV or TSV files (`summary-…`, `counts-…`, `detections-…`, `files-…`, `deployments-…`).
+
 One limit to know if your project is large: an Excel sheet holds at most 1,048,576 rows, so a table bigger than that cannot be saved as XLSX. AddaxAI tells you when this happens instead of writing a file Excel cannot open. Pick CSV for those projects, it has no row limit.
 
 AddaxAI exports five tables. Which one you want depends on the question you are asking. A folder run has no [sites, no deployments](../understanding/how-a-project-is-organised.mdx) and no confirmed counts, so two of them are projects only.
@@ -21,17 +25,21 @@ AddaxAI exports five tables. Which one you want depends on the question you are 
 
 ## What the tables contain
 
-All five tables hold the same set of detections, and it is the same set the app shows you. Two rules decide it, and they work the same way in a project and in a folder run.
+All five tables hold the same set of detections, and it is the same set the app shows you. Three rules decide it, and they work the same way in a project and in a folder run.
 
 Anything below your [counting threshold](../understanding/confidence-and-verification.md) is left out, unless you verified it yourself. A detection you verified always stays in, whatever it scored, because your decision outranks the score.
 
 For videos, only the frame AddaxAI saved is included. A video is analysed frame by frame, but only one frame is kept as a picture, so a box on any other frame has no image you could ever look at. Those boxes are left out of the tables rather than listed as animals you cannot find.
+
+Species you left out of the project's species selection are left out of the tables too, unless you verified them. A photo that only shows such a species still has its row in the Files table, without a species.
 
 If you do want every box on every frame, use the recognition file described at the end of this page. That one is complete on purpose.
 
 ## Every row says where it came from
 
 Counts, Detections and Files repeat the site, the camera period and the event on every row, in the same columns and the same order: `site_name`, `latitude`, `longitude`, `site_tags`, then `deployment_id`, `deployment_start`, `deployment_end`, `deployment_tags`, then `event_id`, `event_start`, `event_end`. Detections also carries its file: `file_id`, `relative_path`, `datetime`, `image_width`, `image_height`. So you can filter one table on a site, a tag or a date in Excel without looking anything up in another table. The ids are still there if you prefer to join.
+
+Detections and Files are in capture order. Photos taken in the same second follow their file names, which is the order the camera took them in, and photos without a capture time come last. Boxes on one photo or video frame are listed strongest first. The recognition file uses the same order.
 
 ## Summary
 
@@ -178,24 +186,46 @@ In the three tables a folder run writes, the site and camera period columns (`si
 
 ## Recognition file (JSON)
 
-A folder run also writes `addaxai-recognitions.json`. This is the file Timelapse reads.
+A folder run writes `addaxai-recognitions.json` into its output folder, and a project writes one into each deployment folder from the Export page. This is the file Timelapse reads.
 
-It follows the MegaDetector output format, version 1.6, which is [documented here](https://microsoft.github.io/MegaDetector/output_format/). Four things are worth knowing on top of that spec:
+It follows the MegaDetector output format, version 1.6, which is [documented here](https://microsoft.github.io/MegaDetector/output_format/). Six things are worth knowing on top of that spec:
 
 1. The `info` block carries an extra `addaxai` section with the app version and the settings the run used, such as smoothing, rollup and the independence interval. So the file records how it was produced.
 2. Each detection keeps only the top classification, not the full list the format allows.
 3. Nothing is filtered by a threshold. Every detection AddaxAI stored is in the file.
 4. File paths are relative to the folder the JSON sits in.
 5. The `exif_metadata` block per image is the file's raw EXIF, copied verbatim. A date correction made with Adjust dates does not change it: the corrected timestamps are in the `datetime` column of the files table, while this block stays in sync with what the image files themselves say, which is also what Timelapse reads from them.
+6. Your corrections are in it. A relabelled box carries the label you gave it, and every box has a `verified` flag. A box you rejected stays in the file with the label `false detection` and `verified: true`, so a program reading the file can tell it apart from a box the AI called an animal. The file is a snapshot: correct more, then export again to replace it.
+
+## Image copies
+
+Copies of your images and videos, sorted into folders, for browsing or sharing in another program. A folder run writes them from its save step; a project writes them from the Export page, under "Image copies". Both show the same options.
+
+What you get, in an `addaxai-media` folder inside the folder you choose:
+
+- One folder per species, or nested by taxonomy (class, order, family, genus, species), or no species folders at all. Each file goes into one folder only, the species of its strongest detection, or the species its event was mostly verified as when "Keep events together" is on. People, vehicles and empty files get their own folders.
+- Under the species folder, your own folder structure. A folder run keeps the subfolders of the folder it analysed. A project puts the deployment's folder name first, then its subfolders, so `wolf/CAM07/100RECNX/IMG_0012.JPG` says which camera the photo came from. With "Species folder last" the order flips: `CAM07/100RECNX/wolf/IMG_0012.JPG`. Two deployments whose folders have the same name land in the same folder, and a file that would overwrite another gets a `_2` suffix.
+- The species in the image metadata: the XMP subject tag, which digiKam, Lightroom and most photo managers read as keywords, plus a caption with every detection. A copy also keeps the original's own metadata (EXIF, XMP, IPTC, colour profile). A copy with boxes or blur drops the embedded thumbnail, because it would show the original pixels. Your originals are never changed, only the copies carry the tags.
+- Optionally boxes drawn on each image, and people and vehicles blurred. A video cannot be drawn on, so it gets a still image with the boxes next to it; with blur on, a video is written as its blurred still only.
+
+You can narrow what is copied, in a folder run and in a project alike: to the labels you choose, to the files you liked or verified on the Labels page, and to a date range. A project with several cameras also lets you pick which of them. Both start with every label and every camera in, so check the count beside the options before you copy a whole project. A file without a capture time is left out as soon as a date is set. The folder tree, the count and the size of what will be written are shown beside the options before you start.
+
+Exporting again into the same folder replaces its `addaxai-media` folder. Pick another folder if you want to keep both.
 
 ## Spatial
 
-Projects can also export point layers for GIS tools such as QGIS and ArcGIS, as GeoJSON, Shapefile or GeoPackage. You get two layers: one point per camera, and one point per camera per species. Deployments with no site coordinates are left out.
+Projects can also export point layers for GIS tools such as QGIS and ArcGIS, as GeoPackage, GeoJSON or Shapefile (`spatial-<project>-<date>.gpkg`, `.geojson` or `.zip`). You get two layers: one point per camera, and one point per camera per species. Only the deployments you pick are in it, and deployments with no site coordinates are left out; the dialog says how many. Both layers count the same detections as the tables, so the species points of a camera add up to its total.
 
 ## Camtrap DP
 
-Projects can also export Camtrap DP, a standard format for camera trap data. It uses its own column names and a fixed structure, so other tools and archives can read your data without knowing anything about AddaxAI. Use it when you share data or deposit it in a repository.
+Projects can also export Camtrap DP (`camtrap-dp-<project>-<date>.zip`), a standard format for camera trap data, for the deployments you pick. It uses its own column names and a fixed structure, so other tools and archives can read your data without knowing anything about AddaxAI. Use it when you share data or deposit it in a repository.
+
+Camtrap DP keeps the boxes of every video frame, not only the saved one, because it is meant as the full record. A photo whose only animal is a species you left out of the species selection keeps its media row but gets no observation: an empty observation would claim there was nothing there.
 
 For models that predict below species level (adult or juvenile fox, for example), `scientificName` always carries the real species name. The variant goes into `lifeStage` (adult, subadult, juvenile) or `sex` (female, male) when it fits those fields, and into `observationComments` otherwise.
 
 What you set on the Counts page goes into the same fields: `sex`, `lifeStage` and `behavior` per row, and your note on the event into `observationComments` of each of its rows. Unknown stays empty. A favourite file gets `favorite` set to true in the media table.
+
+## AddaxAI bundle
+
+A folder with your labels, corrections and counts for some or all deployments, which another AddaxAI opens. It is named after the project and ends in `.addaxai-bundle`. See [work as a team](../guides/work-as-a-team.mdx).

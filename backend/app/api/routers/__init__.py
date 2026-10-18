@@ -12,6 +12,7 @@ from .jobs import router as jobs_router
 from .labels import router as labels_router
 from .logs import router as logs_router
 from .ml_models import router as ml_models_router
+from .packages import router as packages_router
 from .projects import router as projects_router
 from .setup import router as setup_router
 from .sites import router as sites_router
@@ -30,6 +31,7 @@ __all__ = [
     "jobs_router",
     "logs_router",
     "ml_models_router",
+    "packages_router",
     "labels_router",
     "projects_router",
     "setup_router",

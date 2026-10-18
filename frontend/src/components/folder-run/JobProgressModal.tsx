@@ -29,7 +29,9 @@ interface JobProgressModalProps {
   open: boolean;
   title: string;
   isCancelling: boolean;
-  onCancel: () => void;
+  /** Absent for a job that cannot stop part way (a package import is
+   * one transaction): the modal then has no button at all. */
+  onCancel?: () => void;
   children: React.ReactNode;
 }
 
@@ -71,18 +73,20 @@ export function JobProgressModal({
 
         <div className="space-y-3 py-2">{children}</div>
 
-        <div className="flex justify-end">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onCancel}
-            disabled={isCancelling}
-            className="gap-2"
-          >
-            <X className="h-4 w-4" />
-            {isCancelling ? "Cancelling..." : "Cancel"}
-          </Button>
-        </div>
+        {onCancel && (
+          <div className="flex justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onCancel}
+              disabled={isCancelling}
+              className="gap-2"
+            >
+              <X className="h-4 w-4" />
+              {isCancelling ? "Cancelling..." : "Cancel"}
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

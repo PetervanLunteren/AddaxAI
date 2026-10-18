@@ -232,121 +232,6 @@ def test_get_folder_run_404_for_unknown(client):
     assert resp.status_code == 404
 
 
-def test_output_preview_endpoint_returns_counts(client, db):
-    """End-to-end: create a run, manually attach a file + detection,
-    and GET the preview. Confirms the response shape matches the
-    Pydantic schema and the underlying compute is wired up."""
-    from tests.conftest import (
-        make_deployment,
-        make_detection,
-        make_file,
-        make_project,
-    )
-
-    project = make_project(
-        db, name="preview-endpoint", mode="folder_run"
-    )
-    dep = make_deployment(db, project_id=project.id)
-    f = make_file(
-        db,
-        deployment_id=dep.id,
-        observation_type="animal",
-        size_bytes=1234,
-    )
-    make_detection(db, file_id=f.id, confidence=0.95, label="dog")
-
-    resp = client.post(
-        f"/api/folder-runs/{project.id}/output-preview",
-        json={"separate_group_by": "taxonomic"},
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["total_files"] == 1
-    assert data["image_count"] == 1
-    assert data["video_count"] == 0
-    assert data["total_bytes"] == 1234
-    assert data["files_with_known_size"] == 1
-    assert data["dropped_by_filter"] == 0
-    assert data["in_scope_files"] == 1
-    # Unmapped label under taxonomic grouping → other/<label> (slugged),
-    # no source subfolder so no extra path segment.
-    assert data["by_media_tree"] == {"other/dog": 1}
-
-
-def test_output_preview_honours_excluded_label_ids(client, db):
-    """Excluding the only species drops the file from in-scope."""
-    from tests.conftest import (
-        make_deployment,
-        make_detection,
-        make_file,
-        make_project,
-    )
-
-    project = make_project(
-        db, name="preview-filter", mode="folder_run"
-    )
-    dep = make_deployment(db, project_id=project.id)
-    f = make_file(
-        db,
-        deployment_id=dep.id,
-        observation_type="animal",
-        size_bytes=1234,
-    )
-    make_detection(db, file_id=f.id, confidence=0.95, label="dog")
-
-    resp = client.post(
-        f"/api/folder-runs/{project.id}/output-preview",
-        json={"excluded_label_ids": ["dog"]},
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["dropped_by_filter"] == 1
-    assert data["in_scope_files"] == 0
-    assert data["by_media_tree"] == {}
-
-
-def test_output_preview_anonymise_reaches_the_estimate(client, db, tmp_path):
-    """``anonymise`` must be declared on the request schema. Pydantic drops
-    a field it does not know without a word (the `run_readme` story), and
-    the footer would then quote the container size for a save that writes
-    blurred stills."""
-    from tests.conftest import make_deployment, make_file, make_project
-
-    project = make_project(db, name="preview-blur", mode="folder_run")
-    dep = make_deployment(db, project_id=project.id)
-    frame = tmp_path / "frame.jpg"
-    frame.write_bytes(b"x" * 100)
-    make_file(
-        db,
-        deployment_id=dep.id,
-        file_path="/cam/clip.mp4",
-        file_type="video",
-        file_format="mp4",
-        observation_type="blank",
-        size_bytes=5000,
-        best_frame_number=0,
-        best_frame_path=str(frame),
-    )
-    url = f"/api/folder-runs/{project.id}/output-preview"
-
-    whole = client.post(url, json={"include_empty": True})
-    assert whole.status_code == 200
-    assert whole.json()["in_scope_bytes"] == 5000
-
-    blurred = client.post(url, json={"include_empty": True, "anonymise": True})
-    assert blurred.status_code == 200
-    assert blurred.json()["in_scope_bytes"] == 100
-
-
-def test_output_preview_404_for_research_project(client, db):
-    research = make_project(db, name="research-preview", mode="research")
-
-    resp = client.post(
-        f"/api/folder-runs/{research.id}/output-preview", json={}
-    )
-    assert resp.status_code == 404
-
-
 def test_get_folder_run_404_for_research_project(client, db):
     """A research-project id must not resolve as a folder run, even if
     the caller knows the id. Prevents accidentally landing the stepper
@@ -922,6 +807,10 @@ def test_unticking_run_details_does_not_write_the_run_info_file(
     source = tmp_path / "src"
     source.mkdir()
     run_id = _create_run(client, str(source))
+    # The analysis that normally precedes a save leaves the run's one
+    # deployment behind; the recognition file is written relative to it.
+    make_deployment(db, project_id=run_id, folder_path=str(source))
+    db.commit()
 
     resp = client.post(
         f"/api/folder-runs/{run_id}/save-outputs",
@@ -975,7 +864,14 @@ def test_save_outputs_job_payload_carries_the_whole_request(
 
     resp = client.post(
         f"/api/folder-runs/{run_id}/save-outputs",
-        json={"output_dir": str(source)},
+        json={
+            "output_dir": str(source),
+            # Two of the file filters shared with the project image copies
+            # export: they are plain MediaOptions fields, so a folder run
+            # sends them like any other and the worker's scope reads them.
+            "verified_only": True,
+            "date_from": "2025-03-01",
+        },
     )
     assert resp.status_code == 200
 
@@ -983,6 +879,9 @@ def test_save_outputs_job_payload_carries_the_whole_request(
     expected = set(SaveOutputsRequest.model_fields) | {"run_id"}
     stored = set(job.payload)
     assert stored == expected
+    assert job.payload["verified_only"] is True
+    assert job.payload["date_from"] == "2025-03-01"
+    assert job.payload["favorited_only"] is False
 
 
 def test_create_sets_counting_threshold_to_counting_default(client):

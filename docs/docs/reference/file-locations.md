@@ -54,10 +54,14 @@ Moving photos to another disk on the same computer, like an external drive to fr
 
 ## Moving to another computer
 
+To move one project, export it as an [AddaxAI bundle](../guides/work-as-a-team.mdx) with the photos included and import it on the other computer. Nothing needs reconnecting.
+
+To move everything at once, every project and the backups folder:
+
 1. Copy the photos to the new machine, or to an external drive. The `.addaxai` folders sit inside them, so they travel along and you do not have to worry about those.
 
 2. Back up the database with File > Back up database, and save it to the same drive. This writes one complete file, which copying `addaxai.db` by hand does not. See [back up and restore](../help/back-up-and-restore.md).
 
-3. On the new machine, use File > Restore from backup and pick that file. The app restarts with your work in place. Your models do not travel with the backup, so the first analysis downloads them again. Do that while you still have a good connection.
+3. On the new machine, use File > Restore from backup and pick that file. The app restarts with your work in place. This replaces whatever database the new machine had. Your models do not travel with the backup, so the first analysis downloads them again. Do that while you still have a good connection.
 
 4. Open your project. The paths have changed, so the deployments come up as missing. [Reconnect them](#when-a-folder-moves).

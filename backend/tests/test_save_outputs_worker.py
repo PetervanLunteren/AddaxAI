@@ -260,3 +260,116 @@ def test_module_log_lines_carry_elapsed_and_rss(
     assert len(starts) == 1 and "rss_mb=" in starts[0]
     assert len(dones) == 1
     assert "elapsed_s=" in dones[0] and "rss_mb=" in dones[0]
+
+
+def _seed_two_camera_project(db, tmp_path: Path):
+    """A research project with two deployments of one person photo each,
+    the cam01 one liked. Returns (project_id, cam01 id, output_dir)."""
+    project = make_project(db, mode="research")
+    deps = {}
+    for name, liked in (("cam01", True), ("cam02", False)):
+        folder = tmp_path / "drive" / name
+        folder.mkdir(parents=True)
+        dep = make_deployment(db, project_id=project.id, folder_path=str(folder))
+        src = folder / "IMG_000.jpg"
+        src.write_bytes(b"jpegbytes")
+        file = make_file(
+            db,
+            deployment_id=dep.id,
+            file_path=str(src),
+            observation_type="person",
+            favorited=liked,
+        )
+        make_detection(db, file_id=file.id, category="person", confidence=0.9)
+        deps[name] = dep
+    db.commit()
+    return project.id, deps["cam01"].id, tmp_path / "out"
+
+
+def test_media_export_job_copies_only_the_scope_and_no_data_files(
+    db, tmp_path, monkeypatch
+):
+    """The project image copies export is this worker with `project_id`,
+    a scope and only the media modules. The deployment folder's name is
+    kept in the layout, no readme or table lands in the user's folder,
+    and the marker is stamped so a re-export can replace the tree."""
+    project_id, cam01_id, out = _seed_two_camera_project(db, tmp_path)
+    import app.workers.folder_run_save_outputs_worker as worker
+
+    def _test_get_db():
+        yield db
+
+    monkeypatch.setattr(worker, "get_db", _test_get_db)
+    job = make_job(
+        db,
+        job_type="media_export",
+        payload={
+            "project_id": project_id,
+            "deployment_ids": [cam01_id],
+            "favorited_only": True,
+            "output_dir": str(out),
+            "separate_folders": True,
+            "run_readme": False,
+            "media_threshold": 0.5,
+        },
+    )
+    db.commit()
+    asyncio.run(worker.process_save_outputs_job(job.id))
+    db.expire_all()
+    job = db.get(type(job), job.id)
+
+    assert job.status == "completed", job.error
+    media = out / MEDIA_SUBDIR
+    copies = sorted(p.relative_to(media).as_posix() for p in media.rglob("*.jpg"))
+    assert copies == ["person/cam01/IMG_000.jpg"]
+    assert (media / OUTPUT_DIR_MARKER).is_file()
+    assert job.result["source_file_count"] == 1
+    assert [p.name for p in out.iterdir()] == [MEDIA_SUBDIR]
+
+
+def test_folder_run_save_honours_the_shared_file_filters(
+    db, tmp_path, monkeypatch
+):
+    """The liked / verified / date filters are plain media options, so a
+    folder run sends them like a project does and the worker's scope
+    reads them off a `run_id` payload. One of two files is verified: one
+    copy, in the folder-run layout (no deployment folder segment)."""
+    from app.models import File
+
+    project_id, out = _seed_run(db, tmp_path, n_files=2)
+    first = db.query(File).order_by(File.file_path).first()
+    first.verified = True
+    db.commit()
+
+    job = _run_save(db, monkeypatch, project_id, out, verified_only=True)
+
+    assert job.status == "completed", job.error
+    media = out / MEDIA_SUBDIR
+    copies = sorted(p.relative_to(media).as_posix() for p in media.rglob("*.jpg"))
+    assert copies == ["person/IMG_000.jpg"]
+    assert job.result["source_file_count"] == 1
+
+
+def test_cancel_lands_inside_a_module_not_only_between_them(
+    db, tmp_path, monkeypatch
+):
+    """A project-sized copy runs for hours, so the per-file progress
+    callback checks for cancel too. Flipping the flag after the first
+    file's callback stops the module with one copy written."""
+    project_id, out = _seed_run(db, tmp_path, n_files=3)
+    import app.workers.folder_run_save_outputs_worker as worker
+
+    calls = {"n": 0}
+
+    def _flip_after_first_file(job_id: str) -> bool:
+        # Call 1: the between-module check. Call 2: the callback before
+        # file 0. Call 3: the callback before file 1 -> cancel.
+        calls["n"] += 1
+        return calls["n"] >= 3
+
+    monkeypatch.setattr(worker, "is_cancel_requested", _flip_after_first_file)
+    job = _run_save(db, monkeypatch, project_id, out)
+
+    assert job.status == "cancelled"
+    copies = list((out / MEDIA_SUBDIR).rglob("IMG_*.jpg"))
+    assert len(copies) == 1

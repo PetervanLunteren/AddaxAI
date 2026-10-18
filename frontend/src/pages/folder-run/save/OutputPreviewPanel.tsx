@@ -1,15 +1,16 @@
 /**
- * Live folder-tree preview for the Save outputs step.
+ * Live folder-tree preview for the media copies: the folder-run Save
+ * step and the project image copies dialog.
  *
- * The user ticks options on the left; this panel renders what the
- * actual run will produce on disk: which subfolders appear, how many
- * files land in each, and the cumulative byte estimate.
+ * The user ticks options on the left; this panel renders what the save
+ * will produce on disk: which subfolders appear, how many files land in
+ * each, and the cumulative byte estimate. The folder run also lists its
+ * data files; the dialog passes no `exportOpts` and shows media only.
  *
- * Numbers come from the project DB via `/api/folder-runs/{id}/output-
- * preview`. They are exact placement counts, not heuristics, because
- * the placement rules are deterministic given the file rows and the
- * project threshold. The preview matches what the postprocess run
- * writes.
+ * Numbers come from the project DB via the media preview endpoint. They
+ * are exact placement counts, not heuristics, because the placement
+ * rules are deterministic given the file rows and the project
+ * threshold. The preview matches what the save writes.
  *
  * Byte totals are summed from `File.size_bytes` where present; the
  * summary line notes when the estimate is partial (some files have
@@ -22,7 +23,8 @@ import { FileText, Folder } from "lucide-react";
 
 import { Card, CardContent } from "../../../components/ui/card";
 import type { OutputPreview } from "../../../api/folder-runs";
-import type { UseSaveOutputsFormResult } from "./useSaveOutputsForm";
+import type { MediaFormHandles } from "./useMediaOptions";
+import type { ExportState } from "./useSaveOutputsForm";
 
 const RUN_NAME_FALLBACK = "results";
 
@@ -39,17 +41,26 @@ interface FileEntry {
 }
 
 export function OutputPreviewPanel({
-  form,
+  media,
+  exportOpts,
+  outputDir,
+  fallbackName,
   preview,
-  runName,
   isLoading,
+  emptyMessage = "Pick at least one output on the left to see the preview",
 }: {
-  form: UseSaveOutputsFormResult;
+  media: MediaFormHandles;
+  /** The folder run's data files. Absent in the project dialog. */
+  exportOpts?: ExportState;
+  outputDir: string;
+  /** Tree root while no output folder is picked: the run or project name. */
+  fallbackName: string;
   preview: OutputPreview | undefined;
-  runName: string;
   isLoading: boolean;
+  /** What to say while nothing would be written. */
+  emptyMessage?: string;
 }) {
-  const { separate, visualise, anonymise, exportOpts } = form;
+  const { separate, visualise, anonymise, nothingInScope } = media;
 
   const tree = useMemo<{ folders: SubFolder[]; files: FileEntry[] }>(
     () => buildTree({ preview, separate, exportOpts }),
@@ -57,22 +68,24 @@ export function OutputPreviewPanel({
   );
 
   const anyPicked =
-    separate.enabled ||
-    visualise.enabled ||
-    anonymise.enabled ||
-    (exportOpts.enabled &&
-      (exportOpts.spreadsheet ||
-        exportOpts.recognitionJson ||
-        exportOpts.summary));
+    !nothingInScope &&
+    (separate.enabled ||
+      visualise.enabled ||
+      anonymise.enabled ||
+      (!!exportOpts &&
+        exportOpts.enabled &&
+        (exportOpts.spreadsheet ||
+          exportOpts.recognitionJson ||
+          exportOpts.summary)));
 
   // Tree root is the folder the user is writing to (the last segment of
   // the output path), not the project name — that's the folder these
   // files actually land in. Falls back to the run name, then a literal.
-  const outputBasename = form.effectiveOutputDir
+  const outputBasename = outputDir
     .replace(/[\\/]+$/, "")
     .split(/[\\/]/)
     .pop();
-  const treeRoot = outputBasename || runName || RUN_NAME_FALLBACK;
+  const treeRoot = outputBasename || fallbackName || RUN_NAME_FALLBACK;
 
   return (
     // Cap the card at the viewport height (sticky 1.5rem below the top, a
@@ -85,20 +98,18 @@ export function OutputPreviewPanel({
         <div>
           <h3 className="text-sm font-semibold">Output preview</h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            What the run will write into your output folder
+            What will be written into your output folder
           </p>
         </div>
 
-        {isLoading && !preview ? (
+        {/* Nothing picked comes first: the preview is not even asked
+            for in that state, so an absent preview is not an error. */}
+        {!anyPicked ? (
+          <Placeholder>{emptyMessage}</Placeholder>
+        ) : isLoading && !preview ? (
           <Placeholder>Loading file counts...</Placeholder>
         ) : !preview ? (
-          <Placeholder tone="error">
-            Could not load the run's file counts.
-          </Placeholder>
-        ) : !anyPicked ? (
-          <Placeholder>
-            Pick at least one output on the left to see the preview
-          </Placeholder>
+          <Placeholder tone="error">Could not load the file counts.</Placeholder>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-muted/30">
             <TreeView
@@ -106,10 +117,7 @@ export function OutputPreviewPanel({
               folders={tree.folders}
               files={tree.files}
             />
-            <SummaryFooter
-              preview={preview}
-              form={form}
-            />
+            <SummaryFooter preview={preview} media={media} />
           </div>
         )}
       </CardContent>
@@ -143,8 +151,8 @@ function buildTree({
   exportOpts,
 }: {
   preview: OutputPreview | undefined;
-  separate: UseSaveOutputsFormResult["separate"];
-  exportOpts: UseSaveOutputsFormResult["exportOpts"];
+  separate: MediaFormHandles["separate"];
+  exportOpts: ExportState | undefined;
 }): { folders: SubFolder[]; files: FileEntry[] } {
   const folders: SubFolder[] = [];
   const files: FileEntry[] = [];
@@ -180,7 +188,7 @@ function buildTree({
     folders.push({ name: "addaxai-media/", children: mediaChildren });
   }
 
-  if (exportOpts.enabled) {
+  if (exportOpts?.enabled) {
     if (exportOpts.spreadsheet) {
       if (exportOpts.format === "csv") {
         files.push({ name: "addaxai-summary.csv" });
@@ -426,12 +434,12 @@ function TreeRow({
 
 function SummaryFooter({
   preview,
-  form,
+  media,
 }: {
   preview: OutputPreview;
-  form: UseSaveOutputsFormResult;
+  media: MediaFormHandles;
 }) {
-  const { separate, anonymise } = form;
+  const { separate, anonymise } = media;
 
   // Each in-scope file lands in exactly one folder, so the number
   // written equals the in-scope count. Boxes / blur overwrite those
