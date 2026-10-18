@@ -414,13 +414,25 @@ class MegaDetectorV1000(DetectionModel):
 
                 # Execute MegaDetector with streaming output in its own
                 # process group so cancel can take the whole tree down.
+                # Pin both ends of the pipe to UTF-8 (the child through
+                # PYTHONIOENCODING, the reader here). Left to the locale, a
+                # child that inherited PYTHONIOENCODING=utf-8 writes bytes a
+                # cp932 parent cannot decode, and the first non-ASCII line
+                # fails the whole run with UnicodeDecodeError.
                 process = popen_group(
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     bufsize=1,
-                    env=clean_python_env(**cuda_guard_overrides(self.env_manager)),
+                    env=clean_python_env(
+                        **{
+                            **cuda_guard_overrides(self.env_manager),
+                            "PYTHONIOENCODING": "utf-8",
+                        }
+                    ),
                 )
 
                 # Monitor progress from stdout
