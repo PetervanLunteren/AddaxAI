@@ -79,28 +79,10 @@ _DATE_FIELDS = [
 
 # Placeholder that container date fields hold when a tool (typically
 # ffmpeg) re-encoded the video and never wrote a real timestamp. ExifTool
-# returns the prefix "0000:00:00 00:00:00" verbatim. We treat zero-stamps
-# as a parse failure so the loop keeps trying the remaining fields, and
-# so the warning we log identifies the cause for the user.
+# returns the prefix "0000:00:00 00:00:00" verbatim. `parse_exif_datetime`
+# rejects it, so the loop keeps trying the remaining fields; the prefix is
+# kept here so the warning we log identifies the cause for the user.
 _ZERO_STAMP_PREFIX = "0000:00:00 00:00:00"
-
-
-def _parse_date_string(date_str: str) -> datetime | None:
-    """Parse a date string from exiftool metadata, or None on failure.
-
-    The all-zero placeholder is returned as None so the caller can fall
-    through to the next field instead of accepting a garbage date.
-    """
-    if date_str.startswith(_ZERO_STAMP_PREFIX):
-        return None
-    try:
-        return datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
-    except ValueError:
-        try:
-            date_str_clean = date_str.split("+")[0].split("-")[0].strip()
-            return datetime.fromisoformat(date_str_clean)
-        except ValueError:
-            return None
 
 
 def extract_video_dates(paths: list[Path]) -> dict[Path, datetime]:
@@ -108,9 +90,12 @@ def extract_video_dates(paths: list[Path]) -> dict[Path, datetime]:
     Extract creation dates from multiple video files using a single
     exiftool process.
 
-    Tries the fields in ``_DATE_FIELDS`` in order. The first field that
-    parses to a valid datetime wins; malformed or zero-stamp values are
-    skipped and the next field is tried. Files that yield nothing
+    Tries the fields in ``_DATE_FIELDS`` in order. Values go through the
+    same `parse_exif_datetime` as image dates, so a timezone suffix
+    (Apple's Keys:CreationDate, Microsoft's EncodingTime) is dropped and
+    the camera wall clock kept. The first field that parses to a valid
+    datetime wins; malformed or zero-stamp values are skipped and the next
+    field is tried. Files that yield nothing
     parseable are omitted from the returned dict and a warning is
     logged identifying the cause (no date fields at all, all fields
     zero-stamped, or unparseable values).
@@ -146,7 +131,7 @@ def extract_video_dates(paths: list[Path]) -> dict[Path, datetime]:
                             continue
                         value = str(metadata[field])
                         fields_tried.append((field, value))
-                        date_obj = _parse_date_string(value)
+                        date_obj = parse_exif_datetime(value)
                         if date_obj is not None:
                             break
 

@@ -1,4 +1,5 @@
-"""Worker for the folder-run Save outputs job.
+"""Worker for the folder-run Save outputs job and the project image
+copies export.
 
 The Save step on the folder-run stepper kicks off a job rather than
 running synchronously, so the frontend can render a blocking progress
@@ -7,10 +8,17 @@ runs sequentially in an executor; progress events are emitted on the
 WebSocket between modules so the UI can update the checklist in real
 time.
 
-Cancellation is honoured between modules only — the individual modules
-iterate full file lists internally and don't yet accept mid-loop
-cancellation. That's a future refinement; the current between-module
-check is good enough for the typical run.
+A project's "Image copies" export (``POST .../export/media/prepare``)
+runs the same job with only the media modules ticked, a ``MediaScope``
+narrowing the files, and the deployment folder name in the layout. The
+worker does not branch on which of the two it is: the payload says what
+to run, and ``project.mode`` says how to lay the copies out.
+
+Cancellation is checked between modules and, through the per-file
+progress callback, inside the two file-copying modules, so a
+project-sized copy stops within one file of the click. A cancelled
+run leaves a half-written tree behind under the marker; the next save
+into that folder wipes it first.
 
 Module sequencing matters: ``separate_folders`` runs first so the
 shared ``OutputContext`` knows where each file ended up, then
@@ -47,6 +55,7 @@ from app.ml.postprocessing_outputs._output_context import (
     MEDIA_SUBDIR,
     OutputContext,
 )
+from app.ml.postprocessing_outputs._scope import MediaScope
 from app.ml.postprocessing_outputs.annotated_copies import (
     write_annotated_copies,
 )
@@ -55,6 +64,7 @@ from app.ml.postprocessing_outputs.recognition_json import (
 )
 from app.ml.postprocessing_outputs.run_readme import write_run_readme
 from app.ml.postprocessing_outputs.separate_folders import (
+    keeps_deployment_folder,
     separate_into_folders,
 )
 from app.ml.postprocessing_outputs.tables_csv import (
@@ -63,6 +73,7 @@ from app.ml.postprocessing_outputs.tables_csv import (
 from app.ml.postprocessing_outputs.tables_xlsx import (
     write_tables_xlsx,
 )
+from app.models import Deployment
 from app.services.folder_scanner import OUTPUT_DIR_MARKER
 from app.utils.fs_remove import safe_rmtree
 from app.utils.process_memory import rss_mb
@@ -115,16 +126,24 @@ async def process_save_outputs_job(job_id: str) -> None:
             raise ValueError(f"Job not found: {job_id}")
 
         payload = job.payload or {}
-        run_id = payload.get("run_id")
+        # A folder-run save names its project `run_id`; the project
+        # media export names it `project_id`. Same row, same job.
+        project_id = payload.get("project_id") or payload.get("run_id")
         output_dir = payload.get("output_dir")
-        if not run_id or not output_dir:
+        if not project_id or not output_dir:
             raise ValueError(
-                "Missing run_id / output_dir on save-outputs job payload"
+                "Missing project_id / output_dir on save-outputs job payload"
             )
 
-        project = project_crud.get_project(db, run_id)
-        if project is None or project.mode != "folder_run":
-            raise ValueError(f"Folder run not found: {run_id}")
+        project = project_crud.get_project(db, project_id)
+        if project is None:
+            raise ValueError(f"Project not found: {project_id}")
+
+        # Which files, and how they are laid out. A folder-run payload
+        # without filters yields the everything-scope; the layout rule
+        # lives next to `build_deployment_folders`.
+        scope = MediaScope.from_payload(payload)
+        deployment_folder_in_path = keeps_deployment_folder(project.mode)
 
         # Layout: loose ``addaxai-*`` data files at the output root
         # (which defaults to the source folder itself), media copies
@@ -146,6 +165,7 @@ async def process_save_outputs_job(job_id: str) -> None:
         media_active = bool(
             payload.get("separate_folders") or draw_bboxes or anonymise
         )
+        loop = asyncio.get_event_loop()
         if media_active:
             # Rebuild the media tree from scratch. A save only ever
             # places copies, so the tree holds nothing the user can
@@ -160,7 +180,13 @@ async def process_save_outputs_job(job_id: str) -> None:
             # would delete them (see the separate_folders docstring).
             owned = (media_root / OUTPUT_DIR_MARKER).is_file()
             if owned:
-                if not safe_rmtree(media_root):
+                # Off the event loop: a project-sized tree, possibly on
+                # a network drive, would otherwise freeze every request
+                # for as long as the delete takes.
+                cleared = await loop.run_in_executor(
+                    None, safe_rmtree, media_root
+                )
+                if not cleared:
                     logger.warning(
                         f"Could not fully clear {media_root}; retried "
                         f"copies may get suffixed names"
@@ -231,7 +257,7 @@ async def process_save_outputs_job(job_id: str) -> None:
         # the folder_runs router for the rationale.
         from sqlalchemy import func, select
 
-        from app.models import Deployment, File
+        from app.models import File
 
         # The label filter scopes the MEDIA outputs only (separate /
         # visualise / anonymise). Data exports (CSV / XLSX / recognition
@@ -252,7 +278,6 @@ async def process_save_outputs_job(job_id: str) -> None:
             status="Starting",
         )
 
-        loop = asyncio.get_event_loop()
         # Count source files once up front so the completion screen can
         # show a single "N source files processed" tally without
         # double-counting multi-placement inflation in any per-module
@@ -261,6 +286,7 @@ async def process_save_outputs_job(job_id: str) -> None:
             select(func.count(File.id))
             .join(Deployment, File.deployment_id == Deployment.id)
             .where(Deployment.project_id == project.id)
+            .where(*scope.file_clauses())
         ) or 0
 
         result_payload: dict[str, Any] = {
@@ -327,6 +353,8 @@ async def process_save_outputs_job(job_id: str) -> None:
                         # clip would be no anonymisation at all.
                         videos_as_stills=anonymise,
                         progress_cb=cb,
+                        scope=scope,
+                        deployment_folder_in_path=deployment_folder_in_path,
                     ).to_dict()
                 if m == "annotated_copies":
                     return write_annotated_copies(
@@ -345,12 +373,21 @@ async def process_save_outputs_job(job_id: str) -> None:
                             payload.get("separate_folders")
                         ),
                         progress_cb=cb,
+                        scope=scope,
                     ).to_dict()
                 if m == "recognition_json":
+                    # A folder run is one deployment by construction;
+                    # `one()` holds that rather than picking a first.
+                    deployment = (
+                        db.query(Deployment)
+                        .filter(Deployment.project_id == project.id)
+                        .one()
+                    )
                     return write_recognition_json(
                         db,
                         project.id,
                         output_root,
+                        deployment_id=deployment.id,
                     ).to_dict()
                 if m == "csv":
                     return write_tables_csv(
@@ -504,6 +541,12 @@ def _make_file_progress_cb(
     state = {"done": -1, "t": 0.0}
 
     def cb(done: int, total: int) -> None:
+        # Both file-copying modules call this at the top of every
+        # iteration, so this is also where a cancel lands mid-module.
+        # The error unwinds through the module, out of the executor
+        # and into the job's own `except JobCancelledError`.
+        if is_cancel_requested(job_id):
+            raise JobCancelledError()
         now = time.monotonic()
         step = max(1, total // 100)
         is_last = done >= total

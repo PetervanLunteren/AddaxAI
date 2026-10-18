@@ -131,6 +131,7 @@ from ._label_filter import (
     strongest_label_for_file,
 )
 from ._output_context import OutputContext
+from ._scope import MediaScope
 
 logger = get_logger(__name__)
 
@@ -228,6 +229,7 @@ def build_event_primary_labels(
     project_id: str,
     threshold: float,
     excluded_label_ids: frozenset[str] | None = None,
+    scope: MediaScope | None = None,
 ) -> dict[str, str]:
     """Map each animal file in an event to that event's primary species.
 
@@ -259,6 +261,11 @@ def build_event_primary_labels(
     Used by primary-only placement with ``group_events`` on to keep a whole
     burst in one folder. Mirrored by the Save-step preview (same function),
     so the two always agree.
+
+    ``scope`` narrows the deployments only. The vote reads every file of
+    a burst, including files the scope's liked / verified / date filters
+    will not copy, so a filtered export files its files under the same
+    species as a full one would.
     """
     rows = db.execute(
         select(
@@ -273,6 +280,7 @@ def build_event_primary_labels(
         .join(event_files, event_files.c.file_id == File.id)
         .join(Deployment, Deployment.id == File.deployment_id)
         .where(Deployment.project_id == project_id)
+        .where(*(scope.deployment_clauses() if scope else []))
         # Each video contributes only its best frame's boxes. This decides
         # the folder a burst is copied into, and a video is written to disk
         # as that one frame, so an off-frame box naming the folder files a
@@ -557,16 +565,49 @@ def _media_source(
     return p, p.name
 
 
-def build_deployment_folders(db: Session, project_id: str) -> dict[str, str]:
-    """Map each deployment id to its source ``folder_path``, so a file's
-    original subfolder structure can be derived relative to where it was
-    scanned from. Deployments with no folder_path are omitted."""
+def keeps_deployment_folder(project_mode: str) -> bool:
+    """Whether the deployment folder's own name is kept in the copy path.
+
+    A folder run reproduces the subfolders of the folder it analysed; a
+    project keeps each deployment folder's name under the species folder
+    because it has many of them. The rule follows the mode, not the
+    number of deployments: a count-based rule would flip the layout of a
+    one-camera project's next export the day a second camera is added.
+    The worker and the preview endpoint both read this, so the preview
+    shows the tree the save will write.
+    """
+    return project_mode != "folder_run"
+
+
+def build_deployment_folders(
+    db: Session, project_id: str, *, parent_as_root: bool = False
+) -> dict[str, str]:
+    """Map each deployment id to the root its files' subfolders are kept
+    relative to. Deployments with no folder_path are omitted.
+
+    By default that root is the deployment's own ``folder_path``, so a
+    folder run reproduces the subfolders of the folder it analysed. With
+    ``parent_as_root`` it is that folder's parent, so the deployment
+    folder's own name becomes the first subfolder: a project export of
+    many cameras then reads ``<species>/<camera folder>/<its subfolders>``
+    instead of merging every camera's ``100RECNX`` into one. Two
+    deployments whose folders share a name still merge, and same-named
+    files there get the usual ``_2`` suffix.
+
+    ``Path.parent`` is a string operation. Never ``resolve()`` here: the
+    stored form is what every ``relative_to`` downstream expects (see
+    DEVELOPERS.md, "Paths to user media are never resolved").
+    """
     rows = db.execute(
         select(Deployment.id, Deployment.folder_path).where(
             Deployment.project_id == project_id
         )
     ).all()
-    return {r.id: r.folder_path for r in rows if r.folder_path}
+    return {
+        r.id: str(Path(r.folder_path).parent) if parent_as_root else r.folder_path
+        for r in rows
+        if r.folder_path
+    }
 
 
 def source_subdir(file_path: str, source_root: str | None) -> str:
@@ -599,9 +640,18 @@ def separate_into_folders(
     place_files: bool = True,
     videos_as_stills: bool = False,
     progress_cb: Callable[[int, int], None] | None = None,
+    scope: MediaScope | None = None,
+    deployment_folder_in_path: bool = False,
 ) -> SeparateFoldersResult:
     """Reorganise every file in the project into subdirectories under
     ``ctx.output_root``.
+
+    ``scope`` narrows which files are copied (deployments, liked,
+    verified, date range); ``None`` is the whole project. It is the same
+    object the preview and ``annotated_copies`` receive, so the three
+    cannot disagree on the file set. ``deployment_folder_in_path`` puts
+    the deployment folder's own name under the species folder, the
+    layout a multi-camera project needs (see ``build_deployment_folders``).
 
     Each file lands in exactly one folder, its main species. Under
     ``group_by="taxonomic"`` (default) animal files land in a nested
@@ -663,12 +713,14 @@ def separate_into_folders(
     event_primary: dict[str, str] = {}
     if group_events:
         event_primary = build_event_primary_labels(
-            db, project_id, threshold, excluded_label_ids
+            db, project_id, threshold, excluded_label_ids, scope
         )
 
     # Source folders per deployment, to preserve each file's original
     # subfolder structure under the species folder.
-    dep_folders = build_deployment_folders(db, project_id)
+    dep_folders = build_deployment_folders(
+        db, project_id, parent_as_root=deployment_folder_in_path
+    )
 
     # Stable order (matches output_preview) so collision suffixes land on
     # the same files every run: two same-named files from different
@@ -677,6 +729,7 @@ def separate_into_folders(
         select(File)
         .join(Deployment, File.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
+        .where(*(scope.file_clauses() if scope else []))
         .order_by(File.file_path)
     ).scalars().all()
 
@@ -697,20 +750,6 @@ def separate_into_folders(
             # worker throttles these before they reach the WebSocket.
             if progress_cb is not None:
                 progress_cb(i, total)
-            source, out_name = _media_source(file, videos_as_stills)
-            if source is None:
-                result.skipped_missing_source += 1
-                result.errors.append(
-                    f"Video has no best frame on disk: {file.file_path}"
-                )
-                continue
-            if not source.exists():
-                result.skipped_missing_source += 1
-                result.errors.append(
-                    f"Source file no longer on disk: {source}"
-                )
-                continue
-
             if file_is_dropped_by_filter(
                 db, file, threshold, excluded_label_ids
             ):
@@ -734,6 +773,24 @@ def separate_into_folders(
 
             # Empties are skipped from the copies unless opted in.
             if not include_empty and obs_type == "blank":
+                continue
+
+            # The disk checks come after the filters, so a file the user
+            # left out is never reported as missing: an export of one
+            # species from an unplugged drive lists that species' files,
+            # not the whole deployment.
+            source, out_name = _media_source(file, videos_as_stills)
+            if source is None:
+                result.skipped_missing_source += 1
+                result.errors.append(
+                    f"Video has no best frame on disk: {file.file_path}"
+                )
+                continue
+            if not source.exists():
+                result.skipped_missing_source += 1
+                result.errors.append(
+                    f"Source file no longer on disk: {source}"
+                )
                 continue
 
             folder = _folder_for_file(

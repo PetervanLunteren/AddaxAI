@@ -220,8 +220,26 @@ class ExifBatch(AbstractContextManager["ExifBatch"]):
             self._helper.__exit__(exc_type, exc, tb)
             self._helper = None
 
-    def write(self, path: Path, tag_set: DetectionTagSet) -> None:
+    def write(
+        self, path: Path, tag_set: DetectionTagSet, *, source: Path | None = None
+    ) -> None:
         """Write the tag set onto the file at ``path``.
+
+        With ``source`` the same call first copies every tag of that
+        file onto ``path``, for a copy that was re-encoded (boxes, blur)
+        and so lost the original's XMP, IPTC and colour profile. Three
+        things happen in one exiftool run, in this order: the copy,
+        then the deletion of the embedded thumbnail and preview, then
+        the tag set. Every tag this call writes is left out of the copy,
+        so ours replace whatever the original carried, as they do on a
+        plain copy (for a list tag like the subject an assignment after
+        a copy would append instead). The previews go because they show
+        the original pixels: a blurred copy would otherwise carry an
+        unblurred person in its thumbnail. Exiftool
+        skips its "unsafe" EXIF tags here on purpose (they describe the
+        image data, which the re-encode rewrote). Maker notes are copied
+        as one block; a preview inside them cannot be deleted, exiftool
+        zeroes it instead and warns.
 
         ``-overwrite_original`` prevents exiftool from leaving a
         ``<filename>_original`` backup next to every modified file
@@ -229,11 +247,19 @@ class ExifBatch(AbstractContextManager["ExifBatch"]):
         """
         if self._helper is None:
             raise RuntimeError("ExifBatch.write called outside its context")
-        self._helper.set_tags(
-            [str(path)],
-            tags=tag_set.to_exiftool_dict(),
-            params=["-overwrite_original"],
-        )
+        params = ["-overwrite_original"]
+        tags: dict[str, object] = tag_set.to_exiftool_dict()
+        if source is not None:
+            # An empty assignment deletes the tag; absent is a no-op.
+            tags = {"ThumbnailImage": "", "PreviewImage": "", **tags}
+            params += [
+                "-TagsFromFile",
+                str(source),
+                "-all:all",
+                "-icc_profile",
+                *(f"--{tag}" for tag in tags),
+            ]
+        self._helper.set_tags([str(path)], tags=tags, params=params)
 
 
 def is_image_path(path: Path) -> bool:

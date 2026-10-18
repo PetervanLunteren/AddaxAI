@@ -26,13 +26,17 @@ Destination resolution (via ``OutputContext``):
   ``output_root`` (``<original_name>`` for images, ``<stem>.jpg`` for
   videos). Collision-suffixed to avoid clobbering an existing file.
 
-EXIF: the source's own EXIF block (capture date, camera make / model,
-GPS) is passed back to the PIL save, which would otherwise strip it on
-re-encode; Timelapse and the camera-metadata export columns depend on
-those tags surviving in copies. On top of that, every saved
-destination gets the detection tag set written via the shared
-``ExifBatch``, whether or not separation already wrote the same tags
-on the (now-overwritten) separated copy.
+Metadata: the PIL save would strip everything on re-encode, so the
+source's own EXIF block (capture date, camera make / model, GPS) is
+passed back to it; Timelapse and the camera-metadata export columns
+depend on those tags surviving in copies. Then one ``ExifBatch.write``
+with ``source`` copies every tag of the original (XMP, IPTC, colour
+profile) onto the copy, drops the embedded thumbnail and preview,
+which show the original pixels, and writes the detection tag set,
+whether or not separation already wrote the same tags on the
+(now-overwritten) separated copy. The EXIF pass-through stays as the
+fallback: a failed exiftool call leaves a copy that still has its
+camera EXIF and logs the loss.
 
 Source-vs-destination semantics:
 
@@ -66,6 +70,7 @@ from app.models import Deployment, Detection, File, Project
 from ._exif_writer import ExifBatch, build_tag_set, is_image_path
 from ._label_filter import detection_is_excluded, file_is_dropped_by_filter
 from ._output_context import OutputContext
+from ._scope import MediaScope
 from ._visualisation_style import (
     PILL_BG_RGBA,
     STROKE_ALPHA,
@@ -482,9 +487,15 @@ def write_annotated_copies(
     name_mode: str = "common",
     copy_unchanged: bool = False,
     progress_cb: Callable[[int, int], None] | None = None,
+    scope: MediaScope | None = None,
 ) -> AnnotatedCopiesResult:
     """Apply the requested per-file effects and write the result to
     every destination the file lives at under ``ctx``.
+
+    ``scope`` must be the same object separation ran with: a file in
+    this module's scope that separation did not place is written to a
+    fallback name at the media root (``_resolve_destinations``), so a
+    wider scope here leaks out-of-scope files there.
 
     ``media_threshold`` is the Save step's media-output confidence:
     only detections at or above it (or verified) get drawn / blurred,
@@ -524,6 +535,7 @@ def write_annotated_copies(
         select(File)
         .join(Deployment, File.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
+        .where(*(scope.file_clauses() if scope else []))
     ).scalars().all()
 
     result = AnnotatedCopiesResult()
@@ -683,11 +695,12 @@ def write_annotated_copies(
 
                 result.written_count += 1
 
-                # Add the predictions tag set on top of the carried-over
-                # source EXIF (exiftool preserves existing tags).
+                # One exiftool call: the original's metadata, minus its
+                # previews, plus the predictions. A video still's source
+                # is the app's frame grab, which has none to copy.
                 if tag_set is not None and is_image_path(dest):
                     try:
-                        exif_batch.write(dest, tag_set)
+                        exif_batch.write(dest, tag_set, source=source)
                     except Exception as e:  # noqa: BLE001
                         logger.warning(
                             f"annotated_copies: EXIF write failed "

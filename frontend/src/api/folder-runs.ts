@@ -203,32 +203,6 @@ export interface OutputPreview {
   root_files: string[];
 }
 
-export interface OutputPreviewRequest {
-  /** Blur on: a video is written as its blurred still instead of the
-   * clip, so the byte estimate and the filename sample follow. */
-  anonymise?: boolean;
-  /** Media-output confidence, mirroring the save request so the
-   * previewed counts match what the save will write. */
-  media_threshold?: number;
-  /** Copy empty captures (no animal / person / vehicle) too. Off /
-   * omitted = empties are skipped, matching the save request. */
-  include_empty?: boolean;
-  /** Common vs scientific species-name leaf, mirroring the save request
-   * so the previewed tree matches what will be written. */
-  name_mode?: "common" | "scientific";
-  /** Label identifiers to exclude (LabelTaxonomy.id UUIDs or raw label
-   * strings). Mirrors the save request so the preview reflects the
-   * species filter. */
-  excluded_label_ids?: string[];
-  /** Event grouping, mirroring the save request so the previewed counts
-   * match what the save will write. */
-  group_events?: boolean;
-  /** Folder layout, mirroring the save request so the previewed tree
-   * shows the real nesting and order. */
-  separate_group_by?: SeparateGroupBy;
-  separate_species_last?: boolean;
-}
-
 export interface SaveOutputsRequest {
   output_dir: string;
   /** Media-output confidence: detections below it (unless verified) are
@@ -265,6 +239,13 @@ export interface SaveOutputsRequest {
   /** Which species name to burn into the visualised images. Mirrors the
    * UI display preference. EXIF metadata always carries both names. */
   name_mode?: "common" | "scientific";
+  /** Which files, shared with the project image copies export: liked
+   * or verified on the Labels page, and a capture date range (ISO
+   * dates, inclusive on whole days). */
+  favorited_only?: boolean;
+  verified_only?: boolean;
+  date_from?: string;
+  date_to?: string;
 }
 
 /** Response from POST /save-outputs — just the spawned job's id.
@@ -358,14 +339,6 @@ export const folderRunsApi = {
   saveOutputs: (runId: string, payload: SaveOutputsRequest) =>
     api.post<SaveOutputsResponse>(
       `/api/folder-runs/${runId}/save-outputs`,
-      payload,
-    ),
-
-  /** Aggregate file counts for the Save step's live folder preview.
-   * POST because the body carries the species exclusion set. */
-  getOutputPreview: (runId: string, payload: OutputPreviewRequest = {}) =>
-    api.post<OutputPreview>(
-      `/api/folder-runs/${runId}/output-preview`,
       payload,
     ),
 };

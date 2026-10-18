@@ -40,6 +40,7 @@ from app.api.schemas.deployment_queue import (
     DeploymentQueueCreate,
     DeploymentQueueResponse,
 )
+from app.api.schemas.export import MediaOptions
 from app.api.schemas.job import JobCreate
 from app.api.schemas.project import ProjectCreate, ProjectResponse
 from app.core.confidence import DEFAULT_COUNTING_THRESHOLD
@@ -48,12 +49,6 @@ from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.ml import detection_checkpoint as ckpt
 from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
-from app.ml.postprocessing_outputs.output_preview import (
-    build_output_preview,
-)
-from app.ml.postprocessing_outputs.separate_folders import (
-    SeparateGroupBy,
-)
 from app.models import (
     Deployment,
     DeploymentQueue,
@@ -198,7 +193,7 @@ class FolderRunResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class SaveOutputsRequest(BaseModel):
+class SaveOutputsRequest(MediaOptions):
     """Request body for POST /api/folder-runs/{id}/save-outputs.
 
     ``output_dir`` is the absolute path the deliverables should land
@@ -215,42 +210,10 @@ class SaveOutputsRequest(BaseModel):
     """
 
     output_dir: str = Field(..., min_length=1)
-    # Media-output confidence: detections below it (unless verified) are
-    # left out of the separated copies, drawn boxes, blurs, and EXIF
-    # tags. Data exports (CSV / XLSX / recognition JSON) ignore it: they
-    # are always the complete record of the run.
-    media_threshold: float = Field(
-        DEFAULT_COUNTING_THRESHOLD, ge=0.0, le=1.0
-    )
+    # The media options themselves (threshold, grouping, label filter,
+    # boxes, blur, name mode) are the inherited ``MediaOptions``, shared
+    # with the project image copies export.
     separate_folders: bool = False
-    # How media copies are grouped at the output root. ``taxonomic``
-    # nests Class/Order/Family/Genus/species; ``flat`` is one folder
-    # per species label; ``none`` copies everything flat at the root.
-    separate_group_by: SeparateGroupBy = "flat"
-    # Keep a burst together: every file in an event lands in one folder
-    # (the event's main species) instead of being filed per file.
-    group_events: bool = True
-    # Flip the layering to ``<source subfolder>/<species>/`` instead of
-    # ``<species>/<source subfolder>/``. Keeps the user's original folders
-    # on top and species inside them (the layout camtrapR expects). No
-    # effect with ``separate_group_by="none"`` or a flat source folder.
-    separate_species_last: bool = False
-    # Copy empty captures (no animal / person / vehicle) too. Off by
-    # default so the media copies aren't padded with blank captures.
-    include_empty: bool = False
-    # Label identifiers to exclude from every output. Each entry is
-    # either a LabelTaxonomy.id UUID (for taxonomy-mapped labels) or a
-    # raw Detection.label string (for unmapped labels under the tree's
-    # "Other" branch). Applied as a file-level filter for separate /
-    # annotated_copies and as a row-level filter for CSV / XLSX /
-    # recognition JSON.
-    excluded_label_ids: list[str] = Field(default_factory=list)
-    # Draw detection bounding boxes + pill labels on the annotated
-    # copies.
-    draw_bboxes: bool = False
-    # Blur person / vehicle detections on the annotated copies — for
-    # sharing datasets without identifying bystanders or vehicles.
-    anonymise: bool = False
     recognition_json: bool = False
     csv: bool = False
     xlsx: bool = False
@@ -265,68 +228,6 @@ class SaveOutputsRequest(BaseModel):
     # ``payload.get("run_readme", True)`` fell back to writing it. The
     # checkbox never did anything from the day it shipped.
     run_readme: bool = True
-    # Which species name to burn into the visualised images: the common
-    # name or the scientific name. Mirrors the UI display preference so
-    # the saved images match what the user sees. EXIF metadata always
-    # carries both names regardless of this choice.
-    name_mode: Literal["common", "scientific"] = "common"
-
-
-class OutputPreviewRequest(BaseModel):
-    """Body for POST /api/folder-runs/{id}/output-preview.
-
-    Carries the label exclusion set so the preview reflects the
-    user's filter state. Empty list = no filter, every label
-    contributes. Each entry is a LabelTaxonomy.id UUID or a raw
-    label string (matching the heterogeneous output of the
-    label-tree endpoint).
-    """
-
-    excluded_label_ids: list[str] = Field(default_factory=list)
-    # Media-output confidence, mirroring the save request so the
-    # preview counts match what the save will write.
-    media_threshold: float = Field(
-        DEFAULT_COUNTING_THRESHOLD, ge=0.0, le=1.0
-    )
-    # Copy empty captures too; off by default. Mirrors the save
-    # request so the preview matches what will be written.
-    include_empty: bool = False
-    # Common vs scientific species-name leaf, mirroring the save request
-    # so the previewed tree matches the folders that will be written.
-    name_mode: Literal["common", "scientific"] = "common"
-    # Event grouping, mirroring the save request so the previewed counts
-    # match exactly what the save will write.
-    group_events: bool = True
-    # Folder layout, mirroring the save request so the previewed tree
-    # shows the real on-disk nesting (species folder + preserved source
-    # subfolders) in the chosen order.
-    separate_group_by: SeparateGroupBy = "flat"
-    separate_species_last: bool = False
-    # Blur, mirroring the save request: with blur on a video is written
-    # as its blurred still instead of the container, so the preview's
-    # byte total and filename sample have to follow.
-    anonymise: bool = False
-
-
-class OutputPreviewResponse(BaseModel):
-    """Aggregate counts the Save step uses to render a live folder
-    preview. Computed deterministically from the project's DB state;
-    the numbers are exact, not estimates, because the placement
-    rules are fixed.
-    """
-
-    total_files: int
-    image_count: int
-    video_count: int
-    total_bytes: int
-    files_with_known_size: int
-    dropped_by_filter: int
-    in_scope_files: int
-    in_scope_image_count: int
-    in_scope_video_count: int
-    in_scope_bytes: int
-    by_media_tree: dict[str, int]
-    root_files: list[str]
 
 
 class DetectionResume(BaseModel):
@@ -1000,51 +901,6 @@ def rerun_folder_run(
         f"({time.perf_counter() - started:.1f}s)"
     )
     return _load_run(db, run_id)
-
-
-@router.post(
-    "/{run_id}/output-preview", response_model=OutputPreviewResponse
-)
-def get_output_preview(
-    run_id: str,
-    payload: OutputPreviewRequest | None = None,
-    db: Session = Depends(get_db),
-) -> OutputPreviewResponse:
-    """Return the file / placement counts the Save step uses to
-    render a live folder-tree preview.
-
-    POST so the request body can carry the species exclusion set —
-    a long species list as a query string would be awkward. Pure
-    read; no side effects.
-    """
-    project = crud_project.get_project(db, run_id)
-    if project is None or project.mode != "folder_run":
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Folder run with id '{run_id}' not found",
-        )
-    excluded = (
-        frozenset(payload.excluded_label_ids)
-        if payload and payload.excluded_label_ids
-        else None
-    )
-    preview = build_output_preview(
-        db,
-        run_id,
-        media_threshold=(
-            payload.media_threshold if payload else DEFAULT_COUNTING_THRESHOLD
-        ),
-        excluded_label_ids=excluded,
-        include_empty=bool(payload.include_empty) if payload else False,
-        name_mode=payload.name_mode if payload else "common",
-        group_events=payload.group_events if payload else True,
-        group_by=payload.separate_group_by if payload else "flat",
-        species_last=(
-            payload.separate_species_last if payload else False
-        ),
-        videos_as_stills=bool(payload.anonymise) if payload else False,
-    )
-    return OutputPreviewResponse(**preview.to_dict())
 
 
 @router.post("/{run_id}/save-outputs", response_model=SaveOutputsResponse)

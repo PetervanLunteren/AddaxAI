@@ -209,9 +209,21 @@ export function VerifyFilterBar({
             value={filters.labels}
             onChange={(labels) => onChange({ ...filters, labels })}
             countBy={countBy}
-            siteIds={filters.site_ids}
-            dateFrom={filters.date_from}
-            dateTo={filters.date_to}
+            // What the page sends, defaults included, so the number
+            // beside a label is what ticking it alone would show.
+            scope={{
+              siteIds: filters.site_ids,
+              dateFrom: filters.date_from,
+              dateTo: filters.date_to,
+              verification: filters.verification ?? verificationDefault,
+              flagged: showLikedFlaggedEmpty ? filters.flagged : undefined,
+              favorited: showLikedFlaggedEmpty ? filters.favorited : undefined,
+              empty: showEmpty ? (filters.empty ?? emptyDefault) : undefined,
+              minConfidence: filters.min_confidence,
+              maxConfidence: filters.max_confidence,
+              minLabelConfidence: filters.min_label_confidence,
+              maxLabelConfidence: filters.max_label_confidence,
+            }}
           />
         </div>
         )}

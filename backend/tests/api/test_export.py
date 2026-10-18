@@ -6,11 +6,14 @@ import asyncio
 import csv
 import io
 import json
+import os
 import sqlite3
 import tempfile
 import uuid
 import zipfile
+from dataclasses import dataclass
 from datetime import date, datetime
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -28,25 +31,74 @@ from tests.conftest import (
 )
 
 
-def _run_camtrap_dp_export(client, db, project_id: str):
-    """Helper: drive the full prepare → worker → download cycle.
+@dataclass
+class _Written:
+    """One exported table read back from the folder the export wrote, with
+    the status code and detail the endpoint answered. The tests read rows,
+    not HTTP, so this keeps their assertions independent of how a table
+    reaches the user."""
 
-    The prepare endpoint registers the worker with ws_manager and waits
-    for a frontend "ready" signal before running it. In tests we have no
-    WebSocket, so we kick the worker directly (after patching its
-    `get_db` to use a session bound to the test engine) and then GET
-    the download endpoint.
+    status_code: int
+    content: bytes = b""
+    detail: object = None
 
-    The worker's `finally: db.close()` would otherwise detach the
-    fixture's `db` instance and break post-test assertions. We hand it
-    a separate session bound to the same StaticPool engine so closing
-    is harmless and the in-memory data stays visible.
+    def json(self) -> dict[str, object]:
+        return {"detail": self.detail}
 
-    Returns the download Response. Raises if prepare returns non-202;
-    in that case the caller should call /prepare directly and assert
-    the error code instead of using this helper.
+    @property
+    def text(self) -> str:
+        return str(self.detail)
+
+
+_TABLE_FILE = {
+    "summary": "summary",
+    "observations": "counts",
+    "detections": "detections",
+    "files": "files",
+    "deployments": "deployments",
+}
+
+
+def _export(
+    client,
+    project_id: str,
+    table: str,
+    fmt: str = "csv",
+    deployment_ids: list[str] | None = None,
+) -> _Written:
+    """Run an export the way the dialog does, into a fresh folder, and read
+    back the file for ``table``. ``spatial`` reads the one spatial file;
+    any table in ``xlsx`` reads the five-sheet workbook."""
+    out = tempfile.mkdtemp()
+    body: dict[str, object] = {"output_dir": out, "format": fmt}
+    if deployment_ids is not None:
+        body["deployment_ids"] = deployment_ids
+    endpoint = "spatial" if table == "spatial" else "tables"
+    resp = client.post(f"/api/projects/{project_id}/export/{endpoint}", json=body)
+    if resp.status_code != 200:
+        return _Written(resp.status_code, detail=resp.json().get("detail"))
+    files = resp.json()["files"]
+    name = (
+        files[0]
+        if endpoint == "spatial" or fmt == "xlsx"
+        else next(n for n in files if n.startswith(f"{_TABLE_FILE[table]}-"))
+    )
+    return _Written(200, (Path(out) / name).read_bytes())
+
+
+def _run_camtrap_dp_export(client, db, project_id: str, **body: object) -> _Written:
+    """Drive the prepare -> worker cycle and read back the ZIP it wrote.
+
+    The prepare endpoint registers the worker and waits for a frontend
+    "ready" signal; with no WebSocket here, the worker is run directly on
+    a session bound to the shared test engine (its `finally: db.close()`
+    would otherwise detach the fixture's session).
     """
-    prepare = client.post(f"/api/projects/{project_id}/export/camtrap-dp/prepare")
+    out = tempfile.mkdtemp()
+    prepare = client.post(
+        f"/api/projects/{project_id}/export/camtrap-dp/prepare",
+        json={"output_dir": out, **body},
+    )
     assert prepare.status_code == 202, prepare.text
     job_id = prepare.json()["job_id"]
 
@@ -64,17 +116,13 @@ def _run_camtrap_dp_export(client, db, project_id: str):
         finally:
             s.close()
 
-    # Make sure the worker reads any rows the fixture committed before
-    # we forked off this helper. Without it the fresh worker session
-    # could miss rows that are still buffered on the fixture session.
     db.commit()
-
     with patch.object(camtrap_export_worker, "get_db", _fake_get_db):
         asyncio.run(camtrap_export_worker.process_camtrap_export_job(job_id))
 
-    return client.get(
-        f"/api/projects/{project_id}/export/camtrap-dp/download?job_id={job_id}"
-    )
+    written = list(Path(out).iterdir())
+    assert len(written) == 1 and written[0].name.startswith("camtrap-dp-")
+    return _Written(200, written[0].read_bytes())
 
 # ---------------------------------------------------------------------------
 # Factory sugar
@@ -119,10 +167,8 @@ def test_export_detections_csv_happy_path(client, db):
     )
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
+    resp = _export(client, project.id, "detections", "csv")
     assert resp.status_code == 200
-    assert resp.headers["content-type"].startswith("text/csv")
-    assert "attachment; filename=" in resp.headers["content-disposition"]
 
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     headers = rows[0]
@@ -188,7 +234,7 @@ def test_export_detections_records_ai_vs_human_labels(client, db):
     )
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
+    resp = _export(client, project.id, "detections", "csv")
     assert resp.status_code == 200
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     headers, data = rows[0], rows[1:]
@@ -227,7 +273,7 @@ def test_export_ai_label_matches_current_when_unverified(client, db):
     )
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
+    resp = _export(client, project.id, "detections", "csv")
     assert resp.status_code == 200
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     headers, data = rows[0], rows[1:]
@@ -260,31 +306,23 @@ def test_export_scope_by_site_and_deployment(client, db):
     make_detection(db, file_id=f_b.id, category="animal", confidence=0.9, label="fox")
     db.commit()
 
-    base = f"/api/projects/{project.id}/export/detections?format=csv"
-
-    def _labels(url: str) -> set[str]:
-        resp = client.get(url)
+    def _labels(deployment_ids: list[str] | None) -> set[str]:
+        resp = _export(client, project.id, "detections", deployment_ids=deployment_ids)
         assert resp.status_code == 200
         rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
         i = rows[0].index("classification_label")
         return {r[i] for r in rows[1:]}
 
     # Whole project (no scope): both detections.
-    assert _labels(base) == {"deer", "fox"}
-    # Scope to site A → only its deployment's detection.
-    assert _labels(f"{base}&site_ids={site_a.id}") == {"deer"}
-    # Scope to deployment B → only that deployment's detection.
-    assert _labels(f"{base}&deployment_ids={dep_b.id}") == {"fox"}
-    # Site A + deployment B combined → union.
-    assert _labels(
-        f"{base}&site_ids={site_a.id}&deployment_ids={dep_b.id}"
-    ) == {"deer", "fox"}
+    assert _labels(None) == {"deer", "fox"}
+    # Scope to one deployment: only its detection.
+    assert _labels([dep_a.id]) == {"deer"}
+    assert _labels([dep_b.id]) == {"fox"}
+    # Both: the union.
+    assert _labels([dep_a.id, dep_b.id]) == {"deer", "fox"}
 
     # The deployments table scopes through its own query path too.
-    dep_resp = client.get(
-        f"/api/projects/{project.id}/export/deployments"
-        f"?format=csv&site_ids={site_a.id}"
-    )
+    dep_resp = _export(client, project.id, "deployments", deployment_ids=[dep_a.id])
     dep_rows = list(csv.reader(io.StringIO(dep_resp.content.decode("utf-8"))))
     dep_id_i = dep_rows[0].index("deployment_id")
     assert {r[dep_id_i] for r in dep_rows[1:]} == {dep_a.id}
@@ -309,7 +347,7 @@ def test_export_files_includes_empties(client, db):
     )
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/files?format=csv")
+    resp = _export(client, project.id, "files", "csv")
     assert resp.status_code == 200
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     headers = rows[0]
@@ -415,7 +453,7 @@ def test_files_export_camera_columns_come_from_stored_exif(client, db):
 
 def _files_rows(client, project_id: str):
     """`(headers, {file_id: row})` for the Files CSV export."""
-    resp = client.get(f"/api/projects/{project_id}/export/files?format=csv")
+    resp = _export(client, project_id, "files", "csv")
     assert resp.status_code == 200, resp.text
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     headers = rows[0]
@@ -765,7 +803,7 @@ def test_video_exports_describe_only_the_visible_frame(client, db):
     # The per-box grain agrees: the off-frame deer is not offered as a
     # species the user could go and correct, because there is no picture
     # of it anywhere in the app. Only the person on the saved frame is.
-    resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
+    resp = _export(client, project.id, "detections", "csv")
     det_rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     det_headers = det_rows[0]
     frames = {
@@ -906,7 +944,7 @@ def test_event_id_is_blank_when_a_file_has_no_event(client, db):
     )
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/files?format=csv")
+    resp = _export(client, project.id, "files", "csv")
     assert resp.status_code == 200
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     headers = rows[0]
@@ -931,7 +969,7 @@ def test_detections_event_id_is_blank_when_a_file_has_no_event(client, db):
     make_detection(db, file_id=f_no_event.id, confidence=0.9)
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
+    resp = _export(client, project.id, "detections", "csv")
     assert resp.status_code == 200
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     headers = rows[0]
@@ -959,7 +997,7 @@ def test_event_id_carries_the_real_event_id_when_clustered(client, db):
     make_detection(db, file_id=clustered.id, confidence=0.9)
     db.commit()
 
-    files_resp = client.get(f"/api/projects/{project.id}/export/files?format=csv")
+    files_resp = _export(client, project.id, "files", "csv")
     files_rows = list(csv.reader(io.StringIO(files_resp.content.decode("utf-8"))))
     fh = files_rows[0]
     frow = next(
@@ -967,9 +1005,7 @@ def test_event_id_carries_the_real_event_id_when_clustered(client, db):
     )
     assert frow[fh.index("event_id")] == event.id
 
-    det_resp = client.get(
-        f"/api/projects/{project.id}/export/detections?format=csv"
-    )
+    det_resp = _export(client, project.id, "detections")
     det_rows = list(csv.reader(io.StringIO(det_resp.content.decode("utf-8"))))
     dh = det_rows[0]
     drow = next(
@@ -984,20 +1020,18 @@ def test_export_detections_tsv_and_xlsx(client, db):
     make_detection(db, file_id=f.id, category="animal", confidence=0.8, label="fox")
     db.commit()
 
-    resp_tsv = client.get(f"/api/projects/{project.id}/export/detections?format=tsv")
+    resp_tsv = _export(client, project.id, "detections", "tsv")
     assert resp_tsv.status_code == 200
-    assert resp_tsv.headers["content-type"].startswith("text/tab-separated-values")
     tsv_rows = list(csv.reader(io.StringIO(resp_tsv.content.decode("utf-8")), delimiter="\t"))
     assert tsv_rows[0][0] == "detection_id"
     assert any("fox" in r for r in tsv_rows[1:])
 
-    resp_xlsx = client.get(f"/api/projects/{project.id}/export/detections?format=xlsx")
+    resp_xlsx = _export(client, project.id, "detections", "xlsx")
     assert resp_xlsx.status_code == 200
-    assert "spreadsheetml" in resp_xlsx.headers["content-type"]
     from openpyxl import load_workbook
 
     wb = load_workbook(io.BytesIO(resp_xlsx.content))
-    ws = wb.active
+    ws = wb["Detections"]
     assert ws.title == "Detections"
     sheet_rows = list(ws.iter_rows(values_only=True))
     assert sheet_rows[0][0] == "detection_id"
@@ -1021,7 +1055,7 @@ def test_export_detections_respects_threshold_and_verified_override(client, db):
     make_detection(db, file_id=f.id, category="animal", confidence=0.8, label="bear")
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
+    resp = _export(client, project.id, "detections", "csv")
     text = resp.content.decode("utf-8")
     assert "deer" in text
     assert "bear" in text
@@ -1037,7 +1071,7 @@ def test_export_detections_respects_excluded_classes(client, db):
     make_detection(db, file_id=f.id, category="animal", confidence=0.9, label="fox")
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
+    resp = _export(client, project.id, "detections", "csv")
     text = resp.content.decode("utf-8")
     assert "fox" in text
     assert "domestic_cat" not in text
@@ -1060,7 +1094,7 @@ def test_export_detections_verified_survives_excluded_classes(client, db):
     make_detection(db, file_id=f.id, category="animal", confidence=0.9, label="bird")
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
+    resp = _export(client, project.id, "detections", "csv")
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     labels = [r[rows[0].index("classification_label")] for r in rows[1:]]
     assert "coyote" in labels
@@ -1068,7 +1102,7 @@ def test_export_detections_verified_survives_excluded_classes(client, db):
 
 
 def test_export_detections_project_not_found(client):
-    resp = client.get("/api/projects/does-not-exist/export/detections?format=csv")
+    resp = _export(client, "does-not-exist", "detections", "csv")
     assert resp.status_code == 404
 
 
@@ -1097,7 +1131,7 @@ def test_export_observations_event_level(client, db):
     set_human_count(db, obs[0].id, 5)
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/observations?format=csv")
+    resp = _export(client, project.id, "observations", "csv")
     assert resp.status_code == 200
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     headers = rows[0]
@@ -1116,7 +1150,7 @@ def test_export_observations_event_level(client, db):
 
 
 def test_export_observations_project_not_found(client):
-    resp = client.get("/api/projects/does-not-exist/export/observations?format=csv")
+    resp = _export(client, "does-not-exist", "observations", "csv")
     assert resp.status_code == 404
 
 
@@ -1135,7 +1169,7 @@ def _csv_table(
     """One export table as dicts keyed by header. ``strict`` makes a row
     that is narrower or wider than the header fail here rather than shift
     silently."""
-    resp = client.get(f"/api/projects/{project_id}/export/{table}?format=csv")
+    resp = _export(client, project_id, table)
     assert resp.status_code == 200
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     headers = rows[0]
@@ -1375,9 +1409,8 @@ def test_export_spreadsheet_is_multi_sheet_workbook(client, db):
     calculate_max_n_for_event(db, ev.id, project.counting_threshold)
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/spreadsheet")
+    resp = _export(client, project.id, "spreadsheet", "xlsx")
     assert resp.status_code == 200
-    assert "spreadsheetml" in resp.headers["content-type"]
 
     wb = load_workbook(io.BytesIO(resp.content))
     assert wb.sheetnames == [
@@ -1405,16 +1438,18 @@ def test_export_spreadsheet_is_multi_sheet_workbook(client, db):
 # ---------------------------------------------------------------------------
 
 
-def _summary_rows(client, project_id: str, query: str = "") -> dict[tuple, dict]:
+def _summary_rows(
+    client, project_id: str, deployment_ids: list[str] | None = None
+) -> dict[tuple, dict]:
     """Summary table keyed by (detection_category, classification_label)."""
-    resp = client.get(f"/api/projects/{project_id}/export/summary?format=csv{query}")
+    resp = _export(client, project_id, "summary", deployment_ids=deployment_ids)
     assert resp.status_code == 200, resp.text
     rows = list(csv.DictReader(io.StringIO(resp.content.decode("utf-8"))))
     return {(r["detection_category"], r["classification_label"]): r for r in rows}
 
 
 def _detection_rows(client, project_id: str) -> list[dict]:
-    resp = client.get(f"/api/projects/{project_id}/export/detections?format=csv")
+    resp = _export(client, project_id, "detections", "csv")
     assert resp.status_code == 200, resp.text
     return list(csv.DictReader(io.StringIO(resp.content.decode("utf-8"))))
 
@@ -1584,7 +1619,7 @@ def test_summary_scope_by_deployment(client, db):
     assert set(_summary_rows(client, project.id)) == {
         ("animal", "deer"), ("animal", "fox"),
     }
-    scoped = _summary_rows(client, project.id, f"&deployment_ids={dep_b.id}")
+    scoped = _summary_rows(client, project.id, [dep_b.id])
     assert set(scoped) == {("animal", "fox")}
 
 
@@ -1610,7 +1645,7 @@ def test_summary_skips_a_species_that_only_exists_in_the_counts_table(client, db
     rows = _summary_rows(client, project.id)
     assert set(rows) == {("animal", "deer")}
     # And the Counts table does carry the wolf, so the difference is real.
-    resp = client.get(f"/api/projects/{project.id}/export/observations?format=csv")
+    resp = _export(client, project.id, "observations", "csv")
     assert "wolf" in resp.content.decode("utf-8")
 
 
@@ -1634,7 +1669,7 @@ def test_summary_endpoint_csv_and_xlsx(client, db):
                    label="deer")
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/summary?format=csv")
+    resp = _export(client, project.id, "summary", "csv")
     headers = next(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     assert headers == [
         "detection_category", "classification_label",
@@ -1643,17 +1678,14 @@ def test_summary_endpoint_csv_and_xlsx(client, db):
         "n_images", "n_videos", "n_detections", "n_events", "n_individuals",
     ]
 
-    resp = client.get(f"/api/projects/{project.id}/export/summary?format=xlsx")
+    resp = _export(client, project.id, "summary", "xlsx")
     assert resp.status_code == 200
     wb = load_workbook(io.BytesIO(resp.content))
-    assert wb.sheetnames == ["Summary"]
     ws = list(wb["Summary"].iter_rows(values_only=True))
     assert ws[1][headers.index("classification_label")] == "deer"
     assert ws[1][headers.index("n_detections")] == 1
 
-    assert client.get(
-        "/api/projects/does-not-exist/export/summary?format=csv"
-    ).status_code == 404
+    assert _export(client, "does-not-exist", "summary").status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -1661,31 +1693,42 @@ def test_summary_endpoint_csv_and_xlsx(client, db):
 # ---------------------------------------------------------------------------
 
 
-def test_xlsx_accepts_a_sheet_filled_to_the_row_limit():
+def test_xlsx_accepts_a_sheet_filled_to_the_row_limit(tmp_path):
     """The header counts as a row, so the last accepted workbook holds
     XLSX_MAX_ROWS - 1 data rows. Pinning the boundary from below is what
-    stops a future off-by-one from refusing exports that fit."""
-    rows = [[i] for i in range(export_formats.XLSX_MAX_ROWS - 1)]
-    # Only the counting is under test; building the real workbook here
-    # would cost a gigabyte of XML for one assertion.
-    export_formats._check_xlsx_row_limit([("Detections", ["n"], rows)])
+    stops a future off-by-one from refusing exports that fit. A small
+    limit stands in for the real one: a million real rows would cost a
+    gigabyte of XML for one assertion."""
+    target = tmp_path / "fits.xlsx"
+    with patch.object(export_formats, "XLSX_MAX_ROWS", 3):
+        written = export_formats.write_xlsx_multi(
+            [("Detections", ["n"], iter([[1], [2]]))], target
+        )
+    assert written == 2
+    assert target.is_file()
 
 
-def test_xlsx_refuses_one_row_past_the_limit():
+def test_xlsx_refuses_one_row_past_the_limit_and_writes_nothing(tmp_path):
     """openpyxl does not check this itself: in write-only mode it accepts
     any number of rows and saves a file whose row indexes run past the
     cap, which Excel then refuses to open. Without this guard the user
-    gets a corrupt download and no explanation."""
-    rows = [[i] for i in range(export_formats.XLSX_MAX_ROWS)]
-    with pytest.raises(export_formats.XlsxRowLimitError) as excinfo:
-        export_formats._check_xlsx_row_limit([("Detections", ["n"], rows)])
+    gets a corrupt file and no explanation. The rows are streamed, so the
+    refusal comes while appending, and it must still leave no file."""
+    target = tmp_path / "too-big.xlsx"
+    with (
+        patch.object(export_formats, "XLSX_MAX_ROWS", 3),
+        pytest.raises(export_formats.XlsxRowLimitError) as excinfo,
+    ):
+        export_formats.write_xlsx_multi(
+            [("Detections", ["n"], iter([[1], [2], [3]]))], target
+        )
 
+    assert not target.exists()
     message = str(excinfo.value)
     # The message is shown to the user verbatim, as the 422 detail and as
-    # a folder-run module error, so it has to name the table, its size
+    # a folder-run module error, so it has to name the table, the limit
     # and the way out.
     assert "detections table" in message
-    assert f"{export_formats.XLSX_MAX_ROWS:,}" in message
     assert "CSV" in message
 
 
@@ -1701,14 +1744,12 @@ def test_xlsx_row_limit_is_reported_as_422_not_a_corrupt_download(client, db):
     # cheaper than materialising a million rows, and it exercises the
     # same path the real overflow takes.
     with patch.object(export_formats, "XLSX_MAX_ROWS", 1):
-        resp = client.get(
-            f"/api/projects/{project.id}/export/detections?format=xlsx"
-        )
+        resp = _export(client, project.id, "detections", "xlsx")
     assert resp.status_code == 422
     assert "CSV" in resp.json()["detail"]
 
     # CSV has no such limit, so the same data still comes out.
-    resp = client.get(f"/api/projects/{project.id}/export/detections?format=csv")
+    resp = _export(client, project.id, "detections", "csv")
     assert resp.status_code == 200
 
 
@@ -1740,9 +1781,8 @@ def test_export_spatial_geojson(client, db):
     )
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/spatial?format=geojson")
+    resp = _export(client, project.id, "spatial", "geojson")
     assert resp.status_code == 200
-    assert resp.headers["content-type"].startswith("application/geo+json")
     payload = json.loads(resp.content)
     assert payload["type"] == "FeatureCollection"
 
@@ -1774,9 +1814,8 @@ def test_export_spatial_shapefile_zip(client, db):
     make_detection(db, file_id=f.id, category="animal", confidence=0.9, label="fox")
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/spatial?format=shapefile")
+    resp = _export(client, project.id, "spatial", "shapefile")
     assert resp.status_code == 200
-    assert resp.headers["content-type"].startswith("application/zip")
 
     with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
         names = set(zf.namelist())
@@ -1809,7 +1848,7 @@ def test_export_spatial_gpkg(client, db):
     )
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/spatial?format=gpkg")
+    resp = _export(client, project.id, "spatial", "gpkg")
     assert resp.status_code == 200
 
     # Round-trip through sqlite3 to confirm the feature tables and that the
@@ -1875,7 +1914,6 @@ def test_export_camtrap_dp_happy_path(client, db):
 
     resp = _run_camtrap_dp_export(client, db, project.id)
     assert resp.status_code == 200
-    assert resp.headers["content-type"].startswith("application/zip")
 
     with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
         names = set(zf.namelist())
@@ -1911,12 +1949,15 @@ def test_export_camtrap_dp_happy_path(client, db):
     assert obs_rows[1][9] == "Vulpes vulpes"
 
 
-def test_export_camtrap_dp_422_when_no_deployments(client, db):
+def test_export_camtrap_dp_422_when_no_deployments(client, db, tmp_path):
     project = make_project(db, timezone="UTC")
     db.commit()
     # 422 fires inside /prepare before the worker is dispatched, so we
     # bypass the helper and inspect the prepare response directly.
-    resp = client.post(f"/api/projects/{project.id}/export/camtrap-dp/prepare")
+    resp = client.post(
+        f"/api/projects/{project.id}/export/camtrap-dp/prepare",
+        json={"output_dir": str(tmp_path)},
+    )
     assert resp.status_code == 422
 
 
@@ -2122,16 +2163,27 @@ def test_make_gpkg_point_blob_layout():
     assert int.from_bytes(blob[9:13], "little") == 1
 
 
-def test_serialize_csv_roundtrip():
-    payload = export_formats.serialize_csv(
-        ["a", "b"], [[1, "x"], [2, "y,z"]]
+def test_write_csv_roundtrip(tmp_path):
+    """Rows stream from a generator into the file; the count is of data
+    rows; line ends stay \\r\\n and there is no BOM, as before."""
+    target = tmp_path / "t.csv"
+    written = export_formats.write_csv(
+        target, ["a", "b"], (r for r in [[1, "x"], [2, "y,z"]])
     )
-    rows = list(csv.reader(io.StringIO(payload.decode("utf-8"))))
-    assert rows == [["a", "b"], ["1", "x"], ["2", "y,z"]]
+    raw = target.read_bytes()
+    assert written == 2
+    assert raw == b'a,b\r\n1,x\r\n2,"y,z"\r\n'
+
+
+def test_write_csv_writes_tsv(tmp_path):
+    target = tmp_path / "t.tsv"
+    export_formats.write_csv(target, ["a", "b"], [[1, "x y"]], delimiter="\t")
+    assert target.read_bytes() == b"a\tb\r\n1\tx y\r\n"
 
 
 def test_scoped_rows_defer_exif_blob(db):
-    """get_scoped_detection_rows must not pull File.exif_data into the sort.
+    """iter_scoped_files must not pull File.exif_data into the sort, nor
+    decode File.frames_processed on every joined row.
 
     The export never reads the per-file EXIF JSON blob, so it is deferred.
     Loading it dragged ~70k blobs through SQLite's ORDER BY sorter and
@@ -2140,7 +2192,7 @@ def test_scoped_rows_defer_exif_blob(db):
     """
     from sqlalchemy import inspect
 
-    from app.api.crud.export import get_scoped_detection_rows
+    from app.api.crud.export import iter_scoped_files
 
     project = make_project(db)
     site = make_site(db, project_id=project.id)
@@ -2157,75 +2209,24 @@ def test_scoped_rows_defer_exif_blob(db):
     # defer() has nothing to unload.
     db.expire_all()
 
-    rows = get_scoped_detection_rows(db, project)
+    files = list(iter_scoped_files(db, project))
 
-    assert rows, "expected at least one scoped row"
-    returned_file = rows[0][0]
+    assert files, "expected at least one scoped file"
+    returned_file = files[0].file
     # Deferred: exif_data is not loaded until explicitly touched.
     assert "exif_data" in inspect(returned_file).unloaded
+    assert "frames_processed" in inspect(returned_file).unloaded
     # But it is still reachable when something does ask for it.
     assert returned_file.exif_data["Make"] == "RECONYX"
 
 
-def test_build_files_rows_accepts_prefetched_rows(db):
-    """Passing the default-query scoped rows must yield exactly the rows
-    the self-fetching call produces. Pins the reuse path that
-    build_spreadsheet_sheets takes to avoid running the same query twice."""
-    from app.api.crud.export import (
-        build_files_rows,
-        get_scoped_detection_rows,
-    )
-
-    project = make_project(db)
-    site = make_site(db, project_id=project.id)
-    deployment = make_deployment(db, project_id=project.id, site_id=site.id)
-    with_box = make_file(db, deployment_id=deployment.id)
-    make_detection(db, file_id=with_box.id, category="animal", confidence=0.9)
-    make_file(db, deployment_id=deployment.id)  # empty file, blank row
-
-    headers_direct, rows_direct = build_files_rows(db, project)
-    scoped = get_scoped_detection_rows(db, project)
-    headers_reused, rows_reused = build_files_rows(
-        db, project, scoped_rows=scoped
-    )
-
-    assert headers_reused == headers_direct
-    assert rows_reused == rows_direct
-    assert len(rows_reused) == 2
-
-
-def test_serialize_xlsx_multi_write_only_roundtrip():
+def test_write_xlsx_multi_roundtrip(tmp_path):
     """write_only mode still produces a readable multi-sheet workbook.
 
-    Pins the memory-bounded serializer: rows stream into the sheet rather
-    than building an in-memory cell graph, but the output must load back
-    with the same sheet names and cell values.
+    Pins the memory-bounded writer every XLSX export uses: rows stream
+    into the sheet rather than building an in-memory cell graph, but the
+    file must load back with the same sheet names and cell values.
     """
-    from openpyxl import load_workbook
-
-    payload = export_formats.serialize_xlsx_multi(
-        [
-            ("Alpha", ["a", "b"], [[1, "x"], [2, "y"]]),
-            ("Beta", ["c"], [["only"]]),
-        ]
-    )
-    wb = load_workbook(io.BytesIO(payload))
-    assert wb.sheetnames == ["Alpha", "Beta"]
-    assert list(wb["Alpha"].iter_rows(values_only=True)) == [
-        ("a", "b"),
-        (1, "x"),
-        (2, "y"),
-    ]
-    assert list(wb["Beta"].iter_rows(values_only=True)) == [
-        ("c",),
-        ("only",),
-    ]
-
-
-def test_write_xlsx_multi_writes_same_workbook_to_disk(tmp_path):
-    """The path-writing variant (used by the folder-run save so the
-    zipped workbook never exists as one in-memory blob) must produce
-    the same content as the bytes serializer."""
     from openpyxl import load_workbook
 
     sheets = [
@@ -2242,6 +2243,7 @@ def test_write_xlsx_multi_writes_same_workbook_to_disk(tmp_path):
         (1, "x"),
         (2, "y"),
     ]
+    assert list(wb["Beta"].iter_rows(values_only=True)) == [("c",), ("only",)]
 
 
 def test_events_by_file_survives_bound_parameter_limit(db):
@@ -2348,7 +2350,7 @@ def test_spatial_detection_count_ignores_off_best_frame_boxes(client, db):
         )
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/spatial?format=geojson")
+    resp = _export(client, project.id, "spatial", "geojson")
     assert resp.status_code == 200
     payload = json.loads(resp.content)
     dep_feature = next(
@@ -2514,7 +2516,7 @@ def _deer_event_with_cohorts(db):
 
 def test_export_observations_one_row_per_cohort(client, db):
     project, _ev = _deer_event_with_cohorts(db)
-    resp = client.get(f"/api/projects/{project.id}/export/observations?format=csv")
+    resp = _export(client, project.id, "observations", "csv")
     headers, *rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     cols = [
         headers.index(c)
@@ -2605,7 +2607,7 @@ def test_files_export_carries_the_favourite_and_flag_marks(client, db):
     )
     db.commit()
 
-    resp = client.get(f"/api/projects/{project.id}/export/files?format=csv")
+    resp = _export(client, project.id, "files", "csv")
     headers, *rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     by_id = {r[headers.index("file_id")]: r for r in rows}
     fav_i, flag_i = headers.index("is_favorited"), headers.index("is_flagged")
@@ -2681,3 +2683,771 @@ def test_export_camtrap_dp_drops_rejected_boxes(client, db):
 
     for_mixed = [r for r in body if r[media_id] == mixed.id and r[level] == "media"]
     assert len(for_mixed) == 1 and for_mixed[0][obs_type] == "animal"
+
+
+def _burst_with_an_undated_photo(db, folder: str):
+    """Three photos in one second, inserted out of shooting order, with
+    ids whose order is the reverse of the file names, plus one photo
+    without a capture time. Only a file-name tie-break reads 0001-0003."""
+    project = make_project(db)
+    dep = make_deployment(db, project_id=project.id, folder_path=folder)
+    second = datetime(2024, 11, 22, 16, 51, 18)
+    for name, fid in [("RCNX0003", "a"), ("RCNX0001", "c"), ("RCNX0002", "b")]:
+        make_file(
+            db,
+            id=fid * 32,
+            deployment_id=dep.id,
+            file_path=f"{folder}/{name}.JPG",
+            captured_at_local=second,
+        )
+    undated = make_file(
+        db, id="0" * 32, deployment_id=dep.id, file_path=f"{folder}/RCNX0000.JPG"
+    )
+    undated.captured_at_local = None
+    db.commit()
+    return project
+
+
+def test_same_second_files_export_in_file_name_order_and_undated_last(client, db):
+    project = _burst_with_an_undated_photo(db, "/cam")
+
+    _, rows = _csv_table(client, project.id, "files")
+
+    assert [r["relative_path"] for r in rows] == [
+        "RCNX0001.JPG", "RCNX0002.JPG", "RCNX0003.JPG", "RCNX0000.JPG",
+    ]
+
+
+def test_boxes_on_one_photo_export_strongest_first(client, db):
+    project = make_project(db)
+    dep = make_deployment(db, project_id=project.id, folder_path="/cam")
+    f = make_file(db, deployment_id=dep.id, file_path="/cam/RCNX0001.JPG")
+    weak = make_detection(db, id="a" * 32, file_id=f.id, confidence=0.3)
+    strong = make_detection(db, id="b" * 32, file_id=f.id, confidence=0.9)
+    db.commit()
+
+    _, rows = _csv_table(client, project.id, "detections")
+
+    assert [r["detection_id"] for r in rows] == [strong.id, weak.id]
+
+
+def _run_recognition_json_export(client, db, project_id: str, query: str = ""):
+    """Prepare, then drive the worker directly, the way
+    `_run_camtrap_dp_export` does: no WebSocket in tests, and the worker
+    gets its own session on the shared engine so its close() cannot
+    detach the fixture's."""
+    prepare = client.post(
+        f"/api/projects/{project_id}/export/recognition-json/prepare{query}"
+    )
+    assert prepare.status_code == 202, prepare.text
+    job_id = prepare.json()["job_id"]
+
+    from sqlalchemy.orm import sessionmaker
+
+    from app.api.crud import job as job_crud
+    from app.workers import recognition_json_export_worker
+    from tests.conftest import _engine  # noqa: PLC2701 — shared in-memory engine
+
+    worker_session_factory = sessionmaker(bind=_engine)
+
+    def _fake_get_db():
+        s = worker_session_factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    db.commit()
+    with patch.object(recognition_json_export_worker, "get_db", _fake_get_db):
+        asyncio.run(
+            recognition_json_export_worker.process_recognition_json_export_job(job_id)
+        )
+    job = job_crud.get_job(db, job_id)
+    assert job is not None and job.status == "completed", job.status
+    return job.payload["result"]
+
+
+def test_recognition_json_is_written_into_each_deployment_folder(
+    client, db, tmp_path
+):
+    """One recognition file per deployment, in that deployment's folder,
+    each naming only its own files relative to that folder. A deployment
+    whose folder is gone (an unplugged drive) is reported and the others
+    are still written."""
+    project = make_project(db)
+    here = make_deployment(db, project_id=project.id, folder_path=str(tmp_path / "a"))
+    gone = make_deployment(db, project_id=project.id, folder_path=str(tmp_path / "gone"))
+    (tmp_path / "a").mkdir()
+    for dep, name in ((here, "a"), (gone, "gone")):
+        make_file(
+            db,
+            deployment_id=dep.id,
+            file_path=str(tmp_path / name / f"{name}.jpg"),
+        )
+
+    result = _run_recognition_json_export(client, db, project.id)
+
+    assert [w["deployment_id"] for w in result["written"]] == [here.id]
+    assert [(s["deployment_id"], s["reason"]) for s in result["skipped"]] == [
+        (gone.id, "Folder not found")
+    ]
+    with open(tmp_path / "a" / "addaxai-recognitions.json") as f:
+        payload = json.load(f)
+    assert [i["file"] for i in payload["images"]] == ["a.jpg"]
+    assert payload["info"]["addaxai"]["export_source"] == "project"
+
+
+def test_recognition_json_export_honours_the_scope(client, db, tmp_path):
+    project = make_project(db)
+    deps = []
+    for name in ("a", "b"):
+        (tmp_path / name).mkdir()
+        deps.append(
+            make_deployment(db, project_id=project.id, folder_path=str(tmp_path / name))
+        )
+
+    result = _run_recognition_json_export(
+        client, db, project.id, f"?deployment_ids={deps[1].id}"
+    )
+
+    assert [w["deployment_id"] for w in result["written"]] == [deps[1].id]
+    assert not (tmp_path / "a" / "addaxai-recognitions.json").exists()
+    assert (tmp_path / "b" / "addaxai-recognitions.json").is_file()
+
+
+def test_recognition_json_progress_counts_folders_done(client, db, tmp_path, monkeypatch):
+    """The bar and its label read the same thing: folders written so far.
+    Reporting the folder in hand read "1 of 4" at 25% before anything
+    was written."""
+    from app.core.websocket_manager import ws_manager
+
+    project = make_project(db)
+    for name in ("a", "b"):
+        (tmp_path / name).mkdir()
+        make_deployment(db, project_id=project.id, folder_path=str(tmp_path / name))
+    seen: list[tuple[int, float]] = []
+
+    async def _record(job_id, message, progress, **kw):
+        seen.append((kw["data"]["metrics"]["current"], progress))
+
+    monkeypatch.setattr(ws_manager, "send_progress", _record)
+
+    _run_recognition_json_export(client, db, project.id)
+
+    assert seen == [(0, 0.0), (1, 0.5), (2, 1.0)]
+
+
+# ---------------------------------------------------------------------------
+# Image copies (media export)
+# ---------------------------------------------------------------------------
+
+
+def _two_camera_project(db, tmp_path):
+    """Two deployments with one dog photo each; cam01's is liked."""
+    project = make_project(db, name="media", counting_threshold=0.5)
+    deps = {}
+    for name, liked in (("cam01", True), ("cam02", False)):
+        folder = tmp_path / "drive" / name
+        folder.mkdir(parents=True)
+        dep = make_deployment(db, project_id=project.id, folder_path=str(folder))
+        src = folder / "IMG_1.jpg"
+        src.write_bytes(b"x")
+        f = make_file(
+            db,
+            deployment_id=dep.id,
+            file_path=str(src),
+            observation_type="animal",
+            favorited=liked,
+        )
+        make_detection(db, file_id=f.id, confidence=0.9, label="dog")
+        deps[name] = dep
+    db.commit()
+    return project, deps
+
+
+def _run_media_export(client, db, project_id: str, body: dict) -> dict:
+    """Prepare, then drive the save-outputs worker directly, as the other
+    job exports do: no WebSocket in tests."""
+    # Every export writes into a folder that exists; the picker only ever
+    # returns one.
+    Path(body["output_dir"]).mkdir(parents=True, exist_ok=True)
+    prepare = client.post(f"/api/projects/{project_id}/export/media/prepare", json=body)
+    assert prepare.status_code == 202, prepare.text
+    job_id = prepare.json()["job_id"]
+
+    from sqlalchemy.orm import sessionmaker
+
+    from app.api.crud import job as job_crud
+    from app.workers import folder_run_save_outputs_worker as worker
+    from tests.conftest import _engine  # noqa: PLC2701 — shared in-memory engine
+
+    worker_session_factory = sessionmaker(bind=_engine)
+
+    def _fake_get_db():
+        s = worker_session_factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    db.commit()
+    with patch.object(worker, "get_db", _fake_get_db):
+        asyncio.run(worker.process_save_outputs_job(job_id))
+    job = job_crud.get_job(db, job_id)
+    assert job is not None and job.status == "completed", job.error
+    return job
+
+
+def test_media_preview_counts_the_scope_with_the_deployment_folder_in_the_tree(
+    client, db, tmp_path
+):
+    project, deps = _two_camera_project(db, tmp_path)
+
+    whole = client.post(
+        f"/api/projects/{project.id}/export/media/preview", json={"media_threshold": 0.5}
+    )
+    assert whole.status_code == 200, whole.text
+    assert whole.json()["in_scope_files"] == 2
+    assert whole.json()["by_media_tree"] == {"dog/cam01": 1, "dog/cam02": 1}
+
+    liked = client.post(
+        f"/api/projects/{project.id}/export/media/preview",
+        json={
+            "media_threshold": 0.5,
+            "deployment_ids": [deps["cam01"].id, deps["cam02"].id],
+            "favorited_only": True,
+        },
+    )
+    assert liked.json()["in_scope_files"] == 1
+    assert liked.json()["by_media_tree"] == {"dog/cam01": 1}
+
+
+def test_media_prepare_refuses_an_empty_deployment_list(client, db, tmp_path):
+    """An empty list would resolve to the whole project and still wipe a
+    previous export's folder, so the server refuses it itself."""
+    project, _ = _two_camera_project(db, tmp_path)
+    resp = client.post(
+        f"/api/projects/{project.id}/export/media/prepare",
+        json={"output_dir": str(tmp_path / "out"), "deployment_ids": []},
+    )
+    assert resp.status_code == 422
+    assert "No deployments" in resp.json()["detail"]
+
+    assert (
+        client.post(
+            "/api/projects/nope/export/media/prepare",
+            json={"output_dir": str(tmp_path / "out")},
+        ).status_code
+        == 404
+    )
+
+
+def test_media_prepare_queues_the_save_job_and_the_worker_writes_the_scope(
+    client, db, tmp_path
+):
+    project, deps = _two_camera_project(db, tmp_path)
+    out = tmp_path / "out"
+
+    job = _run_media_export(
+        client,
+        db,
+        project.id,
+        {
+            "output_dir": str(out),
+            "deployment_ids": [deps["cam01"].id, "not-mine"],
+            "media_threshold": 0.5,
+            "separate_group_by": "flat",
+        },
+    )
+
+    assert job.type == "media_export"
+    payload = job.payload
+    assert payload["project_id"] == project.id
+    assert payload["deployment_ids"] == [deps["cam01"].id]
+    assert payload["separate_folders"] is True
+    assert payload["run_readme"] is False
+    assert payload["output_dir"] == str(out)
+    assert "csv" not in payload
+
+    media = out / "addaxai-media"
+    assert sorted(p.relative_to(media).as_posix() for p in media.rglob("*.jpg")) == [
+        "dog/cam01/IMG_1.jpg"
+    ]
+    assert [p.name for p in out.iterdir()] == ["addaxai-media"]
+
+# ---------------------------------------------------------------------------
+# Media preview for a folder run: the one preview endpoint serves both
+# surfaces. Moved here from test_folder_runs.py when the folder-run
+# endpoint was removed.
+# ---------------------------------------------------------------------------
+
+
+def test_output_preview_endpoint_returns_counts(client, db):
+    """A folder run previews through the shared project endpoint. The
+    response shape matches the schema, and the tree keeps the folder-run
+    layout: no deployment folder segment, because the endpoint reads the
+    layout rule off the project mode, as the worker does."""
+    from tests.conftest import (
+        make_deployment,
+        make_detection,
+        make_file,
+        make_project,
+    )
+
+    project = make_project(
+        db, name="preview-endpoint", mode="folder_run"
+    )
+    dep = make_deployment(db, project_id=project.id)
+    f = make_file(
+        db,
+        deployment_id=dep.id,
+        observation_type="animal",
+        size_bytes=1234,
+    )
+    make_detection(db, file_id=f.id, confidence=0.95, label="dog")
+
+    resp = client.post(
+        f"/api/projects/{project.id}/export/media/preview",
+        json={"separate_group_by": "taxonomic"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total_files"] == 1
+    assert data["image_count"] == 1
+    assert data["video_count"] == 0
+    assert data["total_bytes"] == 1234
+    assert data["files_with_known_size"] == 1
+    assert data["dropped_by_filter"] == 0
+    assert data["in_scope_files"] == 1
+    # Unmapped label under taxonomic grouping → other/<label> (slugged),
+    # no source subfolder so no extra path segment.
+    assert data["by_media_tree"] == {"other/dog": 1}
+
+
+def test_output_preview_honours_excluded_label_ids(client, db):
+    """Excluding the only species drops the file from in-scope."""
+    from tests.conftest import (
+        make_deployment,
+        make_detection,
+        make_file,
+        make_project,
+    )
+
+    project = make_project(
+        db, name="preview-filter", mode="folder_run"
+    )
+    dep = make_deployment(db, project_id=project.id)
+    f = make_file(
+        db,
+        deployment_id=dep.id,
+        observation_type="animal",
+        size_bytes=1234,
+    )
+    make_detection(db, file_id=f.id, confidence=0.95, label="dog")
+
+    resp = client.post(
+        f"/api/projects/{project.id}/export/media/preview",
+        json={"excluded_label_ids": ["dog"]},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["dropped_by_filter"] == 1
+    assert data["in_scope_files"] == 0
+    assert data["by_media_tree"] == {}
+
+
+def test_output_preview_anonymise_reaches_the_estimate(client, db, tmp_path):
+    """``anonymise`` must be declared on the request schema. Pydantic drops
+    a field it does not know without a word (the `run_readme` story), and
+    the footer would then quote the container size for a save that writes
+    blurred stills."""
+    from tests.conftest import make_deployment, make_file, make_project
+
+    project = make_project(db, name="preview-blur", mode="folder_run")
+    dep = make_deployment(db, project_id=project.id)
+    frame = tmp_path / "frame.jpg"
+    frame.write_bytes(b"x" * 100)
+    make_file(
+        db,
+        deployment_id=dep.id,
+        file_path="/cam/clip.mp4",
+        file_type="video",
+        file_format="mp4",
+        observation_type="blank",
+        size_bytes=5000,
+        best_frame_number=0,
+        best_frame_path=str(frame),
+    )
+    url = f"/api/projects/{project.id}/export/media/preview"
+
+    whole = client.post(url, json={"include_empty": True})
+    assert whole.status_code == 200
+    assert whole.json()["in_scope_bytes"] == 5000
+
+    blurred = client.post(url, json={"include_empty": True, "anonymise": True})
+    assert blurred.status_code == 200
+    assert blurred.json()["in_scope_bytes"] == 100
+
+
+# ---------------------------------------------------------------------------
+# Every export writes into a picked folder
+# ---------------------------------------------------------------------------
+
+
+def _two_sited_deployments(db):
+    project = make_project(db, timezone="UTC")
+    deployments = []
+    for i, name in enumerate(("alpha", "beta")):
+        site = make_site(db, project_id=project.id, name=name, latitude=52 + i, longitude=5)
+        dep = make_deployment(db, site_id=site.id, start_date_local=date(2024, 6, 1))
+        f = make_file(db, deployment_id=dep.id, captured_at_local=datetime(2024, 6, 2, 9))
+        make_detection(db, file_id=f.id, category="animal", confidence=0.9, label="deer")
+        deployments.append(dep)
+    db.commit()
+    return project, deployments
+
+
+def test_csv_writes_five_files_and_a_second_export_never_overwrites(client, db, tmp_path):
+    project, _site, deployment = _build_simple_project(db)
+    project.name = "Kenya 2024"
+    make_file(db, deployment_id=deployment.id)
+    db.commit()
+    url = f"/api/projects/{project.id}/export/tables"
+    today = date.today().isoformat()
+
+    first = client.post(url, json={"output_dir": str(tmp_path), "format": "csv"})
+    assert first.status_code == 200, first.text
+    assert first.json() == {
+        "output_dir": str(tmp_path),
+        "files": [
+            f"{kind}-kenya-2024-{today}.csv"
+            for kind in ("summary", "counts", "detections", "files", "deployments")
+        ],
+    }
+    files_csv = tmp_path / f"files-kenya-2024-{today}.csv"
+    files_csv.write_text("the user's own edits")
+
+    second = client.post(url, json={"output_dir": str(tmp_path), "format": "csv"})
+    assert second.json()["files"][3] == f"files-kenya-2024-{today}_2.csv"
+    assert files_csv.read_text() == "the user's own edits"
+
+    xlsx = client.post(url, json={"output_dir": str(tmp_path)})
+    assert xlsx.json()["files"] == [f"spreadsheet-kenya-2024-{today}.xlsx"]
+
+
+def test_every_export_refuses_a_missing_folder_and_an_empty_selection(client, db, tmp_path):
+    project, _deps = _two_sited_deployments(db)
+    for endpoint in ("tables", "spatial", "camtrap-dp/prepare"):
+        url = f"/api/projects/{project.id}/export/{endpoint}"
+        missing = client.post(url, json={"output_dir": str(tmp_path / "nope")})
+        assert missing.status_code == 400, endpoint
+        assert "Choose a folder" in missing.json()["detail"]
+        empty = client.post(url, json={"output_dir": str(tmp_path), "deployment_ids": []})
+        assert empty.status_code == 422, endpoint
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_spatial_covers_only_the_selected_deployments(client, db, tmp_path):
+    project, (alpha, beta) = _two_sited_deployments(db)
+
+    resp = _export(client, project.id, "spatial", "geojson", deployment_ids=[alpha.id])
+
+    features = json.loads(resp.content)["features"]
+    deployment_ids = {
+        f["properties"]["deployment_id"]
+        for f in features
+        if f["properties"]["layer"] == "deployments"
+    }
+    assert deployment_ids == {alpha.id}
+
+
+def test_camtrap_dp_covers_only_the_selected_deployments(client, db):
+    project, (alpha, beta) = _two_sited_deployments(db)
+
+    resp = _run_camtrap_dp_export(client, db, project.id, deployment_ids=[beta.id])
+
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        deployments = list(csv.DictReader(io.StringIO(zf.read("deployments.csv").decode())))
+        media = list(csv.DictReader(io.StringIO(zf.read("media.csv").decode())))
+    assert [d["deploymentID"] for d in deployments] == [beta.id]
+    assert {m["deploymentID"] for m in media} == {beta.id}
+
+
+def test_location_exports_refuse_a_selection_without_any_site(client, db, tmp_path):
+    """Spatial and Camtrap DP leave deployments without coordinates out, so
+    a selection of only those would be an empty file: refused instead."""
+    project, (alpha, _beta) = _two_sited_deployments(db)
+    no_site = make_deployment(db, project_id=project.id, site_id=None)
+    db.commit()
+
+    for endpoint, ok_status in (("spatial", 200), ("camtrap-dp/prepare", 202)):
+        url = f"/api/projects/{project.id}/export/{endpoint}"
+        resp = client.post(url, json={"output_dir": str(tmp_path), "deployment_ids": [no_site.id]})
+        assert resp.status_code == 422, endpoint
+        assert "needs at least one deployment with a camera site" in resp.json()["detail"]
+        ok = client.post(
+            url, json={"output_dir": str(tmp_path), "deployment_ids": [no_site.id, alpha.id]}
+        )
+        assert ok.status_code == ok_status, endpoint
+
+
+def test_a_long_project_name_is_shortened_in_file_names(client, db, tmp_path):
+    """A project name may be 255 characters, a file name 255 bytes: the
+    name part is capped so kind, date and extension still fit."""
+    project, _site, _deployment = _build_simple_project(db)
+    project.name = "Wolves " * 36  # 252 characters
+    db.commit()
+
+    resp = client.post(
+        f"/api/projects/{project.id}/export/tables",
+        json={"output_dir": str(tmp_path), "format": "xlsx"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    slug = ("wolves-" * 9)[: export_formats.EXPORT_NAME_MAX_CHARS]
+    assert resp.json()["files"] == [f"spreadsheet-{slug}-{date.today().isoformat()}.xlsx"]
+
+
+@pytest.mark.skipif(
+    os.name == "nt" or os.geteuid() == 0, reason="needs POSIX permissions, not root"
+)
+def test_a_folder_without_write_access_is_a_readable_error(client, db, tmp_path):
+    project, _site, _deployment = _build_simple_project(db)
+    db.commit()
+    tmp_path.chmod(0o555)
+    try:
+        for endpoint in ("tables", "spatial"):
+            resp = client.post(
+                f"/api/projects/{project.id}/export/{endpoint}",
+                json={"output_dir": str(tmp_path)},
+            )
+            assert resp.status_code == 400, endpoint
+            assert resp.json()["detail"] == "Could not write to that folder: Permission denied"
+    finally:
+        tmp_path.chmod(0o755)
+
+
+# ---------------------------------------------------------------------------
+# Which boxes the shared export query reads
+# ---------------------------------------------------------------------------
+
+
+def _video_with_boxes_on_three_frames(db, deployment):
+    """A video saved at frame 3 with a fox there, a fox on frame 7 that
+    nobody can open, and a verified fox on frame 9."""
+    f = make_file(
+        db,
+        deployment_id=deployment.id,
+        file_type="video",
+        file_format="mp4",
+        best_frame_number=3,
+        observation_type="animal",
+    )
+    on_frame = make_detection(db, file_id=f.id, frame_number=3, label="fox")
+    off_frame = make_detection(db, file_id=f.id, frame_number=7, label="fox")
+    verified = make_detection(
+        db, file_id=f.id, frame_number=9, label="fox", verified=True
+    )
+    db.commit()
+    return f, on_frame, off_frame, verified
+
+
+def test_the_scoped_query_reads_only_the_visible_frame(db):
+    """The tables show a video's saved frame, plus verified boxes on any
+    frame, so the query does not read the rest: reading them only to drop
+    them in Python is what ran a 6,000-video export out of memory."""
+    from app.api.crud import export as export_crud
+
+    project, _site, deployment = _build_simple_project(db)
+    _f, on_frame, off_frame, verified = _video_with_boxes_on_three_frames(db, deployment)
+
+    ids = {
+        det.id
+        for sf in export_crud.iter_scoped_files(db, project)
+        for det, _tax in sf.detections
+    }
+
+    assert ids == {on_frame.id, verified.id}
+    assert off_frame.id not in ids
+
+
+def test_the_archival_query_still_reads_every_frame(db):
+    """Camtrap DP keeps every frame, so visible_only=False must too."""
+    from app.api.crud import export as export_crud
+
+    project, _site, deployment = _build_simple_project(db)
+    _f, on_frame, off_frame, verified = _video_with_boxes_on_three_frames(db, deployment)
+
+    files = export_crud.iter_scoped_files(db, project, visible_only=False)
+    ids = {det.id for sf in files for det, _tax in sf.detections}
+
+    assert ids == {on_frame.id, off_frame.id, verified.id}
+
+
+def test_a_file_whose_boxes_are_all_excluded_keeps_its_files_row(client, db):
+    """The species exclusion removes boxes, not files. A photo of only an
+    excluded species is listed like any other file, without a species."""
+    project, _site, deployment = _build_simple_project(db)
+    project.excluded_classes = ["rat"]
+    f = make_file(db, deployment_id=deployment.id, observation_type="animal")
+    make_detection(db, file_id=f.id, label="rat", confidence=0.9)
+    db.commit()
+
+    headers, by_id = _files_rows(client, project.id)
+
+    assert f.id in by_id
+    assert _species(headers, by_id[f.id]) == ["", "", ""]
+    det = _export(client, project.id, "detections", "csv")
+    assert f.id not in det.content.decode("utf-8")
+
+
+def test_the_exclusion_keeps_boxes_without_a_taxonomy_row(db):
+    """An unclassified box has no taxonomy id. The exclusion test must
+    read that as "not excluded", not as SQL NULL, which would drop it."""
+    from app.api.crud import export as export_crud
+
+    project, _site, deployment = _build_simple_project(db)
+    project.excluded_classes = ["rat"]
+    f = make_file(db, deployment_id=deployment.id)
+    unclassified = make_detection(db, file_id=f.id, label=None, label_taxonomy_id=None)
+    labelled = make_detection(db, file_id=f.id, label="fox", label_taxonomy_id=None)
+    db.commit()
+
+    ids = {
+        det.id
+        for sf in export_crud.iter_scoped_files(db, project)
+        for det, _tax in sf.detections
+    }
+
+    assert ids == {unclassified.id, labelled.id}
+
+
+def test_spatial_species_totals_add_up_to_the_deployment_total(client, db):
+    """Both spatial layers count the same boxes: the visible frame. Before,
+    the species layer counted every frame of a video and could read three
+    times the deployment's own number."""
+    project, _site, deployment = _build_simple_project(db)
+    _video_with_boxes_on_three_frames(db, deployment)
+
+    resp = _export(client, project.id, "spatial", "geojson")
+    assert resp.status_code == 200
+    features = json.loads(resp.content)["features"]
+    deployment_total = sum(
+        f["properties"]["detection_count"]
+        for f in features
+        if f["properties"]["layer"] == "deployments"
+    )
+    species_total = sum(
+        f["properties"]["total_count"]
+        for f in features
+        if f["properties"]["layer"] == "species_summary"
+    )
+
+    assert deployment_total == species_total == 2
+
+
+def test_camtrap_lists_an_excluded_only_photo_without_calling_it_blank(client, db):
+    """A blank observation claims there is no animal. A photo whose only
+    box is an excluded species shows one, so it keeps its media row and
+    gets no observation at all ("not annotated")."""
+    project, _site, deployment = _build_simple_project(db)
+    project.excluded_classes = ["rat"]
+    rat_photo = make_file(db, deployment_id=deployment.id, observation_type="animal")
+    make_detection(db, file_id=rat_photo.id, label="rat", confidence=0.9)
+    empty_photo = make_file(db, deployment_id=deployment.id, observation_type="blank")
+    db.commit()
+
+    resp = _run_camtrap_dp_export(client, db, project.id)
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        media = list(csv.DictReader(io.StringIO(zf.read("media.csv").decode())))
+        obs = list(csv.DictReader(io.StringIO(zf.read("observations.csv").decode())))
+
+    assert {m["mediaID"] for m in media} == {rat_photo.id, empty_photo.id}
+    by_media = {o["mediaID"]: o for o in obs}
+    assert rat_photo.id not in by_media
+    assert by_media[empty_photo.id]["observationType"] == "blank"
+
+
+def test_a_batch_is_capped_by_rows_not_files(monkeypatch):
+    """A batch holds its files' boxes too. Capping it by files let a
+    thousand all-frames videos (425 boxes each) sit in memory at once, a
+    gigabyte for Camtrap DP. Capped by rows, a file with many boxes gets
+    a batch of its own and a run of empty files shares one."""
+    from app.api.crud import export as export_crud
+
+    monkeypatch.setattr(export_crud, "STREAM_BATCH", 4)
+
+    def scoped(n_boxes):
+        return export_crud.ScopedFile(None, None, None, [(None, None)] * n_boxes)
+
+    files = [scoped(0), scoped(0), scoped(10), scoped(1), scoped(0), scoped(3), scoped(0)]
+    sizes = [
+        [len(f.detections) for f in batch] for batch in export_crud._batched(files)
+    ]
+
+    assert sizes == [[0, 0, 10], [1, 0, 3], [0]]
+
+
+@pytest.mark.parametrize("failure", ["row limit", "error while writing"])
+def test_a_refused_xlsx_leaves_no_temp_files(tmp_path, monkeypatch, failure):
+    """openpyxl's write-only sheets stream into temp files that it deletes
+    only on save(). A workbook that is refused is never saved, so its temp
+    files must be removed by us: at the real row limit that is 1.7 GB per
+    attempt, and in the backend they outlived a shutdown."""
+    temp_dir = tmp_path / "temp"
+    temp_dir.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(temp_dir))
+
+    def rows():
+        yield [1]
+        yield [2]
+        if failure == "error while writing":
+            raise RuntimeError("database went away")
+        yield [3]
+
+    with (
+        patch.object(export_formats, "XLSX_MAX_ROWS", 3),
+        pytest.raises((export_formats.XlsxRowLimitError, RuntimeError)),
+    ):
+        export_formats.write_xlsx_multi(
+            [("Summary", ["n"], [[0]]), ("Detections", ["n"], rows())],
+            tmp_path / "out.xlsx",
+        )
+
+    assert list(temp_dir.iterdir()) == []
+    assert not (tmp_path / "out.xlsx").exists()
+
+
+def _only_file(folder: Path) -> str:
+    """The name of the one file in ``folder``."""
+    (name,) = [p.name for p in folder.iterdir()]
+    return name
+
+
+def test_camtrap_stages_its_files_inside_the_output_folder(client, db, monkeypatch):
+    """The package is staged on the drive the user picked, never in the
+    system temp folder: a full system drive used to fail the export while
+    the chosen folder had room. The staging folder is gone afterwards."""
+    from app.workers import camtrap_export_worker
+
+    project, _site, deployment = _build_simple_project(db)
+    f = make_file(db, deployment_id=deployment.id)
+    make_detection(db, file_id=f.id, label="fox")
+    db.commit()
+
+    staged_in: list[Path] = []
+    real_stage = camtrap_export_worker._stage_package
+
+    def spy(db_, project_, deployment_ids, staging, on_thumbnail):
+        staged_in.append(staging)
+        return real_stage(db_, project_, deployment_ids, staging, on_thumbnail)
+
+    monkeypatch.setattr(camtrap_export_worker, "_stage_package", spy)
+    resp = _run_camtrap_dp_export(client, db, project.id)
+
+    # The helper also checks the folder holds nothing but the ZIP.
+    assert resp.status_code == 200
+    (staging,) = staged_in
+    assert staging.name.startswith(".addaxai-camtrap-")
+    assert (staging.parent / _only_file(staging.parent)).is_file()
+    assert not staging.exists()

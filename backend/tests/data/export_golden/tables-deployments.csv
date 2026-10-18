@@ -1,0 +1,4 @@
+deployment_id,site_name,latitude,longitude,site_elevation_m,site_habitat,site_notes,site_tags,deployment_start,deployment_end,trap_nights,paired_cameras,deployment_notes,deployment_tags
+dep-a-0000,north,52.1,5.1,,,,habitat:forest,2024-06-01,2024-06-10,4,false,,bait:none
+dep-b-0000,south,51.9,4.9,,,,,2024-06-02,2024-06-12,3,true,two cameras facing,
+dep-c-nosite-0000,,,,,,,,2024-06-03,2024-06-09,1,false,,

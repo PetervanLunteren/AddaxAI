@@ -189,6 +189,49 @@ def test_label_tree_count_by_file(client, db):
     assert body["count_unit"] == "file"
 
 
+def test_label_tree_count_by_file_reads_a_video_on_its_best_frame(client, db):
+    """A video counts for a label only when the box sits on the frame the
+    app shows. The count query used to leave File unjoined, so the frame
+    rule was checked against every file in the project (a cross join) and
+    any image made the video's off-frame box count."""
+    p = make_project(db, counting_threshold=0.5)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    cls_model_id = p.classification_model_id or str(uuid.uuid4())
+    p.classification_model_id = cls_model_id
+    tax = LabelTaxonomy(
+        id=str(uuid.uuid4()),
+        classification_model_id=cls_model_id,
+        name="wolf",
+        taxon_class="mammalia",
+        level="species",
+    )
+    db.add(tax)
+    db.flush()
+
+    img = make_file(db, deployment_id=d.id, file_type="image")
+    make_detection(
+        db, file_id=img.id, confidence=0.9,
+        label="wolf", label_taxonomy_id=tax.id,
+    )
+    video = make_file(
+        db, deployment_id=d.id, file_type="video", file_format="mp4",
+        best_frame_number=3,
+    )
+    make_detection(
+        db, file_id=video.id, confidence=0.9, frame_number=1,
+        label="wolf", label_taxonomy_id=tax.id,
+    )
+    db.commit()
+
+    resp = client.get(
+        f"/api/events/label-tree?project_id={p.id}&count_by=file"
+    )
+    assert resp.status_code == 200
+    # The image only: the video's wolf is not on its best frame.
+    assert resp.json()["label_event_counts"].get("wolf") == 1
+
+
 def test_label_tree_rejects_invalid_count_by(client, db):
     p = make_project(db)
     resp = client.get(

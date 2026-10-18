@@ -79,42 +79,31 @@ def write_tables_csv(
     # user could actually check and correct. ``addaxai-recognitions.json``
     # stays the complete record of the run.
     #
-    # Fetched and released before the files table below loads its own row
-    # set, so the two biggest allocations of the save job never coexist.
-    # The summary is a handful of rows built from the same fetch, so it
-    # rides along without changing that peak.
-    scoped = export_crud.get_scoped_detection_rows(db, project)
-    det_headers, det_rows = folder_run_table(
-        *export_crud.build_detection_rows(db, project, scoped)
-    )
-    summary_headers, summary_rows = folder_run_table(
-        *export_crud.build_summary_rows(db, project, scoped)
-    )
-    del scoped
+    # Every table is streamed from its own query straight into its file,
+    # so the save job holds one batch of rows at a time, whatever the size
+    # of the run.
     detections_path = target_dir / DETECTIONS_FILENAME
-    with open(detections_path, "wb") as f:
-        f.write(export_formats.serialize_csv(det_headers, det_rows))
-    detection_count = len(det_rows)
-    del det_rows
-
+    detection_count = export_formats.write_csv(
+        detections_path,
+        *folder_run_table(*export_crud.build_detection_rows(db, project)),
+    )
     summary_path = target_dir / SUMMARY_FILENAME
-    with open(summary_path, "wb") as f:
-        f.write(export_formats.serialize_csv(summary_headers, summary_rows))
-
+    summary_count = export_formats.write_csv(
+        summary_path,
+        *folder_run_table(*export_crud.build_summary_rows(db, project)),
+    )
     # Same scope as the detections table above, so the two agree: a file
     # whose species columns are empty has no rows in addaxai-detections.csv
-    # either. Its own fetch, because the detections row set was released
-    # above to keep peak memory down.
-    files_headers, files_rows = folder_run_table(
-        *export_crud.build_files_rows(db, project)
-    )
+    # either.
     files_path = target_dir / FILES_FILENAME
-    with open(files_path, "wb") as f:
-        f.write(export_formats.serialize_csv(files_headers, files_rows))
+    files_count = export_formats.write_csv(
+        files_path,
+        *folder_run_table(*export_crud.build_files_rows(db, project)),
+    )
 
     logger.info(
-        f"tables_csv: project={project_id} summary={len(summary_rows)} "
-        f"files={len(files_rows)} detections={detection_count}"
+        f"tables_csv: project={project_id} summary={summary_count} "
+        f"files={files_count} detections={detection_count}"
     )
 
     return TablesCsvResult(
@@ -123,5 +112,5 @@ def write_tables_csv(
             str(files_path),
             str(detections_path),
         ],
-        row_count=len(summary_rows) + len(files_rows) + detection_count,
+        row_count=summary_count + files_count + detection_count,
     )

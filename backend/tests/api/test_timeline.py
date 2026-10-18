@@ -288,9 +288,27 @@ def test_one_source_of_truth_matches_trap_nights_helper(db):
             captured_at_local=datetime.combine(day, datetime.min.time()),
         )
 
+    # And a rollover chain, the one shape where the timeline and the
+    # dashboard used to disagree (each had its own join rule).
+    dep5 = make_deployment(
+        db,
+        site_id=site_b.id,
+        project_id=project.id,
+        start_date_local=date(2024, 6, 1),
+        end_date_local=date(2024, 6, 30),
+    )
+    for folder, days in (("100MEDIA", (1, 15)), ("101MEDIA", (15, 30))):
+        for day in days:
+            make_file(
+                db,
+                deployment_id=dep5.id,
+                file_path=f"/data/b/roll/{folder}/img_{day:02d}.jpg",
+                captured_at_local=datetime(2024, 6, day),
+            )
+
     response = get_deployment_timeline(db, project.id)
     helper = compute_trap_nights_for_deployments(
-        db, [dep1.id, dep2.id, dep3.id, dep4.id]
+        db, [dep1.id, dep2.id, dep3.id, dep4.id, dep5.id]
     )
 
     assert response.metrics.total_trap_nights == sum(helper.values())
@@ -343,7 +361,7 @@ def test_rollover_chain_collapses_into_one_interval(db):
 
 
 def test_parallel_subfolders_in_one_deployment_raise_concurrent_count(db):
-    """Motivating case for the sum-with-boundary-subtraction algorithm:
+    """Motivating case for summing subfolders instead of merging them:
     one deployment row actually wraps multiple cameras running in
     parallel. The timeline response should now show the parallel
     subfolders as separate bars, count them in the concurrent-cameras
@@ -372,14 +390,45 @@ def test_parallel_subfolders_in_one_deployment_raise_concurrent_count(db):
     response = get_deployment_timeline(db, project.id)
 
     dep_row = response.sites[0].deployments[0]
-    # Five subfolders, no boundary matches → five separate intervals.
+    # Five subfolders, none rolling over into another → five intervals.
     assert len(dep_row.intervals) == 5
     # Each interval is Jan 1..Jan 10 = 10 days.
     assert all(iv.trap_nights == 10 for iv in dep_row.intervals)
     # Concurrent count peaks at 5 on the overlap days.
     assert response.metrics.max_concurrent_cameras == 5
-    # Total trap-nights = 5 * 10 = 50 (no merging, no boundary match).
+    # Total trap-nights = 5 * 10 = 50 (no merging).
     assert response.metrics.total_trap_nights == 50
+
+
+def test_cameras_under_different_parents_stay_separate_bars(db):
+    """Two cameras in one deployment, one's last day the other's first:
+    a coincidence between two parent folders, not a rollover, so two
+    bars and both nights counted."""
+    project = make_project(db)
+    site = make_site(db, project_id=project.id, name="Two")
+    dep = make_deployment(
+        db,
+        site_id=site.id,
+        project_id=project.id,
+        start_date_local=date(2024, 1, 1),
+        end_date_local=date(2024, 1, 31),
+    )
+    for cam, days in (("north", (1, 15)), ("south", (15, 31))):
+        for day in days:
+            make_file(
+                db,
+                deployment_id=dep.id,
+                file_path=f"/data/two/{cam}/100RECNX/img_{day:02d}.jpg",
+                captured_at_local=datetime(2024, 1, day),
+            )
+
+    response = get_deployment_timeline(db, project.id)
+
+    dep_row = response.sites[0].deployments[0]
+    assert [(iv.start.day, iv.end.day) for iv in dep_row.intervals] == [
+        (1, 15), (15, 31),
+    ]
+    assert response.metrics.total_trap_nights == 15 + 17
 
 
 def test_heatmap_counts_files_per_site_and_day(db):
