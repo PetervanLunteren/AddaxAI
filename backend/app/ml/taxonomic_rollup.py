@@ -308,6 +308,35 @@ def _build_taxonomy_key_for_level(
     return ";".join(parts)
 
 
+def build_excluded_taxon_keys(
+    taxonomy_lookup: dict[str, dict[str, str]],
+    excluded_names: frozenset[str],
+) -> frozenset[tuple[str, str]]:
+    """
+    The taxa the rollup may not land on: every ``(level, chain_key)`` at
+    which all of the model's classes sit in ``excluded_names``.
+
+    A class is filed at the deepest rank its chain fills, so "red fox"
+    and "red fox juvenile" both sit at species ``vulpes vulpes`` and
+    "grouse family" sits at family ``phasianidae``. Excluding one variant
+    leaves the species backed by its sibling; excluding every class at a
+    taxon takes the taxon itself out of the run, whatever its rank, which
+    is what the species picker promises ("the nearest broader group you
+    kept"). A taxon the model has no class for is never in the set.
+    """
+    classes_at: dict[tuple[str, str], list[str]] = {}
+    for name, entry in taxonomy_lookup.items():
+        levels = [level for level in TAXONOMY_LEVELS if level in entry]
+        if not levels:
+            continue
+        key = (levels[-1], _build_taxonomy_key_for_level(entry, levels[-1]))
+        classes_at.setdefault(key, []).append(name)
+    return frozenset(
+        key for key, names in classes_at.items()
+        if all(name in excluded_names for name in names)
+    )
+
+
 def rollup_single_detection(
     classifications: list[list],
     class_id_to_name: dict[str, str],
@@ -316,6 +345,7 @@ def rollup_single_detection(
     allowed_taxonomy_keys: frozenset[str] | None = None,
     threshold: float = ROLLUP_THRESHOLD,
     taxon_class_names: dict[tuple[str, str], str] | None = None,
+    excluded_taxon_keys: frozenset[tuple[str, str]] | None = None,
 ) -> dict | None:
     """
     Apply taxonomic rollup to a single detection's classifications.
@@ -324,19 +354,18 @@ def rollup_single_detection(
 
     **Path A (geofence rollup)**: top-1 is excluded. Roll up to the
     nearest allowed ancestor using top-1 confidence as the threshold.
-    Walks species, family, order, class (skips genus); the species
-    level counts only when an included class backs that exact chain,
-    which is what lets an excluded variant stop at its species while a
-    banned whole species still falls to family.
+    Walks species, family, order, class (skips genus).
 
     **Path B (confidence rollup)**: top-1 is allowed but confidence
     < ``threshold``. Roll up to the nearest level above ``threshold``.
-    Walks genus, family, order, class.
+    Walks species, genus, family, order, class.
 
     Both paths use only the top-5 predictions for summing (matching
-    the official SpeciesNet classifier which returns top-5 only).
-    The rolled-up result must pass the geofence check
-    (allowed_taxonomy_keys).
+    the official SpeciesNet classifier which returns top-5 only). On
+    both, a candidate taxon is skipped when the geofence does not allow
+    it (``allowed_taxonomy_keys``) or when every model class filed at
+    it is excluded (``excluded_taxon_keys``): an excluded variant still
+    lets its species through, an unticked family does not.
 
     Args:
         classifications: [class_id, confidence] pairs (sorted by conf desc)
@@ -355,6 +384,10 @@ def rollup_single_detection(
         taxon_class_names: The model's own class per taxon, from
             ``load_taxon_class_names``. Only affects the label string of
             a rollup result, never which level or confidence it picks.
+        excluded_taxon_keys: Taxa every class of which is excluded, from
+            ``build_excluded_taxon_keys``. Built here from
+            ``excluded_names`` when not given; the per-run caller passes
+            it in so it is built once, not per detection.
 
     Returns:
         None if no rollup found (keep raw top-1 as-is).
@@ -433,22 +466,16 @@ def rollup_single_detection(
                 if key not in level_entries[level]:
                     level_entries[level][key] = entry
 
+    if excluded_taxon_keys is None and excluded_names:
+        excluded_taxon_keys = build_excluded_taxon_keys(
+            taxonomy_lookup, excluded_names
+        )
+
     if top_is_excluded:
-        # Path A: excluded-class rollup. The walk still skips genus
-        # (official SpeciesNet geofence semantics), but it does consider
-        # the species level: a species candidate counts only when at
-        # least one *included* class maps to its exact chain. A banned
-        # whole species has no included class on its chain, so it falls
-        # to family exactly as before; an excluded variant lands on the
-        # species its included sibling still backs ("red fox juvenile"
-        # excluded gives "vulpes vulpes", not "canidae").
+        # Path A: excluded-class rollup. Skips genus, matching the
+        # official SpeciesNet geofence walk.
         walk_threshold = top_conf
         walk_levels = ["species", "family", "order", "class"]
-        included_species_keys = {
-            _build_taxonomy_key_for_level(entry, "species")
-            for name, entry in taxonomy_lookup.items()
-            if "species" in entry and name not in excluded_names
-        }
     else:
         # Path B: confidence rollup. Species sits at the front so models
         # with multiple classes per species (e.g. age or sex variants of
@@ -456,7 +483,6 @@ def rollup_single_detection(
         # species before falling back to genus.
         walk_threshold = threshold
         walk_levels = ["species", "genus", "family", "order", "class"]
-        included_species_keys = None
 
     # Walk from most specific to broadest. At each level, find the
     # max-scoring taxon that crosses the threshold and is allowed
@@ -468,12 +494,8 @@ def rollup_single_detection(
         for key in sorted(sums, key=sums.get, reverse=True):
             if sums[key] < walk_threshold:
                 break  # remaining taxa have even lower scores
-            if (
-                included_species_keys is not None
-                and level == "species"
-                and key not in included_species_keys
-            ):
-                continue  # excluded path: species not backed by an included class
+            if excluded_taxon_keys and (level, key) in excluded_taxon_keys:
+                continue  # every class filed at this taxon is excluded
             if (
                 allowed_taxonomy_keys is not None
                 and key not in allowed_taxonomy_keys
@@ -540,6 +562,10 @@ def apply_taxonomic_rollup_to_results(
     if not taxonomy_lookup:
         return RollupResult(md_results=md_results)
     taxon_class_names = load_taxon_class_names(taxonomy_csv_path)
+    excluded_taxon_keys = (
+        build_excluded_taxon_keys(taxonomy_lookup, excluded_names)
+        if excluded_names else None
+    )
 
     class_cats = md_results.get("classification_categories", {})
     if not class_cats:
@@ -576,6 +602,7 @@ def apply_taxonomic_rollup_to_results(
                 allowed_taxonomy_keys=allowed_taxonomy_keys,
                 threshold=threshold,
                 taxon_class_names=taxon_class_names,
+                excluded_taxon_keys=excluded_taxon_keys,
             )
             if result is None:
                 # No rollup needed or rollup found nothing - keep raw top-1

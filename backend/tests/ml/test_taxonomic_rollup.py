@@ -8,6 +8,7 @@ import pytest
 from app.ml.label_exclusion import NON_LABEL_CLASSES
 from app.ml.taxonomic_rollup import (
     apply_taxonomic_rollup_to_results,
+    build_excluded_taxon_keys,
     format_leaf_annotation,
     load_taxon_class_names,
     load_taxonomy_lookup,
@@ -863,10 +864,11 @@ def test_apply_rollup_reuses_the_existing_category_and_adds_no_entry(tmp_path):
     assert [e["name"] for e in result.new_entries] == ["cervidae"]
 
 
-def test_rollup_never_hands_back_an_excluded_class_name(tmp_path):
-    """Excluding "grouse family" and rolling up onto family phasianidae
-    must not label the crop "grouse family" again: the bare taxon is the
-    honest name for a taxon the user took out of the run."""
+def test_rollup_skips_the_taxon_of_an_excluded_class(tmp_path):
+    """Excluding "grouse family" takes family phasianidae out of the run,
+    so the rollup moves on to order galliformes. It used to land on the
+    family and print the bare taxon "phasianidae", which only renamed a
+    group the user had unticked (2026-10-19)."""
     path = _write_taxonomy(tmp_path, [
         {"model_class": "grouse family", "class": "aves", "order": "galliformes",
          "family": "phasianidae"},
@@ -881,5 +883,85 @@ def test_rollup_never_hands_back_an_excluded_class_name(tmp_path):
         excluded_names=frozenset({"grouse family"}),
         taxon_class_names=names,
     )
-    assert result["level"] == "family"
-    assert result["label"] == "phasianidae"
+    assert result["level"] == "order"
+    assert result["label"] == "galliformes"
+
+
+_RACCOON = {"class": "mammalia", "order": "carnivora", "family": "procyonidae",
+            "genus": "procyon", "species": "lotor"}
+_DINGO = {"class": "mammalia", "order": "carnivora", "family": "canidae",
+          "genus": "canis", "species": "familiaris"}
+
+
+def test_an_unticked_family_is_not_a_rollup_target(tmp_path):
+    """Simon Kravis, 2026-10-16: with the Australian species list a
+    raccoon rolled up to "procyonidae family", a family with no
+    Australian member. Unticking that family in the species tree must
+    send the rollup past it to the order; with the family still ticked
+    it lands there, as the official SpeciesNet walk does."""
+    path = _write_taxonomy(tmp_path, [
+        {"model_class": "northern raccoon", **_RACCOON},
+        {"model_class": "procyonidae family", "class": "mammalia",
+         "order": "carnivora", "family": "procyonidae"},
+        {"model_class": "dingo", **_DINGO},
+    ])
+    lookup = load_taxonomy_lookup(path)
+    names = load_taxon_class_names(path)
+    ids = {"0": "northern raccoon", "1": "procyonidae family", "2": "dingo"}
+    classifications = [[0, 0.66], [2, 0.10]]
+
+    ticked = rollup_single_detection(
+        classifications, ids, lookup,
+        excluded_names=frozenset({"northern raccoon"}),
+        taxon_class_names=names,
+    )
+    assert (ticked["level"], ticked["label"]) == ("family", "procyonidae family")
+
+    unticked = rollup_single_detection(
+        classifications, ids, lookup,
+        excluded_names=frozenset({"northern raccoon", "procyonidae family"}),
+        taxon_class_names=names,
+    )
+    assert (unticked["level"], unticked["label"]) == ("order", "carnivora")
+
+
+def test_confidence_rollup_skips_an_unticked_genus(tmp_path):
+    """Path B: an included top-1 below the threshold rolls past a genus
+    whose own class is unticked. "vulpes species" excluded sends a 0.50
+    red fox to canidae, not to the bare "vulpes"."""
+    vulpes = {"class": "mammalia", "order": "carnivora", "family": "canidae",
+              "genus": "vulpes"}
+    path = _write_taxonomy(tmp_path, [
+        {"model_class": "red fox", **vulpes, "species": "vulpes"},
+        {"model_class": "arctic fox", **vulpes, "species": "lagopus"},
+        {"model_class": "vulpes species", **vulpes},
+        {"model_class": "dingo", **_DINGO},
+    ])
+    lookup = load_taxonomy_lookup(path)
+    names = load_taxon_class_names(path)
+    ids = {"0": "red fox", "1": "arctic fox", "2": "vulpes species", "3": "dingo"}
+    result = rollup_single_detection(
+        [[0, 0.50], [1, 0.20], [3, 0.10]], ids, lookup,
+        excluded_names=frozenset({"vulpes species"}),
+        taxon_class_names=names,
+    )
+    assert (result["level"], result["label"]) == ("family", "canidae")
+    assert result["confidence"] == pytest.approx(0.80)
+
+
+def test_build_excluded_taxon_keys_needs_every_class_at_the_taxon():
+    fox = {"class": "mammalia", "order": "carnivora", "family": "canidae",
+           "genus": "vulpes", "species": "vulpes"}
+    lookup = {
+        "red fox adult": fox,
+        "red fox juvenile": fox,
+        "grouse family": {"class": "aves", "order": "galliformes",
+                          "family": "phasianidae"},
+    }
+    assert build_excluded_taxon_keys(lookup, frozenset({"red fox adult"})) == frozenset()
+    assert build_excluded_taxon_keys(
+        lookup, frozenset({"red fox adult", "red fox juvenile"})
+    ) == {("species", "mammalia;carnivora;canidae;vulpes;vulpes")}
+    assert build_excluded_taxon_keys(lookup, frozenset({"grouse family"})) == {
+        ("family", "aves;galliformes;phasianidae;;")
+    }
