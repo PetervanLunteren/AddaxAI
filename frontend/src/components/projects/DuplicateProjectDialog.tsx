@@ -33,6 +33,7 @@ import {
   toApiCountryCode,
   useLabelSelectionCaption,
 } from "../taxonomy/LabelSelectionField";
+import { clearSpeciesSelection } from "../../lib/speciesSelection";
 import { FieldHeader } from "../ui/field-header";
 import {
   Dialog,
@@ -269,9 +270,11 @@ export function DuplicateProjectDialog({
                   />
                   <ModelSelect
                     value={field.value ?? "none"}
-                    onValueChange={(val) =>
-                      field.onChange(val === "none" ? null : val)
-                    }
+                    onValueChange={(val) => {
+                      const next = val === "none" ? null : val;
+                      if (next !== field.value) clearSpeciesSelection(form.setValue);
+                      field.onChange(next);
+                    }}
                     models={classificationModels}
                     placeholder="Select classification model"
                     noneValue="none"

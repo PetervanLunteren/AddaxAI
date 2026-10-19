@@ -28,6 +28,13 @@ import type { MediaFilter } from "../api/types";
 
 const KEY = "addaxai.folderRun.lastSettings";
 
+/** Bumped when a stored record must not be restored as it is. Version 2
+ *  (2026-10-19): the country and the species list used to be able to
+ *  disagree, because a model switch kept the country and pruned the list.
+ *  A record without this version loses both, so the user picks the
+ *  country again; everything else in it is kept. */
+const VERSION = 2;
+
 export interface PersistedAnalysisSettings {
   detection_model_id?: string;
   classification_model_id?: string | null;
@@ -60,7 +67,10 @@ export function saveLastUsedSettings(
 ): void {
   try {
     const prev = loadLastUsedSettings() ?? {};
-    localStorage.setItem(KEY, JSON.stringify({ ...prev, ...patch }));
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({ ...prev, ...patch, version: VERSION }),
+    );
   } catch {
     // localStorage can be unavailable / full; remembering settings is
     // a convenience, not load-bearing, so swallow and move on.
@@ -72,10 +82,16 @@ export function loadLastUsedSettings(): PersistedAnalysisSettings | null {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") {
-      return parsed as PersistedAnalysisSettings;
+    if (!parsed || typeof parsed !== "object") return null;
+    const { version, ...stored } = parsed as PersistedAnalysisSettings & {
+      version?: number;
+    };
+    if (version !== VERSION) {
+      delete stored.country_code;
+      delete stored.state_code;
+      delete stored.excluded_classes;
     }
-    return null;
+    return stored;
   } catch {
     return null;
   }

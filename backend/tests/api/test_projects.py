@@ -937,3 +937,38 @@ def test_a_folder_run_inherits_the_slots_last_used_with_its_model(client, db):
         f"/api/projects/{research.id}", json={"classification_model_id": "BC-WEM-v4"}
     )
     assert resp.json()["shortcut_labels"] == {}
+
+
+def test_create_stores_the_species_list_as_sent(client):
+    """The form owns the species list; the server never rebuilds it.
+
+    With a country set, create used to recompute excluded_classes from
+    the model's geofence and overwrite the hand edits the New project
+    dialog invites. No other write path did that, so the same list came
+    out different depending on which screen saved it (2026-10-19).
+    """
+    from app.core.config import get_settings
+
+    model_dir = get_settings().models_dir / "cls" / "geofenced-model"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    (model_dir / "model.labels.txt").write_text(
+        "1;mammalia;carnivora;canidae;vulpes;vulpes;fox\n"
+        "2;mammalia;lagomorpha;leporidae;lepus;lepus;hare\n"
+    )
+    (model_dir / "geofence_release.1.json").write_text(
+        '{"mammalia;carnivora;canidae;vulpes;vulpes": {"allow": {"KEN": []}}}'
+    )
+
+    resp = client.post(
+        "/api/projects",
+        json={
+            "name": "geofenced",
+            "timezone": "UTC",
+            "classification_model_id": "geofenced-model",
+            "country_code": "AUS",
+            "excluded_classes": ["hare"],
+        },
+    )
+    assert resp.status_code == 201
+    # The geofence would say ["fox"]; the user said ["hare"].
+    assert resp.json()["excluded_classes"] == ["hare"]

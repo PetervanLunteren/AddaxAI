@@ -144,31 +144,9 @@ def create_project(
                 detail=f"Embedding model '{project.embedding_model_id}' not found",
             ) from None
 
-    # Auto-compute excluded_classes from geofence when country_code is set
-    if (
-        project.country_code
-        and project.country_code.upper() not in ("NONE", "")
-        and project.classification_model_id
-    ):
-        try:
-            from app.ml.geofence import compute_excluded_classes, find_geofence_file
-
-            model_dir = (
-                settings.models_dir / "cls"
-                / project.classification_model_id
-            )
-            if model_dir.exists() and find_geofence_file(model_dir):
-                excluded = compute_excluded_classes(
-                    model_dir, project.country_code, project.state_code
-                )
-                project.excluded_classes = excluded
-                logger.info(
-                    f"Geofence: excluded {len(excluded)} labels "
-                    f"for {project.country_code}"
-                )
-        except Exception as e:
-            logger.warning(f"Geofence computation failed: {e}")
-
+    # excluded_classes is stored as sent. The form builds it from the
+    # geofence when the user picks a country (LabelSelectionField) and
+    # lets them edit it after; rebuilding it here threw those edits away.
     try:
         db_project = crud_project.create_project(db, project)
         logger.info(f"Created project: {project.name} (ID: {db_project.id})")

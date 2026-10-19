@@ -174,17 +174,21 @@ export function LabelSelectionField({
   const isPrompt = !allLabelsChosen && !selectedLocationLabel;
 
   // Apply a country/state pick: recompute excluded classes from the geofence.
+  // The country is written together with the list it produced, never
+  // before: a failed request leaves both as they were, so the dropdown can
+  // not show a country the list does not reflect.
   const applyLocation = useCallback(
     async (country: string | null, state: string | null) => {
       setLocationOpen(false);
-      onLocationChange(country, state);
       if (!country || country === ALL_LABELS_CODE) {
+        onLocationChange(country, state);
         onExclusionChange([]);
         return;
       }
       setApplying(true);
       try {
         const res = await modelsApi.getModelGeofence(modelId, country, state ?? undefined);
+        onLocationChange(country, state);
         onExclusionChange(res.excluded_labels ?? []);
       } finally {
         setApplying(false);
