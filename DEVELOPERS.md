@@ -332,23 +332,31 @@ Both screens put the teal wordmark on a frosted plate (`components/layout/LogoPl
 
 ### The macOS installer window
 
-The drag-to-Applications window gets the same treatment, from `electron/build/background.png` plus `background@2x.png`. No configuration points at them: `dmg-builder` looks in the build resources folder for `background.tiff`, then `background.png`, and only falls back to its own grey template if neither is there. Drop the files in and they are used. Two rules decide everything about them.
+The drag-to-Applications window is `electron/build/background.png` plus `background@2x.png`. No configuration points at them: `dmg-builder` looks in the build resources folder for `background.tiff`, then `background.png`, and only falls back to its own grey template if neither is there. Drop the files in and they are used.
 
 **The size sets the window.** With no `dmg.window` in `package.json`, electron-builder takes `windowWidth` / `windowHeight` straight off the background image, and the icon coordinates already in `dmg.contents` (`130,220` and `410,220`, which are icon *centres*) are placed for the 540x380 default. So the image is exactly 540x380 and the retina copy exactly 1080x760. Change the size and the icons land wrong. `tiffutil` merges the pair at build time; it lives in `/usr/bin` on stock macOS, so the runner has it.
 
-**The wash is not decoration.** With a background *picture*, Finder stops adapting the filename colour to dark mode and draws `AddaxAI` and `Applications` in black in both modes. There is no light/dark trade-off to solve, only one rule: the photo has to be light where those two labels sit. Raw, this photo puts them at 3:1. The 55% white blend takes them to 7.7:1. Measure before changing the photo; the two labels sit in the bands `x 75..185` and `x 355..465`, `y 258..280`.
+**It is flat white, and that is the point.** It used to be a blurred photo of an African landscape. With a background *picture* Finder stops adapting the filename colour to dark mode and draws `AddaxAI` and `Applications` in black in both modes, so the photo had to be blended 55% into white to get those labels from 3:1 to 7.7:1. A picture you have to half-erase to make the window usable is not earning its place, and it read as a faded stock photo. White takes the labels to 21:1 in both modes and makes the contrast question disappear. The labels sit in the bands `x 75..185` and `x 355..465`, `y 258..280`, if anything ever goes back on top of them.
+
+The wordmark is the text only, set on one line: `AddaxAI` is one word, and the addax mark is already in that window, 60 px below, as the thing you drag. The logo files have it on two lines, so the recipe takes the two lines apart and rejoins them on a shared baseline. It measures the logo rather than carrying pixel coordinates from one export of it, and asserts what it found, because a re-exported wordmark with different padding would otherwise crop silently wrong. The join is 8 px: the gaps between the letters of `Addax` are 24 to 30 px, and using those reads as two words.
 
 ```python
-im = ImageOps.exif_transpose(Image.open(src)).convert("RGB")
-im = ImageOps.fit(im, (540 * s, 380 * s), Image.LANCZOS)          # s = 1, then 2
-im = im.filter(ImageFilter.GaussianBlur(3.0 * 540 * s / 1600))    # same scaling as above
-im = Image.blend(im, Image.new("RGB", im.size, "white"), 0.55)
-# then the arrow, on top of the blur, never under it:
-#   line (215,220)->(320,220) width 5, head (340,220),(318,208),(318,232), fill #0f6064 at alpha 170
+alpha = np.array(Image.open(wordmark).convert("RGBA"))[:, :, 3]
+cols = alpha.max(axis=0) > 0
+text_x = next(x for x in range(1, len(cols))                      # past the mark
+              if not cols[x] and cols[x - 1] and x > src.width * 0.3)
+bands = blank_row_split(alpha[:, text_x:])                        # the two lines
+assert len(bands) == 2
+addax, ai = [tight_crop(src.crop((text_x, y0, src.width, y1))) for y0, y1 in bands]
+word = paste_on_shared_baseline(addax, ai, gap=8)
+
+im = Image.new("RGB", (540 * s, 380 * s), "white")                # s = 1, then 2
+im.paste(resize(word, width=240 * s), (centred, 68 * s))
+#   line (215,220)->(320,220) width 5, head (340,220),(318,208),(318,232), fill #0f6064
 im.save(out, "PNG", optimize=True)                                # PNG or TIFF only
 ```
 
-The arrow is drawn in because the default template had one and it is the only thing telling a first-time user what to do. Keep it above the blur or it smears.
+The arrow is drawn in because the default template had one and it is the only thing telling a first-time user what to do.
 
 ## Linting (CI enforcement)
 
