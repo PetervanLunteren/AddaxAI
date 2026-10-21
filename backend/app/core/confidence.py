@@ -63,6 +63,15 @@ CONFIDENCE_SCALE_MIN = 0.01
 # confidence policy sits in one file.
 ROLLUP_THRESHOLD = 0.65
 
+# SCORE_DIGITS — the decimals a classification score is stored with.
+# The official SpeciesNet pipeline keeps full precision through its
+# rollup sums and rounds once, to three decimals, on output; rounding
+# earlier (results.json used to carry five) sums rounded values and
+# puts a third decimal off against it. So: full precision in
+# results.json and in the rollup, rounded here when a score becomes a
+# detection's label_confidence.
+SCORE_DIGITS = 3
+
 # PHOTO_MIN_CONFIDENCE — the floor for the random animal photos on the
 # dashboard. Both the box and, when there is one, the species name must
 # reach it (or a person verified the box), so the photo shows an animal

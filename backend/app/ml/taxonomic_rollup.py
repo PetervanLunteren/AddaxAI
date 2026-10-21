@@ -2,9 +2,9 @@
 Taxonomic rollup: sum class probabilities at each taxonomic level
 and pick the most specific level crossing the confidence threshold.
 
-If the model's confidence at the species level is below the threshold,
-rolls up to the next higher taxonomic level at which the summed
-confidence reaches the threshold.
+If the model's confidence at the species level is not above the
+threshold, rolls up to the next higher taxonomic level at which the
+summed confidence is above it (strictly, as in the official pipeline).
 
 Runs BEFORE event smoothing so the smoother can refine rolled-up labels
 using image/sequence context (e.g. "felidae" → "lion" if nearby
@@ -426,7 +426,7 @@ def rollup_single_detection(
     if (
         top_in_taxonomy
         and not top_is_excluded
-        and top_conf >= threshold
+        and top_conf > threshold
         and top_is_species
     ):
         # Top-1 is a confident species-level prediction: no rollup needed.
@@ -471,11 +471,16 @@ def rollup_single_detection(
             taxonomy_lookup, excluded_names
         )
 
+    # The official walks differ in strictness as well as in levels: the
+    # geofence walk accepts a sum equal to the top-1 score (it compares
+    # against top-1 minus 1e-10), the confidence walk wants strictly
+    # more than the threshold. Same here, so an exact tie lands alike.
     if top_is_excluded:
         # Path A: excluded-class rollup. Skips genus, matching the
         # official SpeciesNet geofence walk.
         walk_threshold = top_conf
         walk_levels = ["species", "family", "order", "class"]
+        strict = False
     else:
         # Path B: confidence rollup. Species sits at the front so models
         # with multiple classes per species (e.g. age or sex variants of
@@ -483,6 +488,7 @@ def rollup_single_detection(
         # species before falling back to genus.
         walk_threshold = threshold
         walk_levels = ["species", "genus", "family", "order", "class"]
+        strict = True
 
     # Walk from most specific to broadest. At each level, find the
     # max-scoring taxon that crosses the threshold and is allowed
@@ -492,7 +498,9 @@ def rollup_single_detection(
         if not sums:
             continue
         for key in sorted(sums, key=sums.get, reverse=True):
-            if sums[key] < walk_threshold:
+            if sums[key] < walk_threshold or (
+                strict and sums[key] == walk_threshold
+            ):
                 break  # remaining taxa have even lower scores
             if excluded_taxon_keys and (level, key) in excluded_taxon_keys:
                 continue  # every class filed at this taxon is excluded
@@ -512,13 +520,13 @@ def rollup_single_detection(
 
     # No level crossed the threshold with an allowed result.
     # Try kingdom level (last resort): sum all top-5 with any taxonomy
-    # info. If the sum >= threshold, return "animal" at that score.
+    # info. If the sum is above the threshold, return "animal" at that score.
     # Matches official API behavior of rolling up to kingdom.
     kingdom_sum = sum(
         conf for cls_id, conf in top5
         if class_id_to_name.get(str(cls_id), "").lower() in taxonomy_lookup
     )
-    if kingdom_sum >= threshold:
+    if kingdom_sum > threshold:
         return {
             "label": "animal",
             "confidence": kingdom_sum,
@@ -633,9 +641,9 @@ def apply_taxonomic_rollup_to_results(
                     "ancestors": result["ancestors"],
                 })
 
-            det["classifications"] = [
-                [new_id, round(result["confidence"], 5)]
-            ]
+            # Full precision, like the raw scores: rounded once where it
+            # becomes a label_confidence (SCORE_DIGITS).
+            det["classifications"] = [[new_id, result["confidence"]]]
             rolled_up += 1
 
     logger.info(

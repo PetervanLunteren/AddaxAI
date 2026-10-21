@@ -228,10 +228,9 @@ def trim_classification_results(
             cls_list = det.get("classifications")
             if not cls_list:
                 continue
-            det["classifications"] = [
-                [class_id, round(conf, 5)]
-                for class_id, conf in cls_list[:max_classifications]
-            ]
+            # Full precision stays: the rollup sums these later and
+            # rounds once at the end (see SCORE_DIGITS).
+            det["classifications"] = cls_list[:max_classifications]
             for class_id, _conf in det["classifications"]:
                 referenced_ids.add(str(class_id))
 

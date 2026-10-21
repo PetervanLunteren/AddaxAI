@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.api.crud import detection as detection_crud
 from app.api.schemas.detection import DetectionCreate
+from app.core.confidence import SCORE_DIGITS
 from app.core.job_cancellation import JobCancelledError, is_cancel_requested
 from app.core.logging_config import get_logger
 from app.core.media_types import VIDEO_EXTENSIONS
@@ -511,7 +512,7 @@ def load_json_to_database(
                     # are applied in Phase 7 (postprocessing).
                     top_class_id, top_conf = det["classifications"][0]
                     label = class_categories.get(str(top_class_id))
-                    label_confidence = float(top_conf)
+                    label_confidence = round(float(top_conf), SCORE_DIGITS)
 
                     if label:
                         classified_count += 1

@@ -21,6 +21,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from app.core.confidence import SCORE_DIGITS
 from app.core.job_cancellation import (
     JobCancelledError,
     is_cancel_requested,
@@ -622,7 +623,7 @@ def update_database_from_smoothed_results(
                 if classifications:
                     top_class_id, top_conf = classifications[0]
                     new_label = class_names.get(str(top_class_id))
-                    new_confidence = float(top_conf)
+                    new_confidence = round(float(top_conf), SCORE_DIGITS)
                 else:
                     new_label = None
                     new_confidence = None

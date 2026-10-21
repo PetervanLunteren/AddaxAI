@@ -193,9 +193,10 @@ def test_rollup_to_family(taxonomy_lookup, class_id_to_name):
 
 
 def test_fallback_broadest(taxonomy_lookup, class_id_to_name):
-    # No level crosses 0.65 → return broadest available (class)
-    # leopard 0.20, lion 0.15, cheetah 0.15, zebra 0.15, bird 0.15, blank 0.20
-    classifications = [[0, 0.20], [5, 0.20], [1, 0.15], [2, 0.15], [3, 0.15], [4, 0.15]]
+    # No level below class crosses 0.65 → broadest available (class)
+    # leopard 0.21, blank 0.20, lion 0.15, cheetah 0.15, zebra 0.15, bird 0.15
+    # mammalia = 0.21 + 0.15 + 0.15 + 0.15 = 0.66
+    classifications = [[0, 0.21], [5, 0.20], [1, 0.15], [2, 0.15], [3, 0.15], [4, 0.15]]
     result = rollup_single_detection(classifications, class_id_to_name, taxonomy_lookup)
     assert result is not None
     assert result["level"] == "class"
@@ -203,18 +204,9 @@ def test_fallback_broadest(taxonomy_lookup, class_id_to_name):
 
 
 def test_species_binomial(taxonomy_lookup, class_id_to_name):
-    # All confidence on leopard species but below top-1 threshold
-    # leopard at 0.64 (just under 0.65), lion at 0.01
-    # species pardus = 0.64, genus panthera = 0.65 — genus wins at threshold
-    # But if pardus had >= 0.65, species would win
-    # Let's test with pardus exactly at 0.65 via 2 entries... actually only leopard maps to pardus
-    # Instead: set leopard confidence to something that sums to 0.65 for pardus at species level
-    # Since only leopard maps to pardus, leopard needs to be 0.65 → but that triggers short-circuit
-    # So we can't get species-level rollup with this fixture unless we have two model_classes
-    # mapping to the same species. Test the label format directly instead.
-    # Actually, if top-1 is 0.64 and it's the only one for its species, species sum is 0.64 < 0.65
-    # genus sum is 0.65 (leopard 0.64 + lion 0.01) → genus wins
-    classifications = [[0, 0.64], [1, 0.01], [3, 0.35]]
+    # leopard at 0.64 (just under 0.65), lion at 0.02: species pardus
+    # stays at 0.64, genus panthera = 0.66 crosses → genus wins.
+    classifications = [[0, 0.64], [1, 0.02], [3, 0.34]]
     result = rollup_single_detection(classifications, class_id_to_name, taxonomy_lookup)
     assert result is not None
     assert result["level"] == "genus"
@@ -546,14 +538,14 @@ def test_top5_only_used_for_sums(taxonomy_lookup, class_id_to_name):
     """Only top-5 classifications are used for rollup sums."""
     # 6 classifications. The 6th (bird, 0.15) would be excluded from
     # top-5 but doesn't affect mammalia sum since bird is aves.
-    # mammalia from top-5: leopard(0.20)+lion(0.15)+cheetah(0.15)+zebra(0.15)=0.65
+    # mammalia from top-5: leopard(0.21)+lion(0.15)+cheetah(0.15)+zebra(0.15)=0.66
     classifications = [
-        [0, 0.20], [5, 0.20], [1, 0.15], [2, 0.15], [3, 0.15], [4, 0.15],
+        [0, 0.21], [5, 0.20], [1, 0.15], [2, 0.15], [3, 0.15], [4, 0.15],
     ]
     result = rollup_single_detection(
         classifications, class_id_to_name, taxonomy_lookup,
     )
-    # mammalia = 0.65 >= 0.65 from top-5
+    # mammalia = 0.66 > 0.65 from top-5
     assert result is not None
     assert result["level"] == "class"
     assert result["label"] == "mammalia"
@@ -965,3 +957,53 @@ def test_build_excluded_taxon_keys_needs_every_class_at_the_taxon():
     assert build_excluded_taxon_keys(lookup, frozenset({"grouse family"})) == {
         ("family", "aves;galliformes;phasianidae;;")
     }
+
+
+# --- Threshold strictness, as in the official pipeline ---------------------
+# The confidence walk wants strictly more than the threshold; the
+# excluded-class walk accepts a sum equal to the top-1 score. 0.5 and
+# 0.25 are exact in floating point, so these ties are real ties.
+
+
+def test_confidence_rollup_rejects_an_exact_tie(taxonomy_lookup, class_id_to_name):
+    """A lone leopard at exactly the threshold is not a confident species
+    (the official check is strict), and every ancestor sums to the same
+    0.5, so nothing crosses: the raw top-1 is kept."""
+    result = rollup_single_detection(
+        [[0, 0.5]], class_id_to_name, taxonomy_lookup, threshold=0.5
+    )
+    assert result is None
+
+
+def test_confidence_rollup_needs_strictly_more(taxonomy_lookup, class_id_to_name):
+    """Leopard 0.5 plus lion 0.25 puts genus panthera at 0.75, above the
+    0.5 threshold: the genus wins."""
+    result = rollup_single_detection(
+        [[0, 0.5], [1, 0.25]], class_id_to_name, taxonomy_lookup, threshold=0.5
+    )
+    assert result is not None
+    assert result["level"] == "genus"
+    assert result["label"] == "panthera"
+
+
+def test_kingdom_fallback_is_strict_too(taxonomy_lookup, class_id_to_name):
+    """blank 0.5 on top with leopard 0.25 and zebra 0.25: the animal sum
+    is exactly 0.5, which is not above a 0.5 threshold."""
+    result = rollup_single_detection(
+        [[5, 0.5], [0, 0.25], [3, 0.25]], class_id_to_name, taxonomy_lookup,
+        threshold=0.5,
+    )
+    assert result is None
+
+
+def test_excluded_rollup_accepts_an_exact_tie(taxonomy_lookup, class_id_to_name):
+    """With leopard excluded, the walk uses the top-1 score 0.5 as its
+    bar and, like the official geofence walk, accepts a family sum equal
+    to it: felidae at 0.5."""
+    result = rollup_single_detection(
+        [[0, 0.5], [3, 0.25]], class_id_to_name, taxonomy_lookup,
+        excluded_names=frozenset({"leopard"}),
+    )
+    assert result is not None
+    assert result["level"] == "family"
+    assert result["confidence"] == 0.5

@@ -182,7 +182,11 @@ def test_trim_multiple_detections_share_categories():
     assert len(results["classification_categories"]) == 10
 
 
-def test_trim_rounds_confidences():
+def test_trim_keeps_full_score_precision():
+    # The rollup sums these scores later and rounds once, to SCORE_DIGITS,
+    # where a score becomes a label_confidence. Rounding here as well
+    # would sum rounded values and put the third decimal off against the
+    # official pipeline.
     cats = {"1": "lion", "2": "zebra"}
     cls = [["1", 0.974035382270813], ["2", 0.003682751208543]]
 
@@ -190,5 +194,4 @@ def test_trim_rounds_confidences():
     trim_classification_results(results)
 
     det = results["images"][0]["detections"][0]
-    assert det["classifications"][0] == ["1", 0.97404]
-    assert det["classifications"][1] == ["2", 0.00368]
+    assert det["classifications"] == cls
