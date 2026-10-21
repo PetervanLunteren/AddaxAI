@@ -51,10 +51,9 @@ import {
 import { ModelInfoSheet } from "../models/ModelInfoSheet";
 import {
   LabelSelectionField,
-  toApiCountryCode,
   useLabelSelectionCaption,
 } from "../taxonomy/LabelSelectionField";
-import { clearSpeciesSelection } from "../../lib/speciesSelection";
+import { clearSpeciesSelection, toApiCountryCode } from "../../lib/speciesSelection";
 import { ModelSelect } from "../models/ModelSelect";
 import { toApiModelId } from "@/lib/model-id";
 import { NoClassifierNotice } from "../models/NoClassifierNotice";

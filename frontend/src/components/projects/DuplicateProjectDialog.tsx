@@ -30,10 +30,9 @@ import { NoClassifierNotice } from "../models/NoClassifierNotice";
 import { ModelInfoSheet } from "../models/ModelInfoSheet";
 import {
   LabelSelectionField,
-  toApiCountryCode,
   useLabelSelectionCaption,
 } from "../taxonomy/LabelSelectionField";
-import { clearSpeciesSelection } from "../../lib/speciesSelection";
+import { clearSpeciesSelection, toApiCountryCode } from "../../lib/speciesSelection";
 import { FieldHeader } from "../ui/field-header";
 import {
   Dialog,

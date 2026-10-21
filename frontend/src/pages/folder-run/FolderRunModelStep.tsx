@@ -115,10 +115,9 @@ import { Badge } from "../../components/ui/badge";
 import { ModelStatusBadge } from "../../components/projects/ModelStatusBadge";
 import {
   LabelSelectionField,
-  toApiCountryCode,
   useLabelSelectionCaption,
 } from "../../components/taxonomy/LabelSelectionField";
-import { clearSpeciesSelection } from "../../lib/speciesSelection";
+import { clearSpeciesSelection, toApiCountryCode } from "../../lib/speciesSelection";
 import { ModelSelect } from "../../components/models/ModelSelect";
 import { NoClassifierNotice } from "../../components/models/NoClassifierNotice";
 

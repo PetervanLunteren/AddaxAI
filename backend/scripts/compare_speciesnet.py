@@ -2,10 +2,18 @@
 """
 Compare official SpeciesNet output with AddaxAI DB detections.
 
-Compares the labels produced by the official SpeciesNet API
-(run_md_and_speciesnet) with the labels stored in AddaxAI's database
-after a full analysis run. Reports exact matches, label format
-differences (Latin vs common name), and real label disagreements.
+Compares the labels produced by the official per-box SpeciesNet
+pipeline (``megadetector.detection.run_md_and_speciesnet``) with the
+labels stored in AddaxAI's database after a full analysis run. Reports
+exact matches, confidence-only differences and real label disagreements.
+
+With ``--results-json`` it also compares the raw top-5 classifier output
+per box (the official file needs ``--include_raw_classifications``), so
+inference drift (crop, preprocessing, device) is reported apart from
+rollup drift.
+
+The official file rounds confidences to 3 decimals, so "exact" means
+within 0.001.
 
 Usage:
     cd backend
@@ -15,9 +23,11 @@ Usage:
         --project-id <uuid>
 
 Options:
-    --gt          Path to the official SpeciesNet ground truth JSON
-    --project-id  AddaxAI project UUID (default: most recently created)
-    --verbose     Show all individual differences
+    --gt            Path to the official run_md_and_speciesnet output JSON
+    --project-id    AddaxAI project UUID (default: most recently created)
+    --results-json  AddaxAI results.json path(s), repeatable, for the raw
+                    top-5 comparison
+    --verbose       Show all individual differences
 """
 
 import argparse
@@ -130,9 +140,8 @@ def load_db_detections(
         FROM detections d
         JOIN files f ON d.file_id = f.id
         JOIN deployments dep ON f.deployment_id = dep.id
-        JOIN sites s ON dep.site_id = s.id
         LEFT JOIN label_taxonomy lt ON d.label_taxonomy_id = lt.id
-        WHERE s.project_id = ?
+        WHERE dep.project_id = ?
         """,
         (project_id,),
     ).fetchall()
@@ -167,6 +176,88 @@ def load_db_detections(
         lookup[(fname, bbox)] = (label, conf, category)
 
     return lookup
+
+
+RawEntry = list[tuple[str, float]]  # top-5 as (common name, score)
+
+
+def load_gt_raw(gt_path: Path) -> dict[tuple[str, tuple], RawEntry]:
+    """Raw (pre-rollup) top-5 per official box, as the labels file names them."""
+    with open(gt_path) as f:
+        gt = json.load(f)
+    cats = gt["classification_categories"]
+    lookup: dict[tuple[str, tuple], RawEntry] = {}
+    for img in gt["images"]:
+        fname = Path(img["file"]).name
+        for det in img.get("detections") or []:
+            raw = det.get("raw_classifications")
+            if raw:
+                bbox = tuple(round(x, 4) for x in det["bbox"])
+                lookup[(fname, bbox)] = [(cats[str(c)], s) for c, s in raw]
+    return lookup
+
+
+def load_addaxai_raw(paths: list[Path]) -> dict[tuple[str, tuple], RawEntry]:
+    """Raw top-5 per AddaxAI box from the deployments' results.json files,
+    which keep the classifier output untouched (rollup runs in memory)."""
+    lookup: dict[tuple[str, tuple], RawEntry] = {}
+    for path in paths:
+        with open(path) as f:
+            res = json.load(f)
+        cats = res.get("classification_categories", {})
+        for img in res.get("images") or []:
+            fname = Path(img["file"]).name
+            for det in img.get("detections") or []:
+                cls = det.get("classifications")
+                if cls:
+                    bbox = tuple(round(x, 4) for x in det["bbox"])
+                    lookup[(fname, bbox)] = [(cats[str(c)], s) for c, s in cls]
+    return lookup
+
+
+def compare_raw(
+    gt_raw: dict[tuple[str, tuple], RawEntry],
+    db_raw: dict[tuple[str, tuple], RawEntry],
+    verbose: bool = False,
+) -> None:
+    """Print how far the raw classifier output is apart, rank by rank."""
+    boxes = same_top1 = same_top5 = 0
+    diffs: list[float] = []
+    examples: list[str] = []
+    for key, gt_list in gt_raw.items():
+        mine = db_raw.get(key)
+        if mine is None:
+            continue
+        boxes += 1
+        n = min(len(gt_list), len(mine))
+        names_equal = [gt_list[i][0] == mine[i][0] for i in range(n)]
+        same_top1 += names_equal[0]
+        same_top5 += all(names_equal)
+        diffs.extend(abs(gt_list[i][1] - mine[i][1]) for i in range(n))
+        if not names_equal[0] or abs(gt_list[0][1] - mine[0][1]) >= 0.001:
+            examples.append(
+                f"  {key[0]}: official {gt_list[0][0]} {gt_list[0][1]:.3f}"
+                f"  addaxai {mine[0][0]} {mine[0][1]:.3f}"
+            )
+    print("=" * 60)
+    print("  Raw classifier output (top-5 per box, before rollup)")
+    print("=" * 60)
+    print(f"  Boxes compared:          {boxes}")
+    print(f"  Same top-1 class:        {same_top1}")
+    print(f"  Same top-5 classes:      {same_top5}")
+    if diffs:
+        within = sum(d < 0.001 for d in diffs)
+        print(
+            f"  Scores within 0.001:     {within} of {len(diffs)}"
+            f"  (max diff {max(diffs):.4f})"
+        )
+    if examples:
+        print(f"\n--- Top-1 differs or drifts by >= 0.001 ({len(examples)}) ---")
+        for line in examples[: None if verbose else 15]:
+            print(line)
+        if not verbose and len(examples) > 15:
+            print(f"  ... and {len(examples) - 15} more (--verbose for all)")
+    print()
 
 
 def compare(
@@ -327,6 +418,13 @@ def main() -> None:
         help="AddaxAI project UUID (default: most recently created)",
     )
     parser.add_argument(
+        "--results-json",
+        action="append",
+        type=Path,
+        default=[],
+        help="AddaxAI results.json (repeatable) for the raw top-5 comparison",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Show all individual differences",
@@ -384,6 +482,11 @@ def main() -> None:
 
     results = compare(gt_lookup, db_lookup, args.verbose)
     print_results(results, args.verbose)
+
+    if args.results_json:
+        compare_raw(
+            load_gt_raw(args.gt), load_addaxai_raw(args.results_json), args.verbose
+        )
 
     # Exit code: 0 if no real differences, 1 if there are
     sys.exit(1 if results["real_diff"] else 0)

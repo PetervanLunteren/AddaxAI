@@ -19,10 +19,9 @@ import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { invalidateModelMetadata, modelsApi } from "../api/models";
 import {
   LabelSelectionField,
-  toApiCountryCode,
   useLabelSelectionCaption,
 } from "../components/taxonomy/LabelSelectionField";
-import { clearSpeciesSelection } from "../lib/speciesSelection";
+import { clearSpeciesSelection, toApiCountryCode } from "../lib/speciesSelection";
 import { AnalysisSettingsRows } from "../components/settings/AnalysisSettingsRows";
 import { ApplySettingsModal } from "../components/settings/ApplySettingsModal";
 import {

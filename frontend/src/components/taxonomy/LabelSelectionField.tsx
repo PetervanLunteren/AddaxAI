@@ -15,6 +15,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Check, ChevronsUpDown, Loader2, SlidersHorizontal } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "../ui/button";
 import {
   Popover,
@@ -31,26 +32,11 @@ import {
 } from "../ui/command";
 import { cn } from "../../lib/utils";
 import { modelsApi } from "../../api/models";
+import { ALL_LABELS_CODE } from "../../lib/speciesSelection";
 import { SpeciesSelectionModal } from "./SpeciesSelectionModal";
-
-/** Sentinel country code for an explicit "All labels" choice. Kept out
- *  of the API: forms map it to null before sending (the backend knows
- *  only real ISO codes or null). It exists so forms can distinguish
- *  "user actively chose to run all labels" from "user has not chosen
- *  yet", which makes the country field a required choice. */
-export const ALL_LABELS_CODE = "ALL";
 
 /** First entry in the country dropdown: run with every label. */
 const ALL_LABELS_LABEL = "All labels";
-
-/** Map a form-level country code to what the API accepts: the ALL
- *  sentinel becomes null (no geofence filter). Use at every payload
- *  build site that sends country_code to the backend. */
-export function toApiCountryCode(
-  code: string | null | undefined,
-): string | null {
-  return code === ALL_LABELS_CODE ? null : (code ?? null);
-}
 
 /** Button prompt while no choice has been made yet. */
 const CHOOSE_PROMPT = "Select a country";
@@ -190,6 +176,8 @@ export function LabelSelectionField({
         const res = await modelsApi.getModelGeofence(modelId, country, state ?? undefined);
         onLocationChange(country, state);
         onExclusionChange(res.excluded_labels ?? []);
+      } catch {
+        toast.error("Could not load the species list for that country");
       } finally {
         setApplying(false);
       }

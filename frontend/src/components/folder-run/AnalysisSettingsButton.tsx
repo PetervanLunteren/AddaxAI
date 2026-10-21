@@ -3,7 +3,7 @@
  *
  * Lives in the grid's toolbar (via LabelsTab's ``toolbarExtra`` slot)
  * and opens a sheet hosting the retroactive knobs (independence
- * interval, smoothing, taxonomic rollup). Changing them does not
+ * interval, smoothing, taxonomic rollup, species selection). Changing them does not
  * re-run the models: Apply PATCHes the project and starts a reprocess
  * job (the backend re-reads the raw results.json and re-applies the
  * transforms), with the same blocking progress modal the project
@@ -19,10 +19,11 @@
  */
 
 import { useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
+import { modelsApi } from "../../api/models";
 import { projectsApi } from "../../api/projects";
 import type { ProjectResponse } from "../../api/types";
 import { useTaskProgress } from "../../hooks/useTaskProgress";
@@ -49,8 +50,14 @@ import { RegroupConfirmDialog } from "../settings/RegroupConfirmDialog";
 import {
   AnalysisSettingsRows,
   type AnalysisSettingsValues,
+  SettingsRow,
   type SmoothingLevel,
 } from "../settings/AnalysisSettingsRows";
+import {
+  LabelSelectionField,
+  useLabelSelectionCaption,
+} from "../taxonomy/LabelSelectionField";
+import { fromApiCountryCode, toApiCountryCode } from "../../lib/speciesSelection";
 import { ApplySettingsModal } from "../settings/ApplySettingsModal";
 import { Button } from "../ui/button";
 import {
@@ -68,10 +75,15 @@ const FOLDER_RUN_METRICS: SaveMetric[] = ["labels"];
 /** The slideout's own form state: the shared retroactive rows plus the
  *  counting threshold, which has no row in ``AnalysisSettingsRows``
  *  because the Settings page renders its own (with the changed-from-
- *  default highlight its form tracks). The caption is shared through
- *  SETTING_CAPTIONS, which is where wording would otherwise drift. */
+ *  default highlight its form tracks), and the species selection, which
+ *  the Settings page also renders on its own card. The captions are
+ *  shared, which is where wording would otherwise drift. The country is
+ *  form-level: "All labels" is the sentinel here and null on the API. */
 type FolderRunSettingsValues = AnalysisSettingsValues & {
   counting_threshold: number;
+  country_code: string | null;
+  state_code: string | null;
+  excluded_classes: string[];
 };
 
 function valuesFromProject(project: ProjectResponse): FolderRunSettingsValues {
@@ -84,6 +96,9 @@ function valuesFromProject(project: ProjectResponse): FolderRunSettingsValues {
     taxonomic_rollup: project.taxonomic_rollup,
     independence_interval: project.independence_interval,
     counting_threshold: project.counting_threshold,
+    country_code: fromApiCountryCode(project.country_code),
+    state_code: project.state_code ?? null,
+    excluded_classes: project.excluded_classes,
   };
 }
 
@@ -131,6 +146,17 @@ export function AnalysisSettingsButton({
     "Changes applied",
     FOLDER_RUN_METRICS,
   );
+
+  // Species selection needs the model's class list, same query the setup
+  // step runs (and so already cached when the user comes from there).
+  const classifierId = project.classification_model_id;
+  const hasClassifier = !!classifierId;
+  const { data: taxonomy } = useQuery({
+    queryKey: ["taxonomy", classifierId],
+    queryFn: () => modelsApi.getTaxonomy(classifierId!),
+    enabled: hasClassifier,
+  });
+  const labelCaption = useLabelSelectionCaption(classifierId ?? "");
 
   // The threshold is deliberately not a REPROCESS_TRIGGER_FIELD: it needs
   // no reprocess job, because the backend recalculates the materialised
@@ -213,7 +239,10 @@ export function AnalysisSettingsButton({
       pendingBeforeStats.current = await fetchStats(
         runId, project.counting_threshold,
       );
-      await projectsApi.update(runId, values);
+      await projectsApi.update(runId, {
+        ...values,
+        country_code: toApiCountryCode(values.country_code),
+      });
       // Sticky settings: the next run's analysis seeds from these. The
       // threshold is left out on purpose. The Setup step deliberately
       // does not send counting_threshold on create (it takes the server
@@ -225,6 +254,9 @@ export function AnalysisSettingsButton({
         smoothing_strength: values.smoothing_strength,
         taxonomic_rollup: values.taxonomic_rollup,
         independence_interval: values.independence_interval,
+        country_code: values.country_code,
+        state_code: values.state_code,
+        excluded_classes: values.excluded_classes,
       });
       // Only the reprocess-triggering settings need the job. A
       // threshold-only change is already applied by the PATCH above (the
@@ -263,8 +295,6 @@ export function AnalysisSettingsButton({
       );
     }
   };
-
-  const hasClassifier = !!project.classification_model_id;
 
   return (
     <>
@@ -312,29 +342,43 @@ export function AnalysisSettingsButton({
               }
               showClassifierFields={hasClassifier}
             />
-            <div className="grid grid-cols-2 items-center gap-8 py-6">
-              <div className="space-y-1">
-                <span className="block text-sm font-medium">
-                  Count detections above
-                </span>
-                <p className="text-sm text-muted-foreground">
-                  {SETTING_CAPTIONS.detectionThreshold}
-                </p>
-              </div>
-              <div className="space-y-2">
-                <ConfidenceSlider
-                  value={values.counting_threshold}
-                  onChange={(vals) =>
-                    setValues((v) => ({ ...v, counting_threshold: vals[0] }))
+            <SettingsRow
+              label="Count detections above"
+              caption={SETTING_CAPTIONS.detectionThreshold}
+            >
+              <ConfidenceSlider
+                value={values.counting_threshold}
+                onChange={(vals) =>
+                  setValues((v) => ({ ...v, counting_threshold: vals[0] }))
+                }
+                valueLabel={
+                  <span className="min-w-[3rem] shrink-0 text-right text-sm font-medium">
+                    {formatConfidencePct(values.counting_threshold)}
+                  </span>
+                }
+              />
+            </SettingsRow>
+            {hasClassifier && taxonomy && (
+              <SettingsRow label="Species selection" caption={labelCaption}>
+                <LabelSelectionField
+                  modelId={classifierId}
+                  excludedClasses={values.excluded_classes}
+                  allClasses={taxonomy.all_classes ?? []}
+                  countryCode={values.country_code}
+                  stateCode={values.state_code}
+                  onExclusionChange={(classes) =>
+                    setValues((v) => ({ ...v, excluded_classes: classes }))
                   }
-                  valueLabel={
-                    <span className="min-w-[3rem] shrink-0 text-right text-sm font-medium">
-                      {formatConfidencePct(values.counting_threshold)}
-                    </span>
+                  onLocationChange={(country, state) =>
+                    setValues((v) => ({
+                      ...v,
+                      country_code: country,
+                      state_code: state,
+                    }))
                   }
                 />
-              </div>
-            </div>
+              </SettingsRow>
+            )}
           </div>
           <div className="mt-4 flex justify-end">
             <Button
