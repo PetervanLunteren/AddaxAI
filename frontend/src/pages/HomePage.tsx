@@ -51,7 +51,7 @@ export function HomePage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden text-white">
-      <PhotoBackdrop screen="home" />
+      <PhotoBackdrop />
 
       <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-7 lg:px-8">
         {/* Centered logo, heading, and the two glass cards. Top-aligned

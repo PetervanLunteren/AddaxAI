@@ -312,7 +312,7 @@ The junction branch cannot be tested on the Linux and macOS CI runners, so it is
 
 ## Background photos
 
-Two screens sit on a full-bleed photo: the home screen (`home-background.webp`) and the setup screen (`setup-background.webp`), both in `frontend/public/`. Both are heavily blurred, which is what keeps them cheap: there is no fine detail left for the encoder to spend bits on, and because the result is soft, the browser stretching the image across a much wider window is invisible. That is why these land in the tens of KB while the phone photos they came from are several hundred.
+Two screens sit on a full-bleed photo, the home screen and the setup screen, and both take it from `PhotoBackdrop` (`components/layout/`): one photo per data type, not per screen. `home-background.webp` for camera trap, `underwater-background.webp`, a BRUV frame, for underwater, both in `frontend/public/`. The two screens used to have a photo each and they were the same picture twice, so the second one went; if they ever need to feel different, the scrim is the cheap lever. Both are heavily blurred, which is what keeps them cheap: there is no fine detail left for the encoder to spend bits on, and because the result is soft, the browser stretching the image across a much wider window is invisible. That is why these land in the tens of KB while the phone photos they came from are several hundred.
 
 Recipe, from a source photo that never enters the repo:
 

@@ -58,7 +58,7 @@ const POLL_INTERVAL_MS = 1500;
 function SetupFrame({ children }: { children: ReactNode }) {
   return (
     <div className="relative min-h-screen overflow-hidden">
-      <PhotoBackdrop screen="setup" />
+      <PhotoBackdrop />
       <div className="relative z-10 flex min-h-screen flex-col items-center justify-center px-4 py-8">
         {children}
       </div>
