@@ -10,9 +10,20 @@
  * The two cards differentiate on one-off vs persistent, not on camera
  * count (a folder run handles many cameras too). Both review the labels
  * and the counts; a folder run then hands you the files for that one
- * folder, while a project asks for where each camera was and uses that
+ * folder, while a project asks where the footage came from and uses that
  * location to turn the results into insight (maps, rates, trends) that
  * grows as you add folders.
+ *
+ * What both paths share, running the AI and checking the labels and the
+ * counts, sits in the line under the heading, not in either card: a
+ * card that lists something common to both teaches that it is not.
+ *
+ * The cards carry the decision, not the manual: which outputs exist is
+ * the Save step's job and the choose-a-workflow docs page's job. The
+ * list that used to be here named camera locations, trap-night rates
+ * and Timelapse, all three of which are camera trap only, in front of
+ * underwater users. Keep the wording true for both rather than varying
+ * it by data type.
  *
  * Visual: a full-bleed forest photo (shared with AddaxAI-Connect's
  * login, so the two apps feel related) behind two frosted-glass cards.
@@ -64,7 +75,7 @@ export function HomePage() {
               What do you want to do?
             </h1>
             <p className="mt-3 text-lg text-white/80">
-              Pick the path that matches your task.
+              Both run the same AI and the same checks. The difference is what you get at the end.
             </p>
           </div>
 
@@ -72,16 +83,14 @@ export function HomePage() {
             <ChoiceCard
               icon={<FolderOpen className="h-6 w-6" />}
               title="Analyse a folder"
-              lead="A quick one-off run. Point at a folder, get results, move on."
-              body="Run the AI, check the labels and the counts if you want, then get files out: detection and count tables, a recognition file for Timelapse, species-separated folders, visualised or blurred images. One folder, one pass."
+              body="A one-off run. Point at a folder and get the results as files for your own analysis. Nothing to set up first."
               cta="Start folder analysis"
               onClick={() => navigate("/folder-runs/new")}
             />
             <ChoiceCard
               icon={<LayoutDashboard className="h-6 w-6" />}
               title="Build a project"
-              lead="A workspace you come back to and keep adding to."
-              body="Add where each camera was, and AddaxAI turns the results into insight: species counts, dashboards and maps, activity, and trap-night rates. Keep a verification history and export to Camtrap DP. Everything stays in the app to revisit and add to."
+              body="A workspace you come back to and keep adding to. Add where the footage came from, and it builds dashboards, maps and trends that grow with every folder."
               cta="Open projects"
               onClick={() => navigate("/projects")}
             />
@@ -108,13 +117,12 @@ export function HomePage() {
 interface ChoiceCardProps {
   icon: React.ReactNode;
   title: string;
-  lead: string;
   body: string;
   cta: string;
   onClick: () => void;
 }
 
-function ChoiceCard({ icon, title, lead, body, cta, onClick }: ChoiceCardProps) {
+function ChoiceCard({ icon, title, body, cta, onClick }: ChoiceCardProps) {
   // The whole card is the button, so a click (or Enter / Space) anywhere
   // navigates. The "cta" below is a non-interactive visual cue styled to
   // look like a button; making it a real <button> would nest interactives.
@@ -129,15 +137,16 @@ function ChoiceCard({ icon, title, lead, body, cta, onClick }: ChoiceCardProps) 
         hover:-translate-y-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70
         focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
     >
-      <div
-        className="grid place-items-center rounded-2xl border border-white/25 text-white"
-        style={{ backgroundColor: "rgba(255,255,255,0.16)", height: "3.25rem", width: "3.25rem" }}
-      >
-        {icon}
+      <div className="flex items-center gap-4">
+        <div
+          className="grid shrink-0 place-items-center rounded-2xl border border-white/25 text-white"
+          style={{ backgroundColor: "rgba(255,255,255,0.16)", height: "3.25rem", width: "3.25rem" }}
+        >
+          {icon}
+        </div>
+        <h2 className="text-xl font-bold tracking-tight">{title}</h2>
       </div>
-      <h2 className="mt-5 text-xl font-bold tracking-tight">{title}</h2>
-      <p className="mt-1.5 text-sm text-white/85">{lead}</p>
-      <p className="mt-3 flex-1 text-[13.5px] leading-relaxed text-white/70">{body}</p>
+      <p className="mt-4 flex-1 text-sm leading-relaxed text-white/85">{body}</p>
       <span
         className={cn(
           buttonVariants({ size: "lg" }),
