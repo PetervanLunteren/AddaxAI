@@ -228,7 +228,12 @@ class ExifBatch(AbstractContextManager["ExifBatch"]):
             self._helper = None
 
     def write(
-        self, path: Path, tag_set: DetectionTagSet, *, source: Path | None = None
+        self,
+        path: Path,
+        tag_set: DetectionTagSet,
+        *,
+        source: Path | None = None,
+        upright: bool = False,
     ) -> None:
         """Write the tag set onto the file at ``path``.
 
@@ -248,6 +253,10 @@ class ExifBatch(AbstractContextManager["ExifBatch"]):
         as one block; a preview inside them cannot be deleted, exiftool
         zeroes it instead and warns.
 
+        ``upright`` says the pixels at ``path`` were rotated into the
+        orientation the source's tag described, so that tag is not
+        copied: the copy keeps the orientation 1 it was saved with.
+
         ``-overwrite_original`` prevents exiftool from leaving a
         ``<filename>_original`` backup next to every modified file
         (the backups would clutter the output and double disk use).
@@ -266,6 +275,8 @@ class ExifBatch(AbstractContextManager["ExifBatch"]):
                 "-icc_profile",
                 *(f"--{tag}" for tag in tags),
             ]
+            if upright:
+                params.append("--Orientation")
         self._helper.set_tags([str(path)], tags=tags, params=params)
 
 

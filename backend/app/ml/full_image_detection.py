@@ -20,6 +20,7 @@ import cv2
 from PIL import Image
 
 from app.core.logging_config import get_logger
+from app.ml.inference.image_io import exif_rotation
 from app.ml.inference.video_iter import open_video
 from app.utils.media_dates import read_exif_datetime
 
@@ -47,6 +48,10 @@ def _read_image_metadata(
     """
     with Image.open(image_path) as img:
         width, height = img.size
+        # MegaDetector reports the size after its EXIF rotation; a photo
+        # stored on its side is a portrait to the rest of the pipeline.
+        if exif_rotation(img) in (90, 270):
+            width, height = height, width
         dt = read_exif_datetime(img)
     dto = dt.strftime("%Y:%m:%d %H:%M:%S") if dt else None
     return width, height, dto

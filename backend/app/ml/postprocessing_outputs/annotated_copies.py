@@ -64,6 +64,11 @@ from app import __version__ as APP_VERSION
 from app.api.crud.label_colors import assign_label_colors
 from app.core.confidence import format_confidence_pct
 from app.core.logging_config import get_logger
+from app.ml.inference.image_io import (
+    EXIF_ORIENTATION_TAG,
+    exif_rotation,
+    upright_rgb,
+)
 from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
 from app.models import Deployment, Detection, File, Project
 
@@ -634,7 +639,7 @@ def write_annotated_copies(
                 continue
 
             try:
-                image = Image.open(source).convert("RGB")
+                opened = Image.open(source)
             except OSError as e:
                 result.errors.append(f"Could not open {source}: {e}")
                 logger.exception(
@@ -646,7 +651,22 @@ def write_annotated_copies(
             # alpha-composite below builds a fresh Image that carries no
             # ``info``. Passed back at save so the camera's own metadata
             # (capture date, make / model, GPS) survives the re-encode.
-            source_exif = image.info.get("exif")
+            source_exif = opened.info.get("exif")
+
+            # The boxes were found on the EXIF-rotated pixels, so draw and
+            # blur on those (see image_io). The copy is then upright, so
+            # its orientation tag is reset or viewers would rotate it
+            # again.
+            rotated = exif_rotation(opened) != 0
+            if rotated and source_exif:
+                # A fresh Exif, not ``opened.getexif()``: Pillow caches
+                # that one and ``upright_rgb`` reads the orientation
+                # from it next.
+                exif = Image.Exif()
+                exif.load(source_exif)
+                exif[EXIF_ORIENTATION_TAG] = 1
+                source_exif = exif.tobytes()
+            image = upright_rgb(opened)
 
             # Blur first, so the box drawn over a blurred person sits
             # on the obscured pixels (matches legacy ordering).
@@ -703,7 +723,9 @@ def write_annotated_copies(
                 # is the app's frame grab, which has none to copy.
                 if tag_set is not None and is_image_path(dest):
                     try:
-                        exif_batch.write(dest, tag_set, source=source)
+                        exif_batch.write(
+                            dest, tag_set, source=source, upright=rotated
+                        )
                     except Exception as e:  # noqa: BLE001
                         logger.warning(
                             f"annotated_copies: EXIF write failed "

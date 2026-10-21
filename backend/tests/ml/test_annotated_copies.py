@@ -737,3 +737,50 @@ def test_a_photo_named_like_a_still_keeps_its_own_copy(db, tmp_path):
 
     assert len(files) == 3, files
     assert "clip.mp4" in files and "clip_still.jpg" in files
+
+
+def test_rotated_source_is_drawn_upright_and_saved_with_orientation_one(
+    db, tmp_path
+):
+    """MegaDetector found the boxes on the EXIF-rotated pixels, so the
+    copy is drawn on those and saved as the upright picture. Its
+    orientation tag must then say 1, through both the Pillow save and
+    the exiftool metadata copy, or a viewer rotates it a second time.
+    The camera's other tags still come along."""
+    src_path = tmp_path / "src" / "sideways.jpg"
+    src_path.parent.mkdir(parents=True, exist_ok=True)
+    exif = Image.Exif()
+    exif[0x010F] = "RECONYX"   # Make
+    exif[0x0112] = 6           # Orientation: stored on its side
+    # Landscape pixels on disk; orientation 6 makes it a portrait photo.
+    Image.new("RGB", (200, 120), (180, 200, 220)).save(
+        src_path, format="JPEG", exif=exif
+    )
+
+    project = make_project(db, name="rotated", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    file = make_file(
+        db, deployment_id=dep.id, file_path=str(src_path), observation_type="animal"
+    )
+    make_detection(
+        db, file_id=file.id, category="animal", confidence=0.9, label="dog",
+        common_name="Dog",
+    )
+
+    target = tmp_path / "out"
+    result = write_annotated_copies(
+        db,
+        project.id,
+        _ctx(target),
+        draw_bboxes=True,
+        anonymise=False,
+        media_threshold=0.5,
+    )
+    assert result.bbox_count == 1
+    copy = target / "sideways.jpg"
+    with Image.open(copy) as img:
+        assert img.size == (120, 200)
+    with exiftool.ExifToolHelper() as et:
+        tags = et.get_tags([str(copy)], tags=["EXIF:Orientation", "EXIF:Make"])[0]
+    assert tags.get("EXIF:Orientation", 1) == 1
+    assert tags["EXIF:Make"] == "RECONYX"

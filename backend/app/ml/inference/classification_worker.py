@@ -77,6 +77,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 # `video_iter` and `scoring` live next to this script. Python adds the
 # script's directory to sys.path automatically, so a flat import works
 # in the subprocess (which has no app.* on its path).
+from image_io import open_image_rgb  # noqa: E402
 from scoring import choose_frame_number  # noqa: E402
 from video_iter import (  # noqa: E402
     iter_wanted_frames,
@@ -317,11 +318,9 @@ def _process_image_group(
             per_crop_progress(len(image_items))
         return
 
-    # Convert to RGB at open time so every model's get_crop receives a
-    # 3-channel image. Camera-trap frames are almost always RGB JPEGs, but
-    # a grayscale, palette, or RGBA source would otherwise reach a model
-    # with the wrong channel count if that model crops before converting.
-    image = Image.open(path).convert("RGB")
+    # Rotated per EXIF and RGB, the way MegaDetector saw the frame, so
+    # the bbox lands on the same pixels (see image_io).
+    image = open_image_rgb(path)
     for orig_idx, item in image_items:
         _classify_one(
             model_inference, image, item["bbox"], batched_state, orig_idx, results
