@@ -37,6 +37,8 @@ from app.ml.label_exclusion import threshold_or_verified
 from app.models import Detection, File, Project
 from app.utils.exiftool_bin import resolve_exiftool
 
+from ._label_filter import detection_is_excluded
+
 logger = get_logger(__name__)
 
 
@@ -98,18 +100,9 @@ def build_tag_set(
     ).scalars().all()
 
     if excluded_label_ids:
-        # Same filter rule as _label_filter.detection_is_excluded —
-        # match by taxonomy id OR label string so the heterogeneous
-        # exclusion set (UUIDs for mapped, strings for unmapped)
-        # behaves consistently across modules.
-        def _excluded(det: Detection) -> bool:
-            if det.label_taxonomy_id and det.label_taxonomy_id in excluded_label_ids:
-                return True
-            if det.label and det.label in excluded_label_ids:
-                return True
-            return False
-
-        rows = [r for r in rows if not _excluded(r)]
+        rows = [
+            r for r in rows if not detection_is_excluded(r, excluded_label_ids)
+        ]
 
     if not rows:
         return None
