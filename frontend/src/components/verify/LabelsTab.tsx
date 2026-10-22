@@ -116,6 +116,7 @@ const CROPS_SHORTCUTS: readonly Shortcut[] = [
   ["M", "Relabel to most common in selection"],
   [`${MOD} + A`, "Select all"],
   ["E", "Select next event to check (event sort)"],
+  ["T", "Open the frames of the selected animal (videos)"],
   [`${MOD} + Z`, "Undo last action"],
   ["Esc", "Deselect / close"],
   // Viewer only.
@@ -1289,6 +1290,8 @@ export function LabelsTab({
           setDetailDetection(null);
         } else if (selectedIds.size > 0) {
           clearSelection();
+        } else if (openTrack) {
+          closeTrackFrames();
         }
         return;
       }
@@ -1336,6 +1339,18 @@ export function LabelsTab({
       if ((e.key === "m" || e.key === "M") && !e.ctrlKey && !e.metaKey && selectedIds.size > 0) {
         e.preventDefault();
         handleMatchMajority(Array.from(selectedIds));
+        return;
+      }
+
+      // "T" opens the selected animal's frames, the keyboard twin of the
+      // chip on its card. One card only: the frames view is one animal.
+      if ((e.key === "t" || e.key === "T") && !e.ctrlKey && !e.metaKey && !openTrack && selectedIds.size === 1) {
+        const [id] = selectedIds;
+        const card = allDetections.find((d) => d.detection_id === id);
+        if (card && (card.track_frames ?? 0) > 1) {
+          e.preventDefault();
+          openTrackFrames(card);
+        }
         return;
       }
 
@@ -1399,7 +1414,7 @@ export function LabelsTab({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds, detailDetection, allDetections, resultSort, openTrack, handleActionComplete, shortcutLabels, applyUndoableAction, handleMarkFalse, handleMarkUnknown, handleMatchMajority, handleBulkVerify, advanceSelectionAfter, handleUndo]);
+  }, [selectedIds, detailDetection, allDetections, resultSort, openTrack, handleActionComplete, shortcutLabels, applyUndoableAction, handleMarkFalse, handleMarkUnknown, handleMatchMajority, handleBulkVerify, advanceSelectionAfter, handleUndo, openTrackFrames, closeTrackFrames]);
 
   // Click outside grid to deselect
   useEffect(() => {

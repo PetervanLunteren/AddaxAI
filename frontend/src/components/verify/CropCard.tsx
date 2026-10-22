@@ -11,7 +11,7 @@
  */
 
 import { memo, useState } from "react";
-import { Film, ImageOff } from "lucide-react";
+import { ChevronRight, Film, ImageOff } from "lucide-react";
 import { API_BASE_URL } from "../../lib/api-client";
 import {
   getDetectionColor,
@@ -150,21 +150,25 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
           <button
             type="button"
             data-testid="open-track"
-            title={`Followed for ${detection.track_frames} frames. Open them.`}
+            title={`Followed for ${detection.track_frames} frames. Open them (T).`}
             onClick={(e) => {
               e.stopPropagation();
               onOpenTrack(detection);
             }}
             onDoubleClick={(e) => e.stopPropagation()}
             className={cn(
-              "absolute bottom-1 left-1 flex items-center gap-1 rounded",
-              "bg-black/60 text-white hover:bg-black/80 focus-visible:outline-none",
+              "absolute bottom-1 left-1 flex items-center gap-1 rounded border",
+              "border-white/30 bg-black/60 text-white hover:border-white/70",
+              "hover:bg-black/85 focus-visible:outline-none",
               "focus-visible:ring-2 focus-visible:ring-white/70",
               isSmall ? "px-1 py-0.5 text-[7px]" : "px-1.5 py-0.5 text-[10px]",
             )}
           >
             <Film className={isSmall ? "h-2 w-2" : "h-2.5 w-2.5"} />
-            {detection.track_frames}
+            {/* The word is what turns a number into a control. The
+                smallest tiles keep the bare count: no room. */}
+            {isSmall ? detection.track_frames : `${detection.track_frames} frames`}
+            <ChevronRight className={isSmall ? "h-2 w-2" : "h-2.5 w-2.5"} />
           </button>
         )}
       </div>
