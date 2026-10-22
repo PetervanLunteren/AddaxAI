@@ -952,8 +952,7 @@ export function FolderRunModelStep() {
                         <div className="space-y-1">
                           <FormLabel>Folder</FormLabel>
                           <FormDescription className="text-sm">
-                            The folder with the images or videos you
-                            want to analyse. Subfolders are included.
+                            {SETTING_CAPTIONS.folder}
                           </FormDescription>
                         </div>
                         <div className="space-y-2">
@@ -1054,8 +1053,7 @@ export function FolderRunModelStep() {
                         <div className="space-y-1">
                           <FormLabel>Classification model</FormLabel>
                           <FormDescription className="text-sm">
-                            Identifies the species behind each animal
-                            detection.
+                            {SETTING_CAPTIONS.classificationModel}
                           </FormDescription>
                         </div>
                         <div className="space-y-2">
@@ -1191,7 +1189,7 @@ export function FolderRunModelStep() {
                         // ADVANCED_SETTINGS_DEFAULTS, which excludes it).
                         <SettingRow
                           label="Embedding model"
-                          description="Lets you sort and group visually similar detections in the Edit step. Optional, skip if you don't need it."
+                          description={SETTING_CAPTIONS.embeddingModel}
                         >
                             <ModelSelect
                               value={field.value ?? NO_EMBEDDING}

@@ -1,4 +1,3 @@
-import { ADVANCED_SETTINGS_DEFAULTS } from "./advancedSettingsDefaults";
 import {
   DEFAULT_CLASSIFICATION_GATE,
   DEFAULT_COUNTING_THRESHOLD,
@@ -27,6 +26,15 @@ const batchSizeCaption = (subject: string): string =>
   "Leave it unless you know what you are doing.";
 
 export const SETTING_CAPTIONS = {
+  // The three rows above Advanced used to be written inline in each form,
+  // and the folder run and project settings had drifted to two wordings
+  // each. One home, like the rest.
+  folder:
+    "The folder with the images or videos you want to analyse. Subfolders are included.",
+  classificationModel: "Identifies the species of each animal the detector finds.",
+  embeddingModel:
+    "Creates a visual fingerprint of each animal, used to sort and search by " +
+    "similarity in the Labels section. Optional.",
   // Detector row caption. True for every detector: MegaDetector finds
   // animals, people and vehicles, SharkTrack sharks and rays, the fish
   // detector fish, so it names none of those classes.
@@ -49,8 +57,8 @@ export const SETTING_CAPTIONS = {
     "Verified ones always count. " +
     `The default is ${formatConfidencePct(DEFAULT_COUNTING_THRESHOLD)}.`,
   classificationGate:
-    "Detections below this confidence are not identified to species and " +
-    "skip label review, but are still saved and exported. " +
+    "Detections below this confidence skip the species and similarity " +
+    "models and label review, but are still saved and exported. " +
     `The default is ${formatConfidencePct(DEFAULT_CLASSIFICATION_GATE)}.`,
   // Replaces the caption of the detector row and the detection settings
   // when the chosen classifier is a full-image model. Said in words on
@@ -60,9 +68,18 @@ export const SETTING_CAPTIONS = {
     "This model classifies the whole photo, so no detector runs. This setting does not apply.",
   mediaFilter:
     "Which files the AI looks at. Files left out are not analysed and do not appear in the results. Images and videos is the default.",
+  // Two facts and a recommendation, nothing more. The cost is linear.
+  // Higher is not more accurate: TRACKING_BENCHMARK_RESULTS.md has MaxN
+  // falling from 66% exact at 0.5 fps to 48% at 12, over-counting more at
+  // every step, so never write "more is better" here. How the tracker
+  // links frames belongs in the guides, and in particular the two-second
+  // rule stays out: `track_buffer` is scaled by the frame rate
+  // (`tracking_script.py`), so two seconds is two seconds at any rate, and
+  // reading it next to this control implies it is a consequence of it.
   videoFrameRate:
-    "How many frames per second the AI checks in a video. It follows each animal from one checked frame to the next, and the detector runs on every one, so 4 frames per second takes twice as long as 2. Fewer frames are faster but easier to lose an animal between: below about 1 frame per second a fast animal can split into several detections. An animal out of sight for more than 2 seconds counts as a new detection when it comes back. " +
-    `${ADVANCED_SETTINGS_DEFAULTS.video_fps} frames per second is the default.`,
+    "How many frames per second the AI looks at in a video. The detector " +
+    "runs on every one, so 4 per second takes twice as long as 2. Three " +
+    "frames per second is often a good balance.",
   independenceInterval:
     "Files at the same camera within this window are merged into one event. The default is 30 minutes.",
   smoothing:
@@ -70,10 +87,10 @@ export const SETTING_CAPTIONS = {
   taxonomicRollup:
     "When the model can't confidently name the exact species, it labels the animal with a broader group instead, such as genus or family. Example: unsure between two deer species, it labels the animal 'deer' rather than guessing one. On by default.",
   detectionImageSize:
-    "The pixel size images are resized to before detection. Larger can find small or distant animals but is slower and uses more memory. The model default is best in most cases.",
+    "Images and video frames are resized to this size before detection. Larger can find small or distant animals but is slower and uses more memory. The model default is best in most cases.",
   imageAugmentation:
-    "A slower detection mode that can find a few more animals in difficult images, but may add false positives. Off by default.",
-  detectionBatchSize: batchSizeCaption("images the detection model handles"),
+    "A slower detection mode that can find a few more animals in difficult images or frames, but may add false positives. Off by default.",
+  detectionBatchSize: batchSizeCaption("images or video frames the detection model handles"),
   classificationBatchSize: batchSizeCaption(
     "crops the classification model handles",
   ),

@@ -851,7 +851,7 @@ export default function SettingsPage() {
                       <div className="space-y-1">
                         <FormLabel>Classification model</FormLabel>
                         <FormDescription className="text-sm">
-                          Identifies the species of each animal the detection model finds. Optional: choose "none" for a detection-only project.
+                          {SETTING_CAPTIONS.classificationModel}
                         </FormDescription>
                       </div>
                       <div className="space-y-2">
@@ -913,7 +913,7 @@ export default function SettingsPage() {
                       <div className="space-y-1">
                         <FormLabel>Embedding model</FormLabel>
                         <FormDescription className="text-sm">
-                          Creates a visual fingerprint of each animal, used to sort and search by similarity.
+                          {SETTING_CAPTIONS.embeddingModel}
                         </FormDescription>
                       </div>
                       <div className="space-y-2">

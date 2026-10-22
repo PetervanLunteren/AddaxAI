@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
+import { SETTING_CAPTIONS } from "@/lib/settingCaptions";
 import {
   Collapsible,
   CollapsibleContent,
@@ -323,7 +324,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
             missingDateNote="AddaxAI will still detect and classify these files, but with no date they are left out of time-based stats, charts, and trap-night effort."
             useFileMtimeFallback={useFileMtimeFallback}
             onUseFileMtimeFallbackChange={setFileMtimeChecked}
-            caption="The folder with the images or videos you want to analyse. Subfolders are included."
+            caption={SETTING_CAPTIONS.folder}
           />
 
           {/* Site selector (optional). When the user leaves it blank
