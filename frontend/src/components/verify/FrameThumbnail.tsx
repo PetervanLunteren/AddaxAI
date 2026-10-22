@@ -52,7 +52,13 @@ export function FrameThumbnail({
   // on that grey read as a very dark photo with animals in it rather than
   // as an absent one. Say the picture is gone instead of decorating a
   // tile that has nothing under it.
-  const [imageFailed, setImageFailed] = useState(false);
+  const [failedFileId, setFailedFileId] = useState<string | null>(null);
+  const imageFailed = failedFileId === fileId;
+  const [loadedSize, setLoadedSize] = useState<{
+    fileId: string;
+    width: number;
+    height: number;
+  } | null>(null);
 
   const dets =
     file && showBoxes && !imageFailed
@@ -63,9 +69,18 @@ export function FrameThumbnail({
 
   // Draw in the image's pixel space; the SVG slices it to the tile exactly
   // like the image's object-cover.
-  const imgW = file?.width_px || 1;
-  const imgH = file?.height_px || 1;
-  const rx = Math.round(Math.min(imgW, imgH) * 0.02);
+  const apiSize =
+    file?.width_px && file.width_px > 0 && file.height_px && file.height_px > 0
+      ? { width: file.width_px, height: file.height_px }
+      : null;
+  const renderedSize =
+    apiSize ??
+    (loadedSize?.fileId === fileId && loadedSize.width > 0 && loadedSize.height > 0
+      ? loadedSize
+      : null);
+  const imgW = renderedSize?.width;
+  const imgH = renderedSize?.height;
+  const rx = imgW && imgH ? Math.round(Math.min(imgW, imgH) * 0.02) : 0;
 
   return (
     <div
@@ -85,15 +100,25 @@ export function FrameThumbnail({
           alt=""
           className={`w-full h-full ${fit === "contain" ? "object-contain" : "object-cover"}`}
           style={imageFilter ? { filter: imageFilter } : undefined}
+          onLoad={(event) => {
+            const image = event.currentTarget;
+            if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+              setLoadedSize({
+                fileId,
+                width: image.naturalWidth,
+                height: image.naturalHeight,
+              });
+            }
+          }}
           onError={() => {
-            setImageFailed(true);
+            setFailedFileId(fileId);
             reportMissingMedia(file?.deployment_id);
           }}
         />
       )}
       {/* Spotlight + outlines. Rendered once `file` has loaded (and boxes
           are on) so empty frames dim uniformly. */}
-      {file && showBoxes && !imageFailed && (
+      {file && showBoxes && !imageFailed && imgW && imgH && (
         <svg
           className="absolute inset-0 w-full h-full pointer-events-none"
           viewBox={`0 0 ${imgW} ${imgH}`}
