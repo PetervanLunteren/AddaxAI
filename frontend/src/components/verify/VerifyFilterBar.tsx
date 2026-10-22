@@ -27,6 +27,7 @@ import { sitesApi } from "../../api/sites";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { buildSiteOptions } from "../../lib/site-filter-options";
 import { speciesLabelMap } from "../../lib/species-name-mode";
+import { reconcileEmptyFilter } from "../../lib/empty-filter";
 import type {
   EmptyFilter,
   EventFilterParams,
@@ -109,7 +110,7 @@ interface VerifyFilterBarProps {
 
 export function VerifyFilterBar({
   filters,
-  onChange,
+  onChange: onChangeRaw,
   projectId,
   classificationModelId,
   detectionFloor = 0,
@@ -123,6 +124,10 @@ export function VerifyFilterBar({
   showLabels = true,
   clampReason,
 }: VerifyFilterBarProps) {
+  // Every control goes through here, so "Empty only" and the label and
+  // confidence filters can never end up set together.
+  const onChange = (next: EventFilterParams) =>
+    onChangeRaw(reconcileEmptyFilter(filters, next));
 
   // Event scope (Counts page) confirms; detection/file scope (Labels)
   // verifies. Drives the verification filter's wording.
