@@ -571,15 +571,12 @@ export function LabelsTab({
     }
   }, [debouncedSortKey, canSort]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The frames behind the open card. Keyed on the floor as well as the
-  // track, so moving the slider while a track is open refetches rather
-  // than showing a stale set.
-  const { data: openTrackData, isLoading: trackLoading } = useQuery({
-    queryKey: ["track-detections", openTrack?.trackId, effectiveFloor],
-    queryFn: ({ signal }) =>
-      tracksApi.detections(openTrack!.trackId, lblFilters.min_confidence, {
-        signal,
-      }),
+  // The frames behind the open card: every box of the track, the number
+  // the chip promised. No confidence scope; the filters are hidden while
+  // a track is open and the view is the animal, not the grid.
+  const { data: openTrackData } = useQuery({
+    queryKey: ["track-detections", openTrack?.trackId],
+    queryFn: ({ signal }) => tracksApi.detections(openTrack!.trackId, { signal }),
     enabled: !!openTrack,
   });
 
@@ -1534,6 +1531,13 @@ export function LabelsTab({
 
   return (
     <div className="space-y-4">
+      {/* An open track is one animal, chronological, and nothing in the
+          filter card or the toolbar applies to it: the date, label and
+          verified filters are bypassed for its frames, sort is fixed to
+          time, and the counts and the verified bar describe the grid
+          behind it. Showing controls that do nothing is worse than
+          none, so the frames view keeps only its own header row. */}
+      {!openTrack && (
       <VerifyFilterBar
         filters={toFilterBarFilters(lblFilters)}
         onChange={handleFilterBarChange}
@@ -1548,6 +1552,7 @@ export function LabelsTab({
         confidenceFloorMode="open"
         verificationDefault="unverified"
       />
+      )}
 
       <ReEmbedModal
         open={!!reEmbedJobId}
@@ -1557,6 +1562,7 @@ export function LabelsTab({
         onError={() => invalidateProjectData(queryClient, projectId)}
       />
 
+      {!openTrack && (
       <VerifyToolbar>
         {/* Left: the controls that change what happens (analysis
             settings, sort, suggestions). Right: meta icons + progress,
@@ -1619,6 +1625,7 @@ export function LabelsTab({
           )}
         </div>
       </VerifyToolbar>
+      )}
 
       {/* Warning when embeddings are PARTIAL: the grid shows the
           embedded ones and this offers to fill the rest. Requires
@@ -1825,10 +1832,7 @@ export function LabelsTab({
           {openTrack && (
             <OpenTrackBar
               card={openTrack.card}
-              shown={trackFrames.length}
-              tracked={openTrack.card.track_frames ?? 0}
               fileName={openTrackData?.file_name ?? ""}
-              loading={trackLoading}
               onClose={closeTrackFrames}
             />
           )}

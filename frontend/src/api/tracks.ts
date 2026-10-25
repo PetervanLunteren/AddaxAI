@@ -15,13 +15,9 @@ export const tracksApi = {
    */
   detections: async (
     trackId: string,
-    minConfidence?: number | null,
     options?: { signal?: AbortSignal },
   ): Promise<TrackDetectionsResponse> => {
-    const q =
-      minConfidence === null || minConfidence === undefined
-        ? ""
-        : `?min_confidence=${minConfidence}`;
+    const q = "";
     return api.get<TrackDetectionsResponse>(
       `/api/tracks/${trackId}/detections${q}`,
       options,

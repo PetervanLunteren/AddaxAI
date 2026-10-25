@@ -1,13 +1,16 @@
 /**
- * The bar above the grid while one animal's frames are open.
+ * The row above the grid while one animal's frames are open: the way
+ * back, and which animal.
  *
- * It has one job beyond the way back: reconciling two numbers that do
- * not match and should not. The badge on the card says how many frames
- * the tracker followed the animal for, which is a fact about the
- * animal. The grid shows the ones at or above the confidence you are
- * working at, which is usually fewer, because the tracker keeps boxes
- * far below the counting threshold. Saying both, in words, is cheaper
- * and more honest than making them agree.
+ * It says nothing about how many frames are shown, because the grid
+ * below shows every box of the track, the number on the card's chip.
+ * It used to be gated at the confidence setting and a sentence here
+ * reconciled the two numbers; neither is needed now.
+ *
+ * It is drawn like the grid's own event rows, a label and a rule, not
+ * as a third bordered card under the filter card and the toolbar card.
+ * The way back is an outline button, the same as the step's Back button
+ * below the grid.
  */
 
 import { ArrowLeft, Film } from "lucide-react";
@@ -19,35 +22,23 @@ import type { DetectionSummary } from "../../api/types";
 interface OpenTrackBarProps {
   /** The card that was opened. Its label and colour name the animal. */
   card: DetectionSummary;
-  /** Frames on screen: what passed the confidence you are working at. */
-  shown: number;
-  /** Frames the tracker followed the animal through. */
-  tracked: number;
   fileName: string;
-  loading: boolean;
   onClose: () => void;
 }
 
-export function OpenTrackBar({
-  card,
-  shown,
-  tracked,
-  fileName,
-  loading,
-  onClose,
-}: OpenTrackBarProps) {
+export function OpenTrackBar({ card, fileName, onClose }: OpenTrackBarProps) {
   return (
     <div
       data-testid="open-track-bar"
-      className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-card px-3 py-2"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 px-1 pt-1 pb-4"
     >
-      <Button variant="ghost" size="sm" onClick={onClose} className="-ml-2">
-        <ArrowLeft className="mr-1 h-4 w-4" />
+      <Button variant="outline" size="sm" onClick={onClose}>
+        <ArrowLeft className="h-4 w-4" />
         Back to detections
       </Button>
 
       <span
-        className="inline-flex items-center gap-1.5 text-sm font-medium"
+        className="inline-flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
         style={{ color: getDetectionColor(card) }}
       >
         <Film className="h-3.5 w-3.5" />
@@ -58,19 +49,7 @@ export function OpenTrackBar({
         <span className="truncate text-xs text-muted-foreground">{fileName}</span>
       )}
 
-      <span className="ml-auto text-xs text-muted-foreground">
-        {loading ? (
-          "Loading the frames..."
-        ) : shown === tracked ? (
-          <>Every one of its {tracked} frames.</>
-        ) : (
-          <>
-            {shown} of its {tracked} frames, the ones at your confidence
-            setting. A verdict here applies to the frames you pick, not to
-            the whole animal.
-          </>
-        )}
-      </span>
+      <div className="h-px min-w-8 flex-1 bg-border" />
     </div>
   );
 }

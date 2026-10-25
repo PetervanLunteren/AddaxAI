@@ -57,68 +57,26 @@ def test_the_frames_come_back_in_frame_order(client, db):
     assert body["frame_rate"] == 30.0
 
 
-def test_weak_boxes_are_hidden_until_the_slider_reaches_them(client, db):
-    """The scope is the grid's, and the slider digs down.
+def test_every_box_of_the_track_comes_back_whatever_its_confidence(client, db):
+    """The view is the animal, not the grid.
 
-    The tracker keeps boxes far below the counting threshold, so a track
-    routinely holds more frames than the grid shows. Which of them
-    appear must follow the same slider the grid was sorted at.
-    """
-    _, video, track = _clip(db, counting_threshold=0.2)
-    make_detection(db, file_id=video.id, frame_number=30, track_id=track.id,
-                   confidence=0.9)
-    make_detection(db, file_id=video.id, frame_number=60, track_id=track.id,
-                   confidence=0.5)
-    weak = make_detection(db, file_id=video.id, frame_number=90, track_id=track.id,
-                          confidence=0.05)
-    db.commit()
-
-    # At the project threshold the weak box is out, as everywhere else.
-    body = client.get(f"/api/tracks/{track.id}/detections").json()
-    assert [d["frame_number"] for d in body["detections"]] == [30, 60]
-
-    # Slider dragged down below it: the card was visible there, so its
-    # frames must be too.
-    body = client.get(
-        f"/api/tracks/{track.id}/detections", params={"min_confidence": 0.01}
-    ).json()
-    assert [d["frame_number"] for d in body["detections"]] == [30, 60, 90]
-    assert weak.id in {d["id"] for d in body["detections"]}
-
-    # A slider above the threshold filters literally, as the grid does.
-    body = client.get(
-        f"/api/tracks/{track.id}/detections", params={"min_confidence": 0.7}
-    ).json()
-    assert [d["frame_number"] for d in body["detections"]] == [30]
-
-
-def test_a_rejected_weak_box_is_out_at_the_threshold(client, db):
-    """Verifying a file marks its invisible weak boxes "false detection".
-
-    Those rows are excluded by the verified arm of the scope rule, not by
-    a rule of their own: a rejected box below the floor fails the
-    confidence arm and is disqualified from the verified arm by its
-    label. Drop the slider under its confidence and it reappears, which
-    is what the grid does too, because the person is then explicitly
-    asking to see the low-confidence tail.
+    The tracker keeps boxes far below the counting threshold, and a
+    verdict on the card reaches all of them, so opening the track must
+    show all of them: the weak ones are the frames a repair is usually
+    for. Rejected boxes come back too, so a rejection can be undone.
     """
     _, video, track = _clip(db, counting_threshold=0.2)
     make_detection(db, file_id=video.id, frame_number=30, track_id=track.id,
                    confidence=0.9)
     make_detection(db, file_id=video.id, frame_number=60, track_id=track.id,
                    confidence=0.03, verified=True, label="false detection")
-    # A verified box above the floor keeps its verdict and stays visible.
-    make_detection(db, file_id=video.id, frame_number=90, track_id=track.id,
-                   confidence=0.4, verified=True, label="false detection")
+    weak = make_detection(db, file_id=video.id, frame_number=90, track_id=track.id,
+                          confidence=0.05)
     db.commit()
 
     body = client.get(f"/api/tracks/{track.id}/detections").json()
-    assert [d["frame_number"] for d in body["detections"]] == [30, 90]
-
-    body = client.get(
-        f"/api/tracks/{track.id}/detections", params={"min_confidence": 0.01}
-    ).json()
     assert [d["frame_number"] for d in body["detections"]] == [30, 60, 90]
+    assert weak.id in {d["id"] for d in body["detections"]}
 
 
 def test_each_frame_carries_its_own_crop_box(client, db):

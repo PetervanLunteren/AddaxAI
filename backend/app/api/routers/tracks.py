@@ -14,18 +14,15 @@ on request. Nothing per frame is stored.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.crud.file import _project_threshold_for_file
 from app.api.schemas.detection import DetectionResponse
 from app.api.schemas.file import TrackResponse
 from app.api.schemas.label import CropBbox
-from app.core.confidence import effective_floor
 from app.db.base import get_db
 from app.ml.inference.crop_box import bbox_within_crop
-from app.ml.label_exclusion import threshold_or_verified
 from app.models import Detection, File, Track
 
 router = APIRouter(prefix="/api/tracks", tags=["tracks"])
@@ -58,28 +55,18 @@ class TrackDetectionsResponse(BaseModel):
 @router.get("/{track_id}/detections", response_model=TrackDetectionsResponse)
 def get_track_detections(
     track_id: str,
-    min_confidence: float | None = Query(
-        None,
-        ge=0.0,
-        le=1.0,
-        description="The Labels page confidence slider, if the user moved it.",
-    ),
     db: Session = Depends(get_db),
 ) -> TrackDetectionsResponse:
-    """The track's boxes, in frame order, at the grid's confidence scope.
+    """Every box of the track, in frame order. No confidence scope.
 
-    The scope is the grid's, not the project's alone: the slider digs
-    *down* below the counting threshold (`effective_floor`), so a card
-    visible at a lowered slider must open to the frames that were
-    visible with it. Gating at the project threshold instead would open
-    an empty track under a card the person can see, which is the one
-    failure that makes the feature look broken rather than slow.
-
-    Returns fewer rows than ``track.frame_count``: the tracker keeps
-    boxes down to the storage floor while the grid shows from the
-    counting threshold. The header above the grid says so; the number
-    on the badge is how many frames the animal was followed for, which
-    is a fact about the animal rather than a promise about the grid.
+    This is the animal, not the grid. The chip on the card promises the
+    frames the tracker followed the animal for, a verdict on the card
+    reaches every one of them, and opening the track is how a person
+    repairs the frames that are wrong, which are usually the weak ones.
+    A view that hid the weak boxes would hide exactly the frames the
+    repair is for, and verify frames the person could not see. It used
+    to be gated at the grid's confidence scope, so a 32-frame track
+    opened to 22 cards with the filters that explained why hidden.
     """
     track = db.query(Track).filter(Track.id == track_id).first()
     if track is None:
@@ -88,18 +75,12 @@ def get_track_detections(
     if file is None:
         raise HTTPException(status_code=404, detail="File not found")
 
-    floor = effective_floor(_project_threshold_for_file(db, file), min_confidence)
-    query = (
+    rows = (
         db.query(Detection)
         .filter(Detection.track_id == track_id)
-        .filter(threshold_or_verified(floor))
+        .order_by(Detection.frame_number, Detection.id)
+        .all()
     )
-    if min_confidence is not None:
-        # The slider is also applied literally, as the grid applies it: a
-        # verified low-confidence box passes the floor's OR clause but
-        # cannot satisfy a min the user set by hand.
-        query = query.filter(Detection.confidence >= min_confidence)
-    rows = query.order_by(Detection.frame_number, Detection.id).all()
 
     return TrackDetectionsResponse(
         file_id=file.id,
