@@ -29,6 +29,7 @@ from app.core.job_cancellation import (
 from app.core.logging_config import get_logger
 from app.core.subprocess_group import popen_group
 from app.ml.detection_visibility import on_visible_frame_of
+from app.ml.label_exclusion import is_human_decided
 from app.ml.observation_type import derive_observation_type
 from app.ml.progress import ProgressTicker
 from app.models import Deployment, Detection, File, Project
@@ -610,8 +611,8 @@ def update_database_from_smoothed_results(
                         errors += 1
                     continue
 
-                # Preserve human-verified detections
-                if db_det.verified:
+                # Preserve human-decided labels, inherited ones included
+                if is_human_decided(db_det):
                     skipped_verified += 1
                     unchanged += 1
                     continue
@@ -681,7 +682,7 @@ def update_database_from_smoothed_results(
     # an excluded label or rollup couldn't find an included ancestor.
     if excluded_taxonomy_ids:
         for det in detections:
-            if det.verified:
+            if is_human_decided(det):
                 continue
             if (
                 det.label_taxonomy_id
@@ -697,7 +698,7 @@ def update_database_from_smoothed_results(
     elif excluded_classes:
         excluded_lower = {name.lower() for name in excluded_classes}
         for det in detections:
-            if det.verified:
+            if is_human_decided(det):
                 continue
             if det.label and det.label.lower() in excluded_lower:
                 det.label = None
@@ -715,7 +716,7 @@ def update_database_from_smoothed_results(
     # final state. Verified detections are frozen: human judgment outranks
     # the machine, and postprocessing never touches them.
     for det in detections:
-        if det.verified:
+        if is_human_decided(det):
             continue
         det.original_label = det.label
         det.original_label_confidence = det.label_confidence

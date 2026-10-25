@@ -280,15 +280,14 @@ def verify_detection(
     if not detection:
         raise HTTPException(status_code=404, detail="Detection not found")
 
-    # The whole track: a verdict on the card is a verdict on the animal.
+    # A verdict on the card is a verdict on the animal: the label reaches
+    # every box of its track (`apply_card_labels`, tagged "track"). The
+    # verified flag does not: it stays on the box the person judged, so
+    # "verified" keeps meaning a person saw this frame.
     now = datetime.now(UTC) if body.verified else None
     if body.verified:
-        # Label included, so the track cannot keep a per-frame reading the
-        # person never saw. Unverifying only clears the flag.
         detection_crud.apply_card_labels(db, [detection])
-    db.query(Detection).filter(
-        detection_crud.in_expanded_tracks([detection_id])
-    ).update(
+    db.query(Detection).filter(Detection.id == detection_id).update(
         {"verified": body.verified, "verified_at_utc": now},
         synchronize_session="fetch",
     )
@@ -319,9 +318,11 @@ def bulk_verify_detections(
             .all()
         )
         detection_crud.apply_card_labels(db, cards)
+    # The flag lands on the given ids only; the label already reached the
+    # siblings above, tagged "track". See the single-verify route.
     updated = (
         db.query(Detection)
-        .filter(_cascade(body.detection_ids, body.expand_tracks))
+        .filter(Detection.id.in_(body.detection_ids))
         .update(
             {"verified": body.verified, "verified_at_utc": now},
             synchronize_session="fetch",
@@ -435,8 +436,16 @@ def bulk_relabel_detections(
             builtin_common_name = builtin.common_name
 
     label_provided = "label" in body.model_fields_set
+    # The ids are the boxes the person acted on; the rest of `detections`
+    # are their tracks' siblings, reached by the cascade. A sibling takes
+    # the label tagged "track" and keeps its own verified flag, and one a
+    # person labelled by hand is left alone, as `apply_card_labels` does.
+    chosen = set(body.detection_ids)
 
     for det in detections:
+        is_card = det.id in chosen
+        if not is_card and det.classification_method == "human":
+            continue
         if label_provided:
             det.label = body.label if body.label else None
             det.label_confidence = 1.0 if body.label else None
@@ -459,9 +468,10 @@ def bulk_relabel_detections(
             det.label_taxonomy_id = builtin_taxonomy_id
             det.scientific_name = builtin_scientific_name
             det.common_name = builtin_common_name
-        det.classification_method = "human"
-        det.verified = True
-        det.verified_at_utc = datetime.now(UTC)
+        det.classification_method = "human" if is_card else "track"
+        if is_card:
+            det.verified = True
+            det.verified_at_utc = datetime.now(UTC)
 
     file_crud.recompute_file_verified_for_detections(db, body.detection_ids)
     db.commit()

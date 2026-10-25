@@ -61,6 +61,24 @@ def is_non_label(label: str | None) -> bool:
     return bool(label) and label.lower() in NON_LABEL_CLASSES
 
 
+def is_human_decided(detection) -> bool:
+    """A label postprocessing must never overwrite.
+
+    Two cases. A verified box: a person judged it, on a photo, on a card
+    or on a frame they opened. A box whose ``classification_method`` is
+    "track": it inherited its label from the card of the animal it
+    belongs to, and is deliberately *not* verified, because the person
+    never saw that frame; "verified" has to keep meaning "a person saw
+    this box", which a training set built on verified rows depends on.
+    Both are the person's call, and a reprocess that rewrote the second
+    would re-fragment a verified animal's species frame by frame.
+
+    Not "human" on its own: every path that writes it also verifies, and
+    an unticked file must hand its boxes back to the machine.
+    """
+    return bool(detection.verified) or detection.classification_method == "track"
+
+
 def threshold_or_verified(threshold) -> ColumnElement[bool]:
     """The user-facing scope rule (DEVELOPERS.md), in one place.
 

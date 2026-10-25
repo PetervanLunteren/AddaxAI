@@ -487,12 +487,14 @@ def apply_card_labels(db: Session, cards: Iterable[Detection]) -> int:
     exactly "a person chose this label": a file sign-off verifies without
     touching labels, so it cannot be mistaken for one.
 
-    The sibling is written as if the person had relabelled it, because at
-    the level they acted on they did: label, taxonomy, both names,
-    ``label_confidence`` 1.0 and ``classification_method`` "human", the
-    same fields ``bulk_relabel_detections`` writes. ``original_label`` is
-    untouched, so revert-to-original still hands the machine's per-frame
-    labels back.
+    The sibling gets the label, taxonomy, both names and ``label_confidence``
+    1.0, and ``classification_method`` "track": the label is the person's,
+    the frame is one they never saw. It is not marked verified for the
+    same reason. "human" and "verified" keep meaning "a person judged this
+    box", which a training set drawn from verified rows depends on, and
+    the scope rule then keeps an inherited weak box out of the counts by
+    itself. ``original_label`` is untouched, so revert-to-original still
+    hands the machine's per-frame labels back.
 
     Returns the number of boxes changed.
     """
@@ -517,7 +519,7 @@ def apply_card_labels(db: Session, cards: Iterable[Detection]) -> int:
                     "label_taxonomy_id": card.label_taxonomy_id,
                     "scientific_name": card.scientific_name,
                     "common_name": card.common_name,
-                    "classification_method": "human",
+                    "classification_method": "track",
                 },
                 synchronize_session=False,
             )

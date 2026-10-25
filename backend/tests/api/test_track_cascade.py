@@ -85,10 +85,16 @@ def test_relabel_on_the_card_relabels_the_whole_track(client, db):
     assert resp.json()["updated_count"] == 3
 
     db.expire_all()
+    # The label is the animal's; verified and "human" are the card's own,
+    # because the person saw that frame and not the others.
+    assert (card.label, card.verified, card.classification_method) == (
+        "great hammerhead", True, "human"
+    )
     for box in boxes["one"]:
-        assert (box.label, box.verified, box.classification_method) == (
-            "great hammerhead", True, "human"
-        )
+        if box.id != card.id:
+            assert (box.label, box.verified, box.classification_method) == (
+                "great hammerhead", False, "track"
+            )
     # The other track and the loose box are not the same animal.
     assert all(b.label is None for b in boxes["two"] + boxes["loose"])
 
@@ -104,18 +110,20 @@ def test_x_on_the_card_rejects_the_whole_track(client, db):
     assert resp.status_code == 200
 
     db.expire_all()
-    assert all(b.label == "false detection" and b.verified for b in boxes["two"])
+    assert all(b.label == "false detection" for b in boxes["two"])
+    assert [b.verified for b in boxes["two"]] == [b.id == card.id for b in boxes["two"]]
     assert all(b.label is None and not b.verified for b in boxes["one"])
 
 
-def test_verify_on_the_card_verifies_the_whole_track(client, db):
+def test_verify_on_the_card_verifies_the_card_and_labels_the_track(client, db):
     _, _, _, _, boxes = _tracked_video(db)
     card = boxes["one"][1]
 
     resp = client.patch(f"/api/detections/{card.id}/verify", json={"verified": True})
     assert resp.status_code == 200
     db.expire_all()
-    assert all(b.verified for b in boxes["one"])
+    assert card.verified
+    assert not any(b.verified for b in boxes["one"] if b.id != card.id)
     assert not any(b.verified for b in boxes["two"])
 
     resp = client.patch(f"/api/detections/{card.id}/verify", json={"verified": False})
@@ -128,12 +136,15 @@ def test_bulk_verify_dismiss_and_undo_reach_the_track(client, db):
     _, _, _, _, boxes = _tracked_video(db)
     card = boxes["one"][1]
 
+    # Verify flags the card alone (the label travels separately, see
+    # `apply_card_labels`); dismiss is about the animal and still cascades.
     assert client.post(
         "/api/detections/bulk-verify",
         json={"detection_ids": [card.id], "verified": True},
-    ).json()["updated_count"] == 3
+    ).json()["updated_count"] == 1
     db.expire_all()
-    assert all(b.verified for b in boxes["one"])
+    assert card.verified
+    assert not any(b.verified for b in boxes["one"] if b.id != card.id)
 
     assert client.post(
         "/api/detections/bulk-dismiss",
@@ -199,10 +210,12 @@ def test_a_verdict_from_any_box_of_a_track_reaches_the_whole_track(client, db):
         json={"detection_ids": [off_card.id], "verified": True},
     )
     assert resp.status_code == 200
-    assert resp.json()["updated_count"] == 3
+    assert resp.json()["updated_count"] == 1
 
     db.expire_all()
-    assert all(b.verified for b in boxes["one"])
+    # The flag lands on the box named; the label is what reaches the animal.
+    assert off_card.verified
+    assert not any(b.verified for b in boxes["one"] if b.id != off_card.id)
     assert not any(b.verified for b in boxes["two"])
 
 
@@ -354,10 +367,15 @@ def test_verifying_a_card_writes_its_label_over_the_track(client, db):
     for box in boxes["one"]:
         db.refresh(rows[box.id])
     assert {rows[b.id].label for b in boxes["one"]} == {"red deer"}
-    assert all(rows[b.id].verified for b in boxes["one"])
-    # The siblings now read as a human's call, because at the level the
-    # person acted on they are.
-    assert rows[boxes["one"][0].id].classification_method == "human"
+    # The siblings carry the person's label and say where it came from.
+    # They are not verified and not "human": nobody looked at those frames,
+    # and a training set built on verified boxes must be able to tell.
+    # The card is the box the person saw: verified. Its method stays the
+    # model's, since confirming a label is not choosing one.
+    assert rows[card.id].verified
+    for b in (boxes["one"][0], boxes["one"][2]):
+        assert not rows[b.id].verified
+        assert rows[b.id].classification_method == "track"
 
 
 def test_a_card_verdict_leaves_a_frame_a_person_labelled(client, db):
