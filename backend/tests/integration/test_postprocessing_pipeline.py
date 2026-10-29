@@ -1052,3 +1052,44 @@ def test_an_unticked_files_rejected_boxes_reprocess_cleanly(deployment_scaffold)
     # the row again, so its method says so. Exports read this column.
     assert weak.classification_method == "machine"
     assert weak.verified is False
+
+
+def test_update_db_refreshes_a_rounding_only_difference_quietly(deployment_scaffold):
+    """Rows written before SCORE_DIGITS hold five-decimal confidences. The
+    first reprocess after that change finds every one of them different
+    from the three-decimal value, which is not a change the user made:
+    the stored value is brought to three decimals, but it is not counted
+    as updated and the file is not re-derived."""
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    _load_basic_images(s)
+    dets = db.query(Detection).all()
+    for d in dets:
+        d.label_confidence = 0.70004
+    db.commit()
+
+    files = db.query(File).filter(File.deployment_id == s["deployment"].id).all()
+    smoothed = build_detection_json(
+        [
+            {
+                "file": str(Path(f.file_path).relative_to(deploy_dir)),
+                "detections": [{
+                    "category": "1", "conf": 0.9, "bbox": [0.1, 0.2, 0.3, 0.4],
+                    "classifications": [[1, 0.7], [2, 0.2], [3, 0.1]],
+                }],
+            }
+            for f in files
+        ],
+        classification_categories={"1": "lion", "2": "zebra", "3": "giraffe"},
+    )
+
+    counts = update_database_from_smoothed_results(
+        deployment_id=s["deployment"].id,
+        smoothed_results=smoothed,
+        deployment_folder=deploy_dir,
+        db=db,
+    )
+
+    assert counts["updated"] == 0
+    assert counts["unchanged"] == 3
+    assert all(d.label_confidence == 0.7 for d in db.query(Detection).all())

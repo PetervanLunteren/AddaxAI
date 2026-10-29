@@ -663,7 +663,21 @@ def update_database_from_smoothed_results(
                         )
                         new_common = format_common_name(new_label)
 
-                if db_det.label != new_label or db_det.label_confidence != new_confidence:
+                # A stored confidence that only differs in rounding (rows
+                # written with five decimals before SCORE_DIGITS) is
+                # refreshed quietly: it is not a change the user made or
+                # needs to hear about, so no updated count and no file
+                # re-derivation.
+                rounding_only = (
+                    db_det.label == new_label
+                    and new_confidence is not None
+                    and db_det.label_confidence is not None
+                    and round(db_det.label_confidence, SCORE_DIGITS) == new_confidence
+                )
+                if rounding_only:
+                    db_det.label_confidence = new_confidence
+                    unchanged += 1
+                elif db_det.label != new_label or db_det.label_confidence != new_confidence:
                     if new_label is None:
                         clear_classification(db_det, builtin_ids)
                     else:
