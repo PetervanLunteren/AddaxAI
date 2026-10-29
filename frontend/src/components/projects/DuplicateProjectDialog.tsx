@@ -35,6 +35,7 @@ import {
   useLabelSelectionCaption,
 } from "../taxonomy/LabelSelectionField";
 import { FieldHeader } from "../ui/field-header";
+import { SETTING_CAPTIONS } from "../../lib/settingCaptions";
 import {
   Dialog,
   DialogContent,
@@ -278,7 +279,7 @@ export function DuplicateProjectDialog({
                 <FormItem>
                   <FieldHeader
                     label={<FormLabel>Classification model</FormLabel>}
-                    caption="The AI model that identifies species in your images. Pick one trained for your region."
+                    caption={SETTING_CAPTIONS.classificationModel}
                   />
                   {classifiersForType.length === 0 ? (
                     <NoClassifierNotice noneAvailable />

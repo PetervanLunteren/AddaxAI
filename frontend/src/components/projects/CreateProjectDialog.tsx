@@ -412,10 +412,9 @@ export function CreateProjectDialog({
             <DialogHeader>
               <DialogTitle>Create new project</DialogTitle>
               <DialogDescription>
-                A project is a persistent workspace. You record where each
-                camera was, and AddaxAI uses that to turn the results into
-                insight: dashboards, maps, rates, and Camtrap DP exports, with
-                a verification history kept over time.
+                A project is a workspace you come back to and keep adding to.
+                Add where the footage came from, and AddaxAI builds
+                dashboards, maps and trends that grow with every folder.
               </DialogDescription>
             </DialogHeader>
 
@@ -429,7 +428,7 @@ export function CreateProjectDialog({
                   <FormItem>
                     <FormLabel>Project name</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g., Yellowstone camera trap project" {...field} />
+                      <Input placeholder="e.g., Kenya survey 2026" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -509,7 +508,7 @@ export function CreateProjectDialog({
                   <FormItem>
                     <FieldHeader
                       label={<FormLabel>Classification model</FormLabel>}
-                      caption="The AI model that identifies species in your images. Pick one trained for your region."
+                      caption={SETTING_CAPTIONS.classificationModel}
                     />
                     {classifiersForType.length === 0 ? (
                       <NoClassifierNotice noneAvailable />

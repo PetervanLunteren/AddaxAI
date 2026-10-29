@@ -32,7 +32,7 @@
 
 import { useEffect, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { setupApi } from "../api/setup";
 import {
   DATA_TYPE_OPTIONS,
@@ -80,6 +80,10 @@ export default function SetupPage() {
   const { data: status } = useQuery({
     queryKey: ["setup-status", dataType],
     queryFn: () => setupApi.getStatus(dataType),
+    // Changing the data type changes this key. Keep the last answer on
+    // screen while the new one loads, or the gate renders nothing and
+    // the whole setup screen flashes white.
+    placeholderData: keepPreviousData,
     refetchInterval: POLL_INTERVAL_MS,
   });
 
