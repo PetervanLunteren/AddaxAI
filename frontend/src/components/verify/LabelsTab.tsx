@@ -58,7 +58,7 @@ import {
   type LabelsVerification,
 } from "./labels-filters";
 import { nextAfterActed, selectOnClick } from "./grid-selection";
-import { OpenTrackBar } from "./OpenTrackBar";
+import { FocusedViewBar } from "./FocusedViewBar";
 import { labelMajority, type LabelMajority } from "./label-majority";
 import { useShortcutLabels } from "../../hooks/useShortcutLabels";
 import { GridEmptyState } from "./GridEmptyState";
@@ -199,6 +199,19 @@ function toLabelFilters(f: LabelsFilterState): LabelFilters {
     flagged: f.flagged === "all" ? undefined : f.flagged,
     favorited: f.favorited === "all" ? undefined : f.favorited,
   };
+}
+
+/** The filters a sort runs with.
+ *
+ *  Suggestions compare each crop with its look-alikes across the whole
+ *  run, the pool the toolbar pill counts. A filter there would remove
+ *  voters as well as rows: "Verified" left an empty grid that said all
+ *  suggestions were reviewed, and a label filter left nothing to
+ *  disagree with. So the review runs with none (the backend still adds
+ *  the counting threshold), and the filters wait in the URL until Back.
+ */
+function sortFilters(sort: LabelSort, f: LabelsFilterState): LabelFilters {
+  return sort === "suggestions" ? {} : toLabelFilters(f);
 }
 
 /** Most common label among the selected detections (`labelMajority`
@@ -364,6 +377,9 @@ export function LabelsTab({
     },
     [],
   );
+  // Suggestions is a review you step into, not a way of sorting the grid
+  // (see `FocusedViewBar`).
+  const reviewingSuggestions = lblSort === "suggestions";
 
   const [tileSize, setTileSize] = useTileSize();
   const { wide, toggle: toggleWide } = useWideModeControls();
@@ -518,7 +534,7 @@ export function LabelsTab({
       labelsApi.sortStream(
         projectId,
         {
-          filters: toLabelFilters(lblFilters),
+          filters: sortFilters(vars.sort, lblFilters),
           sort: vars.sort,
         },
         setProgress,
@@ -547,7 +563,7 @@ export function LabelsTab({
   // Stable key for filter + sort comparison; drives auto re-sort. The
   // Verified filter is inside toLabelFilters, so switching it re-sorts
   // (the cap counts the current verified pool, server-side).
-  const filtersKey = JSON.stringify(toLabelFilters(lblFilters));
+  const filtersKey = JSON.stringify(sortFilters(lblSort, lblFilters));
   const sortKey = `${filtersKey}|${lblSort}|${refreshSignal ?? 0}`;
   const lastSortKeyRef = useRef<string | null>(null);
 
@@ -597,13 +613,18 @@ export function LabelsTab({
 
     let dets: DetectionSummary[] = sortResult?.detections ?? [];
 
+    // Suggestions ran with no filters (see `sortFilters`) and return only
+    // unverified cohort members, so the Verified filter must not apply
+    // here either: set to "Verified" it would empty the review.
+    if (resultSort === "suggestions") return dets;
+
     if (verificationFilter === "unverified") {
       dets = dets.filter((d) => !d.verified);
     } else if (verificationFilter === "verified") {
       dets = dets.filter((d) => d.verified);
     }
     return dets;
-  }, [sortResult, verificationFilter, openTrack, trackFrames]);
+  }, [sortResult, resultSort, verificationFilter, openTrack, trackFrames]);
 
   // The grid's visual order, which is what a shift-click range is read
   // from. Also the input to `nextAfterActed`.
@@ -1289,6 +1310,10 @@ export function LabelsTab({
           clearSelection();
         } else if (openTrack) {
           closeTrackFrames();
+        } else if (reviewingSuggestions) {
+          // One level at a time: frames opened from a suggestion close
+          // back to the review first, the review on the next press.
+          exitSuggestionsMode();
         }
         return;
       }
@@ -1411,7 +1436,7 @@ export function LabelsTab({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds, detailDetection, allDetections, resultSort, openTrack, handleActionComplete, shortcutLabels, applyUndoableAction, handleMarkFalse, handleMarkUnknown, handleMatchMajority, handleBulkVerify, advanceSelectionAfter, handleUndo, openTrackFrames, closeTrackFrames]);
+  }, [selectedIds, detailDetection, allDetections, resultSort, openTrack, handleActionComplete, shortcutLabels, applyUndoableAction, handleMarkFalse, handleMarkUnknown, handleMatchMajority, handleBulkVerify, advanceSelectionAfter, handleUndo, openTrackFrames, closeTrackFrames, reviewingSuggestions, exitSuggestionsMode]);
 
   // Click outside grid to deselect
   useEffect(() => {
@@ -1529,15 +1554,35 @@ export function LabelsTab({
     }
   };
 
+  // A focused view is a piece of work stepped into from the grid: an
+  // animal's frames, or the suggestions review. Nothing in the filter
+  // card, the toolbar or the notices above the grid applies to either:
+  // the filters are set aside (an open track's frames bypass them, the
+  // review runs without them), the sort is fixed, and the counts, the
+  // verified bar and the notices describe the grid behind. Showing
+  // controls that do nothing is worse than none, so both keep only
+  // `FocusedViewBar`. The frames view wins when both hold, because it
+  // can be opened from a suggestion's card.
+  const focused = openTrack !== null || reviewingSuggestions;
+  const suggestionsLeft = allDetections.length;
+  const focusedBar = openTrack
+    ? {
+        backLabel: reviewingSuggestions ? "Back to suggestions" : "Back to detections",
+        context: openTrackData?.file_name
+          ? `Frames the AI followed, ${openTrackData.file_name}`
+          : "Frames the AI followed",
+        onBack: closeTrackFrames,
+      }
+    : {
+        backLabel: "Back to detections",
+        // No number until the review has loaded, or it reads 0 first.
+        context: isLoading || !hasResults ? "Suggestions" : `Suggestions left: ${suggestionsLeft}`,
+        onBack: exitSuggestionsMode,
+      };
+
   return (
     <div className="space-y-4">
-      {/* An open track is one animal, chronological, and nothing in the
-          filter card or the toolbar applies to it: the date, label and
-          verified filters are bypassed for its frames, sort is fixed to
-          time, and the counts and the verified bar describe the grid
-          behind it. Showing controls that do nothing is worse than
-          none, so the frames view keeps only its own header row. */}
-      {!openTrack && (
+      {!focused && (
       <VerifyFilterBar
         filters={toFilterBarFilters(lblFilters)}
         onChange={handleFilterBarChange}
@@ -1562,34 +1607,26 @@ export function LabelsTab({
         onError={() => invalidateProjectData(queryClient, projectId)}
       />
 
-      {!openTrack && (
+      {!focused && (
       <VerifyToolbar>
         {/* Left: the controls that change what happens (analysis
             settings, sort, suggestions). Right: meta icons + progress,
             the glance-and-forget zone. */}
         {toolbarExtra}
-        {/* Hide the dropdown in suggestions mode: it's a focused review
-            workflow with its own entry / exit via the pill below. The
-            pill itself is rendered in any sort mode because the count
-            signal is still useful when the user is browsing normally. */}
-        {lblSort !== "suggestions" && (
-          <SortSelector
-            sort={lblSort}
-            seed={null}
-            availableSorts={LABELS_SORT_MODES}
-            onChange={(next) => {
-              if (isLabelSort(next)) setLblSort(next);
-            }}
-          />
-        )}
+        <SortSelector
+          sort={lblSort}
+          seed={null}
+          availableSorts={LABELS_SORT_MODES}
+          onChange={(next) => {
+            if (isLabelSort(next)) setLblSort(next);
+          }}
+        />
         <SuggestionsToolbarPill
           projectId={projectId}
-          isActive={lblSort === "suggestions"}
           onEnter={() => {
-            if (lblSort !== "suggestions") preSuggestionsSortRef.current = lblSort;
+            preSuggestionsSortRef.current = lblSort;
             setLblSort("suggestions");
           }}
-          onExit={exitSuggestionsMode}
         />
         <div className="ml-auto flex items-center gap-1">
           <VerifyToolbarIcon
@@ -1627,12 +1664,17 @@ export function LabelsTab({
       </VerifyToolbar>
       )}
 
+      {/* Above every content branch, so loading, empty and capped
+          states all keep their way out. */}
+      {focused && <FocusedViewBar {...focusedBar} />}
+
       {/* Warning when embeddings are PARTIAL: the grid shows the
           embedded ones and this offers to fill the rest. Requires
           embedded > 0 so it never overlaps the zero-embedding empty
           card below, and so "Embed now" is only offered when a working
           embedding model exists. Suppressed in event mode (shows all). */}
-      {lblSort !== "events" &&
+      {!focused &&
+        lblSort !== "events" &&
         stats &&
         stats.embedded_detections > 0 &&
         stats.missing_embeddings > 0 && (
@@ -1657,7 +1699,7 @@ export function LabelsTab({
 
       {/* Unprocessed low-confidence tail in the selected range. Same as
           above: only meaningful for Sort by similarity. */}
-      {lblSort !== "events" && unprocessedCount > 0 && (
+      {!focused && lblSort !== "events" && unprocessedCount > 0 && (
         <Callout
           variant="info"
           title={`${unprocessedCount.toLocaleString()} more detection${
@@ -1743,7 +1785,7 @@ export function LabelsTab({
         <div className="flex items-center justify-center h-64">
           <LabelsLoadingState progress={progress} />
         </div>
-      ) : lblSort === "suggestions" && allDetections.length === 0 ? (
+      ) : reviewingSuggestions && !openTrack && allDetections.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <Check className="h-8 w-8 mb-3 text-primary" />
@@ -1752,13 +1794,6 @@ export function LabelsTab({
               There are no more label suggestions to check right now. Go
               back to your labels to keep verifying.
             </p>
-            <Button
-              type="button"
-              className="mt-4"
-              onClick={exitSuggestionsMode}
-            >
-              Exit suggestions
-            </Button>
           </CardContent>
         </Card>
       ) : allDetections.length === 0 && totalCount > 0 && isCapped ? (
@@ -1795,7 +1830,18 @@ export function LabelsTab({
         />
       ) : (
         <div style={{ paddingBottom: selectedIds.size > 0 ? 80 : 0 }}>
-          {isCapped && (
+          {/* The cap is the sorted list's; an open track is not that list.
+              In the review neither remedy of the plain notice works: the
+              pool keeps verified crops (they vote) and has no filters to
+              narrow, so it only says what was searched. */}
+          {isCapped && !openTrack && (resultSort === "suggestions" ? (
+            <Callout variant="info" size="compact" className="mb-3">
+              Suggestions were found in the newest{" "}
+              {loadedCount.toLocaleString()} of{" "}
+              {totalMatching.toLocaleString()} {capNoun}, capped to stay
+              responsive.
+            </Callout>
+          ) : (
             <Callout
               variant="info"
               size="compact"
@@ -1811,31 +1857,12 @@ export function LabelsTab({
                 </Button>
               }
             >
-              {resultSort === "suggestions" ? (
-                <>
-                  Suggestions were found in the newest{" "}
-                  {loadedCount.toLocaleString()} of{" "}
-                  {totalMatching.toLocaleString()} {capNoun}, capped to stay
-                  responsive. Verify some and reload to search the rest, or
-                  narrow the filters.
-                </>
-              ) : (
-                <>
-                  Showing the newest {loadedCount.toLocaleString()} of{" "}
-                  {totalMatching.toLocaleString()} {capNoun}, capped to stay
-                  responsive. Verify some and reload to bring in more, or narrow
-                  the filters.
-                </>
-              )}
+              Showing the newest {loadedCount.toLocaleString()} of{" "}
+              {totalMatching.toLocaleString()} {capNoun}, capped to stay
+              responsive. Verify some and reload to bring in more, or narrow
+              the filters.
             </Callout>
-          )}
-          {openTrack && (
-            <OpenTrackBar
-              card={openTrack.card}
-              fileName={openTrackData?.file_name ?? ""}
-              onClose={closeTrackFrames}
-            />
-          )}
+          ))}
           <CropGrid
             ref={cropGridRef}
             detections={allDetections}

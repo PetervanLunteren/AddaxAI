@@ -288,7 +288,7 @@ export function AnalysisSettingsButton({
               Applies to the results below without re-running the models.
             </SheetDescription>
           </SheetHeader>
-          <div className="mt-2 space-y-0 divide-y">
+          <div className="mt-2 space-y-0 divide-y border-t">
             <AnalysisSettingsRows
               values={values}
               onIntervalChange={(seconds) =>
