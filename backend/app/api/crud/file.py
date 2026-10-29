@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.crud.detection import (
     apply_card_labels,
-    in_expanded_tracks,
     mark_detections_false,
+    release_inherited_labels,
 )
 from app.api.crud.event_observation import (
     get_event_ids_for_files,
@@ -637,13 +637,16 @@ def set_file_verified(db: Session, file: File, verified: bool) -> None:
     Scoped to the file's visible surface (`on_visible_frame_of`): every
     box of a photo, and for a video the card of every track, which is
     what the Files viewer shows as bars under the cover. A verdict on a
-    card is a verdict on the animal, so it reaches every box of that
-    track, as the X key and relabel do; one Enter on a clip therefore
-    signs off every track in it, and the viewer says how many. That is
+    card is a verdict on the animal, so its label reaches every box of
+    that track, tagged "track", as the X key and relabel do; the verified
+    flag stays on the cards, since nobody looked at the other frames. One
+    Enter on a clip therefore signs off every track in it, and the viewer
+    says how many. That is
     the same surface `recompute_file_verified` reads, so a sign-off can
     never be flipped back by the next rollup.
 
-    Unverifying clears every box on the file, drawn ones included.
+    Unverifying clears every box on the file, drawn ones included, and
+    hands the inherited labels back to the machine.
 
     Idempotent, so re-verifying picks up boxes added since. Both paths
     re-derive ``observation_type`` and the event MaxN, as the detection
@@ -662,12 +665,11 @@ def set_file_verified(db: Session, file: File, verified: bool) -> None:
             )
             .all()
         )
-        mark_detections_false(
-            db,
-            db.query(Detection)
-            .filter(in_expanded_tracks([d.id for d in weak]))
-            .all(),
-        )
+        # Reject the weak cards and pass the rejection on as a label, the
+        # way X does: the frames behind a card nobody looked at are not
+        # flagged as seen.
+        mark_detections_false(db, weak)
+        apply_card_labels(db, weak)
         db.flush()
         visible_cards = (
             db.query(Detection)
@@ -680,7 +682,7 @@ def set_file_verified(db: Session, file: File, verified: bool) -> None:
         # does. Without this a sign-off froze the classifier's per-frame
         # disagreements as human-verified truth.
         apply_card_labels(db, visible_cards)
-        db.query(Detection).filter(in_expanded_tracks(visible_ids)).update(
+        db.query(Detection).filter(Detection.id.in_(visible_ids)).update(
             {"verified": True, "verified_at_utc": now},
             synchronize_session=False,
         )
@@ -691,6 +693,7 @@ def set_file_verified(db: Session, file: File, verified: bool) -> None:
             {"verified": False, "verified_at_utc": None},
             synchronize_session=False,
         )
+        release_inherited_labels(db, Detection.file_id == file.id)
         file.verified = False
         file.verified_at_utc = None
     db.flush()

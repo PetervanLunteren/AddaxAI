@@ -179,28 +179,34 @@ def test_a_file_sign_off_reaches_every_track_through_its_card(client, db):
     assert resp.status_code == 200
 
     db.expire_all()
-    assert all(b.verified and b.label == "false detection" for b in boxes["one"])
+    # The label reaches every box; the flag only the cards, the boxes a
+    # person could see. The rest carry the verdict as "track".
+    card_one, card_two = boxes["one"][1], boxes["two"][1]
+    assert all(b.label == "false detection" for b in boxes["one"])
+    assert card_one.verified and card_two.verified
+    for b in boxes["one"] + boxes["two"]:
+        if b not in (card_one, card_two):
+            assert not b.verified and b.classification_method == "track"
     # Track two lives on frames 300 to 360; its card is a bar like any other.
-    assert all(b.verified for b in boxes["two"])
     assert all(b.label is None for b in boxes["two"])
     assert not boxes["loose"][0].verified
     assert db.get(File, video.id).verified is True
 
-    # And back: unverify clears every box of the file, tracks included.
+    # And back: unverify clears every box of the file, tracks included,
+    # and hands the inherited labels back to the machine.
     resp = client.patch(f"/api/files/{video.id}", json={"verified": False})
     assert resp.status_code == 200
     db.expire_all()
     assert not any(b.verified for b in boxes["one"] + boxes["two"] + boxes["loose"])
+    assert not any(b.classification_method == "track" for b in boxes["one"] + boxes["two"])
 
 
 def test_a_verdict_from_any_box_of_a_track_reaches_the_whole_track(client, db):
-    """Today's rule, which the module docstring claims and nothing pinned.
-
-    ``expand_to_tracks`` expands whatever id it is handed, not only the
-    track's card. The Files viewer relies on this: scrubbing off the cover
-    and clicking a box selects that frame's box, and Enter is expected to
-    sign off the animal, not one moment of it. Pinned here so the
-    ``expand_tracks`` opt-out cannot quietly become the default.
+    """The Files viewer sends the box on screen, often not the card:
+    scrubbing off the cover and clicking a box selects that frame's box,
+    and V there is a verdict on the animal. So the flag reaches the box
+    named and its track's card, which the grid, the verified filter and
+    the progress bar read; the other frames only get the label.
     """
     _, _, _, _, boxes = _tracked_video(db)
     off_card = boxes["one"][0]  # frame 30; the card is frame 60
@@ -210,13 +216,21 @@ def test_a_verdict_from_any_box_of_a_track_reaches_the_whole_track(client, db):
         json={"detection_ids": [off_card.id], "verified": True},
     )
     assert resp.status_code == 200
-    assert resp.json()["updated_count"] == 1
+    assert resp.json()["updated_count"] == 2
 
     db.expire_all()
-    # The flag lands on the box named; the label is what reaches the animal.
-    assert off_card.verified
-    assert not any(b.verified for b in boxes["one"] if b.id != off_card.id)
+    card = boxes["one"][1]
+    assert off_card.verified and card.verified
+    assert not boxes["one"][2].verified
     assert not any(b.verified for b in boxes["two"])
+
+    # The single-box route the Files viewer's list uses behaves the same.
+    other = boxes["two"][0]
+    assert client.patch(
+        f"/api/detections/{other.id}/verify", json={"verified": True}
+    ).status_code == 200
+    db.expire_all()
+    assert other.verified and boxes["two"][1].verified and not boxes["two"][2].verified
 
 
 def test_expand_tracks_false_keeps_a_verdict_on_the_boxes_named(client, db):
@@ -459,3 +473,45 @@ def test_a_frame_verdict_stays_on_that_frame(client, db):
     assert rows[sibling.id].verified
     assert not rows[boxes["one"][1].id].verified
     assert rows[sibling.id].label is None
+
+
+def test_unverifying_an_animal_hands_its_inherited_labels_back(client, db):
+    """A "track" row counts as a person's decision for postprocessing. Once
+    the card is unverified that is no longer true, and a reprocess must be
+    free to relabel those frames, as it was before the flag stopped
+    cascading. Both unverify routes, and frames judged by hand stay."""
+    _, _, _, _, boxes = _tracked_video(db)
+    card = boxes["one"][1]
+    boxes["one"][2].classification_method = "human"  # judged in the frames view
+    db.commit()
+
+    client.patch(f"/api/detections/{card.id}/verify", json={"verified": True})
+    db.expire_all()
+    assert boxes["one"][0].classification_method == "track"
+
+    client.patch(f"/api/detections/{card.id}/verify", json={"verified": False})
+    db.expire_all()
+    assert boxes["one"][0].classification_method is None
+    assert boxes["one"][2].classification_method == "human"
+    assert not card.verified
+
+    client.post("/api/detections/bulk-verify",
+                json={"detection_ids": [card.id], "verified": True})
+    client.post("/api/detections/bulk-verify",
+                json={"detection_ids": [card.id], "verified": False})
+    db.expire_all()
+    assert boxes["one"][0].classification_method is None
+
+
+def test_unverifying_frames_in_an_opened_track_leaves_the_animal(client, db):
+    """With the cascade off a verdict is about the frames picked: it does
+    not withdraw the labels the card passed on."""
+    _, _, _, _, boxes = _tracked_video(db)
+    card = boxes["one"][1]
+    client.patch(f"/api/detections/{card.id}/verify", json={"verified": True})
+    frame = boxes["one"][0]
+    client.post("/api/detections/bulk-verify", json={
+        "detection_ids": [frame.id], "verified": False, "expand_tracks": False})
+    db.expire_all()
+    assert card.verified
+    assert frame.classification_method == "track"

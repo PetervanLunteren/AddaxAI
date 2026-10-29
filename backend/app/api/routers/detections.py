@@ -281,13 +281,17 @@ def verify_detection(
         raise HTTPException(status_code=404, detail="Detection not found")
 
     # A verdict on the card is a verdict on the animal: the label reaches
-    # every box of its track (`apply_card_labels`, tagged "track"). The
-    # verified flag does not: it stays on the box the person judged, so
-    # "verified" keeps meaning a person saw this frame.
+    # every box of its track (`apply_card_labels`, tagged "track"); the
+    # flag reaches the box judged and its track's card (`verdict_targets`).
+    # Unverifying withdraws the inherited labels too.
     now = datetime.now(UTC) if body.verified else None
     if body.verified:
         detection_crud.apply_card_labels(db, [detection])
-    db.query(Detection).filter(Detection.id == detection_id).update(
+    else:
+        detection_crud.release_inherited_labels(
+            db, detection_crud.in_expanded_tracks([detection_id])
+        )
+    db.query(Detection).filter(detection_crud.verdict_targets([detection_id])).update(
         {"verified": body.verified, "verified_at_utc": now},
         synchronize_session="fetch",
     )
@@ -318,11 +322,22 @@ def bulk_verify_detections(
             .all()
         )
         detection_crud.apply_card_labels(db, cards)
-    # The flag lands on the given ids only; the label already reached the
-    # siblings above, tagged "track". See the single-verify route.
+    # The flag lands on the given ids and their tracks' cards; the label
+    # already reached the siblings above. With the cascade off (an opened
+    # track) a verdict is about the frames picked and nothing else. See
+    # the single-verify route.
+    if not body.verified and body.expand_tracks:
+        detection_crud.release_inherited_labels(
+            db, detection_crud.in_expanded_tracks(body.detection_ids)
+        )
+    targets = (
+        detection_crud.verdict_targets(body.detection_ids)
+        if body.expand_tracks
+        else Detection.id.in_(body.detection_ids)
+    )
     updated = (
         db.query(Detection)
-        .filter(Detection.id.in_(body.detection_ids))
+        .filter(targets)
         .update(
             {"verified": body.verified, "verified_at_utc": now},
             synchronize_session="fetch",

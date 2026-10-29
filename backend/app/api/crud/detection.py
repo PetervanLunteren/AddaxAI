@@ -11,7 +11,7 @@ Following DEVELOPERS.md principles:
 from collections.abc import Iterable
 from datetime import UTC, datetime
 
-from sqlalchemy import false, or_, select
+from sqlalchemy import and_, false, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -464,6 +464,44 @@ def in_expanded_tracks(detection_ids: list[str]) -> ColumnElement[bool]:
         Detection.id.in_(detection_ids),
         Detection.track_id.in_(track_ids),
     )
+
+
+def verdict_targets(detection_ids: list[str]) -> ColumnElement[bool]:
+    """The boxes a verify or unverify on these ids flags: the boxes named,
+    plus the card of every track they belong to.
+
+    A verdict from any frame of an animal is a verdict on the animal, and
+    the card is what the grid, the verified filter and the progress bar
+    read, so V on frame 30 in the Files viewer has to reach it. The other
+    frames are not flagged: nobody looked at them, and "verified" means a
+    person saw the box. They get the label, from `apply_card_labels`.
+    """
+    if not detection_ids:
+        return false()
+    from app.ml.detection_visibility import on_representative_frame
+
+    track_ids = select(Detection.track_id).where(
+        Detection.id.in_(detection_ids), Detection.track_id.isnot(None)
+    )
+    return or_(
+        Detection.id.in_(detection_ids),
+        and_(Detection.track_id.in_(track_ids), on_representative_frame()),
+    )
+
+
+def release_inherited_labels(db: Session, criterion: ColumnElement[bool]) -> None:
+    """Hand the labels an unverified animal passed on back to the machine.
+    No commit.
+
+    A "track" row carries its card's verdict and postprocessing treats it
+    as a person's decision (`is_human_decided`). Once the verdict is
+    withdrawn that is no longer true, and a reprocess must be free to
+    relabel those frames again, as it was before the flag stopped
+    cascading. The label itself stays until that reprocess.
+    """
+    db.query(Detection).filter(
+        criterion, Detection.classification_method == "track"
+    ).update({"classification_method": None}, synchronize_session=False)
 
 
 def apply_card_labels(db: Session, cards: Iterable[Detection]) -> int:
