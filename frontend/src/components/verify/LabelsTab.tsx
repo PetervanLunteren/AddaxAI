@@ -500,8 +500,8 @@ export function LabelsTab({
 
   // What the grid is currently showing at. The slider digs *down* below
   // the project's threshold rather than raising it, which is the backend's
-  // `effective_floor`; the opened track has to be gated at the same number
-  // or a card visible at a lowered slider would open to nothing.
+  // `effective_floor`. The unprocessed-tail notice reads it; an opened
+  // track does not, since it shows every frame of the animal.
   const detectionFloorValue = project?.counting_threshold ?? 0;
   const effectiveFloor = Math.min(
     detectionFloorValue,
@@ -843,10 +843,12 @@ export function LabelsTab({
       // An open track's frames are not in `sortResult`; they come from
       // the track query. Patch that cache instead, or a verdict inside
       // a track would land on the server and show nothing until the
-      // grid was rebuilt from scratch.
+      // grid was rebuilt from scratch. The key must be the query's own
+      // (above): a stale third element wrote a cache entry nothing read,
+      // so a verified frame kept its old look until the track reopened.
       if (openTrack) {
         queryClient.setQueryData<TrackDetectionsResponse>(
-          ["track-detections", openTrack.trackId, effectiveFloor],
+          ["track-detections", openTrack.trackId],
           (prev) =>
             prev
               ? {
@@ -885,7 +887,7 @@ export function LabelsTab({
       // Keep the detail modal in sync
       setDetailDetection((prev) => (prev ? patchFn(prev) : prev));
     },
-    [sortResult, openTrack, queryClient, effectiveFloor]
+    [sortResult, openTrack, queryClient]
   );
 
   /** Apply a single-card or bulk action to local state.
