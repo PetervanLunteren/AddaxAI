@@ -48,6 +48,7 @@ from app.api.schemas.deployment import (
 from app.core.logging_config import get_logger
 from app.core.media_types import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from app.db.base import get_db
+from app.ml.inference.image_io import open_image_rgb
 from app.services.csv_import_deployments import (
     CAMERA_OFFSETS_NEED_PAIRED,
     FOLDER_IS_A_FILE,
@@ -270,8 +271,8 @@ def preview_image(
             buf = io.BytesIO(result.stdout)
             return StreamingResponse(buf, media_type="image/jpeg")
 
-        # Image: open with Pillow, resize, serve as JPEG
-        img = Image.open(file_path)
+        # Image: open upright (see image_io), resize, serve as JPEG
+        img = open_image_rgb(file_path)
         if img.width > _PREVIEW_MAX_WIDTH:
             ratio = _PREVIEW_MAX_WIDTH / img.width
             img = img.resize(
@@ -279,7 +280,7 @@ def preview_image(
                 Image.Resampling.LANCZOS,
             )
         buf = io.BytesIO()
-        img.convert("RGB").save(buf, format="JPEG", quality=80)
+        img.save(buf, format="JPEG", quality=80)
         buf.seek(0)
         return StreamingResponse(buf, media_type="image/jpeg")
     except Exception as e:

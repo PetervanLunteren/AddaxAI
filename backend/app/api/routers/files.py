@@ -23,6 +23,7 @@ from app.api.schemas.file import (
     FilmstripResponse,
 )
 from app.db.base import get_db
+from app.ml.inference.image_io import upright_rgb
 from app.models import Deployment, File, Project
 from app.utils.datetime_serialization import set_active_project_timezone
 
@@ -264,7 +265,9 @@ def _render_thumbnail_bytes(source_path: Path) -> bytes:
     files). Browser-level caching via Cache-Control covers repeat views.
     """
     with Image.open(source_path) as img:
-        img = img.convert("RGB")
+        # Rotated per EXIF, as the boxes drawn over it are (see image_io);
+        # the re-encode drops the tag the browser would otherwise honour.
+        img = upright_rgb(img)
         if img.width > _THUMB_MAX_WIDTH:
             ratio = _THUMB_MAX_WIDTH / img.width
             new_height = int(img.height * ratio)

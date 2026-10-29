@@ -16,6 +16,8 @@ the grid; this is the second half, so any other caller of `crop_url`
 thumbnail" rather than a misleading one.
 """
 
+import io
+
 from PIL import Image
 
 from app.services.crop_service import _resolve_image_path, get_or_create_crop
@@ -121,7 +123,6 @@ def test_get_or_create_crop_returns_none_off_the_best_frame(db, tmp_path):
 # photo, so the dashboard's wide hero fills with the scene, not with blur.
 # ---------------------------------------------------------------------------
 
-import io  # noqa: E402
 
 from app.services.crop_service import compute_expanded_crop_region  # noqa: E402
 
@@ -191,3 +192,31 @@ def test_a_shaped_crop_comes_out_at_that_shape(db, tmp_path):
 
     assert square.size == (200, 200)
     assert wide.size == (320, 200)
+
+
+def test_a_crop_from_a_rotated_photo_shows_the_same_pixels(db, tmp_path):
+    """MegaDetector reports boxes on the EXIF-rotated pixels, so the tile
+    must be cut from those as well. A photo stored on its side with
+    orientation 6 and the upright photo give the same crop for the same
+    box; without the rotation the tile showed a sideways slice of the
+    wrong corner."""
+    upright = Image.new("RGB", (400, 240), (30, 30, 30))
+    upright.paste((220, 40, 40), (300, 0, 400, 120))  # red block, top right
+    upright.save(tmp_path / "upright.jpg", "JPEG", quality=95)
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    upright.rotate(90, expand=True).save(
+        tmp_path / "sideways.jpg", "JPEG", quality=95, exif=exif.tobytes()
+    )
+    dep = make_deployment(db, project_id=make_project(db).id)
+    box = dict(bbox_x=0.75, bbox_y=0.0, bbox_width=0.25, bbox_height=0.5)
+    crops = []
+    for name in ("upright.jpg", "sideways.jpg"):
+        f = make_file(db, deployment_id=dep.id, file_path=str(tmp_path / name))
+        d = make_detection(db, file_id=f.id, **box)
+        crops.append(Image.open(io.BytesIO(get_or_create_crop(d.id, 100, db))))
+
+    for crop in crops:
+        r, g, b = crop.getpixel((50, 50))
+        assert r > 180 and g < 80 and b < 80, "tile should be the red block"
+    assert crops[0].size == crops[1].size

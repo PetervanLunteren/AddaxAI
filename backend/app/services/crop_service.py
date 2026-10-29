@@ -21,6 +21,7 @@ from PIL import Image, ImageFilter
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
+from app.ml.inference.image_io import open_image_rgb
 from app.models import Detection, File
 
 logger = get_logger(__name__)
@@ -190,11 +191,10 @@ def get_or_create_crop(
         return None
 
     try:
-        img = Image.open(image_path)
+        # Rotated per EXIF and RGB, as MegaDetector saw the photo: the
+        # bbox fractions refer to that frame (see image_io).
+        img = open_image_rgb(image_path)
         w, h = img.size
-
-        if img.mode != "RGB":
-            img = img.convert("RGB")
 
         left, top, right, bottom = compute_expanded_crop_region(
             detection.bbox_x,

@@ -1,8 +1,11 @@
 """Tests for the /api/files endpoints."""
 
+import io
 import tempfile
 import uuid
 from pathlib import Path
+
+from PIL import Image
 
 from app.models import LabelTaxonomy
 from tests.conftest import (
@@ -290,3 +293,20 @@ def test_bulk_unverify_takes_the_sign_off_back(client, db):
 def test_bulk_verify_of_nothing_is_a_no_op_and_of_unknown_ids_a_404(client, db):
     assert _bulk_verify(client, []).json() == {"updated_count": 0}
     assert _bulk_verify(client, [str(uuid.uuid4())]).status_code == 404
+
+
+def test_thumbnail_of_a_rotated_photo_comes_out_upright(client, db, tmp_path):
+    """The thumbnail is re-encoded without EXIF, so the browser cannot
+    rotate it the way it rotates the original; the pixels are rotated
+    here instead, matching the boxes drawn over them."""
+    d, _ = _setup_deployment(db)
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    path = tmp_path / "sideways.jpg"
+    Image.new("RGB", (120, 200), (90, 90, 90)).save(path, "JPEG", exif=exif.tobytes())
+    f = make_file(db, deployment_id=d.id, file_path=str(path), file_format="jpg")
+
+    resp = client.get(f"/api/files/{f.id}/image?size=thumb")
+
+    assert resp.status_code == 200
+    assert Image.open(io.BytesIO(resp.content)).size == (200, 120)

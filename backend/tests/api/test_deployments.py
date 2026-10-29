@@ -1,10 +1,12 @@
 """Tests for the /api/deployments endpoints."""
 
+import io
 import os
 from datetime import date, datetime
 from unittest.mock import patch
 
 import pytest
+from PIL import Image
 
 from app.models.event_observation import EventObservation
 from tests.conftest import (
@@ -871,3 +873,22 @@ def test_camera_offsets_need_paired_cameras_and_a_valid_folder(client, db, tmp_p
     )
     assert resp.status_code == 200
     assert resp.json()["camera_offsets"] == {}
+
+
+def test_preview_image_of_a_rotated_photo_comes_out_upright(client, tmp_path):
+    """The folder preview is re-encoded without EXIF, so a photo stored on
+    its side has to be rotated here or the preview shows it sideways."""
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    (tmp_path / "sideways.jpg").parent.mkdir(exist_ok=True)
+    Image.new("RGB", (120, 200), (90, 90, 90)).save(
+        tmp_path / "sideways.jpg", "JPEG", exif=exif.tobytes()
+    )
+
+    resp = client.get(
+        "/api/deployments/preview-image",
+        params={"folder": str(tmp_path), "file": "sideways.jpg"},
+    )
+
+    assert resp.status_code == 200
+    assert Image.open(io.BytesIO(resp.content)).size == (200, 120)
