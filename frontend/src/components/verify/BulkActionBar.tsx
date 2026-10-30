@@ -55,6 +55,11 @@ interface BulkActionBarProps {
    * callbacks (`onVerify` etc.) are then skipped too - the host already
    * did its own follow-up. */
   performAction?: (action: BulkBarAction) => Promise<void> | void;
+  /** False while a track is opened: the person is judging frames, so a
+   *  verdict stays on the ids given instead of reaching the whole animal
+   *  and its card. The keyboard shortcuts in `LabelsTab` use the same
+   *  flag; the bar's buttons must not differ from them. */
+  expandTracks?: boolean;
 }
 
 /** What the host is asked to run when it owns the actions. */
@@ -82,6 +87,7 @@ export function BulkActionBar({
   onUndo,
   canUndo,
   performAction,
+  expandTracks = true,
 }: BulkActionBarProps) {
   const [relabelOpenLocal, setRelabelOpenLocal] = useState(false);
   const relabelOpen = relabelOpenProp ?? relabelOpenLocal;
@@ -92,7 +98,7 @@ export function BulkActionBar({
   const verifyMutation = useMutation({
     mutationFn: async () => {
       if (performAction) return performAction("verify");
-      return detectionsApi.bulkVerify(ids, true);
+      return detectionsApi.bulkVerify(ids, true, expandTracks);
     },
     onSuccess: () => {
       if (performAction) return;
@@ -110,7 +116,7 @@ export function BulkActionBar({
   const markFalseMutation = useMutation({
     mutationFn: async () => {
       if (performAction) return performAction("false");
-      return detectionsApi.bulkRelabel(ids, "false detection", undefined);
+      return detectionsApi.bulkRelabel(ids, "false detection", undefined, expandTracks);
     },
     onSuccess: () => {
       if (performAction) return;
@@ -129,7 +135,7 @@ export function BulkActionBar({
   const markUnknownMutation = useMutation({
     mutationFn: async () => {
       if (performAction) return performAction("unknown");
-      return detectionsApi.bulkRelabel(ids, "unknown", undefined);
+      return detectionsApi.bulkRelabel(ids, "unknown", undefined, expandTracks);
     },
     onSuccess: () => {
       if (performAction) return;
@@ -146,7 +152,7 @@ export function BulkActionBar({
   const relabelMutation = useMutation({
     mutationFn: async (opt: LabelOption) => {
       if (performAction) return performAction({ relabel: opt });
-      return detectionsApi.bulkRelabel(ids, opt.label, opt.category);
+      return detectionsApi.bulkRelabel(ids, opt.label, opt.category, expandTracks);
     },
     onSuccess: (_data, opt) => {
       if (performAction) return;

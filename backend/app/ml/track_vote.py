@@ -35,7 +35,9 @@ from app.ml.inference.scoring import summarise_tracks
 
 def vote_track_cards(md_results: dict) -> int:
     """Give each track's card box the confidence-weighted mean of its
-    frames' class scores. In place; returns how many cards changed.
+    frames' class scores. In place; returns how many cards changed their
+    top class, which is what a reader of the log wants to know (nearly
+    every card's list changes in its decimals).
 
     For every entry with detections: `summarise_tracks` names the card
     frame per track and ignores boxes without a track id, so photos and
@@ -83,7 +85,9 @@ def vote_track_cards(md_results: dict) -> int:
                 [class_id, round(total / weight, 5)]
                 for class_id, total in sorted(score.items(), key=lambda item: (-item[1], item[0]))
             ]
-            if voted != card.get("classifications"):
+            before = card.get("classifications") or []
+            if voted != before:
                 card["classifications"] = voted
-                changed += 1
+                if not before or voted[0][0] != str(before[0][0]):
+                    changed += 1
     return changed

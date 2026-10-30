@@ -57,6 +57,10 @@ interface DetectionDetailModalProps {
   onOpenChange: (open: boolean) => void;
   onActionComplete: () => void;
   onRelabel?: (detectionId: string, label: string, category: string) => void;
+  /** False while a track is opened: a verdict from here stays on this
+   *  frame instead of reaching the whole animal and its card, the same
+   *  rule as the action bar and the keyboard shortcuts. */
+  expandTracks?: boolean;
   /** Optimistic mark-false callback so parent can patch local state before navigating. */
   onMarkFalse?: (detectionId: string) => void;
   /** Optimistic mark-unknown callback (real observation, keeps category). */
@@ -86,6 +90,7 @@ export function DetectionDetailModal({
   onOpenChange,
   onActionComplete,
   onRelabel,
+  expandTracks = true,
   onMarkFalse,
   onMarkUnknown,
   onVerify,
@@ -305,8 +310,9 @@ export function DetectionDetailModal({
   });
 
   const verifyMutation = useMutation({
+    // The bulk route, for one id: it is the one that takes `expandTracks`.
     mutationFn: () =>
-      detectionsApi.verify(detection!.detection_id, !detection!.verified),
+      detectionsApi.bulkVerify([detection!.detection_id], !detection!.verified, expandTracks),
     onSuccess: () => {
       onVerify?.(detection!.detection_id, !detection!.verified);
       onActionComplete();
@@ -316,7 +322,7 @@ export function DetectionDetailModal({
 
   const relabelMutation = useMutation({
     mutationFn: ({ label, category }: { label: string | null; category: string }) =>
-      detectionsApi.bulkRelabel([detection!.detection_id], label, category),
+      detectionsApi.bulkRelabel([detection!.detection_id], label, category, expandTracks),
     onSuccess: (_, { label, category }) => {
       onRelabel?.(detection!.detection_id, label ?? category, category);
       onActionComplete();
@@ -327,7 +333,9 @@ export function DetectionDetailModal({
 
   const markFalseMutation = useMutation({
     mutationFn: () =>
-      detectionsApi.bulkRelabel([detection!.detection_id], "false detection", undefined),
+      detectionsApi.bulkRelabel(
+        [detection!.detection_id], "false detection", undefined, expandTracks,
+      ),
     onSuccess: () => {
       onMarkFalse?.(detection!.detection_id);
       onActionComplete();
@@ -338,7 +346,7 @@ export function DetectionDetailModal({
 
   const markUnknownMutation = useMutation({
     mutationFn: () =>
-      detectionsApi.bulkRelabel([detection!.detection_id], "unknown", undefined),
+      detectionsApi.bulkRelabel([detection!.detection_id], "unknown", undefined, expandTracks),
     onSuccess: () => {
       onMarkUnknown?.(detection!.detection_id);
       onActionComplete();
@@ -359,10 +367,10 @@ export function DetectionDetailModal({
     onNavigate?.("nextUnverified");
     // Fire API call in background
     detectionsApi
-      .verify(detection.detection_id, true)
+      .bulkVerify([detection.detection_id], true, expandTracks)
       .then(() => onActionComplete())
       .catch((err: Error) => toast.error(err.message));
-  }, [detection, onActionComplete, onNavigate, onVerify]);
+  }, [detection, expandTracks, onActionComplete, onNavigate, onVerify]);
 
   // Keyboard navigation while modal is open
   useEffect(() => {

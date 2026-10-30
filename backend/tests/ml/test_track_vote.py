@@ -107,6 +107,18 @@ def test_boxes_without_classifications_do_not_vote_and_untracked_boxes_are_untou
     assert res == snapshot
 
 
+def test_a_card_that_keeps_its_species_is_not_counted_as_changed():
+    """The count is for the log: cards whose species changed, not cards
+    whose scores moved in their decimals, which is nearly all of them."""
+    card = _box(60, 0.9, 1, [[WOLF, 0.7], [FOX, 0.3]])
+    other = _box(90, 0.8, 1, [[WOLF, 0.9], [FOX, 0.1]])
+    res = _results(card, other)
+
+    assert vote_track_cards(res) == 0
+    assert card["classifications"][0][0] == WOLF
+    assert card["classifications"] != [[WOLF, 0.7], [FOX, 0.3]]
+
+
 def test_a_single_voter_track_keeps_its_own_scores():
     card = _box(60, 0.9, 1, [[WOLF, 0.7], [FOX, 0.3]])
     res = _results(card, _box(30, 0.05, 1))

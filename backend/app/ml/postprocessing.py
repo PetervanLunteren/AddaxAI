@@ -312,7 +312,7 @@ def run_postprocessing_for_deployment(
     # exclusion, so an excluded class cannot vote on the no-taxonomy
     # path; before rollup, so rollup sees the track's distribution.
     voted = vote_track_cards(md_results)
-    logger.info(f"Track vote: {voted} cards set to their track's species")
+    logger.info(f"Track vote: {voted} cards changed species")
 
     # Build excluded_names and allowed_taxonomy_keys for geofence-aware
     # rollup (matching official SpeciesNet API behavior).
@@ -795,9 +795,10 @@ def reload_raw_classifications_from_json(
     """
     Reload raw (unsmoothed) classifications from JSON back to database.
 
-    Effectively reverts to the original predictions by reading the raw JSON
-    and updating DB records. Applies geofence-aware rollup when taxonomy
-    is available.
+    Reads the raw JSON back into the DB records, with the two steps that
+    always run: the track vote (a card gets the species its frames agree
+    on) and, when a taxonomy is available, geofence-aware rollup. It is
+    "raw" in the sense of unsmoothed, not of untouched.
 
     Args:
         deployment_id: Deployment UUID
@@ -829,7 +830,7 @@ def reload_raw_classifications_from_json(
 
     # Same vote as the main path, same position (see there).
     voted = vote_track_cards(raw_results)
-    logger.info(f"Track vote: {voted} cards set to their track's species")
+    logger.info(f"Track vote: {voted} cards changed species")
 
     # Apply geofence-aware rollup (same logic as main postprocessing)
     if taxonomy_csv_path and taxonomy_csv_path.exists():

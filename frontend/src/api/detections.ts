@@ -54,16 +54,6 @@ export const detectionsApi = {
     return api.delete(`/api/detections/by-file/${fileId}`);
   },
 
-  /** Verify or unverify a single detection. */
-  verify: async (
-    id: string,
-    verified: boolean
-  ): Promise<DetectionResponse> => {
-    return api.patch<DetectionResponse>(`/api/detections/${id}/verify`, {
-      verified,
-    });
-  },
-
   /** Bulk verify/unverify detections (auto-batches in chunks of 500).
    *  `expandTracks` false keeps the verdict on the ids given instead of
    *  spreading it over their whole track: what an opened track needs,

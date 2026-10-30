@@ -1910,6 +1910,7 @@ export function LabelsTab({
         labelOptionsLoading={labelOptionsLoading}
         onActionComplete={handleActionComplete}
         onRelabel={handleBulkRelabel}
+        expandTracks={openTrack === null}
         onVerify={handleBulkVerify}
         onMarkFalse={handleBulkMarkFalse}
         onMarkUnknown={handleBulkMarkUnknown}
@@ -1930,6 +1931,7 @@ export function LabelsTab({
           if (!open) setDetailDetection(null);
         }}
         onActionComplete={handleActionComplete}
+        expandTracks={openTrack === null}
         projectId={projectId}
         labelOptions={labelOptions}
         labelOptionsLoading={labelOptionsLoading}
