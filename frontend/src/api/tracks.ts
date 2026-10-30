@@ -6,9 +6,9 @@ import { api } from "../lib/api-client";
 import type { TrackDetectionsResponse } from "./types";
 
 export const tracksApi = {
-  /** The frames of one animal worth checking, in frame order: those at
-   * or above the classification gate its analysis ran with, or verified.
-   * The backend owns that line; no filter or slider travels with it.
+  /** Every frame of one animal, in frame order, weak ones included.
+   * No filter or slider travels with it: nothing is hidden inside a
+   * track.
    */
   detections: async (
     trackId: string,

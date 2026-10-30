@@ -137,10 +137,8 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
             A photo has no track and shows nothing; a one-frame track has
             nothing to open.
 
-            No number: the tracker's count includes boxes too weak to be
-            worth checking, which the frames view leaves out, so it would
-            promise more cards than open. Counting the ones that do open
-            here would copy the scope rule into the grid's SQL.
+            No number: the chip is a way in, not a statistic. A count
+            is not needed to decide to open it.
 
             stopPropagation on both handlers: the card root selects on
             click, so without it opening a track would also select the

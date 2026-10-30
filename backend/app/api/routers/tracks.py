@@ -7,13 +7,13 @@ cutting it in two: relabel the frames that are wrong and every count
 downstream is right, because MaxN reads what is in each frame rather
 than what the tracker believed.
 
-Not every box of the track is a frame to check. The tracker keeps boxes
-down to MegaDetector's storage floor, because a weak box that overlaps
-where the animal was expected is what holds a blurred or half-hidden
-animal together. A person needs only the frames worth judging, so the
-frames are scoped at the classification gate the analysis ran with: the
-line below which the app neither classifies a box nor, at its defaults,
-counts it.
+Every box of the track comes back, down to the storage floor. A track
+is one thing on every surface: the bar under the video spans its first
+to its last box, the player draws each of them, and this view shows the
+same frames as cards. Until 2026-10-30 this view cut at the run's
+classification gate, which made the bar claim an animal on frames the
+view did not show and the player did not draw. One rule, so the three
+cannot disagree (DEVELOPERS.md, "Opening a track").
 
 The pictures are not here. Each box gets its crop from
 ``/api/detections/{id}/crop`` as any card does, which decodes that frame
@@ -31,8 +31,7 @@ from app.api.schemas.file import TrackResponse
 from app.api.schemas.label import CropBbox
 from app.db.base import get_db
 from app.ml.inference.crop_box import bbox_within_crop
-from app.ml.label_exclusion import threshold_or_verified
-from app.models import Deployment, Detection, File, Track
+from app.models import Detection, File, Track
 
 router = APIRouter(prefix="/api/tracks", tags=["tracks"])
 
@@ -51,7 +50,7 @@ class TrackDetectionRow(DetectionResponse):
 
 
 class TrackDetectionsResponse(BaseModel):
-    """The animal, and the frames of it a person may check."""
+    """The animal, and every frame of it."""
 
     file_id: str
     file_name: str
@@ -66,22 +65,18 @@ def get_track_detections(
     track_id: str,
     db: Session = Depends(get_db),
 ) -> TrackDetectionsResponse:
-    """The track's frames at or above the run's classification gate, or
-    verified, in frame order.
+    """Every box of the track, in frame order.
 
-    The line is the gate the deployment was analysed with
-    (``classification_gate_used``), so it is fixed for the life of the
-    analysis. Not the counting threshold, which Refine results moves after
-    the fact, and not the Labels slider, which filters cards: neither may
-    redefine what is inside a track. A box below the gate is too weak to
-    be classified (with or without a classifier in the run, the app never
-    classifies one) and sits far below the default counting threshold, so
-    there is nothing in it to judge. It stays stored and keeps holding the
-    track together.
+    No threshold applies inside a track. The counting threshold decides
+    whether the track shows at all, through its card, the same way it
+    decides for a photo's box; what is inside the track is the tracker's
+    call and does not move with any setting. A weak frame is shown as
+    it is, blurred, half hidden or a bush the tracker followed for a
+    while, because the bar under the video already claims the animal
+    was there and a person should see what that claim rests on.
 
-    Never empty for a card on screen: a track starts from a box at the
-    default counting threshold, far above any gate in use, and its card is
-    its best box.
+    A rejected frame comes back too, as the grid shows a rejected card:
+    the verdict is visible rather than the row vanishing.
     """
     track = db.query(Track).filter(Track.id == track_id).first()
     if track is None:
@@ -90,22 +85,9 @@ def get_track_detections(
     if file is None:
         raise HTTPException(status_code=404, detail="File not found")
 
-    gate = (
-        db.query(Deployment.classification_gate_used)
-        .filter(Deployment.id == file.deployment_id)
-        .scalar()
-    )
-    if gate is None:
-        # Every analysis since 2026-07 records its gate, and tracks came
-        # later, so a track without one means a broken record. Say so.
-        raise ValueError(
-            f"Deployment {file.deployment_id} has a track but no recorded "
-            "classification gate. Refusing to guess which frames to show."
-        )
-
     rows = (
         db.query(Detection)
-        .filter(Detection.track_id == track_id, threshold_or_verified(gate))
+        .filter(Detection.track_id == track_id)
         .order_by(Detection.frame_number, Detection.id)
         .all()
     )
@@ -118,9 +100,7 @@ def get_track_detections(
         track=TrackResponse.model_validate(track, from_attributes=True),
         detections=[
             TrackDetectionRow(
-                **DetectionResponse.model_validate(
-                    det, from_attributes=True
-                ).model_dump(),
+                **DetectionResponse.model_validate(det, from_attributes=True).model_dump(),
                 crop_bbox=bbox_within_crop(
                     det.bbox_width, det.bbox_height, file.width_px, file.height_px
                 ),

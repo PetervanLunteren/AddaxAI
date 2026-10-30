@@ -1,7 +1,7 @@
 /**
  * Interactive annotation canvas using react-konva.
  *
- * Draws every visible box (`shouldDrawBbox`) and supports drawing,
+ * Draws every visible box (`frameBoxes`) and supports drawing,
  * moving and resizing them. There is no delete: a wrong box is marked
  * false through its label pill, like any other box. Keys belong to the
  * host component; this only reacts to props.
@@ -13,7 +13,8 @@ import { useMutation } from "@tanstack/react-query";
 import { ImageOff } from "lucide-react";
 import { detectionsApi } from "../../api/detections";
 import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
-import { getDetectionColor, shouldDrawBbox } from "../../lib/detection-utils";
+import { getDetectionColor } from "../../lib/detection-utils";
+import { frameBoxes } from "../../lib/track-utils";
 import { basename } from "../../lib/path-utils";
 import {
   roundedRectPath,
@@ -131,13 +132,9 @@ export function AnnotationCanvas({
   const imgWidth = file.width_px || 1;
   const imgHeight = file.height_px || 1;
 
-  // For video files: only show detections whose frame_number matches
-  // the best frame the canvas is actually rendering. Event-level
-  // observations (no bbox) never draw. `shouldDrawBbox` centralises
-  // both gates.
-  const filteredDetections = file.detections.filter((d) =>
-    shouldDrawBbox(d, file, detectionThreshold, frameNumber),
-  );
+  // The boxes of the frame the canvas is rendering, by the one rule
+  // every rendered still and the player share (`frameBoxes`).
+  const filteredDetections = frameBoxes(file, detectionThreshold, frameNumber);
 
   // Update stage size based on container. Defined before the image-load
   // effect below because that effect lists it as a dependency (a const from
@@ -341,7 +338,7 @@ export function AnnotationCanvas({
   // Create detection mutation. The drawn box is anchored to whatever
   // pixels the canvas is rendering — for videos that's the best frame,
   // so we stamp `frame_number = best_frame_number` on the new row.
-  // Without this, `shouldDrawBbox` filters the fresh detection out of
+  // Without this, `frameBoxes` filters the fresh detection out of
   // the overlay (null !== best_frame_number) and the user sees the
   // box disappear as soon as they release the mouse.
   const createMutation = useMutation({

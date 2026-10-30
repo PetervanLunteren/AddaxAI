@@ -16,11 +16,13 @@ import type {
   TrackResponse,
 } from "../api/types";
 import {
+  type BboxedDetection,
   getDetectionColor,
   getDetectionDisplayName,
+  inScope,
+  isDrawableBox,
   isNonLabel,
   passesDrawFilter,
-  shouldDrawBbox,
 } from "./detection-utils";
 
 export type TrackVerdict = "verified" | "rejected" | "unverified";
@@ -168,25 +170,98 @@ export function clipDurationFrames(file: {
 
 /**
  * One box per card a person can act on: a photo's boxes, and for a
- * video every track's representative box (a verdict on it reaches the
- * whole track through the cascade). The same gates the canvas draws
- * by. This is what "every detection in the file" means on the Files
- * tab: the tile chips, the viewer's actions with nothing selected, the
- * bulk bar and the Counts modal's landing file all read it.
+ * video the card of every track on show that was not rejected (a
+ * verdict on it reaches the whole track through the cascade). This is
+ * what "every detection in the file" means on the Files tab: the tile
+ * chips, the viewer's actions with nothing selected, the bulk bar and
+ * the Counts modal's landing file all read it.
  */
 export function cardBoxes(
+/**
+ * Track id to its card, for the tracks a clip has on show: those whose
+ * card is in scope (`inScope`: passes the counting threshold or was
+ * verified as something real), the rule a photo's box is judged by. A
+ * track is one thing on every surface, so this one decision drives the
+ * bar on the timeline, the boxes in the player and the cards, and
+ * inside a track on show nothing is hidden: the weak boxes the tracker
+ * kept to follow the animal are drawn, shown and spanned like the rest.
+ * Until 2026-10-30 the player cut per box at the counting threshold
+ * while the bar spanned every box, so boxes blinked along a solid bar.
+ *
+ * A rejected card above the threshold is in the map: the timeline draws
+ * its track hollow beside the animals it was taken for. One pass over
+ * the boxes, so a clip of 702 sharks costs the same as one of two.
+ */
+export function trackCards(
+  tracks: TrackResponse[],
+  detections: DetectionResponse[],
+  threshold: number,
+): Map<string, DetectionResponse> {
+  const cardFrame = new Map(tracks.map((t) => [t.id, t.representative_frame_number]));
+  const cards = new Map<string, DetectionResponse>();
+  for (const d of detections) {
+    if (d.track_id == null || cardFrame.get(d.track_id) !== d.frame_number) continue;
+    if (d.bbox_x !== null && inScope(d, threshold)) cards.set(d.track_id, d);
+  }
+  return cards;
+}
+
+/**
+ * Whether one box of a clip is outlined. Inside a track on show every
+ * frame draws, weak ones included, so boxes never blink along a solid
+ * bar; only a rejected frame or a box without geometry stays off
+ * (`isDrawableBox`). A box no track claims (a clip analysed before
+ * tracking) is judged on its own, as a photo's box is. The one rule
+ * the player and every rendered still share.
+ */
+export function drawsInClip(
+  d: DetectionResponse,
+  onShow: Map<string, DetectionResponse>,
+  threshold: number,
+): boolean {
+  return d.track_id != null
+    ? onShow.has(d.track_id) && isDrawableBox(d)
+    : passesDrawFilter(d, threshold);
+}
+
+/**
+ * The boxes a rendered frame of a file draws: every outlined box of a
+ * photo, and for a video the boxes on the frame on screen (the cover
+ * by default, or `frameNumber` when the surface shows another frame).
+ * A clip's other boxes still exist in the data, but they must not
+ * paint onto the canvas of an unrelated frame: that is the crop-service
+ * bug in another costume, and it looks perfectly fine until the
+ * subject moves. One function for the Files viewer still, the Tab
+ * list, the filmstrip tiles and the card modal, so a still can never
+ * show fewer boxes than the player does on the same frame, which it
+ * did until 2026-10-30.
+ */
+export function frameBoxes(
+  file: FileWithDetections,
+  threshold: number,
+  frameNumber?: number,
+): BboxedDetection[] {
+  if (file.file_type !== "video") {
+    return file.detections.filter((d) => passesDrawFilter(d, threshold)) as BboxedDetection[];
+  }
+  const shown = frameNumber ?? file.best_frame_number;
+  const onShow = trackCards(file.tracks ?? [], file.detections, threshold);
+  return file.detections.filter(
+    (d) => (shown == null || d.frame_number === shown) && drawsInClip(d, onShow, threshold),
+  ) as BboxedDetection[];
+}
+
   file: FileWithDetections,
   threshold: number,
 ): DetectionResponse[] {
   if (file.file_type !== "video") {
-    return file.detections.filter((d) => shouldDrawBbox(d, file, threshold));
+    return frameBoxes(file, threshold);
   }
-  const cards: DetectionResponse[] = [];
-  for (const track of file.tracks ?? []) {
-    const box = representativeBox(file.detections, track);
-    if (box && passesDrawFilter(box, threshold) && box.bbox_x !== null) cards.push(box);
-  }
-  return cards;
+  const cards = trackCards(file.tracks ?? [], file.detections, threshold);
+  return (file.tracks ?? []).flatMap((track) => {
+    const card = cards.get(track.id);
+    return card && !isNonLabel(card.label) ? [card] : [];
+  });
 }
 
 /**

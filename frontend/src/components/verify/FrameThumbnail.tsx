@@ -14,7 +14,8 @@
 import { useState } from "react";
 import { ImageOff } from "lucide-react";
 import { API_BASE_URL } from "../../lib/api-client";
-import { getDetectionColor, shouldDrawBbox } from "../../lib/detection-utils";
+import { getDetectionColor } from "../../lib/detection-utils";
+import { frameBoxes } from "../../lib/track-utils";
 import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
 import { SpotlightDim } from "./SpotlightDim";
 import type { FileWithDetections } from "../../api/types";
@@ -54,12 +55,7 @@ export function FrameThumbnail({
   // tile that has nothing under it.
   const [imageFailed, setImageFailed] = useState(false);
 
-  const dets =
-    file && showBoxes && !imageFailed
-      ? file.detections.filter((d) =>
-          shouldDrawBbox(d, file, detectionThreshold),
-        )
-      : [];
+  const dets = file && showBoxes && !imageFailed ? frameBoxes(file, detectionThreshold) : [];
 
   // Draw in the image's pixel space; the SVG slices it to the tile exactly
   // like the image's object-cover.

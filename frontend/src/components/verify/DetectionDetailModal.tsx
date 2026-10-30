@@ -19,12 +19,11 @@ import { eventsApi } from "../../api/events";
 import { projectsApi } from "../../api/projects";
 import { API_BASE_URL } from "../../lib/api-client";
 import { formatCameraDate, formatCameraTime, formatClipPosition } from "../../lib/datetime";
-import { trackPath } from "../../lib/track-utils";
+import { frameBoxes, trackPath } from "../../lib/track-utils";
 import { TrackSpan } from "./TrackTimeline";
 import {
   getDetectionColor,
   getDetectionDisplayName,
-  shouldDrawBbox,
   stillFrameFor,
 } from "../../lib/detection-utils";
 import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
@@ -619,9 +618,9 @@ export function DetectionDetailModal({
                 // overlay, so the spotlight itself mutes them and the
                 // focused box stays the accent. Same rule as the Files
                 // viewer: every rendered photo shows every visible box.
-                const otherBoxes = (fileData?.detections ?? [])
-                  .filter((d) => shouldDrawBbox(d, fileData!, detectionThreshold, stillFrame))
-                  .filter((d) => d.id !== fullDetection.id);
+                const otherBoxes = (
+                  fileData ? frameBoxes(fileData, detectionThreshold, stillFrame) : []
+                ).filter((d) => d.id !== fullDetection.id);
                 const trail = fullDetection.track_id
                   ? trackPath(fileData?.detections ?? [], fullDetection.track_id)
                   : [];

@@ -267,15 +267,13 @@ export function VideoPlayer({
 
   const detections = allDetections ?? file.detections;
 
-  // The clip's boxes, grouped by track and filtered through the same rule
-  // every other drawing surface uses. `passesDrawFilter` rather than
-  // `shouldDrawBbox` because this player draws EVERY frame's boxes over
-  // the real video on purpose, so the best-frame gate must not apply
-  // here — that is the one rule this surface legitimately differs on.
+  // The clip's boxes, grouped by track. Which tracks draw is the same
+  // decision the timeline and the cards make (`trackCards`), and
+  // inside a drawn track every frame's box draws over the real video.
   // The filter is applied inside `buildOverlayIndex`, once.
   const overlayIndex = useMemo(
-    () => buildOverlayIndex(detections, detectionThreshold),
-    [detections, detectionThreshold],
+    () => buildOverlayIndex(detections, file.tracks ?? [], detectionThreshold),
+    [detections, file.tracks, detectionThreshold],
   );
 
   // What to draw right now. The one place either renderer asks; the
@@ -684,6 +682,7 @@ export function VideoPlayer({
       </div>
       <ClipTimeline
         file={file}
+        detectionThreshold={detectionThreshold}
         durationFrames={durationFrames}
         currentFrame={currentFrame}
         selectedTrackId={selectedTrackId}

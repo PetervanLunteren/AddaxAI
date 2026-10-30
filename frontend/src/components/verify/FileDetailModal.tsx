@@ -94,7 +94,7 @@ import { detectionsApi } from "../../api/detections";
 import { filesApi } from "../../api/files";
 import { projectsApi } from "../../api/projects";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
-import { shouldDrawBbox } from "../../lib/detection-utils";
+import { frameBoxes } from "../../lib/track-utils";
 import { basename } from "../../lib/path-utils";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
 import { useShortcutLabels } from "../../hooks/useShortcutLabels";
@@ -342,8 +342,7 @@ export function FileDetailModal({
   const visibleBoxes = useMemo(() => {
     if (!file) return [];
     const threshold = project?.counting_threshold ?? 0;
-    return file.detections
-      .filter((d) => shouldDrawBbox(d, file, threshold, frameNumber))
+    return frameBoxes(file, threshold, frameNumber)
       .sort(
         (a, b) =>
           a.bbox_x + a.bbox_width / 2 - (b.bbox_x + b.bbox_width / 2) ||
@@ -908,6 +907,7 @@ export function FileDetailModal({
               order, with its icons and keys. The scope rule in words:
               the selected box, else every box; click a box or Tab
               through them to narrow it. Verify and Undo deliberately
+              detectionThreshold={project?.counting_threshold ?? 0}
               stay out: the primary action and its escape hatch live at
               the bottom, in a fixed spot. */}
           <DetailCard title="Actions">

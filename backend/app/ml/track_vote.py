@@ -43,7 +43,8 @@ def vote_track_cards(md_results: dict) -> int:
     frame per track and ignores boxes without a track id, so photos and
     drawn boxes are never touched. The voters are the track's boxes that
     carry `classifications`, which is the frames at or above the
-    classification gate, the same frames the opened track shows.
+    classification gate; the weaker frames of the track were never
+    classified and have nothing to say.
     ``score[class] = sum(p * conf) / sum(conf)`` over the voters, sorted
     descending and rounded to 5 decimals like the worker writes them,
     written onto the card box only. The whole list is kept: rollup reads

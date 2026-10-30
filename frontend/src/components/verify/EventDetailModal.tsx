@@ -880,6 +880,7 @@ export function EventDetailModal({
                 {currentFile.file_type === "video" && viewMode !== "video" && (
                   <ClipTimeline
                     file={currentFile}
+                    detectionThreshold={detectionThreshold}
                     currentFrame={stillFrame ?? currentFile.best_frame_number ?? 0}
                     selectedTrackId={selectedTrackId}
                     markers={markers}

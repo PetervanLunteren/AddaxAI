@@ -17,12 +17,15 @@
  *
  * Deliberately pure: no React, no DOM, no imports from components. What
  * a box looks like still belongs to `detection-overlay.ts`, and which
- * boxes exist at all still belongs to `passesDrawFilter`. This module
+ * tracks exist at all still belongs to `trackCards`. This module
  * only answers "where, right now".
  */
 
-import { passesDrawFilter } from "./detection-utils";
-import type { DetectionResponse } from "../api/types";
+import type { BboxedDetection } from "./detection-utils";
+import { drawsInClip, trackCards } from "./track-utils";
+import type { DetectionResponse, TrackResponse } from "../api/types";
+
+export type { BboxedDetection };
 
 /** How much of each track to trail behind the animal. */
 export const TRAIL_SECONDS = 3;
@@ -42,14 +45,6 @@ export const OTHER_TRACK_DIM = 0.25;
  * browser clock can resolve.
  */
 const FRAME_EPSILON = 1e-3;
-
-/** A detection with its bbox fields narrowed: the filter guarantees them. */
-export type BboxedDetection = DetectionResponse & {
-  bbox_x: number;
-  bbox_y: number;
-  bbox_width: number;
-  bbox_height: number;
-};
 
 /** One box to draw, in image fractions, at this moment. */
 export interface OverlayBox {
@@ -98,6 +93,10 @@ const EMPTY: OverlayFrame = { boxes: [] };
 /**
  * Group a file's drawable boxes by track and measure the sampling step.
  *
+ * Which boxes draw is `drawsInClip`, the rule every rendered still
+ * shares: a tracked box when its track is on show, weak frames
+ * included, a box without a track on its own merits.
+ *
  * The step is measured from the file's own frame numbers rather than
  * taken from `Project.video_fps`, because a clip analysed before that
  * setting was last changed keeps its own older spacing and the file's
@@ -105,14 +104,16 @@ const EMPTY: OverlayFrame = { boxes: [] };
  */
 export function buildOverlayIndex(
   detections: DetectionResponse[],
+  fileTracks: TrackResponse[],
   detectionThreshold: number,
 ): OverlayIndex {
   const tracks = new Map<string, BboxedDetection[]>();
   const frames = new Set<number>();
+  const onShow = trackCards(fileTracks, detections, detectionThreshold);
 
   for (const d of detections) {
     if (d.frame_number == null) continue;
-    if (!passesDrawFilter(d, detectionThreshold)) continue;
+    if (!drawsInClip(d, onShow, detectionThreshold)) continue;
     const box = d as BboxedDetection;
     frames.add(d.frame_number);
     // An untracked box is its own group, so the bracketing below can

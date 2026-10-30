@@ -33,7 +33,12 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
 import { cn } from "../../lib/utils";
 import type { TrackRow } from "../../lib/track-utils";
-import { clipDurationFrames, packTrackRows, trackRows } from "../../lib/track-utils";
+import {
+  clipDurationFrames,
+  packTrackRows,
+  trackCards,
+  trackRows,
+} from "../../lib/track-utils";
 import { formatClipPosition } from "../../lib/datetime";
 import type { FileWithDetections } from "../../api/types";
 
@@ -277,6 +282,7 @@ export const ClipTimeline = memo(function ClipTimeline({
   durationFrames,
   currentFrame,
   selectedTrackId,
+  detectionThreshold,
   markers,
   onSelectTrack,
   onSeek,
@@ -285,14 +291,22 @@ export const ClipTimeline = memo(function ClipTimeline({
   durationFrames?: number;
   currentFrame: number;
   selectedTrackId: string | null;
+  /** The counting threshold: a bar is drawn for a track whose card is
+   *  in scope at it, the same set the player draws and the tiles
+   *  count. A rejected track above it keeps its hollow bar. */
+  detectionThreshold: number;
   markers?: TimelineMarker[];
   onSelectTrack: (trackId: string) => void;
   onSeek: (frame: number) => void;
 }) {
-  const rows = useMemo(
-    () => trackRows(file.tracks ?? [], file.detections),
-    [file.tracks, file.detections],
-  );
+  const rows = useMemo(() => {
+    const tracks = file.tracks ?? [];
+    const onShow = trackCards(tracks, file.detections, detectionThreshold);
+    return trackRows(
+      tracks.filter((t) => onShow.has(t.id)),
+      file.detections,
+    );
+  }, [file.tracks, file.detections, detectionThreshold]);
   if (rows.length === 0) return null;
   return (
     <TrackTimeline

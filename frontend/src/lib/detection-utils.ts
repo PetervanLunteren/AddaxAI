@@ -4,8 +4,18 @@
  */
 
 import type React from "react";
+import type { DetectionResponse } from "../api/types";
 import { getSpeciesColor } from "../utils/species-colors";
 import { resolveSpeciesName } from "./species-name-mode";
+
+/** A detection with its box fields narrowed: `isDrawableBox` guarantees
+ *  them, so a surface that passed that rule can draw without null checks. */
+export type BboxedDetection = DetectionResponse & {
+  bbox_x: number;
+  bbox_y: number;
+  bbox_width: number;
+  bbox_height: number;
+};
 
 /**
  * Colour for a detection, from the class that names it.
@@ -52,15 +62,14 @@ export function isNonLabel(label: string | null | undefined): boolean {
 }
 
 /**
- * Everything `shouldDrawBbox` decides except the video best-frame rule.
- *
- * Split out for `VideoPlayer`, which draws every frame's boxes over the
- * real video on purpose, so it needs these gates and must not have the
- * fourth. It had its own inline copy of the confidence test, which is
- * exactly the drift this module exists to prevent: the verified
- * override and the rejected-box rule both landed in `shouldDrawBbox`
- * and neither reached the video, so one event modal drew different
- * boxes in frame mode and in video mode.
+ * Whether a box on its own merits is outlined: a photo's box, or a
+ * clip box that no track claims. The frame rule and the track rule are
+ * not here; `frameBoxes` in `track-utils.ts` adds them and is what a
+ * rendered frame reads. Every surface used to carry its own copy of
+ * the confidence test, which is exactly the drift this module exists
+ * to prevent: the verified override and the rejected-box rule once
+ * landed on the canvas and not in the video, so one event modal drew
+ * different boxes in frame mode and in video mode.
  *
  *  1. A box a person rejected is never outlined. Mirrors the backend's
  *     `is_a_real_detection()`, which already keeps it out of every
@@ -74,6 +83,10 @@ export function isNonLabel(label: string | null | undefined): boolean {
  *     no rectangle.
  *  3. It must have a bbox — event-level observations are bbox-less by
  *     design and never draw.
+ *
+ * No rule here reads who drew a box. A drawn box is verified at
+ * confidence 1.0, so it passes like any confirmed box; one the person
+ * later marked as "nothing here" disappears like any rejected box.
  */
 export function passesDrawFilter(
   detection: {
@@ -84,11 +97,38 @@ export function passesDrawFilter(
   },
   detectionThreshold: number,
 ): boolean {
-  if (isNonLabel(detection.label)) return false;
-  if (!detection.verified && detection.confidence < detectionThreshold) {
-    return false;
-  }
-  return detection.bbox_x !== null;
+  return inScope(detection, detectionThreshold) && isDrawableBox(detection);
+}
+
+/**
+ * The user-facing scope rule, the backend's `threshold_or_verified`
+ * (`ml/label_exclusion.py`): a box passes on its own confidence, or
+ * because a person verified it as something real. A rejected box above
+ * the threshold still passes, so its verdict stays on show; a rejected
+ * weak box, which a file sign-off makes of every box nobody could see,
+ * stays out at every threshold.
+ */
+export function inScope(
+  detection: { confidence: number; verified: boolean; label: string | null },
+  detectionThreshold: number,
+): boolean {
+  return (
+    detection.confidence >= detectionThreshold ||
+    (detection.verified && !isNonLabel(detection.label))
+  );
+}
+
+/**
+ * A box that can be outlined at all: it has geometry, and nobody
+ * rejected it. Scope is a separate question (`inScope`): inside a
+ * track that is on show every frame is drawable whatever its own
+ * confidence, so the video overlay asks this alone.
+ */
+export function isDrawableBox(detection: {
+  label: string | null;
+  bbox_x: number | null;
+}): boolean {
+  return !isNonLabel(detection.label) && detection.bbox_x !== null;
 }
 
 /**
@@ -103,56 +143,6 @@ export function stillFrameFor(
   if (file.file_type !== "video" || detection.frame_number == null) return undefined;
   if (detection.frame_number === file.best_frame_number) return undefined;
   return detection.frame_number;
-}
-
-/**
- * Whether a detection should render as a bounding box on a given file's
- * visible image.
- *
- * Two gates: `passesDrawFilter` above, then the frame rule. For videos
- * the detection must be on the frame on screen: the cover frame by
- * default, or `frameNumber` when the surface shows another frame (a
- * track's representative frame, see `stillFrameFor`). A clip's other
- * boxes still exist in the data, but they must not paint onto the
- * canvas of an unrelated frame: that is the crop-service bug in another
- * costume, and it looks perfectly fine until the subject moves.
- *
- * No rule here reads who drew a box. A drawn box is verified at
- * confidence 1.0, so it passes like any confirmed box; one the person
- * later marked as "nothing here" disappears like any rejected box.
- *
- * Centralised so every grid tile / canvas / modal applies the same
- * rules; without this, regressions slipped in tile-by-tile.
- */
-export function shouldDrawBbox<
-  D extends {
-    confidence: number;
-    verified: boolean;
-    label: string | null;
-    bbox_x: number | null;
-    bbox_y: number | null;
-    bbox_width: number | null;
-    bbox_height: number | null;
-    frame_number: number | null;
-  },
->(
-  detection: D,
-  file: { file_type: string; best_frame_number: number | null },
-  detectionThreshold: number,
-  frameNumber?: number,
-): detection is D & {
-  bbox_x: number;
-  bbox_y: number;
-  bbox_width: number;
-  bbox_height: number;
-} {
-  if (!passesDrawFilter(detection, detectionThreshold)) return false;
-  if (detection.bbox_x === null) return false;
-  if (file.file_type === "video") {
-    const shown = frameNumber ?? file.best_frame_number;
-    if (shown != null) return detection.frame_number === shown;
-  }
-  return true;
 }
 
 /** Get display name for a detection under the active species-name mode

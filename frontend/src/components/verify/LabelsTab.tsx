@@ -587,9 +587,9 @@ export function LabelsTab({
     }
   }, [debouncedSortKey, canSort]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The frames behind the open card, scoped by the backend at the gate
-  // the analysis ran with. Nothing from the grid travels: the filters
-  // are hidden while a track is open and do not change what is in it.
+  // The frames behind the open card: every box of the track. Nothing
+  // from the grid travels: the filters are hidden while a track is open
+  // and do not change what is in it.
   const { data: openTrackData } = useQuery({
     queryKey: ["track-detections", openTrack?.trackId],
     queryFn: ({ signal }) => tracksApi.detections(openTrack!.trackId, { signal }),
