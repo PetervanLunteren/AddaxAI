@@ -133,15 +133,14 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
             <div className="absolute inset-0 bg-gradient-to-r from-muted via-muted-foreground/5 to-muted animate-pulse -z-10" />
           </>
         )}
-        {/* How many frames the tracker followed this animal for, and the
-            way into them. A photo has no track and shows nothing; a
-            one-frame track has nothing to open.
+        {/* The way into the frames the AI followed this animal through.
+            A photo has no track and shows nothing; a one-frame track has
+            nothing to open.
 
-            The number is the animal's, not the grid's: the tracker keeps
-            boxes below the counting threshold, so opening this usually
-            yields fewer cards than it says. The header above the frames
-            reconciles the two in words, which is honest and costs no
-            second count under the confidence rule in two SQL dialects.
+            No number: the tracker's count includes boxes too weak to be
+            worth checking, which the frames view leaves out, so it would
+            promise more cards than open. Counting the ones that do open
+            here would copy the scope rule into the grid's SQL.
 
             stopPropagation on both handlers: the card root selects on
             click, so without it opening a track would also select the
@@ -150,7 +149,7 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
           <button
             type="button"
             data-testid="open-track"
-            title={`Followed for ${detection.track_frames} frames. Open them (T).`}
+            title="Open the frames the AI followed (T)."
             onClick={(e) => {
               e.stopPropagation();
               onOpenTrack(detection);
@@ -165,9 +164,9 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
             )}
           >
             <Film className={isSmall ? "h-2 w-2" : "h-2.5 w-2.5"} />
-            {/* The word is what turns a number into a control. The
-                smallest tiles keep the bare count: no room. */}
-            {isSmall ? detection.track_frames : `${detection.track_frames} frames`}
+            {/* The word makes it read as a control. The smallest tiles
+                keep the icon and chevron only: no room. */}
+            {!isSmall && "Frames"}
             <ChevronRight className={isSmall ? "h-2 w-2" : "h-2.5 w-2.5"} />
           </button>
         )}

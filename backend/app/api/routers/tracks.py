@@ -2,10 +2,17 @@
 
 A card in the Labels grid stands for a whole track, and a verdict on it
 reaches every box of the animal. Opening the card asks here for the
-boxes behind it, so a person can disagree with part of a track without
+frames behind it, so a person can disagree with part of a track without
 cutting it in two: relabel the frames that are wrong and every count
 downstream is right, because MaxN reads what is in each frame rather
 than what the tracker believed.
+
+Not every box of the track is a frame to check. The tracker keeps boxes
+down to MegaDetector's storage floor, because a weak box that overlaps
+where the animal was expected is what holds a blurred or half-hidden
+animal together. A person needs only the frames whose label can be
+wrong, the ones the classifier looked at, so the frames are scoped at
+the classification gate the analysis ran with.
 
 The pictures are not here. Each box gets its crop from
 ``/api/detections/{id}/crop`` as any card does, which decodes that frame
@@ -23,7 +30,8 @@ from app.api.schemas.file import TrackResponse
 from app.api.schemas.label import CropBbox
 from app.db.base import get_db
 from app.ml.inference.crop_box import bbox_within_crop
-from app.models import Detection, File, Track
+from app.ml.label_exclusion import threshold_or_verified
+from app.models import Deployment, Detection, File, Track
 
 router = APIRouter(prefix="/api/tracks", tags=["tracks"])
 
@@ -42,7 +50,7 @@ class TrackDetectionRow(DetectionResponse):
 
 
 class TrackDetectionsResponse(BaseModel):
-    """The animal, and the frames of it a person may act on."""
+    """The animal, and the frames of it a person may check."""
 
     file_id: str
     file_name: str
@@ -57,16 +65,21 @@ def get_track_detections(
     track_id: str,
     db: Session = Depends(get_db),
 ) -> TrackDetectionsResponse:
-    """Every box of the track, in frame order. No confidence scope.
+    """The track's frames at or above the run's classification gate, or
+    verified, in frame order.
 
-    This is the animal, not the grid. The chip on the card promises the
-    frames the tracker followed the animal for, a verdict on the card
-    reaches every one of them, and opening the track is how a person
-    repairs the frames that are wrong, which are usually the weak ones.
-    A view that hid the weak boxes would hide exactly the frames the
-    repair is for, and verify frames the person could not see. It used
-    to be gated at the grid's confidence scope, so a 32-frame track
-    opened to 22 cards with the filters that explained why hidden.
+    The line is the gate the deployment was analysed with
+    (``classification_gate_used``), so it is fixed for the life of the
+    analysis. Not the counting threshold, which Refine results moves after
+    the fact, and not the Labels slider, which filters cards: neither may
+    redefine what is inside a track. A frame below the gate never got a
+    species guess of its own and sits far below the default counting
+    threshold, so there is nothing in it to check. It stays stored and
+    keeps holding the track together.
+
+    Never empty for a card on screen: a track starts from a box at the
+    default counting threshold, far above any gate in use, and its card is
+    its best box.
     """
     track = db.query(Track).filter(Track.id == track_id).first()
     if track is None:
@@ -75,9 +88,22 @@ def get_track_detections(
     if file is None:
         raise HTTPException(status_code=404, detail="File not found")
 
+    gate = (
+        db.query(Deployment.classification_gate_used)
+        .filter(Deployment.id == file.deployment_id)
+        .scalar()
+    )
+    if gate is None:
+        # Every analysis since 2026-07 records its gate, and tracks came
+        # later, so a track without one means a broken record. Say so.
+        raise ValueError(
+            f"Deployment {file.deployment_id} has a track but no recorded "
+            "classification gate. Refusing to guess which frames to show."
+        )
+
     rows = (
         db.query(Detection)
-        .filter(Detection.track_id == track_id)
+        .filter(Detection.track_id == track_id, threshold_or_verified(gate))
         .order_by(Detection.frame_number, Detection.id)
         .all()
     )

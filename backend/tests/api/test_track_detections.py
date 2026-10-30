@@ -4,11 +4,11 @@ The grid shows one card per track. Opening that card asks this endpoint
 for the boxes behind it, so a person can relabel the part of a track
 that followed a different animal without cutting the track in two.
 
-The rule that matters here is the confidence scope. The Labels slider
-digs *down* below the project's counting threshold, so a card visible
-at a lowered slider has to open to the frames that were visible with
-it. Gating at the project threshold alone opens an empty track under a
-card the person can plainly see.
+The rule that matters here is which frames come back: those at or above
+the classification gate the analysis ran with, or verified. That line is
+fixed per analysis, so neither the counting threshold nor the Labels
+slider changes what is inside a track. Weaker boxes stay stored, holding
+the track together, but there is nothing in them to check.
 """
 
 from app.models import Detection
@@ -22,10 +22,10 @@ from tests.conftest import (
 )
 
 
-def _clip(db, *, counting_threshold=0.2):
+def _clip(db, *, counting_threshold=0.2, gate_used=0.1):
     project = make_project(db, counting_threshold=counting_threshold)
     site = make_site(db, project_id=project.id)
-    dep = make_deployment(db, site_id=site.id)
+    dep = make_deployment(db, site_id=site.id, classification_gate_used=gate_used)
     video = make_file(
         db, deployment_id=dep.id, file_type="video", file_format="mp4",
         file_path="/fake/NIN_T4_drop12.mp4", frame_rate=30.0,
@@ -57,26 +57,79 @@ def test_the_frames_come_back_in_frame_order(client, db):
     assert body["frame_rate"] == 30.0
 
 
-def test_every_box_of_the_track_comes_back_whatever_its_confidence(client, db):
-    """The view is the animal, not the grid.
-
-    The tracker keeps boxes far below the counting threshold, and a
-    verdict on the card reaches all of them, so opening the track must
-    show all of them: the weak ones are the frames a repair is usually
-    for. Rejected boxes come back too, so a rejection can be undone.
-    """
-    _, video, track = _clip(db, counting_threshold=0.2)
+def test_only_frames_at_or_above_the_runs_gate_come_back(client, db):
+    """A box below the gate never got a species guess of its own; the
+    tracker kept it to hold the animal together, not for a person."""
+    _, video, track = _clip(db, gate_used=0.1)
     make_detection(db, file_id=video.id, frame_number=30, track_id=track.id,
                    confidence=0.9)
     make_detection(db, file_id=video.id, frame_number=60, track_id=track.id,
-                   confidence=0.03, verified=True, label="false detection")
-    weak = make_detection(db, file_id=video.id, frame_number=90, track_id=track.id,
-                          confidence=0.05)
+                   confidence=0.1)
+    make_detection(db, file_id=video.id, frame_number=90, track_id=track.id,
+                   confidence=0.05)
     db.commit()
 
     body = client.get(f"/api/tracks/{track.id}/detections").json()
-    assert [d["frame_number"] for d in body["detections"]] == [30, 60, 90]
-    assert weak.id in {d["id"] for d in body["detections"]}
+    assert [d["frame_number"] for d in body["detections"]] == [30, 60]
+
+
+def test_a_verified_weak_frame_stays_and_a_rejected_one_goes(client, db):
+    """The scope rule's verified arm, as everywhere else: a person who
+    confirmed a weak box saw an animal there; a weak box rejected by a
+    file sign-off stays out at every threshold."""
+    _, video, track = _clip(db, gate_used=0.1)
+    make_detection(db, file_id=video.id, frame_number=30, track_id=track.id,
+                   confidence=0.9)
+    seen = make_detection(db, file_id=video.id, frame_number=60, track_id=track.id,
+                          confidence=0.05, verified=True)
+    make_detection(db, file_id=video.id, frame_number=90, track_id=track.id,
+                   confidence=0.05, verified=True, label="false detection")
+    db.commit()
+
+    body = client.get(f"/api/tracks/{track.id}/detections").json()
+    assert [d["frame_number"] for d in body["detections"]] == [30, 60]
+    assert body["detections"][1]["id"] == seen.id
+
+
+def test_the_gate_is_the_runs_not_the_projects(client, db):
+    """Editing the project's gate applies to new analyses only, so it must
+    not change which frames an analysed track holds."""
+    project, video, track = _clip(db, gate_used=0.1)
+    project.classification_gate = 0.3
+    make_detection(db, file_id=video.id, frame_number=30, track_id=track.id,
+                   confidence=0.9)
+    make_detection(db, file_id=video.id, frame_number=60, track_id=track.id,
+                   confidence=0.2)
+    db.commit()
+
+    body = client.get(f"/api/tracks/{track.id}/detections").json()
+    assert [d["frame_number"] for d in body["detections"]] == [30, 60]
+
+
+def test_the_counting_threshold_does_not_move_the_frames(client, db):
+    """Refine results moves the counting threshold after the fact; what is
+    inside a track must not move with it."""
+    _, video, track = _clip(db, counting_threshold=0.8, gate_used=0.1)
+    make_detection(db, file_id=video.id, frame_number=30, track_id=track.id,
+                   confidence=0.9)
+    make_detection(db, file_id=video.id, frame_number=60, track_id=track.id,
+                   confidence=0.3)
+    db.commit()
+
+    body = client.get(f"/api/tracks/{track.id}/detections").json()
+    assert [d["frame_number"] for d in body["detections"]] == [30, 60]
+
+
+def test_a_tracked_video_without_a_recorded_gate_fails_loudly(client, db):
+    """Every analysis since tracks exist records its gate. A missing one is
+    a broken record, and guessing a line would hide or show frames
+    silently."""
+    _, video, track = _clip(db, gate_used=None)
+    make_detection(db, file_id=video.id, frame_number=30, track_id=track.id,
+                   confidence=0.9)
+    db.commit()
+
+    assert client.get(f"/api/tracks/{track.id}/detections").status_code == 500
 
 
 def test_each_frame_carries_its_own_crop_box(client, db):
