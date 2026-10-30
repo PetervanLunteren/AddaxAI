@@ -10,8 +10,10 @@ has a track: a drawn box is a one-frame track, and so is each visible
 box of a video analysed before tracking became the standard.
 
 The track holds no label and no verdict of its own. Its label is the
-label of its boxes, read from the representative box, and its verdict is
-`Detection.verified` on those boxes. One home for each fact, so the
+label of its boxes, read from the representative box, which
+postprocessing sets to the species the track's frames agree on
+(`ml/track_vote.py`), and its verdict is `Detection.verified` on those
+boxes. One home for each fact, so the
 per-frame queries (MaxN, exports, the video overlay) keep working
 unchanged and nothing can drift between a track and its boxes.
 

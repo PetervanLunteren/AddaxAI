@@ -823,3 +823,104 @@ def test_smoothing_is_skipped_without_a_classifier(deployment_scaffold):
             db=db,
         )
     popen.assert_not_called()
+
+
+def _tracked_clip(s, *, card_verified=False):
+    """One video with one three-frame track in the DB, and its JSON.
+
+    The card (frame 60, the most confident box) reads fox on its own
+    frame; the other two frames read wolf and boar. The vote says wolf.
+    """
+    from tests.conftest import make_detection, make_track
+
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    video = make_file(
+        db, deployment_id=s["deployment"].id, file_type="video",
+        file_format="mp4", file_path=str(deploy_dir / "videos" / "clip.mp4"),
+        frame_rate=30.0, best_frame_number=60, width_px=1920, height_px=1080,
+    )
+    track = make_track(db, file_id=video.id, representative_frame_number=60)
+    rows = {}
+    for frame, conf, label in ((30, 0.8, "wolf"), (60, 0.9, "fox"), (90, 0.8, "boar")):
+        rows[frame] = make_detection(
+            db, file_id=video.id, frame_number=frame, track_id=track.id,
+            confidence=conf, label=label, bbox_x=0.1, bbox_y=0.2,
+            bbox_width=0.3, bbox_height=0.4,
+            verified=card_verified and frame == 60,
+        )
+    db.commit()
+
+    def box(frame, conf, classifications):
+        return {"category": "1", "conf": conf, "bbox": [0.1, 0.2, 0.3, 0.4],
+                "frame_number": frame, "track_id": 1,
+                "classifications": classifications}
+
+    md_json = build_detection_json(
+        [{
+            "file": "videos/clip.mp4",
+            "frame_rate": 30.0,
+            "detections": [
+                box(30, 0.8, [[2, 0.95], [1, 0.05]]),
+                box(60, 0.9, [[1, 0.6], [2, 0.4]]),
+                box(90, 0.8, [[3, 0.6], [2, 0.4]]),
+            ],
+        }],
+        classification_categories={"1": "fox", "2": "wolf", "3": "boar"},
+    )
+    json_path = write_json(s["artifacts"] / "results.json", md_json)
+    return json_path, rows
+
+
+def test_the_card_takes_the_species_its_track_voted_for(deployment_scaffold):
+    """`run_postprocessing_for_deployment` votes before rollup and
+    smoothing: with both off, the returned card box already carries the
+    track's weighted mean, and only the card does."""
+    from unittest.mock import MagicMock
+
+    s = deployment_scaffold
+    json_path, _ = _tracked_clip(s)
+    project = MagicMock(
+        event_smoothing=False, taxonomic_rollup=False, excluded_classes=[],
+        classification_model_id=None, country_code=None, state_code=None,
+    )
+
+    with patch("app.ml.postprocessing._find_classification_model_dir", return_value=None):
+        out = run_postprocessing_for_deployment(
+            s["deployment"].id, json_path, s["deploy_dir"], project, s["db"]
+        )
+
+    dets = {d["frame_number"]: d for d in out["images"][0]["detections"]}
+    assert dets[60]["classifications"][0][0] == "2"  # wolf, not its own fox
+    assert dets[30]["classifications"] == [[2, 0.95], [1, 0.05]]
+    assert dets[90]["classifications"] == [[3, 0.6], [2, 0.4]]
+
+
+def test_a_raw_reload_writes_the_voted_species_to_the_card_row(deployment_scaffold):
+    """The raw-reload path votes too, and the DB ends up with the track's
+    species on the card row while the siblings keep their own."""
+    s = deployment_scaffold
+    json_path, rows = _tracked_clip(s)
+
+    reload_raw_classifications_from_json(
+        deployment_id=s["deployment"].id, json_path=json_path,
+        deployment_folder=s["deploy_dir"], db=s["db"],
+    )
+
+    s["db"].expire_all()
+    assert rows[60].label == "wolf"
+    assert rows[30].label == "wolf"
+    assert rows[90].label == "boar"
+
+
+def test_a_verified_card_keeps_its_label_through_the_vote(deployment_scaffold):
+    s = deployment_scaffold
+    json_path, rows = _tracked_clip(s, card_verified=True)
+
+    reload_raw_classifications_from_json(
+        deployment_id=s["deployment"].id, json_path=json_path,
+        deployment_folder=s["deploy_dir"], db=s["db"],
+    )
+
+    s["db"].expire_all()
+    assert rows[60].label == "fox" and rows[60].verified
+    assert rows[90].label == "boar"

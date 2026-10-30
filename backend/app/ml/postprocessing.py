@@ -32,6 +32,7 @@ from app.ml.detection_visibility import on_visible_frame_of
 from app.ml.label_exclusion import is_human_decided
 from app.ml.observation_type import derive_observation_type
 from app.ml.progress import ProgressTicker
+from app.ml.track_vote import vote_track_cards
 from app.models import Deployment, Detection, File, Project
 from app.utils.subprocess_env import clean_python_env
 
@@ -306,6 +307,12 @@ def run_postprocessing_for_deployment(
     apply_label_exclusion_to_results(
         md_results, project.excluded_classes, exclusion_taxonomy
     )
+
+    # A track's card gets the species its frames agree on. After
+    # exclusion, so an excluded class cannot vote on the no-taxonomy
+    # path; before rollup, so rollup sees the track's distribution.
+    voted = vote_track_cards(md_results)
+    logger.info(f"Track vote: {voted} cards set to their track's species")
 
     # Build excluded_names and allowed_taxonomy_keys for geofence-aware
     # rollup (matching official SpeciesNet API behavior).
@@ -819,6 +826,10 @@ def reload_raw_classifications_from_json(
     apply_label_exclusion_to_results(
         raw_results, excluded_classes, taxonomy_lookup
     )
+
+    # Same vote as the main path, same position (see there).
+    voted = vote_track_cards(raw_results)
+    logger.info(f"Track vote: {voted} cards set to their track's species")
 
     # Apply geofence-aware rollup (same logic as main postprocessing)
     if taxonomy_csv_path and taxonomy_csv_path.exists():
