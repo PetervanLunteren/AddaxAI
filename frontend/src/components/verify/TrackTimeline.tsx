@@ -3,9 +3,10 @@
  *
  * One group per species, and inside a group as many rows as its animals
  * need to sit beside each other (`packTrackRows`). One bar per animal in
- * the species colour, styled by verdict: solid when every box is
- * verified, hatched while unverified, hollow when rejected. The species
- * is named on the group's first row only. A playhead follows the player,
+ * the species colour, styled by verdict: solid once the animal's card
+ * is verified, hatched while unverified, hollow when rejected, and the
+ * rejected ones gather in a "False detection" group after the species.
+ * The species is named on the group's first row only. A playhead follows the player,
  * a marker per species sits at the frame its MaxN was counted on (the
  * Counts modal passes those; the Files viewer passes none). Click a bar
  * to select that animal and jump to it; click the lane elsewhere to seek
@@ -208,7 +209,9 @@ export function TrackTimeline({
                       <button
                         key={row.track.id}
                         type="button"
-                        title={`${group.displayLabel}, frames ${row.track.start_frame} to ${row.track.end_frame}`}
+                        // The verdict in words, so the first hover teaches
+                        // what hatched, solid and hollow mean.
+                        title={`${group.displayLabel}, ${row.verdict}, frames ${row.track.start_frame} to ${row.track.end_frame}`}
                         data-testid="track-bar"
                         data-track-id={row.track.id}
                         data-verdict={row.verdict}
@@ -279,22 +282,22 @@ export function TrackTimeline({
  */
 export const ClipTimeline = memo(function ClipTimeline({
   file,
+  detectionThreshold,
   durationFrames,
   currentFrame,
   selectedTrackId,
-  detectionThreshold,
   markers,
   onSelectTrack,
   onSeek,
 }: {
   file: FileWithDetections;
-  durationFrames?: number;
-  currentFrame: number;
-  selectedTrackId: string | null;
   /** The counting threshold: a bar is drawn for a track whose card is
    *  in scope at it, the same set the player draws and the tiles
    *  count. A rejected track above it keeps its hollow bar. */
   detectionThreshold: number;
+  durationFrames?: number;
+  currentFrame: number;
+  selectedTrackId: string | null;
   markers?: TimelineMarker[];
   onSelectTrack: (trackId: string) => void;
   onSeek: (frame: number) => void;

@@ -29,9 +29,10 @@ export type TrackVerdict = "verified" | "rejected" | "unverified";
 
 export interface TrackRow {
   track: TrackResponse;
-  /** The species key the bar is grouped under: the representative box's
-   *  label, else the detector's category. The Counts modal's MaxN
-   *  markers carry the same key. */
+  /** The key the bar is grouped under: the representative box's label
+   *  (so a rejected track groups under "false detection", the same word
+   *  its card shows), else the detector's category. The Counts modal's
+   *  MaxN markers carry the same key. */
   label: string;
   /** The species as the rest of the app prints it (common or scientific
    *  name per the name mode, the category otherwise). */
@@ -54,11 +55,22 @@ export function representativeBox(
 
 /**
  * One row per track, grouped by species and sorted by start frame
- * within a species. The label comes off the representative box (its
- * label, else the detector's category, and the category again once the
- * track is rejected); the verdict is "verified" when every box of the
- * track is, "rejected" when the representative box carries a non-label,
- * "unverified" otherwise.
+ * within a species, with the rejected tracks in a "False detection"
+ * group after every species. The label comes off the representative
+ * box (its label, else the detector's category). Until 2026-10-30 a
+ * rejected track was filed under the detector's category instead, so
+ * an animal pressed X on sat hollow in a row called "Animal", which
+ * reads as the opposite of what X says; the species is gone the moment
+ * a track is rejected, so there is no species row for it to keep. The
+ * verdict is the representative box's too:
+ * "rejected" when it carries a non-label, "verified" when it is
+ * flagged, "unverified" otherwise. The card is where a verdict on an
+ * animal lands (`verdict_targets` in the backend flags the card and
+ * carries only the label to the other frames), so the card is what the
+ * grid, the counts and the sign-off read, and the bar must read the
+ * same. Until 2026-10-30 it demanded every frame be flagged, which a
+ * card verdict never does, so a verified animal stayed hatched and the
+ * "Mark correct" walk kept offering it.
  */
 export function trackRows(
   tracks: TrackResponse[],
@@ -77,27 +89,24 @@ export function trackRows(
     const rep = representativeBox(boxes, track) ?? boxes[0];
     if (!rep) continue;
     const rejected = isNonLabel(rep.label);
-    // A rejected track has no species any more, so its row is the
-    // detector's category: the hollow bar sits beside the animals it was
-    // taken for, instead of in a "False detection" row of its own.
-    const named = rejected
-      ? { ...rep, label: null, label_taxonomy_id: null, common_name: null, scientific_name: null }
-      : rep;
     const verdict: TrackVerdict = rejected
       ? "rejected"
-      : boxes.every((d) => d.verified)
+      : rep.verified
         ? "verified"
         : "unverified";
     rows.push({
       track,
-      label: named.label ?? named.category,
-      displayLabel: getDetectionDisplayName(named),
-      color: getDetectionColor(named),
+      label: rep.label ?? rep.category,
+      displayLabel: getDetectionDisplayName(rep),
+      color: getDetectionColor(rep),
       verdict,
     });
   }
+  // Rejected tracks last: their "False detection" row never pushes a
+  // species down the lane.
   return rows.sort(
     (a, b) =>
+      Number(a.verdict === "rejected") - Number(b.verdict === "rejected") ||
       a.label.localeCompare(b.label) ||
       a.track.start_frame - b.track.start_frame,
   );
@@ -168,15 +177,6 @@ export function clipDurationFrames(file: {
   return tracks.length ? Math.max(...tracks.map((t) => t.end_frame)) + 1 : 0;
 }
 
-/**
- * One box per card a person can act on: a photo's boxes, and for a
- * video the card of every track on show that was not rejected (a
- * verdict on it reaches the whole track through the cascade). This is
- * what "every detection in the file" means on the Files tab: the tile
- * chips, the viewer's actions with nothing selected, the bulk bar and
- * the Counts modal's landing file all read it.
- */
-export function cardBoxes(
 /**
  * Track id to its card, for the tracks a clip has on show: those whose
  * card is in scope (`inScope`: passes the counting threshold or was
@@ -251,6 +251,15 @@ export function frameBoxes(
   ) as BboxedDetection[];
 }
 
+/**
+ * One box per card a person can act on: a photo's boxes, and for a
+ * video the card of every track on show that was not rejected (a
+ * verdict on it reaches the whole track through the cascade). This is
+ * what "every detection in the file" means on the Files tab: the tile
+ * chips, the viewer's actions with nothing selected, the bulk bar and
+ * the Counts modal's landing file all read it.
+ */
+export function cardBoxes(
   file: FileWithDetections,
   threshold: number,
 ): DetectionResponse[] {
