@@ -44,9 +44,9 @@ A card for a video stands for one animal, so a card with a species on it is a st
 
 The Frames button in the corner of a video card opens the frames the AI followed that animal through. The grid fills with those frames instead, oldest first, so you can see whether it stayed the same animal the whole way. Click Back to detections, or press Esc, to leave.
 
-Inside there, a label applies to the frames you selected, not to the whole animal. So if the AI followed a shark and then switched to a ray halfway, select the frames that are rays, relabel those, and your counts come out right for both. The card outside still carries the animal's own label, and labelling that still changes the whole animal, as it always did.
+Inside there, a label applies to the frames you selected, not to the whole animal. So if the AI followed a shark and then switched to a ray halfway, select the frames that are rays, relabel those, and your counts come out right for both. The card outside carries the species the animal's frames agree on, weighted by how clearly each frame saw it, so inside here the card's own frame shows that label while its neighbours show what the AI read on each of them. Labelling the card still changes the whole animal, as it always did.
 
-You see the frames the AI gave a species of its own, at the "Classify detections above" setting the analysis ran with. The AI also kept weaker boxes to follow the animal through blur and cover. Those are left out here: they have no species of their own and are not counted.
+You see the frames at or above the "Classify detections above" setting the analysis ran with. The AI also kept weaker boxes to follow the animal through blur and cover. Those are left out here: they are too weak to be classified or counted.
 
 Do not worry about a label that wobbles from frame to frame. One raccoon walking past a camera was read as raccoon, badger, badger, blank and opossum on five frames in a row, and that is normal. What matters is a clean run of one species followed by a clean run of another, which is the sign that the AI changed animals.
 

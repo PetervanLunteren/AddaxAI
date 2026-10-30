@@ -118,8 +118,8 @@ class Deployment(Base):
     # (the project's value at run time). The project-level setting can
     # change between runs, so mixed-gate projects need the per-run
     # record to explain what was classified / embedded and why. Also
-    # bounds an opened track's frames (`routers/tracks.py`): the frames
-    # the classifier looked at. NULL = pre-gate analysis.
+    # bounds an opened track's frames (`routers/tracks.py`): weaker boxes
+    # only held the track together. NULL = pre-gate analysis.
     classification_gate_used: Mapped[float | None] = mapped_column(
         Float, nullable=True
     )

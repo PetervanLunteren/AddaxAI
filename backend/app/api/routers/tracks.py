@@ -10,9 +10,10 @@ than what the tracker believed.
 Not every box of the track is a frame to check. The tracker keeps boxes
 down to MegaDetector's storage floor, because a weak box that overlaps
 where the animal was expected is what holds a blurred or half-hidden
-animal together. A person needs only the frames whose label can be
-wrong, the ones the classifier looked at, so the frames are scoped at
-the classification gate the analysis ran with.
+animal together. A person needs only the frames worth judging, so the
+frames are scoped at the classification gate the analysis ran with: the
+line below which the app neither classifies a box nor, at its defaults,
+counts it.
 
 The pictures are not here. Each box gets its crop from
 ``/api/detections/{id}/crop`` as any card does, which decodes that frame
@@ -72,10 +73,11 @@ def get_track_detections(
     (``classification_gate_used``), so it is fixed for the life of the
     analysis. Not the counting threshold, which Refine results moves after
     the fact, and not the Labels slider, which filters cards: neither may
-    redefine what is inside a track. A frame below the gate never got a
-    species guess of its own and sits far below the default counting
-    threshold, so there is nothing in it to check. It stays stored and
-    keeps holding the track together.
+    redefine what is inside a track. A box below the gate is too weak to
+    be classified (with or without a classifier in the run, the app never
+    classifies one) and sits far below the default counting threshold, so
+    there is nothing in it to judge. It stays stored and keeps holding the
+    track together.
 
     Never empty for a card on screen: a track starts from a box at the
     default counting threshold, far above any gate in use, and its card is

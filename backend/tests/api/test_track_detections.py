@@ -58,7 +58,7 @@ def test_the_frames_come_back_in_frame_order(client, db):
 
 
 def test_only_frames_at_or_above_the_runs_gate_come_back(client, db):
-    """A box below the gate never got a species guess of its own; the
+    """A box below the gate is too weak to classify or count; the
     tracker kept it to hold the animal together, not for a person."""
     _, video, track = _clip(db, gate_used=0.1)
     make_detection(db, file_id=video.id, frame_number=30, track_id=track.id,
