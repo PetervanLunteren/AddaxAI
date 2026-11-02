@@ -148,7 +148,7 @@ def stream_labels_subprocess(
 
     logger.info(f"Streaming labels subprocess: {operation} for project {project_id}")
 
-    env = clean_python_env(PYTHONUNBUFFERED="1")
+    env = clean_python_env()
 
     process = subprocess.Popen(
         cmd,
@@ -416,7 +416,7 @@ async def stream_labels_subprocess_async(
     logger.info(
         f"Streaming labels subprocess (async): {operation} for project {project_id}"
     )
-    env = clean_python_env(PYTHONUNBUFFERED="1")
+    env = clean_python_env()
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,

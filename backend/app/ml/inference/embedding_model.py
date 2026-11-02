@@ -131,9 +131,7 @@ class EmbeddingModel:
             progress_callback("Loading embedding model...", 0.0, None)
 
 
-        env = clean_python_env(
-            PYTHONUNBUFFERED="1", **cuda_guard_overrides(self.env_manager)
-        )
+        env = clean_python_env(**cuda_guard_overrides(self.env_manager))
 
         process = popen_group(
             cmd,
