@@ -21,7 +21,7 @@ from app.core.logging_config import get_logger
 from app.ml.embedding_utils import video_pixels_for
 from app.ml.inference.crop_box import compute_expanded_crop_region, crop_with_blur_fill
 from app.models import Detection, File
-from app.services.video_frame_service import decode_frame_jpeg
+from app.services.video_frame_service import decode_frame_jpeg, warm_track_frames
 
 logger = get_logger(__name__)
 
@@ -33,7 +33,7 @@ _WHOLE_IMAGE = [0.0, 0.0, 1.0, 1.0]
 
 
 def _resolve_source(
-    file: File, detection: Detection
+    file: File, detection: Detection, track_frames: list[int] | None = None
 ) -> tuple[Path | bytes, list[float]] | None:
     """The picture to cut this detection's card from, and the box in it.
 
@@ -47,7 +47,10 @@ def _resolve_source(
        cover frame when the card sits on it, else that frame decoded.
     3. any other frame of the track: that frame decoded on request, cut
        at this box. Only the opened track on the Detections tab asks
-       for these.
+       for these, and it asks for a screenful at once, so the chunk of
+       the track's frames from this one on is decoded with one seek
+       (`warm_track_frames`, given ``track_frames``) and the frame is
+       then read from the cache.
 
     Rung 3 must never go through `video_pixels_for`, which returns the
     track's stored crop whenever there is one: every frame of an animal
@@ -78,10 +81,29 @@ def _resolve_source(
             return (Path(path), bbox) if Path(path).exists() else None
     if not file.file_path:
         return None
+    if track_frames:
+        warm_track_frames(
+            file.file_path, track_frames, detection.frame_number, file.frame_rate
+        )
     jpeg = decode_frame_jpeg(file.file_path, detection.frame_number, file.frame_rate)
     if jpeg is None:
         return None
     return jpeg, own_bbox
+
+
+def _track_frames_of(db: Session, file: File, detection: Detection) -> list[int] | None:
+    """The frames of this detection's track, ascending, for the chunk
+    decode of rung 3; None for a photo or an untracked box."""
+    if file.file_type != "video" or detection.track_id is None:
+        return None
+    rows = (
+        db.query(Detection.frame_number)
+        .filter(Detection.track_id == detection.track_id, Detection.frame_number.isnot(None))
+        .distinct()
+        .order_by(Detection.frame_number)
+        .all()
+    )
+    return [r[0] for r in rows]
 
 
 def get_or_create_crop(detection_id: str, size: int, db: Session) -> bytes | None:
@@ -111,7 +133,7 @@ def get_or_create_crop(detection_id: str, size: int, db: Session) -> bytes | Non
     if not file:
         return None
 
-    source = _resolve_source(file, detection)
+    source = _resolve_source(file, detection, _track_frames_of(db, file, detection))
     if source is None:
         return None
     picture, bbox = source

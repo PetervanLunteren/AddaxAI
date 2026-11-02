@@ -16,8 +16,10 @@ view did not show and the player did not draw. One rule, so the three
 cannot disagree (DEVELOPERS.md, "Opening a track").
 
 The pictures are not here. Each box gets its crop from
-``/api/detections/{id}/crop`` as any card does, which decodes that frame
-on request. Nothing per frame is stored.
+``/api/detections/{id}/crop`` as any card does. Nothing per frame is
+stored; the first chunk of the track's frames is decoded here, with one
+seek, before the list goes back, so the first screen of cards reads its
+pictures from the frame cache and they arrive together.
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ from app.api.schemas.label import CropBbox
 from app.db.base import get_db
 from app.ml.inference.crop_box import bbox_within_crop
 from app.models import Detection, File, Track
+from app.services.video_frame_service import warm_track_frames
 
 router = APIRouter(prefix="/api/tracks", tags=["tracks"])
 
@@ -91,6 +94,13 @@ def get_track_detections(
         .order_by(Detection.frame_number, Detection.id)
         .all()
     )
+
+    # One seek for the first chunk of frames, now, so the wait happens
+    # once in the loading state and the cards' pictures then come from
+    # the cache; the crop endpoint decodes the later chunks the same way.
+    frames = sorted({row.frame_number for row in rows if row.frame_number is not None})
+    if frames and file.file_path:
+        warm_track_frames(file.file_path, frames, frames[0], file.frame_rate)
 
     return TrackDetectionsResponse(
         file_id=file.id,

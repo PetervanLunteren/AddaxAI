@@ -12,6 +12,7 @@ subject makes it look right.
 
 import io
 
+import pytest
 from PIL import Image
 
 from app.services import crop_service
@@ -24,6 +25,17 @@ from tests.conftest import (
     make_track,
     make_video_box,
 )
+
+
+@pytest.fixture(autouse=True)
+def warmed(monkeypatch):
+    """Rung 3 decodes the chunk of the track around the frame before
+    the frame itself. Recorded here, never run: the clips are fake."""
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        crop_service, "warm_track_frames", lambda *args: calls.append(args)
+    )
+    return calls
 
 
 def _jpeg(tmp_path, name="frame000024.jpg", size=(640, 480), colour=(120, 120, 120)):
@@ -181,3 +193,29 @@ def test_a_card_without_a_crop_off_the_cover_is_cut_from_a_decoded_frame(
     crop_service.invalidate_crop_cache(d.id)
     assert _resolve_source(f, d) is None
     assert get_or_create_crop(d.id, 100, db) is None
+
+
+def test_a_sibling_frame_warms_its_tracks_chunk_from_that_frame(
+    db, tmp_path, monkeypatch, warmed
+):
+    """The opened track asks for a screenful of frames at once. The
+    first request for a frame decodes the chunk of the track's frames
+    from that frame on with one seek; the card's own frame never does,
+    it has a stored crop; a photo has no track to warm."""
+    f, _ = _video(db, tmp_path)
+    crop = _jpeg(tmp_path, "track000001.jpg", size=(300, 300))
+    track = make_track(db, file_id=f.id, start_frame=270, end_frame=330,
+                       representative_frame_number=300, crop_path=str(crop))
+    box = dict(file_id=f.id, track_id=track.id, bbox_x=0.5, bbox_y=0.25,
+               bbox_width=0.2, bbox_height=0.3)
+    make_detection(db, frame_number=270, **box)
+    card = make_detection(db, frame_number=300, **box)
+    sibling = make_detection(db, frame_number=330, **box)
+    db.commit()
+    monkeypatch.setattr(crop_service, "decode_frame_jpeg", lambda *a: _jpeg_bytes())
+
+    assert get_or_create_crop(sibling.id, 200, db) is not None
+    assert warmed == [(f.file_path, [270, 300, 330], 330, f.frame_rate)]
+
+    assert get_or_create_crop(card.id, 200, db) is not None
+    assert len(warmed) == 1

@@ -11,6 +11,9 @@ inside it; the counting threshold decides through the card whether the
 track shows at all.
 """
 
+import pytest
+
+from app.api.routers import tracks
 from app.models import Detection
 from tests.conftest import (
     make_deployment,
@@ -20,6 +23,15 @@ from tests.conftest import (
     make_site,
     make_track,
 )
+
+
+@pytest.fixture(autouse=True)
+def warmed(monkeypatch):
+    """The endpoint decodes the track's first chunk of frames before it
+    answers. Recorded here, never run: the clips are fake."""
+    calls: list[tuple] = []
+    monkeypatch.setattr(tracks, "warm_track_frames", lambda *args: calls.append(args))
+    return calls
 
 
 def _clip(db, *, counting_threshold=0.2):
@@ -158,3 +170,15 @@ def test_a_box_with_no_geometry_is_left_out(client, db):
     rows = client.get(f"/api/tracks/{track.id}/detections").json()["detections"]
 
     assert [r["id"] for r in rows] == [real.id]
+
+
+def test_opening_a_track_decodes_its_first_chunk_of_frames_first(client, db, warmed):
+    """One seek for the first screen of cards, before the list goes
+    back, so their pictures come from the cache and arrive together."""
+    _, video, track = _clip(db)
+    for frame in (90, 30, 60):
+        make_detection(db, file_id=video.id, frame_number=frame, track_id=track.id)
+    db.commit()
+
+    assert client.get(f"/api/tracks/{track.id}/detections").status_code == 200
+    assert warmed == [(video.file_path, [30, 60, 90], 30, 30.0)]
