@@ -1073,14 +1073,23 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     emb_manifest = manifest_manager.get_model(embedding_model_id)
                     emb_model_path = model_storage.get_model_file(emb_manifest)
 
-                    from app.ml.embedding_utils import build_embedding_input, save_embeddings_to_db
+                    from app.ml.embedding_utils import (
+                        build_embedding_input_owned_session,
+                        save_embeddings_to_db,
+                    )
                     from app.ml.inference.embedding_model import EmbeddingModel
 
                     embedding_model = EmbeddingModel(emb_model_path, emb_manifest, env_manager)
 
-                    input_data = build_embedding_input(
+                    # Off the loop, like the save and refine phases: collecting
+                    # the cards of a big deployment is seconds of database
+                    # work, and the modal should say so rather than "Waiting".
+                    await deployment_progress_callback(
+                        "Collecting the cards to embed...", 0.0, "embedding", 0.0
+                    )
+                    input_data = await asyncio.to_thread(
+                        build_embedding_input_owned_session,
                         deployment.id,
-                        db,
                         min_confidence=project.classification_gate,
                     )
                     embedding_input_json = artifacts_folder / "embedding_input.json"

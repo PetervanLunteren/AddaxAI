@@ -15,7 +15,7 @@ from app.api.crud import project as project_crud
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db, refresh_query_statistics
-from app.ml.embedding_utils import build_embedding_input, save_embeddings_to_db
+from app.ml.embedding_utils import build_embedding_input_owned_session, save_embeddings_to_db
 from app.models import Deployment, Detection, File
 from app.models.detection_embedding import DetectionEmbedding
 from app.utils.fs_hidden import mkdir_hidden_addaxai
@@ -106,7 +106,7 @@ async def process_re_embedding_job(job_id: str) -> None:
             # Send deployment context message (matches useTaskProgress protocol)
             await ws_manager.send_progress(
                 job_id,
-                "Computing embeddings...",
+                "Collecting the cards to embed...",
                 progress,
                 phase="embedding",
                 phase_progress=0.0,
@@ -134,9 +134,12 @@ async def process_re_embedding_job(job_id: str) -> None:
                     .all()
                 )
 
-                input_data = build_embedding_input(
+                # Off the loop, so the backend keeps answering and the
+                # modal's first message gets through while the cards are
+                # collected (see build_embedding_input_owned_session).
+                input_data = await asyncio.to_thread(
+                    build_embedding_input_owned_session,
                     deployment.id,
-                    db,
                     # A per-job override (the labels grid's backfill for
                     # a below-gate range) beats the project gate.
                     min_confidence=(

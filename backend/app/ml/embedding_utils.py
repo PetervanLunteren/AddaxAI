@@ -8,12 +8,13 @@ import uuid
 from pathlib import Path
 
 import numpy as np
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_
+from sqlalchemy.orm import Session, contains_eager, load_only
 
 from app.core.logging_config import get_logger
 from app.db.sql_params import iter_id_chunks
 from app.ml.label_exclusion import threshold_or_verified
-from app.models import Detection, File
+from app.models import Detection, File, Track
 from app.models.detection_embedding import DetectionEmbedding
 
 logger = get_logger(__name__)
@@ -57,11 +58,19 @@ def build_embedding_input(
     multiplies the per-crop model work. Verified detections always
     embed — a human said the box is real.
 
+    Pure database work plus a dict; the heavy call sites run it off the
+    event loop through `build_embedding_input_owned_session`.
+
     Image detections embed against `File.file_path`. A video detection
     embeds only when it is a track's card (`video_pixels_for`): the
     track's crop, or the cover frame for a card without one. The other
     boxes of a track have no card and no picture, and the embedder runs
-    in a subprocess that cannot decode video, so they are skipped.
+    in a subprocess that cannot decode video, so the query leaves them
+    in the database: a video box is loaded only on its track's
+    representative frame. Until 2026-11-02 every box was loaded and
+    sifted in Python, which on a BRUV deployment of 238,941 boxes (7
+    clips, 11,696 tracks) grew the server past 3.5 GB and got it killed
+    twice, once at the end of the run and once on "Embed now".
 
     Args:
         deployment_id: Deployment ID to query detections for
@@ -75,9 +84,28 @@ def build_embedding_input(
     detections = (
         db.query(Detection, File)
         .join(File, Detection.file_id == File.id)
-        .options(joinedload(Detection.track))
+        .outerjoin(Track, Detection.track_id == Track.id)
+        # Only the file columns the picture lookup reads. The join repeats
+        # the file row on every card, and a file row carries its list of
+        # sampled frames as JSON (about 100 KB for a 90 minute clip), so
+        # the full row cost 1.25 GB of JSON across 11,696 cards, 4 GB once
+        # parsed, and 30 s; without this the server was killed.
+        .options(
+            load_only(
+                File.file_type, File.file_path, File.best_frame_number, File.best_frame_path
+            ),
+            contains_eager(Detection.track),
+        )
         .filter(File.deployment_id == deployment_id)
         .filter(threshold_or_verified(min_confidence))
+        # A clip's boxes come back only on their track's card frame; a
+        # video box without a track has no card and stays behind too.
+        .filter(
+            or_(
+                File.file_type != "video",
+                Detection.frame_number == Track.representative_frame_number,
+            )
+        )
         .all()
     )
 
@@ -106,12 +134,10 @@ def build_embedding_input(
         else:
             image_path = file.file_path
 
-        if not Path(image_path).exists():
-            logger.warning(
-                f"Image not found for detection {det.id}: {image_path}, skipping"
-            )
-            continue
-
+        # No existence check here: the embedder skips a picture it cannot
+        # open and says so on stderr. Checking first cost one stat per card
+        # on the event loop, and on an ExFAT USB disk with thousands of
+        # crops in one folder that froze the whole API for ten minutes.
         entries.append({
             "detection_id": det.id,
             "image_path": image_path,
@@ -126,6 +152,34 @@ def build_embedding_input(
     )
 
     return {"detections": entries}
+
+
+def build_embedding_input_owned_session(
+    deployment_id: str,
+    *,
+    min_confidence: float,
+    skip_detection_ids: set[str] | None = None,
+) -> dict:
+    """Run `build_embedding_input` with a session created in THIS thread.
+
+    The workers call this through ``asyncio.to_thread`` so the backend
+    keeps answering while the cards of a big deployment are collected,
+    the same reason Phase 6 and 7 have owned-session wrappers. A
+    SQLAlchemy session belongs to one thread, so this makes its own
+    rather than borrowing the worker's.
+    """
+    from app.db.base import get_session_factory
+
+    db = get_session_factory()()
+    try:
+        return build_embedding_input(
+            deployment_id,
+            db,
+            min_confidence=min_confidence,
+            skip_detection_ids=skip_detection_ids,
+        )
+    finally:
+        db.close()
 
 
 def save_embeddings_to_db(
