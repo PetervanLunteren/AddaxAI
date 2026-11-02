@@ -23,6 +23,7 @@ from app.api.crud import deployment_queue as queue_crud
 from app.api.crud import event as event_crud
 from app.api.crud import job as job_crud
 from app.api.crud import project as project_crud
+from app.api.schemas.job import JobUpdate
 from app.core.job_cancellation import JobCancelledError, clear_cancel
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
@@ -323,6 +324,10 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
                 json_files_to_merge = []
 
+                # The whole percent last written to the job row, so the row
+                # is updated once per percent and not once per tqdm line.
+                progress_row = {"pct": -1}
+
                 # Define progress callback for this specific deployment
                 async def deployment_progress_callback(
                     message: str,
@@ -336,9 +341,21 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     _idx=idx,
                     _vf=video_files,
                     _if=image_files,
+                    _row=progress_row,
                 ) -> None:
                     """Forward progress updates (no prefix, header shows deployment context)"""
                     overall_progress = _ps + (progress * _pr)
+                    # The job row carries the overall percent too, so a reader
+                    # without the socket (the jobs API, a script, a jobs page)
+                    # sees how far a run is. The socket stays the live channel;
+                    # this is the durable one. Until 2026-11-02 the row said 0
+                    # for the whole run.
+                    pct = int(overall_progress * 100)
+                    if pct != _row["pct"]:
+                        _row["pct"] = pct
+                        job_crud.update_job(
+                            db, job_id, JobUpdate(progress_current=pct, progress_total=100)
+                        )
                     data = {
                         "deployment_index": _idx,
                         "total_deployments": total_entries,
