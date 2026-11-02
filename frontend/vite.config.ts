@@ -33,6 +33,13 @@ export default defineConfig({
         target: `http://localhost:${backendPort}`,
         changeOrigin: true,
       },
+      // The version check reads /health, which the backend serves at its
+      // root. Without this entry the dev server answers with index.html
+      // and every page logs a JSON parse error.
+      '/health': {
+        target: `http://localhost:${backendPort}`,
+        changeOrigin: true,
+      },
       // The job WebSocket lives outside /api, so it needs its own entry.
       // Without it, a dev server with no .env resolves API_BASE_URL to the
       // Vite origin, ws://localhost:5173/ws/jobs/... reaches nothing, and a

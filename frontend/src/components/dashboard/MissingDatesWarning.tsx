@@ -44,7 +44,7 @@ export function MissingDatesBanner({
   return (
     <Callout variant="warning">
       {data.without_date.toLocaleString()} of {data.total.toLocaleString()}{" "}
-      images have no capture date. Time-based metrics (activity, trends,
+      files have no capture date. Time-based metrics (activity, trends,
       trap-night rates) cover only the {dated.toLocaleString()} dated ones.
     </Callout>
   );
@@ -66,7 +66,7 @@ export function MissingDatesIcon({
           </span>
         </TooltipTrigger>
         <TooltipContent className="max-w-xs">
-          Excludes {data.without_date.toLocaleString()} image
+          Excludes {data.without_date.toLocaleString()} file
           {data.without_date === 1 ? "" : "s"} with no capture date.
         </TooltipContent>
       </Tooltip>

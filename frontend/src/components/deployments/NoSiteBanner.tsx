@@ -56,7 +56,7 @@ export function NoSiteBanner({
     label = message;
   } else {
     if ((count ?? 0) <= 0) return null;
-    label = `${count} deployment${count === 1 ? "" : "s"} have no camera site. ${reason ?? ""}`.trim();
+    label = `${count} deployment${count === 1 ? " has" : "s have"} no camera site. ${reason ?? ""}`.trim();
   }
 
   return (
