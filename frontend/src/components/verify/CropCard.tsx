@@ -137,8 +137,10 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
             A photo has no track and shows nothing; a one-frame track has
             nothing to open.
 
-            No number: the chip is a way in, not a statistic. A count
-            is not needed to decide to open it.
+            The number is the track's own frame count, fixed when the
+            tracker ran and equal to what opening the chip shows, frame
+            for frame. It was left off while the opened track still hid
+            frames below the classification gate and the two disagreed.
 
             stopPropagation on both handlers: the card root selects on
             click, so without it opening a track would also select the
@@ -163,8 +165,8 @@ export const CropCard = memo(function CropCard({ detection, selected, onSelect, 
           >
             <Film className={isSmall ? "h-2 w-2" : "h-2.5 w-2.5"} />
             {/* The word makes it read as a control. The smallest tiles
-                keep the icon and chevron only: no room. */}
-            {!isSmall && "Frames"}
+                keep the number only: no room for the word. */}
+            {isSmall ? detection.track_frames : `${detection.track_frames} frames`}
             <ChevronRight className={isSmall ? "h-2 w-2" : "h-2.5 w-2.5"} />
           </button>
         )}

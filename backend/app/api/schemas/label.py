@@ -122,10 +122,9 @@ class DetectionSummary(BaseModel):
     # detections expose None.
     frame_number: int | None = None
     # The animal this card stands for, and how many frames the tracker
-    # followed it through. Both None for an image. `track_frames` drives
-    # the badge that opens the track; it counts what the tracker
-    # followed, which is more than the grid shows, because the tracker
-    # keeps boxes below the counting threshold.
+    # followed it through. Both None for an image. `track_frames` is the
+    # track's own frame count: it drives the chip that opens the track,
+    # is printed on it, and equals the frames the opened track shows.
     track_id: str | None = None
     track_frames: int | None = None
     # File-level triage marks, for the card's corner badge cluster.
