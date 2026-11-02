@@ -1239,6 +1239,39 @@
           }
         ]
       ]
+    },
+    "CONGO-CMR-v1": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "african forest elephant",
+          "confidence": 0.7010096907615662
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "african forest elephant",
+            "confidence": 0.7010096907615662
+          },
+          {
+            "label": "african brush-tailed porcupine",
+            "confidence": 0.09903194010257721
+          },
+          {
+            "label": "blue duiker",
+            "confidence": 0.07942382991313934
+          },
+          {
+            "label": "sitatunga",
+            "confidence": 0.04368957504630089
+          },
+          {
+            "label": "yellow-backed duiker",
+            "confidence": 0.030306315049529076
+          }
+        ]
+      ]
     }
   }
 }

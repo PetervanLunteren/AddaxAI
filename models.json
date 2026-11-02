@@ -145,7 +145,7 @@
         "emoji": "🇳🇵",
         "env": "tensorflow-v2",
         "model_fname": "model.keras",
-        "description": "This model intends to support Bengal tiger conservation by classifying 10 categories of animals present in the Terai region of Nepal. The model was trained on about 2,000 images per class (source: LILA BC, https://lila.science/). The overall F1 score is 0.935 on a held-out test set (250 images per class), though performance varies somewhat by class. Local images from Nepal were not available so that images of visually similar 'substitute' species had to be used, i.e. the model's ability to generalize to the target region remains to be tested. The model is based on a pre-trained EfficientNetV2M. Image preparation (relying on MegaDetector) and model training follow MEWC.",
+        "description": "This model intends to support Bengal tiger conservation by classifying 10 categories of animals present in the Terai region of Nepal. The model was trained on about 2,000 images per class (source: LILA BC, https://lila.science/). The overall F1 score is 0.935 on a held-out test set (250 images per class), though performance varies somewhat by class. Local images from Nepal were not available so that images of visually similar 'substitute' species had to be used, i.e. the model's ability to generalize to the target region remains to be tested. The model is based on a pre-trained EfficientNetV2M. Image preparation (relying on MegaDetector) and model training follow MEWC. The model is known as TeraiNet.",
         "description_short": "10 classes • Tiger conservation",
         "developer": "Alexander Merdian-Tarko",
         "license": "https://opensource.org/license/mit",
@@ -619,6 +619,20 @@
         "info_url": "https://www.churchillfoxproject.org",
         "min_app_version": "7.7.0",
         "region": "americas"
+      },
+      {
+        "model_id": "CONGO-CMR-v1",
+        "friendly_name": "Congo Basin (Cameroon)",
+        "emoji": "🇨🇲",
+        "env": "tensorflow-v2",
+        "model_fname": "model.keras",
+        "description": "CBNet (CongoBasinNet) identifies 12 forest species in camera trap images from the Congo Basin and was built for conservation work in Cameroon. It covers African forest elephant, chimpanzee, mandrill, red-capped mangabey, four duiker species, red river hog, sitatunga, African brush-tailed porcupine and Emin's pouched rat. The model was trained on about 15,000 images from WWF Cameroon. On a held-out test set the accuracy is 0.902 and the macro accuracy is 0.817, though performance varies by class. It is a fine-tuned version of SpeciesNet.",
+        "description_short": "12 species • Congo Basin • WWF Cameroon data",
+        "developer": "Alexander Merdian-Tarko",
+        "license": "https://opensource.org/license/mit",
+        "info_url": "https://alexvmt.github.io/",
+        "min_app_version": "7.16.0",
+        "region": "africa"
       }
     ],
     "emb": [
