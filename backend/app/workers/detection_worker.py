@@ -1050,6 +1050,16 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         deployment.warnings = combined
                         db.commit()
 
+                # Events before embeddings. Embeddings are optional and the
+                # one phase that has died on a large video deployment (the
+                # server was killed building the input on 238,941 boxes);
+                # generated here, the counts and MaxN of a finished analysis
+                # never depend on it. Project-wide and idempotent, so a batch
+                # of several folders regenerates on each, which is cheap.
+                event_count = event_crud.generate_events_for_project(db, project_id)
+                db.commit()
+                logger.info(f"Batch job {job_id}: {event_count} events after {deployment.id}")
+
                 # ============================================================
                 # PHASE 8: Embedding (DINOv2) — fatal if configured
                 # ============================================================
@@ -1243,9 +1253,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
         project.postprocessing_settings_hash = compute_postprocessing_settings_hash(project)
         db.commit()
 
-        # Auto-generate events for the project
-        event_count = event_crud.generate_events_for_project(db, project_id)
-        logger.info(f"Batch job {job_id}: Auto-generated {event_count} events")
+        # Events were generated per deployment, before its embedding phase.
 
         # Refresh SQLite query planner statistics after bulk inserts
         refresh_query_statistics(db)
