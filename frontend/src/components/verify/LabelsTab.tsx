@@ -246,8 +246,14 @@ const NARROW_TIP_MIN_TOTAL = 5000;
  */
 function LabelsLoadingState({
   progress,
+  message,
+  hint,
 }: {
   progress: LabelsProgressEvent | null;
+  /** Under the spinner, when there is no progress to show. */
+  message?: string;
+  /** One line more, when the wait has a reason worth saying. */
+  hint?: ReactNode;
 }) {
   const phaseLabel = progress
     ? PHASE_LABELS[progress.phase] ?? progress.phase
@@ -265,15 +271,36 @@ function LabelsLoadingState({
           </p>
         </>
       ) : (
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <>
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          {message && <p className="text-xs text-muted-foreground">{message}</p>}
+        </>
       )}
       {showNarrowTip && (
         <p className="text-xs text-muted-foreground">
           Narrow the filters to speed this up.
         </p>
       )}
+      {hint}
     </div>
   );
+}
+
+// How long an open track's frames may take before the loading state
+// adds the line about the drive.
+const SLOW_TRACK_LOAD_MS = 5000;
+
+/** Its line, once it has been mounted for `afterMs`. Mounted with the
+ *  loading state and unmounted with it, so a new wait starts at zero. */
+function SlowHint({ afterMs, children }: { afterMs: number; children: ReactNode }) {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setShow(true), afterMs);
+    return () => clearTimeout(timer);
+  }, [afterMs]);
+  return show ? (
+    <p className="text-xs text-muted-foreground text-center">{children}</p>
+  ) : null;
 }
 
 const PHASE_LABELS: Record<LabelsProgressEvent["phase"], string> = {
@@ -590,7 +617,11 @@ export function LabelsTab({
   // The frames behind the open card: every box of the track. Nothing
   // from the grid travels: the filters are hidden while a track is open
   // and do not change what is in it.
-  const { data: openTrackData } = useQuery({
+  const {
+    data: openTrackData,
+    isPending: openTrackPending,
+    isError: openTrackFailed,
+  } = useQuery({
     queryKey: ["track-detections", openTrack?.trackId],
     queryFn: ({ signal }) => tracksApi.detections(openTrack!.trackId, { signal }),
     enabled: !!openTrack,
@@ -1787,6 +1818,27 @@ export function LabelsTab({
         <div className="flex items-center justify-center h-64">
           <LabelsLoadingState progress={progress} />
         </div>
+      ) : openTrack && openTrackPending ? (
+        // An open track's frames are one request; until it answers the
+        // list is empty, and the empty state below would call that "all
+        // verified". Say what is happening instead.
+        <div className="flex items-center justify-center h-64">
+          <LabelsLoadingState
+            progress={null}
+            message="Loading the frames..."
+            hint={
+              // The backend decodes the first chunk of the track's frames
+              // before it answers, so this wait is where a slow drive
+              // shows. Past a few seconds, say so.
+              <SlowHint key={openTrack.trackId} afterMs={SLOW_TRACK_LOAD_MS}>
+                Still working. The frames are read from the video file. A
+                faster drive or a direct connection speeds this up.
+              </SlowHint>
+            }
+          />
+        </div>
+      ) : openTrack && openTrackFailed ? (
+        <Callout variant="warning">Could not load the frames of this track.</Callout>
       ) : reviewingSuggestions && !openTrack && allDetections.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
