@@ -355,7 +355,7 @@ const FileTile = memo(function FileTile({
                 color: getContrastTextColor(chip.color),
               }}
             >
-              {chip.count > 1 ? `${chip.count}× ${chip.name}` : chip.name}
+              {chip.count}× {chip.name}
             </span>
           ))}
           {chips.length > MAX_CHIPS && (
@@ -365,13 +365,20 @@ const FileTile = memo(function FileTile({
           )}
         </div>
       </div>
+      {/* The caption: the file name on the left, always, and the capture
+          time on the right when the file has one. It used to be one or
+          the other, so a set with partial metadata mixed names and
+          dates on one page. The name gives way: it truncates with an
+          ellipsis, the date keeps its width. */}
       {!isSmall && (
-        <div className="px-2 py-1 text-[10px] text-muted-foreground truncate">
-          {item.captured_at_local
-            ? `${formatCameraDate(item.captured_at_local)} ${formatCameraTime(
-                item.captured_at_local,
-              )}`
-            : basename(item.file_path)}
+        <div className="flex items-baseline gap-2 px-2 py-1 text-[10px] text-muted-foreground">
+          <span className="min-w-0 flex-1 truncate">{basename(item.file_path)}</span>
+          {item.captured_at_local && (
+            <span className="shrink-0 whitespace-nowrap">
+              {formatCameraDate(item.captured_at_local)}{" "}
+              {formatCameraTime(item.captured_at_local)}
+            </span>
+          )}
         </div>
       )}
     </div>
