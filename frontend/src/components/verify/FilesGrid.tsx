@@ -23,7 +23,7 @@ import { Fragment } from "react";
 import { filesApi } from "../../api/files";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import { getDetectionColor } from "../../lib/detection-utils";
-import { cardBoxes } from "../../lib/track-utils";
+import { cardBoxes, maxAtOnce, speciesKey } from "../../lib/track-utils";
 import { basename } from "../../lib/path-utils";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
 import { cn } from "../../lib/utils";
@@ -245,26 +245,25 @@ const FileTile = memo(function FileTile({
   // the tiles; repaint when it lands.
   useSpeciesColorsVersion();
 
-  // One chip per species over the file's detections (`cardBoxes`: a
-  // photo's visible boxes, a clip's tracks through their cards, so a
-  // clip's chip counts animals followed, not boxes). Ordered by count,
-  // so the dominant species comes first when the cap cuts the list.
+  // One chip per species with a card in the file (`cardBoxes`), its
+  // number the most of that species seen at once (`maxAtOnce`), the
+  // MaxN the Counts page shows. Until 2026-11-02 a clip's chip counted
+  // its tracks, which read "5154× Fish" on a clip with 33 at once.
+  // Ordered by count, so the dominant species comes first when the cap
+  // cuts the list.
   const chips: { key: string; name: string; color: string; count: number }[] =
     [];
   if (file) {
+    const atOnce = maxAtOnce(file, detectionThreshold);
     for (const d of cardBoxes(file, detectionThreshold)) {
-      const key = (d.label_taxonomy_id || d.label || d.category).toLowerCase();
-      const existing = chips.find((c) => c.key === key);
-      if (existing) {
-        existing.count += 1;
-      } else {
-        chips.push({
-          key,
-          name: resolveSpeciesName(d),
-          color: getDetectionColor(d),
-          count: 1,
-        });
-      }
+      const key = speciesKey(d);
+      if (chips.some((c) => c.key === key)) continue;
+      chips.push({
+        key,
+        name: resolveSpeciesName(d),
+        color: getDetectionColor(d),
+        count: atOnce.get(key) ?? 1,
+      });
     }
     chips.sort((a, b) => b.count - a.count);
   }
@@ -336,10 +335,11 @@ const FileTile = memo(function FileTile({
             cluster already owns the top right.
 
             The species chips stack under it: what the AI found in the
-            file (for a clip, every detection it followed through it),
-            so "verify as it is" is an informed action without opening
-            the file. One chip per species in the species colour, text
-            picked for contrast against it. */}
+            file and the most of it seen at once, so "verify as it is"
+            is an informed action without opening the file. One chip
+            per species in the species colour, text picked for contrast
+            against it. The number is always there, "1× Fish" too:
+            beside "33× Fish" a bare "Fish" reads as a question. */}
         <div className="pointer-events-none absolute top-1 left-1 flex max-w-[calc(100%-2rem)] flex-col items-start gap-0.5">
           {item.file_type === "video" && (
             <span className="rounded bg-black/60 px-1 py-0.5 text-[10px] leading-none text-white">

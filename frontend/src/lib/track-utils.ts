@@ -256,8 +256,9 @@ export function frameBoxes(
  * video the card of every track on show that was not rejected (a
  * verdict on it reaches the whole track through the cascade). This is
  * what "every detection in the file" means on the Files tab: the tile
- * chips, the viewer's actions with nothing selected, the bulk bar and
- * the Counts modal's landing file all read it.
+ * chips (their species; the number comes from `maxAtOnce`), the
+ * viewer's actions with nothing selected, the bulk bar and the Counts
+ * modal's landing file all read it.
  */
 export function cardBoxes(
   file: FileWithDetections,
@@ -271,6 +272,44 @@ export function cardBoxes(
     const card = cards.get(track.id);
     return card && !isNonLabel(card.label) ? [card] : [];
   });
+}
+
+/**
+ * The key a box's species is counted and coloured under: the taxonomy
+ * id, else the label, else the detector's category, as the Counts page
+ * groups them.
+ */
+export function speciesKey(d: {
+  label_taxonomy_id: string | null;
+  label: string | null;
+  category: string;
+}): string {
+  return (d.label_taxonomy_id || d.label || d.category).toLowerCase();
+}
+
+/**
+ * The most boxes of each species seen at once in a file, by
+ * `speciesKey`: a photo's boxes per species, a clip's per-frame
+ * maximum. It is the MaxN the Counts page reports for the file
+ * (`calculate_max_n_for_event`: boxes at the counting threshold or
+ * verified, rejected ones left out, counted per frame and species),
+ * so a tile and a count row give one number. A clip's tracks are not
+ * a count: a fish that leaves the frame and comes back is a new
+ * track, and on a BRUV clip the bait bag alone made thousands
+ * (HGA_022: 5,154 tracks, 33 fish at once, 2026-11-02).
+ */
+export function maxAtOnce(file: FileWithDetections, threshold: number): Map<string, number> {
+  const perFrame = new Map<string, number>();
+  const most = new Map<string, number>();
+  for (const d of file.detections) {
+    if (!inScope(d, threshold) || !isDrawableBox(d)) continue;
+    const species = speciesKey(d);
+    const frameKey = `${d.frame_number ?? ""}|${species}`;
+    const n = (perFrame.get(frameKey) ?? 0) + 1;
+    perFrame.set(frameKey, n);
+    if (n > (most.get(species) ?? 0)) most.set(species, n);
+  }
+  return most;
 }
 
 /**
