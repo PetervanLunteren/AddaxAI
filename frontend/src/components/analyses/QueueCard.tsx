@@ -6,13 +6,14 @@
  * Simple vertical list layout (not kanban).
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Play, Loader2, ListTodo, Eye, EyeOff } from "lucide-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { deploymentQueueApi } from "@/api/deployment-queue";
+import { jobsApi } from "@/api/jobs";
 import { projectsApi } from "@/api/projects";
 import { invalidateProjectData } from "@/lib/invalidate-project";
 import { useModelSetupGate } from "@/lib/model-setup-gate";
@@ -43,6 +44,30 @@ export function QueueCard({ projectId }: QueueCardProps) {
       return hasProcessing ? 5000 : false;
     },
   });
+
+  // Re-attach to a run already under way: the page was left, reloaded
+  // or opened in another tab while the worker runs. The queue shows the
+  // entry as processing; the running job is found through the jobs API
+  // and the modal opens on it, where the socket replays the current
+  // state. Until 2026-11-02 the run went on unseen, with no progress and
+  // no cancel until it finished or failed. Once per mount: a modal the
+  // person closed must not reopen on the next poll.
+  const reattachedRef = useRef(false);
+  useEffect(() => {
+    const processing = (entries ?? []).filter((e) => e.status === "processing");
+    if (processing.length === 0 || showRunModal || reattachedRef.current) return;
+    reattachedRef.current = true;
+    jobsApi
+      .list({ project_id: projectId, type: "deployment_analysis", status: "running" })
+      .then((jobs) => {
+        if (jobs.length === 0) return;
+        setJobIds([jobs[0].id]);
+        setRunQueueEntryIds(processing.map((e) => e.id));
+        setProcessingCount(processing.length);
+        setShowRunModal(true);
+      })
+      .catch((error) => console.error("[QueueCard] re-attach failed:", error));
+  }, [entries, showRunModal, projectId]);
 
   // Delete mutation
   const deleteMutation = useMutation({

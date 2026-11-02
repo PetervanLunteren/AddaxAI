@@ -109,6 +109,12 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
           >
             <bdi>{entry.folder_path}</bdi>
           </p>
+          {/* A failed entry says why, in the list, where the person
+              lands after a crash; the detail toggle is not where anyone
+              looks for an error. Delete and re-add is the retry. */}
+          {entry.status === "failed" && entry.error && (
+            <p className="mt-1 text-xs text-red-700">{entry.error}</p>
+          )}
         </div>
 
         {/* Inline actions — fast clicking, no dropdown hop. */}
