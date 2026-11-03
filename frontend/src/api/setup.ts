@@ -22,8 +22,10 @@ export interface SetupStatus {
    * "tls_revocation": the environment build died because Windows could
    * not check certificate revocation and the user has not already
    * accepted skipping it. "network_blocked": a model download was
-   * answered with a web filter's block page. Null for every ordinary
-   * failure.
+   * answered with a web filter's block page. "non_ascii_path": the
+   * environment build died because the data folder path holds a
+   * character outside ASCII, which micromamba cannot open on Windows.
+   * Null for every ordinary failure.
    */
   error_kind: string | null;
   user_data_dir: string;

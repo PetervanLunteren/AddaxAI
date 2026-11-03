@@ -30,6 +30,7 @@ from app.core.config import get_settings
 from app.core.logging_config import get_logger
 from app.ml.environment_manager import (
     EnvironmentManager,
+    NonAsciiPathError,
     TlsRevocationCheckError,
     allow_revocation_skip,
 )
@@ -353,6 +354,11 @@ def _install_env_blocking(force_envs: tuple[str, ...] = ()) -> None:
         # failure.
         logger.error(f"Setup install failed: {e}", exc_info=True)
         _install_state.finish(error=str(e), error_kind="tls_revocation")
+    except NonAsciiPathError as e:
+        # The message names the character and the variable to set; the
+        # wizard links to the page that says how to set one.
+        logger.error(f"Setup install failed: {e}", exc_info=True)
+        _install_state.finish(error=str(e), error_kind="non_ascii_path")
     except NetworkBlockedError as e:
         # Same idea: the message names the blocked host and the wizard
         # points at the help section for it, instead of inviting retries.

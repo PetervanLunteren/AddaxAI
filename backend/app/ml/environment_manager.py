@@ -63,6 +63,24 @@ class TlsRevocationCheckError(RuntimeError):
     """
 
 
+class NonAsciiPathError(RuntimeError):
+    """The data folder path holds a character micromamba cannot open on Windows.
+
+    micromamba converts its command line to UTF-8 and checks that the
+    spec file exists through the wide Windows API, which passes. It then
+    hands the UTF-8 path to yaml-cpp's LoadFile, which opens it through
+    the narrow C runtime, and that decodes the bytes in the ANSI code
+    page: an "ñ" becomes "Ã±", the open fails, and libmamba dies with
+    "YAML error in spec file" followed by yaml-cpp's "bad file". Every
+    later step would have taken the wide path, so this is the one place
+    the build breaks (libmamba 2.9.0, api/install.cpp, read_yaml_file).
+    A Windows user folder with an ñ hit it at the first setup step
+    (beta report 2026-10-23). Raised instead of the generic build
+    failure so the user is told to move the data folder rather than
+    shown a YAML error about a file that is fine.
+    """
+
+
 # schannel's two "I could not check revocation" verdicts. 0x80092012 is
 # what a network that inspects TLS produces: it re-signs traffic with its
 # own certificate authority, and those certificates carry no CRL or OCSP
@@ -173,6 +191,27 @@ def is_revocation_failure(output_lines: list[str]) -> bool:
         for line in output_lines
         for marker in _REVOCATION_MARKERS
     )
+
+
+# yaml-cpp's verdict when the spec file could not be opened at all, as
+# opposed to a parse error inside it. libmamba prints it as the final
+# "critical libmamba bad file: <path>" line.
+_SPEC_OPEN_FAILED_MARKER = "bad file"
+
+
+def is_non_ascii_path_failure(output_lines: list[str], spec_path: Path) -> bool:
+    """True when micromamba could not open the spec file because its path
+    holds a character outside ASCII (see NonAsciiPathError).
+
+    Windows only in practice: on POSIX the narrow open takes the UTF-8
+    bytes as they are and works, so the caller gates on the platform.
+    The marker is required as well as the path, so a build on a machine
+    that runs in UTF-8 mode, where the open succeeds, still reports
+    whatever actually failed.
+    """
+    if str(spec_path).isascii():
+        return False
+    return any(_SPEC_OPEN_FAILED_MARKER in line for line in output_lines)
 
 
 def hash_yaml_file(yaml_path: Path) -> str:
@@ -968,6 +1007,26 @@ class EnvironmentManager:
                         "be downloaded. This is common on a company "
                         "network that inspects secure traffic."
                     )
+                # yaml-cpp could not open the spec file. On Windows that
+                # is the data folder path holding a non-ASCII character
+                # (see NonAsciiPathError). The fix is moving the folder,
+                # so say that instead of showing the YAML error.
+                if platform.system() == "Windows" and is_non_ascii_path_failure(
+                    result.output_tail, yaml_copy_path
+                ):
+                    chars = ", ".join(
+                        sorted({c for c in str(yaml_copy_path) if not c.isascii()})
+                    )
+                    raise NonAsciiPathError(
+                        f"The analysis environment cannot be built in "
+                        f"{self.envs_dir.parent}. The folder name contains a "
+                        f"character outside the basic Latin alphabet ({chars}), "
+                        f"and the tool that builds the environment cannot open "
+                        f"files on such a path on Windows. Point AddaxAI at a "
+                        f"folder without such characters by setting "
+                        f"ADDAXAI_USER_DATA_DIR, for example to "
+                        f"C:\\AddaxAI-data, then start AddaxAI again."
+                    )
                 # micromamba's final line on any pip failure is the
                 # constant "critical libmamba pip failed to install
                 # packages", which names no cause. The real error sits a
@@ -1030,11 +1089,11 @@ class EnvironmentManager:
             # cancel checkpoint above; propagate cleanly so the worker
             # reports cancellation rather than a build failure.
             raise
-        except TlsRevocationCheckError:
+        except (TlsRevocationCheckError, NonAsciiPathError):
             # Same reason as the cancel above: the failure branch already
             # removed the temp env, and the message is written for the
             # user. Re-wrapping it would bury both the wording and the
-            # type the API needs to offer the opt-out.
+            # type the API needs to tag the failure for the wizard.
             raise
         except Exception as e:
             # Clean up failed environment - only if rename hasn't happened yet
