@@ -7,9 +7,16 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Ban, Check, CircleHelp, ImageOff, Tag, Play } from "lucide-react";
+import {
+  Ban,
+  Check,
+  CircleHelp,
+  ImageOff,
+  Play,
+  SquareDashed,
+  Tag,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { filesApi } from "../../api/files";
@@ -38,6 +45,7 @@ import {
 } from "../../lib/detection-overlay";
 import type { DetectionSummary } from "../../api/types";
 import type { LabelOption } from "../../hooks/useLabelOptions";
+import { AnnotationCanvas } from "./AnnotationCanvas";
 import { LabelPicker } from "./LabelPicker";
 import { ViewerToolRail } from "./ViewerToolRail";
 import { useFileTriage, useImageAdjust } from "./viewer-tools";
@@ -77,6 +85,53 @@ interface DetectionDetailModalProps {
   labelOptionsLoading?: boolean;
 }
 
+/** The label pill on a box: category and confidence, species below when
+ *  there is one. One pill for the focused box and for every other box,
+ *  so what a box is reads the same everywhere; the dim overlay is what
+ *  sets the focused one apart, not a second style. */
+function BoxPill({
+  pill,
+  x,
+  y,
+  s,
+}: {
+  pill: ReturnType<typeof computePillLayout>;
+  x: number;
+  y: number;
+  s: number;
+}) {
+  return (
+    <g transform={`translate(${x}, ${y}) scale(${s})`}>
+      <rect
+        x={0} y={0}
+        width={pill.pillWidth} height={pill.pillHeight}
+        rx={BBOX_CORNER_RADIUS}
+        fill={PILL_BG}
+      />
+      <text
+        x={TEXT_START_X} y={PILL_PAD_Y}
+        fill="white"
+        fontSize={FONT}
+        fontFamily="Arial, sans-serif"
+        dominantBaseline="hanging"
+      >
+        {pill.categoryText}
+      </text>
+      {pill.hasLabel && (
+        <text
+          x={TEXT_START_X} y={PILL_PAD_Y + FONT + LINE_GAP}
+          fill="white"
+          fontSize={FONT}
+          fontFamily="Arial, sans-serif"
+          dominantBaseline="hanging"
+        >
+          {pill.labelText}
+        </text>
+      )}
+    </g>
+  );
+}
+
 export function DetectionDetailModal({
   detection,
   open,
@@ -100,6 +155,30 @@ export function DetectionDetailModal({
     height: window.innerHeight,
   });
   const [forceOpenPicker, setForceOpenPicker] = useState(false);
+
+  // Draw a box (D): an animal the detector missed gets its box right
+  // here, on this photo. While on, the image panel hands itself to
+  // `AnnotationCanvas`, the Files viewer's drawing surface, so there is
+  // one drawing code in the app. The canvas saves the box on release
+  // and switches draw mode off; `drawnId` then points the picker at
+  // the new box for its species, after which this crop is unchanged
+  // and still open. One box per press, like the Files viewer.
+  const [drawMode, setDrawMode] = useState(false);
+  const [drawnId, setDrawnId] = useState<string | null>(null);
+  // "Add new label" closes the picker before it applies the label
+  // (`LabelPicker` documents the trap), and the close clears `drawnId`,
+  // so the label would land on the crop instead. The ref keeps the box
+  // the picker was about across that gap, as `FileDetailModal` does.
+  // Cleared once a label lands and whenever the picker opens for the
+  // crop, so a cancelled naming cannot redirect a later R.
+  const drawnIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (drawnId) drawnIdRef.current = drawnId;
+  }, [drawnId]);
+  const openCropPicker = useCallback(() => {
+    drawnIdRef.current = null;
+    setForceOpenPicker(true);
+  }, []);
 
   // Source-image zoom (scroll wheel) + pan (drag while zoomed). The
   // image-detail modals zoom via a Konva stage, but this modal shows a
@@ -185,11 +264,15 @@ export function DetectionDetailModal({
 
   // Reset zoom/pan when the detection changes or the modal closes.
   // `imageFailed` rides along: stepping from a missing file to a present
-  // one must not keep showing the placeholder.
+  // one must not keep showing the placeholder. Draw mode too: a
+  // crosshair must not follow you onto the next crop.
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
     setImageFailed(false);
+    setDrawMode(false);
+    setDrawnId(null);
+    drawnIdRef.current = null;
   }, [detection?.detection_id, open]);
 
   // Drag to pan while zoomed in. Global listeners so the drag survives
@@ -250,25 +333,23 @@ export function DetectionDetailModal({
   });
   const detectionThreshold = project?.counting_threshold ?? 0;
 
-  // "Open in Files": close this modal and hand the file to the Files
-  // tab's viewer (`lbl_file` is consumed by FilesTab), where the whole
-  // photo is the unit and Verify means the file. The escape hatch for
-  // "I want to judge the picture, not this box".
-  const [, setSearchParams] = useSearchParams();
-  const openInFiles = useCallback(() => {
-    if (!detection) return;
-    onOpenChange(false);
-    setSearchParams((prev) => {
-      const sp = new URLSearchParams(prev);
-      sp.set("view", "files");
-      sp.set("lbl_file", detection.file_id);
-      return sp;
-    });
-  }, [detection, onOpenChange, setSearchParams]);
+  /** The species for a box just drawn. The grid's `bulk-relabel`, which
+   *  also verifies that box; this crop is not touched. The refresh
+   *  redraws the photo with the new box and its pill. */
+  const nameDrawnBox = useCallback(
+    (id: string, option: LabelOption) => {
+      setDrawnId(null);
+      detectionsApi
+        .bulkRelabel([id], option.label, option.category)
+        .then(() => onActionComplete())
+        .catch((err: Error) => toast.error(err.message));
+    },
+    [onActionComplete],
+  );
 
   /** The rail's Download: the crop this modal is about, saved as a
-   *  file. The whole annotated photo lives one "Open in files view"
-   *  away, so this stays the cheap honest thing. */
+   *  file. The whole annotated photo is the Files viewer's download, so
+   *  this stays the cheap honest thing. */
   const downloadCrop = useCallback(async () => {
     if (!detection) return;
     try {
@@ -374,6 +455,12 @@ export function DetectionDetailModal({
 
       const key = e.key.toLowerCase();
 
+      // Mid-drawing, the verdict keys and the arrows would act on the
+      // crop under the crosshair, or step away from the photo being
+      // drawn on. Only D (off again) works; Escape closes the view, as
+      // in the Files viewer.
+      if (drawMode && key !== "d") return;
+
       if (e.key === "ArrowLeft") {
         e.preventDefault();
         onNavigate!("prev");
@@ -392,7 +479,7 @@ export function DetectionDetailModal({
         if (!markUnknownMutation.isPending) markUnknownMutation.mutate();
       } else if (key === "r") {
         e.preventDefault();
-        setForceOpenPicker(true);
+        openCropPicker();
       } else if (key === "a") {
         e.preventDefault();
         if (
@@ -413,6 +500,11 @@ export function DetectionDetailModal({
         // Flag the detection's file for review.
         e.preventDefault();
         if (fileData) triage.toggleFlag(fileData);
+      } else if (key === "d") {
+        // Draw a box, the Files viewer's key. Needs the file row the
+        // canvas is built from.
+        e.preventDefault();
+        if (fileData) setDrawMode((v) => !v);
       }
     }
 
@@ -421,6 +513,8 @@ export function DetectionDetailModal({
   }, [
     open,
     onNavigate,
+    drawMode,
+    openCropPicker,
     handleVerifyAndAdvance,
     markFalseMutation,
     markUnknownMutation,
@@ -487,7 +581,7 @@ export function DetectionDetailModal({
       onNavigate={onNavigate}
       // The shared rail: how you look at the picture, identical to the
       // Counts modal and the Files viewer. Download here means the crop;
-      // the whole annotated photo is one "Open in files view" away.
+      // the whole annotated photo is the Files viewer's download.
       toolbar={
         <ViewerToolRail
           boxesHidden={boxesHidden}
@@ -500,7 +594,10 @@ export function DetectionDetailModal({
       }
       // Scroll to zoom, drag to pan when zoomed, double-click to reset.
       // The shell owns the panel's classes; the behaviour stays here.
-      imagePanelProps={{
+      // Not while drawing: the canvas has its own zoom and pan, and a
+      // pointerdown taken for a pan here would eat the drag that draws.
+      // Dropping the ref detaches the wheel listener with it.
+      imagePanelProps={drawMode ? undefined : {
         ref: attachImagePanel,
         style: {
           cursor: zoom > 1 ? (isPanning ? "grabbing" : "grab") : "default",
@@ -525,6 +622,24 @@ export function DetectionDetailModal({
         },
       }}
       image={
+        drawMode && fileData ? (
+          // The Files viewer's drawing surface, in this same frame. It
+          // saves the box on release, turns draw mode off through
+          // `onDrawModeChange`, and hands the new id to the picker.
+          <AnnotationCanvas
+            file={fileData}
+            detectionThreshold={detectionThreshold}
+            selectedDetectionId={null}
+            onSelectDetection={() => {}}
+            drawMode
+            onDrawModeChange={setDrawMode}
+            onMutated={onActionComplete}
+            onCreated={setDrawnId}
+            boxesHidden={boxesHidden}
+            imageFilter={imageFilter}
+            defaultCategory="animal"
+          />
+        ) : (
             <div
               className="relative inline-flex"
               style={{
@@ -579,10 +694,13 @@ export function DetectionDetailModal({
                 // lie: with only the focused box drawn, a second animal
                 // in the dim area read as "the AI missed it", which it
                 // never had (this modal shows one detection's context,
-                // not the file's verification). Drawn BEFORE the dim
-                // overlay, so the spotlight itself mutes them and the
-                // focused box stays the accent. Same rule as the Files
-                // viewer: every rendered photo shows every visible box.
+                // not the file's verification). Each gets the same box
+                // and pill as the focused one, so a box you just drew
+                // and named in the Files viewer comes back saying what
+                // it is. Drawn BEFORE the dim overlay, so the spotlight
+                // itself mutes them and the focused box stays the
+                // accent. Same rule as the Files viewer: every rendered
+                // photo shows every visible box.
                 const otherBoxes = (fileData?.detections ?? [])
                   .filter((d) => shouldDrawBbox(d, fileData!, detectionThreshold))
                   .filter((d) => d.id !== fullDetection.id);
@@ -593,20 +711,34 @@ export function DetectionDetailModal({
                     viewBox={`0 0 ${imgW} ${imgH}`}
                     preserveAspectRatio="xMidYMid meet"
                   >
-                    {otherBoxes.map((d) => (
-                      <rect
-                        key={d.id}
-                        x={d.bbox_x * imgW}
-                        y={d.bbox_y * imgH}
-                        width={d.bbox_width * imgW}
-                        height={d.bbox_height * imgH}
-                        rx={BBOX_CORNER_RADIUS * s}
-                        fill="none"
-                        stroke={getDetectionColor(d)}
-                        strokeWidth={BBOX_STROKE_WIDTH * s}
-                        opacity={BBOX_OPACITY}
-                      />
-                    ))}
+                    {otherBoxes.map((d) => {
+                      const box = {
+                        x: d.bbox_x * imgW,
+                        y: d.bbox_y * imgH,
+                        width: d.bbox_width * imgW,
+                        height: d.bbox_height * imgH,
+                      };
+                      const p = computePillLayout(d);
+                      const at = placePill(
+                        box,
+                        { width: p.pillWidth * s, height: p.pillHeight * s },
+                        { width: imgW, height: imgH },
+                      );
+                      return (
+                        <g key={d.id}>
+                          <rect
+                            x={box.x} y={box.y}
+                            width={box.width} height={box.height}
+                            rx={BBOX_CORNER_RADIUS * s}
+                            fill="none"
+                            stroke={getDetectionColor(d)}
+                            strokeWidth={BBOX_STROKE_WIDTH * s}
+                            opacity={BBOX_OPACITY}
+                          />
+                          <BoxPill pill={p} x={at.x} y={at.y} s={s} />
+                        </g>
+                      );
+                    })}
                     {/* Spotlight dim overlay */}
                     <path fillRule="evenodd" d={spotlightPath} fill={DIM_FILL} />
 
@@ -621,38 +753,12 @@ export function DetectionDetailModal({
                     />
 
                     {/* Pill label */}
-                    <g transform={`translate(${pillX}, ${pillY}) scale(${s})`}>
-                      <rect
-                        x={0} y={0}
-                        width={pill.pillWidth} height={pill.pillHeight}
-                        rx={BBOX_CORNER_RADIUS}
-                        fill={PILL_BG}
-                      />
-                      <text
-                        x={TEXT_START_X} y={PILL_PAD_Y}
-                        fill="white"
-                        fontSize={FONT}
-                        fontFamily="Arial, sans-serif"
-                        dominantBaseline="hanging"
-                      >
-                        {pill.categoryText}
-                      </text>
-                      {pill.hasLabel && (
-                        <text
-                          x={TEXT_START_X} y={PILL_PAD_Y + FONT + LINE_GAP}
-                          fill="white"
-                          fontSize={FONT}
-                          fontFamily="Arial, sans-serif"
-                          dominantBaseline="hanging"
-                        >
-                          {pill.labelText}
-                        </text>
-                      )}
-                    </g>
+                    <BoxPill pill={pill} x={pillX} y={pillY} s={s} />
                   </svg>
                 );
               })()}
             </div>
+        )
       }
       details={
         <>
@@ -676,16 +782,6 @@ export function DetectionDetailModal({
                       {formatCameraDate(detection.captured_at_local, { day: "numeric", month: "short", year: "numeric" }, "en-GB")}{" "}
                       {formatCameraTime(detection.captured_at_local, { hour: "2-digit", minute: "2-digit" }, "en-GB")}
                       {detection.site_name && ` · ${detection.site_name}`}
-                    </div>
-                    <div>
-                      <button
-                        type="button"
-                        onClick={openInFiles}
-                        title="See the whole photo with every box, and verify the file itself"
-                        className="underline underline-offset-2 hover:no-underline"
-                      >
-                        Open in files view
-                      </button>
                     </div>
                     {detection.similarity != null && (
                       <div>Similarity: {(detection.similarity * 100).toFixed(1)}%</div>
@@ -834,6 +930,25 @@ export function DetectionDetailModal({
       // the modal. Each action operates on this single detection.
       actions={
         <>
+              {/* The one action about the photo rather than this box:
+                  an animal the detector missed gets its box here. First,
+                  so it reads apart from the verdict buttons; Verify
+                  stays last. */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-center"
+                onClick={() => setDrawMode((v) => !v)}
+                disabled={!fileData}
+                title="Drag a box around an animal the AI missed, then name it (D)"
+              >
+                <SquareDashed className="h-4 w-4 mr-1" />
+                {drawMode ? "Stop drawing" : "Draw a box"}
+                <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
+                  D
+                </kbd>
+              </Button>
+
               {detection.neighbor_top_label &&
                 detection.neighbor_top_label !== detection.label && (
                   <Button
@@ -863,7 +978,7 @@ export function DetectionDetailModal({
                 variant="outline"
                 size="sm"
                 className="w-full justify-center"
-                onClick={() => setForceOpenPicker(true)}
+                onClick={openCropPicker}
               >
                 <Tag className="h-4 w-4 mr-1" />
                 Relabel
@@ -881,9 +996,21 @@ export function DetectionDetailModal({
                 className="absolute h-0 w-0 overflow-hidden pointer-events-none"
               >
                 <LabelPicker
-                  value={detection.label}
-                  displayName={detection.scientific_name}
+                  // One picker, two targets: this crop (R, Relabel), or
+                  // the box just drawn, which has no label to show yet.
+                  // Closing it without a choice leaves a drawn box as
+                  // "animal", as the Files viewer does.
+                  value={drawnId ? null : detection.label}
+                  displayName={drawnId ? null : detection.scientific_name}
                   onSelect={(option) => {
+                    // The state when the pick follows the open, the
+                    // ref when creating a label closed the picker first.
+                    const drawn = drawnId ?? drawnIdRef.current;
+                    drawnIdRef.current = null;
+                    if (drawn) {
+                      nameDrawnBox(drawn, option);
+                      return;
+                    }
                     relabelMutation.mutate({
                       label: option.label,
                       category: option.category,
@@ -891,9 +1018,12 @@ export function DetectionDetailModal({
                   }}
                   options={labelOptions}
                   isLoading={labelOptionsLoading}
-                  forceOpen={forceOpenPicker}
+                  forceOpen={forceOpenPicker || !!drawnId}
                   onOpenChange={(open) => {
-                    if (!open) setForceOpenPicker(false);
+                    if (!open) {
+                      setForceOpenPicker(false);
+                      setDrawnId(null);
+                    }
                   }}
                   projectId={projectId}
                 />

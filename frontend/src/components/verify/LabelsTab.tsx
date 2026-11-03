@@ -1158,6 +1158,13 @@ export function LabelsTab({
       }
 
       if (e.key === "Escape") {
+        // A dialog that took this Escape has already closed on it:
+        // Radix dismisses its top layer and calls preventDefault
+        // first. The input guard above does not cover it: a click on a
+        // non-focusable spot in the species picker leaves focus on the
+        // picker's own div, and Escape then closed the picker and the
+        // crop view under it in one press.
+        if (e.defaultPrevented) return;
         if (detailDetection) {
           setDetailDetection(null);
         } else if (selectedIds.size > 0) {

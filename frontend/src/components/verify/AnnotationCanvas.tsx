@@ -593,7 +593,7 @@ export function AnnotationCanvas({
       {/* Draw mode indicator */}
       {drawMode && (
         <div className="absolute top-2 left-2 z-10 bg-primary text-white text-xs px-2 py-1 rounded">
-          Drawing mode - click and drag to draw a box (Esc to cancel)
+          Drawing mode - click and drag to draw a box (D to stop)
         </div>
       )}
 
