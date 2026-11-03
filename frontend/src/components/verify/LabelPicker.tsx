@@ -230,10 +230,14 @@ export function LabelPicker({
     if (!projectId) return;
     setCreateName(search.trim());
     setSearch("");
-    // Tell the parent the picker closed. Without this a CONTROLLED
-    // parent (BulkActionBar via relabelOpen) keeps thinking the picker
-    // is open, and re-opens it the next time the user selects a crop.
-    onOpenChange?.(false);
+    // The owner is NOT told the picker closed here: the relabel is still
+    // going on, in the sheet, and the owner hears `onOpenChange(false)`
+    // from `handleTaxonomySheetClose` once the sheet is done, after the
+    // new label has been handed to `onSelect`. Telling it now (until
+    // 2026-11-03) made the Files viewer and the Counts modal drop their
+    // relabel targets, so the label was created, "applied" to nothing,
+    // and had to be picked a second time. A controlled owner such as
+    // the bulk bar still gets its false, only later.
     setTaxonomyLabel(null);
     // Defer opening the taxonomy sheet until this command dialog has fully
     // closed (handled in DialogContent.onCloseAutoFocus). Opening it now
@@ -243,7 +247,7 @@ export function LabelPicker({
     // and dismisses the sheet. Sequencing the two removes the race.
     pendingSheetRef.current = true;
     setOpen(false);
-  }, [projectId, search, onOpenChange]);
+  }, [projectId, search]);
 
   const handleTaxonomySheetCreated = useCallback(
     (created: CustomLabelResponse) => {

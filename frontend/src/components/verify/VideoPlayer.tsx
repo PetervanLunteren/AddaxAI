@@ -47,7 +47,7 @@ import { SpotlightDim } from "./SpotlightDim";
 import type { FileWithDetections, DetectionResponse } from "../../api/types";
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
 import { clipDurationFrames } from "../../lib/track-utils";
-import { SlowHint } from "./SlowHint";
+import { FrameWait } from "./FrameWait";
 import { ClipTimeline, type TimelineMarker, type TimelineSurface } from "./TrackTimeline";
 interface VideoPlayerProps {
   file: FileWithDetections;
@@ -73,6 +73,10 @@ interface VideoPlayerProps {
    *  watching from the frame on screen). The nonce lets the same frame
    *  be asked for twice in a row. */
   seekRequest?: { frame: number; nonce: number; play?: boolean } | null;
+  /** Filled by the player: pause and return the frame the clip stands
+   *  on. The Files viewer's P, so its still comes back on the moment
+   *  the person stopped at rather than where play began. */
+  pauseFnRef?: React.MutableRefObject<(() => number) | null>;
   /** The animal the person is looking at: its boxes keep the normal
    *  style, every other box dims. Null dims nothing. */
   selectedTrackId?: string | null;
@@ -226,6 +230,7 @@ export function VideoPlayer({
   onAutoExportConsumed,
   boxesHidden,
   seekRequest,
+  pauseFnRef,
   selectedTrackId = null,
   onSelectTrack,
   markers,
@@ -521,6 +526,18 @@ export function VideoPlayer({
     exportFnRef.current = startExport;
   }, [exportFnRef, startExport]);
 
+  useEffect(() => {
+    if (!pauseFnRef) return;
+    pauseFnRef.current = () => {
+      const video = videoRef.current;
+      video?.pause();
+      return Math.round((video?.currentTime ?? 0) * frameRate);
+    };
+    return () => {
+      pauseFnRef.current = null;
+    };
+  }, [pauseFnRef, frameRate]);
+
   // Auto-run the export when the parent requests it (Download clicked from
   // frame view, which switches here just to record). Wait for the video to
   // be playable so the first recorded frames aren't blank. Consume the
@@ -566,15 +583,7 @@ export function VideoPlayer({
           onEnded={handlePause}
         />
 
-        {seeking && (
-          <div
-            className="pointer-events-none absolute left-2 top-2 z-10 rounded bg-black/60 px-2 py-1 text-xs text-white"
-            data-testid="video-seeking"
-          >
-            Seeking…
-            <SlowHint className="mt-1 max-w-sm text-left text-white/80" />
-          </div>
-        )}
+        {seeking && <FrameWait label="Seeking…" testId="video-seeking" />}
 
         {/* Recording indicator — centered over the focus while the
             annotated video records. Progress and time-left are exact since

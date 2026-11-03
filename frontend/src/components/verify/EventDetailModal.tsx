@@ -30,7 +30,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { cardBoxes, nearestBoxFrame, speciesKey } from "../../lib/track-utils";
+import { cardBoxes, nearestSampledFrame, speciesKey, steppedFrame } from "../../lib/track-utils";
 import { ClipTimeline } from "./TrackTimeline";
 import { ApiError } from "../../lib/api-client";
 import { eventsApi } from "../../api/events";
@@ -67,10 +67,6 @@ import { invalidateLabelQueries } from "../../lib/invalidate-label-queries";
 
 /** The Counts page's view settings: tile size and the filmstrip height. */
 const COUNTS_SETTINGS = "addaxai:countsSettings";
-
-// Minimum gap between Shift+wheel frame steps, so a trackpad's burst of
-// wheel events per swipe scrubs at a steady ~8 frames/second.
-const SCRUB_THROTTLE_MS = 120;
 
 // Auto-play cadence: how long each frame is shown before advancing (2 fps).
 const AUTOPLAY_INTERVAL_MS = 500;
@@ -443,27 +439,6 @@ export function EventDetailModal({
     [files],
   );
 
-  // Shift+wheel over the focus scrubs through frames (stills, so scrubbing
-  // past a video does not start playback). Throttled to a steady pace: a
-  // trackpad fires a burst of wheel events per swipe, so without this one
-  // flick would jump dozens of frames. Magnitude is ignored, so the speed
-  // feels the same on a mouse wheel and a trackpad.
-  const lastScrubRef = useRef(0);
-  const handleScrubFrame = useCallback(
-    (delta: number) => {
-      const now = performance.now();
-      if (now - lastScrubRef.current < SCRUB_THROTTLE_MS) return;
-      lastScrubRef.current = now;
-      setAutoPlay(false); // manual navigation takes over from auto-play
-      const dir = delta > 0 ? 1 : -1;
-      setSelectedFileIndex((i) =>
-        Math.max(0, Math.min(files.length - 1, i + dir)),
-      );
-      setViewMode("frame");
-    },
-    [files.length],
-  );
-
   // Auto-play toggle. Turning it on restarts the playthrough from frame 0.
   const toggleAutoPlay = useCallback(() => {
     if (!autoPlayRef.current) {
@@ -508,6 +483,27 @@ export function EventDetailModal({
   // The frame on screen in frame mode: the still a person asked for,
   // else the landing frame (see `still`).
   const shownFrame = stillFrame ?? markers[0]?.frame ?? null;
+
+  /** Shift+Arrow and Shift+wheel: the small unit inside the event. For
+   *  a clip, the previous or next sampled frame of the focused clip
+   *  (`steppedFrame`, the Files viewer's step, so stepping a clip is
+   *  one thing on both pages; until 2026-11-03 this moved between the
+   *  event's files, which on a one-clip event was nothing). For photos,
+   *  the previous or next picture of the burst. A manual step takes
+   *  over from the cine-loop. */
+  const stepWithinEvent = useCallback(
+    (dir: 1 | -1) => {
+      setAutoPlay(false);
+      setViewMode("frame");
+      if (focused && currentFile && focused.file_type === "video") {
+        const from = shownFrame ?? focused.best_frame_number ?? 0;
+        setStill({ fileId: currentFile.id, frame: steppedFrame(focused, from, dir) });
+        return;
+      }
+      setSelectedFileIndex((i) => Math.max(0, Math.min(files.length - 1, i + dir)));
+    },
+    [focused, currentFile, shownFrame, files.length],
+  );
 
   // Watch the focused video from the frame on screen, the Files viewer's
   // rule: a bar click then P plays from that animal, and a fresh open
@@ -631,22 +627,13 @@ export function EventDetailModal({
         // frame step grabs control and stops it.
         case "ArrowLeft":
           e.preventDefault();
-          if (e.shiftKey) {
-            setAutoPlay(false);
-            if (selectedFileIndex > 0) setSelectedFileIndex((i) => i - 1);
-          } else {
-            navigateEvent(adjacent?.previous_id);
-          }
+          if (e.shiftKey) stepWithinEvent(-1);
+          else navigateEvent(adjacent?.previous_id);
           break;
         case "ArrowRight":
           e.preventDefault();
-          if (e.shiftKey) {
-            setAutoPlay(false);
-            if (selectedFileIndex < files.length - 1)
-              setSelectedFileIndex((i) => i + 1);
-          } else {
-            navigateEvent(adjacent?.next_id);
-          }
+          if (e.shiftKey) stepWithinEvent(1);
+          else navigateEvent(adjacent?.next_id);
           break;
         case "p":
         case "P":
@@ -692,6 +679,7 @@ export function EventDetailModal({
     onClose,
     selectedFileIndex,
     files.length,
+    stepWithinEvent,
     triage,
     viewMode,
     playFocusedVideo,
@@ -832,7 +820,7 @@ export function EventDetailModal({
                     drawMode={false}
                     onDrawModeChange={() => {}}
                     readOnly
-                    onScrubFrame={handleScrubFrame}
+                    onScrubFrame={(d) => stepWithinEvent(d > 0 ? 1 : -1)}
                     imageFilter={imageFilter}
                     boxesHidden={boxesHidden}
                     exportFnRef={exportFnRef}
@@ -860,10 +848,10 @@ export function EventDetailModal({
                     surface="counts"
                     onSelectTrack={selectTrack}
                     onSeek={(frame) => {
-                      // Snapped to a frame with boxes (`nearestBoxFrame`).
+                      // Snapped to a sampled frame (`nearestSampledFrame`).
                       setStill({
                         fileId: currentFile.id,
-                        frame: nearestBoxFrame(focused ?? currentFile, frame),
+                        frame: nearestSampledFrame(focused ?? currentFile, frame),
                       });
                       setSelectedTrackId(null);
                     }}

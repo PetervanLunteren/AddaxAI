@@ -21,8 +21,9 @@
  * only answers "where, right now".
  */
 
+import { OTHER_BOX_DIM } from "./detection-overlay";
 import type { BboxedDetection } from "./detection-utils";
-import { drawsInClip, trackCards } from "./track-utils";
+import { drawsInClip, samplingStep, trackCards } from "./track-utils";
 import type { DetectionResponse, TrackResponse } from "../api/types";
 
 export type { BboxedDetection };
@@ -30,8 +31,6 @@ export type { BboxedDetection };
 /** How much of each track to trail behind the animal. */
 export const TRAIL_SECONDS = 3;
 
-/** Opacity factor for the boxes of every other track while one is selected. */
-export const OTHER_TRACK_DIM = 0.25;
 
 /**
  * Treat a moment this close to a sampled frame as being on it.
@@ -56,7 +55,7 @@ export interface OverlayBox {
   y: number;
   width: number;
   height: number;
-  /** 1, or `OTHER_TRACK_DIM` when another track is selected. */
+  /** 1, or `OTHER_BOX_DIM` when another track is selected. */
   dim: number;
   /** Where this animal has just been, newest first. Every animal on
    *  screen has one: a trail only on the selected animal would say
@@ -97,10 +96,8 @@ const EMPTY: OverlayFrame = { boxes: [] };
  * shares: a tracked box when its track is on show, weak frames
  * included, a box without a track on its own merits.
  *
- * The step is measured from the file's own frame numbers rather than
- * taken from `Project.video_fps`, because a clip analysed before that
- * setting was last changed keeps its own older spacing and the file's
- * numbers cannot disagree with the file.
+ * The step is `samplingStep`, measured from the file's own frame
+ * numbers, the same number the timeline cuts its bars by.
  */
 export function buildOverlayIndex(
   detections: DetectionResponse[],
@@ -128,14 +125,7 @@ export function buildOverlayIndex(
     group.sort((a, b) => a.frame_number! - b.frame_number!);
   }
 
-  const sorted = [...frames].sort((a, b) => a - b);
-  let step = 0;
-  for (let i = 1; i < sorted.length; i++) {
-    const gap = sorted[i] - sorted[i - 1];
-    if (gap > 0 && (step === 0 || gap < step)) step = gap;
-  }
-
-  return { tracks, step };
+  return { tracks, step: samplingStep(frames) };
 }
 
 /** The last sample at or before `frame`, by binary search. */
@@ -208,7 +198,7 @@ export function overlayAt(
       y: adjacent ? lerp(from.bbox_y, next.bbox_y, t) : from.bbox_y,
       width: adjacent ? lerp(from.bbox_width, next.bbox_width, t) : from.bbox_width,
       height: adjacent ? lerp(from.bbox_height, next.bbox_height, t) : from.bbox_height,
-      dim: selectedTrackId != null && from.track_id !== selectedTrackId ? OTHER_TRACK_DIM : 1,
+      dim: selectedTrackId != null && from.track_id !== selectedTrackId ? OTHER_BOX_DIM : 1,
       trail: [],
     };
     box.trail = trailFor(group, frame, box, trailFrames);

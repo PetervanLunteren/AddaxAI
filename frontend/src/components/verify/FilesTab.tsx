@@ -33,7 +33,7 @@ import { labelsApi } from "../../api/labels";
 import { projectsApi } from "../../api/projects";
 import { useLabelOptions } from "../../hooks/useLabelOptions";
 import { useShortcutLabels } from "../../hooks/useShortcutLabels";
-import { cardBoxes } from "../../lib/track-utils";
+import { cardBoxes, uncheckedCards } from "../../lib/track-utils";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
 import { labelMajority } from "./label-majority";
 import { BulkActionBar } from "./BulkActionBar";
@@ -46,6 +46,7 @@ import { LabelsKeyboardPopover } from "./LabelsKeyboardPopover";
 import { MOD, type Shortcut } from "./shortcuts";
 import { nextAfterActed, selectOnClick } from "./grid-selection";
 import { FileDetailModal } from "./FileDetailModal";
+import { SignOffDialog } from "./SignOffDialog";
 import { LabelsSettings } from "./LabelsSettings";
 import { SortSelector } from "./SortSelector";
 import { useFilesSort, useTileSize } from "./labels-settings";
@@ -99,6 +100,7 @@ const FILES_SHORTCUTS: readonly Shortcut[] = [
   ["Esc", "Deselect"],
   // Viewer only.
   ["← / →", "Previous / next file"],
+  ["Shift + ← / →", "Previous / next frame of a clip"],
   ["V", "Mark correct, then the next one"],
   ["D", "Draw a box (photos only)"],
   ["B", "Hide or show the boxes"],
@@ -523,6 +525,46 @@ export function FilesTab({
     onError: (err: Error) => toast.error(err.message),
   });
 
+  /** The sign-off, with a brake when the selection holds a clip: a tile
+   *  cannot show its two thousand tracks, so the dialog says how many
+   *  would count as verified without a look (`SignOffDialog`, the Files
+   *  viewer's). Photos go straight through, as always: one glance at
+   *  the tile covers every box. The counts come from the cards the
+   *  tiles already hold. */
+  const [signOff, setSignOff] = useState<{
+    ids: string[];
+    clips: number;
+    detections: number;
+    unchecked: number;
+  } | null>(null);
+  const requestSignOff = useCallback(
+    async (ids: string[]) => {
+      if (markChecked.isPending) return;
+      const clipIds = ids.filter(
+        (id) => items.find((i) => i.id === id)?.file_type === "video",
+      );
+      if (clipIds.length === 0) {
+        markChecked.mutate(ids);
+        return;
+      }
+      try {
+        const threshold = project?.counting_threshold ?? 0;
+        const clips = await Promise.all(
+          clipIds.map((id) => queryClient.fetchQuery(fileQueryOptions(id, "cards"))),
+        );
+        setSignOff({
+          ids,
+          clips: clips.length,
+          detections: clips.reduce((n, f) => n + cardBoxes(f, threshold).length, 0),
+          unchecked: clips.reduce((n, f) => n + uncheckedCards(f, threshold).length, 0),
+        });
+      } catch (err) {
+        toast.error((err as Error).message);
+      }
+    },
+    [markChecked, items, project?.counting_threshold, queryClient],
+  );
+
   // ── Bulk box actions, the crop grid's set at file scope ──────────
   // One mechanism behind X / U / M / R / 1-5 and their buttons: apply a
   // label to every visible box of the selected files. The tiles already
@@ -657,12 +699,13 @@ export function FilesTab({
       ) {
         return;
       }
+      if (signOff) return; // the confirm has the keyboard
       if (e.key === "Escape" && selected.size > 0) {
         e.preventDefault();
         clearSelection();
       } else if (e.key === "Enter" && selected.size > 0) {
         e.preventDefault();
-        if (!markChecked.isPending) markChecked.mutate([...selected]);
+        void requestSignOff([...selected]);
       } else if (e.key === "a" && (e.metaKey || e.ctrlKey)) {
         // Select everything on screen, like the crop grid. "On screen"
         // is this page, not all 229: the action would otherwise reach
@@ -749,7 +792,8 @@ export function FilesTab({
     openIndex,
     selected,
     clearSelection,
-    markChecked,
+    requestSignOff,
+    signOff,
     orderedIds,
     updateSelection,
     sort,
@@ -949,6 +993,18 @@ export function FilesTab({
           like Enter: the old confirm dialog guarded an irreversible
           delete that no longer exists (untick a file and the next
           reprocess hands its rejected boxes back to the AI). */}
+      {signOff && (
+        <SignOffDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setSignOff(null);
+          }}
+          clips={signOff.clips}
+          detections={signOff.detections}
+          unchecked={signOff.unchecked}
+          onConfirm={() => markChecked.mutate(signOff.ids)}
+        />
+      )}
       <BulkActionBar
         selectedIds={selected}
         onDeselectAll={clearSelection}
@@ -957,7 +1013,7 @@ export function FilesTab({
         onActionComplete={() => {}}
         performAction={(action) => {
           if (action === "verify") {
-            markChecked.mutate([...selected]);
+            return requestSignOff([...selected]);
           } else if (action === "false") {
             return applyLabelToSelection("false detection", undefined);
           } else if (action === "unknown") {

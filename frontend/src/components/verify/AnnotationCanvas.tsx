@@ -11,7 +11,8 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Stage, Layer, Rect, Text, Image as KonvaImage, Transformer, Shape, Group } from "react-konva";
 import { useMutation } from "@tanstack/react-query";
 import { ImageOff } from "lucide-react";
-import { SlowHint } from "./SlowHint";
+import { Button } from "../ui/button";
+import { FrameWait } from "./FrameWait";
 import { detectionsApi } from "../../api/detections";
 import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
 import { getDetectionColor } from "../../lib/detection-utils";
@@ -28,10 +29,15 @@ import {
   BBOX_CORNER_RADIUS,
   BBOX_OPACITY,
   DIM_FILL,
+  OTHER_BOX_DIM,
   PILL_BG,
 } from "../../lib/detection-overlay";
 import type { FileWithDetections, DetectionResponse } from "../../api/types";
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
+
+/** Minimum gap between Shift+wheel frame steps: a steady eight frames a
+ *  second however fast the wheel or trackpad fires. */
+const SCRUB_THROTTLE_MS = 120;
 
 interface AnnotationCanvasProps {
   file: FileWithDetections;
@@ -55,6 +61,10 @@ interface AnnotationCanvasProps {
    *  a fresh box up (asking which species it is), which is not true of
    *  a move, a resize or a delete. */
   onCreated?: (detectionId: string) => void;
+  /** The picture is on screen. The Files viewer warms the frame the
+   *  next verdict will land on at this moment and not before, so the
+   *  two decodes never compete for the same slow drive. */
+  onLoaded?: () => void;
   /** Shift+wheel steps to the previous/next frame instead of zooming.
    *  `delta` is the wheel deltaY (negative = up/previous). */
   onScrubFrame?: (delta: number) => void;
@@ -96,6 +106,7 @@ export function AnnotationCanvas({
   onDrawModeChange,
   onMutated,
   onCreated,
+  onLoaded,
   onScrubFrame,
   frameNumber,
   readOnly,
@@ -110,14 +121,29 @@ export function AnnotationCanvas({
   useSpeciesColorsVersion();
   const stageRef = useRef<any>(null);
   const transformerRef = useRef<any>(null);
+  // The last Shift+wheel step: a trackpad fires a burst of wheel events
+  // per swipe, so without a gap one flick would jump dozens of frames,
+  // each a decode from the clip. Held here, where the input arrives,
+  // rather than by each owner (the Counts modal used to).
+  const lastScrubRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [loading, setLoading] = useState(true);
+  // Bumped by "Try again" on a failed picture: the same URL is asked
+  // for once more. The browser does not cache the error, so it is a
+  // real request; the URL stays, so a success is cached as usual.
+  const [attempt, setAttempt] = useState(0);
   // The picture is gone from disk (a moved / disconnected deployment
   // folder). Without this the stage stayed black and the boxes drew on
   // top of nothing, so the file read as an all-black photo the AI had
   // somehow found animals in.
   const [imageFailed, setImageFailed] = useState(false);
+  // Read through a ref by the load effect, so a new callback identity
+  // does not restart the load of the picture on screen.
+  const onLoadedRef = useRef(onLoaded);
+  useEffect(() => {
+    onLoadedRef.current = onLoaded;
+  }, [onLoaded]);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [drawingBox, setDrawingBox] = useState<DrawingBox | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -136,6 +162,12 @@ export function AnnotationCanvas({
   // The boxes of the frame the canvas is rendering, by the one rule
   // every rendered still and the player share (`frameBoxes`).
   const filteredDetections = frameBoxes(file, detectionThreshold, frameNumber);
+  // Boxes are moved and resized on photos only. A clip's box is one
+  // sample of an animal the tracker followed, and drawing on a clip is
+  // off for the same reason (`canDraw` in the Files viewer): one frame
+  // in ten thousand is no place to record where an animal was.
+  // Selecting stays, on every surface.
+  const editable = !readOnly && file.file_type !== "video";
 
   // Update stage size based on container. Defined before the image-load
   // effect below because that effect lists it as a dependency (a const from
@@ -176,6 +208,7 @@ export function AnnotationCanvas({
       updateStageSize(img.naturalWidth, img.naturalHeight);
       setImageFailed(false);
       setLoading(false);
+      onLoadedRef.current?.();
     };
     img.onload = settle;
     img.onerror = () => {
@@ -200,7 +233,7 @@ export function AnnotationCanvas({
     return () => {
       cancelled = true;
     };
-  }, [imageUrl, updateStageSize, file.deployment_id]);
+  }, [imageUrl, updateStageSize, file.deployment_id, attempt]);
 
   // Resize observer
   useEffect(() => {
@@ -413,6 +446,9 @@ export function AnnotationCanvas({
   const handleWheel = (e: any) => {
     e.evt.preventDefault();
     if (e.evt.shiftKey && onScrubFrame) {
+      const now = performance.now();
+      if (now - lastScrubRef.current < SCRUB_THROTTLE_MS) return;
+      lastScrubRef.current = now;
       // Holding Shift makes the browser remap the wheel to the horizontal
       // axis (deltaY becomes 0, the value lands in deltaX), so scrub on
       // whichever axis actually carries the scroll.
@@ -576,9 +612,19 @@ export function AnnotationCanvas({
         className="relative w-full h-full flex flex-col items-center justify-center gap-3 bg-neutral-200 dark:bg-neutral-800"
       >
         <ImageOff className="h-10 w-10 text-neutral-400 dark:text-neutral-500" />
+        {/* A frame cut from a clip fails for more reasons than a stored
+            picture (the drive too slow to decode it in time, see
+            `DECODE_TIMEOUT_S`), and the canvas cannot tell them apart,
+            so it names none. A second click on the same bar changes
+            nothing and so asks for nothing: the button is the retry. */}
         <p className="text-sm text-neutral-500 dark:text-neutral-400">
-          This picture can't be found on disk
+          {file.file_type === "video" && frameNumber != null
+            ? "This frame could not be read from the clip."
+            : "This picture can't be found on disk"}
         </p>
+        <Button variant="outline" size="sm" onClick={() => setAttempt((n) => n + 1)}>
+          Try again
+        </Button>
       </div>
     );
   }
@@ -598,14 +644,9 @@ export function AnnotationCanvas({
         filter: imageFilter,
       }}
     >
-      {/* A frame of a clip decoding for longer than a healthy disk takes:
-          say why, once. Keyed by the frame, so each wait starts at zero. */}
-      {loading && file.file_type === "video" && (
-        <SlowHint
-          key={imageUrl}
-          className="pointer-events-none absolute left-2 top-2 z-10 max-w-sm rounded bg-black/60 px-2 py-1 text-left text-white"
-        />
-      )}
+      {/* A frame of a clip on its way: say so at once, and why past a
+          few seconds. Keyed by the frame, so each wait starts at zero. */}
+      {loading && file.file_type === "video" && <FrameWait key={imageUrl} />}
       {/* Draw mode indicator */}
       {drawMode && (
         <div className="absolute top-2 left-2 z-10 bg-primary text-white text-xs px-2 py-1 rounded">
@@ -680,6 +721,8 @@ export function AnnotationCanvas({
             const h = normToPixel(detection.bbox_height, imgHeight);
             const color = getDetectionColor(detection);
             const isSelected = selectedDetectionId === detection.id;
+            // The shared selection rule: the others fade, pill included.
+            const dim = selectedDetectionId && !isSelected ? OTHER_BOX_DIM : 1;
             const pill = computePillLayout(detection);
             // Read-only focus uses a slightly bolder colored line so it
             // stays dominant.
@@ -713,11 +756,11 @@ export function AnnotationCanvas({
                   height={h}
                   stroke={color}
                   strokeWidth={lineW}
-                  opacity={readOnly ? 1 : BBOX_OPACITY}
+                  opacity={(readOnly ? 1 : BBOX_OPACITY) * dim}
                   fill="transparent"
                   cornerRadius={BBOX_CORNER_RADIUS}
                   listening={!readOnly}
-                  draggable={!drawMode && !readOnly}
+                  draggable={!drawMode && editable}
                   onClick={() => onSelectDetection(detection.id)}
                   onTap={() => onSelectDetection(detection.id)}
                   onDragEnd={(e) => handleDragEnd(detection, e)}
@@ -732,6 +775,7 @@ export function AnnotationCanvas({
                 <Group
                   name="label-pill"
                   visible={true}
+                  opacity={dim}
                   x={pillX}
                   y={pillY}
                   listening={!drawMode}
@@ -796,7 +840,7 @@ export function AnnotationCanvas({
           {/* Transformer for selected box */}
           <Transformer
             ref={transformerRef}
-            visible={!boxesHidden}
+            visible={!boxesHidden && editable}
             rotateEnabled={false}
             keepRatio={false}
             enabledAnchors={[

@@ -8,6 +8,8 @@
  * the track", "what colour is it" and "is it verified" have one home.
  */
 
+import type { CSSProperties } from "react";
+
 import type {
   DetectionResponse,
   DetectionSummary,
@@ -39,6 +41,105 @@ export interface TrackRow {
   displayLabel: string;
   color: string;
   verdict: TrackVerdict;
+  /** The bar's extent in frames, half a sampling step either side of
+   *  the first and last box (`trackGaps`). */
+  startFrame: number;
+  endFrame: number;
+  /** The holes in the bar, in frames: where a sample was missed, the
+   *  detector saw nothing of the animal (`trackGaps`). */
+  gaps: [number, number][];
+}
+
+/**
+ * Native frames between two consecutive samples of a clip, measured
+ * from the frame numbers themselves: the smallest positive gap. 0 with
+ * fewer than two distinct frames. Not `Project.video_fps`: a clip
+ * analysed before that setting last changed keeps its own spacing, and
+ * the file's numbers cannot disagree with the file. The player
+ * (`buildOverlayIndex`) and the timeline's bars read the same number.
+ */
+export function samplingStep(frames: Iterable<number>): number {
+  const sorted = [...new Set(frames)].sort((a, b) => a - b);
+  let step = 0;
+  for (let i = 1; i < sorted.length; i++) {
+    const gap = sorted[i] - sorted[i - 1];
+    if (step === 0 || gap < step) step = gap;
+  }
+  return step;
+}
+
+/**
+ * The holes in a track's bar: each `[from, to)` in frames where a box
+ * is followed by its next box more than one step later. On the bar a
+ * box is drawn centred on its frame, half a step either side, so two
+ * boxes one step apart touch, a missed sample is a hole one step wide,
+ * and the playhead on a sampled frame sits in the middle of colour or
+ * in the middle of a hole, never on an edge (the player's own rule,
+ * one step from the box's frame on, put the first missed sample's edge
+ * exactly under the playhead). The tracker keeps a track alive through
+ * up to two seconds without a box, so on a dense drop this is a sixth
+ * of all bar length (HGA_022: 14,178 missed samples in 5,154 tracks);
+ * the bar used to run solid across them and claim an animal on frames
+ * the still and the player showed nothing on (2026-11-03).
+ */
+export function trackGaps(frames: number[], step: number): [number, number][] {
+  if (frames.length < 2 || step <= 0) return [];
+  const sorted = [...frames].sort((a, b) => a - b);
+  const gaps: [number, number][] = [];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] - sorted[i - 1] > step) {
+      gaps.push([sorted[i - 1] + step / 2, sorted[i] - step / 2]);
+    }
+  }
+  return gaps;
+}
+
+/** A gap's connector: a line this many pixels tall through the middle
+ *  of the bar, in the bar's own colour. Thin says "the same animal,
+ *  not seen here", a shape nothing else on the lane has; a faint
+ *  stretch said it with opacity, which is the channel that already
+ *  means unverified, and the two were told apart only by guessing
+ *  (2026-11-03). DIVE draws its timeline the same way. */
+const GAP_LINE_PX = 2;
+
+/**
+ * A bar's background over the frames `from` to `to`: the colour where
+ * the animal was seen, and a thin line of it through each gap. Two
+ * layers of one element's background, hard-stop gradients both, rather
+ * than a child per run: the lane re-renders on every playhead move
+ * and a drop holds five thousand bars, so extra nodes would triple
+ * that work. Gaps outside `[from, to)` are dropped, so a bar cut by
+ * the zoom window gets its holes in the right place.
+ */
+export function barBackground(
+  color: string,
+  gaps: [number, number][],
+  from: number,
+  to: number,
+): CSSProperties {
+  const span = to - from;
+  if (gaps.length === 0 || span <= 0) return { background: color };
+  const pct = (frame: number) => `${(((frame - from) / span) * 100).toFixed(3)}%`;
+  const runs: string[] = [];
+  const holes: string[] = [];
+  let at = from;
+  for (const [a, b] of gaps) {
+    const lo = Math.max(a, from);
+    const hi = Math.min(b, to);
+    if (hi <= lo) continue;
+    runs.push(`${color} ${pct(at)} ${pct(lo)}`, `transparent ${pct(lo)} ${pct(hi)}`);
+    holes.push(`transparent ${pct(at)} ${pct(lo)}`, `${color} ${pct(lo)} ${pct(hi)}`);
+    at = hi;
+  }
+  if (runs.length === 0) return { background: color };
+  runs.push(`${color} ${pct(at)} 100%`);
+  holes.push(`transparent ${pct(at)} 100%`);
+  return {
+    backgroundImage: `linear-gradient(to right, ${runs.join(", ")}), linear-gradient(to right, ${holes.join(", ")})`,
+    backgroundSize: `100% 100%, 100% ${GAP_LINE_PX}px`,
+    backgroundPosition: "0 0, 0 50%",
+    backgroundRepeat: "no-repeat",
+  };
 }
 
 /** The box on the track's representative frame: the one its card shows. */
@@ -83,6 +184,9 @@ export function trackRows(
     if (list) list.push(d);
     else boxesByTrack.set(d.track_id, [d]);
   }
+  const step = samplingStep(
+    [...boxesByTrack.values()].flatMap((list) => list.map((d) => d.frame_number!)),
+  );
   const rows: TrackRow[] = [];
   for (const track of tracks) {
     const boxes = boxesByTrack.get(track.id) ?? [];
@@ -101,6 +205,9 @@ export function trackRows(
       displayLabel: getDetectionDisplayName(rep),
       color: getDetectionColor(rep),
       verdict,
+      startFrame: track.start_frame - Math.max(step, 1) / 2,
+      endFrame: track.end_frame + Math.max(step, 1) / 2,
+      gaps: trackGaps(boxes.map((d) => d.frame_number!), step),
     });
   }
   // Rejected tracks last: their "False detection" row never pushes a
@@ -333,34 +440,45 @@ export function uncheckedCards(
   return pending;
 }
 
-/**
- * The frame to show for a moment picked on the timeline: the nearest
- * frame on which an animal live at that moment has a box, else the
- * moment itself. The detector samples a clip (every 17th frame at
- * 50 fps on a 3 fps run), so a lane click or a pan lands between
- * samples 16 times in 17; the bars say an animal is there while the
- * still, which draws boxes by exact frame, shows none and the frame
- * verify button vanishes (2026-11-03). Snapping only when a track is
- * live keeps an empty moment empty.
- */
-export function nearestBoxFrame(file: FileWithDetections, frame: number): number {
-  const live = new Set(
-    (file.tracks ?? [])
-      .filter((t) => t.start_frame <= frame && frame <= t.end_frame)
-      .map((t) => t.id),
+/** The clip's sampling step from its own stored boxes (`samplingStep`);
+ *  0 for a clip with fewer than two sampled frames. */
+export function fileSamplingStep(file: FileWithDetections): number {
+  return samplingStep(
+    file.detections.flatMap((d) => (d.frame_number == null ? [] : [d.frame_number])),
   );
-  if (live.size === 0) return frame;
-  let best = frame;
-  let distance = Infinity;
-  for (const d of file.detections) {
-    if (d.frame_number == null || !d.track_id || !live.has(d.track_id)) continue;
-    const gap = Math.abs(d.frame_number - frame);
-    if (gap < distance) {
-      distance = gap;
-      best = d.frame_number;
-    }
-  }
-  return best;
+}
+
+/**
+ * The frame to show for a moment a person picked: the nearest frame the
+ * detector sampled. The detector looks at every `step`th frame (every
+ * 17th at 50 fps on a 3 fps run), so a moment picked on the ruler, in a
+ * lane, by a pan or by pausing the player lands between samples 16
+ * times in 17; the bars make claims only about samples, and the still
+ * draws boxes by exact frame, so an unsnapped moment showed a bar under
+ * the playhead and no box on screen (2026-11-03). Until the ruler this
+ * snapped to the nearest box of an animal live at the moment instead,
+ * which on an empty stretch jumped minutes to the nearest animal: the
+ * frame a person got was not the one they pointed at. A sampled frame
+ * with nothing on it is the honest answer to "show me that moment".
+ */
+export function snapToSample(frame: number, step: number): number {
+  return step > 0 ? Math.max(0, Math.round(frame / step) * step) : Math.max(0, Math.round(frame));
+}
+
+export function nearestSampledFrame(file: FileWithDetections, frame: number): number {
+  return snapToSample(frame, fileSamplingStep(file));
+}
+
+/**
+ * The sampled frame one step before or after `from`, clamped to the
+ * clip: what Shift+Arrow and Shift+wheel show in the Files viewer and
+ * the Counts modal alike, so stepping a clip is one thing wherever a
+ * clip is looked at.
+ */
+export function steppedFrame(file: FileWithDetections, from: number, dir: 1 | -1): number {
+  const step = Math.max(fileSamplingStep(file), 1);
+  const last = Math.max(0, clipDurationFrames(file) - 1);
+  return Math.min(last, Math.max(0, snapToSample(from, step) + dir * step));
 }
 
 /** Box centres of one track in frame order, in image fractions. */

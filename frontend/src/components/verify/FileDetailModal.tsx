@@ -15,12 +15,12 @@
  * every detection the AI followed through it, one track each, shown as
  * bars under the picture.
  *
- * What you can do. **Verify** signs the file off and moves on; it is one
- * action because it is one decision. **Mark correct** (V) is the same
- * verb one scope down: it verifies the selected detection with the
- * label it already carries and steps to the next one still waiting, so
- * a clip the detector handled well is a run of single keys rather than
- * a relabel to the species it already said.
+ * What you can do. **Verify** (Enter) and **Mark correct** (V) are one
+ * verb: they verify what is on screen, or what is selected, with the
+ * label it already carries, so a clip the detector handled well is a
+ * run of single keys rather than a relabel to the species it already
+ * said. Signing a whole clip off is a button of its own, below, behind
+ * a confirm that says the numbers (`SignOffDialog`).
  *
  * Boxes are drawn on photos only. Arm the crosshair with D or the
  * button, drag, and the species search opens on the new box by itself;
@@ -30,19 +30,24 @@
  * thousand, so it could never be how an animal the detector missed gets
  * recorded. The Counts page is, by typing the number.
  *
- * The label actions are the Detections grid's, with one scope rule: V,
- * R, X, U and the saved labels 1 to 5 act on the selected detection, and
- * on every detection in the file when none is selected (`cardBoxes`: a
- * photo's boxes, a clip's tracks through their cards). The same rule
- * decides what happens next: a whole-file action is the verdict, so it
- * signs the file off and advances in the same press (like the
- * Detections viewer); a selected-box action stays for the next one.
- * Click a box, Tab through the boxes on screen, or click a bar on a
- * clip's timeline to select one; the buttons say which scope they are
- * in. M relabels every detection to the file's most common label,
- * whatever is selected. Cmd+Z reverts the last label change, as in the
- * grid; a file verify (its own scope of boxes) and a drawn box (no
- * original label to go back to) are not undoable.
+ * The label actions are the Detections grid's, with one scope rule:
+ * actions act on what you see. V, R, X, U and the saved labels 1 to 5
+ * act on the selected detection, and with none selected on every
+ * detection on screen (`onScreen`): a photo's boxes, or the animals on
+ * the clip frame shown, each through all of its frames. A clip's other
+ * two thousand tracks are never touched from a frame that shows 17 of
+ * them (they were, until 2026-11-03: a V on the MaxN frame signed off
+ * the whole drop). One rule decides what happens next (`settleAfter`):
+ * when nothing in the file is left unchecked it is signed off and the
+ * viewer moves on; otherwise the next animal still waiting, forward
+ * in time from the frame on screen, is selected and shown, so Enter
+ * after Enter walks a clip. Click a box, Tab through the boxes on screen, or
+ * click a bar on a clip's timeline to select one; the buttons say which
+ * scope they are in. M relabels every detection on screen to the most
+ * common label among them, whatever is selected. Cmd+Z reverts the last
+ * label change, as in the grid; a file sign-off (its own scope of
+ * boxes) and a drawn box (no original label to go back to) are not
+ * undoable.
  *
  * The left rail is the shared `ViewerToolRail`, the same one as the
  * Counts modal: brightness/contrast, hide boxes (B), flag (F), like,
@@ -56,7 +61,10 @@
  * the lane shows that frame. P or the play button swaps the still for
  * the real clip at the frame on screen, with each frame's boxes and the
  * same timeline (`VideoPlayer`, the Counts modal's player, which
- * honours B). The keys stay live in both modes.
+ * honours B); P again pauses and brings the still back on the moment
+ * the person stopped at, so what they act on is what they watched. The
+ * keys stay live in both modes on a selected animal; with none selected
+ * they wait for the still, the only thing a person can judge.
  * Download saves the annotated copy: the recorded boxed MP4 for a
  * playable video, the boxed still otherwise.
  *
@@ -97,7 +105,8 @@ import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import {
   fileMaxNMarkers,
   frameBoxes,
-  nearestBoxFrame,
+  nearestSampledFrame,
+  steppedFrame,
 } from "../../lib/track-utils";
 import { basename } from "../../lib/path-utils";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
@@ -116,6 +125,7 @@ import { useFileTriage, useImageAdjust } from "./viewer-tools";
 import { labelMajority } from "./label-majority";
 import { LabelPicker, type PinnedOption } from "./LabelPicker";
 import { DetailCard, VerifyDetailShell } from "./VerifyDetailShell";
+import { SignOffDialog } from "./SignOffDialog";
 import { FileLocation } from "./FileLocation";
 import { UNDO_KBD } from "./shortcuts";
 import type { LabelsFileItem } from "../../api/types";
@@ -190,6 +200,12 @@ export function FileDetailModal({
   // The timeline's zoom, kept here so it survives the switch between the
   // still and the player, which mount the timeline afresh.
   const [timelineZoom, setTimelineZoom] = useState(0);
+  // The confirm behind "Verify all" on a clip.
+  const [signOffOpen, setSignOffOpen] = useState(false);
+  // The player fills this: pause and say where. P in video mode calls
+  // it, so the still comes back on the moment the person stopped at
+  // rather than where play began.
+  const pauseFnRef = useRef<(() => number) | null>(null);
   // The mounted surface's export: annotated PNG from the canvas,
   // recorded annotated MP4 from the player. Only one is mounted at a
   // time, so one ref serves both (as in `EventDetailModal`).
@@ -245,6 +261,7 @@ export function FileDetailModal({
     setSeekRequest(null);
     setTimelineZoom(0);
     setPendingVideoExport(false);
+    setSignOffOpen(false);
   }
   // Closed: forget what this run signed off. An effect, not part of the
   // render reset above, because a ref must not be touched during render.
@@ -298,13 +315,13 @@ export function FileDetailModal({
     },
     [file],
   );
-  // A lane click shows a frame and selects nothing, so the scope caption
-  // never names a box that is not on screen.
-  // A moment picked on the lane or by a pan snaps to the nearest frame
-  // with a box of an animal live then (`nearestBoxFrame`).
+  // A ruler or lane click shows a frame and selects nothing, so the
+  // scope caption never names a box that is not on screen. A moment
+  // picked anywhere snaps to the nearest sampled frame
+  // (`nearestSampledFrame`), the frames the bars make claims about.
   const showFrame = useCallback(
     (frame: number) => {
-      setShownFrame(file ? nearestBoxFrame(file, frame) : frame);
+      setShownFrame(file ? nearestSampledFrame(file, frame) : frame);
       setSelectedDetectionId(null);
     },
     [file],
@@ -325,6 +342,22 @@ export function FileDetailModal({
   // request, so the canvas asks for it by number only when it differs.
   const frameNumber =
     file && shownFrame != null && shownFrame !== file.best_frame_number ? shownFrame : undefined;
+  /** Shift+Arrow and Shift+wheel: the previous or next sampled frame of
+   *  a clip (`steppedFrame`, the Counts modal's step too), one per
+   *  press, so a person can see what happened just before or after the
+   *  moment on screen. The same pairing as the Counts modal, where the
+   *  plain arrow is the big unit (events there, files here) and Shift
+   *  makes it the small one. A stepped frame is a picked moment like a
+   *  ruler click: shown, nothing selected. A photo has one frame, so
+   *  this is nothing there. */
+  const stepFrame = useCallback(
+    (delta: number) => {
+      if (!file || file.file_type !== "video") return;
+      const from = shownFrame ?? file.best_frame_number ?? 0;
+      showFrame(steppedFrame(file, from, delta > 0 ? 1 : -1));
+    },
+    [file, shownFrame, showFrame],
+  );
   // Watch the clip from the frame on screen.
   const watch = useCallback(() => {
     if (shownFrame != null) {
@@ -332,6 +365,15 @@ export function FileDetailModal({
     }
     setViewMode("video");
   }, [shownFrame]);
+  // And back: the still on the paused moment, snapped to the nearest
+  // sampled frame (`nearestSampledFrame`), since the detector sampled a
+  // few frames per second and a paused frame is rarely one of them.
+  // The selection is kept: P is not a lane click.
+  const backToStill = useCallback(() => {
+    const frame = pauseFnRef.current?.();
+    if (frame != null && file) setShownFrame(nearestSampledFrame(file, frame));
+    setViewMode("frame");
+  }, [file]);
   /** Boxes are drawn on photos only. A clip is reviewed animal by
    *  animal, and a box drawn by hand could only ever land on the one
    *  frame on screen: on an hour of footage at 3 fps that is one frame
@@ -373,52 +415,67 @@ export function FileDetailModal({
     [file, project?.counting_threshold],
   );
 
-  // The animals on the frame shown that are still unchecked, for the
-  // frame-scoped verify: the tracks whose boxes the canvas draws,
-  // through their cards. After MaxN this is the count's frame, and
-  // verifying its animals is the count check in one press. Empty in
-  // video mode, for a photo (the frame is the whole file) and once the
-  // frame is done, when the sign-off takes the button back.
-  const onFrame = useMemo(() => {
-    if (!file || file.file_type !== "video" || viewMode === "video") return [];
+  // What you see, the scope with nothing selected: a photo's boxes, or
+  // the animals on the clip frame shown (the tracks whose boxes the
+  // canvas draws, through their cards, verified or not, like a photo's
+  // boxes). After MaxN this is the count's frame, and verifying it is
+  // the count check in one press. Empty in video mode: the still is
+  // what a person judges, and P brings it back on the paused moment.
+  const onScreen = useMemo(() => {
+    if (!file) return [];
+    if (file.file_type !== "video") return cards;
+    if (viewMode === "video") return [];
     const tracks = new Set(visibleBoxes.map((d) => d.track_id));
-    return cards.filter((d) => d.track_id && tracks.has(d.track_id) && !d.verified);
+    return cards.filter((d) => d.track_id && tracks.has(d.track_id));
   }, [file, viewMode, visibleBoxes, cards]);
 
-  // The one scope rule: the selected box, else every detection in the file.
+  // The one scope rule: the selected detection, else what you see.
   const targetIds = useMemo(
-    () => (selectedDetectionId ? [selectedDetectionId] : cards.map((d) => d.id)),
-    [selectedDetectionId, cards],
+    () => (selectedDetectionId ? [selectedDetectionId] : onScreen.map((d) => d.id)),
+    [selectedDetectionId, onScreen],
   );
   // The wording rule for the box actions: the button says what it does
   // (verb + result), the card's caption says what they act on, and the
   // tooltips spell out the full sentence with the scope. Matches the
-  // Detections bar's texts. Only the majority button carries a scope
-  // word ("all"): it is the one action that ignores the selection, and
-  // without it it would read like a quick label while acting on more.
-  // A clip's unit is the detection (one track each), a photo's the box.
+  // Detections bar's texts. Only the majority button carries the scope:
+  // it is the one action that ignores the selection, and without it it
+  // would read like a quick label while acting on more. A clip's unit
+  // is the detection (one track each), a photo's the box.
   const unit = file?.file_type === "video" ? "detection" : "box";
   const units = file?.file_type === "video" ? "detections" : "boxes";
   const noun = file?.file_type === "video" ? "clip" : "photo";
+  // What you see, in words: "all 12 boxes", "the 17 detections on this frame".
+  const seen =
+    file?.file_type === "video"
+      ? `the ${onScreen.length} ${units} on this frame`
+      : `all ${onScreen.length} ${units}`;
   const scope =
-    selectedDetectionId || cards.length === 1
+    selectedDetectionId || onScreen.length === 1
       ? `the ${unit}`
-      : cards.length === 0
+      : onScreen.length === 0
         ? `the ${units}`
-        : `all ${cards.length} ${units}`;
-  // The sign-off button names its scope and its size, because it sits
-  // under a column of actions that read "Verify" too and act on one
-  // box: "Verify all 12 detections" says what one press commits to,
-  // which on a long drop is the warning a person needs. The file's
-  // whole count, not the unverified rest, because signing off means
-  // "the boxes you see are all there is", not "the rest are fine".
+        : seen;
+  // The primary button names what one press commits to, because it
+  // sits under a column of actions that read "Verify" too. A photo's is
+  // its boxes, the whole picture; a clip's is the frame shown, the one
+  // number a person can check. The whole clip is the outline button
+  // under it, behind the confirm.
   const verifyLabel =
     cards.length === 0
       ? `Verify empty ${noun}`
-      : cards.length === 1
-        ? `Verify 1 ${unit}`
-        : `Verify all ${cards.length} ${units}`;
-  const majority = useMemo(() => labelMajority(cards), [cards]);
+      : file?.file_type !== "video"
+        ? cards.length === 1
+          ? `Verify 1 ${unit}`
+          : `Verify all ${cards.length} ${units}`
+        : onScreen.length === 0
+          ? "Verify this frame"
+          : `Verify the ${onScreen.length} on this frame`;
+  const majority = useMemo(() => labelMajority(onScreen), [onScreen]);
+  // How many detections a whole-clip sign-off would verify unseen.
+  const unchecked = useMemo(
+    () => (file ? uncheckedCards(file, project?.counting_threshold ?? 0).length : 0),
+    [file, project?.counting_threshold],
+  );
 
   // The clip's MaxN frame per species, for the timeline's markers and
   // its MaxN buttons: the file's own number, the one its tile shows.
@@ -519,25 +576,65 @@ export function FileDetailModal({
     [activeLabel],
   );
 
-  /** The card still waiting after `id`: the next unverified animal of a
-   *  clip in the timeline's order (species by species, in time within
-   *  a species), or the next unverified box of a photo, wrapping round.
-   *  Undefined when nothing else waits. Read before the verdict lands,
-   *  so `id` is still in the list; when it is not (a verdict on a box
-   *  already verified) the walk starts at the front. Walking the list
-   *  rather than taking its head is what keeps V, X, R and U on the
-   *  species a person is checking: taking the head (until 2026-10-30)
-   *  jumped to whatever species came first in the alphabet. */
+  /** The card still waiting after a verdict on `ids`, undefined when
+   *  nothing else waits. Read before the verdict lands.
+   *
+   *  A clip walks forward in time from the frame on screen, by the
+   *  frame each animal is shown on (its representative frame): the
+   *  unchecked animal whose frame comes first at or after the one on
+   *  screen, whatever its species, the ones just acted on left out, and
+   *  the earliest remaining one only when nothing lies ahead. So the
+   *  picture only ever moves forward until it wraps. Ordering by the
+   *  bar's start instead (an hour on 2026-11-03) picked long-lived
+   *  animals that had started earlier, and V V V on a shoal walked the
+   *  picture backwards. Anchored on the frame, not on a place in a
+   *  list, so a verdict on the frame, on a selected animal, or on one
+   *  already checked (Backspace on a fish of a frame just verified)
+   *  all move on from where the person is. Until 2026-11-03 the walk
+   *  was species by species and started over at the front whenever
+   *  the acted animal was not in the list, which on a 74 minute drop
+   *  threw the picture back to the first fish. A photo walks its boxes
+   *  in list order, wrapping round. */
   const nextWaitingAfter = useCallback(
-    (id: string) => {
-      const pending = file ? uncheckedCards(file, project?.counting_threshold ?? 0) : [];
-      const rest = pending.filter((d) => d.id !== id);
-      if (rest.length === 0) return undefined;
-      const at = pending.findIndex((d) => d.id === id);
-      return rest[Math.max(at, 0) % rest.length];
+    (ids: string[]) => {
+      const threshold = project?.counting_threshold ?? 0;
+      const all = file ? uncheckedCards(file, threshold) : [];
+      const done = new Set(ids);
+      const pending = all.filter((d) => !done.has(d.id));
+      if (!file || pending.length === 0) return undefined;
+      if (file.file_type !== "video") {
+        const at = all.findIndex((d) => done.has(d.id));
+        return pending[Math.max(at, 0) % pending.length];
+      }
+      const frameOf = new Map(file.tracks.map((t) => [t.id, t.representative_frame_number]));
+      const shownOn = (d: { track_id: string | null }) =>
+        d.track_id ? (frameOf.get(d.track_id) ?? 0) : 0;
+      const anchor = shownFrame ?? file.best_frame_number ?? 0;
+      const inTime = [...pending].sort(
+        (a, b) => shownOn(a) - shownOn(b) || a.id.localeCompare(b.id),
+      );
+      return inTime.find((d) => shownOn(d) >= anchor) ?? inTime[0];
     },
-    [file, project?.counting_threshold],
+    [file, project?.counting_threshold, shownFrame],
   );
+
+  /** The frame the next verdict will land on, asked for as soon as the
+   *  current picture is on screen, so a run of V V V does not wait at
+   *  each step: the walk is deterministic (`nextWaitingAfter`), every
+   *  frame is cut from the clip on request, and on an external drive
+   *  that took 17 seconds a frame (SLiSN_016, 2026-11-03). The backend
+   *  keeps the decoded frame and the browser the JPEG, so the step
+   *  itself then costs nothing. Only after the load, never alongside
+   *  it: two decodes on the same slow drive slow the one on screen. */
+  const warmNextFrame = useCallback(() => {
+    if (!file || file.file_type !== "video") return;
+    const next = nextWaitingAfter(targetIds);
+    const track = next?.track_id ? file.tracks.find((t) => t.id === next.track_id) : undefined;
+    if (!track || track.representative_frame_number === file.best_frame_number) return;
+    // Relative and in this form, exactly as `AnnotationCanvas` builds
+    // it, or the browser cache entry would not be the one it reads.
+    new Image().src = `/api/files/${file.id}/image?frame=${track.representative_frame_number}`;
+  }, [file, targetIds, nextWaitingAfter]);
 
   /** Select a card, or nothing. A clip's card goes through `selectTrack`,
    *  so the picture moves to that animal's own frame exactly as a bar
@@ -550,158 +647,131 @@ export function FileDetailModal({
     [selectTrack],
   );
 
-  /** What follows a verdict on a selected box or animal: the selection
-   *  walks to the next card still waiting, and when nothing waits the
-   *  file is signed off and the viewer moves on, exactly as Enter does.
-   *  Not a courtesy: the backend's rollup flips `File.verified` the
-   *  moment the last reviewable box is verified, without rejecting the
-   *  weak boxes underneath, so without the sign-off here a V on the
-   *  last box left a file that read verified, was not, and stayed on
-   *  screen with an "Unverify" button nobody had asked for. One box
-   *  selected or none, the last verdict on a file now ends the same
-   *  way. */
+  /** What follows a verdict on `ids`, decided before it lands so the
+   *  lists still hold the cards it touches. One rule for every verdict:
+   *  the viewer moves to the next animal still waiting
+   *  (`nextWaitingAfter`) and stays in the mode the verdict came from.
+   *  A verdict on a selected animal selects the next one, so V V V
+   *  walks the clip animal by animal, the step the grid and the card
+   *  modal take. A verdict on the frame, nothing selected, shows the
+   *  next animal's frame and selects nothing, so Enter Enter Enter
+   *  walks it frame by frame with the outlines on the lane saying what
+   *  the next Enter covers; selecting the next animal here (until
+   *  2026-11-03) turned a frame pass into a bar pass after one press.
+   *  Nothing left: the file is signed off and the viewer moves on,
+   *  exactly as Enter on a photo always did. Not a courtesy: the
+   *  backend's rollup flips `File.verified` the moment the last card
+   *  is verified, without rejecting the weak boxes underneath, so
+   *  without the sign-off here a V on the last animal left a file that
+   *  read verified, was not, and stayed on screen with an "Unverify"
+   *  button nobody had asked for. */
   const settleAfter = useCallback(
-    (next: { id: string; track_id: string | null } | undefined) => {
-      if (next) {
-        selectCard(next);
+    (ids: string[]) => {
+      const next = nextWaitingAfter(ids);
+      if (!next) return verifyAndAdvance;
+      const fromSelection = selectedDetectionId != null;
+      return () => {
+        if (fromSelection) selectCard(next);
+        else if (next.track_id) {
+          const track = file?.tracks.find((t) => t.id === next.track_id);
+          if (track) showFrame(track.representative_frame_number);
+        }
         handleCanvasChange();
-      } else {
-        verifyAndAdvance();
-      }
+      };
     },
-    [selectCard, handleCanvasChange, verifyAndAdvance],
+    [
+      nextWaitingAfter,
+      verifyAndAdvance,
+      selectedDetectionId,
+      selectCard,
+      file,
+      showFrame,
+      handleCanvasChange,
+    ],
   );
 
-  /** The primary action in frame mode with nothing selected: verify the
-   *  unchecked animals on the frame shown, one request, and stay on
-   *  that frame: the person is checking a count, not walking the clip,
-   *  so the picture must not jump to the clip's first animal (it did,
-   *  2026-11-03). When nothing in the clip waits any more the clip is
-   *  signed off and the viewer moves on, as the last verdict always
-   *  does. */
-  const verifyFrame = useCallback(() => {
-    const ids = onFrame.map((d) => d.id);
-    if (ids.length === 0) return;
-    const pending = file ? uncheckedCards(file, project?.counting_threshold ?? 0) : [];
-    const done = new Set(ids);
-    const nothingLeft = pending.every((d) => done.has(d.id));
-    detectionsApi
-      .bulkVerify(ids, true)
-      .then(() => {
-        setUndoStack((st) => [...st, ids]);
-        if (nothingLeft) verifyAndAdvance();
-        else handleCanvasChange();
-      })
-      .catch((err: Error) => toast.error(err.message));
-  }, [onFrame, file, project?.counting_threshold, verifyAndAdvance, handleCanvasChange]);
+  /** "The AI got these right": verify `ids` with the labels they carry,
+   *  no search and no dialog. Enter sends what is on screen, V what is
+   *  targeted. `bulk-verify` expands to the whole track on the way in,
+   *  so one press stands for every frame the animal was followed
+   *  through, like the other verdicts. Agreeing is the most common
+   *  verdict of all on a clip the detector handled well, so a drop is
+   *  V V V R V X. No ids and nothing left (an empty file) is the
+   *  sign-off; no ids while something waits (video mode, a frame
+   *  without a box) is nothing. */
+  const verify = useCallback(
+    (ids: string[]) => {
+      const after = settleAfter(ids);
+      if (ids.length === 0) {
+        // `settleAfter` hands back `verifyAndAdvance` itself when nothing
+        // waits; anything else would only refetch the file for nothing.
+        if (after === verifyAndAdvance) verifyAndAdvance();
+        return;
+      }
+      detectionsApi
+        .bulkVerify(ids, true)
+        .then(() => {
+          // Same stack as a relabel: `bulkRevertToOriginal` undoes a
+          // human verify as well as a human label.
+          setUndoStack((s) => [...s, ids]);
+          after();
+        })
+        .catch((err: Error) => toast.error(err.message));
+    },
+    [settleAfter, verifyAndAdvance],
+  );
+  const verifyOnScreen = useCallback(
+    () => verify(onScreen.map((d) => d.id)),
+    [verify, onScreen],
+  );
+  const markTargetsCorrect = useCallback(() => verify(targetIds), [verify, targetIds]);
 
   /** Every label action goes through here: the grid's `bulk-relabel`
-   *  (which verifies), then the undo stack, then a refresh.
-   *
-   *  `advance`: a whole-picture action (no box selected) is a complete
-   *  verdict, so it signs the file off and moves on to the next file in
-   *  the same press, like the card modal's X/U/1-5: X,Enter,X,Enter
-   *  becomes X,X. The verify is the same idempotent PATCH as Enter, so
-   *  the weak boxes are rejected identically. A selected-box action
-   *  moves the selection to the next card still waiting in this file,
-   *  the same step the grid and the card modal take after every
-   *  verdict, so X-X-X means the same thing on every surface, and the
-   *  last one signs the file off like Enter (`settleAfter`). Until
-   *  2026-10-30 it stayed put, so the viewer alone needed a click
-   *  between verdicts and an Enter after the last. */
+   *  (which verifies), then the undo stack, then `settleAfter`'s step. */
   const applyLabel = useCallback(
-    (
-      ids: string[],
-      label: string | null,
-      category: string | undefined,
-      advance = false,
-    ) => {
+    (ids: string[], label: string | null, category: string | undefined) => {
       if (ids.length === 0) return;
-      const next = !advance && ids.length === 1 ? nextWaitingAfter(ids[0]) : undefined;
+      const after = settleAfter(ids);
       detectionsApi
         .bulkRelabel(ids, label, category)
         .then(() => {
           setUndoStack((s) => [...s, ids]);
-          if (advance) {
-            setSelectedDetectionId(null);
-            verifyAndAdvance();
-          } else {
-            settleAfter(next);
-          }
+          after();
         })
         .catch((err: Error) => toast.error(err.message));
     },
-    [verifyAndAdvance, nextWaitingAfter, settleAfter],
+    [settleAfter],
   );
 
-  const wholePicture = selectedDetectionId === null;
-  // Whether the big button and Enter verify the frame shown right now.
-  const frameVerify = !isVerified && wholePicture && onFrame.length > 0;
-  /** V: "the AI got this one right". Verifies what is selected with the
-   *  label it already carries, no search and no dialog, then moves the
-   *  selection to the next card still waiting. Agreeing is the most
-   *  common verdict of all on a clip the detector handled well, and it
-   *  was the one verdict with no key: accepting a track meant relabelling
-   *  it to the species it already said. A drop is now V V V R V X.
-   *
-   *  `bulk-verify` expands to the whole track on the way in, so one
-   *  press stands for every frame the animal was followed through, like
-   *  the other verdicts.
-   *
-   *  With nothing selected the scope is the whole file, and that is what
-   *  Enter already means, so it hands over rather than verifying the
-   *  cards one at a time. Not a shortcut: a file verify also rejects the
-   *  boxes under the threshold, and a card-by-card verify would leave
-   *  them to come back the moment the slider drops, which is the bug
-   *  `set_file_verified` exists to prevent. */
-  const markTargetsCorrect = useCallback(() => {
-    if (wholePicture) {
-      verifyAndAdvance();
-      return;
-    }
-    const id = selectedDetectionId;
-    if (!id) return;
-    const next = nextWaitingAfter(id);
-    detectionsApi
-      .bulkVerify([id], true)
-      .then(() => {
-        // Same stack as a relabel: `bulkRevertToOriginal` undoes a human
-        // verify as well as a human label.
-        setUndoStack((s) => [...s, [id]]);
-        settleAfter(next);
-      })
-      .catch((err: Error) => toast.error(err.message));
-  }, [wholePicture, verifyAndAdvance, selectedDetectionId, nextWaitingAfter, settleAfter]);
 
   const markTargetsFalse = useCallback(
-    () => applyLabel(targetIds, "false detection", undefined, wholePicture),
-    [applyLabel, targetIds, wholePicture],
+    () => applyLabel(targetIds, "false detection", undefined),
+    [applyLabel, targetIds],
   );
   const markTargetsUnknown = useCallback(
-    () => applyLabel(targetIds, "unknown", undefined, wholePicture),
-    [applyLabel, targetIds, wholePicture],
+    () => applyLabel(targetIds, "unknown", undefined),
+    [applyLabel, targetIds],
   );
   const relabelTargetsNow = useCallback(() => {
     if (targetIds.length) setRelabelTargets(targetIds);
   }, [targetIds]);
-  /** M: every visible box takes the picture's most common label. Ties
-   *  resolve as in the grid, to the label counted first. */
+  /** M: everything on screen takes the most common label among them.
+   *  Ties resolve as in the grid, to the label counted first. */
   const matchMajority = useCallback(() => {
-    if (!majority || cards.length < 2) return;
+    if (!majority || onScreen.length < 2) return;
     applyLabel(
-      cards.map((d) => d.id),
+      onScreen.map((d) => d.id),
       majority.label,
       majority.category,
-      wholePicture,
     );
-  }, [applyLabel, majority, cards, wholePicture]);
+  }, [applyLabel, majority, onScreen]);
   const applyShortcut = useCallback(
     (slot: number) => {
       const option = shortcutLabels[slot];
       if (!option) return;
-      applyLabel(targetIds, option.label, option.category, wholePicture);
+      applyLabel(targetIds, option.label, option.category);
     },
-    [applyLabel, shortcutLabels, targetIds, wholePicture],
+    [applyLabel, shortcutLabels, targetIds],
   );
 
   const handleUndo = useCallback(() => {
@@ -743,6 +813,8 @@ export function FileDetailModal({
     // on the file we are leaving would ask for that batch twice.
     if (!item || loadingMore) return;
     const onKey = (e: KeyboardEvent) => {
+      // The confirm has the keyboard: its Enter must not also verify.
+      if (signOffOpen) return;
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement
@@ -759,12 +831,15 @@ export function FileDetailModal({
         return;
       }
       const key = e.key.toLowerCase();
-      if (e.key === "ArrowRight") { e.preventDefault(); go(1); }
-      else if (e.key === "ArrowLeft") { e.preventDefault(); go(-1); }
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        const dir = e.key === "ArrowRight" ? 1 : -1;
+        if (e.shiftKey) stepFrame(dir);
+        else go(dir);
+      }
       else if (e.key === "Enter" && !drawMode) {
         e.preventDefault();
-        if (frameVerify) verifyFrame();
-        else verifyAndAdvance();
+        verifyOnScreen();
       } else if (key === "z" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         handleUndo();
@@ -780,7 +855,7 @@ export function FileDetailModal({
         // still and the real clip, at the frame on screen.
         if (playable) {
           e.preventDefault();
-          if (viewMode === "video") setViewMode("frame");
+          if (viewMode === "video") backToStill();
           else watch();
         }
       } else if (key === "b") {
@@ -821,7 +896,10 @@ export function FileDetailModal({
     item,
     go,
     drawMode,
-    verifyAndAdvance,
+    stepFrame,
+    verifyOnScreen,
+    backToStill,
+    signOffOpen,
     loadingMore,
     cycleSelection,
     markTargetsFalse,
@@ -866,7 +944,7 @@ export function FileDetailModal({
 
   if (!item) return null;
 
-  const noBoxes = cards.length === 0;
+  const noTargets = targetIds.length === 0;
   const freeSlot = [1, 2, 3, 4, 5].find((n) => !shortcutLabels[n]);
 
   return (
@@ -912,6 +990,7 @@ export function FileDetailModal({
                 onAutoExportConsumed={() => setPendingVideoExport(false)}
                 boxesHidden={boxesHidden}
                 seekRequest={seekRequest}
+                pauseFnRef={pauseFnRef}
                 selectedTrackId={selectedTrackId}
                 zoomStep={timelineZoom}
                 onZoomStep={setTimelineZoom}
@@ -929,6 +1008,8 @@ export function FileDetailModal({
                 onDrawModeChange={setDrawMode}
                 onMutated={handleCanvasChange}
                 onCreated={handleCreated}
+                onLoaded={warmNextFrame}
+                onScrubFrame={stepFrame}
                 boxesHidden={boxesHidden}
                 defaultCategory={activeLabel?.category ?? "animal"}
                 defaultLabel={activeLabel?.label ?? undefined}
@@ -1035,9 +1116,11 @@ export function FileDetailModal({
             {/* Carries the scope so the buttons do not have to: what
                 they act on, and how to narrow it. */}
             <p className="mb-2 text-xs text-muted-foreground">
-              {file?.file_type === "video"
-                ? "These act on the detection you select: click a box, Tab through them, or click a bar. None selected means every detection in the clip."
-                : "These act on the box you select, with a click or Tab. None selected means all boxes."}
+              {file?.file_type !== "video"
+                ? "These act on the box you select, with a click or Tab. None selected means all boxes."
+                : viewMode === "video"
+                  ? "These act on the detection you select by clicking a bar. Press P to come back to the still on the moment you paused; with nothing selected they act on the detections that frame shows."
+                  : "These act on the detection you select: click a box, Tab through them, or click a bar. None selected means every detection on this frame, each through all of its frames."}
             </p>
             <div className="space-y-1.5">
               {/* First, because agreeing is the commonest verdict on a
@@ -1048,12 +1131,12 @@ export function FileDetailModal({
                 variant="outline"
                 size="sm"
                 className="w-full justify-center"
-                disabled={noBoxes}
+                disabled={noTargets}
                 onClick={markTargetsCorrect}
                 title={
                   selectedDetectionId
                     ? `Verify ${scope} with the label it already has and go to the next one`
-                    : `Verify every ${unit} in this ${noun} as it is and go to the next file`
+                    : `Verify ${scope} as labelled`
                 }
               >
                 <Check className="h-4 w-4 mr-1" />
@@ -1078,7 +1161,7 @@ export function FileDetailModal({
                 variant="outline"
                 size="sm"
                 className="w-full justify-center"
-                disabled={noBoxes}
+                disabled={noTargets}
                 onClick={markTargetsFalse}
                 title={`Mark ${scope} as false and verify`}
               >
@@ -1091,7 +1174,7 @@ export function FileDetailModal({
                 variant="outline"
                 size="sm"
                 className="w-full justify-center"
-                disabled={noBoxes}
+                disabled={noTargets}
                 onClick={markTargetsUnknown}
                 title={`Mark ${scope} as unidentifiable animals and verify`}
               >
@@ -1100,16 +1183,16 @@ export function FileDetailModal({
                 <Kbd>U</Kbd>
               </Button>
 
-              {/* Whole picture only, whatever is selected: a majority is
+              {/* What is on screen, whatever is selected: a majority is
                   a statement about the set. Hidden when it cannot mean
                   anything (one box, or no labels). */}
-              {majority && cards.length >= 2 && (
+              {majority && onScreen.length >= 2 && (
                 <Button
                   variant="outline"
                   size="sm"
                   className="w-full justify-center"
                   onClick={matchMajority}
-                  title={`Relabel all ${cards.length} ${units} to ${majority.common_name ?? majority.label} and verify`}
+                  title={`Relabel ${seen} to ${majority.common_name ?? majority.label} and verify`}
                 >
                   <CheckCheck className="h-4 w-4 mr-1 shrink-0" />
                   <span className="truncate">
@@ -1123,7 +1206,7 @@ export function FileDetailModal({
                 variant="outline"
                 size="sm"
                 className="w-full justify-center"
-                disabled={noBoxes}
+                disabled={noTargets}
                 onClick={relabelTargetsNow}
                 title={`Relabel ${scope} and verify`}
               >
@@ -1147,7 +1230,7 @@ export function FileDetailModal({
                       variant="outline"
                       size="sm"
                       className="min-w-0 flex-1 justify-center rounded-r-none border-r-0"
-                      disabled={noBoxes}
+                      disabled={noTargets}
                       onClick={() => applyShortcut(n)}
                       title={`Relabel ${scope} to ${shortcutLabels[n].displayName} and verify`}
                     >
@@ -1239,39 +1322,54 @@ export function FileDetailModal({
             <Kbd>{UNDO_KBD}</Kbd>
           </Button>
 
-          {frameVerify && (
-            <Button
-              className="w-full justify-center"
-              size="sm"
-              onClick={verifyFrame}
-              disabled={verifying}
-              title={`Verify the ${onFrame.length} unchecked animals on the frame shown, every frame of each, and stay here`}
-            >
-              <Check className="h-4 w-4 mr-1" />
-              Verify the {onFrame.length} on this frame
-              <Kbd onPrimary>⏎</Kbd>
-            </Button>
-          )}
           <Button
             className="w-full justify-center"
             size="sm"
-            variant={isVerified || frameVerify ? "outline" : "default"}
+            variant={isVerified ? "outline" : "default"}
             onClick={
               isVerified
                 ? () => setVerified({ id: item.id, verified: false })
-                : verifyAndAdvance
+                : verifyOnScreen
             }
-            disabled={verifying}
+            disabled={verifying || (!isVerified && cards.length > 0 && onScreen.length === 0)}
             title={
               isVerified
                 ? "Unverify: hand every detection in this file back to the AI"
-                : `Verify every ${unit} in this ${noun} as it is and go to the next file`
+                : file?.file_type === "video"
+                  ? "Verify every detection on this frame, each through all of its frames, and go on to the next animal still unchecked. The clip is signed off once nothing in it is left unchecked."
+                  : `Verify every ${unit} in this ${noun} as it is and go to the next file`
             }
           >
             <Check className="h-4 w-4 mr-1" />
             {isVerified ? "Unverify" : verifyLabel}
-            {!isVerified && !frameVerify && <Kbd onPrimary>⏎</Kbd>}
+            {!isVerified && <Kbd onPrimary>⏎</Kbd>}
           </Button>
+
+          {/* The whole clip, the one scope a person cannot see: a button
+              without a key, behind a confirm that says how many would
+              count as verified unseen. No number on the button: the
+              dialog carries them, and "all 1 detections" reads wrong. */}
+          {file?.file_type === "video" && !isVerified && cards.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full justify-center"
+              disabled={verifying}
+              onClick={() => setSignOffOpen(true)}
+              title="Verify every detection in this clip, the ones you have not looked at too, and go to the next file. Asks first."
+            >
+              <CheckCheck className="h-4 w-4 mr-1" />
+              Verify the whole clip
+            </Button>
+          )}
+          <SignOffDialog
+            open={signOffOpen}
+            onOpenChange={setSignOffOpen}
+            clips={1}
+            detections={cards.length}
+            unchecked={unchecked}
+            onConfirm={verifyAndAdvance}
+          />
 
           {/* Two searches, no triggers of their own. The first names the
               boxes in `relabelTargets`: opened by drawing one, by R, or
@@ -1284,13 +1382,11 @@ export function FileDetailModal({
             onSelect={(option) => {
               const ids = relabelTargets;
               setRelabelTargets(null);
-              // Same advance rule as the keys: a whole-picture relabel
-              // is the verdict and moves on to the next file; a selected
-              // box (including a freshly drawn one, which arrives
-              // selected) hands the selection to the next waiting card.
-              if (ids) {
-                applyLabel(ids, option.label, option.category, wholePicture);
-              }
+              // Same rule as the keys: a selected box (including a
+              // freshly drawn one, which arrives selected) hands the
+              // selection to the next waiting card; the last verdict on
+              // a file signs it off.
+              if (ids) applyLabel(ids, option.label, option.category);
             }}
             options={labelOptions}
             isLoading={labelOptionsLoading}

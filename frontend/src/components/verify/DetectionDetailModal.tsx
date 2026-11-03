@@ -19,7 +19,7 @@ import { eventsApi } from "../../api/events";
 import { projectsApi } from "../../api/projects";
 import { API_BASE_URL } from "../../lib/api-client";
 import { formatCameraDate, formatCameraTime, formatClipPosition } from "../../lib/datetime";
-import { frameBoxes, trackPath } from "../../lib/track-utils";
+import { frameBoxes, samplingStep, trackGaps, trackPath } from "../../lib/track-utils";
 import { TrackSpan } from "./TrackTimeline";
 import {
   getDetectionColor,
@@ -27,7 +27,7 @@ import {
   stillFrameFor,
 } from "../../lib/detection-utils";
 import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
-import { SlowHint } from "./SlowHint";
+import { FrameWait } from "./FrameWait";
 import { FrameThumbnail } from "./FrameThumbnail";
 import { ContextCard } from "./ContextCard";
 import {
@@ -598,10 +598,7 @@ export function DetectionDetailModal({
                 />
               )}
               {fileData && stillLoading && !imageFailed && fileData.file_type === "video" && (
-                <SlowHint
-                  key={stillSrc}
-                  className="pointer-events-none absolute left-2 top-2 z-10 max-w-sm rounded bg-black/60 px-2 py-1 text-left text-white"
-                />
+                <FrameWait key={stillSrc} />
               )}
               {!imageFailed && !boxesHidden && fullDetection && fullDetection.bbox_x !== null && (() => {
                 // Event-level observations carry no bbox and never reach
@@ -762,14 +759,25 @@ export function DetectionDetailModal({
                     {/* Where in the clip this animal was. */}
                     {fullDetection?.track_id && (() => {
                       const track = fileData.tracks.find((t) => t.id === fullDetection.track_id);
-                      return track ? (
+                      if (!track) return null;
+                      // The bar's holes, as the timeline draws them.
+                      const tracked = fileData.detections.filter((d) => d.track_id);
+                      const step = samplingStep(tracked.map((d) => d.frame_number!));
+                      const half = Math.max(step, 1) / 2;
+                      const own = tracked.filter((d) => d.track_id === track.id);
+                      return (
                         <TrackSpan
                           track={track}
                           frameRate={fileData.frame_rate}
                           durationSeconds={fileData.duration_seconds}
                           color={getDetectionColor(fullDetection)}
+                          bar={{
+                            start: track.start_frame - half,
+                            end: track.end_frame + half,
+                            gaps: trackGaps(own.map((d) => d.frame_number!), step),
+                          }}
                         />
-                      ) : null;
+                      );
                     })()}
                     <div>
                       <button
