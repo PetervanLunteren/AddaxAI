@@ -82,7 +82,7 @@ def test_non_ascii_output_survives_a_real_pipe():
         encoding="utf-8",
         errors="replace",
         bufsize=1,
-        env=md_module.clean_python_env(PYTHONIOENCODING="utf-8"),
+        env=md_module.clean_python_env(),
     )
     lines = [line.strip() for line in process.stdout]
     process.wait()

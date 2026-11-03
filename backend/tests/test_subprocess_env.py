@@ -29,6 +29,13 @@ def test_clean_python_env_makes_a_native_crash_leave_a_trace(monkeypatch):
     assert env["PYTHONUNBUFFERED"] == "1"
 
 
+def test_clean_python_env_makes_the_child_write_utf8(monkeypatch):
+    # The readers decode as UTF-8, so the child must write it, whatever
+    # the user's shell exported (cp932 here) or the locale would pick.
+    monkeypatch.setenv("PYTHONIOENCODING", "cp932")
+    assert clean_python_env()["PYTHONIOENCODING"] == "utf-8"
+
+
 def test_clean_python_env_overrides_win(monkeypatch):
     monkeypatch.delenv("PYTHONPATH", raising=False)
     env = clean_python_env(CUDA_VISIBLE_DEVICES="-1", PIP_RETRIES="5")

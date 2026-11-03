@@ -425,6 +425,8 @@ def run_postprocessing_for_deployment(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             env=clean_python_env(),
         )
         timeout_s = _smoothing_timeout_s(len(md_results.get("images") or []))

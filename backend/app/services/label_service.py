@@ -155,6 +155,8 @@ def stream_labels_subprocess(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         env=env,
         bufsize=1,
     )
@@ -422,6 +424,8 @@ async def stream_labels_subprocess_async(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         env=env,
         bufsize=1,
     )
