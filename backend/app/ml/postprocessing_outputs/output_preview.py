@@ -51,6 +51,7 @@ from app.models import (
     Project,
 )
 
+from ._label_filter import label_matches_filter
 from ._scope import MediaScope
 from .separate_folders import (
     NameMode,
@@ -257,13 +258,7 @@ def build_output_preview(
     taxonomy_by_name = _load_taxonomy_map(db, project)
 
     def _row_is_excluded(row) -> bool:
-        if not excluded:
-            return False
-        if row.label_taxonomy_id and row.label_taxonomy_id in excluded:
-            return True
-        if row.label and row.label in excluded:
-            return True
-        return False
+        return label_matches_filter(row.label, row.label_taxonomy_id, excluded)
 
     def _row_passes(row) -> bool:
         return row.confidence >= threshold or row.verified

@@ -73,7 +73,7 @@ from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
 from app.models import Deployment, Detection, File, Project
 
 from ._exif_writer import ExifBatch, build_tag_set, is_image_path
-from ._label_filter import file_is_dropped_by_filter
+from ._label_filter import detection_is_excluded, file_is_dropped_by_filter
 from ._output_context import OutputContext
 from ._scope import MediaScope
 from ._visualisation_style import (
@@ -470,10 +470,7 @@ def _detections_to_draw(
     if excluded_label_ids:
         detections = [
             d for d in detections
-            if not (
-                (d.label_taxonomy_id and d.label_taxonomy_id in excluded_label_ids)
-                or (d.label and d.label in excluded_label_ids)
-            )
+            if not detection_is_excluded(d, excluded_label_ids)
         ]
     return detections
 

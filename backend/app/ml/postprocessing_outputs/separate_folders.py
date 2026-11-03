@@ -127,6 +127,7 @@ from app.models.event import event_files
 from ._exif_writer import ExifBatch, build_tag_set, is_image_path
 from ._label_filter import (
     file_is_dropped_by_filter,
+    label_matches_filter,
     strongest_label_for_file,
 )
 from ._output_context import OutputContext
@@ -307,13 +308,7 @@ def build_event_primary_labels(
     excluded = excluded_label_ids or frozenset()
 
     def _is_excluded(row) -> bool:
-        if not excluded:
-            return False
-        if row.label_taxonomy_id and row.label_taxonomy_id in excluded:
-            return True
-        if row.label and row.label in excluded:
-            return True
-        return False
+        return label_matches_filter(row.label, row.label_taxonomy_id, excluded)
 
     rows = [r for r in rows if not _is_excluded(r)]
 
