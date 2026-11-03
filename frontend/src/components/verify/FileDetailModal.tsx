@@ -945,6 +945,10 @@ export function FileDetailModal({
   if (!item) return null;
 
   const noTargets = targetIds.length === 0;
+  // A clip with detections but none on the frame shown (video mode, a
+  // frame between animals): Enter has nothing to do, so the button is
+  // off and shows no key.
+  const nothingOnScreen = cards.length > 0 && onScreen.length === 0;
   const freeSlot = [1, 2, 3, 4, 5].find((n) => !shortcutLabels[n]);
 
   return (
@@ -1331,7 +1335,7 @@ export function FileDetailModal({
                 ? () => setVerified({ id: item.id, verified: false })
                 : verifyOnScreen
             }
-            disabled={verifying || (!isVerified && cards.length > 0 && onScreen.length === 0)}
+            disabled={verifying || (!isVerified && nothingOnScreen)}
             title={
               isVerified
                 ? "Unverify: hand every detection in this file back to the AI"
@@ -1342,7 +1346,7 @@ export function FileDetailModal({
           >
             <Check className="h-4 w-4 mr-1" />
             {isVerified ? "Unverify" : verifyLabel}
-            {!isVerified && <Kbd onPrimary>⏎</Kbd>}
+            {!isVerified && !nothingOnScreen && <Kbd onPrimary>⏎</Kbd>}
           </Button>
 
           {/* The whole clip, the one scope a person cannot see: a button

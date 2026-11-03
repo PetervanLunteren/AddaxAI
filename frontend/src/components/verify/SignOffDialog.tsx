@@ -5,8 +5,11 @@
  * every box; a clip of 2,289 tracks seen through one frame of 17 does
  * (2026-11-03). Numbers in, so the dialog says what one click commits
  * to and nothing else. A plain confirm, not the type-to-confirm gate an
- * irreversible change gets: Unverify reverses this in one click. Enter
- * confirms, so a person who means it presses Enter twice.
+ * irreversible change gets: Unverify clears the whole clip's checks in
+ * one click, the person's own included, which the text says. The
+ * dialog opens with Cancel focused (the alert dialog's default), so the
+ * Enter a person was already leaning on closes it and verifies nothing;
+ * the sign-off takes a deliberate Tab or click.
  */
 
 import {
@@ -43,9 +46,10 @@ export function SignOffDialog({
           <AlertDialogTitle>Mark every detection correct?</AlertDialogTitle>
           <AlertDialogDescription>
             {clips === 1 ? "This clip holds" : `These ${n(clips)} clips hold`} {n(detections)}{" "}
-            detections, {n(unchecked)} of them still unchecked. One click marks them all
-            correct with the label the AI gave, as if you had looked at each one. Unverify
-            takes that back.
+            {detections === 1 ? "detection" : "detections"}, {n(unchecked)} of them still unchecked. One click marks them all
+            correct with the label the AI gave, as if you had looked at each one. Unverify undoes
+            it for the whole clip: every detection is unchecked again, the ones you checked
+            yourself too, and you start the clip over.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

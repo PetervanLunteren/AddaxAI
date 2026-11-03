@@ -22,7 +22,9 @@ export function FrameWait({
 }) {
   return (
     <div
-      className="pointer-events-none absolute left-2 top-2 z-10 max-w-sm rounded bg-black/60 px-2 py-1 text-xs text-white"
+      // `w-max`: the card modal's picture box is 0 by 0 until the picture
+      // lands, and an absolute child of it shrank to one word per line.
+      className="pointer-events-none absolute left-2 top-2 z-10 w-max max-w-sm rounded bg-black/60 px-2 py-1 text-xs text-white"
       data-testid={testId}
     >
       <span className="flex items-center gap-1.5">

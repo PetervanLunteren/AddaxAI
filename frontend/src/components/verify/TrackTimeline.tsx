@@ -417,8 +417,12 @@ export function TrackTimeline({
                     // are what the frame verify acts on; outline their bars
                     // so the lane says "these N" while the still does. A
                     // bar has a box on the frame where the playhead sits on
-                    // a run, not on a gap's thin line.
+                    // a run, not on a gap's thin line. The Labels viewer's
+                    // alone, like the verdict shading, and never a rejected
+                    // animal: neither is in the N the button counts.
                     const onFrame =
+                      showVerdicts &&
+                      row.verdict !== "rejected" &&
                       selectedTrackId == null &&
                       currentFrame >= row.startFrame &&
                       currentFrame < row.endFrame &&
