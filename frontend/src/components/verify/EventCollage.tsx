@@ -15,7 +15,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Layers } from "lucide-react";
 
-import { filesApi } from "../../api/files";
+import { fileQueryOptions } from "../../api/files";
 import { FrameThumbnail } from "./FrameThumbnail";
 
 interface EventCollageProps {
@@ -108,10 +108,7 @@ function EventCollageTile({
   detectionThreshold,
   className,
 }: EventCollageTileProps) {
-  const { data: file } = useQuery({
-    queryKey: ["file", fileId],
-    queryFn: ({ signal }) => filesApi.get(fileId, { signal }),
-  });
+  const { data: file } = useQuery(fileQueryOptions(fileId, "cards"));
 
   return (
     <FrameThumbnail

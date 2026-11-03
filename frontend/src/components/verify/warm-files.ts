@@ -1,6 +1,6 @@
 /**
- * Pull a set of files into the caches a grid paints from: the file
- * detail (boxes, dimensions) into the query cache, and the thumbnail
+ * Pull a set of files into the caches a grid paints from: the file's
+ * cards (cover boxes, dimensions, MaxN) into the query cache, and the thumbnail
  * into the browser's HTTP cache (the endpoint serves
  * `Cache-Control: max-age=86400, immutable`, so a warmed thumbnail is
  * free on every later request).
@@ -13,15 +13,12 @@
 
 import type { QueryClient } from "@tanstack/react-query";
 
-import { filesApi } from "../../api/files";
+import { fileQueryOptions } from "../../api/files";
 import { API_BASE_URL } from "../../lib/api-client";
 
 export function warmFiles(queryClient: QueryClient, fileIds: string[]): void {
   for (const id of fileIds) {
-    queryClient.prefetchQuery({
-      queryKey: ["file", id],
-      queryFn: () => filesApi.get(id),
-    });
+    queryClient.prefetchQuery(fileQueryOptions(id, "cards"));
     // Must match FrameThumbnail's URL exactly; any difference is a
     // different cache entry and warms nothing.
     new Image().src = `${API_BASE_URL}/api/files/${id}/image?size=thumb`;

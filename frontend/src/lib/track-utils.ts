@@ -96,7 +96,8 @@ export function trackRows(
         : "unverified";
     rows.push({
       track,
-      label: rep.label ?? rep.category,
+      // The group key, shared with the MaxN markers of both surfaces.
+      label: speciesKey(rep),
       displayLabel: getDetectionDisplayName(rep),
       color: getDetectionColor(rep),
       verdict,
@@ -107,7 +108,7 @@ export function trackRows(
   return rows.sort(
     (a, b) =>
       Number(a.verdict === "rejected") - Number(b.verdict === "rejected") ||
-      a.label.localeCompare(b.label) ||
+      a.displayLabel.localeCompare(b.displayLabel) ||
       a.track.start_frame - b.track.start_frame,
   );
 }
@@ -282,34 +283,28 @@ export function cardBoxes(
 export function speciesKey(d: {
   label_taxonomy_id: string | null;
   label: string | null;
-  category: string;
+  category?: string | null;
 }): string {
-  return (d.label_taxonomy_id || d.label || d.category).toLowerCase();
+  return (d.label_taxonomy_id || d.label || d.category || "").toLowerCase();
 }
 
 /**
- * The most boxes of each species seen at once in a file, by
- * `speciesKey`: a photo's boxes per species, a clip's per-frame
- * maximum. It is the MaxN the Counts page reports for the file
- * (`calculate_max_n_for_event`: boxes at the counting threshold or
- * verified, rejected ones left out, counted per frame and species),
- * so a tile and a count row give one number. A clip's tracks are not
- * a count: a fish that leaves the frame and comes back is a new
- * track, and on a BRUV clip the bait bag alone made thousands
- * (HGA_022: 5,154 tracks, 33 fish at once, 2026-11-02).
+ * The timeline's MaxN markers for a file on its own, one per species
+ * with a frame, from the file's `max_at_once`: the backend's count per
+ * frame and species at the counting threshold, the same rule the Counts
+ * page's MaxN follows, so a tile chip, a marker and a count row say one
+ * number. Keyed by `speciesKey`, as the timeline's groups are.
  */
-export function maxAtOnce(file: FileWithDetections, threshold: number): Map<string, number> {
-  const perFrame = new Map<string, number>();
-  const most = new Map<string, number>();
-  for (const d of file.detections) {
-    if (!inScope(d, threshold) || !isDrawableBox(d)) continue;
-    const species = speciesKey(d);
-    const frameKey = `${d.frame_number ?? ""}|${species}`;
-    const n = (perFrame.get(frameKey) ?? 0) + 1;
-    perFrame.set(frameKey, n);
-    if (n > (most.get(species) ?? 0)) most.set(species, n);
+export function fileMaxNMarkers(
+  file: FileWithDetections,
+): { frame: number; label: string; count: number }[] {
+  const markers: { frame: number; label: string; count: number }[] = [];
+  for (const entry of file.max_at_once) {
+    if (entry.frame_number != null) {
+      markers.push({ frame: entry.frame_number, label: speciesKey(entry), count: entry.count });
+    }
   }
-  return most;
+  return markers;
 }
 
 /**
@@ -336,6 +331,36 @@ export function uncheckedCards(
     if (card) pending.push(card);
   }
   return pending;
+}
+
+/**
+ * The frame to show for a moment picked on the timeline: the nearest
+ * frame on which an animal live at that moment has a box, else the
+ * moment itself. The detector samples a clip (every 17th frame at
+ * 50 fps on a 3 fps run), so a lane click or a pan lands between
+ * samples 16 times in 17; the bars say an animal is there while the
+ * still, which draws boxes by exact frame, shows none and the frame
+ * verify button vanishes (2026-11-03). Snapping only when a track is
+ * live keeps an empty moment empty.
+ */
+export function nearestBoxFrame(file: FileWithDetections, frame: number): number {
+  const live = new Set(
+    (file.tracks ?? [])
+      .filter((t) => t.start_frame <= frame && frame <= t.end_frame)
+      .map((t) => t.id),
+  );
+  if (live.size === 0) return frame;
+  let best = frame;
+  let distance = Infinity;
+  for (const d of file.detections) {
+    if (d.frame_number == null || !d.track_id || !live.has(d.track_id)) continue;
+    const gap = Math.abs(d.frame_number - frame);
+    if (gap < distance) {
+      distance = gap;
+      best = d.frame_number;
+    }
+  }
+  return best;
 }
 
 /** Box centres of one track in frame order, in image fractions. */

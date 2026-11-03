@@ -47,7 +47,8 @@ import { SpotlightDim } from "./SpotlightDim";
 import type { FileWithDetections, DetectionResponse } from "../../api/types";
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
 import { clipDurationFrames } from "../../lib/track-utils";
-import { ClipTimeline, type TimelineMarker } from "./TrackTimeline";
+import { SlowHint } from "./SlowHint";
+import { ClipTimeline, type TimelineMarker, type TimelineSurface } from "./TrackTimeline";
 interface VideoPlayerProps {
   file: FileWithDetections;
   detectionThreshold: number;
@@ -67,18 +68,25 @@ interface VideoPlayerProps {
    *  always records the boxes, because an annotated video is the one
    *  thing it produces that the file on disk is not. */
   boxesHidden?: boolean;
-  /** Jump to a frame and pause there (the Counts page's "Show" for the
-   *  frame a MaxN was counted on). The nonce lets the same frame be
-   *  asked for twice in a row. */
-  seekRequest?: { frame: number; nonce: number } | null;
+  /** Jump to a frame: pause there (the Counts page's "Show", a frame to
+   *  look at) or, with `play`, go on from it (P and the play button,
+   *  watching from the frame on screen). The nonce lets the same frame
+   *  be asked for twice in a row. */
+  seekRequest?: { frame: number; nonce: number; play?: boolean } | null;
   /** The animal the person is looking at: its boxes keep the normal
    *  style, every other box dims. Null dims nothing. */
   selectedTrackId?: string | null;
   /** A bar on the timeline was clicked. The player has already jumped to
    *  the track's representative frame; the owner records the choice. */
   onSelectTrack?: (trackId: string) => void;
-  /** Per species, the frame its MaxN was counted on (the Counts modal). */
+  /** Per species, the frame its MaxN was counted on. */
   markers?: TimelineMarker[];
+  /** Which page the timeline under the video belongs to. */
+  surface?: TimelineSurface;
+  /** The timeline's zoom, held by the modal so it survives the switch
+   *  between the still and the player. */
+  zoomStep?: number;
+  onZoomStep?: (step: number) => void;
 }
 
 /** Browser-playable video formats. */
@@ -221,6 +229,9 @@ export function VideoPlayer({
   selectedTrackId = null,
   onSelectTrack,
   markers,
+  surface,
+  zoomStep,
+  onZoomStep,
 }: VideoPlayerProps) {
   // Repaint when the project's colour map lands or changes.
   useSpeciesColorsVersion();
@@ -237,6 +248,12 @@ export function VideoPlayer({
   const [metadataFrames, setMetadataFrames] = useState(0);
   const [displayWidth, setDisplayWidth] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
+  // Between a seek and its `seeked`: the element still shows the old
+  // picture while the browser fetches the new one, seconds into a 9 GB
+  // clip on an external drive. The overlay must not paint the target
+  // frame's boxes over that stale picture (32 fish over the sky, seen
+  // 2026-11-02), so it waits, and a note says why the boxes are gone.
+  const [seeking, setSeeking] = useState(false);
   // Export progress, driven by playback position (recording runs at 1x, so
   // these are exact, not estimates): fraction done and wall-clock seconds left.
   const [exportProgress, setExportProgress] = useState(0);
@@ -325,6 +342,7 @@ export function VideoPlayer({
     if (video) {
       setClocks(video.currentTime);
     }
+    setSeeking(false);
   }, [setClocks]);
 
   /** Jump to a frame and pause there, so that frame's boxes stay on
@@ -366,14 +384,19 @@ export function VideoPlayer({
   }, [videoUrl]);
 
   // Jump to the requested frame and pause there, so the boxes of that
-  // frame stay on screen. Waits for the metadata when the video is not
-  // ready yet (a fresh mount, which is the usual case: the modal switches
-  // to the player and asks for the frame in the same render).
+  // frame stay on screen, or play on from it when the request says so.
+  // Waits for the metadata when the video is not ready yet (a fresh
+  // mount, which is the usual case: the modal switches to the player and
+  // asks for the frame in the same render). Until 2026-11-02 P landed
+  // paused on the frame, which read as "it does not play".
   useEffect(() => {
     if (!seekRequest) return;
     const video = videoRef.current;
     if (!video) return;
-    const seek = () => seekTo(seekRequest.frame);
+    const seek = () => {
+      seekTo(seekRequest.frame);
+      if (seekRequest.play) video.play().catch(() => {});
+    };
     if (video.readyState >= 1) {
       seek();
       return;
@@ -538,9 +561,20 @@ export function VideoPlayer({
           }
           onPlay={handlePlay}
           onPause={handlePause}
+          onSeeking={() => setSeeking(true)}
           onSeeked={handleSeeked}
           onEnded={handlePause}
         />
+
+        {seeking && (
+          <div
+            className="pointer-events-none absolute left-2 top-2 z-10 rounded bg-black/60 px-2 py-1 text-xs text-white"
+            data-testid="video-seeking"
+          >
+            Seeking…
+            <SlowHint className="mt-1 max-w-sm text-left text-white/80" />
+          </div>
+        )}
 
         {/* Recording indicator — centered over the focus while the
             annotated video records. Progress and time-left are exact since
@@ -568,7 +602,7 @@ export function VideoPlayer({
         )}
 
         {/* SVG overlay: spotlight + trail + bboxes + labels */}
-        {!boxesHidden && overlay.boxes.length > 0 && (
+        {!boxesHidden && !seeking && overlay.boxes.length > 0 && (
           <svg
             className="absolute inset-0 w-full h-full pointer-events-none"
             viewBox={`0 0 ${imgW} ${imgH}`}
@@ -687,6 +721,9 @@ export function VideoPlayer({
         currentFrame={currentFrame}
         selectedTrackId={selectedTrackId}
         markers={markers}
+        surface={surface}
+        zoomStep={zoomStep}
+        onZoomStep={onZoomStep}
         onSelectTrack={handleSelectTrack}
         onSeek={seekTo}
       />

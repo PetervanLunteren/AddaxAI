@@ -17,7 +17,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -31,11 +30,10 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { cardBoxes } from "../../lib/track-utils";
+import { cardBoxes, nearestBoxFrame, speciesKey } from "../../lib/track-utils";
 import { ClipTimeline } from "./TrackTimeline";
 import { ApiError } from "../../lib/api-client";
 import { eventsApi } from "../../api/events";
-import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { projectsApi } from "../../api/projects";
 import { basename } from "../../lib/path-utils";
@@ -50,7 +48,6 @@ import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import type {
   EventFilterParams,
   EventObservationItem,
-  EventWithFiles,
   FileWithDetections,
 } from "../../api/types";
 import { EventFilmstrip } from "./EventFilmstrip";
@@ -61,9 +58,15 @@ import { AnnotationCanvas } from "./AnnotationCanvas";
 import { EventCountPanel } from "./EventCountPanel";
 import { LabelPicker } from "./LabelPicker";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
-import { VideoFilmstrip } from "./VideoFilmstrip";
 import { useLabelOptions } from "../../hooks/useLabelOptions";
+import { fileQueryOptions } from "../../api/files";
+import { useResizableHeight } from "../../hooks/useResizableHeight";
+import { persistSetting, readSetting } from "../../lib/local-settings";
+import { ResizeHandle } from "../ui/resize-handle";
 import { invalidateLabelQueries } from "../../lib/invalidate-label-queries";
+
+/** The Counts page's view settings: tile size and the filmstrip height. */
+const COUNTS_SETTINGS = "addaxai:countsSettings";
 
 // Minimum gap between Shift+wheel frame steps, so a trackpad's burst of
 // wheel events per swipe scrubs at a steady ~8 frames/second.
@@ -120,66 +123,27 @@ export function EventDetailModal({
   const { brightness, setBrightness, contrast, setContrast, imageFilter } =
     useImageAdjust();
 
-  // Filmstrip view settings, persisted per user: the resizable filmstrip
-  // height (set by dragging the divider) and the S/M/L thumbnail size.
-  const countsSettings = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem("addaxai:countsSettings") || "{}");
-    } catch {
-      return {};
-    }
-  }, []);
-  const persistCountsSetting = useCallback((key: string, value: unknown) => {
-    try {
-      const cur = JSON.parse(
-        localStorage.getItem("addaxai:countsSettings") || "{}",
-      );
-      cur[key] = value;
-      localStorage.setItem("addaxai:countsSettings", JSON.stringify(cur));
-    } catch {
-      /* ignore */
-    }
-  }, []);
-  const [filmstripHeight, setFilmstripHeight] = useState<number>(
-    countsSettings.filmstripHeight ?? 220,
-  );
+  // Filmstrip view settings, persisted per user under one key: the
+  // S/M/L thumbnail size and the filmstrip height a drag leaves behind.
   const [tileSize, _setTileSize] = useState<TileSize>(
-    countsSettings.tileSize ?? "M",
+    () => (readSetting(COUNTS_SETTINGS, "tileSize") as TileSize | undefined) ?? "M",
   );
-  const setTileSize = useCallback(
-    (v: TileSize) => {
-      _setTileSize(v);
-      persistCountsSetting("tileSize", v);
-    },
-    [persistCountsSetting],
-  );
+  const setTileSize = useCallback((v: TileSize) => {
+    _setTileSize(v);
+    persistSetting(COUNTS_SETTINGS, v, "tileSize");
+  }, []);
   const centerColumnRef = useRef<HTMLDivElement>(null);
-
-  // Drag the divider between the focus image and the filmstrip.
-  const startDividerDrag = useCallback(
-    (e: ReactMouseEvent) => {
-      e.preventDefault();
-      let latest = filmstripHeight;
-      const onMove = (ev: MouseEvent) => {
-        const el = centerColumnRef.current;
-        if (!el) return;
-        const rect = el.getBoundingClientRect();
-        latest = Math.max(
-          120,
-          Math.min(rect.height * 0.8, rect.bottom - ev.clientY),
-        );
-        setFilmstripHeight(latest);
-      };
-      const onUp = () => {
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-        persistCountsSetting("filmstripHeight", latest);
-      };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-    },
-    [filmstripHeight, persistCountsSetting],
+  const filmstripMax = useCallback(
+    () => (centerColumnRef.current?.getBoundingClientRect().height ?? 0) * 0.8,
+    [],
   );
+  const { height: filmstripHeight, startDrag: startDividerDrag } = useResizableHeight({
+    storageKey: COUNTS_SETTINGS,
+    field: "filmstripHeight",
+    defaultHeight: 220,
+    minHeight: 120,
+    maxHeight: filmstripMax,
+  });
 
   const exportFnRef = useRef<(() => void) | null>(null);
   const [viewport, setViewport] = useState({
@@ -219,36 +183,15 @@ export function EventDetailModal({
     enabled: !!eventId && isOpen,
   });
 
-  // Prefetch the next event and, if it has a video, its filmstrip, so moving
-  // forward through observations feels instant (the filmstrip decode is the
-  // slow part — see VideoFilmstrip / the backend's build_filmstrip).
+  // Prefetch the next event, so moving forward through observations
+  // feels instant.
   useEffect(() => {
     const nextId = adjacent?.next_id;
     if (!nextId || !isOpen) return;
-    let cancelled = false;
-    queryClient
-      .prefetchQuery({
-        queryKey: ["event", nextId],
-        queryFn: () => eventsApi.get(nextId),
-      })
-      .then(() => {
-        if (cancelled) return;
-        const nextEvent = queryClient.getQueryData<EventWithFiles>([
-          "event",
-          nextId,
-        ]);
-        const video = nextEvent?.files.find((f) => f.file_type === "video");
-        if (video) {
-          queryClient.prefetchQuery({
-            queryKey: ["filmstrip", video.id],
-            queryFn: () => filesApi.getFilmstrip(video.id),
-            staleTime: Infinity,
-          });
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
+    queryClient.prefetchQuery({
+      queryKey: ["event", nextId],
+      queryFn: () => eventsApi.get(nextId),
+    });
   }, [adjacent?.next_id, isOpen, queryClient]);
 
   // Fetch project for detection threshold
@@ -302,9 +245,17 @@ export function EventDetailModal({
 
   // The track picked on the timeline; the player dims the others.
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
+  // The timeline's zoom, kept here so it survives the switch between the
+  // still and the player, which mount the timeline afresh.
+  const [timelineZoom, setTimelineZoom] = useState(0);
   // The frame shown as a still in frame mode (a bar click, a lane click,
   // Show on an unplayable clip), keyed by file so paging never shows
-  // one clip's frame under another. Null means the filmstrip.
+  // one clip's frame under another. Null means the landing frame: the
+  // first species' MaxN frame, the frame this page is for, else the
+  // cover. Until 2026-11-02 a clip opened on a grid of nine frames
+  // spaced evenly through it, from before the timeline existed: nine
+  // seeks into the clip per open, and by construction rarely the
+  // moment that matters.
   const [still, setStill] = useState<{ fileId: string; frame: number } | null>(null);
 
   // On open or event change, focus the busiest file: the one with the
@@ -329,6 +280,7 @@ export function EventDetailModal({
     setSelectedFileIndex(autoPlayRef.current ? 0 : bestIdx);
     setViewMode("frame");
     setSelectedTrackId(null);
+    setTimelineZoom(0);
     setStill(null);
     setPendingVideoExport(false);
     setRelabelDetectionId(null);
@@ -338,6 +290,15 @@ export function EventDetailModal({
   const currentFile = files[selectedFileIndex] as
     | FileWithDetections
     | undefined;
+  // The event carries each file's cards (cover boxes, one box per
+  // track, MaxN); the canvas at any frame, the player and the timeline
+  // need every box, so the focused file is fetched in full, the way the
+  // Files viewer does. Until it lands, the cards draw the first still.
+  const { data: fullFile } = useQuery({
+    ...fileQueryOptions(currentFile?.id ?? ""),
+    enabled: !!currentFile,
+  });
+  const focused = fullFile && fullFile.id === currentFile?.id ? fullFile : currentFile;
   // Time gap from the previous frame to the focused one (same signal as the
   // filmstrip's per-tile labels); null on the first frame or missing times.
   const focusGap = (() => {
@@ -368,9 +329,9 @@ export function EventDetailModal({
     if (currentFile?.file_type !== "video") return undefined;
     return {
       sourceVideoId: currentFile.id,
-      allDetections: currentFile.detections,
+      allDetections: focused?.detections ?? currentFile.detections,
     };
-  }, [currentFile]);
+  }, [currentFile, focused]);
 
   // A stable, large modal: the focus + filmstrip both want the room, and
   // the focus canvas re-fits its container as the divider moves.
@@ -512,17 +473,10 @@ export function EventDetailModal({
     setAutoPlay((on) => !on);
   }, []);
 
-  // Watch the focused video: swap the best-frame still for the real player.
-  // Stops the cine-loop first (you've grabbed control of one clip).
-  const playFocusedVideo = useCallback(() => {
-    setAutoPlay(false);
-    setViewMode("video");
-  }, []);
-
   // The Counts panel's "Show": go to the file the MaxN was counted on and,
   // for a video, to that frame: the player seeks there, a clip the browser
   // cannot play shows that frame as a still, decoded on request.
-  const [seekRequest, setSeekRequest] = useState<{ frame: number; nonce: number } | null>(null);
+  const [seekRequest, setSeekRequest] = useState<{ frame: number; nonce: number; play?: boolean } | null>(null);
   const stillFrame = still && still.fileId === currentFile?.id ? still.frame : null;
   const selectTrack = useCallback(
     (trackId: string) => {
@@ -543,9 +497,30 @@ export function EventDetailModal({
         .filter(
           (m) => m.file_id === currentFile?.id && m.max_n_frame_number != null && m.label != null,
         )
-        .map((m) => ({ frame: m.max_n_frame_number as number, label: m.label as string })),
+        // Keyed as the timeline keys its groups, so a marker finds its row.
+        .map((m) => ({
+          frame: m.max_n_frame_number as number,
+          label: speciesKey(m),
+          count: m.effective_count,
+        })),
     [event?.max_n_frames, currentFile?.id],
   );
+  // The frame on screen in frame mode: the still a person asked for,
+  // else the landing frame (see `still`).
+  const shownFrame = stillFrame ?? markers[0]?.frame ?? null;
+
+  // Watch the focused video from the frame on screen, the Files viewer's
+  // rule: a bar click then P plays from that animal, and a fresh open
+  // plays from the MaxN moment. Until 2026-11-02 the player started at
+  // 0:00 here while the Files viewer seeked. Stops the cine-loop first
+  // (you've grabbed control of one clip).
+  const playFocusedVideo = useCallback(() => {
+    setAutoPlay(false);
+    if (shownFrame != null) {
+      setSeekRequest({ frame: shownFrame, nonce: Date.now(), play: true });
+    }
+    setViewMode("video");
+  }, [shownFrame]);
   const showMaxN = useCallback(
     (obs: EventObservationItem) => {
       const index = files.findIndex((f) => f.id === obs.max_n_file_id);
@@ -824,7 +799,7 @@ export function EventDetailModal({
                 <div className="relative min-h-0 w-full flex-1">
                 {viewMode === "video" && isPlayableVideo(currentFile) ? (
                   <VideoPlayer
-                    file={currentFile}
+                    file={focused ?? currentFile}
                     detectionThreshold={detectionThreshold}
                     sourceVideoId={videoPlaybackProps?.sourceVideoId}
                     allDetections={videoPlaybackProps?.allDetections}
@@ -834,23 +809,19 @@ export function EventDetailModal({
                     boxesHidden={boxesHidden}
                     seekRequest={seekRequest}
                     selectedTrackId={selectedTrackId}
+                    zoomStep={timelineZoom}
+                    onZoomStep={setTimelineZoom}
                     onSelectTrack={selectTrack}
                     markers={markers}
+                    surface="counts"
                   />
-                ) : currentFile.file_type === "video" &&
-                  stillFrame == null &&
-                  !(autoPlay && files.length > 1) ? (
-                  // Video, frame mode: show the time-spaced filmstrip gallery
-                  // (the play overlay below sits on top) until a bar, the
-                  // lane or Show asks for one frame. Only an actively
-                  // flipping cine-loop (autoPlay across >1 file) falls back to
-                  // the cover still; a lone video keeps its filmstrip.
-                  <VideoFilmstrip fileId={currentFile.id} />
                 ) : (
                   // View-only on the Counts page: boxes show but aren't
                   // edited here (label/box cleanup lives on the Labels page).
+                  // A clip shows one frame, the MaxN frame first, with the
+                  // timeline under it; the play overlay below sits on top.
                   <AnnotationCanvas
-                    file={currentFile}
+                    file={focused ?? currentFile}
                     detectionThreshold={detectionThreshold}
                     selectedDetectionId={relabelDetectionId}
                     onSelectDetection={() => {}}
@@ -866,8 +837,8 @@ export function EventDetailModal({
                     boxesHidden={boxesHidden}
                     exportFnRef={exportFnRef}
                     frameNumber={
-                      stillFrame != null && stillFrame !== currentFile.best_frame_number
-                        ? stillFrame
+                      shownFrame != null && shownFrame !== currentFile.best_frame_number
+                        ? shownFrame
                         : undefined
                     }
                   />
@@ -879,14 +850,21 @@ export function EventDetailModal({
                     and the counted frame too. */}
                 {currentFile.file_type === "video" && viewMode !== "video" && (
                   <ClipTimeline
-                    file={currentFile}
+                    file={focused ?? currentFile}
                     detectionThreshold={detectionThreshold}
-                    currentFrame={stillFrame ?? currentFile.best_frame_number ?? 0}
+                    currentFrame={shownFrame ?? currentFile.best_frame_number ?? 0}
                     selectedTrackId={selectedTrackId}
+                    zoomStep={timelineZoom}
+                    onZoomStep={setTimelineZoom}
                     markers={markers}
+                    surface="counts"
                     onSelectTrack={selectTrack}
                     onSeek={(frame) => {
-                      setStill({ fileId: currentFile.id, frame });
+                      // Snapped to a frame with boxes (`nearestBoxFrame`).
+                      setStill({
+                        fileId: currentFile.id,
+                        frame: nearestBoxFrame(focused ?? currentFile, frame),
+                      });
                       setSelectedTrackId(null);
                     }}
                   />
@@ -956,11 +934,7 @@ export function EventDetailModal({
             </div>
 
             {/* Draggable divider between the focus and the filmstrip. */}
-            <div
-              onMouseDown={startDividerDrag}
-              className="h-1.5 shrink-0 cursor-row-resize bg-border transition-colors hover:bg-primary/40"
-              title="Drag to resize the filmstrip"
-            />
+            <ResizeHandle onMouseDown={startDividerDrag} title="Drag to resize the filmstrip" />
 
             {/* Resizable filmstrip grid; thumbnails mirror the focus. */}
             <div style={{ height: filmstripHeight }} className="shrink-0 min-h-0">

@@ -12,7 +12,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Ban, Check, CircleHelp, ImageOff, Tag, Play } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
-import { filesApi } from "../../api/files";
+import { fileQueryOptions } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { labelsApi } from "../../api/labels";
 import { eventsApi } from "../../api/events";
@@ -27,6 +27,7 @@ import {
   stillFrameFor,
 } from "../../lib/detection-utils";
 import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
+import { SlowHint } from "./SlowHint";
 import { FrameThumbnail } from "./FrameThumbnail";
 import { ContextCard } from "./ContextCard";
 import {
@@ -146,6 +147,10 @@ export function DetectionDetailModal({
   );
   const [isPanning, setIsPanning] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
+  // Which still has loaded. A frame off the cover is decoded from the
+  // clip on request; while it is on its way the slow-drive line may
+  // show, as over the viewer's still, and a new frame starts a new wait.
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const imagePanelRef = useRef<HTMLDivElement | null>(null);
   const panStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const wheelTeardownRef = useRef<(() => void) | null>(null);
@@ -233,8 +238,7 @@ export function DetectionDetailModal({
 
   // Load full file data to get image dimensions and detection bbox.
   const { data: fileData } = useQuery({
-    queryKey: ["file", detection?.file_id],
-    queryFn: () => filesApi.get(detection!.file_id),
+    ...fileQueryOptions(detection?.file_id ?? ""),
     enabled: open && !!detection?.file_id,
   });
 
@@ -495,6 +499,11 @@ export function DetectionDetailModal({
   // has its own still; every other detection shows the file's default.
   const stillFrame =
     fileData && fullDetection ? stillFrameFor(fileData, fullDetection) : undefined;
+  const stillSrc =
+    stillFrame == null
+      ? `${API_BASE_URL}/api/files/${detection.file_id}/image`
+      : `${API_BASE_URL}/api/files/${detection.file_id}/image?frame=${stillFrame}`;
+  const stillLoading = loadedSrc !== stillSrc;
 
   return (
     <VerifyDetailShell
@@ -576,19 +585,22 @@ export function DetectionDetailModal({
                 <div className="px-16 py-24 text-white/50">Loading...</div>
               ) : (
                 <img
-                  src={
-                    stillFrame == null
-                      ? `${API_BASE_URL}/api/files/${detection.file_id}/image`
-                      : `${API_BASE_URL}/api/files/${detection.file_id}/image?frame=${stillFrame}`
-                  }
+                  src={stillSrc}
                   alt="Source image"
                   draggable={false}
                   className="max-w-full max-h-full object-contain"
                   style={imageFilter ? { filter: imageFilter } : undefined}
+                  onLoad={() => setLoadedSrc(stillSrc)}
                   onError={() => {
                     setImageFailed(true);
                     reportMissingMedia(detection.deployment_id);
                   }}
+                />
+              )}
+              {fileData && stillLoading && !imageFailed && fileData.file_type === "video" && (
+                <SlowHint
+                  key={stillSrc}
+                  className="pointer-events-none absolute left-2 top-2 z-10 max-w-sm rounded bg-black/60 px-2 py-1 text-left text-white"
                 />
               )}
               {!imageFailed && !boxesHidden && fullDetection && fullDetection.bbox_x !== null && (() => {

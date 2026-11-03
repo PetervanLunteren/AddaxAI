@@ -20,10 +20,10 @@ import { useQuery } from "@tanstack/react-query";
 
 import { Fragment } from "react";
 
-import { filesApi } from "../../api/files";
+import { fileQueryOptions } from "../../api/files";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import { getDetectionColor } from "../../lib/detection-utils";
-import { cardBoxes, maxAtOnce, speciesKey } from "../../lib/track-utils";
+import { cardBoxes, speciesKey } from "../../lib/track-utils";
 import { basename } from "../../lib/path-utils";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
 import { cn } from "../../lib/utils";
@@ -236,25 +236,25 @@ const FileTile = memo(function FileTile({
   aspect,
 }: FileTileProps) {
   const isSmall = tileSize === "S";
-  // The same key the viewer uses, so opening a tile costs no request.
-  const { data: file } = useQuery({
-    queryKey: ["file", item.id],
-    queryFn: ({ signal }) => filesApi.get(item.id, { signal }),
-  });
+  // The cards scope: the cover's boxes, one box per track and the MaxN
+  // per species, all a tile draws. The viewer fetches the full file when
+  // a tile is opened and prefetches the next. Until 2026-11-02 the tile
+  // held the full file, 28 MB per BRUV clip, seven of them on one page.
+  const { data: file } = useQuery(fileQueryOptions(item.id, "cards"));
   // Chip colours resolve from the project colour map, which loads after
   // the tiles; repaint when it lands.
   useSpeciesColorsVersion();
 
   // One chip per species with a card in the file (`cardBoxes`), its
-  // number the most of that species seen at once (`maxAtOnce`), the
-  // MaxN the Counts page shows. Until 2026-11-02 a clip's chip counted
+  // number the most of that species seen at once (`max_at_once`, the
+  // backend's), the MaxN the Counts page shows. Until 2026-11-02 a clip's chip counted
   // its tracks, which read "5154× Fish" on a clip with 33 at once.
   // Ordered by count, so the dominant species comes first when the cap
   // cuts the list.
   const chips: { key: string; name: string; color: string; count: number }[] =
     [];
   if (file) {
-    const atOnce = maxAtOnce(file, detectionThreshold);
+    const atOnce = new Map(file.max_at_once.map((m) => [speciesKey(m), m.count]));
     for (const d of cardBoxes(file, detectionThreshold)) {
       const key = speciesKey(d);
       if (chips.some((c) => c.key === key)) continue;

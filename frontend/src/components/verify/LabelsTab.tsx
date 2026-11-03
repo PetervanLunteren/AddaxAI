@@ -40,6 +40,7 @@ import type { TrackDetectionsResponse } from "../../api/types";
 import { trackFrameAsCard } from "../../lib/track-utils";
 import { projectsApi } from "../../api/projects";
 import { Button } from "../ui/button";
+import { SlowHint } from "./SlowHint";
 import { Callout } from "../ui/callout";
 import { Card, CardContent } from "../ui/card";
 import { Progress } from "../ui/progress";
@@ -284,23 +285,6 @@ function LabelsLoadingState({
       {hint}
     </div>
   );
-}
-
-// How long an open track's frames may take before the loading state
-// adds the line about the drive.
-const SLOW_TRACK_LOAD_MS = 5000;
-
-/** Its line, once it has been mounted for `afterMs`. Mounted with the
- *  loading state and unmounted with it, so a new wait starts at zero. */
-function SlowHint({ afterMs, children }: { afterMs: number; children: ReactNode }) {
-  const [show, setShow] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setShow(true), afterMs);
-    return () => clearTimeout(timer);
-  }, [afterMs]);
-  return show ? (
-    <p className="text-xs text-muted-foreground text-center">{children}</p>
-  ) : null;
 }
 
 const PHASE_LABELS: Record<LabelsProgressEvent["phase"], string> = {
@@ -1830,10 +1814,7 @@ export function LabelsTab({
               // The backend decodes the first chunk of the track's frames
               // before it answers, so this wait is where a slow drive
               // shows. Past a few seconds, say so.
-              <SlowHint key={openTrack.trackId} afterMs={SLOW_TRACK_LOAD_MS}>
-                Still working. The frames are read from the video file. A
-                faster drive or a direct connection speeds this up.
-              </SlowHint>
+              <SlowHint key={openTrack.trackId} />
             }
           />
         </div>

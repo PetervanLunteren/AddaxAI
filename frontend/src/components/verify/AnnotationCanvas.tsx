@@ -11,6 +11,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Stage, Layer, Rect, Text, Image as KonvaImage, Transformer, Shape, Group } from "react-konva";
 import { useMutation } from "@tanstack/react-query";
 import { ImageOff } from "lucide-react";
+import { SlowHint } from "./SlowHint";
 import { detectionsApi } from "../../api/detections";
 import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
 import { getDetectionColor } from "../../lib/detection-utils";
@@ -597,6 +598,14 @@ export function AnnotationCanvas({
         filter: imageFilter,
       }}
     >
+      {/* A frame of a clip decoding for longer than a healthy disk takes:
+          say why, once. Keyed by the frame, so each wait starts at zero. */}
+      {loading && file.file_type === "video" && (
+        <SlowHint
+          key={imageUrl}
+          className="pointer-events-none absolute left-2 top-2 z-10 max-w-sm rounded bg-black/60 px-2 py-1 text-left text-white"
+        />
+      )}
       {/* Draw mode indicator */}
       {drawMode && (
         <div className="absolute top-2 left-2 z-10 bg-primary text-white text-xs px-2 py-1 rounded">

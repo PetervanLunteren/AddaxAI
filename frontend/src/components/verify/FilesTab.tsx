@@ -28,7 +28,7 @@ import { Loader2, Maximize2, Minimize2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { detectionsApi } from "../../api/detections";
-import { filesApi } from "../../api/files";
+import { fileQueryOptions, filesApi } from "../../api/files";
 import { labelsApi } from "../../api/labels";
 import { projectsApi } from "../../api/projects";
 import { useLabelOptions } from "../../hooks/useLabelOptions";
@@ -553,13 +553,10 @@ export function FilesTab({
 
   const visibleBoxesOf = useCallback(
     async (fileIds: string[]) => {
+      // The cards are what a bulk action acts on, and the tiles already
+      // hold them, so this is usually a cache hit.
       const files = await Promise.all(
-        fileIds.map((id) =>
-          queryClient.fetchQuery({
-            queryKey: ["file", id],
-            queryFn: () => filesApi.get(id),
-          }),
-        ),
+        fileIds.map((id) => queryClient.fetchQuery(fileQueryOptions(id, "cards"))),
       );
       return files.flatMap((f) => cardBoxes(f, threshold));
     },
@@ -605,9 +602,7 @@ export function FilesTab({
   const selectionMajority = useMemo(() => {
     const boxes = [];
     for (const id of selected) {
-      const f = queryClient.getQueryData<
-        Awaited<ReturnType<typeof filesApi.get>>
-      >(["file", id]);
+      const f = queryClient.getQueryData(fileQueryOptions(id, "cards").queryKey);
       if (!f) continue;
       boxes.push(...cardBoxes(f, threshold));
     }

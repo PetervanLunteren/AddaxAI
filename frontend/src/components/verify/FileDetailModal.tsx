@@ -91,10 +91,14 @@ import {
 import { toast } from "sonner";
 
 import { detectionsApi } from "../../api/detections";
-import { filesApi } from "../../api/files";
+import { fileQueryOptions, filesApi } from "../../api/files";
 import { projectsApi } from "../../api/projects";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
-import { frameBoxes } from "../../lib/track-utils";
+import {
+  fileMaxNMarkers,
+  frameBoxes,
+  nearestBoxFrame,
+} from "../../lib/track-utils";
 import { basename } from "../../lib/path-utils";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
 import { useShortcutLabels } from "../../hooks/useShortcutLabels";
@@ -182,7 +186,10 @@ export function FileDetailModal({
   const [pendingVideoExport, setPendingVideoExport] = useState(false);
   // Where the player should jump: the track picked on the timeline, or
   // the track this viewer was opened for.
-  const [seekRequest, setSeekRequest] = useState<{ frame: number; nonce: number } | null>(null);
+  const [seekRequest, setSeekRequest] = useState<{ frame: number; nonce: number; play?: boolean } | null>(null);
+  // The timeline's zoom, kept here so it survives the switch between the
+  // still and the player, which mount the timeline afresh.
+  const [timelineZoom, setTimelineZoom] = useState(0);
   // The mounted surface's export: annotated PNG from the canvas,
   // recorded annotated MP4 from the player. Only one is mounted at a
   // time, so one ref serves both (as in `EventDetailModal`).
@@ -236,6 +243,7 @@ export function FileDetailModal({
     setViewMode("frame");
     setShownFrame(null);
     setSeekRequest(null);
+    setTimelineZoom(0);
     setPendingVideoExport(false);
   }
   // Closed: forget what this run signed off. An effect, not part of the
@@ -263,9 +271,11 @@ export function FileDetailModal({
     [shortcutLabels],
   );
 
+  // The full file: every box of every frame, for the canvas at any
+  // frame, the player and the timeline. The tile that opened this holds
+  // the cards only, so the first open of a file is one request.
   const { data: file } = useQuery({
-    queryKey: ["file", item?.id],
-    queryFn: () => filesApi.get(item!.id),
+    ...fileQueryOptions(item?.id ?? ""),
     enabled: !!item,
   });
 
@@ -290,10 +300,15 @@ export function FileDetailModal({
   );
   // A lane click shows a frame and selects nothing, so the scope caption
   // never names a box that is not on screen.
-  const showFrame = useCallback((frame: number) => {
-    setShownFrame(frame);
-    setSelectedDetectionId(null);
-  }, []);
+  // A moment picked on the lane or by a pan snaps to the nearest frame
+  // with a box of an animal live then (`nearestBoxFrame`).
+  const showFrame = useCallback(
+    (frame: number) => {
+      setShownFrame(file ? nearestBoxFrame(file, frame) : frame);
+      setSelectedDetectionId(null);
+    },
+    [file],
+  );
   // Opened from a card: once the file is in, show that track. Once per
   // file and track, so paging away and back does not jump again.
   const openedFor = useRef<string | null>(null);
@@ -312,7 +327,9 @@ export function FileDetailModal({
     file && shownFrame != null && shownFrame !== file.best_frame_number ? shownFrame : undefined;
   // Watch the clip from the frame on screen.
   const watch = useCallback(() => {
-    if (shownFrame != null) setSeekRequest({ frame: shownFrame, nonce: Date.now() });
+    if (shownFrame != null) {
+      setSeekRequest({ frame: shownFrame, nonce: Date.now(), play: true });
+    }
     setViewMode("video");
   }, [shownFrame]);
   /** Boxes are drawn on photos only. A clip is reviewed animal by
@@ -356,6 +373,18 @@ export function FileDetailModal({
     [file, project?.counting_threshold],
   );
 
+  // The animals on the frame shown that are still unchecked, for the
+  // frame-scoped verify: the tracks whose boxes the canvas draws,
+  // through their cards. After MaxN this is the count's frame, and
+  // verifying its animals is the count check in one press. Empty in
+  // video mode, for a photo (the frame is the whole file) and once the
+  // frame is done, when the sign-off takes the button back.
+  const onFrame = useMemo(() => {
+    if (!file || file.file_type !== "video" || viewMode === "video") return [];
+    const tracks = new Set(visibleBoxes.map((d) => d.track_id));
+    return cards.filter((d) => d.track_id && tracks.has(d.track_id) && !d.verified);
+  }, [file, viewMode, visibleBoxes, cards]);
+
   // The one scope rule: the selected box, else every detection in the file.
   const targetIds = useMemo(
     () => (selectedDetectionId ? [selectedDetectionId] : cards.map((d) => d.id)),
@@ -369,13 +398,14 @@ export function FileDetailModal({
   // without it it would read like a quick label while acting on more.
   // A clip's unit is the detection (one track each), a photo's the box.
   const unit = file?.file_type === "video" ? "detection" : "box";
+  const units = file?.file_type === "video" ? "detections" : "boxes";
   const noun = file?.file_type === "video" ? "clip" : "photo";
   const scope =
     selectedDetectionId || cards.length === 1
       ? `the ${unit}`
       : cards.length === 0
-        ? `the ${unit}s`
-        : `all ${cards.length} ${unit}s`;
+        ? `the ${units}`
+        : `all ${cards.length} ${units}`;
   // The sign-off button names its scope and its size, because it sits
   // under a column of actions that read "Verify" too and act on one
   // box: "Verify all 12 detections" says what one press commits to,
@@ -387,8 +417,17 @@ export function FileDetailModal({
       ? `Verify empty ${noun}`
       : cards.length === 1
         ? `Verify 1 ${unit}`
-        : `Verify all ${cards.length} ${unit}s`;
+        : `Verify all ${cards.length} ${units}`;
   const majority = useMemo(() => labelMajority(cards), [cards]);
+
+  // The clip's MaxN frame per species, for the timeline's markers and
+  // its MaxN buttons: the file's own number, the one its tile shows.
+  const markers = useMemo(
+    () => (file && file.file_type === "video"
+      ? fileMaxNMarkers(file)
+      : []),
+    [file],
+  );
 
   const go = useCallback(
     (delta: number) => {
@@ -455,10 +494,7 @@ export function FileDetailModal({
     // Relative, exactly as `AnnotationCanvas` builds it. An absolute
     // form would be a different cache entry and warm nothing.
     new Image().src = `/api/files/${nextItem.id}/image`;
-    queryClient.prefetchQuery({
-      queryKey: ["file", nextItem.id],
-      queryFn: () => filesApi.get(nextItem.id),
-    });
+    queryClient.prefetchQuery(fileQueryOptions(nextItem.id));
   }, [nextItem, queryClient]);
 
   /** A box was drawn, moved, resized or relabelled. Refresh this file
@@ -536,6 +572,29 @@ export function FileDetailModal({
     [selectCard, handleCanvasChange, verifyAndAdvance],
   );
 
+  /** The primary action in frame mode with nothing selected: verify the
+   *  unchecked animals on the frame shown, one request, and stay on
+   *  that frame: the person is checking a count, not walking the clip,
+   *  so the picture must not jump to the clip's first animal (it did,
+   *  2026-11-03). When nothing in the clip waits any more the clip is
+   *  signed off and the viewer moves on, as the last verdict always
+   *  does. */
+  const verifyFrame = useCallback(() => {
+    const ids = onFrame.map((d) => d.id);
+    if (ids.length === 0) return;
+    const pending = file ? uncheckedCards(file, project?.counting_threshold ?? 0) : [];
+    const done = new Set(ids);
+    const nothingLeft = pending.every((d) => done.has(d.id));
+    detectionsApi
+      .bulkVerify(ids, true)
+      .then(() => {
+        setUndoStack((st) => [...st, ids]);
+        if (nothingLeft) verifyAndAdvance();
+        else handleCanvasChange();
+      })
+      .catch((err: Error) => toast.error(err.message));
+  }, [onFrame, file, project?.counting_threshold, verifyAndAdvance, handleCanvasChange]);
+
   /** Every label action goes through here: the grid's `bulk-relabel`
    *  (which verifies), then the undo stack, then a refresh.
    *
@@ -576,6 +635,8 @@ export function FileDetailModal({
   );
 
   const wholePicture = selectedDetectionId === null;
+  // Whether the big button and Enter verify the frame shown right now.
+  const frameVerify = !isVerified && wholePicture && onFrame.length > 0;
   /** V: "the AI got this one right". Verifies what is selected with the
    *  label it already carries, no search and no dialog, then moves the
    *  selection to the next card still waiting. Agreeing is the most
@@ -702,7 +763,8 @@ export function FileDetailModal({
       else if (e.key === "ArrowLeft") { e.preventDefault(); go(-1); }
       else if (e.key === "Enter" && !drawMode) {
         e.preventDefault();
-        verifyAndAdvance();
+        if (frameVerify) verifyFrame();
+        else verifyAndAdvance();
       } else if (key === "z" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         handleUndo();
@@ -851,6 +913,9 @@ export function FileDetailModal({
                 boxesHidden={boxesHidden}
                 seekRequest={seekRequest}
                 selectedTrackId={selectedTrackId}
+                zoomStep={timelineZoom}
+                onZoomStep={setTimelineZoom}
+                markers={markers}
                 onSelectTrack={selectTrack}
               />
             ) : (
@@ -910,6 +975,9 @@ export function FileDetailModal({
               detectionThreshold={project?.counting_threshold ?? 0}
               currentFrame={shownFrame ?? file.best_frame_number ?? 0}
               selectedTrackId={selectedTrackId}
+              zoomStep={timelineZoom}
+              onZoomStep={setTimelineZoom}
+              markers={markers}
               onSelectTrack={selectTrack}
               onSeek={showFrame}
             />
@@ -1041,7 +1109,7 @@ export function FileDetailModal({
                   size="sm"
                   className="w-full justify-center"
                   onClick={matchMajority}
-                  title={`Relabel all ${cards.length} ${unit}s to ${majority.common_name ?? majority.label} and verify`}
+                  title={`Relabel all ${cards.length} ${units} to ${majority.common_name ?? majority.label} and verify`}
                 >
                   <CheckCheck className="h-4 w-4 mr-1 shrink-0" />
                   <span className="truncate">
@@ -1171,10 +1239,23 @@ export function FileDetailModal({
             <Kbd>{UNDO_KBD}</Kbd>
           </Button>
 
+          {frameVerify && (
+            <Button
+              className="w-full justify-center"
+              size="sm"
+              onClick={verifyFrame}
+              disabled={verifying}
+              title={`Verify the ${onFrame.length} unchecked animals on the frame shown, every frame of each, and stay here`}
+            >
+              <Check className="h-4 w-4 mr-1" />
+              Verify the {onFrame.length} on this frame
+              <Kbd onPrimary>⏎</Kbd>
+            </Button>
+          )}
           <Button
             className="w-full justify-center"
             size="sm"
-            variant={isVerified ? "outline" : "default"}
+            variant={isVerified || frameVerify ? "outline" : "default"}
             onClick={
               isVerified
                 ? () => setVerified({ id: item.id, verified: false })
@@ -1189,7 +1270,7 @@ export function FileDetailModal({
           >
             <Check className="h-4 w-4 mr-1" />
             {isVerified ? "Unverify" : verifyLabel}
-            {!isVerified && <Kbd onPrimary>⏎</Kbd>}
+            {!isVerified && !frameVerify && <Kbd onPrimary>⏎</Kbd>}
           </Button>
 
           {/* Two searches, no triggers of their own. The first names the

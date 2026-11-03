@@ -611,26 +611,30 @@ export interface FileResponse {
   source_frame_number: number | null;
 }
 
+/** Which boxes a file comes with (see `fileQueryOptions`). */
+export type FileScope = "all" | "cards";
+
+/** The most boxes of one species in any one frame of the file, the
+ * file's MaxN, computed in the backend at the counting threshold.
+ * `frame_number` is the first frame that reached it, null for a photo. */
+export interface MaxAtOnce {
+  label_taxonomy_id: string | null;
+  label: string | null;
+  category: string;
+  count: number;
+  frame_number: number | null;
+}
+
 export interface FileWithDetections extends FileResponse {
+  /** The boxes of the scope the file was fetched in. */
   detections: DetectionResponse[];
+  max_at_once: MaxAtOnce[];
   /** The animals a tracker followed through this video; empty for images
    * and untracked videos. */
   tracks: TrackResponse[];
   /** The camera (subfolder) of a paired deployment this file came from.
    * Null for unpaired deployments and root-level files. */
   camera?: string | null;
-}
-
-// On-demand video filmstrip: evenly-spaced low-res frames for the
-// counts-modal gallery. Decoded on request, not persisted.
-export interface FilmstripFrame {
-  frame_number: number;
-  time_seconds: number | null;
-  image: string; // "data:image/jpeg;base64,..."
-}
-
-export interface FilmstripResponse {
-  frames: FilmstripFrame[];
 }
 
 // Shared verify-tab filter type. Binary (plus "all"): an event is
