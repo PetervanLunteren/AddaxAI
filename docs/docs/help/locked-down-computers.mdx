@@ -29,6 +29,17 @@ The model files are large, so they are served from `*.hf.co` and not from `huggi
 
 After setup, analysis runs offline. AddaxAI still checks the model list and looks for a new version at start, and both fail quietly.
 
+## Other addresses
+
+Setup does not need these. Block them and the app still works.
+
+| Address | What it is used for | If it is blocked |
+|---|---|---|
+| `addaxai-models.petervanlunteren.workers.dev` | a relay run by Addax Data Science, tried once when a network blocks HuggingFace. It stores nothing | models only come from HuggingFace |
+| `api.github.com` | the check for a new version | no update notices |
+| `tiles.openfreemap.org`, `server.arcgisonline.com` and `*.tile.openstreetmap.org` | map backgrounds. The requests show which area is on screen | maps show without a background |
+| `api.gbif.org` | taxonomy suggestions for a new label | fill in the taxonomy by hand |
+
 ## Problems
 
 <FaqItem
