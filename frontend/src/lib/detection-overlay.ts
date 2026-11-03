@@ -20,6 +20,14 @@ export const BBOX_STROKE_WIDTH = 2;
 export const BBOX_OPACITY = 0.5;
 export const BBOX_CORNER_RADIUS = 4;
 export const DIM_FILL = "rgba(0, 0, 0, 0.35)";
+/** The one selection rule, for every surface that draws boxes: with a
+ *  box selected, it is drawn as it is and every other box fades to this
+ *  factor, label pill included, so the one a person is acting on stands
+ *  out in a frame of thirty. Not hidden: the labels of the others are
+ *  what a person reads to decide which box to select next. Resize
+ *  handles belong to the selected box alone. The player had this rule
+ *  and the still did not (2026-11-03). */
+export const OTHER_BOX_DIM = 0.25;
 export const PILL_BG = "rgba(0,0,0,0.5)";
 
 // ── Text measurement ──────────────────────────────────────────────
