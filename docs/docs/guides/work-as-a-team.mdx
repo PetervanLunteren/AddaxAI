@@ -33,11 +33,21 @@ The first import creates the project. A later bundle of the same project adds to
 ## Split the checking over a team
 
 1. One person creates the project and runs the AI.
-2. They export a bundle for each team member, with only that person's deployments and the photos included.
+2. They export a bundle for each team member, with only that person's deployments. Include the photos, unless the other computer already has them (see below).
 3. Each member imports their bundle, checks the labels, and exports a data-only bundle back.
 4. The lead imports those bundles and chooses "Replace".
 
 Give each deployment to one person. An import replaces a deployment as a whole, so two people's work on the same deployment cannot be combined.
+
+## When every computer already has the photos
+
+When every computer can reach the same photos, for example on a shared drive such as a NAS or as an identical copy on each computer, no photos need to travel.
+
+1. Choose "Data only" for every bundle, in both directions.
+2. Give the photos the same path on every computer, for example the same drive letter. The folders then connect by themselves after an import. With a different path, each folder is reconnected once.
+3. Keep AddaxAI's own data folder on each computer's own disk, never on a network drive. The database can get damaged when it is used over a network. See [file locations](../reference/file-locations.md).
+
+Each person keeps their own database. There is no way to share one database live between computers.
 
 ## Good to know
 

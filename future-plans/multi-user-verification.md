@@ -76,6 +76,10 @@ original ten:
 > Yes, add it and include the instance indicator as R11. Inference can only run on the main
 > device that is hosting the AddaxAi.
 
+A second lab asked on 2026-10-15: a US federal wildlife refuge with photos on a Synology NAS,
+used to Timelapse's shared database. Answered with data-only bundles and one reviewer per
+deployment. Not a reason to build server mode yet, but it counts toward one.
+
 ## 2. Questions to answer
 
 1. Can several people verify at the same time, on different camera folders?
