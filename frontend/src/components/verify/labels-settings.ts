@@ -17,28 +17,20 @@
 
 import { useCallback, useMemo, useState } from "react";
 
+import { persistSetting, readSetting } from "../../lib/local-settings";
 import type { TileSize } from "./CropGrid";
 
 const LS_KEY = "addaxai:labelsSettings";
 
 export function readLabelsSettings(): Record<string, unknown> {
-  try {
-    return JSON.parse(localStorage.getItem(LS_KEY) || "{}");
-  } catch {
-    return {};
-  }
+  const value = readSetting(LS_KEY);
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
-/** Read-modify-write, so two settings written from different tabs cannot
- *  clobber each other. */
+/** Read-modify-write (`lib/local-settings.ts`), so two settings written
+ *  from different tabs cannot clobber each other. */
 export function persistLabelsSetting(key: string, value: unknown): void {
-  try {
-    const current = readLabelsSettings();
-    current[key] = value;
-    localStorage.setItem(LS_KEY, JSON.stringify(current));
-  } catch {
-    /* A full or blocked localStorage is not worth failing a render over. */
-  }
+  persistSetting(LS_KEY, value, key);
 }
 
 const TILE_SIZES: TileSize[] = ["S", "M", "L"];
