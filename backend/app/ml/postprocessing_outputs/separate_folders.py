@@ -126,8 +126,8 @@ from app.models.event import event_files
 
 from ._exif_writer import ExifBatch, build_tag_set, is_image_path
 from ._label_filter import (
+    detection_is_excluded,
     file_is_dropped_by_filter,
-    label_matches_filter,
     strongest_label_for_file,
 )
 from ._output_context import OutputContext
@@ -305,12 +305,7 @@ def build_event_primary_labels(
         )
     ).all()
 
-    excluded = excluded_label_ids or frozenset()
-
-    def _is_excluded(row) -> bool:
-        return label_matches_filter(row.label, row.label_taxonomy_id, excluded)
-
-    rows = [r for r in rows if not _is_excluded(r)]
+    rows = [r for r in rows if not detection_is_excluded(r, excluded_label_ids)]
 
     # A file only votes when its own subject is a species, i.e. its
     # strongest passing detection carries a label. A file whose best box

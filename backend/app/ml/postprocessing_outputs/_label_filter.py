@@ -33,8 +33,9 @@ sync: changing the rule means changing one module, not seven.
 from __future__ import annotations
 
 from collections.abc import Collection
+from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import Row, or_, select
 from sqlalchemy.orm import Session
 
 from app.ml.detection_visibility import on_visible_frame_of
@@ -42,36 +43,29 @@ from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
 from app.models import Detection, File
 
 
-def label_matches_filter(
-    label: str | None,
-    label_taxonomy_id: str | None,
-    label_ids: Collection[str] | None,
+def detection_is_excluded(
+    detection: Detection | Row[Any],
+    excluded_label_ids: Collection[str] | None,
 ) -> bool:
-    """Return True when a label/taxonomy pair is in the user's label set.
+    """Return True when the user's exclusion set covers this detection.
 
-    Either the taxonomy id or the raw label string can match — the set
-    is heterogeneous (UUIDs for taxonomy-mapped labels, plain strings
-    for unmapped ones from the "Other" branch of the label tree). Takes
-    the two fields rather than a ``Detection`` so query rows can use it
-    too; every output module filters through this one rule.
+    Either the taxonomy id or the raw label string can match: the set is
+    heterogeneous (UUIDs for taxonomy-mapped labels, plain strings for
+    unmapped ones from the "Other" branch of the label tree). Takes a
+    ``Detection`` or a query row that selects ``label`` and
+    ``label_taxonomy_id``. Every output module filters through this one
+    rule.
     """
-    if not label_ids:
+    if not excluded_label_ids:
         return False
-    if label_taxonomy_id and label_taxonomy_id in label_ids:
+    if (
+        detection.label_taxonomy_id
+        and detection.label_taxonomy_id in excluded_label_ids
+    ):
         return True
-    if label and label in label_ids:
+    if detection.label and detection.label in excluded_label_ids:
         return True
     return False
-
-
-def detection_is_excluded(
-    detection: Detection,
-    excluded_label_ids: frozenset[str] | None,
-) -> bool:
-    """Return True when the user's exclusion set covers this detection."""
-    return label_matches_filter(
-        detection.label, detection.label_taxonomy_id, excluded_label_ids
-    )
 
 
 def passing_detections_for_file(
