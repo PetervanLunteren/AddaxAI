@@ -206,7 +206,17 @@ def decode_frame_jpeg(
 ) -> bytes | None:
     """JPEG bytes of one frame, or None when it cannot be decoded (a
     frame past the end, a file that will not open, ffmpeg missing).
-    Cached by path, frame and rate."""
+    Cached by path, frame and rate.
+
+    One decode per clip at a time (`_clip_lock`), as the chunk decoder
+    does, with the cache read again once the lock is held: a second
+    request for the same frame then waits for the first and takes its
+    result instead of starting its own ffmpeg. Two requests for one
+    frame of a clip on a slow drive (the viewer's prefetch and the
+    canvas asking for it a moment later) each ran past the timeout and
+    both answered 404 (2026-11-03). Serialising also keeps a prefetch
+    from reading the drive beside the frame a person is waiting for.
+    """
     if frame_number < 0:
         return None
     fps = frame_rate or _frame_rate_of(video_path)
@@ -219,8 +229,12 @@ def decode_frame_jpeg(
     ffmpeg = _ffmpeg()
     if ffmpeg is None:
         return None
-    with _decode_slots:
-        result = _run_decode(frame_seek_cmd(ffmpeg, Path(video_path), frame_number, fps))
+    with _clip_lock(video_path):
+        jpeg = _cached(key)
+        if jpeg is not None:
+            return jpeg
+        with _decode_slots:
+            result = _run_decode(frame_seek_cmd(ffmpeg, Path(video_path), frame_number, fps))
     if result is None:
         _warn_timeout(f"frame {frame_number}", video_path)
         return None

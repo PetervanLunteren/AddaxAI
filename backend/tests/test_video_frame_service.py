@@ -12,6 +12,8 @@ where it is not installed; the rest of the file fakes the decoder.
 """
 
 import subprocess
+import threading
+import time
 
 import pytest
 
@@ -136,3 +138,34 @@ def test_a_decode_that_runs_past_the_timeout_is_given_up(monkeypatch, caplog):
     assert vfs.decode_frame_jpeg("/clip.mp4", 5, FPS) is None
     assert vfs.decode_frames_jpeg("/clip.mp4", [5, 6], FPS) == {}
     assert "took over" in caplog.text and "drive" in caplog.text
+
+
+def test_two_requests_for_one_frame_run_ffmpeg_once(monkeypatch):
+    """The viewer prefetches the frame its next verdict lands on, and the
+    canvas asks for the same frame a moment later. On a slow drive the
+    two decodes ran side by side, both past the timeout, both 404
+    (2026-11-03). The second caller now waits for the first and reads
+    the cache."""
+    monkeypatch.setattr(vfs, "_ffmpeg", lambda: "ffmpeg")
+    monkeypatch.setattr(vfs, "_frame_rate_of", lambda path: 10.0)
+    calls: list[list[str]] = []
+
+    def slow(cmd, **kwargs):
+        calls.append(cmd)
+        time.sleep(0.2)
+        return subprocess.CompletedProcess(cmd, 0, stdout=b"jpeg", stderr=b"")
+
+    monkeypatch.setattr(subprocess, "run", slow)
+
+    results: list[bytes | None] = []
+    threads = [
+        threading.Thread(target=lambda: results.append(vfs.decode_frame_jpeg("/clip.mp4", 5, FPS)))
+        for _ in range(2)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert results == [b"jpeg", b"jpeg"]
+    assert len(calls) == 1
