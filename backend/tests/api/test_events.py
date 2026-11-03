@@ -120,8 +120,10 @@ def test_get_event_carries_the_videos_tracks_without_a_query_per_file(client, db
     finally:
         sa_event.remove(engine, "before_cursor_execute", record)
     assert tracks_by_file[video_id] == [1]
-    # event (+deployment, site), files, detections, tracks: four selects.
-    assert len(statements) == 4, statements
+    # event (+deployment, site), files, tracks: three selects. The boxes
+    # are not loaded here since 2026-11-02; the router fetches each
+    # file's cards through `file_payload`.
+    assert len(statements) == 3, statements
 
     resp = client.get(f"/api/events/{ev_id}")
     assert resp.status_code == 200
@@ -199,6 +201,38 @@ def _event_with_detection(db, deployment_id, start):
     make_detection(db, file_id=ev.files[0].id, confidence=0.9)
     db.commit()
     return ev
+
+
+def test_adjacent_events_walk_through_events_without_a_capture_time(client, db):
+    """Most BRUV clips carry no capture time, so their events sort by
+    SQLite's rule, NULL before every value: last under "newest", first
+    under "oldest", by id among themselves. The arrows must reach them
+    and leave them; until 2026-11-03 asking for the neighbours of such
+    an event answered 500, and the dated events never pointed at them."""
+    p = make_project(db)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    newer = _event_with_detection(db, d.id, datetime(2024, 1, 2, 12, 0))
+    older = _event_with_detection(db, d.id, datetime(2024, 1, 1, 12, 0))
+    undated = _event_with_detection(db, d.id, datetime(2024, 1, 3, 12, 0))
+    undated.event_start_local = None
+    undated.event_end_local = None
+    db.commit()
+
+    def adjacent(event_id, sort):
+        resp = client.get(f"/api/events/{event_id}/adjacent?project_id={p.id}&sort={sort}")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        return body["previous_id"], body["next_id"]
+
+    # newest: newer, older, undated
+    assert adjacent(newer.id, "newest") == (None, older.id)
+    assert adjacent(older.id, "newest") == (newer.id, undated.id)
+    assert adjacent(undated.id, "newest") == (older.id, None)
+    # oldest: undated, older, newer
+    assert adjacent(undated.id, "oldest") == (None, older.id)
+    assert adjacent(older.id, "oldest") == (undated.id, newer.id)
+    assert adjacent(newer.id, "oldest") == (older.id, None)
 
 
 def test_events_filter_flagged_exists_on_any_file(client, db):

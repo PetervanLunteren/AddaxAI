@@ -11,6 +11,8 @@ from tests.conftest import (
     make_file,
     make_project,
     make_site,
+    make_track,
+    make_video_box,
 )
 
 
@@ -247,3 +249,99 @@ def test_bulk_unverify_takes_the_sign_off_back(client, db):
 def test_bulk_verify_of_nothing_is_a_no_op_and_of_unknown_ids_a_404(client, db):
     assert _bulk_verify(client, []).json() == {"updated_count": 0}
     assert _bulk_verify(client, [str(uuid.uuid4())]).status_code == 404
+
+
+def _tracked_clip(db, *, counting_threshold=0.5):
+    """A clip with its cover on frame 60 and two tracks: one of three
+    frames whose card sits on frame 90, one of one frame on the cover."""
+    p = make_project(db, counting_threshold=counting_threshold)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    clip = make_file(
+        db, deployment_id=d.id, file_type="video", file_format="mp4",
+        file_path="/fake/clip.mp4", frame_rate=30.0, best_frame_number=60,
+    )
+    long = make_track(db, file_id=clip.id, track_key=1, start_frame=30, end_frame=90,
+                      representative_frame_number=90)
+    box = dict(file_id=clip.id, category="fish", confidence=0.9)
+    make_detection(db, frame_number=30, track_id=long.id, **box)
+    make_detection(db, frame_number=60, track_id=long.id, **box)
+    card = make_detection(db, frame_number=90, track_id=long.id, **box)
+    on_cover = make_video_box(db, file_id=clip.id, frame_number=60, category="fish", confidence=0.9)
+    db.commit()
+    return clip, card, on_cover
+
+
+def test_cards_scope_carries_the_cover_boxes_and_one_box_per_track(client, db):
+    """A tile draws the cover and names the species of the cards, and a
+    viewer needs every frame: two scopes of one endpoint. On a BRUV clip
+    "all" is 59,000 boxes and 28 MB, "cards" about 2,300 and 1 MB."""
+    clip, card, on_cover = _tracked_clip(db)
+
+    cards = client.get(f"/api/files/{clip.id}?scope=cards").json()
+    everything = client.get(f"/api/files/{clip.id}").json()
+
+    # Frame 60 twice (the cover: the long track's middle box and the
+    # one-frame track's card) and frame 90 (the long track's card);
+    # frame 30 stays in the database.
+    assert sorted((d["frame_number"], d["id"] == card.id) for d in cards["detections"]) == [
+        (60, False), (60, False), (90, True)
+    ]
+    assert {d["id"] for d in cards["detections"]} >= {card.id, on_cover.id}
+    assert len(everything["detections"]) == 4
+    assert len(cards["tracks"]) == len(everything["tracks"]) == 2
+    assert client.get(f"/api/files/{clip.id}?scope=frames").status_code == 422
+
+
+def test_cards_scope_of_a_photo_is_every_box(client, db):
+    d, _ = _setup_deployment(db)
+    photo = make_file(db, deployment_id=d.id)
+    make_detection(db, file_id=photo.id)
+    make_detection(db, file_id=photo.id)
+    db.commit()
+    assert len(client.get(f"/api/files/{photo.id}?scope=cards").json()["detections"]) == 2
+
+
+def test_max_at_once_is_the_peak_per_species_at_the_first_frame_it_reached(client, db):
+    """Five fish on frame 60 and five on frame 90 is 5, at 60; a box below
+    the counting threshold does not count unless verified; a rejected
+    box never counts; species count apart. The same rule as the event
+    MaxN, per file, so a tile chip and a count row say one number."""
+    clip, _, _ = _tracked_clip(db)  # frame 60: 2 fish, frame 90: 1 fish so far
+    fish = dict(file_id=clip.id, category="fish", confidence=0.9)
+    # Frame 60 reaches 5 with three more; frame 90 reaches 5 with three
+    # more plus the verified weak box, the unverified weak box and the
+    # rejected box not counting.
+    for frame, n in ((60, 3), (90, 3)):
+        for _ in range(n):
+            make_detection(db, frame_number=frame, **fish)
+    make_detection(db, frame_number=90, file_id=clip.id, category="fish", confidence=0.2)
+    make_detection(db, frame_number=90, file_id=clip.id, category="fish", confidence=0.2,
+                   verified=True)
+    make_detection(db, frame_number=90, file_id=clip.id, category="fish", confidence=0.9,
+                   label="false detection", verified=True)
+    make_detection(db, frame_number=30, file_id=clip.id, category="fish", confidence=0.9,
+                   label="Shark")
+    db.commit()
+
+    by_species = {
+        (m["label_taxonomy_id"], m["label"], m["category"]): m
+        for m in client.get(f"/api/files/{clip.id}?scope=cards").json()["max_at_once"]
+    }
+    assert by_species[(None, None, "fish")] == {
+        "label_taxonomy_id": None, "label": None, "category": "fish",
+        "count": 5, "frame_number": 60,
+    }
+    assert by_species[(None, "Shark", "fish")]["count"] == 1
+
+
+def test_max_at_once_of_a_photo_has_no_frame(client, db):
+    d, _ = _setup_deployment(db)
+    photo = make_file(db, deployment_id=d.id)
+    make_detection(db, file_id=photo.id)
+    make_detection(db, file_id=photo.id)
+    db.commit()
+    assert client.get(f"/api/files/{photo.id}").json()["max_at_once"] == [
+        {"label_taxonomy_id": None, "label": None, "category": "animal",
+         "count": 2, "frame_number": None}
+    ]

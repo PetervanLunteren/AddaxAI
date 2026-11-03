@@ -18,10 +18,9 @@ from sqlalchemy.orm import Session
 from app.api.crud import file as file_crud
 from app.api.schemas.file import (
     FileResponse,
+    FileScope,
     FileUpdate,
     FileWithDetections,
-    FilmstripFrame,
-    FilmstripResponse,
 )
 from app.db.base import get_db
 from app.models import Deployment, File, Project
@@ -29,6 +28,21 @@ from app.services.video_frame_service import decode_frame_jpeg
 from app.utils.datetime_serialization import set_active_project_timezone
 
 router = APIRouter(prefix="/api/files", tags=["files"])
+
+
+class VideoFileResponse(FastAPIFileResponse):
+    """A clip streamed in 8 MB reads instead of Starlette's 64 KB.
+
+    The chunk size is the number of read calls per second of video, and
+    a drive with a high cost per call punishes small ones: on an ExFAT
+    USB SSD measured 2026-11-02 a read cost about 160 ms whatever its
+    size, so 64 KB reads gave 0.4 MB/s and 8 MB reads 11.6 MB/s against
+    the 5.6 MB/s a 45 Mbit/s BRUV clip needs to play. On an internal
+    disk the size makes no difference. One buffer of this size per
+    stream in flight.
+    """
+
+    chunk_size = 8 * 1024 * 1024
 
 
 def _set_project_tz_for_file(db: Session, file_id: str) -> None:
@@ -144,29 +158,31 @@ async def update_file(
 @router.get("/{file_id}", response_model=FileWithDetections)
 async def get_file(
     file_id: str,
+    scope: FileScope = Query(
+        "all",
+        description=(
+            "Which boxes come along: every box of every frame, or the cards "
+            "(a photo's boxes; a clip's cover boxes plus one box per track)."
+        ),
+    ),
     db: Session = Depends(get_db),
 ):
     """
-    Get file by ID with detections.
-
-    Args:
-        file_id: File ID
-        db: Database session
-
-    Returns:
-        File with detections
+    Get file by ID with its tracks, the boxes of the scope and its MaxN
+    per species.
 
     Raises:
         HTTPException: If file not found
     """
-    # Loaded in a worker thread: a tracked video is thousands of boxes,
-    # and on the event loop that held every other request meanwhile.
-    file = await run_in_threadpool(file_crud.get_file_with_detections, db, file_id)
+    file = await run_in_threadpool(file_crud.get_file, db, file_id)
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
     _set_project_tz_for_file(db, file_id)
-    return file
+    # Built in a worker thread: a tracked video is thousands of boxes in
+    # the "all" scope, and on the event loop that held every other request
+    # meanwhile.
+    return await run_in_threadpool(file_crud.file_payload, db, file, scope)
 
 
 VIDEO_MEDIA_TYPES = {
@@ -195,7 +211,7 @@ def get_file_video(
     Raises:
         HTTPException: If file not found, not a video, or video file missing on disk
     """
-    file = file_crud.get_file_with_detections(db, file_id)
+    file = file_crud.get_file(db, file_id)
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -210,39 +226,10 @@ def get_file_video(
         (file.file_format or "").lower(), "video/mp4"
     )
 
-    return FastAPIFileResponse(
+    return VideoFileResponse(
         path=str(file_path),
         media_type=media_type,
         filename=file_path.name,
-    )
-
-
-# Sync `def` on purpose: decoding the filmstrip reads the clip with cv2 and
-# can take a second or more, so FastAPI runs it in the threadpool instead of
-# blocking the event loop. Results are cached in build_filmstrip's LRU.
-@router.get("/{file_id}/filmstrip", response_model=FilmstripResponse)
-def get_file_filmstrip(
-    file_id: str,
-    db: Session = Depends(get_db),
-) -> FilmstripResponse:
-    """
-    Decode a small set of evenly-spaced low-res frames for a video, for the
-    counts-modal gallery. Frames are generated on demand and never persisted.
-
-    Raises:
-        HTTPException: 404 if the file is missing, 400 if it is not a video.
-    """
-    from app.services.filmstrip_service import build_filmstrip
-
-    file = file_crud.get_file_with_detections(db, file_id)
-    if not file:
-        raise HTTPException(status_code=404, detail="File not found")
-    if file.file_type != "video":
-        raise HTTPException(status_code=400, detail="File is not a video")
-
-    frames = build_filmstrip(file.file_path, file.frame_rate)
-    return FilmstripResponse(
-        frames=[FilmstripFrame(**frame) for frame in frames]
     )
 
 
@@ -311,7 +298,7 @@ def get_file_image(
     Raises:
         HTTPException: If file not found or path invalid
     """
-    file = file_crud.get_file_with_detections(db, file_id)
+    file = file_crud.get_file(db, file_id)
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 

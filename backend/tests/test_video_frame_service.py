@@ -117,3 +117,22 @@ def test_the_chunk_command_selects_by_offset_from_the_seek(tmp_path):
     assert cmd[cmd.index("-vf") + 1].startswith("select='eq(n\\,0)+eq(n\\,10)+eq(n\\,25)',")
     assert cmd[cmd.index("-frames:v") + 1] == "3"
     assert cmd[cmd.index("-fps_mode") + 1] == "passthrough"
+
+
+def test_a_decode_that_runs_past_the_timeout_is_given_up(monkeypatch, caplog):
+    """A frame on a drive that costs 160 ms per read took over six
+    minutes, and every request waiting on it held a browser connection
+    until the viewer could not fetch its own file (2026-11-02). Past
+    DECODE_TIMEOUT_S ffmpeg is stopped and the picture is missing, with
+    a warning naming the likely cause; nothing hangs."""
+    monkeypatch.setattr(vfs, "_ffmpeg", lambda: "ffmpeg")
+    monkeypatch.setattr(vfs, "_frame_rate_of", lambda path: 10.0)
+
+    def slow(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout"))
+
+    monkeypatch.setattr(subprocess, "run", slow)
+
+    assert vfs.decode_frame_jpeg("/clip.mp4", 5, FPS) is None
+    assert vfs.decode_frames_jpeg("/clip.mp4", [5, 6], FPS) == {}
+    assert "took over" in caplog.text and "drive" in caplog.text

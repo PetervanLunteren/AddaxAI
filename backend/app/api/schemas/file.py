@@ -3,6 +3,7 @@ File schemas for API requests and responses.
 """
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, field_serializer
 
@@ -114,10 +115,35 @@ class FileResponse(BaseModel):
         from_attributes = True
 
 
+# Which boxes a file comes with. "all" is every box of every frame, what
+# a viewer, the player and the timeline need. "cards" is what a tile or a
+# bulk action needs: a photo's boxes, and for a clip the cover frame's
+# boxes plus one box per track on its representative frame. A BRUV clip
+# is 59,000 boxes and 28 MB in "all", about 2,300 and 1 MB in "cards"
+# (2026-11-02).
+FileScope = Literal["all", "cards"]
+
+
+class MaxAtOnce(BaseModel):
+    """The most boxes of one species in any one frame of the file, at the
+    project's counting threshold: the file's MaxN, the rule
+    `calculate_max_n_for_event` applies per event. `frame_number` is the
+    first frame that reached it, null for a photo."""
+
+    label_taxonomy_id: str | None
+    label: str | None
+    category: str
+    count: int
+    frame_number: int | None
+
+
 class FileWithDetections(FileResponse):
     """File with detections response schema."""
 
     detections: list[DetectionResponse]
+    # Per species, computed in the database whatever the scope, so a tile
+    # chip and a timeline marker read one number.
+    max_at_once: list[MaxAtOnce] = []
     # The animals a tracker followed through this video; empty for images
     # and untracked videos.
     tracks: list[TrackResponse] = []
@@ -138,17 +164,3 @@ class FileUpdate(BaseModel):
     flagged: bool | None = None
 
 
-class FilmstripFrame(BaseModel):
-    """One frame of a video's on-demand filmstrip preview."""
-
-    frame_number: int
-    # Seconds into the clip; null when the video has no known frame rate.
-    time_seconds: float | None
-    # Inline JPEG data URI ("data:image/jpeg;base64,...").
-    image: str
-
-
-class FilmstripResponse(BaseModel):
-    """Evenly-spaced low-res frames for the counts-modal video gallery."""
-
-    frames: list[FilmstripFrame]

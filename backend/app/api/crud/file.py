@@ -18,9 +18,21 @@ from app.api.crud.event_observation import (
     get_event_ids_for_files,
     recalculate_max_n_for_events,
 )
-from app.api.schemas.file import FileUpdate
+from app.api.schemas.file import (
+    DetectionResponse,
+    FileResponse,
+    FileScope,
+    FileUpdate,
+    FileWithDetections,
+    MaxAtOnce,
+    TrackResponse,
+)
 from app.core.confidence import effective_floor
-from app.ml.detection_visibility import on_visible_frame, on_visible_frame_of
+from app.ml.detection_visibility import (
+    on_representative_frame,
+    on_visible_frame,
+    on_visible_frame_of,
+)
 from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
 from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, Event, File, Project
@@ -508,6 +520,98 @@ def get_label_progress(
         empty_labels_verified=int(empty_verified or 0),
         files=int(files_total or 0),
         files_verified=int(files_verified or 0),
+    )
+
+
+def get_file(db: Session, file_id: str) -> File | None:
+    """The file row alone. The picture and video endpoints read a path
+    and a frame number from it; until 2026-11-02 they loaded every box of
+    the clip to do so."""
+    return db.query(File).filter(File.id == file_id).first()
+
+
+def file_detections(db: Session, file: File, scope: FileScope) -> list[Detection]:
+    """The boxes a response carries (`FileScope`). For "cards" on a clip:
+    the cover frame's boxes, which draw the thumbnail, and every track's
+    box on its representative frame, the card that gives the species and
+    decides the track's scope. Nothing else leaves the database."""
+    q = db.query(Detection).filter(Detection.file_id == file.id)
+    if scope == "cards" and file.file_type == "video":
+        q = q.filter(
+            or_(Detection.frame_number == file.best_frame_number, on_representative_frame())
+        )
+    return q.order_by(Detection.frame_number, Detection.id).all()
+
+
+def max_at_once(db: Session, file: File, threshold: float) -> list[MaxAtOnce]:
+    """The file's MaxN per species: boxes at the counting threshold or
+    verified, rejected ones left out, counted per frame and species, the
+    peak per species with the first frame kept on a tie. One rule with
+    `calculate_max_n_for_event`, per file: a handful of rows out, so a
+    tile never needs the frames to count them."""
+    rows = (
+        db.query(
+            Detection.frame_number,
+            Detection.label_taxonomy_id,
+            Detection.label,
+            Detection.category,
+            func.count(Detection.id).label("n"),
+        )
+        .filter(
+            Detection.file_id == file.id,
+            Detection.bbox_x.isnot(None),
+            threshold_or_verified(threshold),
+            is_a_real_detection(),
+        )
+        .group_by(
+            Detection.frame_number,
+            Detection.label_taxonomy_id,
+            Detection.label,
+            Detection.category,
+        )
+        .order_by(Detection.frame_number)
+        .all()
+    )
+    best: dict[tuple, MaxAtOnce] = {}
+    for r in rows:
+        key = (r.label_taxonomy_id, r.label, r.category)
+        if key not in best or r.n > best[key].count:
+            best[key] = MaxAtOnce(
+                label_taxonomy_id=r.label_taxonomy_id,
+                label=r.label,
+                category=r.category,
+                count=r.n,
+                frame_number=r.frame_number,
+            )
+    return list(best.values())
+
+
+def _counting_threshold_of(db: Session, file: File) -> float:
+    return (
+        db.query(Project.counting_threshold)
+        .join(Deployment, Deployment.project_id == Project.id)
+        .filter(Deployment.id == file.deployment_id)
+        .scalar()
+    ) or 0.0
+
+
+def file_payload(
+    db: Session, file: File, scope: FileScope, *, camera: str | None = None
+) -> FileWithDetections:
+    """The one place a file response is built, for the file endpoint and
+    for the files inside an event. The base fields are read from the row;
+    the boxes come from `file_detections` for the scope, so validating
+    the ORM object never pulls every box in by itself."""
+    base = FileResponse.model_validate(file, from_attributes=True)
+    return FileWithDetections(
+        **{name: getattr(base, name) for name in FileResponse.model_fields},
+        detections=[
+            DetectionResponse.model_validate(d, from_attributes=True)
+            for d in file_detections(db, file, scope)
+        ],
+        tracks=[TrackResponse.model_validate(t, from_attributes=True) for t in file.tracks],
+        camera=camera,
+        max_at_once=max_at_once(db, file, _counting_threshold_of(db, file)),
     )
 
 

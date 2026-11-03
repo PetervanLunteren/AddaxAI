@@ -130,22 +130,40 @@ def _sort_adjacency_predicates(
     predicates handle current-is-NULL and current-is-non-NULL separately.
     """
     if not nulls_last:
-        if descending:
-            next_pred = (sort_key < current_value) | (
-                (sort_key == current_value) & (id_col < current_id)
-            )
-            prev_pred = (sort_key > current_value) | (
+        # SQLite sorts NULL before every value: the NULL rows lead an ASC
+        # list and trail a DESC one, ordered by id among themselves. The
+        # predicates say so, because a plain comparison with NULL is
+        # NULL: an event without a capture time (most BRUV clips) made
+        # the adjacent endpoint answer 500 and the modal's arrows dead
+        # (2026-11-03), and the NULL rows were unreachable from the
+        # dated ones.
+        is_null = sort_key.is_(None)
+        not_null = sort_key.isnot(None)
+        if current_value is None:
+            if descending:
+                next_pred = is_null & (id_col < current_id)
+                prev_pred = not_null | (is_null & (id_col > current_id))
+            else:
+                next_pred = (is_null & (id_col > current_id)) | not_null
+                prev_pred = is_null & (id_col < current_id)
+        else:
+            # Built only here: comparing a column with None is not SQL.
+            after = (sort_key > current_value) | (
                 (sort_key == current_value) & (id_col > current_id)
             )
+            before = (sort_key < current_value) | (
+                (sort_key == current_value) & (id_col < current_id)
+            )
+            if descending:
+                next_pred = (not_null & before) | is_null
+                prev_pred = not_null & after
+            else:
+                next_pred = not_null & after
+                prev_pred = (not_null & before) | is_null
+        if descending:
             next_order = [sort_key.desc(), id_col.desc()]
             prev_order = [sort_key.asc(), id_col.asc()]
         else:
-            next_pred = (sort_key > current_value) | (
-                (sort_key == current_value) & (id_col > current_id)
-            )
-            prev_pred = (sort_key < current_value) | (
-                (sort_key == current_value) & (id_col < current_id)
-            )
             next_order = [sort_key.asc(), id_col.asc()]
             prev_order = [sort_key.desc(), id_col.desc()]
         return next_pred, prev_pred, next_order, prev_order
@@ -1012,15 +1030,18 @@ def get_events_by_project(
 
 def get_event_with_files(db: Session, event_id: str) -> Event | None:
     """
-    Get event with all files and their detections, ordered by sequence_number.
+    Get event with its files and their tracks. The boxes are not loaded
+    here: the router hands each file to `file_payload` in the "cards"
+    scope, and the viewer fetches the full file it focuses on itself.
+    Until 2026-11-02 every box of every file came along, 28 MB for one
+    BRUV clip, and the Counts modal waited 15 s on it.
 
-    Files and detections load as IN-selects, never joined onto the event
+    Files and tracks load as IN-selects, never joined onto the event
     row: joined, a tracked hour of video (12,700 boxes) took 30 seconds
     to come back, and the events list did the same per page.
     """
     event = (
         db.query(Event)
-        .options(selectinload(Event.files).selectinload(File.detections))
         .options(selectinload(Event.files).selectinload(File.tracks))
         .options(joinedload(Event.deployment).joinedload(Deployment.site))
         .filter(Event.id == event_id)

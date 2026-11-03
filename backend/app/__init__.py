@@ -12,7 +12,7 @@ from PIL import ImageFile
 # mid-write, an SD card is pulled, a copy is interrupted. Pillow's
 # default is to raise `OSError: broken data stream when reading image
 # file` on those, so every surface that decodes pixels (thumbnails,
-# crops, filmstrips, the annotated copies, the EXIF date read) fails on
+# crops, the annotated copies, the EXIF date read) fails on
 # a file MegaDetector itself reads without complaint: it sets this same
 # flag in `megadetector/visualization/visualization_utils.py`, which
 # `run_detector_batch` loads every image through. So the detector saw

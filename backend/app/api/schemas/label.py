@@ -219,9 +219,9 @@ LabelsFilesSort = Literal[
 class LabelsFileItem(BaseModel):
     """One file on the Files tab: enough to draw a tile, nothing more.
 
-    No detections are carried. The tile fetches the file detail for its
-    boxes, the same row the viewer opens, so the two share one cache
-    entry.
+    No detections are carried. The tile fetches the file in the "cards"
+    scope for its boxes and its MaxN per species (`FileScope`); the
+    viewer fetches the full file when the tile is opened.
     """
 
     id: str

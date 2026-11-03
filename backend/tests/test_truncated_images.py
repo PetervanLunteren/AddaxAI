@@ -3,7 +3,7 @@
 Camera traps write partly-finished JPEGs routinely: a battery dies
 mid-write, a card is pulled, a copy is interrupted. Pillow refuses those
 by default, which took out every surface that decodes pixels
-(thumbnails, crops, filmstrips, annotated copies, the EXIF date read)
+(thumbnails, crops, annotated copies, the EXIF date read)
 for a file the user can open in any photo viewer.
 
 MegaDetector already sets this flag itself, in

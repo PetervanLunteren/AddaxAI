@@ -11,7 +11,7 @@ from app.utils.datetime_serialization import serialize_local_datetime
 
 
 class MaxNFrame(BaseModel):
-    """A MaxN frame reference for filmstrip badges."""
+    """Where and when a species' MaxN was counted, for the Counts modal."""
 
     file_id: str
     label: str | None = None

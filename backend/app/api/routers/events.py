@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.api.crud import event as event_crud
 from app.api.crud import event_observation as event_obs_crud
+from app.api.crud import file as file_crud
 from app.api.crud import label_tree as label_tree_crud
 from app.api.crud.event import VERIFY_SORT_VALUES
 from app.api.schemas.event import (
@@ -27,10 +28,9 @@ from app.api.schemas.event import (
     GenerateEventsResponse,
     LabelTreeResponse,
 )
-from app.api.schemas.file import FileWithDetections
 from app.core.observation_attributes import Behavior, LifeStage, Sex
 from app.db.base import get_db
-from app.models import Project
+from app.models import Event, Project
 from app.models.event_observation import EventObservation
 from app.utils.datetime_serialization import set_active_project_timezone
 from app.utils.media_dates import frame_time
@@ -372,6 +372,18 @@ async def get_event(
         for obs in event_obs_crud.list_event_observations(db, event_id)
     ]
 
+    # The light shape per file: the cover's boxes, the cards and the
+    # MaxN per species. Enough for the landing pick, the filmstrip and
+    # the first still; the modal fetches the full file it focuses on.
+    files = await run_in_threadpool(
+        lambda: [
+            file_crud.file_payload(
+                db, f, "cards", camera=_camera_name(f.file_path, event.deployment)
+            )
+            for f in sorted_files
+        ]
+    )
+
     return EventWithFiles(
         id=event.id,
         deployment_id=event.deployment_id,
@@ -384,12 +396,7 @@ async def get_event(
         notes=event.notes,
         created_at_utc=event.created_at_utc,
         site_name=site_name,
-        files=[
-            FileWithDetections.model_validate(f, from_attributes=True).model_copy(
-                update={"camera": _camera_name(f.file_path, event.deployment)}
-            )
-            for f in sorted_files
-        ],
+        files=files,
     )
 
 
@@ -516,7 +523,7 @@ async def add_event_observation(
     db: Session = Depends(get_db),
 ):
     """Add a species the AI missed (or set the count of an existing one)."""
-    if not event_crud.get_event_with_files(db, event_id):
+    if not db.get(Event, event_id):
         raise HTTPException(status_code=404, detail="Event not found")
     event_obs_crud.add_human_species(
         db,

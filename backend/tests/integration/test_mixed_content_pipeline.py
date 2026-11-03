@@ -137,7 +137,7 @@ def test_load_creates_video_and_image_files(deployment_scaffold):
 def test_detections_linked_to_video_with_frame_number(deployment_scaffold):
     """Video detections land on the parent video File row; frame_number
     on each Detection remains the way per-frame information is recovered
-    downstream (filmstrip, MaxN, etc.)."""
+    downstream (the timeline, MaxN, etc.)."""
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
 

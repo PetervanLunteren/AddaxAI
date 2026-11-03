@@ -54,6 +54,14 @@ FRAME_CACHE_SIZE = 256
 # would queue behind video decoding.
 MAX_CONCURRENT_DECODES = 4
 _decode_slots = threading.BoundedSemaphore(MAX_CONCURRENT_DECODES)
+# The most a decode may take before it is given up as undecodable here
+# and now. A frame is a fraction of a second on a healthy disk and a
+# chunk a few seconds; on a drive that costs 160 ms per read, one frame
+# of a 45 Mbit/s clip took over six minutes (2026-11-02), and every
+# request waiting on it held a browser connection, until the viewer
+# could not even fetch its file. Better a missing picture than a hung
+# app; the warning names the likely cause.
+DECODE_TIMEOUT_S = 60
 # How many of a track's frames one seek decodes. The cache holds four
 # chunks, more than the grid of an opened track has in flight.
 TRACK_CHUNK = 64
@@ -169,6 +177,22 @@ def _frame_rate_of(video_path: str) -> float | None:
     return fps if fps > 0 else None
 
 
+def _run_decode(cmd: list[str]) -> subprocess.CompletedProcess[bytes] | None:
+    """Run ffmpeg, or None when it ran past DECODE_TIMEOUT_S (killed)."""
+    try:
+        return subprocess.run(cmd, capture_output=True, check=False, timeout=DECODE_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        return None
+
+
+def _warn_timeout(what: str, video_path: str) -> None:
+    logger.warning(
+        f"Frame decode: {what} of {video_path} took over {DECODE_TIMEOUT_S}s and was "
+        "stopped. A drive that is slow to read, an external one most often, is the "
+        "usual cause."
+    )
+
+
 def _ffmpeg() -> str | None:
     try:
         return resolve_ffmpeg(APP_ENV)
@@ -196,11 +220,10 @@ def decode_frame_jpeg(
     if ffmpeg is None:
         return None
     with _decode_slots:
-        result = subprocess.run(
-            frame_seek_cmd(ffmpeg, Path(video_path), frame_number, fps),
-            capture_output=True,
-            check=False,
-        )
+        result = _run_decode(frame_seek_cmd(ffmpeg, Path(video_path), frame_number, fps))
+    if result is None:
+        _warn_timeout(f"frame {frame_number}", video_path)
+        return None
     if result.returncode != 0 or not result.stdout:
         stderr = result.stderr.decode(errors="replace").strip()[-300:]
         logger.warning(
@@ -233,11 +256,12 @@ def decode_frames_jpeg(
     with tempfile.TemporaryDirectory() as out:
         out_dir = Path(out)
         with _decode_slots:
-            result = subprocess.run(
-                frames_seek_cmd(ffmpeg, Path(video_path), first, offsets, fps, out_dir),
-                capture_output=True,
-                check=False,
+            result = _run_decode(
+                frames_seek_cmd(ffmpeg, Path(video_path), first, offsets, fps, out_dir)
             )
+        if result is None:
+            _warn_timeout(f"frames {first} to {wanted[-1]}", video_path)
+            return {}
         files = sorted(out_dir.glob("*.jpg"))
         if result.returncode != 0 and not files:
             stderr = result.stderr.decode(errors="replace").strip()[-300:]
