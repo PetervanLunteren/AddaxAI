@@ -72,9 +72,16 @@ TRACK_CHUNK = 64
 # crop endpoint then reads.
 _frames: OrderedDict[tuple[str, int, float], bytes] = OrderedDict()
 _frames_lock = threading.Lock()
-# One decode of a clip at a time: the second request for a chunk waits
-# for the first instead of seeking into the same file beside it.
+# One decode of a clip's chunks at a time: the second request for a
+# chunk waits for the first instead of seeking into the same file
+# beside it.
 _clip_locks: dict[str, threading.Lock] = {}
+# One decode of a single frame at a time, per frame: the second request
+# for the same frame waits for the first and reads its bytes from the
+# cache, while a request for another frame of the clip runs alongside.
+# Bounded like the cache; a lock dropped while in use only means a late
+# duplicate may decode once more.
+_frame_locks: OrderedDict[tuple[str, int, float], threading.Lock] = OrderedDict()
 
 
 def _cached(key: tuple[str, int, float]) -> bytes | None:
@@ -96,6 +103,15 @@ def _store(key: tuple[str, int, float], jpeg: bytes) -> None:
 def _clip_lock(video_path: str) -> threading.Lock:
     with _frames_lock:
         return _clip_locks.setdefault(video_path, threading.Lock())
+
+
+def _frame_lock(key: tuple[str, int, float]) -> threading.Lock:
+    with _frames_lock:
+        lock = _frame_locks.setdefault(key, threading.Lock())
+        _frame_locks.move_to_end(key)
+        while len(_frame_locks) > FRAME_CACHE_SIZE:
+            _frame_locks.popitem(last=False)
+        return lock
 
 
 def _scale_filter() -> str:
@@ -208,14 +224,17 @@ def decode_frame_jpeg(
     frame past the end, a file that will not open, ffmpeg missing).
     Cached by path, frame and rate.
 
-    One decode per clip at a time (`_clip_lock`), as the chunk decoder
-    does, with the cache read again once the lock is held: a second
-    request for the same frame then waits for the first and takes its
-    result instead of starting its own ffmpeg. Two requests for one
-    frame of a clip on a slow drive (the viewer's prefetch and the
-    canvas asking for it a moment later) each ran past the timeout and
-    both answered 404 (2026-11-03). Serialising also keeps a prefetch
-    from reading the drive beside the frame a person is waiting for.
+    One decode per frame at a time (`_frame_lock`), with the cache read
+    again once the lock is held: a second request for the same frame
+    waits for the first and takes its result instead of starting its
+    own ffmpeg. Two requests for one frame of a clip on a slow drive
+    (the viewer's prefetch and the canvas asking for it a moment later)
+    each ran past the timeout and both answered 404 (2026-11-03). Per
+    frame, not per clip: for an hour that afternoon single frames took
+    the clip lock the chunk decoder uses, and a frame a person asked
+    for then waited behind the prefetch of another, up to the timeout
+    on a slow drive (measured 80 s). Different frames of one clip now
+    run alongside, bounded by `MAX_CONCURRENT_DECODES`.
     """
     if frame_number < 0:
         return None
@@ -229,7 +248,7 @@ def decode_frame_jpeg(
     ffmpeg = _ffmpeg()
     if ffmpeg is None:
         return None
-    with _clip_lock(video_path):
+    with _frame_lock(key):
         jpeg = _cached(key)
         if jpeg is not None:
             return jpeg

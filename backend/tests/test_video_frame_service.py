@@ -27,9 +27,11 @@ FPS = 10.0
 def _empty_cache():
     vfs._frames.clear()
     vfs._clip_locks.clear()
+    vfs._frame_locks.clear()
     yield
     vfs._frames.clear()
     vfs._clip_locks.clear()
+    vfs._frame_locks.clear()
 
 
 @pytest.fixture(scope="module")
@@ -169,3 +171,39 @@ def test_two_requests_for_one_frame_run_ffmpeg_once(monkeypatch):
 
     assert results == [b"jpeg", b"jpeg"]
     assert len(calls) == 1
+
+
+def test_two_different_frames_of_one_clip_decode_side_by_side(monkeypatch):
+    """The viewer prefetches the frame its next verdict lands on; a
+    person who then picks another moment must not wait behind that
+    prefetch. For an hour on 2026-11-03 single frames took the clip
+    lock and the wait reached the 60 s timeout on a slow drive. Two
+    frames of one clip now decode at the same time."""
+    monkeypatch.setattr(vfs, "_ffmpeg", lambda: "ffmpeg")
+    monkeypatch.setattr(vfs, "_frame_rate_of", lambda path: 10.0)
+    running = 0
+    peak = 0
+    guard = threading.Lock()
+
+    def slow(cmd, **kwargs):
+        nonlocal running, peak
+        with guard:
+            running += 1
+            peak = max(peak, running)
+        time.sleep(0.2)
+        with guard:
+            running -= 1
+        return subprocess.CompletedProcess(cmd, 0, stdout=b"jpeg", stderr=b"")
+
+    monkeypatch.setattr(subprocess, "run", slow)
+
+    threads = [
+        threading.Thread(target=lambda n=n: vfs.decode_frame_jpeg("/clip.mp4", n, FPS))
+        for n in (5, 6)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert peak == 2
