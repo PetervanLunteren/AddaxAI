@@ -223,7 +223,13 @@ export function VerifyFilterBar({
               verification: filters.verification ?? verificationDefault,
               flagged: showLikedFlaggedEmpty ? filters.flagged : undefined,
               favorited: showLikedFlaggedEmpty ? filters.favorited : undefined,
-              empty: showEmpty ? (filters.empty ?? emptyDefault) : undefined,
+              // Ticking a label turns "Empty only" off (see
+              // `reconcileEmptyFilter`), so count as if it were off.
+              empty: showEmpty
+                ? filters.empty && filters.empty !== "show_only"
+                  ? filters.empty
+                  : emptyDefault
+                : undefined,
               minConfidence: filters.min_confidence,
               maxConfidence: filters.max_confidence,
               minLabelConfidence: filters.min_label_confidence,
