@@ -14,8 +14,14 @@ from app.ml.hf_downloader import NetworkBlockedError
 
 
 @pytest.fixture(autouse=True)
-def clean_install_state():
-    """Module-level state leaks between tests otherwise."""
+def clean_install_state(monkeypatch):
+    """Module-level state leaks between tests otherwise.
+
+    The status route checks the env through an EnvironmentManager, whose
+    constructor downloads micromamba when it is missing. Stub the check so
+    these tests never reach the network; a slow micro.mamba.pm failed CI.
+    """
+    monkeypatch.setattr(setup_router, "_env_present", lambda: False)
     setup_router._install_state.finish(None)
     yield
     setup_router._install_state.finish(None)
