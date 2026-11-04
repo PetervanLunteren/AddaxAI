@@ -71,35 +71,6 @@ Easiest: ask IT to allow programs under that folder. If they cannot, move both.
 </FaqItem>
 
 <FaqItem
-  id="your-user-name-has-a-special-character"
-  q="Your Windows user name has a special character"
-  summary='"YAML error in spec file" and "bad file" during setup. Windows only.'
->
-
-Setup stops at "Analysis environment" with:
-
-```
-Failed to create environment env-addaxai-base: micromamba create failed (exit 1):
-error    libmamba YAML error in spec file 'C:\Users\<your user name>\AddaxAI\envs\.env-addaxai-base.environment.yml'
-critical libmamba bad file: C:\Users\<your user name>\AddaxAI\envs\.env-addaxai-base.environment.yml
-```
-
-Newer versions of AddaxAI say instead that the folder name contains a character outside the basic Latin alphabet, and names it.
-
-#### Why it fails
-
-The data folder sits in your user folder, `C:\Users\<your user name>\AddaxAI`. When the user name has a letter such as ñ, ü or é, or any non-Latin character, the program that builds the analysis environment cannot open its own files there. It is a bug in that program, not in your computer, and it does not depend on the network. AddaxAI itself opens fine, and the error only shows at setup.
-
-#### The fix
-
-Give AddaxAI a data folder whose path has no such characters.
-
-1. Set `ADDAXAI_USER_DATA_DIR` to a folder like `C:\AddaxAI-data`. See [environment variables](../reference/environment-variables.mdx#how-to-set-them) for how to set it.
-2. Restart the computer, start AddaxAI and run setup again.
-
-</FaqItem>
-
-<FaqItem
   id="access-denied-at-the-last-step-of-setup"
   q="Access denied at the last step of setup"
   summary='"[WinError 5] Access denied" while the finished environment is moved into place. Windows only.'
