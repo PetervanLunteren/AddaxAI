@@ -5,6 +5,13 @@ Date: 2026-09-17
 Branch the investigation ran on: `claude/depth-estimation-investigation-bvd8p7`
 Repo state at time of audit: `abe69cd` on `main`, VERSION `0.0.0-dev`
 
+A note for whoever picks this up: this was written on 2026-09-17 as a first pass, to get
+the thinking down before it was forgotten. It is not a spec and it is not set in stone.
+The literature, the model choice and the design all deserve a fresh look before
+building: newer models, newer papers, what other tools do now, and plain better ideas.
+Where the text below says "do this", read it as "this is what seemed best at the time".
+Section 16 at the end holds what was checked again on 2026-11-04.
+
 This document is the raw material for a proper implementation plan. It holds the
 original brief, the questions to answer, what the audit of the repo found, what the
 literature says, the model comparison, the recommended design, what to deliberately
@@ -788,3 +795,107 @@ half a metre of error. Animal size is derivable from the same numbers but will b
 15 to 25 percent per detection, so either leave it out or label it clearly as indicative.
 Before building anything, spend a day on a throwaway script and check it against real tape
 measurements at a site you know.
+
+---
+
+## 16. Update, 2026-11-04
+
+Checked again seven weeks after the first pass, before an outside contributor starts on
+step zero. Five points.
+
+### 16.1 Python and environment: no longer a problem
+
+All five analysis environments moved to Python 3.11 in July 2026, including
+`env-pytorch`. Depth Anything V2 Small loads through `transformers`, and `env-pytorch`
+already pins `transformers==4.49.0`. So the model runs there today with no change to any
+YAML.
+
+Section 9.3 recommended `env-addaxai-base` so that a detector-only project does not need
+the 5 GB `env-pytorch`. Changed recommendation: run it in `env-pytorch`. Adding
+`transformers` to the base YAML forces every user to rebuild that env on the next update.
+Running in `env-pytorch` costs nothing for the users who already have it, which is
+everyone who runs a classifier, and one download for the rest. No new environment, no
+rebuild.
+
+### 16.2 Newer models
+
+Depth Anything 3 was released in November 2025. The variants that matter:
+
+| Variant | Size | Licence | Output |
+|---|---|---|---|
+| DA3-SMALL, DA3-BASE | 80M, 120M | Apache 2.0 | relative depth |
+| DA3MONO-LARGE | 350M | Apache 2.0 | relative depth, single photo |
+| DA3METRIC-LARGE | 350M | Apache 2.0 | metres, needs the focal length |
+| DA3-LARGE | 350M | unclear: HF card says Apache, GitHub says CC-BY-NC, open issue #259 on 2026-11-01 | relative |
+| Giant variants | 1.1B and up | CC-BY-NC | out |
+
+Depth Anything V2 Small stays the pick for a first version, for two reasons. DA3 needs
+its own package plus `xformers`, which `transformers` does not cover, while V2 Small is a
+plain `transformers` model in an env we already have. And the metric variant needs the
+focal length, which the 2025 wildlife benchmark found is often wrong once lenses are
+swapped or cameras refocused; our design does not need it, the measured points give the
+scale.
+
+No new camera trap depth benchmark has appeared since September. The two cited in section
+5.3 still stand. Since the step-zero script is throwaway, run DA3-SMALL next to V2 Small
+on the same photos. If it is clearly better, we know before building.
+
+Sources: https://github.com/bytedance-seed/depth-anything-3,
+https://github.com/ByteDance-Seed/Depth-Anything-3/issues/259,
+https://huggingface.co/depth-anything/DA3-LARGE/discussions/2
+
+### 16.3 Data for step zero
+
+There is no public dataset of camera trap photos with poles at known distances. What
+exists:
+
+- Shahabaz et al. 2026, https://github.com/ahmedshahabaz/distance_sampling. A small set
+  of example camera trap videos, a spreadsheet of measured animal distances, and the
+  reference markers at known distances from their field protocol. Small, exactly our use
+  case, built for exactly this test. Code MIT, data licence not stated, full dataset on
+  request. Use this one.
+- Lindenthal Camera Traps on LILA, https://lila.science/datasets/lindenthal-camera-traps/.
+  775 video sequences from a wildlife park filmed with a stereo depth camera, so every
+  pixel has a true depth; 412 annotated stills with depth maps. CDLA-Permissive. One
+  213 GB zip, and a depth camera in a park is not a camera trap in a forest.
+- Howe et al. 2017 duiker data on Dryad: distances in bins, no images. Not useful.
+- The Florence 2025 benchmark (93 images with calibrated patterns): not released as far
+  as we can find.
+
+None of these covers the night check against a daylight reference map well. That still
+needs one real deployment with a few tape-measured distances.
+
+### 16.4 Projects mode only
+
+A folder run has one synthetic deployment and no site, so "which camera is this" has no
+answer there. Calibration is for projects only. Drop the export column from folder runs
+through the existing `OMITTED_COLUMNS` mechanism. This settles the open item in 9.6 and
+14.4.
+
+### 16.5 The one camera, one position rule
+
+Nothing stops a user from putting several cameras in one deployment, and a calibration
+over several cameras is wrong for all of them. The app can see most of that itself,
+because the layout for it is already defined: one deployment with one subfolder per
+camera, which is how paired cameras and bundled parallel cameras work today
+(DEVELOPERS.md, "Paired cameras").
+
+Refuse where we know. The Calibrate button is off, with a one-line reason, when
+`paired_cameras` is on, or when the deployment's files sit in more than one subfolder.
+One catch for the second rule: a camera that rolls over its folder (`100RECNX` then
+`101RECNX`) is one camera in two subfolders. `crud/trap_nights.py` already joins those;
+reuse that logic rather than writing a second one.
+
+Warn where we cannot. Several cameras dumped in one flat folder, or a camera re-aimed
+halfway, look like one camera to the app. For that, a short `Callout` inside the
+calibration dialog, always visible, above the photo. Roughly:
+
+> Calibration only holds for one camera at one position. If this deployment mixes
+> cameras, or the camera was moved, split it first. Distances are read at the animal's
+> feet, so animals in trees or in flight, and animals cut off at the bottom of the photo,
+> get no distance. Beyond about 15 m the numbers get rough.
+
+No "don't show again" checkbox in v1. It needs a stored preference, the text is three
+lines in a dialog the user opens on purpose a handful of times per project, and `Callout`
+is the one advisory component already. If it annoys people, `Callout` has `onDismiss`
+and it can be added then.
