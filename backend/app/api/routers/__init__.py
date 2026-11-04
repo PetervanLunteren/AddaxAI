@@ -1,6 +1,7 @@
 """API routers."""
 
 from .backup import router as backup_router
+from .calibration import router as calibration_router
 from .deployment_queue import router as deployment_queue_router
 from .deployments import router as deployments_router
 from .detections import router as detections_router
@@ -21,6 +22,7 @@ from .websocket import router as websocket_router
 
 __all__ = [
     "backup_router",
+    "calibration_router",
     "deployment_queue_router",
     "deployments_router",
     "detections_router",

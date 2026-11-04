@@ -1,6 +1,7 @@
 """SQLAlchemy models for the application."""
 
 from .audit_log import AuditLog
+from .calibration_answer import CalibrationAnswer
 from .deployment import Deployment
 from .deployment_queue import DeploymentQueue
 from .detection import Detection
@@ -15,6 +16,7 @@ from .site import Site
 
 __all__ = [
     "AuditLog",
+    "CalibrationAnswer",
     "Deployment",
     "DeploymentQueue",
     "Detection",

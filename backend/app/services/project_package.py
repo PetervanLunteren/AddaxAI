@@ -143,6 +143,7 @@ def _deployment_tables(src: str) -> list[tuple[str, str]]:
         ("files", f"t.deployment_id IN {_SCOPE}"),
         ("detections", f"t.file_id IN {_files_in(src)}"),
         ("detection_embeddings", f"t.detection_id IN {_detections_in(src)}"),
+        ("calibration_answers", f"t.detection_id IN {_detections_in(src)}"),
         ("events", f"t.deployment_id IN {_SCOPE}"),
         ("event_files", f"t.event_id IN {_events_in(src)}"),
         ("event_observations", f"t.event_id IN {_events_in(src)}"),

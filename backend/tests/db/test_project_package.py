@@ -25,6 +25,7 @@ from app.core.job_cancellation import JobCancelledError
 from app.db.migrations import get_head_revision, upgrade_to_head
 from app.ml.taxonomy_db import BUILTIN_MODEL_ID
 from app.models import (
+    CalibrationAnswer,
     Deployment,
     Detection,
     DetectionEmbedding,
@@ -122,6 +123,7 @@ def seed_project(db: Session, folders: list[Path], *, name: str = "Wolves") -> S
                 event_id=event.id, label_taxonomy_id=animal.id, category="animal", max_n=1
             )
         )
+        db.add(CalibrationAnswer(detection_id=det.id, label="animal", score=0.9, answer="right"))
         deployments.append(dep.id)
     db.commit()
     return Seed(project_id=project.id, site_id=site.id, deployments=deployments)
@@ -177,14 +179,14 @@ def test_export_writes_a_complete_package(lead: Machine, tmp_path: Path) -> None
             t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]  # noqa: S608
             for t in (
                 "projects", "sites", "deployments", "files", "detections",
-                "detection_embeddings", "events", "event_files",
+                "detection_embeddings", "calibration_answers", "events", "event_files",
                 "event_observations", "label_taxonomy", "jobs",
                 "deployment_queue", "audit_log",
             )
         }
         assert counts == {
             "projects": 1, "sites": 1, "deployments": 1, "files": 2,
-            "detections": 1, "detection_embeddings": 1, "events": 1,
+            "detections": 1, "detection_embeddings": 1, "calibration_answers": 1, "events": 1,
             "event_files": 1, "event_observations": 1,
             # Only the "animal" row is referenced; person and vehicle stay.
             "label_taxonomy": 1, "jobs": 1,
@@ -309,7 +311,8 @@ def test_import_creates_the_project_with_every_id_kept(
     assert result.project_created is True
     assert result.deployments_created == 1
     for table in ("sites", "deployments", "files", "detections",
-                  "detection_embeddings", "events", "event_files", "jobs"):
+                  "detection_embeddings", "calibration_answers", "events", "event_files",
+                  "jobs"):
         assert [r[0] for r in member.rows(table)] == [r[0] for r in lead.rows(table)], table
     with member.session() as db:
         imported = db.get(Project, seed.project_id)
