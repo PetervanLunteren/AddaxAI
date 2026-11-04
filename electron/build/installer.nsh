@@ -224,17 +224,21 @@
 ; uninstaller, so the body is a macro inserted once per build.
 !macro AddaxAIDataDirFuncs UN
 ; Push TEXT, Call, Pop "1" when every character is ASCII. UTF-8 takes one
-; byte per ASCII character and more for anything else, so the UTF-8 size
-; equals the character count (plus the terminator, which -1 includes)
-; exactly when the text is ASCII. kernel32 does the counting. A failed
-; call returns 0 and reads as non-ASCII; it does not happen on a valid
-; path.
+; byte per ASCII character and more for anything else, so the UTF-8 byte
+; count equals the character count exactly when the text is ASCII.
+; StdUtils (electron-builder's own plugin, loaded for the whole run)
+; returns the bytes as a string with one character per byte. The same
+; count through the System plugin, kernel32::WideCharToMultiByte, crashed
+; the installer (0xC0000005 in System.dll) whenever it was started with
+; its output captured, as a deployment tool does, while the identical
+; call in a standalone NSIS program ran fine; the cause was not found
+; (2026-11-04).
 Function ${UN}AddaxAIIsAscii
   Exch $0
   Push $1
   StrLen $1 $0
-  IntOp $1 $1 + 1
-  System::Call 'kernel32::WideCharToMultiByte(i 65001, i 0, w r0, i -1, p 0, i 0, p 0, p 0) i .r0'
+  ${StdUtils.StrToUtf8} $0 $0
+  StrLen $0 $0
   ${If} $0 == $1
     StrCpy $0 "1"
   ${Else}
