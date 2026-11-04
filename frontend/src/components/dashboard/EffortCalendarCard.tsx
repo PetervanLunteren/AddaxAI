@@ -16,6 +16,8 @@ import { Link } from "react-router-dom";
 import { timelineApi } from "../../api/timeline";
 import {
   effortLevel,
+  effortYears,
+  exceedsCalendar,
   WEEKS_PER_YEAR,
   weeklyCameras,
 } from "../../lib/effort-calendar";
@@ -57,11 +59,13 @@ export function EffortCalendarCard({ projectId, className }: EffortCalendarCardP
     queryFn: () => timelineApi.get(projectId, { withoutHeatmap: true }),
   });
 
-  const rows = useMemo(
-    () => weeklyCameras(data?.concurrent_cameras ?? []),
-    [data],
-  );
-  const max = Math.max(0, ...rows.flatMap((r) => r.weeks));
+  const points = data?.concurrent_cameras ?? [];
+  const span = effortYears(points);
+  const tooWide = span !== null && exceedsCalendar(span);
+  const rows = useMemo(() => weeklyCameras(data?.concurrent_cameras ?? []), [data]);
+  // Per row, never one spread over every cell: that overflowed the stack
+  // on a 4,000-year span and blanked the dashboard.
+  const max = rows.reduce((m, r) => Math.max(m, ...r.weeks), 0);
   const grid = { gridTemplateColumns: `repeat(${WEEKS_PER_YEAR}, minmax(0, 1fr))` };
 
   return (
@@ -76,6 +80,11 @@ export function EffortCalendarCard({ projectId, className }: EffortCalendarCardP
       <CardContent className="flex flex-1 flex-col">
         {isLoading ? (
           <div className="h-20 animate-pulse rounded-md bg-muted" />
+        ) : tooWide ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            Capture dates run from {span.first} to {span.last}, more than this
+            calendar can show. Check the capture dates on the Deployments page.
+          </p>
         ) : rows.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
             No capture dates to show effort for

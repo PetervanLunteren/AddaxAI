@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { effortLevel, weekOfYear, weeklyCameras } from "./effort-calendar";
+import {
+  effortLevel,
+  effortYears,
+  exceedsCalendar,
+  weekOfYear,
+  weeklyCameras,
+} from "./effort-calendar";
 
 describe("weekOfYear", () => {
   it("puts 1-7 January in week 0 and 31 December in week 52", () => {
@@ -60,6 +66,70 @@ describe("weeklyCameras", () => {
   it("returns nothing without effort", () => {
     expect(weeklyCameras([])).toEqual([]);
     expect(weeklyCameras([{ date: "2024-01-01", count: 0 }])).toEqual([]);
+  });
+
+  it("draws exactly the widest span the calendar allows", () => {
+    const rows = weeklyCameras([
+      { date: "1995-06-01", count: 1 },
+      { date: "2024-06-01", count: 0 },
+    ]);
+
+    expect(rows).toHaveLength(30);
+  });
+
+  it("returns nothing for a span wider than the calendar", () => {
+    expect(
+      weeklyCameras([
+        { date: "1994-06-01", count: 1 },
+        { date: "2024-06-01", count: 0 },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("returns nothing, and quickly, for a corrupt capture year", () => {
+    // One file dated year 25 made the dashboard walk 730,000 days and
+    // then overflow the stack (beta report, 2026-10-31).
+    const started = performance.now();
+    const rows = weeklyCameras([
+      { date: "0025-01-01", count: 1 },
+      { date: "2024-03-03", count: 0 },
+    ]);
+
+    expect(rows).toEqual([]);
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+});
+
+describe("effortYears", () => {
+  it("spans the first to the last year with a camera running", () => {
+    expect(
+      effortYears([
+        { date: "0025-01-01", count: 1 },
+        { date: "2024-03-03", count: 0 },
+      ]),
+    ).toEqual({ first: 25, last: 2024 });
+  });
+
+  it("ends on the day before the drop to zero", () => {
+    // Effort through 31 December is one year, not two.
+    expect(
+      effortYears([
+        { date: "2023-06-01", count: 1 },
+        { date: "2024-01-01", count: 0 },
+      ]),
+    ).toEqual({ first: 2023, last: 2023 });
+  });
+
+  it("is null without effort", () => {
+    expect(effortYears([])).toBeNull();
+    expect(effortYears([{ date: "2024-01-01", count: 0 }])).toBeNull();
+  });
+});
+
+describe("exceedsCalendar", () => {
+  it("allows 30 years and refuses 31", () => {
+    expect(exceedsCalendar({ first: 1995, last: 2024 })).toBe(false);
+    expect(exceedsCalendar({ first: 1994, last: 2024 })).toBe(true);
   });
 });
 

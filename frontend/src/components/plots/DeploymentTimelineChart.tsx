@@ -277,8 +277,8 @@ function buildHeatmapIndex(
   const cellsBySite = new Map<string, Map<number, number>>();
   // `heatmap` is required by the response schema, so undefined only shows
   // up in dev, when an HMR reload re-renders against a response cached
-  // before the field existed. Tolerated rather than thrown on: there is no
-  // error boundary in this app, so the throw blanks the entire page.
+  // before the field existed. Tolerated rather than thrown on: a throw
+  // would send the whole page to the error boundary over a dev-only case.
   for (const row of rows ?? []) {
     const cellMs = binStartUtc(parseDate(row.date), binDays);
     const key = row.site_id ?? "no-site";

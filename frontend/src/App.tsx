@@ -46,6 +46,7 @@ import { FolderRunResumeIndex } from "./pages/folder-run/FolderRunResumeIndex";
 import { Button } from "./components/ui/button";
 import { CrashBanner } from "./components/layout/CrashBanner";
 import { MenuCommands } from "./components/layout/MenuCommands";
+import { RouteErrorBoundary } from "./components/layout/RouteErrorBoundary";
 import { EnvRebuildButton } from "./components/layout/EnvRebuildButton";
 import { Toaster } from "./components/ui/sonner";
 import { api } from "./lib/api-client";
@@ -407,6 +408,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <SetupGate>
+          <RouteErrorBoundary>
           <Routes>
             <Route path="/setup" element={<SetupPage />} />
             <Route path="/about" element={<AboutPage />} />
@@ -458,6 +460,7 @@ function App() {
             {/* Same safety net outside a project. */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </RouteErrorBoundary>
         </SetupGate>
 
         {/* Native menu command bridge (Electron only) + global toasts */}

@@ -7,6 +7,7 @@ import { Outlet, useParams } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { SidebarCollapseContext } from "./sidebar-context";
 import { DeploymentHealthToast } from "./DeploymentHealthToast";
+import { RouteErrorBoundary } from "./RouteErrorBoundary";
 import { ModelSetupRequiredDialog } from "../models/ModelSetupRequiredDialog";
 import { cn } from "../../lib/utils";
 import { useLabelColors } from "../../hooks/useLabelColors";
@@ -46,7 +47,9 @@ export function AppLayout() {
         {/* No breadcrumb here: the sidebar already shows the project
             name and a "Back to projects" link. The logo links Home. */}
         <SidebarCollapseContext.Provider value={collapsed}>
-          <Outlet />
+          <RouteErrorBoundary>
+            <Outlet />
+          </RouteErrorBoundary>
         </SidebarCollapseContext.Provider>
       </main>
       <DeploymentHealthToast />

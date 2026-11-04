@@ -60,7 +60,24 @@ window.addEventListener('unhandledrejection', (event) => {
   }
 })
 
-createRoot(document.getElementById('root')!).render(
+// React 19 hands an error that an error boundary catches to this option
+// and never to window.onerror, so without it the diagnostics zip would
+// lose the stack that found the blank dashboard of 2026-10-31.
+createRoot(document.getElementById('root')!, {
+  onCaughtError: (error, errorInfo) => {
+    try {
+      logger.error(
+        'render error: ' + (error instanceof Error ? error.message : String(error)),
+        {
+          stack: error instanceof Error ? error.stack : undefined,
+          componentStack: errorInfo.componentStack,
+        },
+      )
+    } catch {
+      /* ignore */
+    }
+  },
+}).render(
   <StrictMode>
     <ThemeProvider>
       <App />
