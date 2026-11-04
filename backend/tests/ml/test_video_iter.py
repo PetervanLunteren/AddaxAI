@@ -204,3 +204,37 @@ def test_read_frame_by_seek_refuses_unusable_frame_count(tiny_video):
         assert read_frame_by_seek(cap, 5, -9223372036854775808) is None
     finally:
         cap.release()
+
+
+class _CaptureWithOneBadFrame:
+    """Delegates to a real capture, but frame `bad` grabs and then fails to
+    retrieve, the shape of a corrupt frame mid-stream."""
+
+    def __init__(self, cap, bad):
+        self._cap = cap
+        self._bad = bad
+        self._frame = -1
+
+    def grab(self):
+        ok = self._cap.grab()
+        if ok:
+            self._frame += 1
+        return ok
+
+    def retrieve(self):
+        if self._frame == self._bad:
+            return False, None
+        return self._cap.retrieve()
+
+
+def test_iter_wanted_frames_skips_a_wanted_frame_that_does_not_decode(tiny_video):
+    """One corrupt frame costs that frame only. It used to end the walk,
+    so every crop pinned to a later frame of the clip was dropped."""
+    cap = open_video(tiny_video)
+    assert cap is not None
+    try:
+        flaky = _CaptureWithOneBadFrame(cap, bad=5)
+        yielded = list(iter_wanted_frames(flaky, {2, 5, 8}, tiny_video))
+    finally:
+        cap.release()
+    assert [fn for fn, _ in yielded] == [2, 8]

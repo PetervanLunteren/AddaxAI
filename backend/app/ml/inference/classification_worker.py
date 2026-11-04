@@ -607,6 +607,21 @@ def _run_items(
     if batched_state is not None:
         batched_state["flush_batch"]()
 
+    # A crop whose frame the walk never reached has no result yet. The
+    # detector numbered frames on its own decode, and the walk above can
+    # yield fewer: a container that advertises more frames than it holds,
+    # or the detector's MSMF retry on Windows counting past what FFmpeg
+    # yields (see "Mixed pixel format videos" in DEVELOPERS.md). The parent
+    # reads one dict per item and takes `error` from a failure, so report
+    # these as failures rather than leave a hole it cannot read.
+    for i, item in enumerate(items):
+        if results[i] is None:
+            where = item.get("video_path") or item.get("image_path", "<unknown>")
+            results[i] = {
+                "success": False,
+                "error": f"Frame {item.get('frame_number')} of {where} was never decoded",
+            }
+
     return results, best_frames
 
 

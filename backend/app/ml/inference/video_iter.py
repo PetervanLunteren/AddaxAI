@@ -197,11 +197,11 @@ def iter_wanted_frames(
     the next one) but skips copying them out into a numpy array. Same
     frames, same order, ~1.6x less work.
 
-    One consequence: a frame that grabs but fails to *retrieve* (a
-    corrupt frame mid-stream) no longer ends the iteration when we were
-    only skipping past it. Before, it did, so every later frame was
-    silently dropped. Now only a failed `grab()`, i.e. real
-    end-of-stream, stops us.
+    Only a failed `grab()`, i.e. real end-of-stream, stops the walk. A
+    frame that grabs but fails to *retrieve* (a corrupt frame mid-stream)
+    is skipped, whether we wanted it or were only passing it. Until
+    2026-11 a wanted one ended the iteration, so one bad frame cost every
+    crop pinned to a later frame of the clip.
     """
     if not wanted:
         return
@@ -223,10 +223,14 @@ def iter_wanted_frames(
 
         if frame_number in wanted:
             success, image_bgr = cap.retrieve()
-            if not success or image_bgr is None:
-                break
-            image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-            yield frame_number, Image.fromarray(image_rgb)
+            if success and image_bgr is not None:
+                image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+                yield frame_number, Image.fromarray(image_rgb)
+            else:
+                logger.warning(
+                    f"Frame {frame_number} of {video_path} grabbed but did not "
+                    f"decode, skipping it"
+                )
 
         if frame_number >= last_wanted:
             break
