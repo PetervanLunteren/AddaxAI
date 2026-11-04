@@ -21,7 +21,7 @@ import { ExploreFilterBar } from "../../components/dashboard/ExploreFilterBar";
 import { MiniMapCard } from "../../components/dashboard/MiniMapCard";
 import { StatTile } from "../../components/dashboard/StatTile";
 import { Callout } from "../../components/ui/callout";
-import { insightsMapHref } from "../../lib/explore-filters";
+import { activityOverlapHref, insightsMapHref } from "../../lib/explore-filters";
 import { NO_SITE_SENTINEL } from "../../lib/filter-url";
 import { useExploreFilters } from "./useExploreFilters";
 
@@ -79,6 +79,7 @@ export default function DashboardExplore() {
               projectId={id}
               scope={scope}
               trapNights={trapNights}
+              compareHref={activityOverlapHref(id, scope)}
             />
             <DemographicsCard projectId={id} scope={scope} />
           </div>

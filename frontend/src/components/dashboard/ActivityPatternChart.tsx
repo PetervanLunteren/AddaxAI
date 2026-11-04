@@ -11,7 +11,9 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { Card, CardContent } from "../ui/card";
+import { CARD_HOVER_PILL } from "./card-hover-pill";
 import { DashboardCardHeader } from "./DashboardCardHeader";
 import { MissingDatesIcon } from "./MissingDatesWarning";
 import {
@@ -225,12 +227,15 @@ interface ActivityPatternChartProps {
   scope: DashboardScope;
   /** Trap nights in the same scope, so bars read per 100 nights. */
   trapNights?: number;
+  /** Activity overlap with the same sites and dates. */
+  compareHref: string;
 }
 
 export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
   projectId,
   scope,
   trapNights,
+  compareHref,
 }) => {
   const { data: activityData, isLoading } = useQuery({
     queryKey: ["statistics", "activity-pattern", projectId, scope],
@@ -258,11 +263,16 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
   const sunBands: SunBands | null = activityData?.sun_bands ?? null;
 
   return (
-    <Card>
+    <Card className="group">
       <DashboardCardHeader
         title="Activity pattern"
         caption="Observations by hour of day"
         marker={<MissingDatesIcon projectId={projectId} />}
+        actions={
+          <Link to={compareHref} className={CARD_HOVER_PILL}>
+            Compare species
+          </Link>
+        }
         info={
           <>
             <p>
@@ -274,6 +284,10 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
               The bands show night, twilight, and day from the site
               coordinates and timezone. They are hidden when no site
               has coordinates.
+            </p>
+            <p>
+              To set species side by side, use Compare species. It opens
+              Activity overlap with the same sites and dates.
             </p>
           </>
         }

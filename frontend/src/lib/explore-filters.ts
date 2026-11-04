@@ -58,8 +58,15 @@ export function exploreHref(projectId: string, labelIds: string[]): string {
   return `/projects/${projectId}/dashboard/explore?${params}`;
 }
 
-/** The Insights map with the same labels, sites and dates. */
-export function insightsMapHref(projectId: string, scope: DashboardScope): string {
+const INSIGHTS_SCOPE_SCHEMA: FilterSchema = {
+  labels: "string[]",
+  site_ids: "string[]",
+  date_from: "date",
+  date_to: "date",
+};
+
+/** An Insights page with a scope, in the parameter names Insights pages read. */
+function insightsHref(projectId: string, page: string, scope: DashboardScope): string {
   const params = filtersToSearchParams(
     {
       labels: scope.labelTaxonomyIds,
@@ -67,7 +74,24 @@ export function insightsMapHref(projectId: string, scope: DashboardScope): strin
       date_from: scope.dateFrom,
       date_to: scope.dateTo,
     },
-    { labels: "string[]", site_ids: "string[]", date_from: "date", date_to: "date" },
+    INSIGHTS_SCOPE_SCHEMA,
   );
-  return `/projects/${projectId}/insights/map?${params}`;
+  return `/projects/${projectId}/insights/${page}?${params}`;
+}
+
+/** The Insights map with the same labels, sites and dates. */
+export function insightsMapHref(projectId: string, scope: DashboardScope): string {
+  return insightsHref(projectId, "map", scope);
+}
+
+/**
+ * Activity overlap with the same sites and dates. Not the labels: that page
+ * compares one or two species picked there, and a label selection (a family,
+ * several leaves) has no single species to carry over.
+ */
+export function activityOverlapHref(projectId: string, scope: DashboardScope): string {
+  return insightsHref(projectId, "activity-overlap", {
+    ...scope,
+    labelTaxonomyIds: undefined,
+  });
 }

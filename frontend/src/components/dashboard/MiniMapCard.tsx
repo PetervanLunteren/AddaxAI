@@ -20,6 +20,7 @@ import { calculateRateDomain, getRateColor } from "../../lib/heat-color-scale";
 import { cn } from "../../lib/utils";
 import { StreetBaseLayer } from "../map/StreetBaseLayer";
 import { Card, CardContent } from "../ui/card";
+import { CARD_HOVER_PILL } from "./card-hover-pill";
 import { DashboardCardHeader } from "./DashboardCardHeader";
 
 interface MiniMapCardProps {
@@ -122,7 +123,7 @@ export function MiniMapCard({
           aria-label="Open the full map"
           className="absolute inset-0 z-[500] rounded-lg"
         >
-          <span className="absolute bottom-8 right-8 rounded-full border bg-background/90 px-3 py-1 text-xs opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
+          <span className={cn("absolute bottom-8 right-8", CARD_HOVER_PILL)}>
             Open the full map
           </span>
         </Link>
