@@ -25,6 +25,7 @@ One file holding every detection, label, correction and confirmed count.
 |---|---|
 | macOS and Linux | `~/AddaxAI/` |
 | Windows | `%USERPROFILE%\AddaxAI\` |
+| Windows, user name with a character such as ñ or é | `C:\AddaxAI-data\` |
 
 This is the default location. The folder [can live somewhere else](../help/locked-down-computers.mdx) if your organization blocks programs in user folders. The app opens this folder for you from File > Open user data folder. The parts worth knowing about:
 
