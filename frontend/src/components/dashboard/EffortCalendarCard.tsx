@@ -14,16 +14,17 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { timelineApi } from "../../api/timeline";
+import { exceedsChartYears } from "../../lib/date-span";
 import {
   effortLevel,
   effortYears,
-  exceedsCalendar,
   WEEKS_PER_YEAR,
   weeklyCameras,
 } from "../../lib/effort-calendar";
 import { cn } from "../../lib/utils";
 import { Card, CardContent } from "../ui/card";
 import { DashboardCardHeader } from "./DashboardCardHeader";
+import { WideSpanNotice } from "./WideSpanNotice";
 
 /** Teal ink at four strengths, so it reads in both themes. */
 const LEVEL_FILL = [
@@ -61,7 +62,7 @@ export function EffortCalendarCard({ projectId, className }: EffortCalendarCardP
 
   const points = data?.concurrent_cameras ?? [];
   const span = effortYears(points);
-  const tooWide = span !== null && exceedsCalendar(span);
+  const tooWide = span !== null && exceedsChartYears(span);
   const rows = useMemo(() => weeklyCameras(data?.concurrent_cameras ?? []), [data]);
   // Per row, never one spread over every cell: that overflowed the stack
   // on a 4,000-year span and blanked the dashboard.
@@ -81,10 +82,7 @@ export function EffortCalendarCard({ projectId, className }: EffortCalendarCardP
         {isLoading ? (
           <div className="h-20 animate-pulse rounded-md bg-muted" />
         ) : tooWide ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">
-            Capture dates run from {span.first} to {span.last}, more than this
-            calendar can show. Check the capture dates on the Deployments page.
-          </p>
+          <WideSpanNotice span={span} className="py-6" />
         ) : rows.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
             No capture dates to show effort for

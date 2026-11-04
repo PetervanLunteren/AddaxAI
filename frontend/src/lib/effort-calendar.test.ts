@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   effortLevel,
   effortYears,
-  exceedsCalendar,
   weekOfYear,
   weeklyCameras,
 } from "./effort-calendar";
@@ -123,13 +122,6 @@ describe("effortYears", () => {
   it("is null without effort", () => {
     expect(effortYears([])).toBeNull();
     expect(effortYears([{ date: "2024-01-01", count: 0 }])).toBeNull();
-  });
-});
-
-describe("exceedsCalendar", () => {
-  it("allows 30 years and refuses 31", () => {
-    expect(exceedsCalendar({ first: 1995, last: 2024 })).toBe(false);
-    expect(exceedsCalendar({ first: 1994, last: 2024 })).toBe(true);
   });
 });
 

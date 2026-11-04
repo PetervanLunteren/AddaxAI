@@ -26,6 +26,8 @@ import { DashboardCardHeader } from "./DashboardCardHeader";
 import { useChartColors } from "../../lib/theme";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { MissingDatesIcon } from "./MissingDatesWarning";
+import { WideSpanNotice } from "./WideSpanNotice";
+import { exceedsChartYears, yearSpan } from "../../lib/date-span";
 import { statisticsApi } from "../../api/statistics";
 import type { DetectionTrendPoint, DashboardScope } from "../../api/statistics";
 
@@ -77,6 +79,20 @@ function denseRangeKeys(
   return keys;
 }
 
+/**
+ * Inclusive chart range: the user's date filter wins, otherwise the first
+ * and last observed dates (points arrive sorted by date).
+ */
+function chartRange(
+  points: DetectionTrendPoint[],
+  rangeStart: string | null,
+  rangeEnd: string | null,
+): { from: string; to: string } | null {
+  const from = rangeStart ?? points[0]?.date;
+  const to = rangeEnd ?? points[points.length - 1]?.date;
+  return from && to ? { from, to } : null;
+}
+
 function groupData(
   points: DetectionTrendPoint[],
   granularity: Granularity,
@@ -98,14 +114,11 @@ function groupData(
     bucketed.set(k, (bucketed.get(k) ?? 0) + point.count);
   }
 
-  // Inclusive range bounds: user's filter wins; otherwise fall back to
-  // the first and last observed dates in the data.
-  const from = rangeStart ?? points[0]?.date;
-  const to = rangeEnd ?? points[points.length - 1]?.date;
-  if (!from || !to) return { labels: [], values: [] };
+  const range = chartRange(points, rangeStart, rangeEnd);
+  if (!range) return { labels: [], values: [] };
 
   // Dense list of bucket keys across the whole range, then zero-fill.
-  const labels = denseRangeKeys(new Date(from), new Date(to), keyOf);
+  const labels = denseRangeKeys(new Date(range.from), new Date(range.to), keyOf);
   const values = labels.map((k) => bucketed.get(k) ?? 0);
   return { labels, values };
 }
@@ -184,21 +197,27 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
   // empty days the point count is roughly equal to the span anyway.
   useEffect(() => {
     if (!trendData || trendData.length === 0) return;
-    const first = rangeStart ?? trendData[0].date;
-    const last = rangeEnd ?? trendData[trendData.length - 1].date;
+    const range = chartRange(trendData, rangeStart, rangeEnd);
+    if (!range) return;
     const days =
       Math.round(
-        (new Date(last).getTime() - new Date(first).getTime()) / 86400000,
+        (new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400000,
       ) + 1;
     setGranularity(pickGranularity(days));
   }, [trendData, rangeStart, rangeEnd]);
 
+  // A corrupt capture year makes the range millennia wide; zero-filling
+  // it day by day froze the page for a minute, so it is not drawn.
+  const range = trendData ? chartRange(trendData, rangeStart, rangeEnd) : null;
+  const span = range ? yearSpan(range.from, range.to) : null;
+  const tooWide = span !== null && exceedsChartYears(span);
+
   const { labels, values } = useMemo(
     () =>
-      trendData
+      trendData && !tooWide
         ? groupData(trendData, granularity, rangeStart, rangeEnd)
         : { labels: [], values: [] },
-    [trendData, granularity, rangeStart, rangeEnd],
+    [trendData, tooWide, granularity, rangeStart, rangeEnd],
   );
 
   const normalizedValues = useMemo(() => values.map(norm), [values, trapNights]);
@@ -352,6 +371,10 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
           {isLoading ? (
             <div className="flex items-center justify-center h-full">
               <p className="text-muted-foreground">Loading...</p>
+            </div>
+          ) : tooWide ? (
+            <div className="flex items-center justify-center h-full">
+              <WideSpanNotice span={span} className="max-w-md" />
             </div>
           ) : values.length > 0 ? (
             <Line ref={chartRef} data={chartData} options={chartOptions} />
