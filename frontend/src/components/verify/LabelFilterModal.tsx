@@ -82,7 +82,7 @@ export function LabelFilterModal({
         <DialogHeader>
           <DialogTitle>Filter by label</DialogTitle>
           <DialogDescription>
-            Select which labels to include in results
+            Select which labels to include in results. Counts follow the other filters on the page.
           </DialogDescription>
         </DialogHeader>
 
