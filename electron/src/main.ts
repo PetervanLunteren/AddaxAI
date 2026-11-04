@@ -53,7 +53,9 @@ const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
 /**
  * The user data directory, resolved the same way the backend resolves
  * it (`ADDAXAI_USER_DATA_DIR`, falling back to `~/AddaxAI`). Every path below
- * derives from this.
+ * derives from this. On Windows the installer may have set the variable
+ * itself, for a user folder micromamba cannot open files in (a character
+ * outside ASCII in the path); see AddaxAIDataDir in build/installer.nsh.
  *
  * The two processes have to agree: they communicate through files in
  * here (the crash sentinels, the startup error, the restore and wipe
