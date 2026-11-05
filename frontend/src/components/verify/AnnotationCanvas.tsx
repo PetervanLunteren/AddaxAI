@@ -512,6 +512,10 @@ export function AnnotationCanvas({
     if (drawMode) {
       const pos = getStagePointerPos();
       if (!pos) return;
+      // Keep this pointer's moves and release coming while it is outside
+      // the canvas, so a box can be dragged to the picture's edge from
+      // anywhere; the browser ends the capture when the button goes up.
+      stageRef.current?.content?.setPointerCapture(e.evt.pointerId);
       setIsDrawing(true);
       setDrawingBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
       return;
@@ -563,16 +567,15 @@ export function AnnotationCanvas({
       return;
     }
 
-    // Normalize negative dimensions
-    const box = {
-      x: drawingBox.width < 0 ? drawingBox.x + drawingBox.width : drawingBox.x,
-      y:
-        drawingBox.height < 0
-          ? drawingBox.y + drawingBox.height
-          : drawingBox.y,
-      width: Math.abs(drawingBox.width),
-      height: Math.abs(drawingBox.height),
-    };
+    // Its corners, either way round, held to the picture: a drag that
+    // ran past the edge ends the box at the edge. Clamped as corners, so
+    // a box is never wider than the picture leaves it.
+    const edge = (v: number, max: number) => Math.min(max, Math.max(0, v));
+    const x0 = edge(Math.min(drawingBox.x, drawingBox.x + drawingBox.width), stageSize.width);
+    const x1 = edge(Math.max(drawingBox.x, drawingBox.x + drawingBox.width), stageSize.width);
+    const y0 = edge(Math.min(drawingBox.y, drawingBox.y + drawingBox.height), stageSize.height);
+    const y1 = edge(Math.max(drawingBox.y, drawingBox.y + drawingBox.height), stageSize.height);
+    const box = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 
     // Minimum size check (at least 10px in stage coords)
     if (box.width > 10 && box.height > 10) {
@@ -663,16 +666,9 @@ export function AnnotationCanvas({
       {/* A frame of a clip on its way: say so at once, and why past a
           few seconds. Keyed by the frame, so each wait starts at zero. */}
       {loading && file.file_type === "video" && <FrameWait key={imageUrl} />}
-      {/* Draw mode indicator */}
-      {drawMode && (
-        <div className="absolute top-2 left-2 z-10 bg-primary text-white text-xs px-2 py-1 rounded">
-          Drawing mode - click and drag to draw a box (Esc to cancel)
-        </div>
-      )}
-
       {/* The frame gate's look (header): while the picture asked for
           is on its way, the old one is dimmed and blurred and takes no
-          pointer. The chip and the drawing banner above stay crisp. */}
+          pointer. The chip above stays crisp. */}
       <div className={loading ? "pointer-events-none blur-sm opacity-50" : undefined}>
       <Stage
         ref={stageRef}
@@ -683,9 +679,13 @@ export function AnnotationCanvas({
         x={stagePos.x}
         y={stagePos.y}
         onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
+        // Pointer events, not mouse events: Konva feeds its mouse events
+        // from the DOM's mouse events, which carry no pointer id, so a
+        // draw could not capture the pointer and stopped at the canvas
+        // edge. The same handlers, for mouse, pen and touch alike.
+        onPointerDown={handleMouseDown}
+        onPointerMove={handleMouseMove}
+        onPointerUp={handleMouseUp}
       >
         {/* Background image layer */}
         <Layer>
@@ -812,8 +812,12 @@ export function AnnotationCanvas({
                     if (c) c.style.cursor = "pointer";
                   }}
                   onMouseLeave={(e) => {
+                    // Cleared, not set: the container's own rule (crosshair
+                    // while drawing, grab when zoomed) then applies again.
+                    // Writing "default" here stuck, and drawing showed an
+                    // arrow after any label had been hovered (2026-11-05).
                     const c = e.target.getStage()?.container();
-                    if (c) c.style.cursor = drawMode ? "crosshair" : "default";
+                    if (c) c.style.cursor = "";
                   }}
                 >
                   <Rect

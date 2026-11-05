@@ -997,8 +997,8 @@ export function FileDetailModal({
     <VerifyDetailShell
       open
       onOpenChange={(open) => { if (!open) onClose(); }}
-      // The banner says "Esc to cancel": while drawing, Escape stops
-      // drawing and the viewer stays; the next Escape closes it.
+      // While drawing, Escape stops drawing and the viewer stays; the
+      // next Escape closes it (the Draw button's tooltip says so).
       onEscapeKeyDown={(e) => {
         if (!drawMode) return;
         e.preventDefault();
@@ -1207,6 +1207,9 @@ export function FileDetailModal({
                   size="sm"
                   className="w-full justify-center"
                   onClick={() => setDrawMode(!drawMode)}
+                  // The mode's one hint, here rather than over the picture,
+                  // where a banner covered a corner someone may draw in.
+                  title={drawMode ? "Stop drawing (D or Esc)" : "Drag over the picture to draw a box. Esc stops drawing."}
                 >
                   <SquareDashed className="h-4 w-4 mr-1" />
                   {drawMode ? "Stop drawing" : "Draw a box"}
