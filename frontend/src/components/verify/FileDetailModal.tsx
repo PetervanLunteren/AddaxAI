@@ -383,15 +383,19 @@ export function FileDetailModal({
     },
     [file, shownFrame, showFrame],
   );
-  // Watch the clip from the frame on screen. An armed crosshair is
+  // Watch the clip from the frame on screen, where the playhead is,
+  // the cover included: `shownFrame` null means the cover, and until
+  // 2026-11-05 that sent no seek, so P on a fresh open played from 0:00
+  // while P after a step played from the step. An armed crosshair is
   // dropped: nothing is drawn on a playing clip.
   const watch = useCallback(() => {
-    if (shownFrame != null) {
-      setSeekRequest({ frame: shownFrame, nonce: Date.now(), play: true });
+    const frame = shownFrame ?? file?.best_frame_number;
+    if (frame != null) {
+      setSeekRequest({ frame, nonce: Date.now(), play: true });
     }
     setDrawMode(false);
     setViewMode("video");
-  }, [shownFrame]);
+  }, [shownFrame, file?.best_frame_number]);
   // And back: the still on the paused moment, snapped to the nearest
   // sampled frame (`nearestSampledFrame`), since the detector sampled a
   // few frames per second and a paused frame is rarely one of them.
@@ -496,9 +500,11 @@ export function FileDetailModal({
     : selectedDetectionId
       ? "Acting on the selected box. Click the picture outside the boxes to go back to all."
       : onScreen.length === 0
-        ? isClip
+        ? isClip && cards.length > 0
           ? "No boxes on this frame. Click a bar to pick one."
-          : "No boxes to act on."
+          : isClip
+            ? "No boxes on this frame."
+            : "No boxes to act on."
         : `Acting on ${seen}. Click a box${isClip ? " or a bar" : ""} to pick one.`;
   const scope =
     selectedDetectionId || onScreen.length === 1

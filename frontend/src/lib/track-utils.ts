@@ -27,14 +27,13 @@ import {
   passesDrawFilter,
 } from "./detection-utils";
 
-export type TrackVerdict = "verified" | "rejected" | "unverified";
+export type TrackVerdict = "verified" | "unverified";
 
 export interface TrackRow {
   track: TrackResponse;
-  /** The key the bar is grouped under: the representative box's label
-   *  (so a rejected track groups under "false detection", the same word
-   *  its card shows), else the detector's category. The Counts modal's
-   *  MaxN markers carry the same key. */
+  /** The key the bar is grouped under: the representative box's label,
+   *  else the detector's category. The Counts modal's MaxN markers carry
+   *  the same key. */
   label: string;
   /** The species as the rest of the app prints it (common or scientific
    *  name per the name mode, the category otherwise). */
@@ -155,16 +154,19 @@ export function representativeBox(
 }
 
 /**
- * One row per track, grouped by species and sorted by start frame
- * within a species, with the rejected tracks in a "False detection"
- * group after every species. The label comes off the representative
- * box (its label, else the detector's category). Until 2026-10-30 a
- * rejected track was filed under the detector's category instead, so
- * an animal pressed X on sat hollow in a row called "Animal", which
- * reads as the opposite of what X says; the species is gone the moment
- * a track is rejected, so there is no species row for it to keep. The
- * verdict is the representative box's too:
- * "rejected" when it carries a non-label, "verified" when it is
+ * One row per track the timeline shows, grouped by species and sorted
+ * by start frame within a species. The label comes off the
+ * representative box (its label, else the detector's category).
+ *
+ * A rejected track (its card carries a non-label) has no row, as a
+ * rejected box on a photo has no outline: X takes the animal off the
+ * picture and off the lane alike. Until 2026-11-05 rejected tracks sat
+ * on a grey "False detection" row, where a click selected a box the
+ * still does not draw, so a person was asked to judge what they could
+ * not see. Changing one's mind is Cmd+Z, or the Detections grid
+ * filtered on the false detection label, which shows the crop.
+ *
+ * The verdict is the representative box's too: "verified" when it is
  * flagged, "unverified" otherwise. The card is where a verdict on an
  * animal lands (`verdict_targets` in the backend flags the card and
  * carries only the label to the other frames), so the card is what the
@@ -191,13 +193,8 @@ export function trackRows(
   for (const track of tracks) {
     const boxes = boxesByTrack.get(track.id) ?? [];
     const rep = representativeBox(boxes, track) ?? boxes[0];
-    if (!rep) continue;
-    const rejected = isNonLabel(rep.label);
-    const verdict: TrackVerdict = rejected
-      ? "rejected"
-      : rep.verified
-        ? "verified"
-        : "unverified";
+    if (!rep || isNonLabel(rep.label)) continue;
+    const verdict: TrackVerdict = rep.verified ? "verified" : "unverified";
     rows.push({
       track,
       // The group key, shared with the MaxN markers of both surfaces.
@@ -210,11 +207,8 @@ export function trackRows(
       gaps: trackGaps(boxes.map((d) => d.frame_number!), step),
     });
   }
-  // Rejected tracks last: their "False detection" row never pushes a
-  // species down the lane.
   return rows.sort(
     (a, b) =>
-      Number(a.verdict === "rejected") - Number(b.verdict === "rejected") ||
       a.displayLabel.localeCompare(b.displayLabel) ||
       a.track.start_frame - b.track.start_frame,
   );
@@ -296,9 +290,11 @@ export function clipDurationFrames(file: {
  * Until 2026-10-30 the player cut per box at the counting threshold
  * while the bar spanned every box, so boxes blinked along a solid bar.
  *
- * A rejected card above the threshold is in the map: the timeline draws
- * its track hollow beside the animals it was taken for. One pass over
- * the boxes, so a clip of 702 sharks costs the same as one of two.
+ * A rejected card above the threshold is in the map: it is still a card
+ * (the Detections grid's false detection filter finds it), only its
+ * boxes do not draw (`isDrawableBox`) and the timeline gives it no row
+ * (`trackRows`). One pass over the boxes, so a clip of 702 sharks costs
+ * the same as one of two.
  */
 export function trackCards(
   tracks: TrackResponse[],

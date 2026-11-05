@@ -521,15 +521,17 @@ export function EventDetailModal({
   // Watch the focused video from the frame on screen, the Files viewer's
   // rule: a bar click then P plays from that animal, and a fresh open
   // plays from the MaxN moment. Until 2026-11-02 the player started at
-  // 0:00 here while the Files viewer seeked. Stops the cine-loop first
-  // (you've grabbed control of one clip).
+  // 0:00 here while the Files viewer seeked. A clip without a MaxN
+  // marker shows its cover and plays from it too. Stops the cine-loop
+  // first (you've grabbed control of one clip).
   const playFocusedVideo = useCallback(() => {
     setAutoPlay(false);
-    if (shownFrame != null) {
-      setSeekRequest({ frame: shownFrame, nonce: Date.now(), play: true });
+    const frame = shownFrame ?? currentFile?.best_frame_number;
+    if (frame != null) {
+      setSeekRequest({ frame, nonce: Date.now(), play: true });
     }
     setViewMode("video");
-  }, [shownFrame]);
+  }, [shownFrame, currentFile?.best_frame_number]);
   const showMaxN = useCallback(
     (obs: EventObservationItem) => {
       const index = files.findIndex((f) => f.id === obs.max_n_file_id);

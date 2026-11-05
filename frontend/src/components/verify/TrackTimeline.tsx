@@ -4,8 +4,8 @@
  * One group per species, and inside a group as many rows as its animals
  * need to sit beside each other (`packTrackRows`). One bar per animal in
  * the species colour, faint while the animal's card is unverified and
- * solid once it is; a rejected animal is a verified one on the "False
- * detection" row after the species, in that class's grey. A bar has a
+ * solid once it is; a rejected animal has no bar, as a rejected box on
+ * a photo has no outline (`trackRows`). A bar has a
  * hole where the detector missed the animal on a sample (`trackGaps`):
  * the tracker carries a track through up to two seconds without a box,
  * the still and the player show nothing of the animal there, and until
@@ -61,7 +61,12 @@
  * marker: MaxN is counted per species, and in a total a rare species
  * vanishes under a common one. Not a stacked graph per species: in a
  * strip this thin a few colours are noise, and the peak of all species
- * together is not the sum of each one's peak.
+ * together is not the sum of each one's peak. Only on a clip with more
+ * than four animals at once (`MIN_ACTIVITY_PEAK`): up to four a person
+ * reads "how many at once" from the rows themselves, and the graph was
+ * a copy of the bars, one moose drawn as a slab the length of its bar
+ * (2026-11-05). A step, not a smoothed curve: the count is whole
+ * animals on sampled frames, and its top must stay the MaxN number.
  *
  * Rendering only: which track is selected and where the playhead is
  * belong to the player and its modal. No keyboard handling here.
@@ -142,6 +147,11 @@ const RULER_HEIGHT_PX = 24;
 /** Slices of the window the activity graph is drawn in: about two
  *  pixels each on a typical lane, fine enough to show a lone spike. */
 const ACTIVITY_BINS = 400;
+/** The busiest frame of the clip, all species, from which the ruler
+ *  draws its activity graph. People see up to about four things at once
+ *  without counting (subitizing, Kaufman et al. 1949), so up to four
+ *  the rows already show the count and the graph only repeats them. */
+const MIN_ACTIVITY_PEAK = 5;
 /** The smallest lane a drag can leave: the ruler and two rows. */
 const MIN_LANE_PX = RULER_HEIGHT_PX + 2 * ROW_HEIGHT_PX;
 /** The lane's height until someone drags it: six rows, the old cap. */
@@ -291,7 +301,10 @@ export function TrackTimeline({
     }
   }, [laneRef, selectedRow]);
 
-  if (totalRows === 0 || durationFrames <= 0) return null;
+  // Whether to show a timeline at all is `ClipTimeline`'s call; an
+  // empty lane is still a ruler. Only a clip of no length has nothing
+  // to draw.
+  if (durationFrames <= 0) return null;
 
   const pct = (frame: number) => ((frame - windowStart) / windowFrames) * 100;
   const windowEnd = windowStart + windowFrames;
@@ -463,11 +476,9 @@ export function TrackTimeline({
                     // so the lane says "these N" while the still does. A
                     // bar has a box on the frame where the playhead sits on
                     // a run, not on a gap's thin line. The Labels viewer's
-                    // alone, like the verdict shading, and never a rejected
-                    // animal: neither is in the N the button counts.
+                    // alone, like the verdict shading.
                     const onFrame =
                       showVerdicts &&
-                      row.verdict !== "rejected" &&
                       selectedTrackId == null &&
                       currentFrame >= row.startFrame &&
                       currentFrame < row.endFrame &&
@@ -653,9 +664,16 @@ function TimeRuler({
  * The timeline of one clip, from the file itself: rows and clip length
  * derived here, so the player (video mode) and the two modals (frame
  * mode) mount the same thing and nothing is computed twice in code.
- * Nothing is rendered for a clip without tracks. `durationFrames` is
- * the player's own measured length once it has one; frame mode passes
- * nothing and the stored length (or the last track) is used.
+ * Rendered for every clip of known length, rows or none: the ruler is
+ * how a person moves through the clip and zooms, which matters as much
+ * on a clip whose animals were all rejected, or that the AI found
+ * nothing in, where a missed animal is drawn on a frame reached this
+ * way. Until 2026-11-05 a clip without rows got no timeline, and once
+ * rejected animals left the lane that was every SharkTrack clip
+ * without a shark. Nothing for a photo, or a clip whose length is
+ * unknown. `durationFrames` is the player's own measured length once
+ * it has one; frame mode passes nothing and the stored length (or the
+ * last track) is used.
  *
  * Memoised because the player around it now re-renders at
  * animation-frame rate: its overlay interpolates between the frames the
@@ -680,8 +698,7 @@ export const ClipTimeline = memo(function ClipTimeline({
   file: FileWithDetections;
   /** The counting threshold: a bar is drawn for a track whose card is
    *  in scope at it, the same set the player draws and the tiles
-   *  count. A rejected track above it keeps its bar, on the False
-   *  detection row. */
+   *  count, rejected tracks left out (`trackRows`). */
   detectionThreshold: number;
   durationFrames?: number;
   currentFrame: number;
@@ -702,21 +719,31 @@ export const ClipTimeline = memo(function ClipTimeline({
     );
   }, [file.tracks, file.detections, detectionThreshold]);
   const sampleStep = useMemo(() => fileSamplingStep(file), [file]);
-  // The selected animal's species, unless it was rejected: a false
-  // detection draws no box, so its graph would be empty.
-  const selectedRow = rows.find(
-    (row) => row.track.id === selectedTrackId && row.verdict !== "rejected",
-  );
+  // The selected animal's species. A rejected animal has no row, so
+  // selecting one (its card from the Detections grid) counts all.
+  const selectedRow = rows.find((row) => row.track.id === selectedTrackId);
   const species = selectedRow?.label;
-  const frameCounts = useMemo(
-    () => frameBoxCounts(file, detectionThreshold, species),
-    [file, detectionThreshold, species],
+  // Decided on all species, so selecting an animal never makes the
+  // graph come or go; it only switches whose boxes it counts.
+  const allCounts = useMemo(
+    () => frameBoxCounts(file, detectionThreshold),
+    [file, detectionThreshold],
   );
-  if (rows.length === 0) return null;
+  const busy = useMemo(
+    () => Math.max(0, ...allCounts.values()) >= MIN_ACTIVITY_PEAK,
+    [allCounts],
+  );
+  const speciesCounts = useMemo(
+    () => (busy && species != null ? frameBoxCounts(file, detectionThreshold, species) : undefined),
+    [busy, file, detectionThreshold, species],
+  );
+  const frameCounts = busy ? (speciesCounts ?? allCounts) : undefined;
+  const clipFrames = durationFrames || clipDurationFrames(file);
+  if (file.file_type !== "video" || clipFrames <= 0) return null;
   return (
     <TrackTimeline
       rows={rows}
-      durationFrames={durationFrames || clipDurationFrames(file)}
+      durationFrames={clipFrames}
       currentFrame={currentFrame}
       selectedTrackId={selectedTrackId}
       markers={markers}
@@ -789,9 +816,8 @@ export function TrackSpan({
   );
 }
 
-/** A bar's paint: solid once the animal's card is verified (a rejected
- *  animal is verified, in its class's grey from the colour map), at
- *  half strength until then. Mixed into the colour rather than set as
+/** A bar's paint: solid once the animal's card is verified, at half
+ *  strength until then. Mixed into the colour rather than set as
  *  opacity, so the gap line through the bar fades with it. The Counts
  *  page shows every bar solid. */
 function barStyle(
