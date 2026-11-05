@@ -63,20 +63,17 @@ async def auto_generate_thumbnails() -> None:
     thumbnail (user-uploaded or previously auto-selected) are skipped.
     """
     try:
-        settings = get_settings()
-        thumbnails_dir = settings.user_data_dir / "thumbnails"
-        thumbnails_dir.mkdir(parents=True, exist_ok=True)
-
         from app.db.base import get_session_factory
         from app.services.thumbnail_service import (
             auto_select_project_thumbnails,
+            thumbnails_dir,
         )
 
         def _run() -> None:
             session_factory = get_session_factory()
             db = session_factory()
             try:
-                auto_select_project_thumbnails(db, thumbnails_dir)
+                auto_select_project_thumbnails(db, thumbnails_dir())
             finally:
                 db.close()
 

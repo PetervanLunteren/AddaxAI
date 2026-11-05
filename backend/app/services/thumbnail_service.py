@@ -3,7 +3,10 @@ Thumbnail service for project card images.
 
 Generates resized JPEG thumbnails from source images and auto-selects
 a random high-quality camera trap image for projects that lack a
-user-uploaded image.
+user-uploaded image: at startup for every project (a re-roll), and at
+the end of an analysis for a project that has none yet, so a new
+project's card shows one of its pictures after its first run rather
+than after the next restart (2026-11-04).
 """
 
 import random
@@ -13,6 +16,7 @@ from PIL import Image
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.logging_config import get_logger
 from app.ml.label_exclusion import is_wildlife_category
 from app.models import Deployment, Detection, File, Project
@@ -21,6 +25,13 @@ logger = get_logger(__name__)
 
 _MAX_WIDTH = 512
 _JPEG_QUALITY = 95
+
+
+def thumbnails_dir() -> Path:
+    """Where auto-selected card pictures live (uploads go to project-images/)."""
+    path = get_settings().user_data_dir / "thumbnails"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def generate_thumbnail(source_path: Path, dest_path: Path) -> Path:
@@ -94,6 +105,18 @@ def auto_select_project_thumbnails(
                 f"{project.name}",
                 exc_info=True,
             )
+
+
+def ensure_project_thumbnail(db: Session, project: Project) -> None:
+    """Give a project without a card picture one of its own pictures.
+
+    Called when an analysis finishes. A project that already has one,
+    uploaded or auto-selected, keeps it; the startup pass re-rolls the
+    auto-selected ones.
+    """
+    if project.thumbnail_path:
+        return
+    _auto_select_for_project(db, project, thumbnails_dir())
 
 
 def _auto_select_for_project(

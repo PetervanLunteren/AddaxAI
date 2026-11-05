@@ -812,7 +812,7 @@ def upload_project_thumbnail(
         )
 
     from app.core.config import get_settings
-    from app.services.thumbnail_service import generate_thumbnail
+    from app.services.thumbnail_service import generate_thumbnail, thumbnails_dir
 
     settings = get_settings()
     upload_dir = settings.user_data_dir / "project-images"
@@ -829,7 +829,7 @@ def upload_project_thumbnail(
         raw_path.unlink(missing_ok=True)
 
     # Remove any old auto-generated thumbnail
-    auto_thumb = settings.user_data_dir / "thumbnails" / f"{project_id}.jpg"
+    auto_thumb = thumbnails_dir() / f"{project_id}.jpg"
     if auto_thumb.exists():
         auto_thumb.unlink()
 

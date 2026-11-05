@@ -268,7 +268,6 @@ class VideoDetectionModel:
         )
 
         # Stream output and parse progress
-        last_progress = 0.0
         with track_subprocess(job_id, process):
                 for line in process.stdout:
                     line = line.strip()
@@ -298,37 +297,29 @@ class VideoDetectionModel:
                                 pass
 
                     # Parse progress from tqdm output: the script's bar over
-                    # every sampled frame of the run ("45/100").
+                    # every sampled frame of the run ("45/100"). Every line
+                    # is forwarded, as the image detector does: the bar
+                    # refreshes at most once a second (`mininterval=1.0` in
+                    # the tracking script), and a one-percent gate meant an
+                    # hour-long drop (97,257 frames at 8 a second) said
+                    # nothing for the first two and a half minutes and then
+                    # moved once every two (2026-11-04).
                     progress_match = re.search(r"(\d+)/(\d+)", line)
                     if progress_match and progress_callback:
                         current, total = map(int, progress_match.groups())
-                        phase_progress = current / total
-
-                        # Only update if progress changed significantly
-                        if phase_progress - last_progress >= 0.01:
-                            # Parse full tqdm metrics from line
-                            metrics = self._parse_tqdm_metrics(line)
-
-                            # Debug: Log what we parsed
-                            if metrics:
-                                logger.info(f"[VideoDetector] Parsed metrics: {metrics}")
-                            else:
-                                logger.info(f"[VideoDetector] No metrics parsed from: {line}")
-
-                            # Send raw line and metrics
-                            try:
-                                progress_callback(
-                                    line if metrics else f"Tracking frame {current}/{total}",
-                                    phase_progress,
-                                    metrics,
-                                )
-                            except TypeError:
-                                # Fallback for callbacks that don't accept metrics
-                                progress_callback(
-                                    f"Tracking frame {current}/{total}",
-                                    phase_progress,
-                                )
-                            last_progress = phase_progress
+                        metrics = self._parse_tqdm_metrics(line)
+                        try:
+                            progress_callback(
+                                line if metrics else f"Tracking frame {current}/{total}",
+                                current / total,
+                                metrics,
+                            )
+                        except TypeError:
+                            # Fallback for callbacks that don't accept metrics
+                            progress_callback(
+                                f"Tracking frame {current}/{total}",
+                                current / total,
+                            )
 
                 process.stdout.close()
                 return process.wait()

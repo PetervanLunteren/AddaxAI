@@ -39,6 +39,7 @@ from app.ml.model_storage import ModelStorage
 from app.ml.track_filter import track_filter_for
 from app.models import Deployment
 from app.services.folder_scanner import walk_media_files
+from app.services.thumbnail_service import ensure_project_thumbnail
 from app.utils.fs_hidden import mkdir_hidden_addaxai
 
 logger = get_logger(__name__)
@@ -184,14 +185,11 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         progress_start,
                         phase="init",
                         phase_progress=0.0,
-                        data={
-                            "deployment_index": idx,
-                            "total_deployments": total_entries,
-                            "video_count": announced_videos,
-                            "image_count": announced_images,
-                            "has_classifier": classification_model is not None,
-                            "has_embedding": bool(project.embedding_model_id),
-                        },
+                        data=_deployment_context(
+                            idx, total_entries, announced_videos, announced_images,
+                            has_classifier=classification_model is not None,
+                            has_embedding=bool(project.embedding_model_id),
+                        ),
                     )
                     logger.info("Initial progress sent, now scanning for file paths")
 
@@ -234,14 +232,11 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         progress_start,
                         phase="init",
                         phase_progress=0.0,
-                        data={
-                            "deployment_index": idx,
-                            "total_deployments": total_entries,
-                            "video_count": announced_videos,
-                            "image_count": announced_images,
-                            "has_classifier": classification_model is not None,
-                            "has_embedding": bool(project.embedding_model_id),
-                        },
+                        data=_deployment_context(
+                            idx, total_entries, announced_videos, announced_images,
+                            has_classifier=classification_model is not None,
+                            has_embedding=bool(project.embedding_model_id),
+                        ),
                     )
                     logger.info("Initial progress sent")
 
@@ -329,9 +324,15 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 progress_row = {"pct": -1}
 
                 # Define progress callback for this specific deployment
+                run_phases = _run_phases(
+                    has_videos=bool(video_files),
+                    has_images=bool(image_files),
+                    has_classifier=classification_model is not None,
+                    has_embedding=bool(project.embedding_model_id),
+                )
+
                 async def deployment_progress_callback(
                     message: str,
-                    progress: float,
                     phase: str,
                     phase_progress: float,
                     metrics: dict | None = None,
@@ -342,27 +343,29 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     _vf=video_files,
                     _if=image_files,
                     _row=progress_row,
+                    _phases=run_phases,
                 ) -> None:
                     """Forward progress updates (no prefix, header shows deployment context)"""
-                    overall_progress = _ps + (progress * _pr)
+                    overall_progress = _ps + _pr * _deployment_fraction(
+                        phase, phase_progress, _phases
+                    )
                     # The job row carries the overall percent too, so a reader
-                    # without the socket (the jobs API, a script, a jobs page)
-                    # sees how far a run is. The socket stays the live channel;
-                    # this is the durable one. Until 2026-11-02 the row said 0
-                    # for the whole run.
+                    # without the socket (the jobs API, a script, the
+                    # diagnostic ZIP) sees how far a run is. The socket stays
+                    # the live channel; this is the durable one. Only upward:
+                    # a phase that restarts its own count at 0 must not make
+                    # the row go back.
                     pct = int(overall_progress * 100)
-                    if pct != _row["pct"]:
+                    if pct > _row["pct"]:
                         _row["pct"] = pct
                         job_crud.update_job(
                             db, job_id, JobUpdate(progress_current=pct, progress_total=100)
                         )
-                    data = {
-                        "deployment_index": _idx,
-                        "total_deployments": total_entries,
-                        "video_count": len(_vf),
-                        "image_count": len(_if),
-                        "has_classifier": classification_model is not None,
-                    }
+                    data = _deployment_context(
+                        _idx, total_entries, len(_vf), len(_if),
+                        has_classifier=classification_model is not None,
+                        has_embedding=bool(project.embedding_model_id),
+                    )
                     # Extract compute_device from metrics to data level
                     if metrics and "compute_device" in metrics:
                         data["compute_device"] = metrics.pop("compute_device")
@@ -393,7 +396,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         f"{len(video_files)} video(s)"
                     )
                     await deployment_progress_callback(
-                        "Preparing videos...", 0.0, "video_detection", 0.5
+                        "Preparing videos...", "video_detection", 0.5
                     )
                     from app.ml.full_image_detection import (
                         synthesize_full_image_video_json,
@@ -427,7 +430,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         """Sync wrapper that schedules async callback from executor thread"""
                         asyncio.run_coroutine_threadsafe(
                             deployment_progress_callback(
-                                message, 0.0, "video_detection", phase_progress, metrics
+                                message, "video_detection", phase_progress, metrics
                             ),
                             _loop,
                         )
@@ -513,7 +516,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         asyncio.run_coroutine_threadsafe(
                             deployment_progress_callback(
                                 f"Selecting video frames: {done}/{total}",
-                                0.0,
                                 "video_frame_selection",
                                 (done / total) if total else 1.0,
                                 metrics,
@@ -567,7 +569,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                             metrics["unit"] = "animal"
                         await deployment_progress_callback(
                             message,  # Raw tqdm output
-                            0.0,
                             "video_classification",
                             phase_progress,
                             metrics,
@@ -607,7 +608,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         f"{len(image_files)} image(s)"
                     )
                     await deployment_progress_callback(
-                        "Preparing images...", 0.0, "image_detection", 0.5
+                        "Preparing images...", "image_detection", 0.5
                     )
                     from app.ml.full_image_detection import synthesize_full_image_json
 
@@ -646,7 +647,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     )
                     await deployment_progress_callback(
                         "Detection already finished in the interrupted run, reusing it",
-                        0.0,
                         "image_detection",
                         1.0,
                         {
@@ -677,7 +677,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         asyncio.run_coroutine_threadsafe(
                             deployment_progress_callback(
                                 message,  # Raw tqdm output
-                                0.0,
                                 "image_detection",
                                 phase_progress,
                                 metrics,
@@ -730,7 +729,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     ) -> None:
                         await deployment_progress_callback(
                             message,  # Raw tqdm output
-                            0.0,
                             "image_classification",
                             phase_progress,
                             metrics,
@@ -756,7 +754,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 # ============================================================
                 if json_files_to_merge:
                     logger.info(f"Phase 5: Merging {len(json_files_to_merge)} JSON files")
-                    await deployment_progress_callback("Merging results...", 0.0, "saving", 0.5)
+                    await deployment_progress_callback("Merging results...", "saving", 0.5)
 
                     # Offloaded: merge reads/writes large JSON for the whole
                     # deployment. Running it on the event loop blocks the backend
@@ -841,7 +839,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 if final_json_path.exists():
                     logger.info("Phase 6: Loading results to database")
                     await deployment_progress_callback(
-                        "Loading to database...", 0.0, "saving", 0.75
+                        "Loading to database...", "saving", 0.75
                     )
 
                     from app.ml.json_pipeline import (
@@ -869,7 +867,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         asyncio.run_coroutine_threadsafe(
                             deployment_progress_callback(
                                 f"Saving to database: {done}/{total}",
-                                0.0,
                                 "saving",
                                 (done / total) if total else 1.0,
                                 metrics,
@@ -1005,7 +1002,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         asyncio.run_coroutine_threadsafe(
                             deployment_progress_callback(
                                 f"Refining results: {done}/{total}",
-                                0.0,
                                 "postprocessing",
                                 (done / total) if total else 1.0,
                                 metrics,
@@ -1014,7 +1010,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         )
 
                     await deployment_progress_callback(
-                        "Refining results...", 0.0, "postprocessing", 0.0,
+                        "Refining results...", "postprocessing", 0.0,
                     )
                     pp_warnings: list[dict] = []
                     pp_result = await asyncio.to_thread(
@@ -1067,7 +1063,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 if embedding_model_id and final_json_path.exists():
                     logger.info(f"Phase 8: Computing embeddings with {embedding_model_id}")
                     await deployment_progress_callback(
-                        "Computing embeddings...", 0.0, "embedding", 0.0
+                        "Computing embeddings...", "embedding", 0.0
                     )
 
                     emb_manifest = manifest_manager.get_model(embedding_model_id)
@@ -1085,7 +1081,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     # the cards of a big deployment is seconds of database
                     # work, and the modal should say so rather than "Waiting".
                     await deployment_progress_callback(
-                        "Collecting the cards to embed...", 0.0, "embedding", 0.0
+                        "Collecting the cards to embed...", "embedding", 0.0
                     )
                     input_data = await asyncio.to_thread(
                         build_embedding_input_owned_session,
@@ -1116,7 +1112,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         asyncio.run_coroutine_threadsafe(
                             deployment_progress_callback(
                                 message,
-                                0.0,
                                 "embedding",
                                 phase_progress,
                                 metrics,
@@ -1172,7 +1167,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         logger.debug(f"Cleaned up intermediate: {intermediate.name}")
 
                 # Send final progress update before completion
-                await deployment_progress_callback("Complete", 1.0, "finalize", 1.0)
+                await deployment_progress_callback("Complete", "finalize", 1.0)
 
                 # Update queue entry with deployment ID
                 queue_crud.update_queue_status(
@@ -1267,6 +1262,17 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
         # Refresh SQLite query planner statistics after bulk inserts
         refresh_query_statistics(db)
         db.commit()
+
+        # A first run gives a new project its card picture. Cosmetic, so
+        # a failure here is logged and the run still completes.
+        try:
+            ensure_project_thumbnail(db, project)
+        except Exception:
+            db.rollback()
+            logger.warning(
+                f"Could not pick a card picture for project {project.name}",
+                exc_info=True,
+            )
 
         # Mark job as completed
         job_crud.update_job_status(db, job_id, "completed")
@@ -1569,6 +1575,87 @@ def media_filter_allows(media_filter: str, file_type: str) -> bool:
     if media_filter == "videos":
         return file_type == "video"
     return True
+
+
+def _deployment_context(
+    index: int,
+    total: int,
+    video_count: int,
+    image_count: int,
+    *,
+    has_classifier: bool,
+    has_embedding: bool,
+) -> dict:
+    """The run header's context, on every progress message of a deployment.
+
+    The dialog builds its phase rows from it (`useTaskProgress`), and on a
+    reconnect it rebuilds them from whichever message the backend replays,
+    so every message carries all of it. Until 2026-11-04 the phase
+    messages left out `has_embedding`, and a page reload during a run
+    dropped the Embedding row: the dialog then sat at 100% on every row
+    through the whole embedding phase.
+    """
+    return {
+        "deployment_index": index,
+        "total_deployments": total,
+        "video_count": video_count,
+        "image_count": image_count,
+        "has_classifier": has_classifier,
+        "has_embedding": has_embedding,
+    }
+
+
+# Rough share of a deployment's wall clock per phase, for the job row's
+# overall percent. Detection is nearly all of it: an hour-long BRUV drop
+# spent 3 h 25 min detecting and 3 min on everything after (2026-11-04).
+# A classifier costs a fair share of detection. Only the order and the
+# rough proportions matter; the dialog shows each phase's own bar.
+_PHASE_WEIGHTS = {
+    "video_detection": 90,
+    "video_frame_selection": 1,
+    "video_classification": 30,
+    "image_detection": 90,
+    "image_classification": 30,
+    "saving": 3,
+    "postprocessing": 2,
+    "embedding": 4,
+}
+
+
+def _run_phases(
+    *, has_videos: bool, has_images: bool, has_classifier: bool, has_embedding: bool
+) -> list[str]:
+    """The phases a deployment runs, in the order it runs them."""
+    phases: list[str] = []
+    if has_videos:
+        phases += ["video_detection", "video_frame_selection"]
+        if has_classifier:
+            phases.append("video_classification")
+    if has_images:
+        phases.append("image_detection")
+        if has_classifier:
+            phases.append("image_classification")
+    phases += ["saving", "postprocessing"]
+    if has_embedding:
+        phases.append("embedding")
+    return phases
+
+
+def _deployment_fraction(phase: str, phase_progress: float, phases: list[str]) -> float:
+    """How far a deployment is, 0 to 1, from the phase it is in.
+
+    The phases before `phase` count in full, `phase` by its own progress.
+    "finalize" is the end; a phase outside the list ("init") is the start.
+    """
+    if phase == "finalize":
+        return 1.0
+    if phase not in phases:
+        return 0.0
+    total = sum(_PHASE_WEIGHTS[p] for p in phases)
+    position = phases.index(phase)
+    done = sum(_PHASE_WEIGHTS[p] for p in phases[:position])
+    within = min(max(phase_progress, 0.0), 1.0)
+    return (done + _PHASE_WEIGHTS[phase] * within) / total
 
 
 def _announced_media_counts(
