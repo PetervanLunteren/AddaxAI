@@ -32,7 +32,7 @@ from app.ml.detection_visibility import on_visible_frame_of
 from app.ml.label_exclusion import is_human_decided
 from app.ml.observation_type import derive_observation_type
 from app.ml.progress import ProgressTicker
-from app.ml.track_vote import vote_track_cards
+from app.ml.track_vote import vote_tracks
 from app.models import Deployment, Detection, File, Project
 from app.utils.subprocess_env import clean_python_env
 
@@ -308,10 +308,10 @@ def run_postprocessing_for_deployment(
         md_results, project.excluded_classes, exclusion_taxonomy
     )
 
-    # A track's card gets the species its frames agree on. After
+    # Every frame of a track gets the species its frames agree on. After
     # exclusion, so an excluded class cannot vote on the no-taxonomy
     # path; before rollup, so rollup sees the track's distribution.
-    voted = vote_track_cards(md_results)
+    voted = vote_tracks(md_results)
     logger.info(f"Track vote: {voted} cards changed species")
 
     # Build excluded_names and allowed_taxonomy_keys for geofence-aware
@@ -829,7 +829,7 @@ def reload_raw_classifications_from_json(
     )
 
     # Same vote as the main path, same position (see there).
-    voted = vote_track_cards(raw_results)
+    voted = vote_tracks(raw_results)
     logger.info(f"Track vote: {voted} cards changed species")
 
     # Apply geofence-aware rollup (same logic as main postprocessing)

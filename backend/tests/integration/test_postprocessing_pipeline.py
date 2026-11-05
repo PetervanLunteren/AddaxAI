@@ -871,10 +871,10 @@ def _tracked_clip(s, *, card_verified=False):
     return json_path, rows
 
 
-def test_the_card_takes_the_species_its_track_voted_for(deployment_scaffold):
+def test_every_frame_takes_the_species_its_track_voted_for(deployment_scaffold):
     """`run_postprocessing_for_deployment` votes before rollup and
-    smoothing: with both off, the returned card box already carries the
-    track's weighted mean, and only the card does."""
+    smoothing: with both off, every box of the track already carries the
+    track's weighted mean, the card and the frames that read otherwise."""
     from unittest.mock import MagicMock
 
     s = deployment_scaffold
@@ -891,13 +891,13 @@ def test_the_card_takes_the_species_its_track_voted_for(deployment_scaffold):
 
     dets = {d["frame_number"]: d for d in out["images"][0]["detections"]}
     assert dets[60]["classifications"][0][0] == "2"  # wolf, not its own fox
-    assert dets[30]["classifications"] == [[2, 0.95], [1, 0.05]]
-    assert dets[90]["classifications"] == [[3, 0.6], [2, 0.4]]
+    assert dets[90]["classifications"][0][0] == "2"  # wolf, not its own boar
+    assert dets[30]["classifications"] == dets[60]["classifications"] == dets[90]["classifications"]
 
 
-def test_a_raw_reload_writes_the_voted_species_to_the_card_row(deployment_scaffold):
+def test_a_raw_reload_writes_the_voted_species_to_every_row_of_the_track(deployment_scaffold):
     """The raw-reload path votes too, and the DB ends up with the track's
-    species on the card row while the siblings keep their own."""
+    species on every row of it."""
     s = deployment_scaffold
     json_path, rows = _tracked_clip(s)
 
@@ -909,10 +909,12 @@ def test_a_raw_reload_writes_the_voted_species_to_the_card_row(deployment_scaffo
     s["db"].expire_all()
     assert rows[60].label == "wolf"
     assert rows[30].label == "wolf"
-    assert rows[90].label == "boar"
+    assert rows[90].label == "wolf"
 
 
 def test_a_verified_card_keeps_its_label_through_the_vote(deployment_scaffold):
+    """A person's decision is never overwritten: the verified card keeps
+    its fox, the machine frames take the track's vote."""
     s = deployment_scaffold
     json_path, rows = _tracked_clip(s, card_verified=True)
 
@@ -923,4 +925,4 @@ def test_a_verified_card_keeps_its_label_through_the_vote(deployment_scaffold):
 
     s["db"].expire_all()
     assert rows[60].label == "fox" and rows[60].verified
-    assert rows[90].label == "boar"
+    assert rows[90].label == "wolf"

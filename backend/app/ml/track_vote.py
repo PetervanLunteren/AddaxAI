@@ -1,7 +1,7 @@
-"""A track's card carries the species its frames agree on.
+"""A track carries one species: the one its frames agree on.
 
-A video card stands for one animal, but until 2026-10-30 its species was
-the classifier's guess on one frame: the box where the detector was most
+A track is one animal, but until 2026-10-30 its card's species was the
+classifier's guess on one frame: the box where the detector was most
 confident (`summarise_tracks`), which is the clearest view of the animal
 but not a more reliable read of its species than any other sharp frame.
 The other frames of the same animal were never asked, and a single
@@ -9,21 +9,28 @@ misread on that frame named the card, and through the card decided
 which species reached the counts.
 
 This asks them. Each classified frame carries its top class scores, and
-the card gets their confidence-weighted mean: a sharp frame counts
+the track gets their confidence-weighted mean: a sharp frame counts
 fully, a blurry tail frame barely, so the half-visible frames where an
 animal enters or leaves cannot outvote the clear views. Combining a
 track's frames beats a single frame in every comparison we found (Mei
-et al. on longline fishing video; two 2026 camera-trap papers), and
-weighting is what guards against edge frames that are all misread the
-same way.
+et al. on longline fishing video; two 2026 camera-trap papers, one of
+which names the per-frame flicker it removes), and weighting is what
+guards against edge frames that are all misread the same way.
 
-Only the card changes. Every other frame keeps its own guess, because
-opening a track is how a person sees that the tracker switched animals
-halfway, and MaxN per species must see that switch too. The vote runs
-in memory inside postprocessing, after label exclusion and before
-taxonomic rollup, so rollup rolls up the track's distribution rather
-than one frame's; the JSON on disk stays raw and `original_label` stays
-the card frame's own top-1. Pixel-free and pure, like `summarise_tracks`.
+Every frame of the track gets the voted scores, the frames below the
+classification gate included, so a box has the same species on the
+still, in the player, in the Frames view, in MaxN and in the exports.
+Until 2026-11-05 only the card did and the other frames kept their own
+guess, so a wolf read as a golden jackal on two frames showed a jackal
+on those frames under a bar that said wolf, and on a busy frame a
+misread lowered its species' count by one. CVAT, DIVE and SharkTrack
+give a track one species the same way. A tracker that switched animals
+halfway is put right by hand: frames a person relabels keep their label
+(postprocessing never touches a person's decision). The vote runs in
+memory inside postprocessing, after label exclusion and before taxonomic
+rollup, so rollup rolls up the track's distribution rather than one
+frame's; the JSON on disk keeps every frame's own scores. Pixel-free and
+pure, like `summarise_tracks`.
 """
 
 from __future__ import annotations
@@ -33,8 +40,8 @@ from collections import defaultdict
 from app.ml.inference.scoring import summarise_tracks
 
 
-def vote_track_cards(md_results: dict) -> int:
-    """Give each track's card box the confidence-weighted mean of its
+def vote_tracks(md_results: dict) -> int:
+    """Give every box of each track the confidence-weighted mean of its
     frames' class scores. In place; returns how many cards changed their
     top class, which is what a reader of the log wants to know (nearly
     every card's list changes in its decimals).
@@ -47,8 +54,9 @@ def vote_track_cards(md_results: dict) -> int:
     classified and have nothing to say.
     ``score[class] = sum(p * conf) / sum(conf)`` over the voters, sorted
     descending and rounded to 5 decimals like the worker writes them,
-    written onto the card box only. The whole list is kept: rollup reads
-    its own top-5 and smoothing its top-1.
+    written onto every box of the track, those that did not vote too. The
+    whole list is kept: rollup reads its own top-5 and smoothing its
+    top-1.
 
     A track with no voters (a person, a vehicle, a run without a
     classifier) is left as it is. A track whose only voter is the card
@@ -87,8 +95,8 @@ def vote_track_cards(md_results: dict) -> int:
                 for class_id, total in sorted(score.items(), key=lambda item: (-item[1], item[0]))
             ]
             before = card.get("classifications") or []
-            if voted != before:
-                card["classifications"] = voted
-                if not before or voted[0][0] != str(before[0][0]):
-                    changed += 1
+            if not before or voted[0][0] != str(before[0][0]):
+                changed += 1
+            for b in boxes:
+                b["classifications"] = voted
     return changed

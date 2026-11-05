@@ -1,13 +1,13 @@
-"""`vote_track_cards`: a track's card carries the species its frames
+"""`vote_tracks`: every frame of a track carries the species its frames
 agree on, weighted by how clearly each frame saw the animal.
 
 Pure, like `test_track_summaries.py`: the input is a results dict as the
-tracking script writes it, and only the card box may change.
+tracking script writes it; tracked boxes change, nothing else does.
 """
 
 import copy
 
-from app.ml.track_vote import vote_track_cards
+from app.ml.track_vote import vote_tracks
 
 FOX, WOLF, BOAR, DEER = "1", "2", "3", "4"
 
@@ -45,7 +45,7 @@ def test_a_misread_card_frame_is_outvoted_by_its_track():
     siblings = [_box(f, 0.8, 1, [[WOLF, 0.95], [FOX, 0.05]]) for f in (30, 90, 120, 150)]
     res = _results(card, *siblings)
 
-    assert vote_track_cards(res) == 1
+    assert vote_tracks(res) == 1
     assert _top1(card) == WOLF
     # 0.9 * 0.4 + 4 * 0.8 * 0.95 over 0.9 + 3.2
     assert card["classifications"][0][1] == round((0.36 + 3.04) / 4.1, 5)
@@ -59,31 +59,32 @@ def test_blurry_tail_frames_weigh_less_than_sharp_ones():
     sharp = _box(90, 0.9, 1, [[DEER, 0.9], [BOAR, 0.1]])
     tail = [_box(f, 0.12, 1, [[BOAR, 0.9], [DEER, 0.1]]) for f in (120, 150, 180)]
     res = _results(card, sharp, *tail)
+    # A plain count of the top-1s would have been 3 boar to 2 deer.
+    assert sum(_top1(d) == BOAR for d in tail) == 3
 
-    vote_track_cards(res)
+    vote_tracks(res)
     assert _top1(card) == DEER
-    # Plain mean of the top-1s would have been 3 boar to 2 deer.
-    plain = sum(d["classifications"][0][1] for d in tail) / 5
-    assert plain > 0.5
 
 
-def test_only_the_card_changes():
-    """Siblings keep their own guesses: opening the track is how a person
-    sees that the tracker switched animals, and MaxN per species must see
-    the switch too."""
-    card = _box(60, 0.9, 1, [[FOX, 0.6], [WOLF, 0.4]])
-    siblings = [_box(f, 0.8, 1, [[WOLF, 0.95], [FOX, 0.05]]) for f in (30, 90)]
-    before = copy.deepcopy(siblings)
-    res = _results(card, *siblings)
+def test_every_frame_of_the_track_carries_the_vote():
+    """One animal, one species: a frame the classifier misread shows the
+    track's species like the rest, on every surface (2026-11-05: a wolf
+    read as a jackal on two frames showed a jackal there)."""
+    card = _box(60, 0.9, 1, [[WOLF, 0.6], [FOX, 0.4]])
+    misread = _box(90, 0.8, 1, [[FOX, 0.7], [WOLF, 0.3]])
+    clear = _box(30, 0.8, 1, [[WOLF, 0.95], [FOX, 0.05]])
+    res = _results(card, misread, clear)
 
-    vote_track_cards(res)
-    assert siblings == before
+    vote_tracks(res)
+    assert _top1(misread) == WOLF
+    assert card["classifications"] == misread["classifications"] == clear["classifications"]
 
 
-def test_boxes_without_classifications_do_not_vote_and_untracked_boxes_are_untouched():
-    """A box below the gate carries no scores and stays silent; a person
-    track has no voters at all; a photo has no track. None of them count
-    as a changed card."""
+def test_unclassified_frames_take_the_vote_without_voting_and_the_rest_is_untouched():
+    """A box below the gate carries no scores and has no say, but it is
+    the same animal, so it takes the track's species; a person track has
+    no voters at all; a photo has no track. None of them count as a
+    changed card."""
     weak = _box(30, 0.05, 1)
     card = _box(60, 0.9, 1, [[WOLF, 0.7], [FOX, 0.3]])
     person_track = [_box(f, 0.8, 2) for f in (200, 230)]
@@ -103,7 +104,9 @@ def test_boxes_without_classifications_do_not_vote_and_untracked_boxes_are_untou
     }
     snapshot = copy.deepcopy(res)
 
-    assert vote_track_cards(res) == 0
+    assert vote_tracks(res) == 0
+    assert weak["classifications"] == card["classifications"] == [[WOLF, 0.7], [FOX, 0.3]]
+    snapshot["images"][0]["detections"][0]["classifications"] = [[WOLF, 0.7], [FOX, 0.3]]
     assert res == snapshot
 
 
@@ -114,7 +117,7 @@ def test_a_card_that_keeps_its_species_is_not_counted_as_changed():
     other = _box(90, 0.8, 1, [[WOLF, 0.9], [FOX, 0.1]])
     res = _results(card, other)
 
-    assert vote_track_cards(res) == 0
+    assert vote_tracks(res) == 0
     assert card["classifications"][0][0] == WOLF
     assert card["classifications"] != [[WOLF, 0.7], [FOX, 0.3]]
 
@@ -123,7 +126,7 @@ def test_a_single_voter_track_keeps_its_own_scores():
     card = _box(60, 0.9, 1, [[WOLF, 0.7], [FOX, 0.3]])
     res = _results(card, _box(30, 0.05, 1))
 
-    assert vote_track_cards(res) == 0
+    assert vote_tracks(res) == 0
     assert card["classifications"] == [[WOLF, 0.7], [FOX, 0.3]]
 
 
@@ -135,7 +138,7 @@ def test_scores_come_back_sorted_and_rounded():
     other = _box(90, 0.5, 1, [[DEER, 0.6], [WOLF, 0.4]])
     res = _results(card, other)
 
-    vote_track_cards(res)
+    vote_tracks(res)
     scores = card["classifications"]
     assert [c for c, _ in scores] == [DEER, FOX, WOLF, BOAR]
     assert scores == [[DEER, 0.4], [FOX, 0.25], [WOLF, 0.2], [BOAR, 0.15]]
