@@ -30,6 +30,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
+import { warmClipFrames } from "../../lib/clip-frames";
 import { cardBoxes, nearestSampledFrame, speciesKey, steppedFrame } from "../../lib/track-utils";
 import { ClipTimeline } from "./TrackTimeline";
 import { ApiError } from "../../lib/api-client";
@@ -491,6 +492,17 @@ export function EventDetailModal({
    *  event's files, which on a one-clip event was nothing). For photos,
    *  the previous or next picture of the burst. A manual step takes
    *  over from the cine-loop. */
+  /** Once a clip's still is on screen, warm the sampled frames either
+   *  side, so Shift+Arrow around the MaxN frame does not wait at each
+   *  step (`warmClipFrames`, the Files viewer's rule too). */
+  const warmNeighbourFrames = useCallback(
+    (loading: boolean) => {
+      if (loading || !focused || focused.file_type !== "video") return;
+      const here = shownFrame ?? focused.best_frame_number ?? 0;
+      warmClipFrames(focused, [steppedFrame(focused, here, 1), steppedFrame(focused, here, -1)]);
+    },
+    [focused, shownFrame],
+  );
   const stepWithinEvent = useCallback(
     (dir: 1 | -1) => {
       setAutoPlay(false);
@@ -821,6 +833,7 @@ export function EventDetailModal({
                     onDrawModeChange={() => {}}
                     readOnly
                     onScrubFrame={(d) => stepWithinEvent(d > 0 ? 1 : -1)}
+                    onLoadingChange={warmNeighbourFrames}
                     imageFilter={imageFilter}
                     boxesHidden={boxesHidden}
                     exportFnRef={exportFnRef}

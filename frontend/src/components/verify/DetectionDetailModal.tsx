@@ -19,6 +19,7 @@ import { eventsApi } from "../../api/events";
 import { projectsApi } from "../../api/projects";
 import { API_BASE_URL } from "../../lib/api-client";
 import { formatCameraDate, formatCameraTime, formatClipPosition } from "../../lib/datetime";
+import { frameImageUrl } from "../../lib/clip-frames";
 import { frameBoxes, samplingStep, trackGaps, trackPath } from "../../lib/track-utils";
 import { TrackSpan } from "./TrackTimeline";
 import {
@@ -499,10 +500,7 @@ export function DetectionDetailModal({
   // has its own still; every other detection shows the file's default.
   const stillFrame =
     fileData && fullDetection ? stillFrameFor(fileData, fullDetection) : undefined;
-  const stillSrc =
-    stillFrame == null
-      ? `${API_BASE_URL}/api/files/${detection.file_id}/image`
-      : `${API_BASE_URL}/api/files/${detection.file_id}/image?frame=${stillFrame}`;
+  const stillSrc = frameImageUrl(detection.file_id, stillFrame);
   const stillLoading = loadedSrc !== stillSrc;
 
   return (

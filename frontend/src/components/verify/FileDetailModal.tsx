@@ -119,6 +119,7 @@ import {
   nearestSampledFrame,
   steppedFrame,
 } from "../../lib/track-utils";
+import { warmClipFrames } from "../../lib/clip-frames";
 import { basename } from "../../lib/path-utils";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
 import { useShortcutLabels } from "../../hooks/useShortcutLabels";
@@ -635,32 +636,35 @@ export function FileDetailModal({
     [file, project?.counting_threshold, shownFrame],
   );
 
-  /** The frame the next verdict will land on, asked for as soon as the
-   *  current picture is on screen, so a run of V V V does not wait at
-   *  each step: the walk is deterministic (`nextWaitingAfter`), every
-   *  frame is cut from the clip on request, and on an external drive
-   *  that took 17 seconds a frame (SLiSN_016, 2026-11-03). The backend
-   *  keeps the decoded frame and the browser the JPEG, so the step
-   *  itself then costs nothing. Only after the load, never alongside
-   *  it: two decodes on the same slow drive slow the one on screen. */
-  const warmNextFrame = useCallback(() => {
+  /** The frames a person goes to next, asked for as soon as the current
+   *  picture is on screen (`warmClipFrames`): the frame the next verdict
+   *  lands on, so a run of V V V does not wait at each step, and the
+   *  sampled frames either side, so Shift+Arrow steps around a moment
+   *  (the MaxN frame, a fish half out of view) without a wait. Every
+   *  frame is cut from the clip on request, which took 17 seconds a
+   *  frame on an external drive (SLiSN_016, 2026-11-03). Only after the
+   *  load, never alongside it: a decode next to the one on screen slows
+   *  it down. */
+  const warmNextFrames = useCallback(() => {
     if (!file || file.file_type !== "video") return;
     const next = nextWaitingAfter(targetIds);
     const track = next?.track_id ? file.tracks.find((t) => t.id === next.track_id) : undefined;
-    if (!track || track.representative_frame_number === file.best_frame_number) return;
-    // Relative and in this form, exactly as `AnnotationCanvas` builds
-    // it, or the browser cache entry would not be the one it reads.
-    new Image().src = `/api/files/${file.id}/image?frame=${track.representative_frame_number}`;
-  }, [file, targetIds, nextWaitingAfter]);
+    const here = shownFrame ?? file.best_frame_number ?? 0;
+    warmClipFrames(file, [
+      track?.representative_frame_number,
+      steppedFrame(file, here, 1),
+      steppedFrame(file, here, -1),
+    ]);
+  }, [file, targetIds, nextWaitingAfter, shownFrame]);
   /** The canvas's word on whether the picture asked for is on screen:
    *  the frame gate (`frameReady`), and the moment to warm the next
    *  frame. */
   const handleLoading = useCallback(
     (loading: boolean) => {
       setFrameReady(!loading);
-      if (!loading) warmNextFrame();
+      if (!loading) warmNextFrames();
     },
-    [warmNextFrame],
+    [warmNextFrames],
   );
 
   /** Select a card, or nothing. A clip's card goes through `selectTrack`,
@@ -993,6 +997,13 @@ export function FileDetailModal({
     <VerifyDetailShell
       open
       onOpenChange={(open) => { if (!open) onClose(); }}
+      // The banner says "Esc to cancel": while drawing, Escape stops
+      // drawing and the viewer stays; the next Escape closes it.
+      onEscapeKeyDown={(e) => {
+        if (!drawMode) return;
+        e.preventDefault();
+        setDrawMode(false);
+      }}
       title={basename(item.file_path)}
       width="95vw"
       height="92vh"

@@ -47,6 +47,9 @@ interface VerifyDetailShellProps {
   details: ReactNode;
   /** Pinned to the bottom, primary action last. */
   actions: ReactNode;
+  /** Escape closes the dialog unless this calls `preventDefault`, so a
+   *  view can spend the first Escape on its own mode (drawing). */
+  onEscapeKeyDown?: (event: KeyboardEvent) => void;
 }
 
 /**
@@ -85,6 +88,7 @@ export function VerifyDetailShell({
   image,
   details,
   actions,
+  onEscapeKeyDown,
 }: VerifyDetailShellProps) {
   const { ref: imagePanelRef, ...imagePanelRest } = imagePanelProps ?? {};
 
@@ -97,6 +101,7 @@ export function VerifyDetailShell({
         className="flex flex-col py-3 px-0 gap-0 overflow-hidden [&>button.absolute]:hidden"
         style={{ width, height, maxWidth: "95vw", maxHeight: "95vh" }}
         onOpenAutoFocus={(e) => e.preventDefault()}
+        onEscapeKeyDown={onEscapeKeyDown}
         aria-describedby={undefined}
       >
         <DialogTitle className="sr-only">{title}</DialogTitle>

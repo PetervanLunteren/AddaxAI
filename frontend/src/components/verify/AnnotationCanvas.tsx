@@ -24,6 +24,7 @@ import { FrameWait } from "./FrameWait";
 import { detectionsApi } from "../../api/detections";
 import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
 import { getDetectionColor } from "../../lib/detection-utils";
+import { frameImageUrl } from "../../lib/clip-frames";
 import { frameBoxes } from "../../lib/track-utils";
 import { basename } from "../../lib/path-utils";
 import {
@@ -163,10 +164,7 @@ export function AnnotationCanvas({
   const [isPanning, setIsPanning] = useState(false);
   const lastPanPosRef = useRef({ x: 0, y: 0 });
 
-  const imageUrl =
-    frameNumber == null
-      ? `/api/files/${file.id}/image`
-      : `/api/files/${file.id}/image?frame=${frameNumber}`;
+  const imageUrl = frameImageUrl(file.id, frameNumber);
   const imgWidth = file.width_px || 1;
   const imgHeight = file.height_px || 1;
 
@@ -558,6 +556,12 @@ export function AnnotationCanvas({
 
     if (!isDrawing || !drawingBox) return;
     setIsDrawing(false);
+    // Drawing was switched off mid-drag (Escape): the box is dropped,
+    // not saved.
+    if (!drawMode) {
+      setDrawingBox(null);
+      return;
+    }
 
     // Normalize negative dimensions
     const box = {
@@ -840,7 +844,7 @@ export function AnnotationCanvas({
           })}
 
           {/* Drawing box preview */}
-          {drawingBox && (
+          {drawMode && drawingBox && (
             <Rect
               x={drawingBox.x}
               y={drawingBox.y}
