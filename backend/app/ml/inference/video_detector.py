@@ -6,7 +6,7 @@ Following DEVELOPERS.md principles:
 - Explicit error handling
 - Type hints everywhere
 
-Uses MegaDetector's built-in process_video module (matches streamlit-AddaxAI exactly).
+Uses MegaDetector's built-in process_video module.
 
 Created by Claude Code on 2026-01-07
 """
@@ -30,6 +30,11 @@ from app.utils.subprocess_runner import WINDOWS_ACCESS_VIOLATION
 
 logger = get_logger(__name__)
 
+# Frames are decoded on this many background threads while the detector
+# runs, so the GPU does not wait on decoding. Threads, never processes:
+# see "Mixed pixel format videos" in DEVELOPERS.md.
+VIDEO_DECODE_WORKERS = 4
+
 
 def _build_process_video_cmd(
     *,
@@ -49,8 +54,12 @@ def _build_process_video_cmd(
     spawning the subprocess. Optional inference flags (batch size, image
     size, augment) are appended only when set, mirroring the image
     detector; process_video accepts them as ``--batch_size N``,
-    ``--image_size N`` and ``--augment`` (store_true). It batches frames
-    within one video and falls back to 1 on CPU by itself.
+    ``--image_size N`` and ``--augment`` (store_true). It falls back to a
+    batch size of 1 on CPU by itself.
+
+    Frame decoding always runs on ``VIDEO_DECODE_WORKERS`` background
+    threads (``--use_image_queue --use_threads_for_queue``), which also
+    lets a batch span videos.
     """
     command = [
         str(python_path),
@@ -65,6 +74,10 @@ def _build_process_video_cmd(
         str(time_sample),
         "--json_confidence_threshold",
         str(confidence_threshold),
+        "--use_image_queue",
+        "--use_threads_for_queue",
+        "--loader_workers",
+        str(VIDEO_DECODE_WORKERS),
     ]
     if batch_size is not None:
         command += ["--batch_size", str(batch_size)]

@@ -9,7 +9,10 @@ so the flag logic is isolated here where it can be tested directly.
 from pathlib import Path
 
 from app.ml.inference.megadetector import _build_run_detector_batch_cmd
-from app.ml.inference.video_detector import _build_process_video_cmd
+from app.ml.inference.video_detector import (
+    VIDEO_DECODE_WORKERS,
+    _build_process_video_cmd,
+)
 
 
 def _image_cmd(**overrides) -> list[str]:
@@ -114,6 +117,17 @@ def test_video_cmd_augment_only():
     cmd = _video_cmd(augment=True)
     assert "--image_size" not in cmd
     assert cmd[-1] == "--augment"
+
+
+def test_video_cmd_decodes_frames_on_background_threads():
+    """Threads, never processes: a decode worker process that crashes on a
+    Bushnell AVI hangs process_video forever, which would also stop the
+    access-violation retry from firing (DEVELOPERS.md, "Mixed pixel
+    format videos")."""
+    cmd = _video_cmd()
+    assert "--use_image_queue" in cmd
+    assert "--use_threads_for_queue" in cmd
+    assert cmd[cmd.index("--loader_workers") + 1] == str(VIDEO_DECODE_WORKERS)
 
 
 # --- checkpoints ----------------------------------------------------------
