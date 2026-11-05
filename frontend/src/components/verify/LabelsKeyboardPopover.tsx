@@ -4,12 +4,12 @@
  * Renders its own toolbar icon trigger (Keyboard) so it sits inline
  * with the other utility icons in the verify toolbar. Takes the list of
  * shortcuts to show, because Detections and Files have different ones, and
- * renders the user-configurable label slots (1-5) alongside only when a
- * tab has them. Files does not: labels there are set on the box, in the viewer.
+ * renders the user-configurable label slots (1-5) alongside when a tab
+ * passes them (Detections; Files lists 1 - 5 as a row).
  *
- * Only grid shortcuts are listed, in both tabs. The detail views label
- * their own keys on the buttons that use them, so repeating them here
- * would be a second place to keep in step for no gain.
+ * Each list holds the grid's keys and then its viewer's, so every key a
+ * person can press on the tab is in one place; the buttons that have a
+ * key also show it. One row per key: rows are keyed by it.
  */
 
 import { Keyboard } from "lucide-react";
@@ -38,10 +38,13 @@ interface LabelsKeyboardPopoverProps {
   labelSlots?: LabelSlots;
 }
 
-function ShortcutKey({ keys }: { keys: string }) {
+/** One key of a shortcut list, the same chip in every list (the Labels
+ *  popovers and the Counts modal's). Wide enough for the longest key,
+ *  "Tab / Shift + Tab". */
+export function ShortcutKey({ keys }: { keys: string }) {
   const parts = keys.split("+").map((p) => p.trim());
   return (
-    <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">
+    <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-32 shrink-0 text-center whitespace-nowrap">
       {parts.map((part, i) => (
         <span key={i}>
           {part}
@@ -69,7 +72,13 @@ export function LabelsKeyboardPopover({
           <Keyboard className="h-4 w-4" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-auto px-4 py-3">
+      {/* Capped at the room Radix measures below the trigger, and
+          scrolling past it: the Files list is taller than a laptop
+          screen leaves, and its last rows used to sit off the bottom. */}
+      <PopoverContent
+        align="end"
+        className="w-auto max-h-[var(--radix-popover-content-available-height)] overflow-y-auto px-4 py-3"
+      >
         <div className="flex gap-8">
           <div>
             {shortcuts.map(([key, action]) => (

@@ -52,6 +52,7 @@ import type {
   FileWithDetections,
 } from "../../api/types";
 import { EventFilmstrip } from "./EventFilmstrip";
+import { ShortcutKey } from "./LabelsKeyboardPopover";
 import { ViewerToolRail } from "./ViewerToolRail";
 import { useFileTriage, useImageAdjust } from "./viewer-tools";
 import type { TileSize } from "./CropGrid";
@@ -1045,11 +1046,11 @@ export function EventDetailModal({
                     ["+ / −", "Adjust count by 1"],
                     ["A", "Add species"],
                     ["R", "Change species"],
-                    ["← →", "Prev / next event"],
-                    ["Shift + ← →", "Prev / next frame"],
+                    ["← / →", "Previous / next event"],
+                    ["Shift + ← / →", "Previous / next frame"],
                     ["Space", "Loop event"],
-                    ["Shift + scroll", "Scrub frames"],
-                    ["Scroll", "Zoom the focus"],
+                    ["Shift + scroll", "Previous / next frame"],
+                    ["Scroll", "Zoom the picture"],
                     ["Click", "Focus a thumbnail"],
                     ["P", "Watch focused video"],
                     ["F", "Flag / unflag"],
@@ -1057,7 +1058,7 @@ export function EventDetailModal({
                     ["Esc", "Close"],
                   ].map(([key, action]) => (
                     <div key={key} className="flex items-center text-xs gap-3 h-7">
-                      <code className="bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px] w-24 shrink-0 text-center whitespace-nowrap">{key.split("+").map((part, i, arr) => <span key={i}>{part}{i < arr.length - 1 && <span className="text-[#bbbbc1]">+</span>}</span>)}</code>
+                      <ShortcutKey keys={key} />
                       <span>{action}</span>
                     </div>
                   ))}

@@ -121,6 +121,8 @@ const CROPS_SHORTCUTS: readonly Shortcut[] = [
   [`${MOD} + Z`, "Undo last action"],
   ["Esc", "Deselect / close"],
   // Viewer only.
+  ["← / →", "Previous / next detection"],
+  ["A", "Take the label the similar crops suggest"],
   ["B", "Hide or show the boxes"],
   ["F", "Flag the file for review"],
 ];

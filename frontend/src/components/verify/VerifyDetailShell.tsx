@@ -136,7 +136,7 @@ export function VerifyDetailShell({
                       size="icon"
                       className="h-7 w-7"
                       onClick={() => onNavigate("prev")}
-                      title="Previous"
+                      title="Previous (←)"
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
@@ -145,7 +145,7 @@ export function VerifyDetailShell({
                       size="icon"
                       className="h-7 w-7"
                       onClick={() => onNavigate("next")}
-                      title="Next"
+                      title="Next (→)"
                     >
                       <ChevronRight className="h-4 w-4" />
                     </Button>
