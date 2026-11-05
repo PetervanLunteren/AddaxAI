@@ -15,7 +15,8 @@
     "build": "tsc",
     "start": "electron .",
     "package": "electron-builder",
-    "test:e2e": "tsc && playwright test"
+    "test:e2e": "tsc && playwright test",
+    "postinstall": "node scripts/patch-electron-builder.cjs"
   },
   "dependencies": {
     "electron-store": "^8.1.0"
