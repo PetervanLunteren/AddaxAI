@@ -466,10 +466,29 @@ export function FileDetailModal({
   // already knows it is a clip, so nothing says "photo" while it loads.
   const noun = item?.file_type === "video" ? "clip" : "photo";
   // What you see, in words: "all 12 boxes", "the 17 boxes on this frame".
-  const seen =
-    item?.file_type === "video"
-      ? `the ${onScreen.length} ${units} on this frame`
+  const isClip = item?.file_type === "video";
+  const seen = isClip
+    ? onScreen.length === 1
+      ? `the 1 ${unit} on this frame`
+      : `the ${onScreen.length} ${units} on this frame`
+    : onScreen.length === 1
+      ? `the 1 ${unit}`
       : `all ${onScreen.length} ${units}`;
+  // What the action buttons will hit right now, and how to change it,
+  // in one live line above them. The primary button cannot say it: it
+  // counts what Enter verifies and ignores the selection, so with one
+  // box picked it still says 33 while Mark false would hit 1. A live
+  // line teaches the rule by changing with it; the fixed sentence it
+  // replaced described the rule and was hard to follow (2026-11-05).
+  const scopeLine = selectedDetectionId
+    ? "Acting on the selected box. Click the picture outside the boxes to go back to all."
+    : viewMode === "video"
+      ? "Acting on the box you pick on the timeline."
+      : onScreen.length === 0
+        ? isClip
+          ? "No boxes on this frame. Click a bar to pick one."
+          : "No boxes to act on."
+        : `Acting on ${seen}. Click a box${isClip ? " or a bar" : ""} to pick one.`;
   const scope =
     selectedDetectionId || onScreen.length === 1
       ? `the ${unit}`
@@ -1161,12 +1180,8 @@ export function FileDetailModal({
           <DetailCard title="Actions">
             {/* Carries the scope so the buttons do not have to: what
                 they act on, and how to narrow it. */}
-            <p className="mb-2 text-xs text-muted-foreground">
-              {item?.file_type !== "video"
-                ? "These act on the box you select, with a click or Tab. None selected means all boxes."
-                : viewMode === "video"
-                  ? "These act on the box you select by clicking a bar."
-                  : "These act on the box you select, with a click, Tab or a bar. None selected means the boxes on this frame."}
+            <p className="mb-2 text-xs text-muted-foreground" data-testid="action-scope">
+              {scopeLine}
             </p>
             {/* A fieldset so one flag disables every verdict button
                 while the frame is on its way (the header's frame gate);
