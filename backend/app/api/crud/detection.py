@@ -11,7 +11,7 @@ Following DEVELOPERS.md principles:
 from collections.abc import Iterable
 from datetime import UTC, datetime
 
-from sqlalchemy import and_, false, or_, select
+from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -20,7 +20,7 @@ from app.api.schemas.detection import (
     DetectionCreateHuman,
     DetectionUpdate,
 )
-from app.models import Deployment, Detection, File
+from app.models import Deployment, Detection, File, Track
 
 
 def get_detection(db: Session, detection_id: str) -> Detection | None:
@@ -201,12 +201,16 @@ def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection
     `update_database_from_smoothed_results`. Left unverified it was the
     one human decision the pipeline was free to overwrite.
 
-    Photos only; the router refuses a video before calling this. A clip
-    is reviewed animal by animal, and a box drawn by hand could only
-    ever land on the single frame on screen: on an hour of footage
-    sampled at 2 fps that is one frame in ten thousand, so it could
-    never be how an animal the detector missed is recorded. The Counts
-    page is, by typing the number over the AI's MaxN.
+    On a clip the box lands on the frame it was drawn on, as a one-frame
+    track of its own (`_track_for_drawn_box`), so it is a card like any
+    tracked animal: MaxN counts it on that frame, the timeline shows it
+    as a bar, a sign-off reaches it. A video box needs `frame_number`;
+    without one this raises ValueError, which the router turns into a
+    400. Drawing on clips was off from 2026-09-09 to 2026-11-03 on the
+    argument that one frame in ten thousand is no place to record a
+    missed animal; MaxN is a per-frame count, so the frame on screen is
+    exactly the place, and BRUV practice marks every fish on the MaxN
+    frame.
     """
     now = datetime.now(UTC)
     db_detection = Detection(
@@ -227,6 +231,7 @@ def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection
     )
     db.add(db_detection)
     db.flush()  # populate id so _resolve_detection_taxonomy can find the project
+    _track_for_drawn_box(db, db_detection)
 
     if data.label:
         db_detection.label_taxonomy_id = _resolve_detection_taxonomy(
@@ -268,11 +273,58 @@ def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection
     return db_detection
 
 
+def _track_for_drawn_box(db: Session, detection: Detection) -> None:
+    """Give a box drawn on a clip its own one-frame track.
+
+    Every video box has a track (models/track.py), and a track's card is
+    its box on the representative frame, so a drawn box is a track whose
+    only frame is the one it was drawn on: start, end and representative
+    all that frame, one frame, the box's own confidence, no crop on disk
+    (the card is cut from the cover or the decoded frame on request).
+
+    The key is negative, counting down from -1 per clip, so it can never
+    meet a tracker id: the tracker numbers its tracks 1, 2, 3 and a
+    re-ingest of the clip takes over any existing row whose key is in
+    the JSON (`ml/json_pipeline.py` `_link_tracks`). A hand track keyed
+    max+1, as the September 2026 version and the legacy migration did,
+    was one re-run with more tracks away from being hijacked. The key
+    shows as-is in the exports, which is honest: a track no tracker made.
+    """
+    file = db.get(File, detection.file_id)
+    if file is None or file.file_type != "video":
+        return
+    if detection.frame_number is None:
+        raise ValueError("A box on a video needs the frame it was drawn on.")
+    lowest = (
+        db.query(func.min(Track.track_key)).filter(Track.file_id == file.id).scalar()
+    )
+    track = Track(
+        file_id=file.id,
+        track_key=min(lowest or 0, 0) - 1,
+        start_frame=detection.frame_number,
+        end_frame=detection.frame_number,
+        frame_count=1,
+        max_confidence=detection.confidence,
+        representative_frame_number=detection.frame_number,
+        crop_path=None,
+    )
+    db.add(track)
+    db.flush()
+    detection.track_id = track.id
+
+
 def update_detection(db: Session, detection_id: str, update: DetectionUpdate) -> Detection | None:
     """
     Partial update of a detection.
 
     Sets classification_method to "human" when label is edited.
+
+    Moving or resizing a track's card drops the track's stored crop: the
+    crop the tracking script wrote is the old box's pixels, and
+    `services/crop_service.py` cuts a card without a crop from the cover
+    or the decoded frame at the box as it is now, the same path a drawn
+    box takes. The file on disk stays, unreferenced. Any embedding of
+    the box goes stale, as a photo's does on a move.
     """
     detection = get_detection(db, detection_id)
     if detection is None:
@@ -280,14 +332,18 @@ def update_detection(db: Session, detection_id: str, update: DetectionUpdate) ->
 
     if update.category is not None:
         detection.category = update.category
-    if update.bbox_x is not None:
-        detection.bbox_x = update.bbox_x
-    if update.bbox_y is not None:
-        detection.bbox_y = update.bbox_y
-    if update.bbox_width is not None:
-        detection.bbox_width = update.bbox_width
-    if update.bbox_height is not None:
-        detection.bbox_height = update.bbox_height
+    bbox_fields = ("bbox_x", "bbox_y", "bbox_width", "bbox_height")
+    for field in bbox_fields:
+        value = getattr(update, field)
+        if value is not None:
+            setattr(detection, field, value)
+    track = detection.track
+    if (
+        track is not None
+        and detection.frame_number == track.representative_frame_number
+        and any(getattr(update, f) is not None for f in bbox_fields)
+    ):
+        track.crop_path = None
     if "label" in update.model_fields_set:
         detection.label = update.label
         detection.label_taxonomy_id = _resolve_detection_taxonomy(
@@ -348,10 +404,10 @@ def delete_detection(db: Session, detection_id: str) -> bool:
     Delete a detection.
 
     Returns True if deleted, False if detection doesn't exist. A track
-    left with no boxes goes with it. Nothing in the app deletes a video
-    box any more (boxes are drawn on photos only, and a tracker box is
-    marked false rather than deleted), but the branch is three lines and
-    it is what keeps a direct API delete from leaving an orphan track.
+    left with no boxes goes with it: a drawn box on a clip is a one-frame
+    track, and the app marks a wrong box false rather than deleting it,
+    so this branch serves a direct API delete and keeps it from leaving
+    an orphan track.
     """
     db_detection = get_detection(db, detection_id)
     if db_detection is None:

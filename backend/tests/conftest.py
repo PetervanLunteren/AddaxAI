@@ -289,7 +289,9 @@ def make_video_box(
 ) -> Detection:
     """One box on one frame of a video, with the one-frame track every
     video box has (a drawn box, a legacy box). The box is the track's
-    card, so it is visible; `frame_number` is the frame it sits on."""
+    card, so it is visible; `frame_number` is the frame it sits on. The
+    key defaults to max+1, the legacy migration's; a box drawn in the
+    app counts down from -1, so pass `track_key=-1` to mirror that."""
     if track_key is None:
         last = (
             db.query(Track.track_key)

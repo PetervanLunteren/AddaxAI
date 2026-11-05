@@ -145,8 +145,9 @@ class DetectionResponse(DetectionBase):
     job_id: str | None
     verified: bool = False
     verified_at_utc: datetime | None = None
-    # The track this box belongs to; null for images, untracked videos
-    # and drawn boxes. A verdict on any box of a track reaches them all.
+    # The track this box belongs to; null for images and untracked
+    # videos (a box drawn on a clip is its own one-frame track). A
+    # verdict on any box of a track reaches them all.
     track_id: str | None = None
     created_at_utc: datetime
 

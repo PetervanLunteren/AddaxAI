@@ -22,13 +22,24 @@
  * said. Signing a whole clip off is a button of its own, below, behind
  * a confirm that says the numbers (`SignOffDialog`).
  *
- * Boxes are drawn on photos only. Arm the crosshair with D or the
- * button, drag, and the species search opens on the new box by itself;
- * name a species in the Default label card and new boxes take that
- * instead. A clip has no drawing: a hand-drawn box could only land on
- * the frame on screen, which on an hour of footage is one frame in ten
- * thousand, so it could never be how an animal the detector missed gets
- * recorded. The Counts page is, by typing the number.
+ * The picture is a canvas, a photo and a clip's frame alike. Arm the
+ * crosshair with D or the button, drag, and the species search opens
+ * on the new box by itself; name a species in the Default label card
+ * and new boxes take that instead; drag a box or its corners to fix
+ * it. On a clip the box is saved on the frame on screen and becomes a
+ * one-frame track there (a bar one step wide, a card, a count on that
+ * frame), never while the clip plays. Drawing on clips was off from
+ * 2026-09-09 to 2026-11-03 on the argument that one frame in ten
+ * thousand is no place to record a missed animal; MaxN is a per-frame
+ * count, so the frame you count on is exactly the place, which is what
+ * BRUV analysts do on the MaxN frame.
+ *
+ * A verdict waits for the frame it is about. While a frame of a clip is
+ * on its way the canvas dims the old picture and takes no clicks, and
+ * `frameReady` holds Enter, V, X and the rest until the frame lands
+ * (`verify` and `applyLabel`, the two doors every verdict goes
+ * through), so nothing is judged or drawn on a picture that is not the
+ * one asked for. Navigation keys stay live.
  *
  * The label actions are the Detections grid's, with one scope rule:
  * actions act on what you see. V, R, X, U and the saved labels 1 to 5
@@ -188,9 +199,12 @@ export function FileDetailModal({
   // The frame the still shows: null is the cover frame; a bar click or a
   // lane click sets another, decoded on request. Explicit state rather
   // than derived from the selection, because a lane click shows a frame
-  // without selecting anything, and D must return to the cover without
-  // clearing the selection (drawing happens on the cover).
+  // without selecting anything. A box drawn on a clip lands on this
+  // frame (the canvas stamps it; the cover when null).
   const [shownFrame, setShownFrame] = useState<number | null>(null);
+  // False from the moment a picture is asked for until it is on screen
+  // (`onLoadingChange`); the frame gate described in the header.
+  const [frameReady, setFrameReady] = useState(false);
   // One-shot: Download clicked from frame view mounts the player and
   // runs the annotated-video export once the clip is playable.
   const [pendingVideoExport, setPendingVideoExport] = useState(false);
@@ -221,6 +235,9 @@ export function FileDetailModal({
   // The boxes the relabel search is open for. A list, because with no
   // box selected the search names every box on the picture.
   const [relabelTargets, setRelabelTargets] = useState<string[] | null>(null);
+  // The box the species search is naming because it was just drawn
+  // (`handleCreated`); naming it stays on the frame instead of walking.
+  const drawnRef = useRef<string | null>(null);
   // The species a newly drawn box gets. Null means an unnamed animal,
   // and the search opens on every new box instead.
   const [activeLabel, setActiveLabel] = useState<LabelOption | null>(null);
@@ -358,11 +375,13 @@ export function FileDetailModal({
     },
     [file, shownFrame, showFrame],
   );
-  // Watch the clip from the frame on screen.
+  // Watch the clip from the frame on screen. An armed crosshair is
+  // dropped: nothing is drawn on a playing clip.
   const watch = useCallback(() => {
     if (shownFrame != null) {
       setSeekRequest({ frame: shownFrame, nonce: Date.now(), play: true });
     }
+    setDrawMode(false);
     setViewMode("video");
   }, [shownFrame]);
   // And back: the still on the paused moment, snapped to the nearest
@@ -374,12 +393,9 @@ export function FileDetailModal({
     if (frame != null && file) setShownFrame(nearestSampledFrame(file, frame));
     setViewMode("frame");
   }, [file]);
-  /** Boxes are drawn on photos only. A clip is reviewed animal by
-   *  animal, and a box drawn by hand could only ever land on the one
-   *  frame on screen: on an hour of footage at 3 fps that is one frame
-   *  in ten thousand, so it can never be the way an animal the detector
-   *  missed gets recorded. The Counts page is, by typing the number. */
-  const canDraw = file != null && file.file_type !== "video";
+  /** A still is a canvas, a photo's and a clip's frame alike; a playing
+   *  clip is not. The box is saved on the frame on screen. */
+  const canDraw = file != null && viewMode !== "video";
 
   /** Download: for a playable video always the annotated MP4 (mount the
    *  player if needed and record once it can play); for anything else
@@ -570,6 +586,7 @@ export function FileDetailModal({
   const handleCreated = useCallback(
     (detectionId: string) => {
       if (activeLabel) return;
+      drawnRef.current = detectionId;
       setSelectedDetectionId(detectionId);
       setRelabelTargets([detectionId]);
     },
@@ -635,6 +652,16 @@ export function FileDetailModal({
     // it, or the browser cache entry would not be the one it reads.
     new Image().src = `/api/files/${file.id}/image?frame=${track.representative_frame_number}`;
   }, [file, targetIds, nextWaitingAfter]);
+  /** The canvas's word on whether the picture asked for is on screen:
+   *  the frame gate (`frameReady`), and the moment to warm the next
+   *  frame. */
+  const handleLoading = useCallback(
+    (loading: boolean) => {
+      setFrameReady(!loading);
+      if (!loading) warmNextFrame();
+    },
+    [warmNextFrame],
+  );
 
   /** Select a card, or nothing. A clip's card goes through `selectTrack`,
    *  so the picture moves to that animal's own frame exactly as a bar
@@ -701,6 +728,7 @@ export function FileDetailModal({
    *  without a box) is nothing. */
   const verify = useCallback(
     (ids: string[]) => {
+      if (!frameReady) return;
       const after = settleAfter(ids);
       if (ids.length === 0) {
         // `settleAfter` hands back `verifyAndAdvance` itself when nothing
@@ -718,7 +746,7 @@ export function FileDetailModal({
         })
         .catch((err: Error) => toast.error(err.message));
     },
-    [settleAfter, verifyAndAdvance],
+    [frameReady, settleAfter, verifyAndAdvance],
   );
   const verifyOnScreen = useCallback(
     () => verify(onScreen.map((d) => d.id)),
@@ -727,11 +755,21 @@ export function FileDetailModal({
   const markTargetsCorrect = useCallback(() => verify(targetIds), [verify, targetIds]);
 
   /** Every label action goes through here: the grid's `bulk-relabel`
-   *  (which verifies), then the undo stack, then `settleAfter`'s step. */
+   *  (which verifies), then the undo stack, then `settleAfter`'s step.
+   *  Like `verify`, nothing while the frame is on its way. `stay` is
+   *  for naming a box just drawn: the person is adding the animals the
+   *  AI missed on this picture, often several on one MaxN frame, so the
+   *  viewer stays on it with nothing selected and the next D draws
+   *  again (2026-11-04; the walk carried them off after each box). */
   const applyLabel = useCallback(
-    (ids: string[], label: string | null, category: string | undefined) => {
-      if (ids.length === 0) return;
-      const after = settleAfter(ids);
+    (ids: string[], label: string | null, category: string | undefined, stay = false) => {
+      if (ids.length === 0 || !frameReady) return;
+      const after = stay
+        ? () => {
+            setSelectedDetectionId(null);
+            handleCanvasChange();
+          }
+        : settleAfter(ids);
       detectionsApi
         .bulkRelabel(ids, label, category)
         .then(() => {
@@ -740,7 +778,7 @@ export function FileDetailModal({
         })
         .catch((err: Error) => toast.error(err.message));
     },
-    [settleAfter],
+    [frameReady, settleAfter, handleCanvasChange],
   );
 
 
@@ -1012,7 +1050,7 @@ export function FileDetailModal({
                 onDrawModeChange={setDrawMode}
                 onMutated={handleCanvasChange}
                 onCreated={handleCreated}
-                onLoaded={warmNextFrame}
+                onLoadingChange={handleLoading}
                 onScrubFrame={stepFrame}
                 boxesHidden={boxesHidden}
                 defaultCategory={activeLabel?.category ?? "animal"}
@@ -1027,10 +1065,12 @@ export function FileDetailModal({
                 center play button over a video's still, and the
                 honest chip when the browser cannot play the format.
                 Click-through except the button, so the canvas keeps
-                its clicks. No drawing guard: a clip cannot be drawn
-                on, so the crosshair is never over this. */}
+                its clicks; while drawing the button goes too, so a
+                drag that starts in the middle draws a box instead of
+                starting the clip. */}
             {file.file_type === "video" &&
               viewMode !== "video" &&
+              !drawMode &&
               (playable ? (
                 <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
                   <button
@@ -1091,16 +1131,15 @@ export function FileDetailModal({
                   and nothing is judged on it: the detections are the
                   tracks, one bar each under the picture. It leads with
                   the detector on purpose, so nobody reads "one frame"
-                  as "the AI looked at one frame". A box can only be
-                  drawn on the cover (`AnnotationCanvas` stamps the frame
-                  on screen on every box it creates, and D returns
-                  there), so that clause stays. Worded to hold for a
-                  clip where nothing was found at all. */}
+                  as "the AI looked at one frame". A drawn box lands on
+                  the frame on screen (`AnnotationCanvas` stamps it on
+                  every box it creates). Worded to hold for a clip
+                  where nothing was found at all. */}
               {item.file_type === "video" && (
                 <div className="pt-1 text-muted-foreground/80">
                   The AI checked the whole clip. This is the clip's cover,
                   the picture that stands for it in the grid. A box you
-                  draw is saved on it.
+                  draw is saved on the frame you are looking at.
                   {(file?.tracks.length ?? 0) > 0 &&
                     " Each detection the AI followed is a bar below; click one to see it on its own frame."}
                   {playable && " Press P or the play button to watch the clip."}
@@ -1126,7 +1165,10 @@ export function FileDetailModal({
                   ? "These act on the detection you select by clicking a bar. Press P to come back to the still on the moment you paused; with nothing selected they act on the detections that frame shows."
                   : "These act on the detection you select: click a box, Tab through them, or click a bar. None selected means every detection on this frame, each through all of its frames."}
             </p>
-            <div className="space-y-1.5">
+            {/* A fieldset so one flag disables every verdict button
+                while the frame is on its way (the header's frame gate);
+                `min-w-0` undoes the element's own min-content width. */}
+            <fieldset disabled={!frameReady} className="min-w-0 space-y-1.5">
               {/* First, because agreeing is the commonest verdict on a
                   clip the detector handled well. Same tick as the
                   Verify button on purpose: one verb, two scopes, told
@@ -1268,14 +1310,15 @@ export function FileDetailModal({
                   <Kbd>{String(freeSlot)}</Kbd>
                 </Button>
               )}
-            </div>
+            </fieldset>
           </DetailCard>
 
           {/* Sits with the other cards rather than among the buttons:
               it describes how drawing behaves, it is not a verdict on
               this file. "Ask me each time" is the default and the
-              honest one. Photos only, with the drawing it serves. */}
-          {canDraw && (
+              honest one. Stays through playback, unlike the Draw
+              button: it is a setting, not an action. */}
+          {file != null && (
           <DetailCard title="Default label">
             <p className="mb-2 text-xs text-muted-foreground">
               Pick a species and every box you draw takes it. Saves
@@ -1335,7 +1378,7 @@ export function FileDetailModal({
                 ? () => setVerified({ id: item.id, verified: false })
                 : verifyOnScreen
             }
-            disabled={verifying || (!isVerified && nothingOnScreen)}
+            disabled={verifying || !frameReady || (!isVerified && nothingOnScreen)}
             title={
               isVerified
                 ? "Unverify: hand every detection in this file back to the AI"
@@ -1346,7 +1389,7 @@ export function FileDetailModal({
           >
             <Check className="h-4 w-4 mr-1" />
             {isVerified ? "Unverify" : verifyLabel}
-            {!isVerified && !nothingOnScreen && <Kbd onPrimary>⏎</Kbd>}
+            {!isVerified && !nothingOnScreen && frameReady && <Kbd onPrimary>⏎</Kbd>}
           </Button>
 
           {/* The whole clip, the one scope a person cannot see: a button
@@ -1385,19 +1428,24 @@ export function FileDetailModal({
             value={null}
             onSelect={(option) => {
               const ids = relabelTargets;
+              const drawn = ids?.length === 1 && ids[0] === drawnRef.current;
+              drawnRef.current = null;
               setRelabelTargets(null);
-              // Same rule as the keys: a selected box (including a
-              // freshly drawn one, which arrives selected) hands the
+              // Same rule as the keys: a selected box hands the
               // selection to the next waiting card; the last verdict on
-              // a file signs it off.
-              if (ids) applyLabel(ids, option.label, option.category);
+              // a file signs it off. A box just drawn is the exception
+              // (`applyLabel`'s `stay`): naming it stays on the frame.
+              if (ids) applyLabel(ids, option.label, option.category, drawn);
             }}
             options={labelOptions}
             isLoading={labelOptionsLoading}
             pinnedOptions={pinnedOptions}
             forceOpen={!!relabelTargets}
             onOpenChange={(open) => {
-              if (!open) setRelabelTargets(null);
+              if (!open) {
+                drawnRef.current = null;
+                setRelabelTargets(null);
+              }
             }}
             projectId={projectId}
           />

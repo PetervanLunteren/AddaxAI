@@ -95,9 +95,9 @@ class Detection(Base):
     # Video-specific field (None for images, frame index for videos)
     frame_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    # The track this box belongs to when the video was analysed with
-    # tracking on; NULL for images, for videos analysed without a tracker,
-    # and for boxes a person drew. SET NULL rather than CASCADE: a track
+    # The track this box belongs to: the tracker's, or the one-frame track
+    # a box drawn on a clip gets; NULL for images and for videos analysed
+    # without a tracker. SET NULL rather than CASCADE: a track
     # row never goes on its own outside the purge, and a box must not
     # vanish because its track did. See models/track.py.
     track_id: Mapped[str | None] = mapped_column(

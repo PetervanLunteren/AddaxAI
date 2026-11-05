@@ -2,9 +2,17 @@
  * Interactive annotation canvas using react-konva.
  *
  * Draws every visible box (`frameBoxes`) and supports drawing,
- * moving and resizing them. There is no delete: a wrong box is marked
- * false through its label pill, like any other box. Keys belong to the
- * host component; this only reacts to props.
+ * moving and resizing them, on a photo and on a clip's frame alike.
+ * There is no delete: a wrong box is marked false through its label
+ * pill, like any other box. Keys belong to the host component; this
+ * only reacts to props.
+ *
+ * While the picture asked for is on its way the old one stays, dimmed
+ * and blurred, without its boxes and without pointer events, and the
+ * host hears `onLoadingChange(true)`: nothing is drawn, dragged or
+ * judged on a picture that is not the one asked for. A frame of a clip
+ * can take seconds on a slow drive, and a box drawn on the old pixels
+ * would be saved with the new frame's number.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -61,10 +69,13 @@ interface AnnotationCanvasProps {
    *  a fresh box up (asking which species it is), which is not true of
    *  a move, a resize or a delete. */
   onCreated?: (detectionId: string) => void;
-  /** The picture is on screen. The Files viewer warms the frame the
-   *  next verdict will land on at this moment and not before, so the
-   *  two decodes never compete for the same slow drive. */
-  onLoaded?: () => void;
+  /** `true` when a picture is asked for, `false` once it is on screen
+   *  (not on a failed one: a picture that is not there stays "not
+   *  ready"). The Files viewer holds its verdicts on `true`, the frame
+   *  gate, and on `false` warms the frame the next verdict will land
+   *  on, at that moment and not before, so two decodes never compete
+   *  for the same slow drive. */
+  onLoadingChange?: (loading: boolean) => void;
   /** Shift+wheel steps to the previous/next frame instead of zooming.
    *  `delta` is the wheel deltaY (negative = up/previous). */
   onScrubFrame?: (delta: number) => void;
@@ -106,7 +117,7 @@ export function AnnotationCanvas({
   onDrawModeChange,
   onMutated,
   onCreated,
-  onLoaded,
+  onLoadingChange,
   onScrubFrame,
   frameNumber,
   readOnly,
@@ -140,10 +151,10 @@ export function AnnotationCanvas({
   const [imageFailed, setImageFailed] = useState(false);
   // Read through a ref by the load effect, so a new callback identity
   // does not restart the load of the picture on screen.
-  const onLoadedRef = useRef(onLoaded);
+  const onLoadingChangeRef = useRef(onLoadingChange);
   useEffect(() => {
-    onLoadedRef.current = onLoaded;
-  }, [onLoaded]);
+    onLoadingChangeRef.current = onLoadingChange;
+  }, [onLoadingChange]);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [drawingBox, setDrawingBox] = useState<DrawingBox | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -162,12 +173,12 @@ export function AnnotationCanvas({
   // The boxes of the frame the canvas is rendering, by the one rule
   // every rendered still and the player share (`frameBoxes`).
   const filteredDetections = frameBoxes(file, detectionThreshold, frameNumber);
-  // Boxes are moved and resized on photos only. A clip's box is one
-  // sample of an animal the tracker followed, and drawing on a clip is
-  // off for the same reason (`canDraw` in the Files viewer): one frame
-  // in ten thousand is no place to record where an animal was.
-  // Selecting stays, on every surface.
-  const editable = !readOnly && file.file_type !== "video";
+  // Every box on an editable still can be moved and resized, a clip's
+  // frame like a photo (2026-11-03; a clip's boxes were fixed before).
+  // The Counts modal mounts the canvas read-only, so only the Files
+  // viewer edits. Moving a track's card drops the track's stored crop
+  // on the backend, so the card is re-cut at the new box.
+  const editable = !readOnly;
 
   // Update stage size based on container. Defined before the image-load
   // effect below because that effect lists it as a dependency (a const from
@@ -208,7 +219,7 @@ export function AnnotationCanvas({
       updateStageSize(img.naturalWidth, img.naturalHeight);
       setImageFailed(false);
       setLoading(false);
-      onLoadedRef.current?.();
+      onLoadingChangeRef.current?.(false);
     };
     img.onload = settle;
     img.onerror = () => {
@@ -229,6 +240,7 @@ export function AnnotationCanvas({
       settle();
     } else {
       setLoading(true);
+      onLoadingChangeRef.current?.(true);
     }
     return () => {
       cancelled = true;
@@ -370,11 +382,11 @@ export function AnnotationCanvas({
     v / (dim === imgWidth ? stageSize.width : stageSize.height);
 
   // Create detection mutation. The drawn box is anchored to whatever
-  // pixels the canvas is rendering — for videos that's the best frame,
-  // so we stamp `frame_number = best_frame_number` on the new row.
-  // Without this, `frameBoxes` filters the fresh detection out of
-  // the overlay (null !== best_frame_number) and the user sees the
-  // box disappear as soon as they release the mouse.
+  // pixels the canvas is rendering: for a clip the frame shown
+  // (`frameNumber`, the cover when undefined), stamped on the new row,
+  // where the backend makes it a one-frame track. Without the stamp
+  // `frameBoxes` would filter the fresh box out of the overlay and the
+  // box would vanish as soon as the mouse is released.
   const createMutation = useMutation({
     mutationFn: (box: DrawingBox) => {
       const normX = pixelToNorm(box.x, imgWidth);
@@ -654,6 +666,10 @@ export function AnnotationCanvas({
         </div>
       )}
 
+      {/* The frame gate's look (header): while the picture asked for
+          is on its way, the old one is dimmed and blurred and takes no
+          pointer. The chip and the drawing banner above stay crisp. */}
+      <div className={loading ? "pointer-events-none blur-sm opacity-50" : undefined}>
       <Stage
         ref={stageRef}
         width={stageSize.width}
@@ -859,6 +875,7 @@ export function AnnotationCanvas({
           />
         </Layer>
       </Stage>
+      </div>
     </div>
   );
 }

@@ -52,7 +52,9 @@ class Track(Base):
     )
     # The tracker's own id, unique within the video (1, 2, 3, ...). Matches
     # `track_id` on the boxes in the run's JSON, so a re-ingest can find
-    # the row again.
+    # the row again. A track made for a box a person drew counts down
+    # from -1 instead (`crud/detection.py` `_track_for_drawn_box`), so a
+    # re-ingest can never mistake it for one of the tracker's.
     track_key: Mapped[int] = mapped_column(Integer, nullable=False)
     # Absolute frame indices in the source video, like Detection.frame_number.
     start_frame: Mapped[int] = mapped_column(Integer, nullable=False)

@@ -134,3 +134,32 @@ def test_a_second_ingest_finds_its_track_rows_again(deployment_scaffold):
         d.track_id == tracks[0].id
         for d in db.query(Detection).filter(Detection.file_id == video.id)
     )
+
+
+def test_a_second_ingest_leaves_a_drawn_track_alone(deployment_scaffold):
+    """A box a person drew on the clip is a one-frame track keyed -1, out
+    of the tracker's range, so the re-ingest that refreshes track 1 never
+    finds it under a key of its own and never takes it over."""
+    from app.api.crud.detection import create_human_detection
+    from app.api.schemas.detection import DetectionCreateHuman
+
+    s = deployment_scaffold
+    db = s["db"]
+    create_video_frames(s["artifacts"], "videos/clip.mp4", [60])
+    data = _tracked_json([_box(30, 0.5, 1), _box(60, 0.9, 1)])
+
+    _load(s, data)
+    video = db.query(File).filter(File.file_type == "video").one()
+    drawn = create_human_detection(db, DetectionCreateHuman(
+        file_id=video.id, category="animal", frame_number=90,
+        bbox_x=0.5, bbox_y=0.5, bbox_width=0.1, bbox_height=0.1,
+    ))
+    assert drawn.track.track_key == -1
+    _load(s, data)
+
+    db.expire_all()
+    tracks = {t.track_key: t for t in db.query(Track).filter(Track.file_id == video.id)}
+    assert sorted(tracks) == [-1, 1]
+    hand = tracks[-1]
+    assert (hand.start_frame, hand.end_frame, hand.frame_count) == (90, 90, 1)
+    assert db.get(Detection, drawn.id).track_id == hand.id

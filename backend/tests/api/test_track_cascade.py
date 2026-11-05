@@ -22,8 +22,8 @@ from tests.conftest import (
 def _tracked_video(db, *, counting_threshold=0.2):
     """A video with two tracks of three boxes each (representative in the
     middle), plus one untracked legacy box on the cover and one one-frame
-    track (what the migration makes of an old hand-drawn box; nothing
-    creates these any more, but they sit in databases already out)."""
+    track keyed -1, what a box drawn on the clip becomes
+    (`crud/detection.py` `_track_for_drawn_box`)."""
     project = make_project(db, counting_threshold=counting_threshold)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
@@ -42,8 +42,9 @@ def _tracked_video(db, *, counting_threshold=0.2):
                                category="elasmobranch") for f in (300, 330, 360)],
         "loose": [make_detection(db, file_id=video.id, frame_number=60,
                                  category="elasmobranch")],
-        "drawn": [make_video_box(db, file_id=video.id, frame_number=60, job_id=None,
-                                 confidence=1.0, verified=True, category="elasmobranch")],
+        "drawn": [make_video_box(db, file_id=video.id, frame_number=60, track_key=-1,
+                                 job_id=None, confidence=1.0, verified=True,
+                                 category="elasmobranch")],
     }
     db.commit()
     return project, video, one, two, boxes
@@ -310,30 +311,9 @@ def test_a_species_label_keeps_the_detectors_category(client, db):
     assert boxes["loose"][0].category == "vehicle"
 
 
-def test_a_box_cannot_be_drawn_on_a_clip(client, db):
-    """Photos only. A hand-drawn box lands on the one frame on screen,
-    which on an hour of footage is one frame in ten thousand, so it could
-    never be how a missed animal is recorded; the Counts page is. The
-    refusal is a 400 that says where to go instead, and it leaves the
-    clip's own boxes alone."""
-    _, video, _, _, _ = _tracked_video(db)
-    before = db.query(Detection).filter(Detection.file_id == video.id).count()
-
-    resp = client.post(
-        "/api/detections",
-        json={
-            "file_id": video.id, "category": "animal", "frame_number": 60,
-            "bbox_x": 0.5, "bbox_y": 0.5, "bbox_width": 0.1, "bbox_height": 0.1,
-        },
-    )
-
-    assert resp.status_code == 400, resp.text
-    assert "Counts page" in resp.json()["detail"]
-    assert db.query(Detection).filter(Detection.file_id == video.id).count() == before
-
-
-def test_a_box_can_still_be_drawn_on_a_photo(client, db):
-    """The refusal is about clips, not about drawing."""
+def test_a_box_drawn_on_a_photo_has_no_track(client, db):
+    """Tracks are a video's: a photo's drawn box stands on its own
+    (a clip's becomes a one-frame track, tests/api/test_drawn_video_box.py)."""
     project = make_project(db)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)

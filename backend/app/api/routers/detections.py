@@ -66,7 +66,10 @@ def create_detection(
     """
     Create a human-drawn detection.
 
-    Sets classification_method="human", confidence=1.0, job_id=None.
+    Sets classification_method="human", confidence=1.0, job_id=None. On a
+    clip the box becomes a one-frame track on `frame_number`, which it
+    therefore needs: the crud's ValueError for a video box without one
+    is the 400 here.
 
     A file id that no longer exists is refused here rather than left to the
     foreign key, which surfaces as a 500 the user cannot act on. The grid
@@ -76,19 +79,12 @@ def create_detection(
     file = db.get(File, data.file_id)
     if file is None:
         raise HTTPException(status_code=404, detail="File not found")
-    # Photos only. A hand-drawn box lands on the one frame on screen, so
-    # on a clip it could never be how a missed animal is recorded: the
-    # Counts page is, by typing the number over the AI's MaxN.
-    if file.file_type == "video":
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Boxes cannot be drawn on a video. Correct the number of "
-                "animals on the Counts page instead."
-            ),
-        )
 
-    detection = detection_crud.create_human_detection(db, data)
+    try:
+        detection = detection_crud.create_human_detection(db, data)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     file_crud.recalculate_observation_type(db, data.file_id)
     file_crud.recompute_file_verified(db, [data.file_id])
     _recalculate_max_n(db, [detection.id])

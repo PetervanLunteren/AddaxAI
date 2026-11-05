@@ -102,7 +102,7 @@ const FILES_SHORTCUTS: readonly Shortcut[] = [
   ["← / →", "Previous / next file"],
   ["Shift + ← / →", "Previous / next frame of a clip"],
   ["V", "Mark correct, then the next one"],
-  ["D", "Draw a box (photos only)"],
+  ["D", "Draw a box"],
   ["B", "Hide or show the boxes"],
   ["F", "Flag for review"],
   ["P", "Play a video / back to its frame"],

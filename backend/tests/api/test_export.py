@@ -2540,6 +2540,9 @@ def test_export_detections_csv_carries_the_track_key(client, db):
     make_detection(db, file_id=video.id, frame_number=0, track_id=track.id, confidence=0.9)
     make_detection(db, file_id=video.id, frame_number=30, track_id=track.id, confidence=0.9)
     make_video_box(db, file_id=video.id, frame_number=90, confidence=0.9)
+    # A box a person drew on the clip: a one-frame track keyed -1.
+    make_video_box(db, file_id=video.id, frame_number=120, track_key=-1, job_id=None,
+                   confidence=1.0, verified=True)
     photo = make_file(db, deployment_id=deployment.id,
                       captured_at_local=datetime(2024, 6, 15, 9, 5, 0))
     make_detection(db, file_id=photo.id, confidence=0.9)
@@ -2550,9 +2553,46 @@ def test_export_detections_csv_carries_the_track_key(client, db):
     headers, *rows = csv.reader(io.StringIO(resp.text))
     h = {name: i for i, name in enumerate(headers)}
     by_frame = {r[h["frame_number"]]: r[h["track_id"]] for r in rows}
-    # One row per card: the track's representative box and the one-frame
-    # track, never the sibling on frame 0; the photo's box has no track.
-    assert by_frame == {"30": "7", "90": "8", "": ""}
+    # One row per card: the track's representative box, the one-frame
+    # track and the drawn box with its negative key, never the sibling on
+    # frame 0; the photo's box has no track.
+    assert by_frame == {"30": "7", "90": "8", "120": "-1", "": ""}
+
+
+def test_export_camtrap_dp_names_a_drawn_box_by_its_negative_key(client, db):
+    """A box a person drew on a clip is a one-frame track keyed -1; its
+    observation carries that key in individualID like any track's, and
+    its span is the one frame."""
+    from app.api.crud.event_observation import calculate_max_n_for_event
+    from tests.conftest import make_video_box
+
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    ev = make_event_with_files(
+        db,
+        deployment_id=deployment.id,
+        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+    )
+    video = ev.files[0]
+    video.file_type = "video"
+    video.file_format = "mp4"
+    video.frame_rate = 30.0
+    video.best_frame_number = 0
+    make_video_box(db, file_id=video.id, frame_number=90, track_key=-1, job_id=None,
+                   confidence=1.0, verified=True, category="animal", label="deer",
+                   bbox_x=0.1, bbox_y=0.1, bbox_width=0.2, bbox_height=0.2)
+    db.flush()
+    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    db.commit()
+
+    resp = _run_camtrap_dp_export(client, db, project.id)
+    assert resp.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        headers, *obs_rows = csv.reader(io.StringIO(zf.read("observations.csv").decode()))
+    h = {name: i for i, name in enumerate(headers)}
+
+    media = [r for r in obs_rows if r[h["observationLevel"]] == "media"]
+    assert [r[h["individualID"]] for r in media] == [f"{video.id}_-1"]
+    assert media[0][h["observationTags"]] == "frameStart:90|frameEnd:90|bboxFrame:90|frameRate:30.0"
 
 
 def test_a_marine_detection_exports_its_species_not_its_category(db):

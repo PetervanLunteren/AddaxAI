@@ -563,9 +563,9 @@ export interface DetectionResponse {
   frame_number: number | null;
   verified: boolean;
   verified_at_utc: string | null;
-  /** The track this box belongs to when the video was analysed with
-   * tracking on; null for images, untracked videos and drawn boxes. A
-   * verdict on any box of a track reaches them all. */
+  /** The track this box belongs to: the tracker's, or the one-frame
+   * track a box drawn on a clip gets; null for images and untracked
+   * videos. A verdict on any box of a track reaches them all. */
   track_id: string | null;
 }
 
