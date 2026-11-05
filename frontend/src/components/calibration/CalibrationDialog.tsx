@@ -88,7 +88,7 @@ export function CalibrationDialog({ projectId, row, onClose }: CalibrationDialog
 
   const answer = useMutation({
     mutationFn: (value: CalibrationAnswerValue) =>
-      calibrationApi.answer(batch![index].detection_id, value),
+      calibrationApi.answer(batch![index].detection_id, row.label, value),
     onSuccess: () => {
       setIndex((i) => i + 1);
       queryClient.invalidateQueries({ queryKey: ["calibration", "overview", projectId] });
@@ -202,7 +202,7 @@ export function CalibrationDialog({ projectId, row, onClose }: CalibrationDialog
         )}
 
         {answer.isError && !(answer.error instanceof ApiError && answer.error.status === 404) && (
-          <p className="text-sm font-medium text-destructive">
+          <p className="text-sm font-medium text-destructive-ink">
             {(answer.error as Error).message}
           </p>
         )}

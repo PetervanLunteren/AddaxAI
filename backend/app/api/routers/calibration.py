@@ -46,6 +46,6 @@ def calibration_answer(
 ) -> None:
     """Store the answer for one detection. Answering again replaces it."""
     try:
-        calibration_crud.save_answer(db, body.detection_id, body.answer)
+        calibration_crud.save_answer(db, body.detection_id, body.label, body.answer)
     except ValueError as err:
         raise HTTPException(status_code=404, detail=str(err)) from err

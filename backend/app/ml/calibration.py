@@ -178,19 +178,21 @@ def draw_sample(
     batch_size: int,
     n_bins: int,
     rng: np.random.Generator,
+    score_range: tuple[float, float] | None = None,
 ) -> list[str]:
     """Pick up to `batch_size` ids spread evenly over the score range.
 
     `candidates` are (id, score) pairs not answered yet. The score range
-    they span is cut in `n_bins` equal bins and the draws go round the
-    bins one at a time, so a bin that runs out hands its share to the
-    others. With most scores near 0.999 the low bins are often thin, and
-    this keeps the batch full instead of short.
+    (`score_range`, or else the one they span) is cut in `n_bins` equal
+    bins and the draws go round the bins one at a time, so a bin that
+    runs out hands its share to the others. With most scores near 0.999
+    the low bins are often thin, and this keeps the batch full instead
+    of short.
     """
     if not candidates:
         return []
     scores = np.array([s for _, s in candidates], dtype=float)
-    lo, hi = float(scores.min()), float(scores.max())
+    lo, hi = score_range if score_range else (float(scores.min()), float(scores.max()))
     if hi > lo:
         bins = np.minimum(((scores - lo) / (hi - lo) * n_bins).astype(int), n_bins - 1)
     else:

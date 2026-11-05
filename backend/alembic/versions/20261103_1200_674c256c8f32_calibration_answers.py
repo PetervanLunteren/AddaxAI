@@ -8,7 +8,7 @@ New table, no rows touched. Guarded against drifted beta DBs
 (DEVELOPERS.md): create and drop are each skipped when the live schema
 is already in the target state.
 
-Revision ID: d4e5f6a7b8ca
+Revision ID: 674c256c8f32
 Revises: c3d4e5f6a7b9
 Create Date: 2026-11-03 12:00:00
 
@@ -20,7 +20,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "d4e5f6a7b8ca"
+revision: str = "674c256c8f32"
 down_revision: str | None = "c3d4e5f6a7b9"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

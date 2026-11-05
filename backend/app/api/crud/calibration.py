@@ -16,7 +16,7 @@ import numpy as np
 from sqlalchemy import func
 from sqlalchemy.orm import Query, Session
 
-from app.api.crud.performance import _build_taxonomy_lookup
+from app.api.crud.performance import build_taxonomy_lookup
 from app.api.schemas.calibration import (
     CalibrationAnswerValue,
     CalibrationLabel,
@@ -36,7 +36,7 @@ from app.ml.calibration import (
     rule_of_three_bound,
 )
 from app.ml.detection_visibility import on_visible_frame
-from app.ml.label_exclusion import NON_LABEL_CLASSES, threshold_or_verified
+from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
 from app.models import CalibrationAnswer, Deployment, Detection, File, Project
 
 logger = get_logger(__name__)
@@ -79,7 +79,7 @@ def _pool(db: Session, project: Project, *columns: Any) -> Query[Any]:
         .filter(on_visible_frame())
         .filter(Detection.original_label.isnot(None))
         .filter(Detection.original_label_confidence.isnot(None))
-        .filter(func.lower(Detection.original_label).notin_(sorted(NON_LABEL_CLASSES)))
+        .filter(is_a_real_detection(Detection.original_label))
     )
 
 
@@ -131,7 +131,7 @@ def get_calibration(db: Session, project_id: str) -> CalibrationResponse:
     ).all():
         answers[label].append((score, answer))
 
-    taxonomy = _build_taxonomy_lookup(db, project)
+    taxonomy = build_taxonomy_lookup(db, project)
     rows: list[CalibrationLabel] = []
     for label in sorted(
         set(pool_counts) | set(answers),
@@ -165,20 +165,36 @@ def draw_batch(
     label: str,
     rng: np.random.Generator | None = None,
 ) -> list[CalibrationSampleItem]:
-    """The next batch to ask about: unanswered detections of `label`, spread over the scores."""
+    """The next batch to ask about: unanswered detections of `label`, spread over the scores.
+
+    The score range and the draw per bin happen in SQL, so a label with
+    hundreds of thousands of detections hands Python at most
+    `N_BINS * BATCH_SIZE` rows, not all of them. Each bin brings a full
+    batch, so a bin that runs dry can still hand its share on.
+    """
     project = _get_project(db, project_id)
-    answered = db.query(CalibrationAnswer.detection_id)
-    candidates = [
-        (det_id, score)
-        for det_id, score in _pool(
-            db, project, Detection.id, Detection.original_label_confidence
-        )
+    score = Detection.original_label_confidence
+    unanswered = (
+        _pool(db, project, Detection.id, score)
         .filter(Detection.original_label == label)
-        .filter(Detection.id.notin_(answered))
-        .all()
-    ]
+        .filter(Detection.id.notin_(db.query(CalibrationAnswer.detection_id)))
+    )
+    lo, hi = unanswered.with_entities(func.min(score), func.max(score)).one()
+    if lo is None:
+        return []
+    width = (hi - lo) / N_BINS
+    candidates: list[tuple[str, float]] = []
+    for b in range(N_BINS):
+        in_bin = unanswered
+        if b > 0:
+            in_bin = in_bin.filter(score >= lo + b * width)
+        if b < N_BINS - 1:
+            in_bin = in_bin.filter(score < lo + (b + 1) * width)
+        candidates += in_bin.order_by(func.random()).limit(BATCH_SIZE).all()
     rng = rng if rng is not None else np.random.default_rng()
-    picked = draw_sample(candidates, batch_size=BATCH_SIZE, n_bins=N_BINS, rng=rng)
+    picked = draw_sample(
+        candidates, batch_size=BATCH_SIZE, n_bins=N_BINS, rng=rng, score_range=(lo, hi)
+    )
     # Shown in random order, so a run of low scores does not prime the answer.
     rng.shuffle(picked)
     scores = dict(candidates)
@@ -186,12 +202,20 @@ def draw_batch(
 
 
 def save_answer(
-    db: Session, detection_id: str, answer: CalibrationAnswerValue
+    db: Session, detection_id: str, label: str, answer: CalibrationAnswerValue
 ) -> CalibrationAnswer:
-    """Store (or replace) the answer for one detection, with the AI's label and score now."""
+    """Store (or replace) the answer for one detection, with the AI's label and score now.
+
+    `label` is the one the question showed. A reprocess rewrites
+    `original_label` on unverified detections, so between drawing the
+    batch and answering it may have changed; the answer is then about a
+    label the detection no longer carries, and is refused.
+    """
     detection = db.get(Detection, detection_id)
     if detection is None:
         raise ValueError(f"Detection {detection_id} not found")
+    if detection.original_label != label:
+        raise ValueError(f"Detection {detection_id} is no longer labelled {label}")
     project = (
         db.query(Project)
         .join(Deployment, Deployment.project_id == Project.id)

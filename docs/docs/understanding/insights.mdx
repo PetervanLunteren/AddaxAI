@@ -55,4 +55,10 @@ Where you have verified labels, these two views compare the AI's labels against 
 
 <AppShot name="perClass" />
 
+## Calibration
+
+How far can you trust a score? Calibration answers that per label. Click Calibrate on a label and you get "Is the AI label right?", one crop at a time. Answer Y (yes), N (no) or S (can't tell), and Backspace goes back one. The crops are spread over the label's whole score range, and the score itself is hidden so it can't sway you. Your answers are only used here, they don't verify or relabel anything.
+
+From 10 right and 10 wrong answers, the row shows the score from which 90, 95 and 99% of that label's detections are right, and opening the row shows the curve with its 95% band. With no wrong answers yet, it shows the share right your answers can vouch for instead. The thresholds describe the project you answered on, so treat them as advice rather than a setting to copy to another survey.
+
 Insights need capture times and, for the map, site coordinates. Files with no readable timestamp are still detected and classified, but they drop out of the time-based views.

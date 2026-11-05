@@ -20,6 +20,7 @@ as raw ground truth.
 """
 
 from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.confidence import CONFIDENCE_SCALE_MIN
@@ -40,7 +41,9 @@ NON_LABEL_CLASSES = frozenset({
     "bait", "blank", "empty", "false detection", "non-animal", "none", "vide",
 })
 
-def is_a_real_detection() -> ColumnElement[bool]:
+def is_a_real_detection(
+    column: InstrumentedAttribute[str | None] = Detection.label,
+) -> ColumnElement[bool]:
     """Predicate: this detection is not one of the "nothing here" labels.
 
     A rejected box stays in the database, whoever rejected it: the model
@@ -54,10 +57,13 @@ def is_a_real_detection() -> ColumnElement[bool]:
     Two lanes, the same shape as ``ml/detection_visibility.py``: this one
     for a query, ``is_non_label`` below for a label already in memory. A
     parity test pins that the two agree.
+
+    ``column`` is the label it reads: the current one by default, or
+    ``Detection.original_label`` for the AI's own call (Calibration).
     """
     return or_(
-        Detection.label.is_(None),
-        func.lower(Detection.label).notin_(sorted(NON_LABEL_CLASSES)),
+        column.is_(None),
+        func.lower(column).notin_(sorted(NON_LABEL_CLASSES)),
     )
 
 

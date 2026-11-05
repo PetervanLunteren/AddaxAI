@@ -57,4 +57,5 @@ class CalibrationSampleItem(BaseModel):
 
 class CalibrationAnswerCreate(BaseModel):
     detection_id: str
+    label: str = Field(..., description="The AI label the question was asked about")
     answer: CalibrationAnswerValue

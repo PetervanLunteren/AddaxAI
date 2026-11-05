@@ -53,9 +53,10 @@ export const calibrationApi = {
       `/api/calibration/sample?project_id=${encodeURIComponent(projectId)}` +
         `&label=${encodeURIComponent(label)}`,
     ),
-  answer: (detectionId: string, answer: CalibrationAnswerValue) =>
+  answer: (detectionId: string, label: string, answer: CalibrationAnswerValue) =>
     api.post<void>("/api/calibration/answers", {
       detection_id: detectionId,
+      label,
       answer,
     }),
 };

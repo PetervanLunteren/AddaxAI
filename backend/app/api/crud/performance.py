@@ -75,7 +75,7 @@ def _common_for(name: str, row: LabelTaxonomy | None) -> str:
     return name.replace("_", " ")
 
 
-def _build_taxonomy_lookup(
+def build_taxonomy_lookup(
     db: Session, project: Project,
 ) -> dict[str, LabelTaxonomy]:
     """
@@ -300,7 +300,7 @@ def get_classification_performance(
     skipped_unverified = sum(1 for d in all_detections if not d.verified)
     verified_detections = [d for d in all_detections if d.verified]
 
-    taxonomy_lookup = _build_taxonomy_lookup(db, project)
+    taxonomy_lookup = build_taxonomy_lookup(db, project)
 
     counts: Counter = Counter()
     row_totals: dict[str, int] = defaultdict(int)

@@ -820,6 +820,14 @@ The CRUD function `get_activity_overlap()` in `backend/app/api/crud/statistics.p
 
 References that motivate the design choices: Ridout & Linkie 2009 (J Agric Biol Environ Stat), Meredith & Ridout's `overlap` R package vignette 2014, Rowcliffe et al. 2014 (MEE), Vazquez et al. 2019 (MEE), Lashley et al. 2018 (Sci Rep), Bennie et al. 2014.
 
+### Calibration
+
+`/projects/:id/insights/calibration`: per AI label, the score from which 90, 95 and 99% of its labels are right, fitted on yes / no / can't-tell answers to "Is this a <label>?". Answers live in `calibration_answers` (one row per detection, the AI's label and score copied in at answer time) and never read or write `verified` or `label`, so the sample is not tilted towards the mistakes people verify.
+
+- Sample (`draw_batch` in `backend/app/api/crud/calibration.py`): the Labels grid scope by `original_label`, minus the "nothing here" labels, unanswered only. The score range and a `random()` draw per bin (5 bins, batches of 20) run in SQL, so Python never holds more than 100 rows.
+- An answer carries the label it was asked about and is refused (404) when a reprocess has relabelled the detection since.
+- Fit (`backend/app/ml/calibration.py`, numpy only): logistic regression on logit(score) with a small ridge on the slope, band by the delta method on the logit scale. A curve needs 10 right and 10 wrong; with no wrong answers the page shows the rule-of-three bound. A target above the answered range is "not reached", never extrapolated.
+
 ## Resuming an interrupted analysis
 
 An analysis is all-or-nothing per deployment: nothing reaches the database before phase 6, and the intermediate JSONs were wiped by the very action that restarts the run. A beta tester lost a 5,073-image folder to a power cut (2026-08-21) and asked for the checkpoints v6 had. The answer covers **image detection only**, which is where the hours go (measured: detection 3:12 against classification 0:44 for 2,281 images on an M-series Mac, and a far larger share on a CPU laptop).
