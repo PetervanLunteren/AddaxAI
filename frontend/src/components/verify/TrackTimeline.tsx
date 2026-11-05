@@ -314,18 +314,21 @@ export function TrackTimeline({
 
   return (
     <div
-      className="w-full shrink-0 border-t border-border bg-background text-[11px] text-foreground/80"
+      className="w-full shrink-0 bg-background text-[11px] text-foreground/80"
       data-testid="track-timeline"
     >
-      {/* The lane never grows past its rows, so the handle is there only
-          while some rows are hidden: there is something to drag open.
-          On a clip whose rows all show, a drag up moved nothing. */}
-      {RULER_HEIGHT_PX + totalRows * ROW_HEIGHT_PX > height && (
+      {/* The top edge is always the same strip, so the timeline looks
+          the same whether or not its rows fit. It is a handle only while
+          some rows are hidden: the lane never grows past its rows, so on
+          a clip whose rows all show a drag would move nothing. */}
+      {RULER_HEIGHT_PX + totalRows * ROW_HEIGHT_PX > height ? (
         <ResizeHandle
           onMouseDown={startDrag}
           title="Drag to show more rows"
           testId="timeline-resize-handle"
         />
+      ) : (
+        <div className="h-1.5 shrink-0 bg-border" aria-hidden />
       )}
       <div
         ref={laneRef}
@@ -397,12 +400,19 @@ export function TrackTimeline({
             onSeek={onSeek}
           />
         </div>
-        {groups.map((group) => {
+        {groups.map((group, groupIndex) => {
           const maxN = markers.find((m) => m.label === group.label);
           return group.rows.map((packed, rowIndex) => (
             <div
               key={`${group.label}-${rowIndex}`}
-              className="flex items-stretch"
+              // A line where one species' rows end and the next begin
+              // (the swimlane divider), drawn inside the row so its
+              // height is unchanged. None between the rows of one
+              // species: those only split animals that overlapped.
+              className={cn(
+                "flex items-stretch",
+                groupIndex > 0 && rowIndex === 0 && "border-t border-border",
+              )}
               style={{ height: ROW_HEIGHT_PX }}
             >
               <div

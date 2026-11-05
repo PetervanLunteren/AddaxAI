@@ -1032,7 +1032,11 @@ export function FileDetailModal({
       }
       image={
         file ? (
-          <div className="flex h-full w-full flex-col">
+          // Flush with the panel, cancelling the shell's padding: the
+          // picture sits in black either way, and the timeline then runs
+          // edge to edge as it does in the Counts modal, not inside a
+          // black frame. The card modal keeps the padding for its crop.
+          <div className="-m-2 flex h-[calc(100%+1rem)] w-[calc(100%+1rem)] flex-col">
           <div className="relative min-h-0 w-full flex-1">
             {viewMode === "video" && playable ? (
               <VideoPlayer
