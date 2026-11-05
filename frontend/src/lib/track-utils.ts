@@ -442,6 +442,51 @@ export function uncheckedCards(
 
 /** The clip's sampling step from its own stored boxes (`samplingStep`);
  *  0 for a clip with fewer than two sampled frames. */
+/**
+ * How many boxes each sampled frame of a clip draws, by the one rule the
+ * player and every still share (`drawsInClip`): the timeline's activity
+ * graph reads it, so a peak there is boxes a person would see on that
+ * frame. With `species` (a `speciesKey`) only that species' boxes, the
+ * per-frame count MaxN is the peak of. Frames with none are absent.
+ */
+export function frameBoxCounts(
+  file: FileWithDetections,
+  threshold: number,
+  species?: string,
+): Map<number, number> {
+  const counts = new Map<number, number>();
+  if (file.file_type !== "video") return counts;
+  const onShow = trackCards(file.tracks ?? [], file.detections, threshold);
+  for (const d of file.detections) {
+    if (d.frame_number == null || !drawsInClip(d, onShow, threshold)) continue;
+    if (species != null && speciesKey(d) !== species) continue;
+    counts.set(d.frame_number, (counts.get(d.frame_number) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * The busiest frame in each of `bins` equal slices of `[from, to)`: the
+ * most boxes at once there, the measure MaxN is, so a peak in the graph
+ * and a MaxN marker agree, and a one-frame spike is not averaged away.
+ */
+export function activityPeaks(
+  counts: Map<number, number>,
+  from: number,
+  to: number,
+  bins: number,
+): number[] {
+  const peaks = new Array<number>(bins).fill(0);
+  const span = to - from;
+  if (span <= 0) return peaks;
+  for (const [frame, n] of counts) {
+    if (frame < from || frame >= to) continue;
+    const bin = Math.min(bins - 1, Math.floor(((frame - from) / span) * bins));
+    if (n > peaks[bin]) peaks[bin] = n;
+  }
+  return peaks;
+}
+
 export function fileSamplingStep(file: FileWithDetections): number {
   return samplingStep(
     file.detections.flatMap((d) => (d.frame_number == null ? [] : [d.frame_number])),

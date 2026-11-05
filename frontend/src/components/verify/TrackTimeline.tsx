@@ -43,6 +43,26 @@
  * one pixel wide and the busiest 90 seconds is 16 pixels of lane
  * holding 39 animals.
  *
+ * **Look.** On the app's own light surface, under the dark picture, as
+ * annotation tools lay it out: the species palette is made for light
+ * backgrounds, and on near-black the dark ones (fish is a dark red) at
+ * 40% were close to invisible (2026-11-05). An unchecked bar is its
+ * colour at half strength, a checked one solid. Not an outline: drawn
+ * round the whole bar it would bridge the gaps the bar breaks at.
+ *
+ * **Activity.** The ruler is also a graph of the most boxes at once in
+ * each slice of the window (`activityPeaks`), the clip-wide peak as its
+ * full height, so a busy moment stands out even where its bars are a
+ * pixel wide. The same idea as DIVE's detection count timeline and
+ * YouTube's "most replayed" graph above the seek bar: one quiet graph
+ * on the strip a person already clicks, not a panel of its own. All
+ * species with nothing selected; with an animal selected, its species
+ * alone, in its colour, so the tallest peak is that species' MaxN
+ * marker: MaxN is counted per species, and in a total a rare species
+ * vanishes under a common one. Not a stacked graph per species: in a
+ * strip this thin a few colours are noise, and the peak of all species
+ * together is not the sum of each one's peak.
+ *
  * Rendering only: which track is selected and where the playhead is
  * belong to the player and its modal. No keyboard handling here.
  */
@@ -54,9 +74,11 @@ import { useSpeciesColorsVersion } from "../../utils/species-colors";
 import { cn } from "../../lib/utils";
 import type { TrackRow } from "../../lib/track-utils";
 import {
+  activityPeaks,
   barBackground,
   clipDurationFrames,
   fileSamplingStep,
+  frameBoxCounts,
   packTrackRows,
   snapToSample,
   trackCards,
@@ -95,6 +117,12 @@ interface TrackTimelineProps {
   /** Frames between two sampled frames, for the ruler's snap and label;
    *  0 when unknown, and the ruler then names the exact frame. */
   sampleStep?: number;
+  /** Boxes drawn per frame (`frameBoxCounts`), for the ruler's activity
+   *  graph; without it the ruler is a plain strip. */
+  frameCounts?: Map<number, number>;
+  /** Whose boxes `frameCounts` holds: a species' name and colour, or
+   *  undefined for all of them. */
+  activitySpecies?: { name: string; color: string };
   surface?: TimelineSurface;
   /** The zoom, held by the modal when given: the timeline is mounted
    *  afresh when a clip switches between its still and the player, and
@@ -110,7 +138,10 @@ const ROW_HEIGHT_PX = 16;
  *  click to go there. Sticky inside the scrolling lane, so it keeps the
  *  lane's own width (the scrollbar sits outside it, as for the
  *  playhead) and stays while the rows scroll. */
-const RULER_HEIGHT_PX = 16;
+const RULER_HEIGHT_PX = 24;
+/** Slices of the window the activity graph is drawn in: about two
+ *  pixels each on a typical lane, fine enough to show a lone spike. */
+const ACTIVITY_BINS = 400;
 /** The smallest lane a drag can leave: the ruler and two rows. */
 const MIN_LANE_PX = RULER_HEIGHT_PX + 2 * ROW_HEIGHT_PX;
 /** The lane's height until someone drags it: six rows, the old cap. */
@@ -122,8 +153,8 @@ const LABEL_COLUMN_REM = 10;
 const MIN_WINDOW_SECONDS = 5;
 /** A one-frame track is still worth a mark at the widest zoom. */
 const MIN_BAR_PX = 2;
-/** An unverified bar, so a checked one reads solid beside it. */
-const UNVERIFIED_OPACITY = 0.4;
+/** How much of its colour an unchecked bar keeps, on the light lane. */
+const UNVERIFIED_FILL_PERCENT = 50;
 /** How long after the last wheel tick a pan is handed to the player. */
 const PAN_COMMIT_MS = 150;
 
@@ -138,6 +169,8 @@ export function TrackTimeline({
   markers = [],
   frameRate,
   sampleStep = 0,
+  frameCounts,
+  activitySpecies,
   surface = "labels",
   zoomStep: zoomStepProp,
   onZoomStep,
@@ -281,19 +314,17 @@ export function TrackTimeline({
 
   return (
     <div
-      className="w-full shrink-0 border-t border-white/10 bg-black/80 text-[11px] text-white/80"
+      className="w-full shrink-0 border-t border-border bg-background text-[11px] text-foreground/80"
       data-testid="track-timeline"
     >
-      {/* The drag sets how tall the lane may become, so it has nothing
-          to do on a clip whose rows cannot outgrow the smallest lane:
-          the handle is left out there rather than shown with a resize
-          cursor that moves nothing. The limit itself is kept. */}
-      {RULER_HEIGHT_PX + totalRows * ROW_HEIGHT_PX > MIN_LANE_PX && (
+      {/* The lane never grows past its rows, so the handle is there only
+          while some rows are hidden: there is something to drag open.
+          On a clip whose rows all show, a drag up moved nothing. */}
+      {RULER_HEIGHT_PX + totalRows * ROW_HEIGHT_PX > height && (
         <ResizeHandle
           onMouseDown={startDrag}
-          title="Drag to resize the timeline"
+          title="Drag to show more rows"
           testId="timeline-resize-handle"
-          className="bg-white/10 hover:bg-white/40"
         />
       )}
       <div
@@ -310,7 +341,7 @@ export function TrackTimeline({
         className="relative overflow-y-auto overflow-x-hidden"
         style={{ maxHeight: height }}
       >
-        <div className="sticky top-0 z-10 flex items-stretch bg-black/80" style={{ height: RULER_HEIGHT_PX }}>
+        <div className="sticky top-0 z-10 flex items-stretch bg-background" style={{ height: RULER_HEIGHT_PX }}>
           {/* The zoom, in the label column above the species names: the
               control for the strip beside the strip, a slider between the
               two magnifiers every map and photo viewer uses, each a button
@@ -327,7 +358,7 @@ export function TrackTimeline({
                   aria-label="Zoom out"
                   title="Zoom out"
                   onClick={() => setZoomStep(Math.max(0, step - 1))}
-                  className="shrink-0 text-white/60 hover:text-white"
+                  className="shrink-0 text-muted-foreground hover:text-foreground"
                 >
                   <ZoomOut className="h-3 w-3" />
                 </button>
@@ -341,14 +372,14 @@ export function TrackTimeline({
                   aria-label="Zoom the timeline"
                   title={spanText}
                   data-testid="timeline-zoom"
-                  className="h-1 min-w-0 flex-1 cursor-pointer accent-white/80"
+                  className="h-1 min-w-0 flex-1 cursor-pointer accent-primary"
                 />
                 <button
                   type="button"
                   aria-label="Zoom in"
                   title="Zoom in"
                   onClick={() => setZoomStep(Math.min(maxZoomStep, step + 1))}
-                  className="shrink-0 text-white/60 hover:text-white"
+                  className="shrink-0 text-muted-foreground hover:text-foreground"
                 >
                   <ZoomIn className="h-3 w-3" />
                 </button>
@@ -361,6 +392,8 @@ export function TrackTimeline({
             durationFrames={durationFrames}
             frameRate={frameRate}
             sampleStep={sampleStep}
+            frameCounts={frameCounts}
+            activitySpecies={activitySpecies}
             onSeek={onSeek}
           />
         </div>
@@ -388,10 +421,10 @@ export function TrackTimeline({
                         title={maxNTitle(group.displayLabel, maxN)}
                         onClick={() => onSeek(maxN.frame)}
                         className={cn(
-                          "shrink-0 rounded border border-white/30 bg-black/60 px-1",
-                          "text-[9px] leading-[13px] text-white hover:border-white/70",
-                          "hover:bg-black/85 focus-visible:outline-none",
-                          "focus-visible:ring-2 focus-visible:ring-white/70",
+                          "shrink-0 rounded border border-border bg-background px-1",
+                          "text-[9px] leading-[13px] text-foreground hover:border-foreground/50",
+                          "hover:bg-muted focus-visible:outline-none",
+                          "focus-visible:ring-2 focus-visible:ring-ring",
                         )}
                       >
                         MaxN
@@ -448,15 +481,14 @@ export function TrackTimeline({
                         }}
                         className={cn(
                           "absolute top-[3px] h-[10px] rounded-sm",
-                          selected && "ring-2 ring-white",
-                          onFrame && "ring-1 ring-white/60",
+                          selected && "ring-2 ring-foreground",
+                          onFrame && "ring-1 ring-foreground/50",
                         )}
                         style={{
                           left: `${left}%`,
                           width: `${Math.max(0, pct(to) - left)}%`,
                           minWidth: MIN_BAR_PX,
-                          ...barBackground(row.color, row.gaps, from, to),
-                          opacity: barOpacity(showVerdicts ? row.verdict : "verified"),
+                          ...barStyle(row, from, to, showVerdicts),
                         }}
                       />
                     );
@@ -465,7 +497,7 @@ export function TrackTimeline({
                   <span
                     title={`MaxN at frame ${maxN.frame}`}
                     data-testid="maxn-marker"
-                    className="pointer-events-none absolute -top-px h-0 w-0 -translate-x-1/2 border-x-[4px] border-t-[6px] border-x-transparent border-t-white"
+                    className="pointer-events-none absolute -top-px h-0 w-0 -translate-x-1/2 border-x-[4px] border-t-[6px] border-x-transparent border-t-foreground"
                     style={{ left: `${pct(maxN.frame)}%` }}
                   />
                 )}
@@ -475,7 +507,7 @@ export function TrackTimeline({
         })}
         {/* Playhead over every row, in the lane's column. */}
         <div
-          className="pointer-events-none absolute top-0 w-px bg-white"
+          className="pointer-events-none absolute top-0 w-px bg-foreground"
           data-testid="playhead"
           style={{
             left: `calc(${LABEL_COLUMN_REM}rem + (100% - ${LABEL_COLUMN_REM}rem) * ${clamp((shownFrame - windowStart) / windowFrames, 0, 1)})`,
@@ -497,6 +529,10 @@ export function TrackTimeline({
  * thousand bars. Until 2026-11-03 a moment could only be picked by
  * clicking empty lane, with no feedback, and a dense drop has no empty
  * lane: every pixel is a bar, and a bar click selects an animal.
+ *
+ * Behind the label, the activity graph (header): one SVG path, scaled to
+ * the clip's busiest frame so zooming into a quiet stretch shows it
+ * quiet rather than blowing it up to full height.
  */
 function TimeRuler({
   windowStart,
@@ -504,6 +540,8 @@ function TimeRuler({
   durationFrames,
   frameRate,
   sampleStep,
+  frameCounts,
+  activitySpecies,
   onSeek,
 }: {
   windowStart: number;
@@ -511,9 +549,27 @@ function TimeRuler({
   durationFrames: number;
   frameRate?: number | null;
   sampleStep: number;
+  frameCounts?: Map<number, number>;
+  activitySpecies?: { name: string; color: string };
   onSeek: (frame: number) => void;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  const clipPeak = useMemo(
+    () => (frameCounts ? Math.max(0, ...frameCounts.values()) : 0),
+    [frameCounts],
+  );
+  const activityPath = useMemo(() => {
+    if (!frameCounts || clipPeak === 0) return null;
+    const peaks = activityPeaks(
+      frameCounts, windowStart, windowStart + windowFrames, ACTIVITY_BINS,
+    );
+    // A step outline across the slices, closed along the bottom.
+    let d = `M0 ${clipPeak}`;
+    peaks.forEach((n, i) => {
+      d += ` V${clipPeak - n} H${i + 1}`;
+    });
+    return `${d} V${clipPeak} Z`;
+  }, [frameCounts, clipPeak, windowStart, windowFrames]);
   const frameAt = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const fraction = clamp((e.clientX - rect.left) / rect.width, 0, 1);
@@ -529,20 +585,43 @@ function TimeRuler({
       : `${frameRate ? `${formatClipPosition(hover / frameRate)} · ` : ""}frame ${hover}`;
   return (
     <div
-      className="relative flex-1 cursor-pointer border-b border-white/10"
+      className="relative flex-1 cursor-pointer border-b border-border"
       data-testid="time-ruler"
       onMouseMove={(e) => setHover(frameAt(e))}
       onMouseLeave={() => setHover(null)}
       onClick={(e) => onSeek(frameAt(e))}
     >
+      {activityPath && (
+        <svg
+          className="pointer-events-none absolute inset-0 h-full w-full"
+          viewBox={`0 0 ${ACTIVITY_BINS} ${clipPeak}`}
+          preserveAspectRatio="none"
+          data-testid="activity-graph"
+          aria-hidden
+        >
+          <path
+            d={activityPath}
+            className={activitySpecies ? undefined : "fill-primary/60"}
+            style={activitySpecies && { fill: activitySpecies.color, fillOpacity: 0.6 }}
+          />
+        </svg>
+      )}
+      {frameCounts && (
+        <span
+          className="pointer-events-none absolute bottom-0 left-1 text-[9px] leading-3 text-muted-foreground"
+          data-testid="activity-label"
+        >
+          {activitySpecies?.name ?? "All"}
+        </span>
+      )}
       {hover != null && (
         <>
           <div
-            className="pointer-events-none absolute inset-y-0 w-px bg-white/60"
+            className="pointer-events-none absolute inset-y-0 w-px bg-foreground/60"
             style={{ left: `${fraction * 100}%` }}
           />
           <span
-            className="pointer-events-none absolute top-0 whitespace-nowrap text-[10px] leading-4 text-white/80"
+            className="pointer-events-none absolute top-0 whitespace-nowrap rounded bg-background/80 px-0.5 text-[10px] leading-4 text-foreground"
             data-testid="time-ruler-label"
             style={
               fraction < 0.5
@@ -611,6 +690,16 @@ export const ClipTimeline = memo(function ClipTimeline({
     );
   }, [file.tracks, file.detections, detectionThreshold]);
   const sampleStep = useMemo(() => fileSamplingStep(file), [file]);
+  // The selected animal's species, unless it was rejected: a false
+  // detection draws no box, so its graph would be empty.
+  const selectedRow = rows.find(
+    (row) => row.track.id === selectedTrackId && row.verdict !== "rejected",
+  );
+  const species = selectedRow?.label;
+  const frameCounts = useMemo(
+    () => frameBoxCounts(file, detectionThreshold, species),
+    [file, detectionThreshold, species],
+  );
   if (rows.length === 0) return null;
   return (
     <TrackTimeline
@@ -621,6 +710,10 @@ export const ClipTimeline = memo(function ClipTimeline({
       markers={markers}
       frameRate={file.frame_rate}
       sampleStep={sampleStep}
+      frameCounts={frameCounts}
+      activitySpecies={
+        selectedRow && { name: selectedRow.displayLabel, color: selectedRow.color }
+      }
       surface={surface}
       zoomStep={zoomStep}
       onZoomStep={onZoomStep}
@@ -684,8 +777,20 @@ export function TrackSpan({
   );
 }
 
-/** Faint until the animal's card is verified, solid after; a rejected
- *  animal is verified, in its class's grey from the colour map. */
-function barOpacity(verdict: TrackRow["verdict"]): number {
-  return verdict === "unverified" ? UNVERIFIED_OPACITY : 1;
+/** A bar's paint: solid once the animal's card is verified (a rejected
+ *  animal is verified, in its class's grey from the colour map), at
+ *  half strength until then. Mixed into the colour rather than set as
+ *  opacity, so the gap line through the bar fades with it. The Counts
+ *  page shows every bar solid. */
+function barStyle(
+  row: TrackRow,
+  from: number,
+  to: number,
+  showVerdicts: boolean,
+): React.CSSProperties {
+  if (!showVerdicts || row.verdict !== "unverified") {
+    return barBackground(row.color, row.gaps, from, to);
+  }
+  const fill = `color-mix(in srgb, ${row.color} ${UNVERIFIED_FILL_PERCENT}%, transparent)`;
+  return barBackground(fill, row.gaps, from, to);
 }
