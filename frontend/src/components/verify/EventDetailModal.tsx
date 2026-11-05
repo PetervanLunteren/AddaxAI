@@ -935,22 +935,28 @@ export function EventDetailModal({
               />
             </div>
 
-            {/* Draggable divider between the focus and the filmstrip. */}
-            <ResizeHandle onMouseDown={startDividerDrag} title="Drag to resize the filmstrip" />
-
-            {/* Resizable filmstrip grid; thumbnails mirror the focus. */}
-            <div style={{ height: filmstripHeight }} className="shrink-0 min-h-0">
-              <EventFilmstrip
-                files={files}
-                selectedIndex={selectedFileIndex}
-                onSelectFile={handleSelectFile}
-                detectionThreshold={detectionThreshold}
-                showBoxes={!boxesHidden}
-                imageFilter={imageFilter}
-                tileSize={tileSize}
-                onTileSizeChange={setTileSize}
-              />
-            </div>
+            {/* The filmstrip of the event's files, under a draggable
+                divider; thumbnails mirror the focus. Only for an event of
+                more than one file: with one, it showed a single
+                thumbnail of the picture already on screen and took room
+                from it (every BRUV drop is one clip). */}
+            {files.length > 1 && (
+              <>
+                <ResizeHandle onMouseDown={startDividerDrag} title="Drag to resize the filmstrip" />
+                <div style={{ height: filmstripHeight }} className="shrink-0 min-h-0">
+                  <EventFilmstrip
+                    files={files}
+                    selectedIndex={selectedFileIndex}
+                    onSelectFile={handleSelectFile}
+                    detectionThreshold={detectionThreshold}
+                    showBoxes={!boxesHidden}
+                    imageFilter={imageFilter}
+                    tileSize={tileSize}
+                    onTileSizeChange={setTileSize}
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           {/* Right sidebar: navigation + verification panel */}

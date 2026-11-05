@@ -26,7 +26,7 @@ export function TileSizeToggle({
           key={size}
           type="button"
           className={cn(
-            "flex-1 px-3 py-1 text-xs font-medium rounded-md transition-colors",
+            "flex-1 px-2 py-0.5 text-[11px] font-medium rounded-md transition-colors",
             value === size
               ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground",

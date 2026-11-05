@@ -50,17 +50,15 @@ export function EventFilmstrip({
 
   return (
     <div className="flex h-full flex-col bg-muted/30">
-      <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b shrink-0">
+      {/* One slim row that names the strip: without it, "3 images"
+          under the picture did not say what the thumbnails were for. */}
+      <div className="flex items-center justify-between gap-2 px-3 py-0.5 border-b shrink-0">
         <span className="text-xs text-muted-foreground">
-          {describeEventMedia(files)}
+          Files in this event · {describeEventMedia(files)}
         </span>
-        <TileSizeToggle
-          value={tileSize}
-          onChange={onTileSizeChange}
-          className="w-28"
-        />
+        <TileSizeToggle value={tileSize} onChange={onTileSizeChange} />
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto p-2">
+      <div className="scroll-shade flex-1 min-h-0 overflow-y-auto p-2">
         <div
           className="grid gap-2"
           style={{
