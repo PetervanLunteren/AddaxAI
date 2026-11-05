@@ -62,7 +62,7 @@ export function DeploymentInfoSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+      <SheetContent className="scroll-shade w-full overflow-y-auto sm:max-w-xl">
         <SheetHeader>
           <SheetTitle>Deployment info</SheetTitle>
           <SheetDescription>
@@ -341,7 +341,7 @@ function DeploymentWarningsSection({
               skip list can be hundreds of rows long; we cap the vertical
               footprint and let the user scroll. Long paths get a per-row
               horizontal scrollbar so they're not truncated. */}
-          <div className="max-h-72 space-y-3 overflow-auto rounded-md border bg-muted/30 p-3">
+          <div className="scroll-shade max-h-72 space-y-3 overflow-auto rounded-md border bg-muted/30 p-3">
             {Array.from(groups.entries()).map(([type, items]) => (
               <div key={type}>
                 <div className="text-xs font-medium" style={{ color: "#882000" }}>

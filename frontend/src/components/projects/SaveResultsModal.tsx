@@ -124,7 +124,7 @@ function StatCard({
         {diff.length === 0 ? (
           <p className="text-xs text-muted-foreground italic mt-2">No change.</p>
         ) : (
-          <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
+          <div className="scroll-shade mt-2 space-y-1 max-h-48 overflow-y-auto">
             {diff.map(({ label, before: b, after: a }) => (
               <div
                 key={label}
@@ -177,7 +177,7 @@ export function SaveResultsModal({
           <DialogTitle>Effect on statistics</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3 overflow-y-auto min-h-0">
+        <div className="scroll-shade space-y-3 overflow-y-auto min-h-0">
           {metrics.map((metric) => {
             const { before, after } = results[METRIC_FIELD[metric]];
             return (

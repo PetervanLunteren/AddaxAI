@@ -172,7 +172,7 @@ export function VerifyDetailShell({
               </Button>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-y-auto">{details}</div>
+            <div className="scroll-shade flex-1 min-h-0 overflow-y-auto">{details}</div>
 
             <div className="px-3 py-3 space-y-2 shrink-0">{actions}</div>
           </div>

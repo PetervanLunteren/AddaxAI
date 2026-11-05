@@ -108,7 +108,7 @@ export function CheckForUpdatesDialog({
                   <div className="space-y-2">
                     <div>A newer version is available.</div>
                     {notes.length > 0 && (
-                      <ul className="max-h-72 list-disc space-y-1 overflow-y-auto pl-4">
+                      <ul className="scroll-shade max-h-72 list-disc space-y-1 overflow-y-auto pl-4">
                         {notes.map((line, i) => (
                           <li key={i}>{line}</li>
                         ))}

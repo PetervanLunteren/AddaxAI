@@ -281,7 +281,7 @@ export function AnalysisSettingsButton({
       </Button>
 
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-4xl">
+        <SheetContent side="right" className="scroll-shade w-full overflow-y-auto sm:max-w-4xl">
           <SheetHeader className="space-y-1">
             <SheetTitle>Refine results</SheetTitle>
             <SheetDescription>

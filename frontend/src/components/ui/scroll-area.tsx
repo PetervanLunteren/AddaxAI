@@ -8,7 +8,7 @@ interface ScrollAreaProps {
 
 export function ScrollArea({ children, className, style }: ScrollAreaProps) {
   return (
-    <div className={`overflow-auto ${className || ""}`} style={style}>
+    <div className={`scroll-shade overflow-auto ${className || ""}`} style={style}>
       {children}
     </div>
   );

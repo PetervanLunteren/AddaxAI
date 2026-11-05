@@ -274,7 +274,7 @@ export function CsvImportDialog<TRow extends { row: number }>({
                       preview.rows.length === 1 ? "" : "s"
                     } look${preview.rows.length === 1 ? "s" : ""} fine:`}
               </p>
-              <ul className="max-h-[40vh] overflow-y-auto rounded-lg border divide-y text-sm">
+              <ul className="scroll-shade max-h-[40vh] overflow-y-auto rounded-lg border divide-y text-sm">
                 {/* flex-wrap so a renderRow can push a wide, optional part
                     (the tags) onto its own line with basis-full instead of
                     widening the list sideways. */}
@@ -350,7 +350,7 @@ function ProblemList({
 }) {
   return (
     <>
-      <ul className="mt-1 max-h-40 space-y-2 overflow-y-auto">
+      <ul className="scroll-shade mt-1 max-h-40 space-y-2 overflow-y-auto">
         {groups.map((group) => (
           <li key={`${group.column}|${group.message}`}>
             <span className="font-medium">

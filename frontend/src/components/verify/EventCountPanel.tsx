@@ -340,7 +340,7 @@ export function EventCountPanel({
 
       {/* Scrollable species list; the footer (reset + confirm) stays pinned
           below so a long list never pushes Confirm off-screen. */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-1 space-y-1">
+      <div className="scroll-shade min-h-0 flex-1 overflow-y-auto px-3 pt-1 space-y-1">
         {visible.map((obs, index) => {
           const name = resolveSpeciesName({
             common_name: obs.common_name,

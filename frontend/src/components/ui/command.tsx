@@ -60,7 +60,7 @@ const CommandList = React.forwardRef<
 >(({ className, style, onWheel, ...props }, ref) => (
   <CommandPrimitive.List
     ref={ref}
-    className={cn("max-h-[300px] overflow-x-hidden overflow-y-auto", className)}
+    className={cn("scroll-shade max-h-[300px] overflow-x-hidden overflow-y-auto", className)}
     style={{ overflowY: "auto", ...style }}
     onWheel={onWheel ?? ((e) => e.stopPropagation())}
     {...props}

@@ -168,7 +168,7 @@ export function RestoreBackupDialog({
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Backups in AddaxAI
         </p>
-        <div className="max-h-64 space-y-1.5 overflow-y-auto rounded-lg border bg-muted/30 p-2">
+        <div className="scroll-shade max-h-64 space-y-1.5 overflow-y-auto rounded-lg border bg-muted/30 p-2">
           {isLoading ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
               Loading backups…

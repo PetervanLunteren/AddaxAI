@@ -190,7 +190,7 @@ export function SplitDeploymentDialog({
                 Will create {preview.targets.length}{" "}
                 {preview.targets.length === 1 ? "deployment" : "deployments"}:
               </p>
-              <ul className="max-h-[50vh] overflow-y-auto rounded-lg border divide-y text-sm">
+              <ul className="scroll-shade max-h-[50vh] overflow-y-auto rounded-lg border divide-y text-sm">
                 {preview.targets.map((t) => (
                   <li
                     key={t.folder_path}

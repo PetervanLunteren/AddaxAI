@@ -62,7 +62,7 @@ export function SiteInfoSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+      <SheetContent className="scroll-shade w-full overflow-y-auto sm:max-w-xl">
         <SheetHeader>
           <SheetTitle>Site info</SheetTitle>
           <SheetDescription>

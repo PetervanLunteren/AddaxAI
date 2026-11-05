@@ -77,7 +77,7 @@ export function LabelsKeyboardPopover({
           screen leaves, and its last rows used to sit off the bottom. */}
       <PopoverContent
         align="end"
-        className="w-auto max-h-[var(--radix-popover-content-available-height)] overflow-y-auto px-4 py-3"
+        className="scroll-shade w-auto max-h-[var(--radix-popover-content-available-height)] overflow-y-auto px-4 py-3"
       >
         <div className="flex gap-8">
           <div>

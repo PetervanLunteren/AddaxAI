@@ -139,7 +139,7 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
             <p className="text-muted-foreground">Loading...</p>
           </div>
         ) : labelsRow && countsRow ? (
-          <div className="rounded-lg bg-muted/50 p-3 max-h-80 overflow-y-auto">
+          <div className="scroll-shade rounded-lg bg-muted/50 p-3 max-h-80 overflow-y-auto">
             <div className="flex flex-col gap-3">
               <SlimProgressRow {...labelsRow} />
               <SlimProgressRow {...countsRow} />

@@ -220,7 +220,7 @@ function LogTable({ rows }: LogTableProps) {
         </Button>
       </div>
 
-      <div className="max-h-64 overflow-auto">
+      <div className="scroll-shade max-h-64 overflow-auto">
         <table className="w-full table-fixed text-left text-xs">
           <thead className="bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500 sticky top-0">
             <tr>

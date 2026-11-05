@@ -199,7 +199,7 @@ export function QueueCard({ projectId }: QueueCardProps) {
 
         <CardContent>
           {visibleEntries.length > 0 ? (
-            <div className="space-y-3 max-h-[500px] overflow-y-auto border border-gray-200 rounded-lg p-3">
+            <div className="scroll-shade space-y-3 max-h-[500px] overflow-y-auto border border-gray-200 rounded-lg p-3">
               {visibleEntries.map((entry) => (
                 <QueueItem key={entry.id} entry={entry} onDelete={handleDelete} />
               ))}

@@ -29,7 +29,7 @@ export function DashboardAboutPopover({ children }: DashboardAboutPopoverProps) 
         sideOffset={6}
         collisionPadding={16}
         avoidCollisions
-        className="w-72 max-w-[calc(100vw-2rem)] max-h-[var(--radix-popover-content-available-height,80vh)] overflow-y-auto p-3 text-sm text-muted-foreground space-y-2"
+        className="scroll-shade w-72 max-w-[calc(100vw-2rem)] max-h-[var(--radix-popover-content-available-height,80vh)] overflow-y-auto p-3 text-sm text-muted-foreground space-y-2"
       >
         {children}
       </PopoverContent>

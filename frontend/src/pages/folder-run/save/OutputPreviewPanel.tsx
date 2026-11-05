@@ -374,7 +374,7 @@ function TreeView({
   });
 
   return (
-    <pre className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3 font-mono text-[11px] leading-relaxed text-foreground">
+    <pre className="scroll-shade min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3 font-mono text-[11px] leading-relaxed text-foreground">
       {entries.map((entry, idx) => (
         <TreeRow key={idx} {...entry} />
       ))}

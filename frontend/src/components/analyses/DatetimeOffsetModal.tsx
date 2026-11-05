@@ -377,7 +377,7 @@ export function DatetimeOffsetModal({
           </div>
         )}
 
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="scroll-shade flex-1 min-h-0 overflow-y-auto">
           <div className="grid grid-cols-[1fr_auto] gap-6">
             {/* Left: Single image with navigation */}
             <div className="space-y-3">

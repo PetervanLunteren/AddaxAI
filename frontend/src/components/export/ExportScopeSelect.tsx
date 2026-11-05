@@ -166,7 +166,7 @@ export function ExportScopeSelect({
             </Button>
           </div>
         </div>
-        <div className="max-h-72 overflow-y-auto p-2">
+        <div className="scroll-shade max-h-72 overflow-y-auto p-2">
           {groups.length === 0 ? (
             <p className="px-1 py-2 text-xs text-muted-foreground">
               No deployments to scope by.

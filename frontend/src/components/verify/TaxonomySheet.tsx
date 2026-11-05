@@ -220,7 +220,7 @@ export function TaxonomySheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="sm:max-w-xl overflow-y-auto"
+        className="scroll-shade sm:max-w-xl overflow-y-auto"
         // Don't dismiss on outside interaction. This sheet opens out of
         // the relabel command dialog; the two modal layers briefly
         // overlap during the transition, and the first click inside the

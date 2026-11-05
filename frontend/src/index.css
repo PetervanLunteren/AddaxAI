@@ -145,3 +145,45 @@ html, body {
   25% { opacity: 0.85; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.15); }
 }
+
+/* Scroll shade: a soft shadow at the top or bottom edge of a scroll
+   panel while there is more to see that way, so a cut-off card reads
+   as "more below" rather than as the end of the panel (2026-11-05).
+   Two sticky pseudo-elements pulled out of the flow by their own
+   height, so nothing moves; their opacity follows the panel's own
+   scroll position (a scroll-driven animation). A panel that does not
+   scroll has no active timeline, so no shade; where the browser lacks
+   scroll timelines the shades never show and nothing is clipped.
+   For block-level panels only: in a grid or a flex container with a
+   gap the two pseudo-elements would take a gap each. */
+.scroll-shade::before,
+.scroll-shade::after {
+  content: "";
+  position: sticky;
+  z-index: 10;
+  display: block;
+  height: 12px;
+  pointer-events: none;
+  opacity: 0;
+  animation: scroll-shade-top linear both;
+  animation-timeline: scroll(nearest block);
+}
+.scroll-shade::before {
+  top: 0;
+  margin-bottom: -12px;
+  background: linear-gradient(to bottom, hsl(var(--foreground) / 0.12), transparent);
+}
+.scroll-shade::after {
+  bottom: 0;
+  margin-top: -12px;
+  background: linear-gradient(to top, hsl(var(--foreground) / 0.12), transparent);
+  animation-name: scroll-shade-bottom;
+}
+@keyframes scroll-shade-top {
+  0% { opacity: 0; }
+  4%, 100% { opacity: 1; }
+}
+@keyframes scroll-shade-bottom {
+  0%, 96% { opacity: 1; }
+  100% { opacity: 0; }
+}

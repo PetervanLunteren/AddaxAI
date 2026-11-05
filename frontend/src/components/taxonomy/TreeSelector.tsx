@@ -382,7 +382,7 @@ export function TreeSelector({
       {flatRows.length > 0 ? (
         <div
           ref={scrollRef}
-          className={`border rounded-md bg-background overflow-auto${fillHeight ? " h-0 flex-grow" : ""}`}
+          className={`scroll-shade border rounded-md bg-background overflow-auto${fillHeight ? " h-0 flex-grow" : ""}`}
           style={fillHeight ? undefined : { height }}
         >
           <div

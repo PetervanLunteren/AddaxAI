@@ -147,7 +147,7 @@ export function RecentRunsDialog({ open, onOpenChange }: RecentRunsDialogProps) 
             </DialogDescription>
           </DialogHeader>
 
-          <div className="max-h-96 space-y-1.5 overflow-y-auto rounded-lg border bg-muted/30 p-2">
+          <div className="scroll-shade max-h-96 space-y-1.5 overflow-y-auto rounded-lg border bg-muted/30 p-2">
             {isLoading ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
                 Loading recent runs…

@@ -55,7 +55,7 @@ export function HexPopup({ hexCell }: HexPopupProps) {
         <div className="font-semibold text-gray-900 mb-2 text-sm">
           {orderedSites.length === 1 ? "Site" : "Sites"} ({orderedSites.length})
         </div>
-        <div className="max-h-[200px] overflow-y-auto space-y-2">
+        <div className="scroll-shade max-h-[200px] overflow-y-auto space-y-2">
           {orderedSites.map((site) => {
             const isZero = site.observation_count === 0;
             const depSuffix =
