@@ -573,7 +573,7 @@ function TimeRuler({
   const activityPath = useMemo(() => {
     if (!frameCounts || clipPeak === 0) return null;
     const peaks = activityPeaks(
-      frameCounts, windowStart, windowStart + windowFrames, ACTIVITY_BINS,
+      frameCounts, windowStart, windowStart + windowFrames, ACTIVITY_BINS, sampleStep,
     );
     // A step outline across the slices, closed along the bottom.
     let d = `M0 ${clipPeak}`;
@@ -581,7 +581,7 @@ function TimeRuler({
       d += ` V${clipPeak - n} H${i + 1}`;
     });
     return `${d} V${clipPeak} Z`;
-  }, [frameCounts, clipPeak, windowStart, windowFrames]);
+  }, [frameCounts, clipPeak, windowStart, windowFrames, sampleStep]);
   const frameAt = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const fraction = clamp((e.clientX - rect.left) / rect.width, 0, 1);

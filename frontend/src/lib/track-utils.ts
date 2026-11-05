@@ -440,8 +440,6 @@ export function uncheckedCards(
   return pending;
 }
 
-/** The clip's sampling step from its own stored boxes (`samplingStep`);
- *  0 for a clip with fewer than two sampled frames. */
 /**
  * How many boxes each sampled frame of a clip draws, by the one rule the
  * player and every still share (`drawsInClip`): the timeline's activity
@@ -469,24 +467,36 @@ export function frameBoxCounts(
  * The busiest frame in each of `bins` equal slices of `[from, to)`: the
  * most boxes at once there, the measure MaxN is, so a peak in the graph
  * and a MaxN marker agree, and a one-frame spike is not averaged away.
+ * A sampled frame stands for the `step` frames up to the next sample,
+ * as a bar does: zoomed in, a slice is narrower than that gap, and
+ * counting only the slice a sample falls in drew needles with zeros
+ * between them while the bars below ran solid (2026-11-05).
  */
 export function activityPeaks(
   counts: Map<number, number>,
   from: number,
   to: number,
   bins: number,
+  step: number,
 ): number[] {
   const peaks = new Array<number>(bins).fill(0);
   const span = to - from;
   if (span <= 0) return peaks;
+  const reach = Math.max(1, step);
+  const binOf = (frame: number) => ((frame - from) / span) * bins;
   for (const [frame, n] of counts) {
-    if (frame < from || frame >= to) continue;
-    const bin = Math.min(bins - 1, Math.floor(((frame - from) / span) * bins));
-    if (n > peaks[bin]) peaks[bin] = n;
+    if (frame + reach <= from || frame >= to) continue;
+    const first = Math.max(0, Math.floor(binOf(frame)));
+    const last = Math.min(bins - 1, Math.ceil(binOf(frame + reach)) - 1);
+    for (let bin = first; bin <= last; bin++) {
+      if (n > peaks[bin]) peaks[bin] = n;
+    }
   }
   return peaks;
 }
 
+/** The clip's sampling step from its own stored boxes (`samplingStep`);
+ *  0 for a clip with fewer than two sampled frames. */
 export function fileSamplingStep(file: FileWithDetections): number {
   return samplingStep(
     file.detections.flatMap((d) => (d.frame_number == null ? [] : [d.frame_number])),

@@ -24,7 +24,7 @@ import { FrameWait } from "./FrameWait";
 import { detectionsApi } from "../../api/detections";
 import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
 import { getDetectionColor } from "../../lib/detection-utils";
-import { frameImageUrl } from "../../lib/clip-frames";
+import { canvasImage, frameImageUrl } from "../../lib/clip-frames";
 import { frameBoxes } from "../../lib/track-utils";
 import { basename } from "../../lib/path-utils";
 import {
@@ -157,8 +157,12 @@ export function AnnotationCanvas({
     onLoadingChangeRef.current = onLoadingChange;
   }, [onLoadingChange]);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
+  // The box being drawn, for the preview only. Where the drag started
+  // lives in a ref: pointer events can come faster than React renders,
+  // and a move or a release read from the last render's state was lost
+  // (a quick flick saved a box short of the release, or nothing).
   const [drawingBox, setDrawingBox] = useState<DrawingBox | null>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  const drawStartRef = useRef<{ x: number; y: number } | null>(null);
   const [zoom, setZoom] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -209,8 +213,7 @@ export function AnnotationCanvas({
     // Clear the previous file's verdict up front, so stepping from a
     // missing file to a present one does not keep the placeholder.
     setImageFailed(false);
-    const img = new window.Image();
-    img.crossOrigin = "anonymous";
+    const img = canvasImage();
     const settle = () => {
       if (cancelled) return;
       setImage(img);
@@ -512,12 +515,18 @@ export function AnnotationCanvas({
     if (drawMode) {
       const pos = getStagePointerPos();
       if (!pos) return;
+      drawStartRef.current = pos;
+      setDrawingBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
       // Keep this pointer's moves and release coming while it is outside
       // the canvas, so a box can be dragged to the picture's edge from
       // anywhere; the browser ends the capture when the button goes up.
-      stageRef.current?.content?.setPointerCapture(e.evt.pointerId);
-      setIsDrawing(true);
-      setDrawingBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
+      // A bonus, not a must: the browser throws when the pointer is no
+      // longer active, and the box is then drawn inside the canvas only.
+      try {
+        stageRef.current?.content?.setPointerCapture(e.evt.pointerId);
+      } catch {
+        // Not captured; drawing goes on without it.
+      }
       return;
     }
 
@@ -542,14 +551,11 @@ export function AnnotationCanvas({
       return;
     }
 
-    if (!isDrawing || !drawingBox) return;
+    const start = drawStartRef.current;
+    if (!start) return;
     const pos = getStagePointerPos();
     if (!pos) return;
-    setDrawingBox({
-      ...drawingBox,
-      width: pos.x - drawingBox.x,
-      height: pos.y - drawingBox.y,
-    });
+    setDrawingBox({ x: start.x, y: start.y, width: pos.x - start.x, height: pos.y - start.y });
   };
 
   const handleMouseUp = () => {
@@ -558,23 +564,25 @@ export function AnnotationCanvas({
       return;
     }
 
-    if (!isDrawing || !drawingBox) return;
-    setIsDrawing(false);
+    const start = drawStartRef.current;
+    if (!start) return;
+    drawStartRef.current = null;
+    setDrawingBox(null);
     // Drawing was switched off mid-drag (Escape): the box is dropped,
     // not saved.
-    if (!drawMode) {
-      setDrawingBox(null);
-      return;
-    }
+    if (!drawMode) return;
 
-    // Its corners, either way round, held to the picture: a drag that
-    // ran past the edge ends the box at the edge. Clamped as corners, so
-    // a box is never wider than the picture leaves it.
+    // The end corner is where the pointer is let go, not the last move
+    // the preview drew. Both corners, either way round, held to the
+    // picture: a drag that ran past the edge ends the box at the edge.
+    // Clamped as corners, so a box is never wider than the picture
+    // leaves it.
+    const end = getStagePointerPos() ?? start;
     const edge = (v: number, max: number) => Math.min(max, Math.max(0, v));
-    const x0 = edge(Math.min(drawingBox.x, drawingBox.x + drawingBox.width), stageSize.width);
-    const x1 = edge(Math.max(drawingBox.x, drawingBox.x + drawingBox.width), stageSize.width);
-    const y0 = edge(Math.min(drawingBox.y, drawingBox.y + drawingBox.height), stageSize.height);
-    const y1 = edge(Math.max(drawingBox.y, drawingBox.y + drawingBox.height), stageSize.height);
+    const x0 = edge(Math.min(start.x, end.x), stageSize.width);
+    const x1 = edge(Math.max(start.x, end.x), stageSize.width);
+    const y0 = edge(Math.min(start.y, end.y), stageSize.height);
+    const y1 = edge(Math.max(start.y, end.y), stageSize.height);
     const box = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 
     // Minimum size check (at least 10px in stage coords)
@@ -587,8 +595,6 @@ export function AnnotationCanvas({
       // click below is NOT a commit, so it leaves draw mode armed.
       onDrawModeChange(false);
     }
-
-    setDrawingBox(null);
   };
 
   // Handle drag end for moving boxes

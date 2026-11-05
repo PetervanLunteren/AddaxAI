@@ -36,10 +36,11 @@
  *
  * A verdict waits for the frame it is about. While a frame of a clip is
  * on its way the canvas dims the old picture and takes no clicks, and
- * `frameReady` holds Enter, V, X and the rest until the frame lands
- * (`verify` and `applyLabel`, the two doors every verdict goes
- * through), so nothing is judged or drawn on a picture that is not the
- * one asked for. Navigation keys stay live.
+ * `canJudge` holds Enter, V, X and the rest until the file and its frame
+ * have landed (`verify` and `applyLabel`, the two doors every verdict
+ * goes through), so nothing is judged or drawn on a picture that is not
+ * the one asked for, and a clip still loading is never signed off as
+ * empty. Navigation keys stay live.
  *
  * The label actions are the Detections grid's, with one scope rule:
  * actions act on what you see. V, R, X, U and the saved labels 1 to 5
@@ -119,7 +120,7 @@ import {
   nearestSampledFrame,
   steppedFrame,
 } from "../../lib/track-utils";
-import { warmClipFrames } from "../../lib/clip-frames";
+import { canvasImage, frameImageUrl, warmClipFrames } from "../../lib/clip-frames";
 import { basename } from "../../lib/path-utils";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
 import { useShortcutLabels } from "../../hooks/useShortcutLabels";
@@ -276,6 +277,7 @@ export function FileDetailModal({
     setUndoStack([]);
     setViewMode("frame");
     setShownFrame(null);
+    setFrameReady(false);
     setSeekRequest(null);
     setTimelineZoom(0);
     setPendingVideoExport(false);
@@ -316,6 +318,11 @@ export function FileDetailModal({
 
   // The list row is what the grid last fetched; the file query is live.
   const isVerified = file?.verified ?? item?.verified ?? false;
+  // The frame gate (header): a verdict needs the file, and on the still
+  // the frame it is about. Playback has no frame to wait for, and the
+  // canvas is unmounted there, so it never reports one; the still
+  // reports again when it comes back.
+  const canJudge = file != null && (viewMode === "video" || frameReady);
 
   // The selected box's track, for the player's highlight. Selecting a
   // bar on the timeline selects that track's representative box, so
@@ -480,10 +487,14 @@ export function FileDetailModal({
   // box picked it still says 33 while Mark false would hit 1. A live
   // line teaches the rule by changing with it; the fixed sentence it
   // replaced described the rule and was hard to follow (2026-11-05).
-  const scopeLine = selectedDetectionId
-    ? "Acting on the selected box. Click the picture outside the boxes to go back to all."
-    : viewMode === "video"
-      ? "Acting on the box you pick on the timeline."
+  // Playback first: a click on the playing clip pauses it rather than
+  // clearing the selection, so the still's hint would be wrong there.
+  const scopeLine = viewMode === "video"
+    ? selectedDetectionId
+      ? "Acting on the box you picked on the timeline."
+      : "Acting on the box you pick on the timeline."
+    : selectedDetectionId
+      ? "Acting on the selected box. Click the picture outside the boxes to go back to all."
       : onScreen.length === 0
         ? isClip
           ? "No boxes on this frame. Click a bar to pick one."
@@ -583,16 +594,15 @@ export function FileDetailModal({
   // Warm the next file while this one is being looked at. Measured on a
   // real file: 1.47 MB for the picture and a 698-byte row, and the row
   // is what the canvas waits on, so without this every step of a run
-  // pays for both from cold. The image is a plain <img> rather than a
-  // query, but the endpoint sends `max-age=86400, immutable`, so an
-  // `Image()` here is all the warming it needs. Same idea as the Counts
-  // viewer prefetching the next event and its filmstrip.
+  // pays for both from cold. The image is not a query, but the endpoint
+  // sends `max-age=86400, immutable`, so loading it the way the canvas
+  // does (`canvasImage`, `frameImageUrl`) is all the warming it needs.
+  // Same idea as the Counts viewer prefetching the next event and its
+  // filmstrip.
   const nextItem = index === null ? undefined : items[index + 1];
   useEffect(() => {
     if (!nextItem) return;
-    // Relative, exactly as `AnnotationCanvas` builds it. An absolute
-    // form would be a different cache entry and warm nothing.
-    new Image().src = `/api/files/${nextItem.id}/image`;
+    canvasImage().src = frameImageUrl(nextItem.id);
     queryClient.prefetchQuery(fileQueryOptions(nextItem.id));
   }, [nextItem, queryClient]);
 
@@ -757,7 +767,7 @@ export function FileDetailModal({
    *  without a box) is nothing. */
   const verify = useCallback(
     (ids: string[]) => {
-      if (!frameReady) return;
+      if (!canJudge) return;
       const after = settleAfter(ids);
       if (ids.length === 0) {
         // `settleAfter` hands back `verifyAndAdvance` itself when nothing
@@ -775,7 +785,7 @@ export function FileDetailModal({
         })
         .catch((err: Error) => toast.error(err.message));
     },
-    [frameReady, settleAfter, verifyAndAdvance],
+    [canJudge, settleAfter, verifyAndAdvance],
   );
   const verifyOnScreen = useCallback(
     () => verify(onScreen.map((d) => d.id)),
@@ -792,7 +802,7 @@ export function FileDetailModal({
    *  again (2026-11-04; the walk carried them off after each box). */
   const applyLabel = useCallback(
     (ids: string[], label: string | null, category: string | undefined, stay = false) => {
-      if (ids.length === 0 || !frameReady) return;
+      if (ids.length === 0 || !canJudge) return;
       const after = stay
         ? () => {
             setSelectedDetectionId(null);
@@ -807,7 +817,7 @@ export function FileDetailModal({
         })
         .catch((err: Error) => toast.error(err.message));
     },
-    [frameReady, settleAfter, handleCanvasChange],
+    [canJudge, settleAfter, handleCanvasChange],
   );
 
 
@@ -1186,7 +1196,7 @@ export function FileDetailModal({
             {/* A fieldset so one flag disables every verdict button
                 while the frame is on its way (the header's frame gate);
                 `min-w-0` undoes the element's own min-content width. */}
-            <fieldset disabled={!frameReady} className="min-w-0 space-y-1.5">
+            <fieldset disabled={!canJudge} className="min-w-0 space-y-1.5">
               {/* First, because agreeing is the commonest verdict on a
                   clip the detector handled well. Same tick as the
                   Verify button on purpose: one verb, two scopes, told
@@ -1399,7 +1409,7 @@ export function FileDetailModal({
                 ? () => setVerified({ id: item.id, verified: false })
                 : verifyOnScreen
             }
-            disabled={verifying || !frameReady || (!isVerified && nothingOnScreen)}
+            disabled={verifying || !canJudge || (!isVerified && nothingOnScreen)}
             title={
               isVerified
                 ? "Unverify: hand every detection in this file back to the AI"
@@ -1410,7 +1420,7 @@ export function FileDetailModal({
           >
             <Check className="h-4 w-4 mr-1" />
             {isVerified ? "Unverify" : verifyLabel}
-            {!isVerified && !nothingOnScreen && frameReady && <Kbd onPrimary>⏎</Kbd>}
+            {!isVerified && !nothingOnScreen && canJudge && <Kbd onPrimary>⏎</Kbd>}
           </Button>
 
           {/* The whole clip, the one scope a person cannot see: a button

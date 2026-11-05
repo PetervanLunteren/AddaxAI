@@ -30,7 +30,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { warmClipFrames } from "../../lib/clip-frames";
+import { canvasImage, frameImageUrl, warmClipFrames } from "../../lib/clip-frames";
 import { cardBoxes, nearestSampledFrame, speciesKey, steppedFrame } from "../../lib/track-utils";
 import { ClipTimeline } from "./TrackTimeline";
 import { ApiError } from "../../lib/api-client";
@@ -564,7 +564,7 @@ export function EventDetailModal({
   }, [autoPlay, isOpen, files.length]);
 
   // Warm the next frame's full-res image one step ahead so the loop stays
-  // smooth on the first pass (same URL AnnotationCanvas fetches, so the
+  // smooth on the first pass (loaded as AnnotationCanvas loads it, so the
   // browser cache is shared).
   const preloadFileId =
     autoPlay && files.length > 1
@@ -572,8 +572,7 @@ export function EventDetailModal({
       : null;
   useEffect(() => {
     if (!preloadFileId) return;
-    const img = new Image();
-    img.src = `/api/files/${preloadFileId}/image`;
+    canvasImage().src = frameImageUrl(preloadFileId);
   }, [preloadFileId]);
 
   // Auto-play is session-scoped: it resets off when the modal closes. Also
@@ -845,6 +844,34 @@ export function EventDetailModal({
                     }
                   />
                 )}
+              {/* Big center play button over a focused video's still — the
+                  universal "watch this clip" affordance. Hidden during the
+                  cine-loop (frames are flipping) and once the player is up.
+                  The wrapper is click-through so the still still pans/zooms;
+                  only the button itself catches the click. Inside the
+                  picture's box, not the panel, so it is centred on the
+                  picture and never covers the timeline under it. */}
+              {currentFile.file_type === "video" &&
+                viewMode !== "video" &&
+                !autoPlay &&
+                (isPlayableVideo(currentFile) ? (
+                  <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+                    <button
+                      type="button"
+                      onClick={playFocusedVideo}
+                      title="Watch this video (P)"
+                      className="pointer-events-auto flex h-16 w-16 items-center justify-center rounded-full bg-black/55 ring-1 ring-white/40 transition hover:scale-105 hover:bg-black/75"
+                    >
+                      <Play className="h-7 w-7 translate-x-0.5 fill-white text-white" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-12 z-10 flex justify-center">
+                    <span className="rounded-md bg-black/60 px-2.5 py-1 text-xs text-white/80">
+                      Video format not supported for playback
+                    </span>
+                  </div>
+                ))}
                 </div>
                 {/* The clip's tracks as bars under the filmstrip or the
                     still, with the MaxN markers: the same timeline the
@@ -876,32 +903,6 @@ export function EventDetailModal({
                 <div className="text-white/50">Loading...</div>
               )}
 
-              {/* Big center play button over a focused video's still — the
-                  universal "watch this clip" affordance. Hidden during the
-                  cine-loop (frames are flipping) and once the player is up.
-                  The wrapper is click-through so the still still pans/zooms;
-                  only the button itself catches the click. */}
-              {currentFile?.file_type === "video" &&
-                viewMode !== "video" &&
-                !autoPlay &&
-                (isPlayableVideo(currentFile) ? (
-                  <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-                    <button
-                      type="button"
-                      onClick={playFocusedVideo}
-                      title="Watch this video (P)"
-                      className="pointer-events-auto flex h-16 w-16 items-center justify-center rounded-full bg-black/55 ring-1 ring-white/40 transition hover:scale-105 hover:bg-black/75"
-                    >
-                      <Play className="h-7 w-7 translate-x-0.5 fill-white text-white" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="pointer-events-none absolute inset-x-0 bottom-12 z-10 flex justify-center">
-                    <span className="rounded-md bg-black/60 px-2.5 py-1 text-xs text-white/80">
-                      Video format not supported for playback
-                    </span>
-                  </div>
-                ))}
             </div>
 
             {/* Headless relabel picker — opened by clicking a label pill on
@@ -1047,7 +1048,7 @@ export function EventDetailModal({
                   <div className="text-[11px] font-semibold text-muted-foreground mb-1">Shortcuts</div>
                   {[
                     ["Enter", "Confirm + next event"],
-                    ["↑ ↓", "Select species row"],
+                    ["↑ / ↓", "Select species row"],
                     ["0-9", "Set count (type fast for 12, 130…)"],
                     ["+ / −", "Adjust count by 1"],
                     ["A", "Add species"],
