@@ -183,11 +183,16 @@ export function TrackTimeline({
   const setZoomStep = onZoomStep ?? setOwnZoomStep;
   const showVerdicts = surface === "labels";
   const laneRef = useRef<HTMLDivElement | null>(null);
+  const groups = useMemo(() => packTrackRows(rows), [rows]);
+  const totalRows = groups.reduce((n, group) => n + group.rows.length, 0);
+  // The lane's full height, every row showing: the most a drag may open
+  // it, so a drag never grows into empty space.
+  const contentHeight = RULER_HEIGHT_PX + totalRows * ROW_HEIGHT_PX;
   const { height, startDrag } = useResizableHeight({
     storageKey: `addaxai:timelineHeight:${surface}`,
     defaultHeight: RULER_HEIGHT_PX + DEFAULT_ROWS * ROW_HEIGHT_PX,
     minHeight: MIN_LANE_PX,
-    maxHeight: halfTheViewport,
+    maxHeight: () => Math.min(halfTheViewport(), Math.max(MIN_LANE_PX, contentHeight)),
   });
 
   // A pan in progress: the playhead the wheel has moved to, previewed
@@ -197,8 +202,6 @@ export function TrackTimeline({
   const [pan, setPan] = useState<{ base: number; frame: number } | null>(null);
   const shownFrame = pan && pan.base === currentFrame ? pan.frame : currentFrame;
 
-  const groups = useMemo(() => packTrackRows(rows), [rows]);
-  const totalRows = groups.reduce((n, group) => n + group.rows.length, 0);
 
   // Each step halves the span; the window is centred on the playhead and
   // sticks to the clip's ends, so it needs no scroll position of its own.
@@ -317,19 +320,16 @@ export function TrackTimeline({
       className="w-full shrink-0 bg-background text-[11px] text-foreground/80"
       data-testid="track-timeline"
     >
-      {/* The top edge is always the same strip, so the timeline looks
-          the same whether or not its rows fit. It is a handle only while
-          some rows are hidden: the lane never grows past its rows, so on
-          a clip whose rows all show a drag would move nothing. */}
-      {RULER_HEIGHT_PX + totalRows * ROW_HEIGHT_PX > height ? (
-        <ResizeHandle
-          onMouseDown={startDrag}
-          title="Drag to show more rows"
-          testId="timeline-resize-handle"
-        />
-      ) : (
-        <div className="h-1.5 shrink-0 bg-border" aria-hidden />
-      )}
+      {/* Always a handle: a drag down makes the timeline smaller and
+          the picture larger, also when every row already shows. A drag
+          up stops where the rows end (`maxHeight`), so it never opens
+          empty space. Until 2026-11-05 the handle hid whenever the rows
+          fit, which took the shrinking away with it. */}
+      <ResizeHandle
+        onMouseDown={startDrag}
+        title="Drag to resize the timeline"
+        testId="timeline-resize-handle"
+      />
       <div
         ref={laneRef}
         // Horizontal is hidden, not auto: a bar at the very end of the
@@ -406,12 +406,14 @@ export function TrackTimeline({
             <div
               key={`${group.label}-${rowIndex}`}
               // A line where one species' rows end and the next begin
-              // (the swimlane divider), drawn inside the row so its
-              // height is unchanged. None between the rows of one
-              // species: those only split animals that overlapped.
+              // (the swimlane divider), an inset shadow rather than a
+              // border: a border took a pixel from the row, the 16 px
+              // species name then stuck out by half a pixel, and the lane
+              // grew a scrollbar at full height. None between the rows of
+              // one species: those only split animals that overlapped.
               className={cn(
                 "flex items-stretch",
-                groupIndex > 0 && rowIndex === 0 && "border-t border-border",
+                groupIndex > 0 && rowIndex === 0 && "shadow-[inset_0_1px_0_hsl(var(--border))]",
               )}
               style={{ height: ROW_HEIGHT_PX }}
             >

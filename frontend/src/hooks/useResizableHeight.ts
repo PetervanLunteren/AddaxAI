@@ -52,8 +52,11 @@ export function useResizableHeight({
     (e: ReactMouseEvent) => {
       e.preventDefault();
       const startY = e.clientY;
-      const startHeight = height;
-      let latest = height;
+      // From the height on screen, never above today's maximum: a stored
+      // height from a clip with more rows (413 px over 72 px of rows)
+      // made a drag travel through the difference before anything moved.
+      const startHeight = Math.max(minHeight, Math.min(height, maxHeight()));
+      let latest = startHeight;
       const onMove = (ev: MouseEvent) => {
         latest = Math.max(minHeight, Math.min(maxHeight(), startHeight + (startY - ev.clientY)));
         setHeight(latest);
