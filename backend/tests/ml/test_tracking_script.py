@@ -1,5 +1,6 @@
-"""The tracking script's pure parts: sampling, box normalisation, the
-SharkTrack false-positive filter, the track crops and the JSON writer.
+"""The tracking script's pure parts: sampling, box normalisation, finding
+the detection behind each tracked box, the SharkTrack false-positive
+filter, the track crops and the JSON writer.
 
 The detector and the tracker themselves need the marine env and real
 frames; they are exercised by hand on footage (see the design's test
@@ -7,8 +8,10 @@ plan). Everything here runs on the dev interpreter.
 """
 
 import json
+from types import SimpleNamespace as T
 
 import numpy as np
+import pytest
 
 from app.ml.inference import tracking_script as ts
 
@@ -64,9 +67,9 @@ def test_tracker_floors_come_from_the_command_line():
 
 def test_track_rows_become_normalised_boxes_with_their_track_id():
     rows = np.array([
-        # x1, y1, x2, y2, track_id, conf, cls, idx
-        [100, 50, 300, 150, 7, 0.91, 0, 0],
-        [-10, 0, 50, 2000, 8, 0.5, 1, 1],  # spills outside the frame
+        # x1, y1, x2, y2, track_id, conf, cls
+        [100, 50, 300, 150, 7, 0.91, 0],
+        [-10, 0, 50, 2000, 8, 0.5, 1],  # spills outside the frame
     ], dtype=np.float32)
     boxes = ts.normalise_track_rows(rows, width=1000, height=500, frame_number=90)
     assert boxes[0] == {
@@ -76,7 +79,73 @@ def test_track_rows_become_normalised_boxes_with_their_track_id():
     # Clamped to the frame, never negative and never past 1.
     assert boxes[1]["bbox"] == [0.0, 0.0, 0.05, 1.0]
     assert boxes[1]["category"] == "1" and boxes[1]["track_id"] == 8
-    assert ts.normalise_track_rows(np.zeros((0, 8)), 10, 10, 0) == []
+    assert ts.normalise_track_rows(np.zeros((0, 7)), 10, 10, 0) == []
+
+
+# A frame's detections as the detector hands them to BoT-SORT, mixed across
+# the two score groups at high 0.5, low 0.01: rows 0 and 2 are the high
+# group (idx 0 and 1 there), rows 1 and 3 the second group (idx 0 and 1).
+FRAME = np.array([
+    # x1, y1, x2, y2, conf, cls
+    [10, 10, 50, 50, 0.9, 0],
+    [60, 10, 90, 40, 0.3, 0],
+    [100, 100, 200, 200, 0.7, 1],
+    [300, 300, 320, 330, 0.05, 0],
+], dtype=np.float32)
+
+
+def _tracked(*rows):
+    """BoT-SORT output rows: its own Kalman box, then track_id, score, cls, idx."""
+    return np.array(rows, dtype=np.float32).reshape(-1, 8)
+
+
+def test_a_tracked_box_is_the_detection_it_matched_not_the_kalman_box():
+    """The tracker's row says where its filter thinks the animal is; the
+    stored box is the detection behind it, found by idx in its group."""
+    tracked = _tracked(
+        [105, 95, 205, 190, 4, 0.7, 1, 1],  # high group, second member: FRAME row 2
+        [12, 14, 52, 55, 3, 0.9, 0, 0],     # high group, first member: FRAME row 0
+    )
+    rows = ts.matched_detections(tracked, FRAME, high=0.5, low=0.01)
+    assert rows.tolist() == [
+        [100, 100, 200, 200, 4, np.float32(0.7), 1],
+        [10, 10, 50, 50, 3, np.float32(0.9), 0],
+    ]
+
+
+def test_a_low_score_box_is_looked_up_in_the_second_group():
+    """idx restarts in the second group, so idx 1 there is FRAME row 3,
+    not the high group's second member."""
+    rows = ts.matched_detections(
+        _tracked([301, 302, 321, 333, 9, 0.05, 0, 1]), FRAME, high=0.5, low=0.01
+    )
+    assert rows[0, :4].tolist() == [300, 300, 320, 330]
+    assert ts.matched_detections(_tracked(), FRAME, 0.5, 0.01).shape == (0, 7)
+
+
+def test_a_row_that_names_the_wrong_detection_stops_the_run():
+    """A score or class that does not match the detection idx names means
+    ultralytics numbers differently now: crash, never misplace a box."""
+    for row in (
+        [0, 0, 1, 1, 3, 0.8, 0, 0],  # high group idx 0 scores 0.9, not 0.8
+        [0, 0, 1, 1, 3, 0.9, 1, 0],  # right score, wrong class
+        [0, 0, 1, 1, 3, 0.9, 0, 5],  # no such member
+    ):
+        with pytest.raises(RuntimeError, match="ultralytics 8.3.177"):
+            ts.matched_detections(_tracked(row), FRAME, high=0.5, low=0.01)
+
+
+def test_born_detections_are_the_unconfirmed_tracks_of_this_frame():
+    """A track started on this frame waits unconfirmed in tracked_stracks;
+    its first detection is taken from there, the reported tracks are not."""
+    f32 = np.float32
+    tracker = T(tracked_stracks=[
+        T(track_id=11, is_activated=False, score=f32(0.7), cls=f32(1), idx=f32(1)),
+        T(track_id=3, is_activated=True, score=f32(0.9), cls=f32(0), idx=f32(0)),
+    ])
+    rows = ts.born_detections(tracker, FRAME, high=0.5, low=0.01)
+    assert rows.tolist() == [[100, 100, 200, 200, 11, f32(0.7), 1]]
+    assert ts.born_detections(T(tracked_stracks=[]), FRAME, 0.5, 0.01).shape == (0, 7)
 
 
 def test_raw_detection_rows_keep_every_box_and_carry_no_track():

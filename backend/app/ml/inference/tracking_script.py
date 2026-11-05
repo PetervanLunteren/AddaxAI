@@ -13,7 +13,10 @@ in on the command line; everything it learns goes out in the JSON.
 
 Per video: decode every ``round(native_fps / fps)``-th frame through an
 ffmpeg pipe, run the detector on each, hand the boxes to BoT-SORT, and
-keep the tracker's output. ffmpeg rather than MegaDetector's
+store for every box it followed the detection it matched, from the one
+that started the track: the tracker decides which detections are one
+animal, every stored box is the detector's own (``matched_detections``,
+``born_detections``). ffmpeg rather than MegaDetector's
 ``video_utils`` because it is a separate process that decodes the next
 frame while the detector works on this one, with the platform's
 hardware decoder and the downscale in the same pass: a whole 65 minute
@@ -356,13 +359,90 @@ def _normalised_box(
     }
 
 
+def _score_groups(
+    detections: np.ndarray, high: float, low: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """The two groups BoT-SORT splits a frame's detections into before it
+    matches them, as indices into ``detections``: the high group
+    (``conf >= high``) and the second group (``low < conf < high``), by
+    the rule of ultralytics' ``BYTETracker.update``."""
+    conf = detections[:, 4]
+    return np.flatnonzero(conf >= high), np.flatnonzero((conf > low) & (conf < high))
+
+
+def _detection_of(
+    detections: np.ndarray,
+    groups: tuple[np.ndarray, np.ndarray],
+    high: float,
+    score: np.float32,
+    cls: np.float32,
+    idx: np.float32,
+) -> np.ndarray:
+    """The detector row a track took on this frame. BoT-SORT numbers the
+    detections inside each score group from 0 (``init_track`` runs once
+    per group), so its ``idx`` is a position in the track's own group,
+    which the track's score names. The track copies the detection's
+    float32 score and class, so the row found must carry exactly those;
+    anything else means ultralytics changed how it numbers, and every box
+    after it could sit on the wrong animal, so the run stops."""
+    group = groups[0] if score >= high else groups[1]
+    i = int(idx)
+    if i < len(group) and detections[group[i], 4] == score and detections[group[i], 5] == cls:
+        return detections[group[i]]
+    raise RuntimeError(
+        f"BoT-SORT's output no longer points at its input: a track's idx {i} "
+        f"does not name a detection with its score {float(score)} and class "
+        f"{int(cls)}. The tracking script relies on how ultralytics 8.3.177 "
+        "numbers idx; check the ultralytics installed in this environment."
+    )
+
+
+def matched_detections(
+    tracked: np.ndarray, detections: np.ndarray, high: float, low: float
+) -> np.ndarray:
+    """Rows (x1, y1, x2, y2, track_id, conf, cls) for the tracks BoT-SORT
+    reported on a frame, with the box of the detection each one matched.
+    The tracker's own row holds its Kalman estimate, which trails a
+    moving animal (median IoU 0.80 against its own detection on a reef
+    drop, 2026-11-05); the app stores what the detector saw, as it does
+    for a photo, and takes only the identity from the tracker."""
+    groups = _score_groups(detections, high, low)
+    rows = []
+    for _x1, _y1, _x2, _y2, track_id, score, cls, idx in tracked:
+        x1, y1, x2, y2 = _detection_of(detections, groups, high, score, cls, idx)[:4]
+        rows.append([x1, y1, x2, y2, track_id, score, cls])
+    return np.asarray(rows, dtype=np.float32).reshape(-1, 7)
+
+
+def born_detections(
+    tracker, detections: np.ndarray, high: float, low: float
+) -> np.ndarray:
+    """Rows like ``matched_detections`` for the tracks started on this
+    frame. BoT-SORT reports a track from its second matched frame on (on
+    the first frame of a video at once), so the detection that started it
+    is never in its output; it waits unconfirmed in ``tracked_stracks``
+    and is matched on the next frame or removed. The caller keeps these
+    one frame and stores the box when the track is reported."""
+    groups = _score_groups(detections, high, low)
+    rows = []
+    for track in tracker.tracked_stracks:
+        if track.is_activated:
+            continue
+        x1, y1, x2, y2 = _detection_of(
+            detections, groups, high, track.score, track.cls, track.idx
+        )[:4]
+        rows.append([x1, y1, x2, y2, track.track_id, track.score, track.cls])
+    return np.asarray(rows, dtype=np.float32).reshape(-1, 7)
+
+
 def normalise_track_rows(
     rows: np.ndarray, width: int, height: int, frame_number: int
 ) -> list[dict]:
-    """BoT-SORT output rows (x1, y1, x2, y2, track_id, conf, cls, idx) to
-    JSON boxes with their ``track_id``."""
+    """Rows (x1, y1, x2, y2, track_id, conf, cls) from
+    ``matched_detections`` or ``born_detections`` to JSON boxes with their
+    ``track_id``."""
     boxes = []
-    for x1, y1, x2, y2, track_id, conf, cls, _idx in rows.tolist():
+    for x1, y1, x2, y2, track_id, conf, cls in rows.tolist():
         box = _normalised_box(x1, y1, x2, y2, conf, cls, width, height, frame_number)
         box["track_id"] = int(track_id)
         boxes.append(box)
@@ -558,9 +638,12 @@ def track_video(
     out_w, out_h = decode_size(*size)
     tracker = BOTSORT(tracker_args)
     tracker.gmc = GMC(method=tracker_args.gmc_method, downscale=gmc_downscale(out_w))
+    high, low = tracker_args.track_high_thresh, tracker_args.track_low_thresh
     processed: list[int] = []
     boxes_out: list[dict] = []
     best_crops: dict[int, tuple[float, int, bytes]] = {}
+    # The first box of each track started on the previous frame, by track.
+    births: dict[int, dict] = {}
     for frame_number, frame_bgr in ffmpeg_frames(ffmpeg, path, stride, out_w, out_h):
         processed.append(frame_number)
         detections = detector.detect(frame_bgr)
@@ -568,11 +651,24 @@ def track_video(
             raw_out.extend(normalise_detection_rows(detections, out_w, out_h, frame_number))
         # BoT-SORT wants the frame for its camera-motion compensation.
         tracked = tracker.update(Boxes(detections, (out_h, out_w)), frame_bgr)
-        if len(tracked):
-            boxes = normalise_track_rows(tracked, out_w, out_h, frame_number)
-            boxes_out.extend(boxes)
-            keep_best_crop(best_crops, boxes, frame_bgr, frame_number)
+        boxes = normalise_track_rows(
+            matched_detections(tracked, detections, high, low), out_w, out_h, frame_number
+        )
+        # A track reported for the first time brings the box it started from.
+        boxes_out.extend(births[b["track_id"]] for b in boxes if b["track_id"] in births)
+        boxes_out.extend(boxes)
+        births = {
+            b["track_id"]: b
+            for b in normalise_track_rows(
+                born_detections(tracker, detections, high, low), out_w, out_h, frame_number
+            )
+        }
+        # Births are cut here, while their frame is in memory; a birth that
+        # never becomes a track leaves an entry nobody writes.
+        keep_best_crop(best_crops, [*births.values(), *boxes], frame_bgr, frame_number)
         progress.update(1)
+    # A birth is stored one frame late; back into frame order.
+    boxes_out.sort(key=lambda b: b["frame_number"])
     boxes_out = filter_tracks(
         boxes_out, fps, min_motion=filter_motion, exempt_conf=filter_exempt
     )
