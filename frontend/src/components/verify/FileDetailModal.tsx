@@ -456,14 +456,18 @@ export function FileDetailModal({
   // tooltips spell out the full sentence with the scope. Matches the
   // Detections bar's texts. Only the majority button carries the scope:
   // it is the one action that ignores the selection, and without it it
-  // would read like a quick label while acting on more. A clip's unit
-  // is the detection (one track each), a photo's the box.
-  const unit = file?.file_type === "video" ? "detection" : "box";
-  const units = file?.file_type === "video" ? "detections" : "boxes";
-  const noun = file?.file_type === "video" ? "clip" : "photo";
-  // What you see, in words: "all 12 boxes", "the 17 detections on this frame".
+  // would read like a quick label while acting on more. One word for
+  // photo and clip alike, the box: a clip's frame is a picture with
+  // boxes, one per animal on it (until 2026-11-05 a clip said
+  // "detection", and the two viewers read like two tools).
+  const unit = "box";
+  const units = "boxes";
+  // The wording reads the grid's item, not the loaded file: the item
+  // already knows it is a clip, so nothing says "photo" while it loads.
+  const noun = item?.file_type === "video" ? "clip" : "photo";
+  // What you see, in words: "all 12 boxes", "the 17 boxes on this frame".
   const seen =
-    file?.file_type === "video"
+    item?.file_type === "video"
       ? `the ${onScreen.length} ${units} on this frame`
       : `all ${onScreen.length} ${units}`;
   const scope =
@@ -480,13 +484,15 @@ export function FileDetailModal({
   const verifyLabel =
     cards.length === 0
       ? `Verify empty ${noun}`
-      : file?.file_type !== "video"
+      : item?.file_type !== "video"
         ? cards.length === 1
           ? `Verify 1 ${unit}`
           : `Verify all ${cards.length} ${units}`
         : onScreen.length === 0
           ? "Verify this frame"
-          : `Verify the ${onScreen.length} on this frame`;
+          : onScreen.length === 1
+            ? `Verify 1 ${unit} on this frame`
+            : `Verify the ${onScreen.length} ${units} on this frame`;
   const majority = useMemo(() => labelMajority(onScreen), [onScreen]);
   // How many detections a whole-clip sign-off would verify unseen.
   const unchecked = useMemo(
@@ -1142,24 +1148,6 @@ export function FileDetailModal({
                   "No capture time"
                 )}
               </div>
-              {/* Say what is on screen. The cover is the clip's picture
-                  and nothing is judged on it: the detections are the
-                  tracks, one bar each under the picture. It leads with
-                  the detector on purpose, so nobody reads "one frame"
-                  as "the AI looked at one frame". A drawn box lands on
-                  the frame on screen (`AnnotationCanvas` stamps it on
-                  every box it creates). Worded to hold for a clip
-                  where nothing was found at all. */}
-              {item.file_type === "video" && (
-                <div className="pt-1 text-muted-foreground/80">
-                  The AI checked the whole clip. This is the clip's cover,
-                  the picture that stands for it in the grid. A box you
-                  draw is saved on the frame you are looking at.
-                  {(file?.tracks.length ?? 0) > 0 &&
-                    " Each detection the AI followed is a bar below; click one to see it on its own frame."}
-                  {playable && " Press P or the play button to watch the clip."}
-                </div>
-              )}
             </div>
           </DetailCard>
 
@@ -1174,11 +1162,11 @@ export function FileDetailModal({
             {/* Carries the scope so the buttons do not have to: what
                 they act on, and how to narrow it. */}
             <p className="mb-2 text-xs text-muted-foreground">
-              {file?.file_type !== "video"
+              {item?.file_type !== "video"
                 ? "These act on the box you select, with a click or Tab. None selected means all boxes."
                 : viewMode === "video"
-                  ? "These act on the detection you select by clicking a bar. Press P to come back to the still on the moment you paused; with nothing selected they act on the detections that frame shows."
-                  : "These act on the detection you select: click a box, Tab through them, or click a bar. None selected means every detection on this frame, each through all of its frames."}
+                  ? "These act on the box you select by clicking a bar."
+                  : "These act on the box you select, with a click, Tab or a bar. None selected means the boxes on this frame."}
             </p>
             {/* A fieldset so one flag disables every verdict button
                 while the frame is on its way (the header's frame gate);
@@ -1400,8 +1388,8 @@ export function FileDetailModal({
             title={
               isVerified
                 ? "Unverify: hand every detection in this file back to the AI"
-                : file?.file_type === "video"
-                  ? "Verify every detection on this frame, each through all of its frames, and go on to the next animal still unchecked. The clip is signed off once nothing in it is left unchecked."
+                : item?.file_type === "video"
+                  ? "Verify the boxes on this frame and go to the next animal still unchecked"
                   : `Verify every ${unit} in this ${noun} as it is and go to the next file`
             }
           >

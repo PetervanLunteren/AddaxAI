@@ -18,7 +18,7 @@ import { labelsApi } from "../../api/labels";
 import { eventsApi } from "../../api/events";
 import { projectsApi } from "../../api/projects";
 import { API_BASE_URL } from "../../lib/api-client";
-import { formatCameraDate, formatCameraTime, formatClipPosition } from "../../lib/datetime";
+import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import { frameImageUrl } from "../../lib/clip-frames";
 import { frameBoxes, samplingStep, trackGaps, trackPath } from "../../lib/track-utils";
 import { TrackSpan } from "./TrackTimeline";
@@ -733,22 +733,10 @@ export function DetectionDetailModal({
                   title={fileData.file_type === "video" ? "Video" : "Image"}
                 >
                   <div className="space-y-0.5 text-xs text-muted-foreground">
-                    <FileLocation
-                      filePath={fileData.file_path}
-                      suffix={
-                        // The grid summary has no frame number; the full
-                        // row does, once the file has loaded.
-                        fileData.file_type === "video" &&
-                        fullDetection?.frame_number != null && (
-                          <span>
-                            {" "}· frame {fullDetection.frame_number}
-                            {fileData.frame_rate
-                              ? ` · ${formatClipPosition(fullDetection.frame_number / fileData.frame_rate)} in`
-                              : ""}
-                          </span>
-                        )
-                      }
-                    />
+                    {/* Name and date, as on a photo; where in the clip the
+                        animal was is the span below, not a frame number
+                        squeezed onto the name's line. */}
+                    <FileLocation filePath={fileData.file_path} />
                     <div>
                       {formatCameraDate(detection.captured_at_local, { day: "numeric", month: "short", year: "numeric" }, "en-GB")}{" "}
                       {formatCameraTime(detection.captured_at_local, { hour: "2-digit", minute: "2-digit" }, "en-GB")}

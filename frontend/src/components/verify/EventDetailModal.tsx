@@ -1012,22 +1012,6 @@ export function EventDetailModal({
                     {selectedFileIndex + 1} of {files.length})
                   </div>
                 )}
-                {/* Why a clip's label flickers. Both video surfaces show it:
-                    the player draws each frame's own boxes, and the frame
-                    filmstrip shows separate frames side by side. It sits
-                    here rather than over the video because camera traps burn
-                    date, time and camera name into the top and bottom strips
-                    of every frame, so any overlay lands on data the user came
-                    to read. */}
-                {currentFile?.file_type === "video" && (
-                  <div className="pt-1 text-[11px] leading-snug text-muted-foreground/70">
-                    The AI followed each detection through the clip, so a
-                    label can change between frames while it plays. A
-                    species' count is the most of them on screen at once
-                    during the event; the marker on the timeline is that
-                    moment.
-                  </div>
-                )}
               </div>
             )}
 
