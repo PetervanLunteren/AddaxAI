@@ -36,8 +36,33 @@ pure, like `summarise_tracks`.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterator
 
 from app.ml.inference.scoring import summarise_tracks
+
+
+def _tracks(md_results: dict) -> Iterator[tuple[dict, list[dict]]]:
+    """Each track's card box and all its boxes, entry by entry.
+    `summarise_tracks` names the card frame and ignores boxes without a
+    track id, so photos and drawn boxes never come out of here."""
+    for img in md_results.get("images") or []:
+        dets = img.get("detections") or []
+        summaries = summarise_tracks(dets)
+        by_track: dict[int, list[dict]] = defaultdict(list)
+        for det in dets:
+            if det.get("track_id") is not None and det.get("frame_number") is not None:
+                by_track[int(det["track_id"])].append(det)
+        for track_id, boxes in by_track.items():
+            card_frame = summaries[track_id].representative_frame_number
+            card = next(b for b in boxes if int(b["frame_number"]) == card_frame)
+            yield card, boxes
+
+
+def _give(boxes: list[dict], classifications: list[list]) -> None:
+    """Each box its own copy, so no later in-place edit of one box can
+    reach the rest of its track."""
+    for b in boxes:
+        b["classifications"] = [list(pair) for pair in classifications]
 
 
 def vote_tracks(md_results: dict) -> int:
@@ -46,12 +71,9 @@ def vote_tracks(md_results: dict) -> int:
     top class, which is what a reader of the log wants to know (nearly
     every card's list changes in its decimals).
 
-    For every entry with detections: `summarise_tracks` names the card
-    frame per track and ignores boxes without a track id, so photos and
-    drawn boxes are never touched. The voters are the track's boxes that
-    carry `classifications`, which is the frames at or above the
-    classification gate; the weaker frames of the track were never
-    classified and have nothing to say.
+    The voters are the track's boxes that carry `classifications`, which
+    is the frames at or above the classification gate; the weaker frames
+    of the track were never classified and have nothing to say.
     ``score[class] = sum(p * conf) / sum(conf)`` over the voters, sorted
     descending and rounded to 5 decimals like the worker writes them,
     written onto every box of the track, those that did not vote too. The
@@ -63,40 +85,47 @@ def vote_tracks(md_results: dict) -> int:
     comes out as its own list, up to rounding.
     """
     changed = 0
-    for img in md_results.get("images") or []:
-        dets = img.get("detections") or []
-        summaries = summarise_tracks(dets)
-        if not summaries:
+    for card, boxes in _tracks(md_results):
+        voters = [b for b in boxes if b.get("classifications")]
+        weight = sum(float(b["conf"]) for b in voters)
+        if weight <= 0:
             continue
+        score: dict[str, float] = defaultdict(float)
+        for b in voters:
+            conf = float(b["conf"])
+            for class_id, p in b["classifications"]:
+                score[str(class_id)] += float(p) * conf
 
-        by_track: dict[int, list[dict]] = defaultdict(list)
-        for det in dets:
-            if det.get("track_id") is not None and det.get("frame_number") is not None:
-                by_track[int(det["track_id"])].append(det)
+        voted = [
+            [class_id, round(total / weight, 5)]
+            for class_id, total in sorted(score.items(), key=lambda item: (-item[1], item[0]))
+        ]
+        before = card.get("classifications") or []
+        if not before or voted[0][0] != str(before[0][0]):
+            changed += 1
+        _give(boxes, voted)
+    return changed
 
-        for track_id, boxes in by_track.items():
-            voters = [b for b in boxes if b.get("classifications")]
-            if not voters:
-                continue
-            card_frame = summaries[track_id].representative_frame_number
-            card = next(b for b in boxes if int(b["frame_number"]) == card_frame)
 
-            weight = sum(float(b["conf"]) for b in voters)
-            if weight <= 0:
-                continue
-            score: dict[str, float] = defaultdict(float)
-            for b in voters:
-                conf = float(b["conf"])
-                for class_id, p in b["classifications"]:
-                    score[str(class_id)] += float(p) * conf
+def tracks_follow_their_cards(md_results: dict) -> int:
+    """Give every box of each track its card's scores again, after
+    MegaDetector's smoothing. In place; returns how many boxes changed.
 
-            voted = [
-                [class_id, round(total / weight, 5)]
-                for class_id, total in sorted(score.items(), key=lambda item: (-item[1], item[0]))
-            ]
-            before = card.get("classifications") or []
-            if not before or voted[0][0] != str(before[0][0]):
-                changed += 1
-            for b in boxes:
-                b["classifications"] = voted
+    The smoother judges box by box, and only the boxes at or above the
+    counting threshold, so it can relabel the two clear boxes of a fox
+    track (the card among them) to the lynx that fills the clip and leave
+    its fourteen faint ones fox: one animal, two species, the split the
+    vote exists to prevent (bug hunt, 2026-11-06). The smoother still
+    decides; its verdict on the card, the track's clearest box, now holds
+    for the whole animal. A track whose card carries no scores is left
+    alone.
+    """
+    changed = 0
+    for card, boxes in _tracks(md_results):
+        scores = card.get("classifications")
+        if not scores:
+            continue
+        stale = [b for b in boxes if b.get("classifications") != scores]
+        changed += len(stale)
+        _give(stale, scores)
     return changed

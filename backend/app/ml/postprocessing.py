@@ -32,7 +32,7 @@ from app.ml.detection_visibility import on_visible_frame_of
 from app.ml.label_exclusion import is_human_decided
 from app.ml.observation_type import derive_observation_type
 from app.ml.progress import ProgressTicker
-from app.ml.track_vote import vote_tracks
+from app.ml.track_vote import tracks_follow_their_cards, vote_tracks
 from app.models import Deployment, Detection, File, Project
 from app.utils.subprocess_env import clean_python_env
 
@@ -455,6 +455,9 @@ def run_postprocessing_for_deployment(
         with open(output_path) as f:
             smoothed = json.load(f)
 
+        # The smoother relabels box by box; one animal keeps one species.
+        followed = tracks_follow_their_cards(smoothed)
+        logger.info(f"Smoothing: {followed} tracked boxes took their card's species")
         return smoothed
 
     except JobCancelledError:

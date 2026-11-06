@@ -7,7 +7,7 @@ tracking script writes it; tracked boxes change, nothing else does.
 
 import copy
 
-from app.ml.track_vote import vote_tracks
+from app.ml.track_vote import tracks_follow_their_cards, vote_tracks
 
 FOX, WOLF, BOAR, DEER = "1", "2", "3", "4"
 
@@ -143,3 +143,53 @@ def test_scores_come_back_sorted_and_rounded():
     assert [c for c, _ in scores] == [DEER, FOX, WOLF, BOAR]
     assert scores == [[DEER, 0.4], [FOX, 0.25], [WOLF, 0.2], [BOAR, 0.15]]
     assert all(round(p, 5) == p for _, p in scores)
+
+
+LYNX = "5"
+
+
+def test_after_smoothing_a_split_track_takes_its_cards_species():
+    """MegaDetector's smoother relabels only the clear boxes, so it can
+    turn the card and one other clear box of a fox track to lynx and
+    leave the faint ones fox (bug hunt, 2026-11-06). The card's verdict
+    then holds for the whole animal."""
+    card = _box(60, 0.9, 1, [[LYNX, 0.8]])
+    clear = _box(90, 0.8, 1, [[LYNX, 0.8]])
+    faint = [_box(f, 0.3, 1, [[FOX, 0.7], [WOLF, 0.3]]) for f in range(100, 240, 10)]
+    other = _box(60, 0.9, 2, [[LYNX, 0.9]])
+    res = _results(card, clear, *faint, other)
+
+    assert tracks_follow_their_cards(res) == len(faint)
+    assert all(b["classifications"] == [[LYNX, 0.8]] for b in [card, clear, *faint])
+    assert other["classifications"] == [[LYNX, 0.9]]
+    assert tracks_follow_their_cards(res) == 0  # nothing left to change
+
+
+def test_a_card_without_scores_and_untracked_boxes_are_left_alone():
+    """A person track has no scores to hand on; a photo has no track."""
+    person = [_box(f, 0.8, 1) for f in (30, 60)]
+    photo = {"category": "1", "conf": 0.9, "bbox": [0, 0, 0.5, 0.5],
+             "classifications": [[FOX, 0.9]]}
+    res = {"images": [{"file": "clip.mp4", "detections": person},
+                      {"file": "photo.jpg", "detections": [photo]}]}
+    snapshot = copy.deepcopy(res)
+
+    assert tracks_follow_their_cards(res) == 0
+    assert res == snapshot
+
+
+def test_every_box_gets_its_own_copy_of_the_scores():
+    """Rollup replaces a box's list today; if any step ever edits one in
+    place, it must not reach the rest of the track."""
+    card = _box(60, 0.9, 1, [[WOLF, 0.9]])
+    other = _box(90, 0.8, 1, [[WOLF, 0.6], [FOX, 0.4]])
+    res = _results(card, other)
+
+    vote_tracks(res)
+    other["classifications"][0][1] = 0.0
+    assert card["classifications"][0][1] != 0.0
+
+    other["classifications"] = [[FOX, 0.9]]
+    tracks_follow_their_cards(res)
+    other["classifications"][0][1] = 0.0
+    assert card["classifications"][0][1] != 0.0

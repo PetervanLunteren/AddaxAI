@@ -394,6 +394,32 @@ def test_a_card_verdict_leaves_a_frame_a_person_labelled(client, db):
     assert rows[boxes["one"][0].id].label == "elasmobranch"
 
 
+def test_undoing_a_card_verdict_leaves_a_frame_a_person_labelled(client, db):
+    """Undo of the card reverts the animal, not the frames a person fixed
+    inside it; until 2026-11-06 it handed those back to the AI too."""
+    _, _, _, _, boxes = _tracked_video(db)
+    card, mine = boxes["one"][1], boxes["one"][2]
+    for box in boxes["one"]:
+        box.original_label = box.label = "elasmobranch"
+        box.classification_method = "machine"
+    mine.label, mine.classification_method, mine.verified = "blacktip", "human", True
+    db.commit()
+    client.patch(f"/api/detections/{card.id}/verify", json={"verified": True})
+
+    resp = client.post(
+        "/api/detections/bulk-revert-to-original", json={"detection_ids": [card.id]}
+    )
+
+    assert resp.status_code == 200
+    assert mine.id not in {r["detection_id"] for r in resp.json()["reverted"]}
+    rows = _rows(db, [b.id for b in boxes["one"]])
+    for row in rows.values():
+        db.refresh(row)
+    assert (rows[mine.id].label, rows[mine.id].verified) == ("blacktip", True)
+    assert rows[card.id].verified is False
+    assert rows[card.id].label == rows[boxes["one"][0].id].label == "elasmobranch"
+
+
 def test_unverifying_clears_the_flag_and_no_label(client, db):
     """Unverify is not an undo of the label; revert-to-original is."""
     _, _, _, _, boxes = _tracked_video(db)

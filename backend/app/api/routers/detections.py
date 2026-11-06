@@ -532,7 +532,15 @@ def bulk_revert_to_original(
         raise HTTPException(status_code=404, detail="No detections found")
 
     reverted: list[dict] = []
+    # As in `bulk_relabel`: the ids are the boxes the undo is about, the
+    # rest are their tracks' siblings, and a sibling a person labelled by
+    # hand keeps it. Undoing a card verify used to wipe the frames someone
+    # had relabelled inside that track, the way a tracker that switched
+    # animals is put right.
+    chosen = set(body.detection_ids)
     for det in detections:
+        if det.id not in chosen and det.classification_method == "human":
+            continue
         orig = det.original_label
         if orig:
             tax_id = _resolve_detection_taxonomy(db, det, orig)
