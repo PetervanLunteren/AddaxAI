@@ -61,8 +61,9 @@
 ;    most users, and the worst case (user reinstalls legacy later) is
 ;    self-healing — they reinstall AddaxAI and the shim wins again.
 ;
-; 3. Offer to clear the data folder on uninstall (customUnInstall below).
-;    The folder is whatever AddaxAIDataDir says, never a hardcoded path.
+; 3. Offer to clear the data folder on uninstall (customUnInstall below),
+;    only when it is one AddaxAI picked by itself, never a folder the
+;    user or IT chose through ADDAXAI_USER_DATA_DIR.
 ;
 ; 4. Keep the app out of the data folder. See "The install folder never
 ;    overlaps the data folder" below.
@@ -537,6 +538,14 @@ FunctionEnd
   ; Nothing to ask about if the folder isn't present.
   Call un.AddaxAIDataDir
   Pop $0
+  ; Only offer to delete a folder AddaxAI picked by itself. A folder set
+  ; through ADDAXAI_USER_DATA_DIR by the user or IT can hold anything,
+  ; photos included, so it is never removed here.
+  ReadEnvStr $1 SystemDrive
+  ${If} $0 != "$PROFILE\AddaxAI"
+  ${AndIf} $0 != "$1\AddaxAI-data"
+    Goto skip_userdata_removal
+  ${EndIf}
   IfFileExists "$0\*.*" 0 skip_userdata_removal
 
   MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 \
