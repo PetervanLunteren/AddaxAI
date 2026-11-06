@@ -26,7 +26,7 @@ jobs:
           # macOS is the canonical target. Hard fails on any error.
           - label: macOS arm64
             os: macos
-            runs-on: macos-14
+            runs-on: macos-15
             continue-on-error: false
             artifact-name: macos-installers
             artifact-glob: |

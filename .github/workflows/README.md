@@ -22,7 +22,7 @@ re-pushing.
 
 | OS | Runner | Arch | Outputs | Blocking |
 |----|--------|------|---------|----------|
-| macOS | `macos-14` | arm64 | `.dmg`, `-mac.zip` | Yes |
+| macOS | `macos-15` | arm64 | `.dmg`, `-mac.zip` | Yes |
 | Linux | `ubuntu-22.04` | x64 | `.deb` | No (`continue-on-error`) |
 | Windows | `windows-2022` | x64 | `.exe` (NSIS), `-win.zip` | Yes |
 
@@ -134,7 +134,7 @@ charged minutes per release, i.e. ~16 releases/month within the free tier.
 | Symptom | Likely cause |
 |---------|--------------|
 | `Missing required secret: ...` at the top of the macOS job | Secrets not configured in repo settings |
-| `lipo` reports `x86_64` instead of `arm64` | Runner image was bumped or PyInstaller was run on a different host arch. Check `matrix.runs-on` is `macos-14` |
+| `lipo` reports `x86_64` instead of `arm64` | Runner image was bumped or PyInstaller was run on a different host arch. Check `matrix.runs-on` is `macos-15` |
 | `codesign --verify` fails | `remove_python_signature.py` did not strip a stale signature. Inspect `_internal/` for foreign Team IDs |
 | `xcrun stapler validate` fails | Notarization completed but ticket was not stapled. Re-run; usually transient |
 | Notarization stuck > 30 min | Apple servers are slow. The hook does 3 retries totalling 45 min; if all 3 time out the workflow fails. Re-run when Apple recovers |
