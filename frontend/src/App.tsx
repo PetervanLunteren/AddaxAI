@@ -30,6 +30,7 @@ import { DeploymentTimelinePage } from "./pages/DeploymentTimelinePage";
 import { ActivityOverlapPage } from "./pages/ActivityOverlapPage";
 import { ConfusionMatrixPage } from "./pages/ConfusionMatrixPage";
 import { PerClassPerformancePage } from "./pages/PerClassPerformancePage";
+import { CalibrationPage } from "./pages/CalibrationPage";
 import LabelsPage from "./pages/LabelsPage";
 import CountsPage from "./pages/CountsPage";
 import ExportPage from "./pages/ExportPage";
@@ -448,6 +449,7 @@ function App() {
               <Route path="insights/activity-overlap" element={<ActivityOverlapPage />} />
               <Route path="insights/confusion-matrix" element={<ConfusionMatrixPage />} />
               <Route path="insights/per-class-performance" element={<PerClassPerformancePage />} />
+              <Route path="insights/calibration" element={<CalibrationPage />} />
               <Route path="sites" element={<SitesPage />} />
               <Route path="deployments" element={<DeploymentsPage />} />
               <Route path="export" element={<ExportPage />} />

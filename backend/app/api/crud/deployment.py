@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session, object_session
 from app.api.schemas.deployment import DeploymentCreate, DeploymentUpdate
 from app.core.logging_config import get_logger
 from app.models import (
+    CalibrationAnswer,
     Deployment,
     Detection,
     DetectionEmbedding,
@@ -329,6 +330,12 @@ def purge_deployment_data(db: Session, deployment_ids: Select) -> list[tuple[str
     event_ids = select(Event.id).where(Event.deployment_id.in_(deployment_ids))
 
     stages = (
+        (
+            "calibration_answers",
+            delete(CalibrationAnswer).where(
+                CalibrationAnswer.detection_id.in_(detection_ids)
+            ),
+        ),
         (
             "detection_embeddings",
             delete(DetectionEmbedding).where(
