@@ -14,7 +14,7 @@
  * nudges the answer, and the fit needs the person's own judgement.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
 
@@ -84,6 +84,11 @@ export function CalibrationDialog({
   // Bumped for every new batch so each one is a fresh draw.
   const [round, setRound] = useState(0);
   const [index, setIndex] = useState(0);
+  // True from the keypress until the answer round-trips. React state
+  // (`answer.isPending`) lags one render behind, and three keypresses in
+  // a few milliseconds all saw it false, answered the same photo three
+  // times and skipped two. A ref flips at once.
+  const inFlight = useRef(false);
 
   const { data: batch, isLoading } = useQuery({
     queryKey: ["calibration", "sample", projectId, row.label, round],
@@ -104,6 +109,9 @@ export function CalibrationDialog({
       // reprocessed). Nothing to answer, so move on instead of retrying.
       if (error instanceof ApiError && error.status === 404) setIndex((i) => i + 1);
     },
+    onSettled: () => {
+      inFlight.current = false;
+    },
   });
 
   const current = batch?.[index];
@@ -121,13 +129,16 @@ export function CalibrationDialog({
 
   const submit = useCallback(
     (value: CalibrationAnswerValue) => {
-      if (current && !answer.isPending) answer.mutate(value);
+      if (!current || inFlight.current) return;
+      inFlight.current = true;
+      answer.mutate(value);
     },
     [current, answer],
   );
+  // Also from the screen after a batch, back to its last photo.
   const back = useCallback(() => {
-    if (!answer.isPending) setIndex((i) => Math.max(0, i - 1));
-  }, [answer.isPending]);
+    if (!inFlight.current) setIndex((i) => Math.max(0, i - 1));
+  }, []);
   const nextBatch = useCallback(() => {
     setRound((r) => r + 1);
     setIndex(0);
@@ -172,7 +183,12 @@ export function CalibrationDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent
+        className="max-w-2xl"
+        // Nothing gets focus on open. Radix would focus the close button,
+        // and Enter then closed the dialog; the verify modals do the same.
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>Is the AI label right?</DialogTitle>
           <DialogDescription>
@@ -226,7 +242,9 @@ export function CalibrationDialog({
               </>
             )}
             <p className="text-sm text-muted-foreground">{tally(row)}</p>
-            {needed && <p className="text-sm text-muted-foreground">{needed}</p>}
+            {needed && !poolExhausted && (
+              <p className="text-sm text-muted-foreground">{needed}</p>
+            )}
             {curveReady && !poolExhausted && (
               <p className="text-sm text-muted-foreground">
                 More answers make the band around the curve narrower.
@@ -283,6 +301,12 @@ export function CalibrationDialog({
         ) : (
           primary && (
             <DialogFooter>
+              {!poolExhausted && (
+                <Button variant="ghost" onClick={back} className="mr-auto">
+                  <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+                  Back<Kbd>←</Kbd>
+                </Button>
+              )}
               {primary.label !== "Close" && (
                 <Button variant="outline" onClick={onClose}>
                   Close

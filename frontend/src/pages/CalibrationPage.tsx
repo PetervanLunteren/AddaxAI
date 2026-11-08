@@ -76,7 +76,9 @@ export function CalibrationPage() {
           </div>
         ) : !data || data.labels.length === 0 ? (
           <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
-            No AI labels to calibrate yet. Run a classification model on this project first.
+            {data && data.left_out > 0
+              ? `All ${data.left_out} AI labels have fewer than ${data.min_detections} detections, too few to calibrate.`
+              : "No AI labels to calibrate yet. Run a classification model on this project first."}
           </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border bg-card">
@@ -115,6 +117,8 @@ export function CalibrationPage() {
                 {data.labels.map((row) => {
                   const open = expanded === row.label;
                   const started = hasAnswers(row);
+                  // Every detection answered: nothing left to draw.
+                  const exhausted = started && row.right + row.wrong + row.unsure >= row.detections;
                   const note = status(row);
                   const name = resolveSpeciesName(row);
                   return (
@@ -164,9 +168,9 @@ export function CalibrationPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => setCalibrating(row.label)}
-                            disabled={row.detections === 0}
+                            disabled={row.detections === 0 || exhausted}
                           >
-                            {started ? "Continue" : "Calibrate"}
+                            {exhausted ? "Done" : started ? "Continue" : "Calibrate"}
                           </Button>
                         </td>
                       </tr>

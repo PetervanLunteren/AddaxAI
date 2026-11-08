@@ -81,6 +81,10 @@ export function CalibrationCurve({ row }: { row: CalibrationLabel }) {
       scales: {
         x: {
           type: "linear",
+          // The curve covers the answered scores only, so the axis does too;
+          // auto-scaling padded it down to the next round tick.
+          min: curve[0]?.score,
+          max: curve[curve.length - 1]?.score,
           title: { display: true, text: "AI score", color: colors.axis },
           ticks: { color: colors.axis },
           grid: { color: colors.grid },
