@@ -52,8 +52,26 @@ def test_sample_scope_matches_the_labels_grid(db: Session) -> None:
 
     ids = {item.detection_id for item in calibration_crud.draw_batch(db, project.id, "wolf")}
     assert ids == {shown.id, relabelled.id}
-    row = calibration_crud.get_calibration(db, project.id).labels[0]
-    assert (row.label, row.detections) == ("wolf", 2)
+    # Two detections is far below the pool floor, so the page leaves wolf out
+    # and only says that it did.
+    overview = calibration_crud.get_calibration(db, project.id)
+    assert overview.labels == [] and overview.left_out == 1
+    assert overview.min_detections == calibration_crud.MIN_POOL
+
+
+def test_small_labels_are_left_out_unless_answered(db: Session) -> None:
+    project, dep = _project(db)
+    for _ in range(calibration_crud.MIN_POOL):
+        _wolf(db, dep.id, 0.9)
+    for _ in range(calibration_crud.MIN_POOL - 1):
+        _wolf(db, dep.id, 0.9, original_label="lynx")
+    small_but_answered = _wolf(db, dep.id, 0.9, original_label="fox")
+    db.commit()
+    calibration_crud.save_answer(db, small_but_answered.id, "fox", "right")
+
+    overview = calibration_crud.get_calibration(db, project.id)
+    assert [r.label for r in overview.labels] == ["wolf", "fox"]
+    assert overview.left_out == 1
 
 
 def test_sample_skips_answered_detections_and_caps_the_batch(db: Session) -> None:

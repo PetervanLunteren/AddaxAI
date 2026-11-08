@@ -176,7 +176,9 @@ export function CalibrationDialog({
         <DialogHeader>
           <DialogTitle>Is the AI label right?</DialogTitle>
           <DialogDescription>
-            Answers are only used for calibration. They don't verify or relabel anything.
+            To find the score from which this label can be trusted, the app needs right
+            and wrong examples across all scores. Judge each photo on its own. Nothing
+            here verifies or relabels a detection.
           </DialogDescription>
         </DialogHeader>
 

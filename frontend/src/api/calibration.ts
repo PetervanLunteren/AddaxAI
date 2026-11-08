@@ -36,6 +36,9 @@ export interface CalibrationLabel {
 
 export interface CalibrationResponse {
   labels: CalibrationLabel[];
+  /** Labels left off the page for having fewer than `min_detections`. */
+  left_out: number;
+  min_detections: number;
 }
 
 export interface CalibrationSampleItem {

@@ -46,6 +46,12 @@ BATCH_SIZE = 20
 N_BINS = 5
 # Points on the curve sent to the page.
 CURVE_POINTS = 50
+# Labels with fewer detections than this are left off the page unless
+# they already have answers. A curve needs 20 judged answers, and with
+# a pool near that size the person has looked at nearly every detection
+# by the time a curve shows, so the curve adds nothing. 100 is a
+# judgement call: enough that a curve covers far more than was answered.
+MIN_POOL = 100
 
 
 def _get_project(db: Session, project_id: str) -> Project:
@@ -114,7 +120,11 @@ def _summarise(
 
 
 def get_calibration(db: Session, project_id: str) -> CalibrationResponse:
-    """One row per AI label in the project, busiest first."""
+    """One row per AI label in the project, busiest first.
+
+    Labels under `MIN_POOL` detections are left out unless someone has
+    answered on them; `left_out` counts those, so the page can say so.
+    """
     project = _get_project(db, project_id)
 
     pool_counts: dict[str, int] = dict(
@@ -132,11 +142,13 @@ def get_calibration(db: Session, project_id: str) -> CalibrationResponse:
         answers[label].append((score, answer))
 
     taxonomy = build_taxonomy_lookup(db, project)
+    shown = {
+        label
+        for label in set(pool_counts) | set(answers)
+        if pool_counts.get(label, 0) >= MIN_POOL or answers[label]
+    }
     rows: list[CalibrationLabel] = []
-    for label in sorted(
-        set(pool_counts) | set(answers),
-        key=lambda name: (-pool_counts.get(name, 0), name.lower()),
-    ):
+    for label in sorted(shown, key=lambda name: (-pool_counts.get(name, 0), name.lower())):
         right, wrong, unsure, thresholds, curve, bound = _summarise(answers[label])
         tax = taxonomy.get(label.lower())
         plain = label.replace("_", " ")
@@ -156,7 +168,11 @@ def get_calibration(db: Session, project_id: str) -> CalibrationResponse:
                 no_error_bound=bound,
             )
         )
-    return CalibrationResponse(labels=rows)
+    return CalibrationResponse(
+        labels=rows,
+        left_out=len(set(pool_counts) - shown),
+        min_detections=MIN_POOL,
+    )
 
 
 def draw_batch(

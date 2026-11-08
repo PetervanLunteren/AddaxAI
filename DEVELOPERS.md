@@ -826,6 +826,7 @@ References that motivate the design choices: Ridout & Linkie 2009 (J Agric Biol 
 
 - Sample (`draw_batch` in `backend/app/api/crud/calibration.py`): the Labels grid scope by `original_label`, minus the "nothing here" labels, unanswered only. The score range and a `random()` draw per bin (5 bins, batches of 20) run in SQL, so Python never holds more than 100 rows.
 - An answer carries the label it was asked about and is refused (404) when a reprocess has relabelled the detection since.
+- Labels under `MIN_POOL` (100) detections are left off the page unless they have answers; the response carries `left_out` and `min_detections` so the page states the rule without a second copy of the number.
 - Fit (`backend/app/ml/calibration.py`, numpy only): logistic regression on logit(score) with a small ridge on the slope, band by the delta method on the logit scale. A curve needs 10 right and 10 wrong; with no wrong answers the page shows the rule-of-three bound. A target above the answered range is "not reached", never extrapolated.
 
 ## Resuming an interrupted analysis

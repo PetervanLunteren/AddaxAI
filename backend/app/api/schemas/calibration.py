@@ -48,6 +48,8 @@ class CalibrationLabel(BaseModel):
 
 class CalibrationResponse(BaseModel):
     labels: list[CalibrationLabel]
+    left_out: int = Field(..., description="Labels left off the page for having too few detections")
+    min_detections: int = Field(..., description="Detections a label needs to be on the page")
 
 
 class CalibrationSampleItem(BaseModel):

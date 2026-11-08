@@ -4,8 +4,8 @@
  * One row per AI label: how many detections the sample can draw from,
  * the answers so far, and the score from which 90, 95 and 99% of the
  * labels are right. Calibrate opens the "Is this a <label>?" dialog;
- * expanding a row shows the curve with its 95% band and, in words,
- * what to do with it.
+ * expanding a row shows the curve with its 95% band and the same
+ * result in words, so the graph is not the only way to read it.
  */
 
 import { Fragment, useState } from "react";
@@ -18,11 +18,8 @@ import { CalibrationCurve } from "../components/calibration/CalibrationCurve";
 import { CalibrationDialog } from "../components/calibration/CalibrationDialog";
 import { PlotExplainer } from "../components/plots/PlotExplainer";
 import { Button } from "../components/ui/button";
+import { curveSummary } from "../lib/calibration-summary";
 import { resolveSpeciesName } from "../lib/species-name-mode";
-
-// The target the advice under the curve is written for. 95% is the
-// middle of the three columns and the one people quote.
-const ADVICE_TARGET = 0.95;
 
 const DASH = <span className="text-muted-foreground">–</span>;
 
@@ -41,21 +38,6 @@ function status(row: CalibrationLabel): string | null {
     row.wrong_needed > 0 ? `${row.wrong_needed} more wrong` : null,
   ].filter(Boolean);
   return `${needed.join(" and ")} needed for a curve`;
-}
-
-/** What the curve means for the person's work, in one or two sentences. */
-function advice(row: CalibrationLabel, name: string): string {
-  const target = row.thresholds?.find((t) => t.target === ADVICE_TARGET);
-  const pct = Math.round(ADVICE_TARGET * 100);
-  if (!target || target.score === null) {
-    return `${name} labels do not reach ${pct}% right within the scores you answered. Check them all, or answer more.`;
-  }
-  const score = target.score.toFixed(2);
-  return (
-    `From a score of ${score}, at least ${pct} of 100 ${name} labels are right. ` +
-    `Check the ${name} labels below ${score} on the Labels page, with the ` +
-    `classification confidence slider under More filters.`
-  );
 }
 
 export function CalibrationPage() {
@@ -192,11 +174,7 @@ export function CalibrationPage() {
                         <tr className="border-b">
                           <td colSpan={9} className="px-4 py-3">
                             <CalibrationCurve row={row} />
-                            <p className="mt-2 text-sm">{advice(row, name)}</p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              Based on {row.right + row.wrong} answers. The shaded band is the
-                              95% uncertainty.
-                            </p>
+                            <p className="mt-2 text-sm">{curveSummary(row, name)}</p>
                           </td>
                         </tr>
                       )}
@@ -205,28 +183,52 @@ export function CalibrationPage() {
                 })}
               </tbody>
             </table>
+            {data.left_out > 0 && (
+              <p className="border-t px-4 py-2 text-xs text-muted-foreground">
+                {data.left_out} {data.left_out === 1 ? "label" : "labels"} with fewer than{" "}
+                {data.min_detections} detections {data.left_out === 1 ? "is" : "are"} left
+                out.
+              </p>
+            )}
           </div>
         )}
 
         <PlotExplainer
           plotKey="calibration"
           what={
-            <p>
-              One row per label the AI gave. The score columns say from which AI
-              score that share of the labels is right, so labels below it are worth
-              checking and labels above it can be trusted. These are advice only:
-              counts and exports do not use them.
-            </p>
+            <>
+              <p>
+                One row per label the AI gave: how many detections carry it, the
+                answers so far, and three scores. From the 90% score up, at least 90
+                of 100 labels are right; the same for 95 and 99. "Not reached" means
+                the curve does not get there within the scores you answered, so no
+                score separates that label this reliably.
+              </p>
+              <p>
+                Opening a row shows the curve: AI score from left to right, share of
+                right labels from bottom to top. The shaded band is the 95%
+                uncertainty and narrows with more answers. The text under it says the
+                same in words. Counts and exports do not use any of this.
+              </p>
+            </>
           }
           how={
-            <p>
-              Calibrate asks "Is this a ...?" about detections the app picks evenly
-              across the label's score range, so the sample is not tilted towards
-              mistakes the way verified detections are. A curve is fitted once there
-              are at least 10 right and 10 wrong answers, and is only drawn over the
-              scores that were answered. Can't tell answers are stored but left out
-              of the fit. Answers never verify or relabel a detection.
-            </p>
+            <>
+              <p>
+                Calibrate asks "Is this a ...?" about detections the app picks evenly
+                across the label's score range, so the sample is not tilted towards
+                mistakes the way verified detections are. A curve is fitted once there
+                are at least 10 right and 10 wrong answers, and is only drawn over the
+                scores that were answered. Can't tell answers are stored but left out
+                of the fit. Answers never verify or relabel a detection.
+              </p>
+              <p>
+                The scores hold for this project with this model. Another survey,
+                camera setup or model needs its own calibration. Labels with fewer than{" "}
+                {data?.min_detections ?? 100} detections are left out: by the time a
+                curve shows, nearly every one of them has been answered.
+              </p>
+            </>
           }
         />
       </main>
