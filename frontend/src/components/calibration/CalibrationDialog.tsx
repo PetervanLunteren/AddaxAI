@@ -1,14 +1,20 @@
 /**
  * "Is the AI label right?" One crop at a time from a batch the backend
- * draws across the label's score range. Y, N and S answer, Backspace
- * goes back one (answering again replaces the answer). Can't tell is
- * stored but left out of the fit. Answers never touch verification.
+ * draws across the label's score range. Y, N and U answer, ← goes back
+ * one (answering again replaces the answer). Can't tell is stored but
+ * left out of the fit. Answers never touch verification.
+ *
+ * The keys follow the Labels page: U is "unknown" there too, and ← / →
+ * step through files there. Yes is deliberately not Enter, so that
+ * confirming takes a real keypress and a held key cannot wave photos
+ * through unseen. On the screen after a batch, Enter is the main
+ * button.
  *
  * The AI score is deliberately not shown: seeing 0.98 next to a crop
  * nudges the answer, and the fit needs the person's own judgement.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
 
@@ -33,24 +39,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
+import { Kbd } from "../ui/kbd";
 import { Progress } from "../ui/progress";
 
 const KEYS: Record<string, CalibrationAnswerValue> = {
   y: "right",
   n: "wrong",
-  s: "unsure",
+  u: "unsure",
 };
 
 const cropUrl = (detectionId: string) =>
   `${API_BASE_URL}/api/detections/${detectionId}/crop?size=800&aspect=1.333`;
-
-function Kbd({ children }: { children: string }) {
-  return (
-    <kbd className="ml-2 rounded border border-current px-1 py-0.5 font-sans text-[10px] leading-none opacity-70">
-      {children}
-    </kbd>
-  );
-}
 
 function tally(row: CalibrationLabel): string {
   const parts = [`${row.right} right`, `${row.wrong} wrong`, `${row.unsure} can't tell`];
@@ -70,9 +69,16 @@ interface CalibrationDialogProps {
   projectId: string;
   row: CalibrationLabel;
   onClose: () => void;
+  /** Close and open this label's curve on the page. */
+  onShowResult: () => void;
 }
 
-export function CalibrationDialog({ projectId, row, onClose }: CalibrationDialogProps) {
+export function CalibrationDialog({
+  projectId,
+  row,
+  onClose,
+  onShowResult,
+}: CalibrationDialogProps) {
   const queryClient = useQueryClient();
   useSpeciesColorsVersion();
   // Bumped for every new batch so each one is a fresh draw.
@@ -102,6 +108,11 @@ export function CalibrationDialog({ projectId, row, onClose }: CalibrationDialog
 
   const current = batch?.[index];
   const next = batch?.[index + 1];
+  const batchDone = !isLoading && !current;
+  const poolExhausted = batch !== undefined && batch.length === 0;
+  // `row` is refetched after every answer, so this flips the moment the
+  // minimum is reached.
+  const curveReady = row.thresholds !== null;
 
   // Load the next crop while the person looks at this one.
   useEffect(() => {
@@ -117,13 +128,31 @@ export function CalibrationDialog({ projectId, row, onClose }: CalibrationDialog
   const back = useCallback(() => {
     if (!answer.isPending) setIndex((i) => Math.max(0, i - 1));
   }, [answer.isPending]);
+  const nextBatch = useCallback(() => {
+    setRound((r) => r + 1);
+    setIndex(0);
+  }, []);
+
+  // The main button on the screen after a batch, also behind Enter:
+  // show the curve once there is one, otherwise draw the next batch.
+  const primary = useMemo(() => {
+    if (!batchDone) return null;
+    if (curveReady) return { label: "Show result", run: onShowResult };
+    if (poolExhausted) return { label: "Close", run: onClose };
+    return { label: "Next batch", run: nextBatch };
+  }, [batchDone, curveReady, poolExhausted, onShowResult, onClose, nextBatch]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       // A held key repeats faster than the answer round-trips, which
       // would answer the next photo unseen.
       if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
-      if (e.key === "Backspace") {
+      if (e.key === "Enter" && primary) {
+        e.preventDefault();
+        primary.run();
+        return;
+      }
+      if (e.key === "ArrowLeft") {
         e.preventDefault();
         back();
         return;
@@ -135,15 +164,11 @@ export function CalibrationDialog({ projectId, row, onClose }: CalibrationDialog
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [submit, back]);
+  }, [submit, back, primary]);
 
   const name = resolveSpeciesName(row);
   const pillColor = getSpeciesColor(row.label);
   const needed = stillNeeded(row);
-  const nextBatch = () => {
-    setRound((r) => r + 1);
-    setIndex(0);
-  };
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -188,16 +213,23 @@ export function CalibrationDialog({ projectId, row, onClose }: CalibrationDialog
           </div>
         ) : (
           <div className="flex aspect-[4/3] flex-col items-center justify-center gap-2 rounded-lg bg-muted text-center">
-            {batch && batch.length > 0 ? (
+            {poolExhausted ? (
+              <p className="font-medium">Every {name} detection has an answer</p>
+            ) : (
               <>
                 <CheckCircle2 className="h-8 w-8 text-good-ink" />
-                <p className="font-medium">Batch done</p>
+                <p className="font-medium">
+                  {curveReady ? "Enough answers for a curve" : "Batch done"}
+                </p>
               </>
-            ) : (
-              <p className="font-medium">Every {name} detection has an answer</p>
             )}
             <p className="text-sm text-muted-foreground">{tally(row)}</p>
             {needed && <p className="text-sm text-muted-foreground">{needed}</p>}
+            {curveReady && !poolExhausted && (
+              <p className="text-sm text-muted-foreground">
+                More answers make the band around the curve narrower.
+              </p>
+            )}
           </div>
         )}
 
@@ -211,7 +243,7 @@ export function CalibrationDialog({ projectId, row, onClose }: CalibrationDialog
           <>
             <div className="grid grid-cols-3 gap-2">
               <Button size="lg" onClick={() => submit("right")} disabled={answer.isPending}>
-                Yes<Kbd>Y</Kbd>
+                Yes<Kbd onPrimary>Y</Kbd>
               </Button>
               <Button
                 size="lg"
@@ -227,7 +259,7 @@ export function CalibrationDialog({ projectId, row, onClose }: CalibrationDialog
                 onClick={() => submit("unsure")}
                 disabled={answer.isPending}
               >
-                Can't tell<Kbd>S</Kbd>
+                Can't tell<Kbd>U</Kbd>
               </Button>
             </div>
             <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -238,7 +270,7 @@ export function CalibrationDialog({ projectId, row, onClose }: CalibrationDialog
                 disabled={index === 0 || answer.isPending}
               >
                 <ArrowLeft className="mr-1 h-3.5 w-3.5" />
-                Back
+                Back<Kbd>←</Kbd>
               </Button>
               <span>
                 {tally(row)}
@@ -247,12 +279,24 @@ export function CalibrationDialog({ projectId, row, onClose }: CalibrationDialog
             </div>
           </>
         ) : (
-          <DialogFooter>
-            <Button variant="outline" onClick={onClose}>
-              Close
-            </Button>
-            {batch && batch.length > 0 && <Button onClick={nextBatch}>Next batch</Button>}
-          </DialogFooter>
+          primary && (
+            <DialogFooter>
+              {primary.label !== "Close" && (
+                <Button variant="outline" onClick={onClose}>
+                  Close
+                </Button>
+              )}
+              {curveReady && !poolExhausted && (
+                <Button variant="outline" onClick={nextBatch}>
+                  Next batch
+                </Button>
+              )}
+              <Button onClick={primary.run}>
+                {primary.label}
+                <Kbd onPrimary>⏎</Kbd>
+              </Button>
+            </DialogFooter>
+          )
         )}
       </DialogContent>
     </Dialog>

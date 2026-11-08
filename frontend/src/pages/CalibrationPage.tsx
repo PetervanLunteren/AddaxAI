@@ -4,7 +4,8 @@
  * One row per AI label: how many detections the sample can draw from,
  * the answers so far, and the score from which 90, 95 and 99% of the
  * labels are right. Calibrate opens the "Is this a <label>?" dialog;
- * expanding a row shows the curve with its 95% band.
+ * expanding a row shows the curve with its 95% band and, in words,
+ * what to do with it.
  */
 
 import { Fragment, useState } from "react";
@@ -19,8 +20,19 @@ import { PlotExplainer } from "../components/plots/PlotExplainer";
 import { Button } from "../components/ui/button";
 import { resolveSpeciesName } from "../lib/species-name-mode";
 
+// The target the advice under the curve is written for. 95% is the
+// middle of the three columns and the one people quote.
+const ADVICE_TARGET = 0.95;
+
+const DASH = <span className="text-muted-foreground">–</span>;
+
+function hasAnswers(row: CalibrationLabel): boolean {
+  return row.right + row.wrong + row.unsure > 0;
+}
+
+/** The progress line under a label's name. Only for labels someone has started on. */
 function status(row: CalibrationLabel): string | null {
-  if (row.thresholds) return null;
+  if (row.thresholds || !hasAnswers(row)) return null;
   if (row.no_error_bound !== null) {
     return `No errors in ${row.right} answers: at least ${Math.floor(row.no_error_bound * 100)}% right`;
   }
@@ -29,6 +41,21 @@ function status(row: CalibrationLabel): string | null {
     row.wrong_needed > 0 ? `${row.wrong_needed} more wrong` : null,
   ].filter(Boolean);
   return `${needed.join(" and ")} needed for a curve`;
+}
+
+/** What the curve means for the person's work, in one or two sentences. */
+function advice(row: CalibrationLabel, name: string): string {
+  const target = row.thresholds?.find((t) => t.target === ADVICE_TARGET);
+  const pct = Math.round(ADVICE_TARGET * 100);
+  if (!target || target.score === null) {
+    return `${name} labels do not reach ${pct}% right within the scores you answered. Check them all, or answer more.`;
+  }
+  const score = target.score.toFixed(2);
+  return (
+    `From a score of ${score}, at least ${pct} of 100 ${name} labels are right. ` +
+    `Check the ${name} labels below ${score} on the Labels page, with the ` +
+    `classification confidence slider under More filters.`
+  );
 }
 
 export function CalibrationPage() {
@@ -73,18 +100,23 @@ export function CalibrationPage() {
           <div className="overflow-x-auto rounded-lg border bg-card">
             <table className="w-full text-sm">
               <thead className="border-b">
+                {/* Group labels carry a rule that spans exactly their
+                    columns; the cell padding leaves a gap between the
+                    two rules, so each group reads as one unit. */}
                 <tr className="text-xs text-muted-foreground">
-                  <th rowSpan={2} className="py-2 pl-4 pr-2 text-left align-bottom font-medium">
+                  <th rowSpan={2} className="py-2 pl-4 pr-2 text-left align-bottom font-normal">
                     AI label
                   </th>
-                  <th rowSpan={2} className="px-3 py-2 text-right align-bottom font-medium">
+                  <th rowSpan={2} className="px-3 py-2 text-right align-bottom font-normal">
                     Detections
                   </th>
-                  <th colSpan={3} className="px-3 pt-2 text-center font-medium">
-                    Answers
+                  <th colSpan={3} className="px-3 pt-2 font-medium">
+                    <span className="block border-b pb-1 text-center">Answers</span>
                   </th>
-                  <th colSpan={3} className="px-3 pt-2 text-center font-medium">
-                    Trust labels from score
+                  <th colSpan={3} className="px-3 pt-2 font-medium">
+                    <span className="block border-b pb-1 text-center">
+                      Trust labels from score
+                    </span>
                   </th>
                   <th rowSpan={2} className="py-2 pl-3 pr-4" />
                 </tr>
@@ -100,7 +132,9 @@ export function CalibrationPage() {
               <tbody>
                 {data.labels.map((row) => {
                   const open = expanded === row.label;
+                  const started = hasAnswers(row);
                   const note = status(row);
+                  const name = resolveSpeciesName(row);
                   return (
                     <Fragment key={row.label}>
                       <tr className="border-b">
@@ -121,7 +155,7 @@ export function CalibrationPage() {
                             ) : (
                               <span className="w-4" />
                             )}
-                            <span>{resolveSpeciesName(row)}</span>
+                            <span>{name}</span>
                           </button>
                           {note && (
                             <div className="pl-5 text-xs text-muted-foreground">{note}</div>
@@ -130,14 +164,16 @@ export function CalibrationPage() {
                         <td className="px-3 py-1.5 text-right tabular-nums">
                           {row.detections.toLocaleString()}
                         </td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">{row.right}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">{row.wrong}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">{row.unsure}</td>
+                        {[row.right, row.wrong, row.unsure].map((n, i) => (
+                          <td key={i} className="px-3 py-1.5 text-right tabular-nums">
+                            {started ? n : DASH}
+                          </td>
+                        ))}
                         {[0, 1, 2].map((i) => {
                           const t = row.thresholds?.[i];
                           return (
                             <td key={i} className="px-3 py-1.5 text-right tabular-nums">
-                              {!t ? "–" : t.score === null ? "not reached" : t.score.toFixed(2)}
+                              {!t ? DASH : t.score === null ? "not reached" : t.score.toFixed(2)}
                             </td>
                           );
                         })}
@@ -148,7 +184,7 @@ export function CalibrationPage() {
                             onClick={() => setCalibrating(row.label)}
                             disabled={row.detections === 0}
                           >
-                            Calibrate
+                            {started ? "Continue" : "Calibrate"}
                           </Button>
                         </td>
                       </tr>
@@ -156,6 +192,7 @@ export function CalibrationPage() {
                         <tr className="border-b">
                           <td colSpan={9} className="px-4 py-3">
                             <CalibrationCurve row={row} />
+                            <p className="mt-2 text-sm">{advice(row, name)}</p>
                             <p className="mt-1 text-xs text-muted-foreground">
                               Based on {row.right + row.wrong} answers. The shaded band is the
                               95% uncertainty.
@@ -199,6 +236,10 @@ export function CalibrationPage() {
           projectId={projectId}
           row={calibratingRow}
           onClose={() => setCalibrating(null)}
+          onShowResult={() => {
+            setExpanded(calibratingRow.label);
+            setCalibrating(null);
+          }}
         />
       )}
     </div>

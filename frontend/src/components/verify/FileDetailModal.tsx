@@ -89,6 +89,7 @@ import {
   useShortcutLabels,
 } from "../../hooks/useShortcutLabels";
 import { Button } from "../ui/button";
+import { Kbd } from "../ui/kbd";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
 import { ViewerToolRail } from "./ViewerToolRail";
@@ -117,21 +118,6 @@ interface FileDetailModalProps {
   /** Something about this file changed. Fires immediately so the
    *  progress bar keeps up; the grid itself waits for the close. */
   onChanged: () => void;
-}
-
-/** The keyboard hint on a button. */
-function Kbd({ children, onPrimary }: { children: string; onPrimary?: boolean }) {
-  return (
-    <kbd
-      className={
-        onPrimary
-          ? "ml-1.5 text-[10px] font-sans text-primary-foreground/60 border border-primary-foreground/30 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(255,255,255,0.1)] leading-none"
-          : "ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none"
-      }
-    >
-      {children}
-    </kbd>
-  );
 }
 
 export function FileDetailModal({

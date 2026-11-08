@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
+import { Kbd } from "../ui/kbd";
 import { filesApi } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { labelsApi } from "../../api/labels";
@@ -944,9 +945,9 @@ export function DetectionDetailModal({
               >
                 <SquareDashed className="h-4 w-4 mr-1" />
                 {drawMode ? "Stop drawing" : "Draw a box"}
-                <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
+                <Kbd>
                   D
-                </kbd>
+                </Kbd>
               </Button>
 
               {detection.neighbor_top_label &&
@@ -968,9 +969,9 @@ export function DetectionDetailModal({
                     {detection.neighbor_top_scientific_name ||
                       detection.neighbor_top_label}
                     &rdquo;
-                    <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
+                    <Kbd>
                       A
-                    </kbd>
+                    </Kbd>
                   </Button>
                 )}
 
@@ -982,9 +983,9 @@ export function DetectionDetailModal({
               >
                 <Tag className="h-4 w-4 mr-1" />
                 Relabel
-                <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
+                <Kbd>
                   R
-                </kbd>
+                </Kbd>
               </Button>
               {/* Hidden LabelPicker. The Relabel button above is the
                   visible trigger; this picker's own trigger is taken
@@ -1038,9 +1039,9 @@ export function DetectionDetailModal({
               >
                 <Ban className="h-4 w-4 mr-1" />
                 Mark false
-                <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
+                <Kbd>
                   X
-                </kbd>
+                </Kbd>
               </Button>
 
               <Button
@@ -1053,9 +1054,9 @@ export function DetectionDetailModal({
               >
                 <CircleHelp className="h-4 w-4 mr-1" />
                 Unknown
-                <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
+                <Kbd>
                   U
-                </kbd>
+                </Kbd>
               </Button>
 
               <Button
@@ -1079,9 +1080,9 @@ export function DetectionDetailModal({
                   </TruncateStart>
                 </span>
                 {!detection.verified && (
-                  <kbd className="ml-1.5 text-[10px] font-sans text-primary-foreground/60 border border-primary-foreground/30 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(255,255,255,0.1)] leading-none">
+                  <Kbd onPrimary>
                     ⏎
-                  </kbd>
+                  </Kbd>
                 )}
               </Button>
         </>

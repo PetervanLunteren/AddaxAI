@@ -16,6 +16,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Ban, Check, CheckCheck, CircleHelp, Tag, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
+import { Kbd } from "../ui/kbd";
 import { detectionsApi } from "../../api/detections";
 import { LabelPicker } from "./LabelPicker";
 import { UNDO_KBD } from "./shortcuts";
@@ -186,7 +187,7 @@ export function BulkActionBar({
       >
         <Check className="h-4 w-4 mr-1" />
         Verify
-        <kbd className="ml-1.5 text-[10px] font-sans text-primary-foreground/60 border border-primary-foreground/30 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(255,255,255,0.1)] leading-none">⏎</kbd>
+        <Kbd onPrimary>⏎</Kbd>
       </Button>
 
       <Button
@@ -197,7 +198,7 @@ export function BulkActionBar({
       >
         <Ban className="h-4 w-4 mr-1" />
         Mark false
-        <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">X</kbd>
+        <Kbd>X</Kbd>
       </Button>
 
       <Button
@@ -209,7 +210,7 @@ export function BulkActionBar({
       >
         <CircleHelp className="h-4 w-4 mr-1" />
         Unknown
-        <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">U</kbd>
+        <Kbd>U</Kbd>
       </Button>
 
       {onMatchMajority && majorityLabel && (
@@ -223,7 +224,7 @@ export function BulkActionBar({
           <span className="truncate max-w-[180px]">
             Set to <span className="capitalize">{majorityLabel}</span>
           </span>
-          <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">M</kbd>
+          <Kbd>M</Kbd>
         </Button>
       )}
 
@@ -235,7 +236,7 @@ export function BulkActionBar({
         >
           <Tag className="h-4 w-4 mr-1" />
           Relabel
-          <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">R</kbd>
+          <Kbd>R</Kbd>
         </Button>
         <div className="absolute bottom-full mb-2 left-0 z-50">
           <LabelPicker
@@ -264,9 +265,9 @@ export function BulkActionBar({
         >
           <Undo2 className="h-4 w-4 mr-1" />
           Undo
-          <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
+          <Kbd>
             {UNDO_KBD}
-          </kbd>
+          </Kbd>
         </Button>
       )}
 
