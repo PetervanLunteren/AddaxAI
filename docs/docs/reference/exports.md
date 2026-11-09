@@ -26,7 +26,7 @@ The tables hold the same set of detections, and it is the same set the app shows
 
 Anything below your [counting threshold](../understanding/confidence-and-verification.md) is left out, unless you verified it yourself. A detection you verified always stays in, whatever it scored, because your decision outranks the score.
 
-For videos, the Detections table is the Labels page as a table: one row per card, so one row per animal the AI followed, with its box on the frame where the AI saw it best and the frames it was on screen. The other boxes of that animal are the same animal, so they are not extra rows there. They are in the Frames table, one row per box per checked frame, for every animal in the Detections table. An animal is in or out as a whole, decided by its card, the same way the video player shows it.
+For videos, the Detections table is the Labels page as a table: one row per card, so one row per animal the AI followed, with its box on the frame where the AI saw it best and the frames it was on screen. Its other boxes are in the Frames table.
 
 The recognition file described at the end of this page is complete on purpose: it also holds the boxes below your counting threshold.
 
@@ -122,17 +122,14 @@ One thing to know before you read too much into that. `ai_classification_label` 
 
 ## Frames
 
-Every box of every animal in the Detections table, one row per checked video frame. Videos only: an export without videos has no Frames table. Group by `file_id` and `track_id` to follow one animal through a clip.
-
-It has the same columns as the Detections table, without the `track_` span columns and with three of its own:
+Every box of every animal in the Detections table, one row per checked video frame. Same columns as the Detections table, without the `track_` span columns and with:
 
 | Column | Meaning |
 |---|---|
-| `frame_time` | The camera-local time of this frame |
-| `frame_offset_seconds` | Seconds into the clip. Empty when the clip has no known frame rate |
-| `is_representative` | TRUE on the one box that stands for the animal: the frame where the AI saw it best, and the box its row in the Detections table shows |
+| `frame_time`, `frame_offset_seconds` | When the frame is: camera-local time, and seconds into the clip |
+| `is_representative` | TRUE on the box that stands for the animal, the one its Detections row shows |
 
-This table can be very large: an hour of underwater video easily holds tens of thousands of boxes. It is saved as CSV or TSV only, never in the Excel workbook. A video analysed before AddaxAI tracked animals has one box per animal, so its rows here are its rows in the Detections table.
+Group by `file_id` and `track_id` to follow one animal through a clip.
 
 ## Files
 
