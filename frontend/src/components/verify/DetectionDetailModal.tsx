@@ -12,6 +12,7 @@ import {
   Ban,
   Check,
   CircleHelp,
+  CircleMinus,
   ImageOff,
   Play,
   SquareDashed,
@@ -48,6 +49,7 @@ import type { DetectionSummary } from "../../api/types";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { LabelPicker } from "./LabelPicker";
+import type { UndoStack } from "./useUndoStack";
 import { ViewerToolRail } from "./ViewerToolRail";
 import { useFileTriage, useImageAdjust } from "./viewer-tools";
 import { downloadBlob } from "../../lib/download";
@@ -62,6 +64,10 @@ interface DetectionDetailModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onActionComplete: () => void;
+  /** The grid's undo history. This view runs its own API calls and
+   *  pushes their `before` here; drawing a box clears it. Cmd+Z is the
+   *  grid's handler, which stays live while this view is open. */
+  undo: UndoStack;
   onRelabel?: (detectionId: string, label: string, category: string) => void;
   /** Optimistic mark-false callback so parent can patch local state before navigating. */
   onMarkFalse?: (detectionId: string) => void;
@@ -138,6 +144,7 @@ export function DetectionDetailModal({
   open,
   onOpenChange,
   onActionComplete,
+  undo,
   onRelabel,
   onMarkFalse,
   onMarkUnknown,
@@ -342,10 +349,13 @@ export function DetectionDetailModal({
       setDrawnId(null);
       detectionsApi
         .bulkRelabel([id], option.label, option.category)
-        .then(() => onActionComplete())
+        .then((r) => {
+          undo.push(r.before);
+          onActionComplete();
+        })
         .catch((err: Error) => toast.error(err.message));
     },
-    [onActionComplete],
+    [onActionComplete, undo],
   );
 
   /** The rail's Download: the crop this modal is about, saved as a
@@ -377,10 +387,13 @@ export function DetectionDetailModal({
     enabled: open && !!detection?.detection_id && !!projectId,
   });
 
+  // The button's Verify / Unverify toggle. Through the bulk route, the
+  // one path every verify in the app takes, which answers `before`.
   const verifyMutation = useMutation({
     mutationFn: () =>
-      detectionsApi.verify(detection!.detection_id, !detection!.verified),
-    onSuccess: () => {
+      detectionsApi.bulkVerify([detection!.detection_id], !detection!.verified),
+    onSuccess: (r) => {
+      undo.push(r.before);
       onVerify?.(detection!.detection_id, !detection!.verified);
       onActionComplete();
     },
@@ -390,7 +403,8 @@ export function DetectionDetailModal({
   const relabelMutation = useMutation({
     mutationFn: ({ label, category }: { label: string | null; category: string }) =>
       detectionsApi.bulkRelabel([detection!.detection_id], label, category),
-    onSuccess: (_, { label, category }) => {
+    onSuccess: (r, { label, category }) => {
+      undo.push(r.before);
       onRelabel?.(detection!.detection_id, label ?? category, category);
       onActionComplete();
       onNavigate?.("nextUnverified");
@@ -401,7 +415,8 @@ export function DetectionDetailModal({
   const markFalseMutation = useMutation({
     mutationFn: () =>
       detectionsApi.bulkRelabel([detection!.detection_id], "false detection", undefined),
-    onSuccess: () => {
+    onSuccess: (r) => {
+      undo.push(r.before);
       onMarkFalse?.(detection!.detection_id);
       onActionComplete();
       onNavigate?.("nextUnverified");
@@ -412,7 +427,8 @@ export function DetectionDetailModal({
   const markUnknownMutation = useMutation({
     mutationFn: () =>
       detectionsApi.bulkRelabel([detection!.detection_id], "unknown", undefined),
-    onSuccess: () => {
+    onSuccess: (r) => {
+      undo.push(r.before);
       onMarkUnknown?.(detection!.detection_id);
       onActionComplete();
       onNavigate?.("nextUnverified");
@@ -430,12 +446,17 @@ export function DetectionDetailModal({
     // Patch local state immediately so navigation sees updated verified status
     onVerify?.(detection.detection_id);
     onNavigate?.("nextUnverified");
-    // Fire API call in background
+    // Fire API call in background. The undo entry needs the `before`
+    // it answers, so it is pushed on response; two Enters in quick
+    // succession can therefore land in response order, which is fine.
     detectionsApi
-      .verify(detection.detection_id, true)
-      .then(() => onActionComplete())
+      .bulkVerify([detection.detection_id], true)
+      .then((r) => {
+        undo.push(r.before);
+        onActionComplete();
+      })
       .catch((err: Error) => toast.error(err.message));
-  }, [detection, onActionComplete, onNavigate, onVerify]);
+  }, [detection, onActionComplete, onNavigate, onVerify, undo]);
 
   // Keyboard navigation while modal is open
   useEffect(() => {
@@ -634,7 +655,12 @@ export function DetectionDetailModal({
             onSelectDetection={() => {}}
             drawMode
             onDrawModeChange={setDrawMode}
-            onMutated={onActionComplete}
+            // A drawn box cannot be undone, so it starts a fresh history:
+            // Cmd+Z must never reach past it to an older action.
+            onMutated={() => {
+              undo.clear();
+              onActionComplete();
+            }}
             onCreated={setDrawnId}
             boxesHidden={boxesHidden}
             imageFilter={imageFilter}
@@ -1070,7 +1096,11 @@ export function DetectionDetailModal({
                 disabled={verifyMutation.isPending}
                 variant={detection.verified ? "outline" : "default"}
               >
-                <Check className="h-4 w-4 mr-1 shrink-0" />
+                {detection.verified ? (
+                  <CircleMinus className="h-4 w-4 mr-1 shrink-0" />
+                ) : (
+                  <Check className="h-4 w-4 mr-1 shrink-0" />
+                )}
                 <span className="flex min-w-0">
                   <span className="shrink-0">
                     {detection.verified ? "Unverify" : "Verify"}&nbsp;

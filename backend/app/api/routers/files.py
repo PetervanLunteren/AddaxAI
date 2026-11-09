@@ -22,6 +22,7 @@ from app.api.schemas.file import (
     FilmstripFrame,
     FilmstripResponse,
 )
+from app.api.schemas.undo import UndoSnapshot
 from app.db.base import get_db
 from app.ml.inference.image_io import upright_rgb
 from app.models import Deployment, File, Project
@@ -111,17 +112,21 @@ def bulk_verify_files(
     Same rule per file as `PATCH /api/files/{id}` with `verified`
     (`crud.file.set_file_verified`), one commit for the batch. Same
     shape as the detections bulk endpoints: an empty list is a no-op,
-    a list that matches nothing is a 404.
+    a list that matches nothing is a 404, and `before` is the state to
+    send to `POST /api/undo` to take it all back.
     """
+    before = UndoSnapshot()
     if not body.file_ids:
-        return {"updated_count": 0}
+        return {"updated_count": 0, "before": before}
     files = db.query(File).filter(File.id.in_(body.file_ids)).all()
     if not files:
         raise HTTPException(status_code=404, detail="No files found")
     for f in files:
-        file_crud.set_file_verified(db, f, body.verified)
+        snap = file_crud.set_file_verified(db, f, body.verified)
+        before.detections.extend(snap.detections)
+        before.files.extend(snap.files)
     db.commit()
-    return {"updated_count": len(files)}
+    return {"updated_count": len(files), "before": before}
 
 
 @router.patch("/{file_id}", response_model=FileResponse)

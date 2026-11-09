@@ -578,6 +578,48 @@ the reprocess pair in `tests/integration/test_postprocessing_pipeline.py`
 (`test_an_unticked_files_rejected_boxes_reprocess_cleanly`,
 `test_a_discarded_box_is_not_reported_as_a_reprocess_error`).
 
+## Undo puts back the before-state
+
+Two rules, no exceptions, across the Labels page (both tabs, both detail
+views, project and folder-run mode). **Unverify** removes the verified
+flag from what was selected and nothing else: for a file, the file and
+its boxes; labels stay. **Undo** puts back exactly what was there before
+the last action, not the model's prediction.
+
+The mechanism is a memento. Every undoable action
+(`POST /api/detections/bulk-verify`, `/api/detections/bulk-relabel`,
+`/api/files/bulk-verify`) answers with `before`, an `UndoSnapshot`
+(`schemas/undo.py`) of the rows it is about to change, taken before it
+changes them: per box the label fields, `classification_method`,
+`category`, `verified` and `verified_at_utc`; per file `verified` and
+`verified_at_utc`. The detection routes snapshot the touched boxes and
+their files, because `recompute_file_verified` flips the file flag as a
+side effect. `set_file_verified` builds and returns its own snapshot,
+because only it knows which boxes a sign-off touches: the rejected weak
+ones never leave it any other way. The client keeps the snapshot as its
+undo entry (`frontend/src/components/verify/useUndoStack.ts`, one
+history per tab, shared with that tab's viewer, cleared on tab switch)
+and sends it to `POST /api/undo`. `crud/undo.restore` writes it back
+verbatim, re-derives `observation_type` and the event MaxN, and commits
+once. It never runs `recompute_file_verified`: the snapshot's file flag
+is the truth, and the rollup would override it.
+
+`label_taxonomy_id` is not in the snapshot. It is re-derived from the
+label on restore (`_resolve_detection_taxonomy`, or `clear_classification`
+for no label), the same single writer relabel uses, because the FK is
+`ON DELETE SET NULL` and a custom label row can be gone by the time the
+undo arrives. An action that cannot be undone (drawing or moving a box)
+clears the client's history, so Cmd+Z never reverses an older, unrelated
+change. The old `bulk-revert-to-original` route reset boxes to the
+`original_*` columns, which lost every earlier human correction and could
+not re-verify anything; it is gone, and the frontend's verify and
+unverify calls all go through the bulk routes.
+
+Tests: `tests/api/test_undo.py`, and
+`frontend/src/lib/undo-snapshot.test.ts` for merging chunked snapshots
+(chunks of 500 run sequentially, so a file shared by two chunks is
+snapshotted before either changes it).
+
 ## Non-label classifications are kept as rejected rows
 
 MegaDetector produces false positive boxes, and most classification models have a class for that: **the non-label classes** in `backend/app/ml/label_exclusion.py` are `bait`, `blank`, `empty`, `false detection`, `non-animal` (the MegaDetector false-positive class of MEWC models such as SOCAL-IRC-v3-6), `none` and `vide` (French for empty). Fifteen zoo models carry one.
@@ -1340,4 +1382,4 @@ All model-sourced entries (CSV, JSON, rollup) set `is_custom=False`. The flag ex
 **Never overwrite verified detections.** When a user manually verifies or relabels a detection (`Detection.verified == True`), that human judgment takes priority over any machine output. Postprocessing, reprocessing, taxonomic rollup, smoothing, and any other automatic pipeline must skip verified detections. If you are writing code that updates `Detection.label`, `Detection.label_confidence`, or `Detection.category`, always check `verified` first and leave verified records untouched.
 
 This applies to the *reprocessing* path only. A full re-analysis (a folder-run rerun via `POST /api/folder-runs/{id}/rerun`, or re-analysing a deployment) deletes every detection under the parent and rebuilds from the JSON, so verified corrections do not survive it, by design: it is a "start over" operation, not an in-place update. The user-facing docs must not claim corrections survive a re-run of the AI; they survive threshold changes and reprocessing, not re-analysis. See "Deleting analysis data".
-**An unclassified detection always carries its category's builtin taxonomy row.** The label filter tree and the "Select all" filter match on `label_taxonomy_id`, never on label text, so a box with no row is counted in the Detections tab and drawn in the grid but absent from the tree and from every filter that could reach it. `clear_classification` in `ml/taxonomy_db.py` is the one writer for "no species": the ingest, the phase 7 update and its exclusion sweep, a drawn box without a label, a PATCH that empties a label and revert-to-AI all go through it. Four of those used to null the row themselves, and the relink pass in the detection worker ran in phase 6, before phase 7 had cleared anything, so a fresh analysis with many excluded classes showed no "Animal" leaf at all (2026-09-06). The relink pass stays as a safety net and runs after phase 7. Pinned by the unclassified test in `tests/integration/test_postprocessing_pipeline.py` and the two in `tests/api/test_detections.py`.
+**An unclassified detection always carries its category's builtin taxonomy row.** The label filter tree and the "Select all" filter match on `label_taxonomy_id`, never on label text, so a box with no row is counted in the Detections tab and drawn in the grid but absent from the tree and from every filter that could reach it. `clear_classification` in `ml/taxonomy_db.py` is the one writer for "no species": the ingest, the phase 7 update and its exclusion sweep, a drawn box without a label, a PATCH that empties a label and an undo back to no species all go through it. Four of those used to null the row themselves, and the relink pass in the detection worker ran in phase 6, before phase 7 had cleared anything, so a fresh analysis with many excluded classes showed no "Animal" leaf at all (2026-09-06). The relink pass stays as a safety net and runs after phase 7. Pinned by the unclassified test in `tests/integration/test_postprocessing_pipeline.py`, the one in `tests/api/test_detections.py` and the one in `tests/api/test_undo.py`.

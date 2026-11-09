@@ -263,7 +263,15 @@ def test_bulk_verify_signs_off_every_file_in_one_request(client, db):
 
     resp = _bulk_verify(client, [a.id, b.id])
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"updated_count": 2}
+    body = resp.json()
+    assert body["updated_count"] == 2
+    # The before-state for undo: both files, and the boxes the sign-off
+    # touched (both of a's, b has none).
+    assert {s["file_id"] for s in body["before"]["files"]} == {a.id, b.id}
+    assert {s["detection_id"] for s in body["before"]["detections"]} == {
+        strong_id,
+        weak_id,
+    }
 
     db.expire_all()
     assert a.verified is True
@@ -291,7 +299,10 @@ def test_bulk_unverify_takes_the_sign_off_back(client, db):
 
 
 def test_bulk_verify_of_nothing_is_a_no_op_and_of_unknown_ids_a_404(client, db):
-    assert _bulk_verify(client, []).json() == {"updated_count": 0}
+    assert _bulk_verify(client, []).json() == {
+        "updated_count": 0,
+        "before": {"detections": [], "files": []},
+    }
     assert _bulk_verify(client, [str(uuid.uuid4())]).status_code == 404
 
 

@@ -86,6 +86,7 @@ import {
 import { LabelsWelcomePopover } from "./LabelsWelcomePopover";
 import { ReEmbedModal } from "../projects/ReEmbedModal";
 import { useLabelsProgress } from "./useLabelsProgress";
+import { useUndoStack } from "./useUndoStack";
 import { useLabelOptions } from "../../hooks/useLabelOptions";
 import type {
   CohortItem,
@@ -94,6 +95,7 @@ import type {
   LabelFilters,
   LabelSort,
   EventFilterParams,
+  UndoSnapshot,
   VerifySort,
 } from "../../api/types";
 import { invalidateLabelQueries } from "../../lib/invalidate-label-queries";
@@ -421,19 +423,6 @@ export function LabelsTab({
   // effect below.
   const pendingScrollRef = useRef<string | null>(null);
 
-  // Undo stack: one entry per label action, holding just the affected
-  // detection ids. Undo reverts them to the model's original prediction
-  // (the original_* columns), so no pre-state snapshot is needed.
-  // In-memory / session-scoped. `undoDepth` mirrors the stack length to
-  // drive the button (a ref alone wouldn't re-render).
-  const undoStackRef = useRef<string[][]>([]);
-  const [undoDepth, setUndoDepth] = useState(0);
-  const pushUndo = useCallback((ids: string[]) => {
-    if (ids.length === 0) return;
-    undoStackRef.current = [...undoStackRef.current, ids];
-    setUndoDepth(undoStackRef.current.length);
-  }, []);
-
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
     selectionAnchorRef.current = null;
@@ -720,15 +709,14 @@ export function LabelsTab({
     sortMutation.mutate({ sort: lblSort });
   }, [lblSort, queryClient, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** Patch detections in local state without refetching. */
+  /** Patch detections in local state without refetching. Functional
+   *  updates throughout: most callers run after an await, when the
+   *  `sortResult` they closed over may already be stale. */
   const patchLocalDetections = useCallback(
     (patchFn: (d: DetectionSummary) => DetectionSummary) => {
-      if (sortResult) {
-        setSortResult({
-          ...sortResult,
-          detections: sortResult.detections.map(patchFn),
-        });
-      }
+      setSortResult((prev) =>
+        prev ? { ...prev, detections: prev.detections.map(patchFn) } : prev,
+      );
       const pinned = detailNavRef.current;
       if (pinned) {
         for (const [id, d] of pinned.byId) pinned.byId.set(id, patchFn(d));
@@ -736,7 +724,7 @@ export function LabelsTab({
       // Keep the detail modal in sync
       setDetailDetection((prev) => (prev ? patchFn(prev) : prev));
     },
-    [sortResult]
+    []
   );
 
   /** Apply a single-card or bulk action to local state.
@@ -802,57 +790,68 @@ export function LabelsTab({
     [lblSort, patchLocalDetections, projectId, queryClient],
   );
 
-  // Same optimistic patch as applyDetectionAction, but also records the
-  // action on the undo stack. Every label action (verify / relabel /
-  // mark) goes through this; only handleUndo itself uses the plain
-  // applyDetectionAction, so undoing never re-stacks.
+  // Undo: one history for this tab and its detail view. Every action
+  // pushes the before-state the server returned with it, and undo writes
+  // that back (`useUndoStack`), so a crop returns to exactly what it
+  // was: label and verified flag, whoever set them.
+  const undo = useUndoStack(({ detections }) => {
+    // A restored crop the grid no longer holds cannot be patched in: the
+    // suggestions sort strips acted crops, and the detail view re-sorts
+    // after each action. Refresh the grid instead, as after any action.
+    const loaded = new Set(
+      (sortResult?.detections ?? []).map((d) => d.detection_id),
+    );
+    if (detections.some((r) => !loaded.has(r.id))) {
+      handleActionComplete();
+      return;
+    }
+    const byId = new Map(detections.map((r) => [r.id, r]));
+    const ids = Array.from(byId.keys());
+    applyDetectionAction(ids, (d) => {
+      const r = byId.get(d.detection_id);
+      if (!r) return d;
+      return {
+        ...d,
+        label: r.label,
+        category: r.category,
+        label_confidence: r.label_confidence,
+        label_taxonomy_id: r.label_taxonomy_id,
+        scientific_name: r.scientific_name,
+        common_name: r.common_name,
+        classification_method: r.classification_method,
+        verified: r.verified,
+        neighbor_top_label: null,
+        neighbor_top_scientific_name: null,
+      };
+    });
+    // Bring the restored crops back into view so the user can re-act.
+    // No success toast: the crops changing back is the confirmation, and
+    // the verify workflow is toast-fatigued already.
+    setSelectedIds(new Set(ids));
+  });
+
+  // The optimistic patch plus the undo entry: every action goes through
+  // this with the `before` its API call answered.
   const applyUndoableAction = useCallback(
-    (ids: string[], patch: (d: DetectionSummary) => DetectionSummary) => {
+    (
+      ids: string[],
+      patch: (d: DetectionSummary) => DetectionSummary,
+      before: UndoSnapshot,
+    ) => {
       applyDetectionAction(ids, patch);
-      pushUndo(ids);
+      undo.push(before);
     },
-    [applyDetectionAction, pushUndo],
+    [applyDetectionAction, undo],
   );
 
-  // Undo the most recent label action: revert its detections to the
-  // model's original prediction and pop the stack. Works with no active
-  // selection (it acts on history, not the current selection).
-  const handleUndo = useCallback(async () => {
-    const stack = undoStackRef.current;
-    if (stack.length === 0) return;
-    const ids = stack[stack.length - 1];
-    try {
-      const { reverted } = await detectionsApi.bulkRevertToOriginal(ids);
-      const byId = new Map(reverted.map((r) => [r.detection_id, r]));
-      applyDetectionAction(ids, (d) => {
-        const r = byId.get(d.detection_id);
-        if (!r) return d;
-        return {
-          ...d,
-          label: r.label,
-          category: r.category,
-          label_confidence: r.label_confidence,
-          label_taxonomy_id: r.label_taxonomy_id,
-          scientific_name: r.scientific_name,
-          common_name: r.common_name,
-          verified: r.verified,
-          neighbor_top_label: null,
-          neighbor_top_scientific_name: null,
-        };
-      });
-      undoStackRef.current = stack.slice(0, -1);
-      setUndoDepth(undoStackRef.current.length);
-      // Bring the reverted crops back into view so the user can re-act.
-      // No success toast: the crops reappearing (unverified) is the
-      // confirmation, and the verify workflow is toast-fatigued already.
-      setSelectedIds(new Set(ids));
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Undo failed");
-    }
-  }, [applyDetectionAction]);
-
   const handleBulkRelabel = useCallback(
-    (ids: string[], label: string | null, category: string, displayName: string) => {
+    (
+      ids: string[],
+      label: string | null,
+      category: string,
+      displayName: string,
+      before: UndoSnapshot,
+    ) => {
       applyUndoableAction(ids, (d) => ({
         ...d,
         label,
@@ -866,11 +865,11 @@ export function LabelsTab({
         neighbor_top_label: null,
         neighbor_top_scientific_name: null,
         verified: true,
-      }));
+      }), before);
       invalidateLabelQueries(queryClient);
       advanceSelectionAfter(ids);
     },
-    [applyDetectionAction, advanceSelectionAfter, queryClient]
+    [applyUndoableAction, advanceSelectionAfter, queryClient]
   );
 
   // Bulk-relabel a cohort straight from the divider button — no
@@ -988,31 +987,10 @@ export function LabelsTab({
     [setLblSort],
   );
 
-  const handleMarkFalse = useCallback(
-    (ids: string[]) => {
-      detectionsApi
-        .bulkRelabel(ids, "false detection", undefined)
-        .then(() => {
-          applyUndoableAction(ids, (d) => ({
-            ...d,
-            label: "false detection",
-            common_name: "False detection",
-            scientific_name: "False detection",
-            label_taxonomy_id: null,
-            neighbor_top_label: null,
-            neighbor_top_scientific_name: null,
-            verified: true,
-          }));
-          advanceSelectionAfter(ids);
-          invalidateLabelQueries(queryClient);
-        })
-        .catch((err: Error) => toast.error(err.message));
-    },
-    [applyDetectionAction, advanceSelectionAfter, queryClient]
-  );
-
+  // Patch-only: the BulkActionBar already ran the API call and hands
+  // over its `before`. The keyboard variant below owns the call.
   const handleBulkMarkFalse = useCallback(
-    (ids: string[]) => {
+    (ids: string[], before: UndoSnapshot) => {
       applyUndoableAction(ids, (d) => ({
         ...d,
         label: "false detection",
@@ -1022,44 +1000,30 @@ export function LabelsTab({
         neighbor_top_label: null,
         neighbor_top_scientific_name: null,
         verified: true,
-      }));
+      }), before);
       invalidateLabelQueries(queryClient);
       advanceSelectionAfter(ids);
     },
-    [applyDetectionAction, advanceSelectionAfter, queryClient]
+    [applyUndoableAction, advanceSelectionAfter, queryClient]
+  );
+
+  const handleMarkFalse = useCallback(
+    (ids: string[]) => {
+      detectionsApi
+        .bulkRelabel(ids, "false detection", undefined)
+        .then((r) => handleBulkMarkFalse(ids, r.before))
+        .catch((err: Error) => toast.error(err.message));
+    },
+    [handleBulkMarkFalse]
   );
 
   // "Unknown" mirrors mark-false but the label is a real observation
   // (kept in counts/exports) and the category is left untouched. The
   // server auto-creates the "unknown" custom taxonomy row and resolves
   // both names to "Unknown"; the optimistic patch pre-fills them so the
-  // tile updates immediately. Grid-shortcut variant owns the API call.
-  const handleMarkUnknown = useCallback(
-    (ids: string[]) => {
-      detectionsApi
-        .bulkRelabel(ids, "unknown", undefined)
-        .then(() => {
-          applyUndoableAction(ids, (d) => ({
-            ...d,
-            label: "unknown",
-            common_name: "Unknown",
-            scientific_name: "Unknown",
-            label_taxonomy_id: null,
-            neighbor_top_label: null,
-            neighbor_top_scientific_name: null,
-            verified: true,
-          }));
-          advanceSelectionAfter(ids);
-          invalidateLabelQueries(queryClient);
-        })
-        .catch((err: Error) => toast.error(err.message));
-    },
-    [applyDetectionAction, advanceSelectionAfter, queryClient]
-  );
-
-  // Patch-only variant: the BulkActionBar already ran the API call.
+  // tile updates immediately.
   const handleBulkMarkUnknown = useCallback(
-    (ids: string[]) => {
+    (ids: string[], before: UndoSnapshot) => {
       applyUndoableAction(ids, (d) => ({
         ...d,
         label: "unknown",
@@ -1069,19 +1033,46 @@ export function LabelsTab({
         neighbor_top_label: null,
         neighbor_top_scientific_name: null,
         verified: true,
-      }));
+      }), before);
       invalidateLabelQueries(queryClient);
       advanceSelectionAfter(ids);
     },
-    [applyDetectionAction, advanceSelectionAfter, queryClient]
+    [applyUndoableAction, advanceSelectionAfter, queryClient]
+  );
+
+  const handleMarkUnknown = useCallback(
+    (ids: string[]) => {
+      detectionsApi
+        .bulkRelabel(ids, "unknown", undefined)
+        .then((r) => handleBulkMarkUnknown(ids, r.before))
+        .catch((err: Error) => toast.error(err.message));
+    },
+    [handleBulkMarkUnknown]
   );
 
   const handleBulkVerify = useCallback(
-    (ids: string[]) => {
-      applyUndoableAction(ids, (d) => ({ ...d, verified: true }));
+    (ids: string[], before: UndoSnapshot) => {
+      applyUndoableAction(ids, (d) => ({ ...d, verified: true }), before);
       advanceSelectionAfter(ids);
     },
-    [applyDetectionAction, advanceSelectionAfter]
+    [applyUndoableAction, advanceSelectionAfter]
+  );
+
+  // Unverify takes the verified mark off and nothing else. The crops
+  // leave a "Verified" view the same way verified ones leave the
+  // default view, so the selection advances the same way.
+  const handleBulkUnverify = useCallback(
+    (ids: string[], before: UndoSnapshot) => {
+      applyUndoableAction(ids, (d) => ({ ...d, verified: false }), before);
+      advanceSelectionAfter(ids);
+    },
+    [applyUndoableAction, advanceSelectionAfter]
+  );
+
+  // The Unverify button only shows when it has something to do.
+  const selectionHasVerified = useMemo(
+    () => allDetections.some((d) => selectedIds.has(d.detection_id) && d.verified),
+    [allDetections, selectedIds],
   );
 
   /** Relabel the selection to its most common label and verify.
@@ -1109,7 +1100,7 @@ export function LabelsTab({
       const { label: modeLabel, category: modeCategory } = mode;
       detectionsApi
         .bulkRelabel(ids, modeLabel, modeCategory)
-        .then(() => {
+        .then((r) => {
           applyUndoableAction(ids, (d) => ({
             ...d,
             label: modeLabel,
@@ -1120,7 +1111,7 @@ export function LabelsTab({
             neighbor_top_label: null,
             neighbor_top_scientific_name: null,
             verified: true,
-          }));
+          }), r.before);
           advanceSelectionAfter(ids);
           // No success toast: this fires on every E->M in a run of
           // hundreds of events. The grid updating (crops verified /
@@ -1128,7 +1119,7 @@ export function LabelsTab({
         })
         .catch((err: Error) => toast.error(err.message));
     },
-    [allDetections, applyDetectionAction, advanceSelectionAfter],
+    [allDetections, applyUndoableAction, advanceSelectionAfter],
   );
 
   // Keyboard shortcuts
@@ -1153,7 +1144,7 @@ export function LabelsTab({
         (e.key === "z" || e.key === "Z")
       ) {
         e.preventDefault();
-        handleUndo();
+        undo.undo();
         return;
       }
 
@@ -1180,13 +1171,10 @@ export function LabelsTab({
         e.preventDefault();
         // Verify selected
         const ids = Array.from(selectedIds);
-        import("../../api/detections").then(({ detectionsApi }) => {
-          detectionsApi
-            .bulkVerify(ids, true)
-            .then(() => {
-              handleBulkVerify(ids);
-            });
-        });
+        detectionsApi
+          .bulkVerify(ids, true)
+          .then((r) => handleBulkVerify(ids, r.before))
+          .catch((err: Error) => toast.error(err.message));
         return;
       }
 
@@ -1254,26 +1242,29 @@ export function LabelsTab({
         if (!label || selectedIds.size === 0) return;
         e.preventDefault();
         const ids = Array.from(selectedIds);
-        detectionsApi.bulkRelabel(ids, label.label, label.category).then(() => {
-          applyUndoableAction(ids, (d) => ({
-            ...d,
-            label: label.label ?? label.category,
-            category: label.category,
-            common_name: label.displayName,
-            scientific_name: label.displayName,
-            label_taxonomy_id: null,
-            neighbor_top_label: null,
-            neighbor_top_scientific_name: null,
-            verified: true,
-          }));
-          advanceSelectionAfter(ids);
-        });
+        detectionsApi
+          .bulkRelabel(ids, label.label, label.category)
+          .then((r) => {
+            applyUndoableAction(ids, (d) => ({
+              ...d,
+              label: label.label ?? label.category,
+              category: label.category,
+              common_name: label.displayName,
+              scientific_name: label.displayName,
+              label_taxonomy_id: null,
+              neighbor_top_label: null,
+              neighbor_top_scientific_name: null,
+              verified: true,
+            }), r.before);
+            advanceSelectionAfter(ids);
+          })
+          .catch((err: Error) => toast.error(err.message));
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds, detailDetection, allDetections, resultSort, handleActionComplete, shortcutLabels, applyUndoableAction, handleMarkFalse, handleMarkUnknown, handleMatchMajority, handleBulkVerify, advanceSelectionAfter, handleUndo]);
+  }, [selectedIds, detailDetection, allDetections, resultSort, handleActionComplete, shortcutLabels, applyUndoableAction, handleMarkFalse, handleMarkUnknown, handleMatchMajority, handleBulkVerify, advanceSelectionAfter, undo]);
 
   // Click outside grid to deselect
   useEffect(() => {
@@ -1721,6 +1712,8 @@ export function LabelsTab({
         onActionComplete={handleActionComplete}
         onRelabel={handleBulkRelabel}
         onVerify={handleBulkVerify}
+        onUnverify={handleBulkUnverify}
+        showUnverify={selectionHasVerified}
         onMarkFalse={handleBulkMarkFalse}
         onMarkUnknown={handleBulkMarkUnknown}
         onMatchMajority={handleMatchMajority}
@@ -1728,8 +1721,8 @@ export function LabelsTab({
         projectId={projectId}
         relabelOpen={relabelOpen}
         onRelabelOpenChange={setRelabelOpen}
-        onUndo={handleUndo}
-        canUndo={undoDepth > 0}
+        onUndo={undo.undo}
+        canUndo={undo.canUndo}
       />
 
       <LabelsWelcomePopover open={showWelcome} onDismiss={handleDismissWelcome} />
@@ -1743,8 +1736,11 @@ export function LabelsTab({
         projectId={projectId}
         labelOptions={labelOptions}
         labelOptionsLoading={labelOptionsLoading}
+        // The view owns its API calls and pushes their `before` on the
+        // shared undo stack itself; these callbacks only patch the grid.
+        undo={undo}
         onRelabel={(detectionId, label, category) => {
-          applyUndoableAction([detectionId], (d) => ({
+          applyDetectionAction([detectionId], (d) => ({
             ...d,
             label,
             category,
@@ -1760,7 +1756,7 @@ export function LabelsTab({
           }));
         }}
         onMarkFalse={(detectionId) => {
-          applyUndoableAction([detectionId], (d) => ({
+          applyDetectionAction([detectionId], (d) => ({
             ...d,
             label: "false detection",
             common_name: "False detection",
@@ -1772,7 +1768,7 @@ export function LabelsTab({
           }));
         }}
         onMarkUnknown={(detectionId) => {
-          applyUndoableAction([detectionId], (d) => ({
+          applyDetectionAction([detectionId], (d) => ({
             ...d,
             label: "unknown",
             common_name: "Unknown",
@@ -1784,7 +1780,7 @@ export function LabelsTab({
           }));
         }}
         onVerify={(detectionId, verified = true) => {
-          applyUndoableAction([detectionId], (d) => ({ ...d, verified }));
+          applyDetectionAction([detectionId], (d) => ({ ...d, verified }));
         }}
         // The rail's flag/like: patch every crop of that file so the
         // corner badges follow without a re-sort. Not undoable — F is

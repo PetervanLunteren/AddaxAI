@@ -65,6 +65,7 @@ import {
   type LabelsFilterState,
 } from "./labels-filters";
 import { useLabelsProgress } from "./useLabelsProgress";
+import { useUndoStack } from "./useUndoStack";
 import { warmFiles } from "./warm-files";
 import { useWideModeControls } from "./wide-mode";
 import type {
@@ -496,16 +497,44 @@ export function FilesTab({
     [orderedIds, clearSelection, updateSelection],
   );
 
-  const markChecked = useMutation({
-    mutationFn: (ids: string[]) => filesApi.bulkVerify(ids),
-    onSuccess: (_r, ids) => {
+  // Undo: one history for this tab and its viewer. Every action pushes
+  // the before-state the server returned with it, and undo writes that
+  // back (`useUndoStack`): the file's sign-off and every box it touched,
+  // the rejected weak ones included. The tiles then refetch what
+  // changed; the viewer adds its own follow-up (`FileDetailModal`).
+  // While the viewer is open the list only goes dirty, the same rule as
+  // every other change made from the viewer (see `refreshCountsNow`).
+  // In the grid the restored files are selected, as the crop grid does,
+  // so the next key acts on what undo put back.
+  const undo = useUndoStack(({ snapshot, detections }) => {
+    const fileIds = new Set(snapshot.files.map((f) => f.file_id));
+    for (const d of detections) fileIds.add(d.file_id);
+    for (const id of fileIds) {
+      queryClient.invalidateQueries({ queryKey: ["file", id] });
+    }
+    if (openIndex !== null) {
+      refreshCountsNow();
+      return;
+    }
+    refresh();
+    anchorRef.current = fileIds.values().next().value ?? null;
+    updateSelection(fileIds);
+  });
+
+  // Verify and unverify, one mutation. Unverify takes the sign-off back
+  // and leaves the labels alone. After either the selection advances,
+  // because the acted files leave the view they were found in (the
+  // default view shows unverified files, a "Verified" view the others).
+  const setChecked = useMutation({
+    mutationFn: ({ ids, verified }: { ids: string[]; verified: boolean }) =>
+      filesApi.bulkVerify(ids, verified),
+    onSuccess: (r, { ids }) => {
       // No success toast: this is the repeated action on this page, and
       // the result is already on screen. The files leave the grid, the
-      // selection moves to the next one, and the progress bar ticks up.
+      // selection moves to the next one, and the progress bar ticks.
       // Matches the crop grid, which stays quiet on a verify too. Errors
       // still toast.
-      undoStackRef.current.push({ kind: "verify", fileIds: ids });
-      setCanUndo(true);
+      undo.push(r.before);
       advanceAfter(ids);
       refresh();
       // The tiles draw from the file detail, which the verify changed.
@@ -521,28 +550,15 @@ export function FilesTab({
   // label to every visible box of the selected files. The tiles already
   // hold each file's detail in the query cache, so collecting the box
   // ids costs nothing beyond a cache read; `fetchQuery` covers a tile
-  // whose fetch has not landed yet. Undo mirrors the crop grid's:
-  // Cmd+Z reverts the last action's boxes to the model's own call.
+  // whose fetch has not landed yet.
   const threshold = project?.counting_threshold ?? 0;
   const { options: labelOptions, isLoading: labelOptionsLoading } =
     useLabelOptions(project?.classification_model_id ?? null, projectId);
   const { shortcutLabels, updateShortcutLabels } = useShortcutLabels(projectId);
   const [relabelOpen, setRelabelOpen] = useState(false);
-  // Label entries revert boxes to the model's call; verify entries
-  // undo with an untick (`bulkVerify(ids, false)`), which is verify's
-  // exact inverse: every box unverified, and the next reprocess hands
-  // the rejected ones back to the AI. Same stack, so Cmd+Z walks back
-  // through verifies and relabels in the order they happened.
-  const undoStackRef = useRef<
-    (
-      | { kind: "label"; boxIds: string[]; fileIds: string[] }
-      | { kind: "verify"; fileIds: string[] }
-    )[]
-  >([]);
   // Fix for keyboard double-fire: the bar's buttons disable while a
   // mutation is pending, but M/X/2 on the keyboard have no such gate.
   const bulkBusyRef = useRef(false);
-  const [canUndo, setCanUndo] = useState(false);
 
   const visibleBoxesOf = useCallback(
     async (fileIds: string[]) => {
@@ -574,9 +590,8 @@ export function FilesTab({
           return;
         }
         const boxIds = boxes.map((b) => b.id);
-        await detectionsApi.bulkRelabel(boxIds, label, category);
-        undoStackRef.current.push({ kind: "label", boxIds, fileIds });
-        setCanUndo(true);
+        const r = await detectionsApi.bulkRelabel(boxIds, label, category);
+        undo.push(r.before);
         // Relabelling verifies the boxes, so the files roll up to
         // verified and leave the default (unverified) view; advance the
         // selection exactly as a verify does.
@@ -591,7 +606,7 @@ export function FilesTab({
         bulkBusyRef.current = false;
       }
     },
-    [selected, visibleBoxesOf, advanceAfter, refresh, queryClient],
+    [selected, visibleBoxesOf, advanceAfter, refresh, queryClient, undo],
   );
 
   // The selection's majority, from the page cache, for the bar button's
@@ -628,25 +643,6 @@ export function FilesTab({
     applyLabelToSelection(mode.label, mode.category);
   }, [selected, visibleBoxesOf, applyLabelToSelection]);
 
-  const handleUndo = useCallback(async () => {
-    const entry = undoStackRef.current.pop();
-    setCanUndo(undoStackRef.current.length > 0);
-    if (!entry) return;
-    try {
-      if (entry.kind === "verify") {
-        await filesApi.bulkVerify(entry.fileIds, false);
-      } else {
-        await detectionsApi.bulkRevertToOriginal(entry.boxIds);
-      }
-      refresh();
-      for (const id of entry.fileIds) {
-        queryClient.invalidateQueries({ queryKey: ["file", id] });
-      }
-    } catch (err) {
-      toast.error((err as Error).message);
-    }
-  }, [refresh, queryClient]);
-
   // Grid keyboard, matching the crop grid: Escape clears the selection,
   // Enter acts on it. Skipped while the viewer is open, which owns the
   // keyboard for the file it is showing.
@@ -673,7 +669,9 @@ export function FilesTab({
         clearSelection();
       } else if (e.key === "Enter" && selected.size > 0) {
         e.preventDefault();
-        if (!markChecked.isPending) markChecked.mutate([...selected]);
+        if (!setChecked.isPending) {
+          setChecked.mutate({ ids: [...selected], verified: true });
+        }
       } else if (e.key === "a" && (e.metaKey || e.ctrlKey)) {
         // Select everything on screen, like the crop grid. "On screen"
         // is this page, not all 229: the action would otherwise reach
@@ -683,7 +681,7 @@ export function FilesTab({
         updateSelection(new Set(orderedIds));
       } else if (e.key === "z" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        handleUndo();
+        undo.undo();
       } else if (
         (e.key === "x" || e.key === "X" || e.key === "Backspace" ||
           e.key === "Delete") &&
@@ -757,12 +755,12 @@ export function FilesTab({
     openIndex,
     selected,
     clearSelection,
-    markChecked,
+    setChecked,
     orderedIds,
     updateSelection,
     sort,
     items,
-    handleUndo,
+    undo,
     applyLabelToSelection,
     matchMajority,
     shortcutLabels,
@@ -960,19 +958,22 @@ export function FilesTab({
       {/* The Detections grid's bar, verbatim: `performAction` maps each
           button to this tab's file-scoped implementation (every visible
           box of the selected files) while the presentation stays one
-          component, so the two grids cannot drift. Verify is immediate,
-          like Enter: the old confirm dialog guarded an irreversible
-          delete that no longer exists (untick a file and the next
-          reprocess hands its rejected boxes back to the AI). */}
+          component, so the two grids cannot drift. Verify and Unverify
+          are immediate, like Enter: undo is the safety net, and the old
+          confirm dialog guarded an irreversible delete that no longer
+          exists. */}
       <BulkActionBar
         selectedIds={selected}
         onDeselectAll={clearSelection}
         labelOptions={labelOptions}
         labelOptionsLoading={labelOptionsLoading}
         onActionComplete={() => {}}
+        showUnverify={items.some((i) => selected.has(i.id) && i.verified)}
         performAction={(action) => {
           if (action === "verify") {
-            markChecked.mutate([...selected]);
+            setChecked.mutate({ ids: [...selected], verified: true });
+          } else if (action === "unverify") {
+            setChecked.mutate({ ids: [...selected], verified: false });
           } else if (action === "false") {
             return applyLabelToSelection("false detection", undefined);
           } else if (action === "unknown") {
@@ -991,8 +992,8 @@ export function FilesTab({
         projectId={projectId}
         relabelOpen={relabelOpen}
         onRelabelOpenChange={setRelabelOpen}
-        onUndo={handleUndo}
-        canUndo={canUndo}
+        onUndo={undo.undo}
+        canUndo={undo.canUndo}
       />
 
       <FileDetailModal
@@ -1004,6 +1005,7 @@ export function FilesTab({
         onExhausted={soloItem ? () => setSoloItem(null) : continueViewer}
         loadingMore={soloItem ? false : loadingMore}
         onChanged={refreshCountsNow}
+        undo={undo}
       />
     </div>
   );

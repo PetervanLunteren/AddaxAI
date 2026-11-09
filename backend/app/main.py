@@ -37,6 +37,7 @@ from app.api.routers import (
     setup_router,
     sites_router,
     statistics_router,
+    undo_router,
     websocket_router,
 )
 from app.core.config import get_settings
@@ -590,6 +591,7 @@ def create_app() -> FastAPI:
     app.include_router(labels_router)
     app.include_router(statistics_router)
     app.include_router(calibration_router)
+    app.include_router(undo_router)
     app.include_router(websocket_router)
 
     # Health check endpoint

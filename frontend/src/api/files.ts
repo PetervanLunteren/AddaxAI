@@ -4,6 +4,7 @@
 
 import { api } from "../lib/api-client";
 import type {
+  BulkResult,
   FileResponse,
   FileWithDetections,
   FilmstripResponse,
@@ -41,13 +42,10 @@ export const filesApi = {
 
   /**
    * Verify or unverify up to 500 files in one request. Same rule per
-   * file as `update(id, { verified })`.
+   * file as `update(id, { verified })`. `before` is the undo snapshot.
    */
-  bulkVerify: async (
-    ids: string[],
-    verified = true,
-  ): Promise<{ updated_count: number }> => {
-    return api.post<{ updated_count: number }>("/api/files/bulk-verify", {
+  bulkVerify: async (ids: string[], verified = true): Promise<BulkResult> => {
+    return api.post<BulkResult>("/api/files/bulk-verify", {
       file_ids: ids,
       verified,
     });

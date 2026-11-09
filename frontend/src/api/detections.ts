@@ -3,24 +3,13 @@
  */
 
 import { api } from "../lib/api-client";
+import { mergeSnapshots } from "../lib/undo-snapshot";
 import type {
+  BulkResult,
   DetectionResponse,
   DetectionCreate,
   DetectionUpdate,
 } from "./types";
-
-/** The reverted state of one detection returned by
- *  bulk-revert-to-original — enough to patch a grid crop in place. */
-export interface RevertedDetection {
-  detection_id: string;
-  label: string | null;
-  category: string;
-  label_confidence: number | null;
-  label_taxonomy_id: string | null;
-  scientific_name: string | null;
-  common_name: string | null;
-  verified: boolean;
-}
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const chunks: T[][] = [];
@@ -28,6 +17,26 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
     chunks.push(arr.slice(i, i + size));
   }
   return chunks;
+}
+
+/** Run a bulk call in chunks of 500 and fold the answers into one.
+ *
+ *  Sequential on purpose: each chunk's `before` is read when that
+ *  chunk runs, and two chunks can touch boxes of the same file. In
+ *  parallel the later chunk would snapshot the file after the earlier
+ *  one already flipped it, and undo would leave it flipped. */
+async function inChunks(
+  ids: string[],
+  call: (chunk: string[]) => Promise<BulkResult>,
+): Promise<BulkResult> {
+  const results: BulkResult[] = [];
+  for (const chunk of chunkArray(ids, 500)) {
+    results.push(await call(chunk));
+  }
+  return {
+    updated_count: results.reduce((sum, r) => sum + r.updated_count, 0),
+    before: mergeSnapshots(results.map((r) => r.before)),
+  };
 }
 
 export const detectionsApi = {
@@ -54,68 +63,29 @@ export const detectionsApi = {
     return api.delete(`/api/detections/by-file/${fileId}`);
   },
 
-  /** Verify or unverify a single detection. */
-  verify: async (
-    id: string,
-    verified: boolean
-  ): Promise<DetectionResponse> => {
-    return api.patch<DetectionResponse>(`/api/detections/${id}/verify`, {
-      verified,
-    });
-  },
-
-  /** Bulk verify/unverify detections (auto-batches in chunks of 500). */
-  bulkVerify: async (
-    ids: string[],
-    verified: boolean
-  ): Promise<{ updated_count: number }> => {
-    const chunks = chunkArray(ids, 500);
-    const results = await Promise.all(
-      chunks.map((chunk) =>
-        api.post<{ updated_count: number }>("/api/detections/bulk-verify", {
-          detection_ids: chunk,
-          verified,
-        })
-      )
+  /** Verify or unverify detections. `before` is the undo snapshot. */
+  bulkVerify: async (ids: string[], verified: boolean): Promise<BulkResult> => {
+    return inChunks(ids, (chunk) =>
+      api.post<BulkResult>("/api/detections/bulk-verify", {
+        detection_ids: chunk,
+        verified,
+      }),
     );
-    return { updated_count: results.reduce((sum, r) => sum + r.updated_count, 0) };
   },
 
-  /** Bulk relabel detections (auto-batches in chunks of 500). */
+  /** Relabel and verify detections. `before` is the undo snapshot. */
   bulkRelabel: async (
     ids: string[],
     label: string | null,
     category?: string
-  ): Promise<{ updated_count: number }> => {
-    const chunks = chunkArray(ids, 500);
-    const results = await Promise.all(
-      chunks.map((chunk) =>
-        api.post<{ updated_count: number }>("/api/detections/bulk-relabel", {
-          detection_ids: chunk,
-          label,
-          category,
-        })
-      )
+  ): Promise<BulkResult> => {
+    return inChunks(ids, (chunk) =>
+      api.post<BulkResult>("/api/detections/bulk-relabel", {
+        detection_ids: chunk,
+        label,
+        category,
+      }),
     );
-    return { updated_count: results.reduce((sum, r) => sum + r.updated_count, 0) };
-  },
-
-  /** Revert detections to the model's original prediction (undo of a
-   *  human relabel / verify). Auto-batches in chunks of 500. Returns the
-   *  reverted rows so the caller can patch its grid in place. */
-  bulkRevertToOriginal: async (
-    ids: string[],
-  ): Promise<{ reverted: RevertedDetection[] }> => {
-    const chunks = chunkArray(ids, 500);
-    const results = await Promise.all(
-      chunks.map((chunk) =>
-        api.post<{ reverted: RevertedDetection[] }>(
-          "/api/detections/bulk-revert-to-original",
-          { detection_ids: chunk },
-        ),
-      ),
-    );
-    return { reverted: results.flatMap((r) => r.reverted) };
   },
 
   /** Dismiss/undismiss a cohort of suggestions (auto-batches in chunks of 500).

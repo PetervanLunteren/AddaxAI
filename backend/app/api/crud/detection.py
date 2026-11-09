@@ -400,11 +400,12 @@ def mark_detections_false(db: Session, detections: list[Detection]) -> None:
     label "false detection", so a box rejected here is
     indistinguishable from one a person pressed X on: same label, same
     taxonomy row, same verified flag. ``set_file_verified`` uses this
-    for the invisible sub-threshold boxes a file sign-off rejects. The
-    ``original_*`` mirror is untouched, so undo and a later unverify +
-    reprocess can both hand the box back to the machine.
+    for the invisible sub-threshold boxes a file sign-off rejects. Undo
+    puts the box's previous state back from the snapshot the sign-off
+    returned; the ``original_*`` mirror is untouched, so an unverify plus
+    reprocess can still hand the box back to the machine.
 
-    A parity test (`test_empty_verify_discards.py`) pins the two paths
+    A parity test (`test_file_verify_rejects.py`) pins the two paths
     against drift.
     """
     if not detections:

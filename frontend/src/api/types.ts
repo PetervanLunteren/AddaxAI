@@ -542,6 +542,7 @@ export type ObservationType = string;
 // File types
 export interface DetectionResponse {
   id: string;
+  file_id: string;
   category: string;
   confidence: number;
   /** The analysis run that produced this box, or `null` when a person
@@ -565,6 +566,41 @@ export interface DetectionResponse {
   frame_number: number | null;
   verified: boolean;
   verified_at_utc: string | null;
+}
+
+/** One box as it was before an action. Mirrors
+ * `backend/app/api/schemas/undo.py`. No taxonomy id: the server
+ * re-derives it from the label on restore. */
+export interface DetectionState {
+  detection_id: string;
+  category: string;
+  label: string | null;
+  label_confidence: number | null;
+  scientific_name: string | null;
+  common_name: string | null;
+  classification_method: string | null;
+  verified: boolean;
+  verified_at_utc: string | null;
+}
+
+/** A file's sign-off as it was before an action. */
+export interface FileState {
+  file_id: string;
+  verified: boolean;
+  verified_at_utc: string | null;
+}
+
+/** Everything an action changed, as it was before. Every undoable
+ * action returns one as `before`; `POST /api/undo` takes it back. */
+export interface UndoSnapshot {
+  detections: DetectionState[];
+  files: FileState[];
+}
+
+/** What the bulk verify / relabel endpoints answer. */
+export interface BulkResult {
+  updated_count: number;
+  before: UndoSnapshot;
 }
 
 export interface FileResponse {

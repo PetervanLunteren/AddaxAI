@@ -18,6 +18,7 @@ from .projects import router as projects_router
 from .setup import router as setup_router
 from .sites import router as sites_router
 from .statistics import router as statistics_router
+from .undo import router as undo_router
 from .websocket import router as websocket_router
 
 __all__ = [
@@ -39,5 +40,6 @@ __all__ = [
     "setup_router",
     "sites_router",
     "statistics_router",
+    "undo_router",
     "websocket_router",
 ]

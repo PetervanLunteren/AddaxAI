@@ -17,6 +17,7 @@ from app.api.crud.event_observation import (
 from app.api.crud.file_filters import file_flag_clauses, tri_state
 from app.api.crud.ordering import file_time_order
 from app.api.schemas.file import FileUpdate
+from app.api.schemas.undo import DetectionState, FileState, UndoSnapshot
 from app.core.confidence import effective_floor
 from app.ml.detection_visibility import on_visible_frame, on_visible_frame_of
 from app.ml.label_exclusion import (
@@ -711,7 +712,7 @@ def recompute_file_verified_for_detections(
     recompute_file_verified(db, file_ids)
 
 
-def set_file_verified(db: Session, file: File, verified: bool) -> None:
+def set_file_verified(db: Session, file: File, verified: bool) -> UndoSnapshot:
     """Sign a file off, or take the sign-off back. No commit.
 
     Verifying a file says "the boxes you can see are all there is". So on
@@ -742,6 +743,12 @@ def set_file_verified(db: Session, file: File, verified: bool) -> None:
     Idempotent, so re-verifying picks up boxes added since. Both paths
     re-derive ``observation_type`` and the event MaxN, as the detection
     endpoints do. The caller commits.
+
+    Returns the before-state of the file and of every box this call
+    changes, for undo (``schemas/undo.py``). It is built here, not in the
+    router, because the rows a sign-off touches are defined by the
+    predicates above, and the rejected weak boxes never leave this
+    function any other way.
     """
     threshold = _project_threshold_for_file(db, file)
     now = datetime.now(UTC)
@@ -749,30 +756,32 @@ def set_file_verified(db: Session, file: File, verified: bool) -> None:
     # only the frame clause.
     on_frame = and_(Detection.file_id == file.id, on_visible_frame_of(file))
     if verified:
-        weak = (
+        rows = (
             db.query(Detection)
-            .filter(
-                on_frame,
-                Detection.verified == False,  # noqa: E712
-                Detection.confidence < threshold,
-            )
+            .filter(on_frame, Detection.verified == False)  # noqa: E712
             .all()
         )
-        mark_detections_false(db, weak)
-        db.query(Detection).filter(
-            on_frame,
-            Detection.verified == False,  # noqa: E712
-        ).update(
-            {"verified": True, "verified_at_utc": now},
-            synchronize_session=False,
+    else:
+        rows = (
+            db.query(Detection)
+            .filter(Detection.file_id == file.id, Detection.verified == True)  # noqa: E712
+            .all()
         )
+    before = UndoSnapshot(
+        detections=[DetectionState.from_detection(d) for d in rows],
+        files=[FileState.from_file(file)],
+    )
+    if verified:
+        mark_detections_false(db, [d for d in rows if d.confidence < threshold])
+        for det in rows:
+            det.verified = True
+            det.verified_at_utc = now
         file.verified = True
         file.verified_at_utc = now
     else:
-        db.query(Detection).filter(Detection.file_id == file.id).update(
-            {"verified": False, "verified_at_utc": None},
-            synchronize_session=False,
-        )
+        for det in rows:
+            det.verified = False
+            det.verified_at_utc = None
         file.verified = False
         file.verified_at_utc = None
     db.flush()
@@ -780,6 +789,7 @@ def set_file_verified(db: Session, file: File, verified: bool) -> None:
     event_ids = get_event_ids_for_files(db, [file.id])
     if event_ids:
         recalculate_max_n_for_events(db, event_ids, threshold)
+    return before
 
 
 def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:
