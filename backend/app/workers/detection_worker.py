@@ -43,6 +43,32 @@ from app.utils.windows_security import with_smart_app_control_hint
 logger = get_logger(__name__)
 
 
+def _failure_message(error: Exception, folder: Path | None) -> str:
+    """The text a failed queue entry shows the user.
+
+    A folder that can no longer be reached is the one failure whose cause
+    we can state for certain, and on an external drive it is the common
+    one: the drive drops off the bus mid-run and every later read fails
+    with whatever errno the OS picked (ENXIO, ENOENT, EIO), surfacing as a
+    subprocess's stack text. So we ask the folder, not the exception.
+    Anything else is unexplained and keeps the raw error plus the Smart
+    App Control hint.
+    """
+    if folder is not None:
+        try:
+            reachable = folder.exists()
+        except OSError:
+            reachable = False
+        if not reachable:
+            return (
+                f"The folder {folder} could not be reached any more during "
+                "the run. If it is on an external or network drive, check "
+                "the connection and try again. Detection work "
+                "that was already finished is kept."
+            )
+    return with_smart_app_control_hint(str(error))
+
+
 async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list[str], db) -> None:
     """
     Process multiple queue entries sequentially within one job.
@@ -134,6 +160,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
     try:
         for idx, entry_id in enumerate(queue_entry_ids, start=1):
             deployment = None  # reset: each iteration creates its own
+            # Reset too: the failure handler asks this folder whether it
+            # is still there, and must never ask the previous entry's.
+            folder_path: Path | None = None
             try:
                 # Get queue entry
                 entry = queue_crud.get_queue_entry(db, entry_id)
@@ -1182,7 +1211,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     db,
                     entry_id,
                     status="failed",
-                    error=with_smart_app_control_hint(str(e)),
+                    error=_failure_message(e, folder_path),
                 )
 
         # How the run ended is read back off the queue rows themselves,
