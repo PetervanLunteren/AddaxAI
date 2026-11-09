@@ -50,10 +50,10 @@
  * two thousand tracks are never touched from a frame that shows 17 of
  * them (they were, until 2026-11-03: a V on the MaxN frame signed off
  * the whole drop). One rule decides what happens next (`settleAfter`):
- * when nothing in the file is left unchecked it is signed off and the
- * viewer moves on; otherwise the next animal still waiting, forward
- * in time from the frame on screen, is selected and shown, so Enter
- * after Enter walks a clip. Click a box, Tab through the boxes on screen, or
+ * the picture moves on only when agreeing (Enter, V) leaves every box
+ * on it checked; a correction (X, U, R, M, 1 to 5, naming a drawn box)
+ * stays where the person is working. A photo is one frame, so the
+ * rule is the same there. Click a box, Tab through the boxes on screen, or
  * click a bar on a clip's timeline to select one; the buttons say which
  * scope they are in. M relabels every detection on screen to the most
  * common label among them, whatever is selected. Cmd+Z reverts the last
@@ -118,6 +118,7 @@ import {
   fileMaxNMarkers,
   frameBoxes,
   nearestSampledFrame,
+  playStartFrame,
   steppedFrame,
 } from "../../lib/track-utils";
 import { canvasImage, frameImageUrl, warmClipFrames } from "../../lib/clip-frames";
@@ -237,9 +238,6 @@ export function FileDetailModal({
   // The boxes the relabel search is open for. A list, because with no
   // box selected the search names every box on the picture.
   const [relabelTargets, setRelabelTargets] = useState<string[] | null>(null);
-  // The box the species search is naming because it was just drawn
-  // (`handleCreated`); naming it stays on the frame instead of walking.
-  const drawnRef = useRef<string | null>(null);
   // The species a newly drawn box gets. Null means an unnamed animal,
   // and the search opens on every new box instead.
   const [activeLabel, setActiveLabel] = useState<LabelOption | null>(null);
@@ -384,18 +382,19 @@ export function FileDetailModal({
     [file, shownFrame, showFrame],
   );
   // Watch the clip from the frame on screen, where the playhead is,
-  // the cover included: `shownFrame` null means the cover, and until
-  // 2026-11-05 that sent no seek, so P on a fresh open played from 0:00
-  // while P after a step played from the step. An armed crosshair is
+  // the cover included, and from the start once it is at the end
+  // (`playStartFrame`, the Counts modal's rule too). Until 2026-11-05
+  // the cover sent no seek, so P on a fresh open played from 0:00 while
+  // P after a step played from the step. An armed crosshair is
   // dropped: nothing is drawn on a playing clip.
   const watch = useCallback(() => {
-    const frame = shownFrame ?? file?.best_frame_number;
+    const frame = file ? playStartFrame(file, shownFrame) : null;
     if (frame != null) {
       setSeekRequest({ frame, nonce: Date.now(), play: true });
     }
     setDrawMode(false);
     setViewMode("video");
-  }, [shownFrame, file?.best_frame_number]);
+  }, [file, shownFrame]);
   // And back: the still on the paused moment, snapped to the nearest
   // sampled frame (`nearestSampledFrame`), since the detector sampled a
   // few frames per second and a paused frame is rarely one of them.
@@ -493,10 +492,12 @@ export function FileDetailModal({
   // replaced described the rule and was hard to follow (2026-11-05).
   // Playback first: a click on the playing clip pauses it rather than
   // clearing the selection, so the still's hint would be wrong there.
+  // In playback it also says why buttons are grey: the verdicts wait
+  // for a picked bar, drawing for a still.
   const scopeLine = viewMode === "video"
     ? selectedDetectionId
-      ? "Acting on the box you picked on the timeline."
-      : "Acting on the box you pick on the timeline."
+      ? "Acting on the box you picked. Pause (P) to draw."
+      : "Pick a bar to act on its box. Pause (P) to draw."
     : selectedDetectionId
       ? "Acting on the selected box. Click the picture outside the boxes to go back to all."
       : onScreen.length === 0
@@ -530,6 +531,8 @@ export function FileDetailModal({
             ? `Verify 1 ${unit} on this frame`
             : `Verify the ${onScreen.length} ${units} on this frame`;
   const majority = useMemo(() => labelMajority(onScreen), [onScreen]);
+  // A majority is a statement about a set: two boxes or more, with labels.
+  const canMatchMajority = majority != null && onScreen.length >= 2;
   // How many detections a whole-clip sign-off would verify unseen.
   const unchecked = useMemo(
     () => (file ? uncheckedCards(file, project?.counting_threshold ?? 0).length : 0),
@@ -628,43 +631,43 @@ export function FileDetailModal({
   const handleCreated = useCallback(
     (detectionId: string) => {
       if (activeLabel) return;
-      drawnRef.current = detectionId;
       setSelectedDetectionId(detectionId);
       setRelabelTargets([detectionId]);
     },
     [activeLabel],
   );
 
-  /** The card still waiting after a verdict on `ids`, undefined when
-   *  nothing else waits. Read before the verdict lands.
-   *
-   *  A clip walks forward in time from the frame on screen, by the
-   *  frame each animal is shown on (its representative frame): the
-   *  unchecked animal whose frame comes first at or after the one on
-   *  screen, whatever its species, the ones just acted on left out, and
-   *  the earliest remaining one only when nothing lies ahead. So the
-   *  picture only ever moves forward until it wraps. Ordering by the
-   *  bar's start instead (an hour on 2026-11-03) picked long-lived
-   *  animals that had started earlier, and V V V on a shoal walked the
-   *  picture backwards. Anchored on the frame, not on a place in a
-   *  list, so a verdict on the frame, on a selected animal, or on one
-   *  already checked (Backspace on a fish of a frame just verified)
-   *  all move on from where the person is. Until 2026-11-03 the walk
-   *  was species by species and started over at the front whenever
-   *  the acted animal was not in the list, which on a 74 minute drop
-   *  threw the picture back to the first fish. A photo walks its boxes
-   *  in list order, wrapping round. */
+  /** The cards still unchecked once a verdict on `ids` lands, read
+   *  before it does. By animal, not by box: on a clip the box picked on
+   *  the picture is that frame's box while the list holds each animal's
+   *  card, and a verdict on either reaches the whole track. */
+  const waitingAfter = useCallback(
+    (ids: string[]) => {
+      if (!file) return [];
+      const acted = new Set(ids);
+      const tracks = new Set(
+        file.detections.filter((d) => acted.has(d.id) && d.track_id).map((d) => d.track_id),
+      );
+      return uncheckedCards(file, project?.counting_threshold ?? 0).filter(
+        (c) => !acted.has(c.id) && !(c.track_id && tracks.has(c.track_id)),
+      );
+    },
+    [file, project?.counting_threshold],
+  );
+
+  /** The clip's next animal still waiting after a verdict on `ids`,
+   *  undefined when none waits. Forward in time from the frame on
+   *  screen, by the frame each animal is shown on (its representative
+   *  frame): the first unchecked animal at or after the one on screen,
+   *  whatever its species, and the earliest only when nothing lies
+   *  ahead. Ordering by the bar's start instead (an hour on 2026-11-03)
+   *  picked long-lived animals that had started earlier, and V V V on a
+   *  shoal walked the picture backwards. A photo never walks: a photo
+   *  finished is a file finished. */
   const nextWaitingAfter = useCallback(
     (ids: string[]) => {
-      const threshold = project?.counting_threshold ?? 0;
-      const all = file ? uncheckedCards(file, threshold) : [];
-      const done = new Set(ids);
-      const pending = all.filter((d) => !done.has(d.id));
-      if (!file || pending.length === 0) return undefined;
-      if (file.file_type !== "video") {
-        const at = all.findIndex((d) => done.has(d.id));
-        return pending[Math.max(at, 0) % pending.length];
-      }
+      const pending = waitingAfter(ids);
+      if (!file || file.file_type !== "video" || pending.length === 0) return undefined;
       const frameOf = new Map(file.tracks.map((t) => [t.id, t.representative_frame_number]));
       const shownOn = (d: { track_id: string | null }) =>
         d.track_id ? (frameOf.get(d.track_id) ?? 0) : 0;
@@ -674,7 +677,7 @@ export function FileDetailModal({
       );
       return inTime.find((d) => shownOn(d) >= anchor) ?? inTime[0];
     },
-    [file, project?.counting_threshold, shownFrame],
+    [file, waitingAfter, shownFrame],
   );
 
   /** The frames a person goes to next, asked for as soon as the current
@@ -720,31 +723,62 @@ export function FileDetailModal({
   );
 
   /** What follows a verdict on `ids`, decided before it lands so the
-   *  lists still hold the cards it touches. One rule for every verdict:
-   *  the viewer moves to the next animal still waiting
-   *  (`nextWaitingAfter`) and stays in the mode the verdict came from.
-   *  A verdict on a selected animal selects the next one, so V V V
-   *  walks the clip animal by animal, the step the grid and the card
-   *  modal take. A verdict on the frame, nothing selected, shows the
-   *  next animal's frame and selects nothing, so Enter Enter Enter
-   *  walks it frame by frame with the outlines on the lane saying what
-   *  the next Enter covers; selecting the next animal here (until
-   *  2026-11-03) turned a frame pass into a bar pass after one press.
-   *  Nothing left: the file is signed off and the viewer moves on,
-   *  exactly as Enter on a photo always did. Not a courtesy: the
-   *  backend's rollup flips `File.verified` the moment the last card
-   *  is verified, without rejecting the weak boxes underneath, so
-   *  without the sign-off here a V on the last animal left a file that
-   *  read verified, was not, and stayed on screen with an "Unverify"
-   *  button nobody had asked for. */
+   *  lists still hold the cards it touches (2026-11-06, with Peter):
+   *
+   *  - The picture moves on only when agreeing (`agreeing`: Enter, V)
+   *    leaves every box on it checked. Then the clip shows the next
+   *    animal still waiting (`nextWaitingAfter`), selected when the
+   *    verdict was on a selected one, so V V V walks animal by animal
+   *    and Enter Enter walks frame by frame.
+   *  - Agreeing with boxes left on the picture selects the next of them,
+   *    so V V V clears a frame and the last V moves on.
+   *  - A correction (X, U, R, M, 1 to 5, naming a drawn box) stays on
+   *    the picture with nothing selected: the person is working there,
+   *    often on several boxes in a row. Until 2026-11-06 every verdict
+   *    walked, and an X at the end of a drop wrapped back to its first
+   *    unchecked fish.
+   *  - Nothing left in the file: it is signed off, and agreeing also
+   *    moves to the next file, as Enter on a photo always did. The
+   *    sign-off is not a courtesy: the backend's rollup flips
+   *    `File.verified` the moment the last card is verified, without
+   *    rejecting the weak boxes underneath. */
   const settleAfter = useCallback(
-    (ids: string[]) => {
+    (ids: string[], agreeing: boolean) => {
+      const stay = () => {
+        setSelectedDetectionId(null);
+        handleCanvasChange();
+      };
+      const waiting = waitingAfter(ids);
+      if (waiting.length === 0) {
+        if (agreeing) return verifyAndAdvance;
+        return () => {
+          if (item) setVerified({ id: item.id, verified: true });
+          stay();
+        };
+      }
+      if (!agreeing) return stay;
+      // The next box still waiting on this picture, in the order Tab
+      // walks (`visibleBoxes`, left to right), from the selected one on
+      // and round: a photo and a clip frame alike. A clip's box waits
+      // when its animal does. Storage order made the highlight hop
+      // across a busy frame (bug hunt, 2026-11-06).
+      const waitingTracks = new Set(waiting.map((c) => c.track_id));
+      const waitingIds = new Set(waiting.map((c) => c.id));
+      const at = visibleBoxes.findIndex((b) => b.id === selectedDetectionId);
+      const nextBox = [...visibleBoxes.slice(at + 1), ...visibleBoxes.slice(0, at + 1)].find(
+        (b) => (b.track_id ? waitingTracks.has(b.track_id) : waitingIds.has(b.id)),
+      );
+      if (nextBox) {
+        return () => {
+          setSelectedDetectionId(nextBox.id);
+          handleCanvasChange();
+        };
+      }
       const next = nextWaitingAfter(ids);
-      if (!next) return verifyAndAdvance;
       const fromSelection = selectedDetectionId != null;
       return () => {
         if (fromSelection) selectCard(next);
-        else if (next.track_id) {
+        else if (next?.track_id) {
           const track = file?.tracks.find((t) => t.id === next.track_id);
           if (track) showFrame(track.representative_frame_number);
         }
@@ -752,8 +786,12 @@ export function FileDetailModal({
       };
     },
     [
-      nextWaitingAfter,
+      waitingAfter,
       verifyAndAdvance,
+      item,
+      setVerified,
+      visibleBoxes,
+      nextWaitingAfter,
       selectedDetectionId,
       selectCard,
       file,
@@ -774,7 +812,7 @@ export function FileDetailModal({
   const verify = useCallback(
     (ids: string[]) => {
       if (!canJudge) return;
-      const after = settleAfter(ids);
+      const after = settleAfter(ids, true);
       if (ids.length === 0) {
         // `settleAfter` hands back `verifyAndAdvance` itself when nothing
         // waits; anything else would only refetch the file for nothing.
@@ -800,32 +838,42 @@ export function FileDetailModal({
   const markTargetsCorrect = useCallback(() => verify(targetIds), [verify, targetIds]);
 
   /** Every label action goes through here: the grid's `bulk-relabel`
-   *  (which verifies), then the undo stack, then `settleAfter`'s step.
-   *  Like `verify`, nothing while the frame is on its way. `stay` is
-   *  for naming a box just drawn: the person is adding the animals the
-   *  AI missed on this picture, often several on one MaxN frame, so the
-   *  viewer stays on it with nothing selected and the next D draws
-   *  again (2026-11-04; the walk carried them off after each box). */
+   *  (which verifies), then the undo stack, then `settleAfter`'s rule
+   *  for a correction: stay on the picture. Like `verify`, nothing while
+   *  the frame is on its way.
+   *
+   *  On a clip every action here is about the animal, so each box goes
+   *  with its track's card. `bulk-relabel` verifies only the boxes it is
+   *  sent and labels the rest of the track, and the card is what says an
+   *  animal is checked: a label on a frame box left the animal waiting,
+   *  so the next V picked it again and the clip was never signed off
+   *  (bug hunt, 2026-11-06). `bulk-verify` reaches the card by itself.
+   *  Not in the backend: a card's Frames view relabels a few frames of a
+   *  track without passing judgement on the animal. */
   const applyLabel = useCallback(
-    (ids: string[], label: string | null, category: string | undefined, stay = false) => {
+    (ids: string[], label: string | null, category: string | undefined) => {
       if (ids.length === 0 || !canJudge) return;
-      const after = stay
-        ? () => {
-            setSelectedDetectionId(null);
-            handleCanvasChange();
-          }
-        : settleAfter(ids);
+      const targets = new Set(ids);
+      if (file?.file_type === "video") {
+        for (const d of file.detections) {
+          if (!targets.has(d.id) || !d.track_id) continue;
+          const track = file.tracks.find((t) => t.id === d.track_id);
+          const card = track && representativeBox(file.detections, track);
+          if (card) targets.add(card.id);
+        }
+      }
+      const sent = [...targets];
+      const after = settleAfter(ids, false);
       detectionsApi
-        .bulkRelabel(ids, label, category)
+        .bulkRelabel(sent, label, category)
         .then(() => {
-          setUndoStack((s) => [...s, ids]);
+          setUndoStack((s) => [...s, sent]);
           after();
         })
         .catch((err: Error) => toast.error(err.message));
     },
-    [canJudge, settleAfter, handleCanvasChange],
+    [canJudge, file, settleAfter],
   );
-
 
   const markTargetsFalse = useCallback(
     () => applyLabel(targetIds, "false detection", undefined),
@@ -841,13 +889,13 @@ export function FileDetailModal({
   /** M: everything on screen takes the most common label among them.
    *  Ties resolve as in the grid, to the label counted first. */
   const matchMajority = useCallback(() => {
-    if (!majority || onScreen.length < 2) return;
+    if (!canMatchMajority) return;
     applyLabel(
       onScreen.map((d) => d.id),
       majority.label,
       majority.category,
     );
-  }, [applyLabel, majority, onScreen]);
+  }, [applyLabel, canMatchMajority, majority, onScreen]);
   const applyShortcut = useCallback(
     (slot: number) => {
       const option = shortcutLabels[slot];
@@ -864,10 +912,13 @@ export function FileDetailModal({
       .bulkRevertToOriginal(ids)
       .then(() => {
         setUndoStack((s) => s.slice(0, -1));
+        // An undo hands the file back unchecked; a sign-off by the
+        // verdict it undoes must not leave "next unverified" skipping it.
+        if (item) verifiedHere.current.delete(item.id);
         handleCanvasChange();
       })
       .catch((err: Error) => toast.error(err.message));
-  }, [undoStack, handleCanvasChange]);
+  }, [undoStack, item, handleCanvasChange]);
 
   /** Tab / Shift+Tab: move the selection through `visibleBoxes`, with
    *  "none" as one more stop so a full cycle also clears it. Keyboard-only
@@ -1089,6 +1140,7 @@ export function FileDetailModal({
                 boxesHidden={boxesHidden}
                 seekRequest={seekRequest}
                 pauseFnRef={pauseFnRef}
+                onEnded={backToStill}
                 selectedTrackId={selectedTrackId}
                 zoomStep={timelineZoom}
                 onZoomStep={setTimelineZoom}
@@ -1224,21 +1276,22 @@ export function FileDetailModal({
                 <Kbd>V</Kbd>
               </Button>
 
-              {canDraw && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-center"
-                  onClick={() => setDrawMode(!drawMode)}
-                  // The mode's one hint, here rather than over the picture,
-                  // where a banner covered a corner someone may draw in.
-                  title={drawMode ? "Stop drawing (D or Esc)" : "Drag over the picture to draw a box. Esc stops drawing."}
-                >
-                  <SquareDashed className="h-4 w-4 mr-1" />
-                  {drawMode ? "Stop drawing" : "Draw a box"}
-                  <Kbd>D</Kbd>
-                </Button>
-              )}
+              {/* Greyed out while the clip plays, not hidden: the action
+                  stays where it is, and the scope line says why. */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-center"
+                disabled={!canDraw}
+                onClick={() => setDrawMode(!drawMode)}
+                // The mode's one hint, here rather than over the picture,
+                // where a banner covered a corner someone may draw in.
+                title={drawMode ? "Stop drawing (D or Esc)" : "Drag over the picture to draw a box. Esc stops drawing."}
+              >
+                <SquareDashed className="h-4 w-4 mr-1" />
+                {drawMode ? "Stop drawing" : "Draw a box"}
+                <Kbd>D</Kbd>
+              </Button>
 
               <Button
                 variant="outline"
@@ -1267,23 +1320,29 @@ export function FileDetailModal({
               </Button>
 
               {/* What is on screen, whatever is selected: a majority is
-                  a statement about the set. Hidden when it cannot mean
-                  anything (one box, or no labels). */}
-              {majority && onScreen.length >= 2 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-center"
-                  onClick={matchMajority}
-                  title={`Relabel ${seen} to ${majority.common_name ?? majority.label} and verify`}
-                >
-                  <CheckCheck className="h-4 w-4 mr-1 shrink-0" />
-                  <span className="truncate">
-                    Set all to {majority.common_name ?? majority.label}
-                  </span>
-                  <Kbd>M</Kbd>
-                </Button>
-              )}
+                  a statement about the set. Greyed out, not hidden, when
+                  it cannot mean anything (one box, no labels, playback),
+                  so the column does not jump between frames. */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-center"
+                disabled={!canMatchMajority}
+                onClick={matchMajority}
+                title={
+                  majority
+                    ? `Relabel ${seen} to ${majority.common_name ?? majority.label} and verify`
+                    : undefined
+                }
+              >
+                <CheckCheck className="h-4 w-4 mr-1 shrink-0" />
+                <span className="truncate">
+                  Set all to {canMatchMajority
+                    ? (majority.common_name ?? majority.label)
+                    : "the majority"}
+                </span>
+                <Kbd>M</Kbd>
+              </Button>
 
               <Button
                 variant="outline"
@@ -1465,24 +1524,17 @@ export function FileDetailModal({
             value={null}
             onSelect={(option) => {
               const ids = relabelTargets;
-              const drawn = ids?.length === 1 && ids[0] === drawnRef.current;
-              drawnRef.current = null;
               setRelabelTargets(null);
-              // Same rule as the keys: a selected box hands the
-              // selection to the next waiting card; the last verdict on
-              // a file signs it off. A box just drawn is the exception
-              // (`applyLabel`'s `stay`): naming it stays on the frame.
-              if (ids) applyLabel(ids, option.label, option.category, drawn);
+              // A label is a correction: it stays on the picture
+              // (`settleAfter`), a box just drawn included.
+              if (ids) applyLabel(ids, option.label, option.category);
             }}
             options={labelOptions}
             isLoading={labelOptionsLoading}
             pinnedOptions={pinnedOptions}
             forceOpen={!!relabelTargets}
             onOpenChange={(open) => {
-              if (!open) {
-                drawnRef.current = null;
-                setRelabelTargets(null);
-              }
+              if (!open) setRelabelTargets(null);
             }}
             projectId={projectId}
           />

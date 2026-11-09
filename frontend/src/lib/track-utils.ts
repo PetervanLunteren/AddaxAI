@@ -516,8 +516,24 @@ export function snapToSample(frame: number, step: number): number {
   return step > 0 ? Math.max(0, Math.round(frame / step) * step) : Math.max(0, Math.round(frame));
 }
 
+/** The last frame of a clip the detector looked at, the end of every
+ *  snap and step; null when the clip's length is unknown. */
+function lastSampledFrame(file: FileWithDetections): number | null {
+  const last = clipDurationFrames(file) - 1;
+  if (last < 0) return null;
+  const step = fileSamplingStep(file);
+  return step > 0 ? Math.floor(last / step) * step : last;
+}
+
+/** `snapToSample` for one clip, never past its last sampled frame: the
+ *  player ends a little after the last frame (9.42 s at 24 fps is frame
+ *  226 of a 225-frame clip), and an unclamped snap asked for a frame the
+ *  clip does not have (2026-11-06). A clip of unknown length is not
+ *  clamped. */
 export function nearestSampledFrame(file: FileWithDetections, frame: number): number {
-  return snapToSample(frame, fileSamplingStep(file));
+  const snapped = snapToSample(frame, fileSamplingStep(file));
+  const end = lastSampledFrame(file);
+  return end == null ? snapped : Math.min(snapped, end);
 }
 
 /**
@@ -528,8 +544,27 @@ export function nearestSampledFrame(file: FileWithDetections, frame: number): nu
  */
 export function steppedFrame(file: FileWithDetections, from: number, dir: 1 | -1): number {
   const step = Math.max(fileSamplingStep(file), 1);
-  const last = Math.max(0, clipDurationFrames(file) - 1);
-  return Math.min(last, Math.max(0, snapToSample(from, step) + dir * step));
+  const end = lastSampledFrame(file) ?? 0;
+  return Math.min(end, Math.max(0, snapToSample(from, step) + dir * step));
+}
+
+/**
+ * Where P starts a clip: the frame on screen (`shown`, the cover when
+ * nothing else was picked), or the start of the clip when that frame is
+ * its end, where a step forward finds nothing. Every player does the
+ * same (the HTML media `play()` seeks to the start once playback has
+ * ended): at the end there is nothing left to play, so play means
+ * again. Without it a clip that played to its end paused there, and P
+ * played from that last frame and stopped at once (2026-11-06). Null
+ * when the clip has no frame to start from.
+ */
+export function playStartFrame(
+  file: FileWithDetections,
+  shown: number | null,
+): number | null {
+  const frame = shown ?? file.best_frame_number;
+  if (frame == null) return null;
+  return steppedFrame(file, frame, 1) > frame ? frame : 0;
 }
 
 /** Box centres of one track in frame order, in image fractions. */

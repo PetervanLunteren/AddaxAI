@@ -31,7 +31,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { canvasImage, frameImageUrl, warmClipFrames } from "../../lib/clip-frames";
-import { cardBoxes, nearestSampledFrame, speciesKey, steppedFrame } from "../../lib/track-utils";
+import {
+  cardBoxes,
+  nearestSampledFrame,
+  playStartFrame,
+  speciesKey,
+  steppedFrame,
+} from "../../lib/track-utils";
 import { ClipTimeline } from "./TrackTimeline";
 import { ApiError } from "../../lib/api-client";
 import { eventsApi } from "../../api/events";
@@ -522,16 +528,24 @@ export function EventDetailModal({
   // rule: a bar click then P plays from that animal, and a fresh open
   // plays from the MaxN moment. Until 2026-11-02 the player started at
   // 0:00 here while the Files viewer seeked. A clip without a MaxN
-  // marker shows its cover and plays from it too. Stops the cine-loop
+  // marker shows its cover and plays from it too; a clip shown at its
+  // end plays from the start (`playStartFrame`). Stops the cine-loop
   // first (you've grabbed control of one clip).
   const playFocusedVideo = useCallback(() => {
     setAutoPlay(false);
-    const frame = shownFrame ?? currentFile?.best_frame_number;
+    // The end rule needs the clip's own boxes: on the cards-only file the
+    // sampling step is the gap between cards, so a MaxN frame could read
+    // as the end and play from 0 (bug hunt, 2026-11-06).
+    const frame = focused === fullFile && fullFile
+      ? playStartFrame(fullFile, shownFrame)
+      : (shownFrame ?? currentFile?.best_frame_number ?? null);
     if (frame != null) {
       setSeekRequest({ frame, nonce: Date.now(), play: true });
     }
     setViewMode("video");
-  }, [shownFrame, currentFile?.best_frame_number]);
+  }, [focused, fullFile, shownFrame, currentFile?.best_frame_number]);
+  // And back to the still, by P or by the clip reaching its end.
+  const backToStill = useCallback(() => setViewMode("frame"), []);
   const showMaxN = useCallback(
     (obs: EventObservationItem) => {
       const index = files.findIndex((f) => f.id === obs.max_n_file_id);
@@ -655,7 +669,7 @@ export function EventDetailModal({
           if (currentFile && isPlayableVideo(currentFile)) {
             e.preventDefault();
             if (viewMode === "video") {
-              setViewMode("frame");
+              backToStill();
             } else {
               playFocusedVideo();
             }
@@ -688,6 +702,7 @@ export function EventDetailModal({
   }, [
     isOpen,
     currentFile,
+    backToStill,
     handleConfirmAndAdvance,
     toggleAutoPlay,
     onClose,
@@ -810,6 +825,7 @@ export function EventDetailModal({
                     onAutoExportConsumed={() => setPendingVideoExport(false)}
                     boxesHidden={boxesHidden}
                     seekRequest={seekRequest}
+                    onEnded={backToStill}
                     selectedTrackId={selectedTrackId}
                     zoomStep={timelineZoom}
                     onZoomStep={setTimelineZoom}

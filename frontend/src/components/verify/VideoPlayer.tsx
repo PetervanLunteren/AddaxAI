@@ -77,6 +77,11 @@ interface VideoPlayerProps {
    *  on. The Files viewer's P, so its still comes back on the moment
    *  the person stopped at rather than where play began. */
   pauseFnRef?: React.MutableRefObject<(() => number) | null>;
+  /** The clip played to its end: the owner goes back to its still, as
+   *  P would, so the play button is there again (a player ends on its
+   *  last frame with replay offered). Not while the annotated video
+   *  records: that run plays to the end too and saves on it. */
+  onEnded?: () => void;
   /** The animal the person is looking at: its boxes keep the normal
    *  style, every other box dims. Null dims nothing. */
   selectedTrackId?: string | null;
@@ -231,6 +236,7 @@ export function VideoPlayer({
   boxesHidden,
   seekRequest,
   pauseFnRef,
+  onEnded,
   selectedTrackId = null,
   onSelectTrack,
   markers,
@@ -341,6 +347,10 @@ export function VideoPlayer({
     const video = videoRef.current;
     if (video) setClocks(video.currentTime);
   }, [setClocks]);
+  const handleEnded = useCallback(() => {
+    handlePause();
+    if (!isExporting) onEnded?.();
+  }, [handlePause, isExporting, onEnded]);
 
   const handleSeeked = useCallback(() => {
     const video = videoRef.current;
@@ -580,7 +590,7 @@ export function VideoPlayer({
           onPause={handlePause}
           onSeeking={() => setSeeking(true)}
           onSeeked={handleSeeked}
-          onEnded={handlePause}
+          onEnded={handleEnded}
         />
 
         {seeking && <FrameWait label="Seeking…" testId="video-seeking" />}

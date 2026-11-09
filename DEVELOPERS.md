@@ -555,12 +555,20 @@ screen (a photo's boxes, or the animals on the clip frame shown, each
 through all of its frames) and the whole-clip sign-off is a button
 behind a confirm that says how many would count as verified unseen
 (`SignOffDialog`, also in front of the grid's bulk Verify when the
-selection holds a clip). After any verdict the viewer selects the next
-unchecked animal forward in time from the frame on screen and shows
-its frame (`nextWaitingAfter`), so Enter after Enter walks a clip. The
-sign-off itself is unchanged, and the last verdict on a file still
-triggers it. A box that is not a card (an
-untracked row of a pre-tracking run) is neither rejected nor verified.
+selection holds a clip). The picture moves on only when agreeing
+(Enter, V) leaves every box on it checked (`settleAfter`): then the
+viewer shows the next unchecked animal forward in time from the frame
+on screen (`nextWaitingAfter`), so Enter after Enter walks a clip;
+agreeing with boxes left on the picture selects the next of them, in
+the order Tab walks (`visibleBoxes`, left to right); a correction (X,
+U, R, M, 1 to 5, naming a drawn box) stays on the picture. "Checked" is
+per animal (`waitingAfter`), since the box picked on a clip frame is
+not its card. Until 2026-11-06 every verdict walked, and an X at the
+end of a drop wrapped back to its first unchecked fish. The last
+verdict on a file still signs it off; only agreeing also moves to the
+next file. A photo is one frame, so the rule is the same. A box that
+is not a card (an untracked row of a pre-tracking run) is neither
+rejected nor verified.
 
 **The reprocess side.** `update_database_from_smoothed_results` matches
 JSON detections to rows by `file_path` + bbox + `frame_number` and
