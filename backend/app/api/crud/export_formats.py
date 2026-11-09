@@ -22,8 +22,9 @@ import sqlite3
 import struct
 import tempfile
 import zipfile
+from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import IO, TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from openpyxl import Workbook
@@ -110,6 +111,25 @@ def serialize_csv(headers: list[str], rows: list[list[Any]]) -> bytes:
     writer.writerow(headers)
     writer.writerows(rows)
     return output.getvalue().encode("utf-8")
+
+
+def write_delimited(
+    out: IO[str],
+    headers: list[str],
+    rows: Iterable[list[Any]],
+    delimiter: str = ",",
+) -> int:
+    """Write a header and rows to an open text file one row at a time, and
+    return the number of rows. For a table too big to hold as one string
+    (the Frames table); ``out`` must be opened with ``newline=""``, as the
+    ``csv`` module asks."""
+    writer = csv.writer(out, delimiter=delimiter)
+    writer.writerow(headers)
+    count = 0
+    for row in rows:
+        writer.writerow(row)
+        count += 1
+    return count
 
 
 def serialize_tsv(headers: list[str], rows: list[list[Any]]) -> bytes:

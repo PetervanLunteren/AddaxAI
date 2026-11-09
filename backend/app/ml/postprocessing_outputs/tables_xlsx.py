@@ -6,7 +6,9 @@ the projects workbook uses (``export_crud.build_spreadsheet_sheets``). The
 projects-mode Deployments sheet is absent on purpose: a folder run has no
 sites and no real deployment. The sheets wrap the shared ``export_crud``
 builders and are trimmed to the same column set as the folder-run CSVs;
-see ``_table_columns`` for which columns and why.
+see ``_table_columns`` for which columns and why. The CSV export's
+fifth table, Frames, is not a sheet: one row per box per sampled frame
+outgrows Excel's row limit on a marine run.
 
 Writes ``<target_dir>/addaxai-spreadsheet.xlsx``.
 """

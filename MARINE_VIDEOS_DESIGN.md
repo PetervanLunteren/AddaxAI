@@ -459,8 +459,10 @@ work. Deleting this section is the last item on it.
    end-to-end UX check, since styling fixed before the merge is fixed twice.
 5. **The dev-only files of this worktree.** `backend/.env` points the
    branch at `~/AddaxAI-marine` so main's database is never migrated by
-   it, and `frontend/.env.local` puts it on ports 8001 and 5174 so both
-   checkouts can run at once (see the note in each file). Delete both,
+   it, and `frontend/.env.local` puts it on ports 8002 and 5175 so both
+   checkouts can run at once (see the note in each file; moved off 8001
+   and 5174 on 2026-11-09 because an OrbStack container took them).
+   Delete both,
    and the data directory. Two more local leftovers, neither tracked:
    the `electron/node_modules` symlink to the main checkout, and the
    `electron/node_modules` line added to `.git/info/exclude` that hides

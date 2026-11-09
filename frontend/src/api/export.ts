@@ -90,6 +90,19 @@ export const exportApi = {
       withScope(`/api/projects/${projectId}/export/detections?format=${format}`, scope),
     ),
 
+  /** Per-frame table: every box of every track the detections table
+   *  holds, one row per sampled frame. Videos only, CSV / TSV only (too
+   *  big for an Excel sheet on a marine project). An empty blob (204)
+   *  when the scope holds no video. */
+  downloadFrames: (
+    projectId: string,
+    format: "csv" | "tsv",
+    scope?: ExportScope,
+  ): Promise<Blob> =>
+    fetchBlob(
+      withScope(`/api/projects/${projectId}/export/frames?format=${format}`, scope),
+    ),
+
   /** Event-level table (the counts grain): one row per species per event
    *  with the effective count. */
   downloadObservations: (

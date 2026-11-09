@@ -25,19 +25,19 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Row, and_, func, or_, select
-from sqlalchemy.orm import Session, defer, joinedload, selectinload
+from sqlalchemy.orm import Session, contains_eager, defer, joinedload, selectinload
 
 from app.api.crud.export_formats import slugify
 from app.core.logging_config import get_logger
 from app.core.observation_attributes import LIFE_STAGES, SEXES
 from app.db.sql_params import iter_id_chunks
-from app.ml.detection_visibility import on_visible_frame
+from app.ml.detection_visibility import is_representative, on_visible_frame
 from app.ml.label_exclusion import (
     is_non_label,
     is_wildlife,
@@ -121,11 +121,14 @@ OBSERVATIONS_SCHEMA = (
 #   taxon_*         — formal ranks from label_taxonomy; empty where the
 #                     label has no (or partial) taxonomy.
 #   frame_number    — video frame index; empty for images.
+#   track_id        — the track (one animal the AI followed) within the clip.
+#   track_*         — the track's span: first / last frame, frames with a
+#                     box, start / end time and duration. Empty for images.
 #   bbox_*          — normalized [0,1] box.
 #
 # Empty files do not appear here (a detections table holds detections);
 # they live in files.csv. The per-event species count lives in counts.csv.
-_FLAT_DETECTION_HEADERS = [
+_DETECTION_HEAD = [
     "detection_id",
     "file_id",
     "relative_path",
@@ -158,15 +161,30 @@ _FLAT_DETECTION_HEADERS = [
     "scientific_name",
     "common_name",
     # Geometry: video frame index, the track this box belongs to (the
-    # tracker's own number within the clip, empty for photos), then the
-    # normalized [0,1] box.
+    # tracker's own number within the clip, empty for photos).
     "frame_number",
     "track_id",
-    "bbox_x",
-    "bbox_y",
-    "bbox_width",
-    "bbox_height",
 ]
+# Detections table only: when the animal of this card was on screen. From
+# the track row, so first to last sampled frame; times through frame_time,
+# duration in seconds. Blank for photos.
+_TRACK_SPAN_HEADERS = [
+    "track_start_frame",
+    "track_end_frame",
+    "track_frame_count",
+    "track_start_time",
+    "track_end_time",
+    "track_duration_seconds",
+]
+# Frames table only: when this frame was, as a time and as seconds into the
+# clip, and whether its box is the track's representative (the frame the
+# AI saw the animal best on, the row the Detections table shows).
+_FRAME_HEADERS = ["frame_time", "frame_offset_seconds", "is_representative"]
+# The normalized [0,1] box, last in both tables.
+_BBOX_HEADERS = ["bbox_x", "bbox_y", "bbox_width", "bbox_height"]
+
+_FLAT_DETECTION_HEADERS = _DETECTION_HEAD + _TRACK_SPAN_HEADERS + _BBOX_HEADERS
+FRAMES_HEADERS = _DETECTION_HEAD + _FRAME_HEADERS + _BBOX_HEADERS
 
 # CamTrap-DP 1.0 table schemas mandate all columns in a fixed order,
 # even optional ones (the frictionless validator flags omitted columns
@@ -323,6 +341,11 @@ def get_scoped_detection_rows(
     the export inventing species they could not find or fix. The
     complete record is ``addaxai-recognitions.json``, which still
     carries every stored detection on every frame.
+
+    **The frames table reads past this scope, never instead of it.**
+    ``iter_frames_rows`` takes the cards from here and then reads every
+    box of their tracks, one video at a time, so the one place that needs
+    the per-frame boxes never loads them for the whole project.
     """
     threshold_clause = threshold_or_verified(project.counting_threshold)
 
@@ -337,7 +360,15 @@ def get_scoped_detection_rows(
         # Without this, SQLite drags ~70k EXIF blobs through the ORDER BY
         # sorter's temp file and hits SQLITE_FULL ("database or disk is full")
         # on large projects even with plenty of free space on the data drive.
-        .options(defer(File.exif_data), selectinload(Detection.track))
+        # File.frames_processed likewise: no builder reads it, and it is the
+        # sampled frame list of a clip (~100 KB of JSON for an hour of
+        # underwater video), joined onto every card row and decoded per row.
+        # A marine project of 11,699 cards peaked at 3.7 GB on it.
+        .options(
+            defer(File.exif_data),
+            defer(File.frames_processed),
+            selectinload(Detection.track),
+        )
         .select_from(File)
         .join(Deployment, File.deployment_id == Deployment.id)
         .outerjoin(Site, Deployment.site_id == Site.id)
@@ -623,57 +654,176 @@ def build_detection_rows(
     """
     Build `(headers, rows)` for the flat Detections export.
 
-    Grain: one row per detection (the box view). Lean on attributes (time /
-    place / paths live in files.csv) but carries the full FK id set
-    (file_id, deployment_id, event_id) for direct linkability. Files with no
-    detections do not appear here; per-event counts live in counts.csv.
+    Grain: one row per card, the Labels page as a table. For a photo a card
+    is one box; for a video it is one track (one animal the AI followed),
+    its box on the track's representative frame, plus the track's span:
+    first and last frame, frames with a box, start and end time and
+    duration. Lean on attributes (time / place / paths live in files.csv)
+    but carries the full FK id set (file_id, deployment_id, event_id) for
+    direct linkability. Files with no detections do not appear here;
+    per-event counts live in counts.csv.
 
     `event_id` is blank when the file has no event, so every non-empty
     value resolves in the events table. See the note on `_FILES_HEADERS`.
 
-    **Only boxes the user can reach.** A video stores detections on every
-    sampled frame, but the app writes and shows exactly one frame per
-    video, so a box on any other frame has no picture anywhere: it cannot
-    be seen in the Labels grid, filtered to, or relabelled. Emitting them
-    here handed users a species list they could not act on, which is what
-    ``visible_detections`` exists to prevent everywhere else. The per-frame
-    boxes are not lost: ``addaxai-recognitions.json`` carries all of them,
-    with their frame numbers, which is the file built to be the complete
-    record. Verified boxes pass on any frame, per the usual exception.
+    The other boxes of a track are not separate rows: they are the same
+    animal, and listing them would count it once per frame. They are in
+    the frames table (``iter_frames_rows``), one row per box with the
+    same ``track_id``, and in ``addaxai-recognitions.json``.
     """
     grouped = list(_group_rows_by_file(scoped_rows))
     event_map = _events_by_file(db, [f.id for f, _d, _s, _dets in grouped])
+    tz_name = project.timezone
 
     rows: list[list[Any]] = []
     for file_obj, deployment, _site, detections in grouped:
-        deployment_id = deployment.id if deployment is not None else ""
         event = event_map.get(file_obj.id)
-        event_id = event.id if event else ""
+        file_cells = _file_id_cells(file_obj, deployment, event.id if event else "")
         for detection, taxonomy in detections:
             rows.append(
-                [
-                    detection.id,
-                    file_obj.id,
-                    _relative_path(file_obj, deployment),
-                    deployment_id,
-                    event_id,
-                ]
-                + _detection_cells(detection, taxonomy)
+                [detection.id, *file_cells]
+                + _label_cells(detection, taxonomy)
+                + _frame_track_cells(detection)
+                + _track_span_cells(detection, file_obj, tz_name)
+                + _bbox_cells(detection)
             )
 
     return _FLAT_DETECTION_HEADERS, rows
+
+
+def iter_frames_rows(
+    db: Session,
+    project: Project,
+    *,
+    deployment_ids: list[str] | None = None,
+) -> Iterator[list[Any]]:
+    """
+    Yield the rows of the Frames export, ``FRAMES_HEADERS`` wide: every
+    stored box of every track the Detections table holds, one row per box,
+    in frame order within each video, the videos in the Detections
+    table's order. Videos only.
+
+    One gate, the player's (``trackCards`` in the frontend): a track is in
+    or out as a whole, decided by its card through the same scope as every
+    other table (threshold or verified, species exclusion, deployment
+    scope). Inside a track that is in, every frame is in, the weak boxes
+    the tracker kept to follow the animal included, so a track's rows here
+    number its ``track_frame_count`` in the Detections table.
+
+    Built for the two shapes a large video project takes, the same way the
+    card tables handle a large photo project:
+
+    - thousands of short clips: the boxes are read for 900 videos per
+      query (``iter_id_chunks``, as ``_events_by_file`` does), not one
+      query per video;
+    - a few long clips: each query is streamed in batches (``yield_per``),
+      so an hour of underwater video (tens of thousands of boxes) never
+      sits in memory whole. The track rides in the same query.
+
+    The tracks in scope are kept in Python rather than sent as an ``IN``
+    list, which would hit SQLite's parameter limit on a clip of thousands
+    of tracks. The card rows that decide the scope are the small set
+    ``get_scoped_detection_rows`` already returns.
+    """
+    tz_name = project.timezone
+    scoped = get_scoped_detection_rows(db, project, deployment_ids=deployment_ids)
+    grouped = [
+        (file_obj, deployment, {det.track_id for det, _tax in dets if det.track_id})
+        for file_obj, deployment, _site, dets in _group_rows_by_file(scoped)
+        if file_obj.file_type == "video"
+    ]
+    del scoped
+    event_map = _events_by_file(db, [f.id for f, _d, ids in grouped if ids])
+    # Per video with a track in the Detections table, in its file order:
+    # the file, its id cells (once per video, not per box: the relative
+    # path alone is a pathlib walk) and the tracks of it that are in scope.
+    # Nothing else of the card rows is kept while the boxes stream.
+    videos: dict[str, tuple[File, list[Any], set[str]]] = {}
+    for file_obj, deployment, track_ids in grouped:
+        if track_ids:
+            event = event_map.get(file_obj.id)
+            cells = _file_id_cells(file_obj, deployment, event.id if event else "")
+            videos[file_obj.id] = (file_obj, cells, track_ids)
+    del grouped, event_map
+
+    for chunk in iter_id_chunks(list(videos)):
+        stmt = (
+            select(Detection, LabelTaxonomy)
+            .join(Detection.track)
+            .join(File, File.id == Detection.file_id)
+            .outerjoin(LabelTaxonomy, LabelTaxonomy.id == Detection.label_taxonomy_id)
+            .options(contains_eager(Detection.track))
+            .where(Detection.file_id.in_(chunk))
+            # get_scoped_detection_rows' file order, then frame order.
+            .order_by(
+                File.captured_at_local.asc(), File.id, Detection.frame_number, Detection.id
+            )
+            .execution_options(yield_per=1000)
+        )
+        for detection, taxonomy in db.execute(stmt):
+            file_obj, file_cells, track_ids = videos[detection.file_id]
+            if detection.track_id not in track_ids:
+                continue
+            yield (
+                [detection.id, *file_cells]
+                + _label_cells(detection, taxonomy)
+                + _frame_track_cells(detection)
+                + _frame_cells(detection, file_obj, tz_name)
+                + _bbox_cells(detection)
+            )
+
+
+def scope_has_videos(
+    db: Session, project: Project, deployment_ids: list[str] | None = None
+) -> bool:
+    """Whether the export scope holds a video, which is when the Frames
+    table is written at all: a photo-only export has no frames to list,
+    and an empty file would only be noise."""
+    stmt = (
+        select(File.id)
+        .join(Deployment, File.deployment_id == Deployment.id)
+        .where(Deployment.project_id == project.id, File.file_type == "video")
+    )
+    if deployment_ids is not None:
+        stmt = stmt.where(Deployment.id.in_(deployment_ids))
+    return db.execute(stmt.limit(1)).first() is not None
 
 
 def _round_or_blank(value: float | None, ndigits: int) -> float | str:
     return round(value, ndigits) if value is not None else ""
 
 
-def _detection_cells(
+def _seconds_at(file_obj: File | None, frames: int | None) -> float | str:
+    """A number of frames of a video as seconds at its frame rate, three
+    places. Blank when there is no frame count or no known frame rate (a
+    video analysed before frame rates were stored), never a guess. The one
+    frames-to-seconds rule of the exports, next to ``frame_time`` which
+    does the same arithmetic as a datetime."""
+    if file_obj is None or frames is None or not file_obj.frame_rate:
+        return ""
+    return round(frames / file_obj.frame_rate, 3)
+
+
+def _file_id_cells(
+    file_obj: File,
+    deployment: Deployment | None,
+    event_id: str,
+) -> list[Any]:
+    """The four file columns after ``detection_id`` in a Detections and a
+    Frames row, the same for every box of a file, so built once per file."""
+    return [
+        file_obj.id,
+        _relative_path(file_obj, deployment),
+        deployment.id if deployment is not None else "",
+        event_id,
+    ]
+
+
+def _label_cells(
     detection: Detection,
     taxonomy: LabelTaxonomy | None,
 ) -> list[Any]:
-    """The detector + classifier tail of a detections row (everything after
-    the id columns).
+    """The detector + classifier block of a detections or frames row.
 
     ``classification_label`` is the species label only — empty for person,
     vehicle, or an unclassified animal.
@@ -690,8 +840,48 @@ def _detection_cells(
         *_taxon_ranks(taxonomy),
         detection.scientific_name or "",
         detection.common_name or "",
+    ]
+
+
+def _frame_track_cells(detection: Detection) -> list[Any]:
+    """``frame_number`` and ``track_id``, both blank for a photo."""
+    return [
         detection.frame_number if detection.frame_number is not None else "",
         detection.track.track_key if detection.track is not None else "",
+    ]
+
+
+def _track_span_cells(
+    detection: Detection, file_obj: File, tz_name: str
+) -> list[Any]:
+    """When the animal of a card was on screen, ``_TRACK_SPAN_HEADERS``
+    wide: first to last sampled frame of its track. Blank for a photo."""
+    track = detection.track
+    if track is None:
+        return [""] * len(_TRACK_SPAN_HEADERS)
+    return [
+        track.start_frame,
+        track.end_frame,
+        track.frame_count,
+        _iso_datetime(frame_time(file_obj, track.start_frame), tz_name),
+        _iso_datetime(frame_time(file_obj, track.end_frame), tz_name),
+        _seconds_at(file_obj, track.end_frame - track.start_frame),
+    ]
+
+
+def _frame_cells(detection: Detection, file_obj: File, tz_name: str) -> list[Any]:
+    """When a frame was, as a time and as seconds into the clip, and
+    whether its box is the track's card. ``_FRAME_HEADERS`` wide."""
+    return [
+        _iso_datetime(frame_time(file_obj, detection.frame_number), tz_name),
+        _seconds_at(file_obj, detection.frame_number),
+        "TRUE" if is_representative(detection) else "FALSE",
+    ]
+
+
+def _bbox_cells(detection: Detection) -> list[Any]:
+    """The normalized box, ``_BBOX_HEADERS`` wide."""
+    return [
         _round_or_blank(detection.bbox_x, 6),
         _round_or_blank(detection.bbox_y, 6),
         _round_or_blank(detection.bbox_width, 6),
@@ -823,7 +1013,7 @@ _FILES_HEADERS = [
     "observation_type",
     # Everything from here to common_name describes that same strongest box.
     # Each score sits directly after what it scores, the way
-    # _detection_cells lays out these two columns, because a bare
+    # _label_cells lays out these two columns, because a bare
     # confidence is meaningless without its subject beside it.
     #
     # **detection_confidence is the deciding box's score, not the file's
@@ -872,6 +1062,11 @@ _FILES_HEADERS = [
     "taxon_variant",
     "scientific_name",
     "common_name",
+    # Every label on the file, not only the strongest: the distinct species
+    # (or the category, for a box without one) of its cards in this
+    # export's scope, sorted and joined by "|". Rejected boxes are left out,
+    # as in the Summary, whose row names these are. Blank for an empty file.
+    "all_labels",
     "is_verified",
     # The two marks a person can put on a file on the Labels page.
     "is_favorited",
@@ -959,6 +1154,7 @@ def build_files_rows(
                 *camera_map.get(file_obj.id, _BLANK_CAMERA_CELLS),
                 file_obj.observation_type or "",
                 *_strongest_species_cells(project, file_obj, detections),
+                _all_labels_cell(detections),
                 "TRUE" if file_obj.verified else "FALSE",
                 "TRUE" if file_obj.favorited else "FALSE",
                 "TRUE" if file_obj.flagged else "FALSE",
@@ -978,21 +1174,18 @@ def _strongest_species_cells(
     detection, or the same width in blanks when nothing passes.
 
     Order: detector score, label, label score, the five formal ranks, then
-    the two display names. The score/subject pairing is ``_detection_cells``'
+    the two display names. The score/subject pairing is ``_label_cells``'
     layout; the label + ranks + names run is ``build_observation_rows``'.
 
     Both confidences are read off the same ``best`` object as the label, so
     they cannot describe a different box than the species does. Rounded to
-    six places like ``_detection_cells``, so a value here compares equal to
+    six places like ``_label_cells``, so a value here compares equal to
     the same field of the same box in detections.csv.
 
-    Gated to the file's visible surface, so for a video this is its best
-    frame. That is the same rule ``observation_type`` beside it now uses,
-    which is what keeps the whole block describing one box, and a box the
-    user can actually open. The gate runs in Python rather than in
-    ``get_scoped_detection_rows`` because that query is also shared with
-    the CamTrap DP builder, which keeps every frame by design (an
-    archival export must not lose a video whose best frame is empty).
+    The candidates are the file's cards (``get_scoped_detection_rows``
+    applies the visibility rule in its join), so for a video the strongest
+    box is the card of one of its tracks, whatever frame it sits on: a box
+    the user can actually open.
 
     The threshold is passed explicitly even though ``get_scoped_detection_rows``
     already applied the same predicate in SQL. Re-applying it costs one pass
@@ -1001,7 +1194,7 @@ def _strongest_species_cells(
     query cannot silently desynchronise the two.
 
     Names come off the detection, not off the joined ``LabelTaxonomy``. That is
-    the convention ``_detection_cells`` uses, so a Files row and its
+    the convention ``_label_cells`` uses, so a Files row and its
     detections.csv rows read identically with no join. (The other convention in
     this module, ``_scientific_name``, blanks non-animals and reads the taxonomy
     row; it serves the Camtrap and spatial builders.) The practical effect is
@@ -1026,7 +1219,7 @@ def _strongest_species_cells(
     taxonomy = next((tax for det, tax in detections if det is best), None)
     return [
         # Non-nullable, so no blank helper; label_confidence is nullable and
-        # gets one. Same two idioms as _detection_cells.
+        # gets one. Same two idioms as _label_cells.
         round(best.confidence, 6),
         best.label or "",
         _round_or_blank(best.label_confidence, 6),
@@ -1034,6 +1227,25 @@ def _strongest_species_cells(
         best.scientific_name or "",
         best.common_name or "",
     ]
+
+
+def _all_labels_cell(
+    detections: Sequence[tuple[Detection, LabelTaxonomy | None]],
+) -> str:
+    """Every label on a file, for the Files row: the distinct species of its
+    in-scope cards, or the category for a card without one, sorted and
+    joined by ``|``. Named the way the Summary names its rows
+    (``_summary_key``), and like the Summary it leaves out a box a person
+    rejected. Blank for a file with nothing on it."""
+    names = {
+        label or category
+        for category, label in (
+            _summary_key(det.category, det.label)
+            for det, _tax in detections
+            if not is_non_label(det.label)
+        )
+    }
+    return "|".join(sorted(names))
 
 
 # ---------------------------------------------------------------------------
@@ -1062,11 +1274,15 @@ _OBSERVATIONS_HEADERS = [
     # The human-confirmed count, falling back to the AI's count when the
     # event isn't confirmed.
     "count",
-    # Where and when the AI counted its MaxN: the frame of the file (blank
-    # for a photo) and the wall-clock time that frame stands for, and when
-    # the species was first seen in the event. Blank on human-only rows
-    # and when the files carry no capture time.
+    # Where and when the AI counted its MaxN: the file, the frame of that
+    # file and the seconds into it (both blank for a photo), the wall-clock
+    # time that frame stands for, and when the species was first seen in
+    # the event. Blank on human-only rows and when the files carry no
+    # capture time. The file is what makes the frame unambiguous in an
+    # event of several videos.
+    "max_n_file_id",
     "max_n_frame",
+    "max_n_offset_seconds",
     "max_n_time",
     "first_arrival_time",
     # What a person recorded about the individuals on this row, blank
@@ -1115,7 +1331,6 @@ def build_observation_rows(
         query = query.filter(Deployment.id.in_(deployment_ids))
 
     from app.api.crud.event_observation import first_arrivals
-    from app.utils.media_dates import frame_time
 
     # When each species was first seen, per event, in one query for the
     # whole export.
@@ -1143,7 +1358,11 @@ def build_observation_rows(
                 (taxonomy.scientific_name if taxonomy else "") or "",
                 (taxonomy.common_name if taxonomy else "") or "",
                 count,
+                obs.max_n_file_id or "",
                 obs.max_n_frame_number if obs.max_n_frame_number is not None else "",
+                _seconds_at(obs.max_n_file, obs.max_n_frame_number)
+                if obs.max_n_file_id
+                else "",
                 _iso_datetime(
                     frame_time(obs.max_n_file, obs.max_n_frame_number)
                     if obs.max_n_file_id
@@ -1301,8 +1520,10 @@ def build_spreadsheet_sheets(
 ) -> list[tuple[str, list[str], list[list[Any]]]]:
     """The tables that make up the project Export page's combined
     spreadsheet: Summary, Counts, Detections, Files, and Deployments. The
-    folder-run Save step writes its own three-sheet workbook (Summary +
-    Files + Detections) from the same row builders.
+    folder-run Save step writes its own four-sheet workbook (the same minus
+    Deployments) from the same row builders. The Frames table is never a
+    sheet: a marine project outgrows Excel's row limit, so it is CSV / TSV
+    only (``iter_frames_rows``).
 
     **Sheet order is the docs order, broadest question first.** A
     workbook opens on its first sheet, so that sheet is what a user
@@ -1314,7 +1535,7 @@ def build_spreadsheet_sheets(
     table `docs/docs/reference/exports.md` tells people to start with.
     Keep the two in step, and note the CSV / TSV path downloads the same
     five tables one file at a time from `ExportPage.tsx`, in an order
-    written out there separately.
+    written out there separately, and the Frames table after them.
 
     ``deployment_ids`` narrows every sheet to a subset of the project's
     deployments; None exports everything."""

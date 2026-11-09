@@ -1,9 +1,10 @@
 """Tests for the tables_csv postprocess output module.
 
 The row schemas live in the ``export_crud`` builders and have their own
-coverage there. Here we pin that this wrapper writes all four files
+coverage there. Here we pin that this wrapper writes all five files
 (``addaxai-summary.csv`` + ``addaxai-counts.csv`` + ``addaxai-files.csv``
-+ ``addaxai-detections.csv``) at the right paths, that it trims to the
++ ``addaxai-detections.csv`` + ``addaxai-frames.csv``) at the right
+paths, that it trims to the
 folder-run column set, and that ``relative_path`` on the files and
 detections tables is the file's path under its deployment's source folder.
 """
@@ -18,6 +19,7 @@ from app.ml.postprocessing_outputs.tables_csv import (
     COUNTS_FILENAME,
     DETECTIONS_FILENAME,
     FILES_FILENAME,
+    FRAMES_FILENAME,
     SUMMARY_FILENAME,
     write_tables_csv,
 )
@@ -27,6 +29,7 @@ from tests.conftest import (
     make_event_with_files,
     make_file,
     make_project,
+    make_track,
 )
 
 
@@ -37,7 +40,7 @@ def _write_placeholder(path: Path) -> str:
 
 
 
-def test_writes_all_four_files_at_canonical_paths(db, tmp_path):
+def test_writes_the_tables_at_canonical_paths(db, tmp_path):
     project = make_project(db, name="csv-basic")
     dep = make_deployment(db, project_id=project.id)
     file = make_file(
@@ -68,6 +71,8 @@ def test_writes_all_four_files_at_canonical_paths(db, tmp_path):
     assert (target / FILES_FILENAME).is_file()
     assert (target / DETECTIONS_FILENAME).is_file()
     assert (target / DETECTIONS_FILENAME).stat().st_size > 0
+    # A photo-only run has no frames to list, so no frames file at all.
+    assert not (target / FRAMES_FILENAME).exists()
     assert len(result.output_paths) == 4
     assert not (target / "addaxai-deployments.csv").exists()
 
@@ -151,7 +156,6 @@ def test_folder_run_headers_omit_deployment_id_and_notes(db, tmp_path):
     det_headers = (
         (target / DETECTIONS_FILENAME).read_text().splitlines()[0].split(",")
     )
-
     for headers in (files_headers, det_headers):
         assert "deployment_id" not in headers
         assert "notes" not in headers
@@ -441,3 +445,43 @@ def test_detections_export_honours_project_threshold(db, tmp_path):
     with open(target / DETECTIONS_FILENAME, newline="") as f:
         labels = {r["classification_label"] for r in csv.DictReader(f)}
     assert labels == {"badger"}
+
+
+def test_frames_table_has_one_row_per_box_and_counts_toward_row_count(db, tmp_path):
+    """A clip with one track of three boxes: one Detections row (the
+    card), three Frames rows, the folder-run columns trimmed the same
+    way, and every row counted in row_count."""
+    project = make_project(db, name="csv-frames")
+    dep = make_deployment(db, project_id=project.id)
+    clip = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=_write_placeholder(tmp_path / "src" / "CLIP.mp4"),
+        file_type="video",
+        file_format="mp4",
+        frame_rate=30.0,
+        best_frame_number=0,
+        observation_type="animal",
+    )
+    track = make_track(db, file_id=clip.id, track_key=4, start_frame=0, end_frame=60,
+                       representative_frame_number=30)
+    for frame in (0, 30, 60):
+        make_detection(db, file_id=clip.id, frame_number=frame, track_id=track.id,
+                       category="animal", confidence=0.9, label="dog",
+                       bbox_x=0.1, bbox_y=0.1, bbox_width=0.2, bbox_height=0.2)
+
+    target = tmp_path / "out"
+    result = write_tables_csv(db, project.id, target)
+
+    with open(target / FRAMES_FILENAME, newline="") as f:
+        frames = list(csv.DictReader(f))
+    with open(target / DETECTIONS_FILENAME, newline="") as f:
+        detections = list(csv.DictReader(f))
+    assert [r["frame_number"] for r in frames] == ["0", "30", "60"]
+    assert [r["is_representative"] for r in frames] == ["FALSE", "TRUE", "FALSE"]
+    assert len(detections) == 1
+    assert detections[0]["track_frame_count"] == "3"
+    assert "deployment_id" not in frames[0] and "notes" not in frames[0]
+    assert len(result.output_paths) == 5
+    # 1 summary + 0 counts (no event) + 1 file + 1 detection + 3 frames.
+    assert result.row_count == 6

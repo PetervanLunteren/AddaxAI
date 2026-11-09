@@ -321,12 +321,17 @@ def _build_readme_text(
 
     lines.append(_section("Detection settings"))
     # Media copies (separated folders, drawn boxes, blurs) only show
-    # detections at or above this confidence. The data exports (CSV,
-    # XLSX, recognition JSON) always contain every detection.
+    # detections at or above this confidence. The tables (CSV, XLSX) hold
+    # what the Labels step showed: detections at or above the counting
+    # threshold, or verified. The recognition JSON holds every detection.
     lines.append(_kv("Media output threshold", format_confidence_pct(media_threshold)))
     lines.append(
-        _kv("Data exports", "complete, no confidence filter")
+        _kv(
+            "Data tables",
+            f"at or above {format_confidence_pct(project.counting_threshold)}, or verified",
+        )
     )
+    lines.append(_kv("Recognition file", "every detection, no confidence filter"))
     lines.append(
         _kv("Classification gate", format_confidence_pct(project.classification_gate))
     )
@@ -416,7 +421,8 @@ def write_run_readme(
 
     ``media_threshold`` is the Save step's media-output confidence,
     reported so a reader knows which detections the media copies show.
-    The data exports are always complete and say so in the summary.
+    The data tables follow the counting threshold and say so, and the
+    recognition file is complete.
 
     Always-on output — every save run produces one. Errors during
     composition / write are recorded but never raise; the README is

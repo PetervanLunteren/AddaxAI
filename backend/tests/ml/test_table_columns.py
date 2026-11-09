@@ -8,6 +8,7 @@ prove they call it.
 
 from app.ml.postprocessing_outputs._table_columns import (
     OMITTED_COLUMNS,
+    folder_run_columns,
     folder_run_table,
 )
 
@@ -77,3 +78,16 @@ def test_preserves_column_order():
 
     assert out_headers == ["a", "b", "c"]
     assert out_rows == [[1, 3, 5]]
+
+
+def test_folder_run_columns_keeps_what_folder_run_table_keeps():
+    """The Frames table is trimmed row by row with these indices; they
+    must pick the same columns as the list form."""
+    headers = ["detection_id", "file_id", "deployment_id", "event_id", "is_representative"]
+    row = ["d1", "f1", "dep1", "e1", "TRUE"]
+
+    keep = folder_run_columns(headers)
+    out_headers, (out_row,) = folder_run_table(headers, [row])
+
+    assert [headers[i] for i in keep] == out_headers
+    assert [row[i] for i in keep] == out_row

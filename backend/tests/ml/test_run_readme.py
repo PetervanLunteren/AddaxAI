@@ -232,15 +232,19 @@ def test_readme_includes_settings_block(db, tmp_path):
     make_deployment(db, project_id=project.id, folder_path=str(tmp_path))
 
     target = tmp_path / "out"
-    # The reported confidence is the Save step's media confidence, not
-    # a project setting; data exports are reported as complete.
+    # The reported media confidence is the Save step's, not a project
+    # setting; the tables follow the counting threshold and the
+    # recognition file is complete, and the text says both.
     write_run_readme(db, project.id, target, media_threshold=0.42)
     text = (target / SUMMARY_FILENAME).read_text("utf-8")
 
     # Confidence values are rendered as whole percentages for humans.
     assert "42%" in text
     assert "Media output threshold" in text
-    assert "complete, no confidence filter" in text
+    assert "Data tables" in text
+    assert "or verified" in text
+    assert "complete, no confidence filter" not in text
+    assert "every detection, no confidence filter" in text
     assert "aggressive" in text
     # taxonomic_rollup False surfaces somehow — exact string varies
     # by Python repr but "False" is universally present.

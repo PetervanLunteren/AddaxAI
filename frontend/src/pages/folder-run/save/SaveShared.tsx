@@ -376,7 +376,7 @@ export function ExportBody({
             <span>
               Format
               <span className="mt-0.5 block text-xs text-muted-foreground">
-                The same tables either way
+                CSV also saves every video frame, too many rows for Excel
               </span>
             </span>
             <Select

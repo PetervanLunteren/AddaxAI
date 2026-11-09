@@ -34,10 +34,12 @@ Placing without it is the same bug wearing different clothes. The still
 beside a copied clip is its cover frame, so deciding its folder from a
 box that is not a card files a picture under a label nobody reviewed.
 
-**The spreadsheet exports apply it; the archival ones do not.**
+**The spreadsheet exports apply it; the per-frame ones do not.**
 `addaxai-detections.csv` and the XLSX detections sheet hold what the
 Labels grid holds, one row per card, so they agree with
-`addaxai-files.csv` and `counts.csv` beside them. The complete record is
+`addaxai-files.csv` and `counts.csv` beside them. `addaxai-frames.csv`
+holds every box of the tracks whose card is in those tables, with
+`is_representative` marking each track's card. The complete record is
 `addaxai-recognitions.json`, which keeps every stored box with its frame
 and track. The CamTrap DP export writes one observation per track, with
 the track's span and its representative box.
@@ -114,6 +116,13 @@ class _FramedDetection(Protocol):
 _D = TypeVar("_D", bound=_FramedDetection)
 
 
+def is_representative(det: _FramedDetection) -> bool:
+    """Whether a video box is its track's representative, the box on the
+    track's representative frame (the track's card in the app). The in-memory form of
+    ``on_representative_frame``; False for an untracked box."""
+    return det.track is not None and det.frame_number == det.track.representative_frame_number
+
+
 def visible_detections(file: File, detections: Iterable[_D]) -> list[_D]:
     """The same rule again, for detections already in memory.
 
@@ -129,9 +138,4 @@ def visible_detections(file: File, detections: Iterable[_D]) -> list[_D]:
     """
     if file.file_type != "video":
         return list(detections)
-    return [
-        det
-        for det in detections
-        if det.track is not None
-        and det.frame_number == det.track.representative_frame_number
-    ]
+    return [det for det in detections if is_representative(det)]

@@ -10,6 +10,7 @@ detections.
 from sqlalchemy import select
 
 from app.ml.detection_visibility import (
+    is_representative,
     on_visible_frame,
     on_visible_frame_of,
     visible_detections,
@@ -63,6 +64,23 @@ def test_a_tracks_representative_box_is_visible_and_its_siblings_are_not(db):
     db.commit()
 
     assert visible_detections(f, [on_cover, card, after]) == [card]
+
+
+def test_is_representative_marks_the_box_on_the_representative_frame_only(db):
+    """The frames export's `is_representative` column: true on a track's
+    representative box (its card in the app), false on its siblings and
+    on a box no track claims."""
+    project = make_project(db)
+    dep = make_deployment(db, project_id=project.id)
+    f = _video(db, dep.id, best_frame_number=30)
+    track = make_track(db, file_id=f.id, start_frame=30, end_frame=90,
+                       representative_frame_number=60)
+    sibling = make_detection(db, file_id=f.id, frame_number=30, track_id=track.id)
+    card = make_detection(db, file_id=f.id, frame_number=60, track_id=track.id)
+    untracked = make_detection(db, file_id=f.id, frame_number=60)
+    db.commit()
+
+    assert [is_representative(d) for d in (sibling, card, untracked)] == [False, True, False]
 
 
 def test_an_untracked_video_box_is_visible_nowhere(db):

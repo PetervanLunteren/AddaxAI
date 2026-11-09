@@ -137,7 +137,8 @@ async def process_save_outputs_job(job_id: str) -> None:
         draw_bboxes = bool(payload.get("draw_bboxes"))
         anonymise = bool(payload.get("anonymise"))
         # Media-output confidence from the Save step. Scopes the media
-        # modules only; the data exports are always the complete record.
+        # modules only; the data tables use the project's counting
+        # threshold and the recognition JSON is complete.
         # Falls back to the schema default for jobs enqueued by an older
         # frontend that did not send the field.
         media_threshold = float(
@@ -235,8 +236,7 @@ async def process_save_outputs_job(job_id: str) -> None:
 
         # The label filter scopes the MEDIA outputs only (separate /
         # visualise / anonymise). Data exports (CSV / XLSX / recognition
-        # JSON) are the complete record of the run and always include
-        # every label.
+        # JSON) always include every label.
         raw_excluded = payload.get("excluded_label_ids") or []
         excluded_frozen = (
             frozenset(raw_excluded) if raw_excluded else None

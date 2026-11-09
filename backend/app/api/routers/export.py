@@ -13,6 +13,9 @@ Streaming endpoints, one per export type:
   effective count (the Counts grain) in CSV / TSV / XLSX.
 - ``/summary``: one row per species / category with counts over the other
   tables (the overview) in CSV / TSV / XLSX.
+- ``/frames``: every box of every track the detections table holds, one
+  row per box per sampled frame, videos only, in CSV / TSV (too big for
+  XLSX).
 - ``/spreadsheet``: combined XLSX with Summary, Counts, Detections, Files
   and Deployments sheets for the one format that holds several tables in
   one file.
@@ -21,17 +24,26 @@ Streaming endpoints, one per export type:
 
 See ``app/api/crud/export.py`` for the data layer and
 ``app/api/crud/export_formats.py`` for the serializers.
+
+The table and spatial endpoints are plain ``def`` on purpose: they do
+seconds of blocking database and serialising work, which FastAPI runs in
+its threadpool for a sync endpoint. As ``async def`` they ran on the event
+loop and froze every other request until they finished (a list of
+projects took 7.7 s during the frames export of a marine project). The
+Camtrap DP endpoints stay async: they hand off to a websocket job.
 """
 
 from __future__ import annotations
 
+import tempfile
+from collections.abc import Iterator
 from datetime import date
 from io import BytesIO
 from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.crud import export as export_crud
@@ -117,7 +129,7 @@ def _tabular_response(
 
 
 @router.get("/deployments")
-async def export_deployments(
+def export_deployments(
     project_id: str,
     format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
     site_ids: str | None = Query(None, description="Comma-separated site IDs"),
@@ -137,7 +149,7 @@ async def export_deployments(
 
 
 @router.get("/files")
-async def export_files(
+def export_files(
     project_id: str,
     format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
     site_ids: str | None = Query(None, description="Comma-separated site IDs"),
@@ -157,7 +169,7 @@ async def export_files(
 
 
 @router.get("/detections")
-async def export_detections(
+def export_detections(
     project_id: str,
     format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
     site_ids: str | None = Query(None, description="Comma-separated site IDs"),
@@ -179,8 +191,61 @@ async def export_detections(
     return _tabular_response(headers, rows, base, "Detections", format)
 
 
+@router.get("/frames")
+def export_frames(
+    project_id: str,
+    format: Literal["csv", "tsv"] = Query("csv"),
+    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
+    deployment_ids: str | None = Query(
+        None, description="Comma-separated deployment IDs"
+    ),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Frames: one row per box per sampled frame of every track the
+    Detections table holds. Videos only, CSV / TSV only, and 204 No
+    Content when the scope holds no video.
+
+    Written row by row to a temporary file inside the request, while the
+    session is open, then streamed back from that file: the table of a
+    marine project is too big to build as one string, and building it
+    in the response body would read the database after ``get_db`` has
+    closed the session."""
+    project = _resolve_project(project_id, db)
+    scope = export_crud.resolve_scope_deployment_ids(
+        db, project, _parse_ids(site_ids), _parse_ids(deployment_ids)
+    )
+    # No video, no frames: an empty file would only be noise next to the
+    # other tables, so the client is told there is nothing to save.
+    if not export_crud.scope_has_videos(db, project, scope):
+        return Response(status_code=204)
+    out = tempfile.TemporaryFile("w+", encoding="utf-8", newline="")
+    try:
+        export_formats.write_delimited(
+            out,
+            export_crud.FRAMES_HEADERS,
+            export_crud.iter_frames_rows(db, project, deployment_ids=scope),
+            delimiter="\t" if format == "tsv" else ",",
+        )
+        out.seek(0)
+    except BaseException:
+        out.close()
+        raise
+
+    def _chunks() -> Iterator[bytes]:
+        with out:
+            while chunk := out.read(1 << 20):
+                yield chunk.encode("utf-8")
+
+    base = _filename_base(project, "frames")
+    return StreamingResponse(
+        _chunks(),
+        media_type="text/tab-separated-values" if format == "tsv" else "text/csv",
+        headers=_attachment_headers(f"{base}.{format}"),
+    )
+
+
 @router.get("/observations")
-async def export_observations(
+def export_observations(
     project_id: str,
     format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
     site_ids: str | None = Query(None, description="Comma-separated site IDs"),
@@ -200,7 +265,7 @@ async def export_observations(
 
 
 @router.get("/summary")
-async def export_summary(
+def export_summary(
     project_id: str,
     format: Literal["csv", "tsv", "xlsx"] = Query("csv"),
     site_ids: str | None = Query(None, description="Comma-separated site IDs"),
@@ -223,7 +288,7 @@ async def export_summary(
 
 
 @router.get("/spreadsheet")
-async def export_spreadsheet(
+def export_spreadsheet(
     project_id: str,
     site_ids: str | None = Query(None, description="Comma-separated site IDs"),
     deployment_ids: str | None = Query(
@@ -236,7 +301,7 @@ async def export_spreadsheet(
 
     XLSX only, the one format that holds several tables in a single file.
     For CSV / TSV the client downloads the five single-table endpoints
-    instead, in the same order.
+    instead, in the same order, and ``/frames`` after them.
     """
     project = _resolve_project(project_id, db)
     scope = export_crud.resolve_scope_deployment_ids(
@@ -258,7 +323,7 @@ async def export_spreadsheet(
 
 
 @router.get("/spatial")
-async def export_spatial(
+def export_spatial(
     project_id: str,
     format: Literal["geojson", "shapefile", "gpkg"] = Query("geojson"),
     db: Session = Depends(get_db),

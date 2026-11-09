@@ -187,6 +187,9 @@ function buildTree({
         files.push({ name: "addaxai-counts.csv" });
         files.push({ name: "addaxai-files.csv" });
         files.push({ name: "addaxai-detections.csv" });
+        // Written only when the run holds a video (tables_csv.py).
+        if (!preview || preview.video_count > 0)
+          files.push({ name: "addaxai-frames.csv" });
       } else {
         files.push({ name: "addaxai-spreadsheet.xlsx" });
       }

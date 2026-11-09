@@ -12,9 +12,10 @@ Shipped modules:
   vehicles, draw detection boxes, or both. Writes into the file's
   separated destination(s) when separation also ran, or into
   ``output_root`` directly otherwise.
-- ``tables_csv`` / ``tables_xlsx``: the Detections and Counts tables
-  for spreadsheet / R / pandas / QGIS consumption (CSV writes both as
-  separate files; XLSX writes one two-sheet workbook).
+- ``tables_csv`` / ``tables_xlsx``: the Summary, Counts, Detections and
+  Files tables for spreadsheet / R / pandas / QGIS consumption (CSV
+  writes them as separate files plus the per-frame Frames table; XLSX
+  writes one four-sheet workbook without Frames).
 - ``recognition_json``: Timelapse-compatible recognition file.
 - ``run_readme``: plain-text manifest of the run.
 

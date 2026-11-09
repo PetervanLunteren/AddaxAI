@@ -203,7 +203,8 @@ export default function ExportPage() {
 
   // One "Spreadsheet" download covering five tables. XLSX is a single
   // workbook; CSV / TSV save one file per table (browsers may show a
-  // one-time "allow multiple downloads" prompt outside Electron).
+  // one-time "allow multiple downloads" prompt outside Electron), plus
+  // the frames table, which has no sheet because it outgrows Excel.
   const handleDownloadSpreadsheet = async (value: string) => {
     if (!projectId) return;
     const format = value as ObservationFormat;
@@ -226,6 +227,11 @@ export default function ExportPage() {
         downloadBlob(files, `addaxai-files.${format}`);
         const deployments = await exportApi.downloadDeployments(projectId, format, tableScope);
         downloadBlob(deployments, `addaxai-deployments.${format}`);
+        // Last: by far the biggest on a video project, so the five quick
+        // tables are already saved if it fails. Empty (204) when the
+        // selection holds no video: nothing to save then.
+        const frames = await exportApi.downloadFrames(projectId, format, tableScope);
+        if (frames.size > 0) downloadBlob(frames, `addaxai-frames.${format}`);
       }
     } catch (err) {
       setTableError(errorMessage(err));
@@ -329,7 +335,7 @@ export default function ExportPage() {
           <CardContent className="pt-6">
             <ExportRow
               title="Spreadsheet"
-              description="Summary, counts, detections, files and deployments, including species labels and your corrections."
+              description="Summary, counts, detections, files and deployments, including species labels and your corrections. For videos, CSV and TSV also save every frame."
               filters={
                 projectId ? (
                   <ExportScopeSelect

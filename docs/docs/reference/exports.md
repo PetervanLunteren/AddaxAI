@@ -9,25 +9,26 @@ What is in the files AddaxAI writes. Most of this page covers the columns in the
 
 One limit to know if your project is large: an Excel sheet holds at most 1,048,576 rows, so a table bigger than that cannot be saved as XLSX. AddaxAI tells you when this happens instead of writing a file Excel cannot open. Pick CSV for those projects, it has no row limit.
 
-AddaxAI exports five tables. Which one you want depends on the question you are asking. A folder run has no [sites and no deployments](../understanding/how-a-project-is-organised.mdx), so the Deployments table is projects only.
+AddaxAI exports six tables. Which one you want depends on the question you are asking. A folder run has no [sites and no deployments](../understanding/how-a-project-is-organised.mdx), so the Deployments table is projects only.
 
 | Table | One row is | Use it for | Available in |
 |---|---|---|---|
 | Summary | one species | a quick overview of what was found and how much | Both |
 | Counts | one species in one event | ecological analysis. Start here | Both |
-| Detections | one box on one photo | model checking, bounding boxes | Both |
+| Detections | one box on a photo, or one animal in a video | model checking, bounding boxes, time on screen | Both |
+| Frames | one box on one video frame | movement, per frame analysis | Both, not in Excel |
 | Files | one photo or video | one label per file, file lists, finding blanks | Both |
 | Deployments | one camera period | effort, trap nights, locations | Projects |
 
 ## What the tables contain
 
-All five tables hold the same set of detections, and it is the same set the app shows you. Two rules decide it, and they work the same way in a project and in a folder run.
+The tables hold the same set of detections, and it is the same set the app shows you. Two rules decide it, and they work the same way in a project and in a folder run.
 
 Anything below your [counting threshold](../understanding/confidence-and-verification.md) is left out, unless you verified it yourself. A detection you verified always stays in, whatever it scored, because your decision outranks the score.
 
-For videos, one row per animal the AI followed: its box on the frame where the AI saw it best, the same box its card shows. The other boxes of that animal, one per checked frame, are not separate detections and are left out of the tables rather than listed as animals you cannot find.
+For videos, the Detections table is the Labels page as a table: one row per card, so one row per animal the AI followed, with its box on the frame where the AI saw it best and the frames it was on screen. The other boxes of that animal are the same animal, so they are not extra rows there. They are in the Frames table, one row per box per checked frame, for every animal in the Detections table. An animal is in or out as a whole, decided by its card, the same way the video player shows it.
 
-If you do want every box on every frame, use the recognition file described at the end of this page. That one is complete on purpose, and it says which animal each box belongs to.
+The recognition file described at the end of this page is complete on purpose: it also holds the boxes below your counting threshold.
 
 ## Summary
 
@@ -68,8 +69,10 @@ One row per species per event, with the count. Each row is one [observation](../
 | `taxon_variant` | One level below species, when the model predicts it, for example adult or juvenile. Empty for most models |
 | `scientific_name` | Scientific name for display |
 | `common_name` | Common name for display |
-| `count` | Number of individuals. Your confirmed number if you set one, otherwise the AI's highest number seen in a single photo |
+| `count` | Number of individuals. Your confirmed number if you set one, otherwise the AI's highest number seen in a single photo or video frame |
+| `max_n_file_id` | The photo or video the AI's count was made on. Empty for a row you added by hand |
 | `max_n_frame` | For a video, the frame the AI's count was made on. Empty for a photo and for a row you added by hand |
+| `max_n_offset_seconds` | For a video, how many seconds into the clip that frame is. Empty for a photo and for a row you added by hand |
 | `max_n_time` | The camera-local time of that frame or photo. Empty for a row you added by hand |
 | `first_arrival_time` | When the species was first seen in the event, camera-local time. Empty when the files carry no capture time |
 | `sex` | female or male, if you set it. Empty means unknown |
@@ -80,7 +83,7 @@ One row per species per event, with the count. Each row is one [observation](../
 
 ## Detections
 
-One row per box. Use it when you care about individual boxes. Blank files do not appear here.
+One row per card on the Labels page, including the ones you marked false. For a photo that is one box; for a video it is one animal the AI followed. Use it when you care about individual boxes or animals. Blank files do not appear here.
 
 | Column | Meaning |
 |---|---|
@@ -102,14 +105,34 @@ One row per box. Use it when you care about individual boxes. Blank files do not
 | `common_name` | Common name |
 | `frame_number` | Frame index for videos, empty for photos |
 | `track_id` | Which animal in the clip the box belongs to, the tracker's own number within that video. Empty for photos |
+| `track_start_frame`, `track_end_frame` | First and last checked frame the animal was on |
+| `track_frame_count` | How many checked frames hold a box of it, which is its number of rows in the Frames table |
+| `track_start_time`, `track_end_time` | The camera-local times of those two frames |
+| `track_duration_seconds` | Seconds from the first to the last of those frames. An animal seen on one frame reads 0. Empty when the clip has no known frame rate |
 | `bbox_x`, `bbox_y` | Top left corner of the box, 0 to 1 |
 | `bbox_width`, `bbox_height` | Size of the box, 0 to 1 |
+
+The `track_` columns are empty for photos.
 
 Box positions are fractions of the image, not pixels. Multiply by the image width and height to get pixels.
 
 To see where the AI was wrong, compare `ai_classification_label` with `classification_label` on rows where `is_verified` is TRUE.
 
 One thing to know before you read too much into that. `ai_classification_label` is the label after cleanup, the one the app put in front of you, not the model's raw output. That raw call stays in the `results.json` on disk. So the comparison scores the whole pipeline, model plus rollup plus smoothing. See [how labels get cleaned up](../understanding/label-cleanup.md).
+
+## Frames
+
+Every box of every animal in the Detections table, one row per checked video frame. Videos only: an export without videos has no Frames table. Group by `file_id` and `track_id` to follow one animal through a clip.
+
+It has the same columns as the Detections table, without the `track_` span columns and with three of its own:
+
+| Column | Meaning |
+|---|---|
+| `frame_time` | The camera-local time of this frame |
+| `frame_offset_seconds` | Seconds into the clip. Empty when the clip has no known frame rate |
+| `is_representative` | TRUE on the one box that stands for the animal: the frame where the AI saw it best, and the box its row in the Detections table shows |
+
+This table can be very large: an hour of underwater video easily holds tens of thousands of boxes. It is saved as CSV or TSV only, never in the Excel workbook. A video analysed before AddaxAI tracked animals has one box per animal, so its rows here are its rows in the Detections table.
 
 ## Files
 
@@ -135,6 +158,7 @@ One row per photo or video, whether or not anything was found.
 | `taxon_class` to `taxon_variant` | Taxonomy of that species, broad to specific. `taxon_variant` sits below species and is empty for most models. Only a species label fills the five ranks above it, so check these before you group by `classification_label` |
 | `scientific_name` | Scientific name of that same box |
 | `common_name` | Common name of that same box. Never empty on a file that holds something: it reads `Person`, `Vehicle` or `Animal` when there is no species |
+| `all_labels` | Everything on the file, not only the strongest box: each species once, or the category for a box without one, sorted and separated by `\|`, for example `badger\|person\|red deer`. The same names as the Summary rows. A box you marked false is left out. Empty for a blank file |
 | `is_verified` | TRUE if you verified this file: every box on it was verified, or, for a file with nothing on it, you verified that it is empty |
 | `is_favorited` | TRUE if you marked the file as a favourite on the Labels page |
 | `is_flagged` | TRUE if you flagged the file for review on the Labels page |
@@ -163,15 +187,15 @@ One row per camera period. This is your effort table.
 
 ## Folder runs
 
-In the four tables a folder run writes, `deployment_id` is dropped because there is no deployment, and `notes` because nothing ever fills it. Everything else is the same as in a project, so `event_id` in the Files and Detections tables points at the rows of the Counts table, and the Summary's `n_individuals` is that table's total. In the Excel workbook the sheets come in the same order as in a project, minus Deployments.
+In the five tables a folder run writes, `deployment_id` is dropped because there is no deployment, and `notes` because nothing ever fills it. Everything else is the same as in a project, so `event_id` in the Files and Detections tables points at the rows of the Counts table, and the Summary's `n_individuals` is that table's total. In the Excel workbook the sheets come in the same order as in a project, minus Deployments.
 
-One thing to know about the times: a folder run has no timezone setting, so `event_start`, `max_n_time`, `first_arrival_time` and `datetime` carry a `+00:00` offset. The clock values are the camera's own; only the offset is a placeholder.
+One thing to know about the times: a folder run has no timezone setting, so `event_start`, `max_n_time`, `first_arrival_time` and `datetime` carry a `+00:00` offset, and so do `frame_time`, `track_start_time` and `track_end_time`. The clock values are the camera's own; only the offset is a placeholder.
 
 ## Recognition file (JSON)
 
 A folder run also writes `addaxai-recognitions.json`. This is the file Timelapse reads.
 
-It follows the MegaDetector output format, version 1.6, which is [documented here](https://microsoft.github.io/MegaDetector/output_format/). Four things are worth knowing on top of that spec:
+It follows the MegaDetector output format, version 1.6, which is [documented here](https://microsoft.github.io/MegaDetector/output_format/). Five things are worth knowing on top of that spec:
 
 1. The `info` block carries an extra `addaxai` section with the app version and the settings the run used, such as smoothing, rollup and the independence interval. So the file records how it was produced.
 2. Each detection keeps only the top classification, not the full list the format allows.
@@ -191,4 +215,4 @@ For models that predict below species level (adult or juvenile fox, for example)
 
 What you set on the Counts page goes into the same fields: `sex`, `lifeStage` and `behavior` per row, and your note on the event into `observationComments` of each of its rows. Unknown stays empty. A favourite file gets `favorite` set to true in the media table.
 
-A video is one media row, and each animal the AI followed through it is one media-level observation: `eventStart` and `eventEnd` are the seconds the animal was on screen, the box is the one from the frame it was seen best on, `individualID` names the animal within the clip, and `observationTags` carries the frame numbers (`frameStart`, `frameEnd`, `bboxFrame`, `frameRate`), since the standard has no field for them. The event-level row per species carries the count, MaxN or your own number, with `countMethod:MaxN` and the file and frame the MaxN was made on in its tags.
+A video is one media row, and each animal the AI followed through it is one media-level observation: `eventStart` and `eventEnd` are the seconds the animal was on screen, the box is the one from the frame it was seen best on, `individualID` names the animal within the clip (the file's id and its `track_id`; it is the AI following one animal through one clip, not a recognised individual, so an animal that leaves and comes back gets a new one), and `observationTags` carries the frame numbers (`frameStart`, `frameEnd`, `bboxFrame`, `frameRate`), since the standard has no field for them. The event-level row per species carries the count, MaxN or your own number, with `countMethod:MaxN` and the file and frame the MaxN was made on in its tags.

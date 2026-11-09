@@ -34,6 +34,13 @@ from typing import Any
 OMITTED_COLUMNS = frozenset({"deployment_id", "notes"})
 
 
+def folder_run_columns(headers: list[str]) -> list[int]:
+    """The indices of the columns a folder run keeps, in order. For a
+    table written row by row (the Frames table), which cannot go through
+    ``folder_run_table`` as one list."""
+    return [i for i, h in enumerate(headers) if h not in OMITTED_COLUMNS]
+
+
 def folder_run_table(
     headers: list[str],
     rows: list[list[Any]],
@@ -43,7 +50,7 @@ def folder_run_table(
     Input is not mutated. Tables that carry none of the omitted columns
     pass through unchanged.
     """
-    keep = [i for i, h in enumerate(headers) if h not in OMITTED_COLUMNS]
+    keep = folder_run_columns(headers)
     return (
         [headers[i] for i in keep],
         [[row[i] for i in keep] for row in rows],

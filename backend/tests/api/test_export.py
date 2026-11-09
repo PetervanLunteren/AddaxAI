@@ -140,7 +140,10 @@ def test_export_detections_csv_happy_path(client, db):
         "classification_method", "is_verified",
         "taxon_class", "taxon_order", "taxon_family", "taxon_genus",
         "taxon_species", "taxon_variant", "scientific_name", "common_name",
-        "frame_number", "track_id", "bbox_x", "bbox_y", "bbox_width", "bbox_height",
+        "frame_number", "track_id",
+        "track_start_frame", "track_end_frame", "track_frame_count",
+        "track_start_time", "track_end_time", "track_duration_seconds",
+        "bbox_x", "bbox_y", "bbox_width", "bbox_height",
     ]
     cls_i = headers.index("classification_label")
     cat_i = headers.index("detection_category")
@@ -152,8 +155,9 @@ def test_export_detections_csv_happy_path(client, db):
     assert len(data) == 3
     assert all(r[cat_i] != "blank" for r in data)
     assert f_dec.id not in {r[headers.index("file_id")] for r in data}
-    # Photos have no frame and no track.
-    assert all(r[headers.index("track_id")] == "" for r in data)
+    # Photos have no frame, no track and no track span.
+    track_cols = [h for h in headers if h.startswith("track_")]
+    assert all(r[headers.index(h)] == "" for r in data for h in track_cols)
 
     # Each deer detection keeps its own confidence (no max-aggregation).
     deer = [r for r in data if r[cls_i] == "deer"]
@@ -2453,23 +2457,60 @@ def test_export_camtrap_dp_drops_rejected_boxes(client, db):
 
 
 def test_export_observations_carry_the_max_n_frame_and_times(client, db):
-    """Three columns after `count`: the frame the MaxN was counted on
-    (blank for a photo), the wall-clock time it stands for, and when the
-    species was first seen in the event. A human-only cohort has no AI
-    frame, so its frame and MaxN time are blank."""
-    project, _ev = _deer_event_with_cohorts(db)
+    """Five columns after `count`: the file the MaxN was counted on, its
+    frame and the seconds into it (both blank for a photo), the
+    wall-clock time it stands for, and when the species was first seen
+    in the event. A human-only cohort has no AI frame, so everything but
+    the first arrival is blank."""
+    project, ev = _deer_event_with_cohorts(db)
     resp = client.get(f"/api/projects/{project.id}/export/observations?format=csv")
     headers, *rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     i = headers.index("count")
-    assert headers[i + 1 : i + 4] == ["max_n_frame", "max_n_time", "first_arrival_time"]
+    assert headers[i + 1 : i + 6] == [
+        "max_n_file_id", "max_n_frame", "max_n_offset_seconds", "max_n_time",
+        "first_arrival_time",
+    ]
+    h = {name: j for j, name in enumerate(headers)}
     ai_row, cohort_row = rows
-    # Photos: no frame, but the MaxN photo's time and a first arrival.
-    assert ai_row[i + 1] == ""
-    assert ai_row[i + 2] != "" and ai_row[i + 3] != ""
-    # The split-off cohort is human-only: no AI frame, no MaxN time, same
+    # Photos: the file and its time, no frame and no offset.
+    assert ai_row[h["max_n_file_id"]] == ev.files[0].id
+    assert ai_row[h["max_n_frame"]] == "" and ai_row[h["max_n_offset_seconds"]] == ""
+    assert ai_row[h["max_n_time"]] != "" and ai_row[h["first_arrival_time"]] != ""
+    # The split-off cohort is human-only: nothing about an AI count, same
     # first arrival as the species it belongs to.
-    assert cohort_row[i + 1] == "" and cohort_row[i + 2] == ""
-    assert cohort_row[i + 3] == ai_row[i + 3]
+    for col in ("max_n_file_id", "max_n_frame", "max_n_offset_seconds", "max_n_time"):
+        assert cohort_row[h[col]] == ""
+    assert cohort_row[h["first_arrival_time"]] == ai_row[h["first_arrival_time"]]
+
+
+def test_export_observations_name_the_max_n_file_and_seconds_into_it(client, db):
+    """In an event of two clips the MaxN frame alone is ambiguous; the row
+    names the clip it was counted on and how many seconds into it."""
+    from app.api.crud.event_observation import calculate_max_n_for_event
+
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    ev = make_event_with_files(
+        db, deployment_id=deployment.id, files_verified=[False, False],
+        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+    )
+    first, second = ev.files
+    for clip in (first, second):
+        clip.file_type, clip.file_format, clip.frame_rate = "video", "mp4", 30.0
+    make_video_box(db, file_id=first.id, frame_number=30, confidence=0.9, label="deer")
+    for _ in range(2):
+        make_video_box(db, file_id=second.id, frame_number=90, confidence=0.9,
+                       label="deer")
+    db.flush()
+    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    db.commit()
+
+    resp = client.get(f"/api/projects/{project.id}/export/observations?format=csv")
+    headers, row = list(csv.reader(io.StringIO(resp.text)))
+    h = {name: j for j, name in enumerate(headers)}
+    assert row[h["count"]] == "2"
+    assert row[h["max_n_file_id"]] == second.id
+    assert row[h["max_n_frame"]] == "90"
+    assert row[h["max_n_offset_seconds"]] == "3.0"
 
 
 def test_export_camtrap_dp_writes_one_observation_per_track(client, db):
@@ -2633,3 +2674,320 @@ def test_a_marine_detection_exports_its_species_not_its_category(db):
     # A person box has no species and still reads as its category.
     assert _species_label(person, None) == "person"
     assert _scientific_name(person, None) == ""
+
+
+# ---------------------------------------------------------------------------
+# Tracks: the span on the Detections row, every frame in the Frames table
+# ---------------------------------------------------------------------------
+
+
+def _tracked_clip(db, deployment, *, frame_rate: float | None = 30.0, label: str = "deer"):
+    """A clip with one track of three boxes on frames 60, 150 and 300,
+    its card on 150. Returns (video, track)."""
+    video = make_file(db, deployment_id=deployment.id, file_type="video", file_format="mp4",
+                      frame_rate=frame_rate, best_frame_number=0,
+                      captured_at_local=datetime(2024, 6, 15, 9, 0, 0))
+    track = make_track(db, file_id=video.id, track_key=3, start_frame=60, end_frame=300,
+                       representative_frame_number=150)
+    for frame in (60, 150, 300):
+        make_detection(db, file_id=video.id, frame_number=frame, track_id=track.id,
+                       category="animal", confidence=0.9, label=label,
+                       bbox_x=0.1, bbox_y=0.1, bbox_width=0.2, bbox_height=0.2)
+    return video, track
+
+
+def _csv(client, url: str) -> tuple[dict[str, int], list[list[str]]]:
+    resp = client.get(url)
+    assert resp.status_code == 200, resp.text
+    headers, *rows = csv.reader(io.StringIO(resp.text))
+    return {name: i for i, name in enumerate(headers)}, rows
+
+
+def test_detections_export_carries_the_track_span_after_track_id(client, db):
+    """A card's row says when its animal was on screen: first and last
+    frame of the track, how many frames hold a box, the two times and
+    the seconds between them, right after `track_id`."""
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    _tracked_clip(db, deployment)
+    db.commit()
+
+    h, rows = _csv(client, f"/api/projects/{project.id}/export/detections?format=csv")
+    names = sorted(h, key=h.get)
+    i = names.index("track_id")
+    assert names[i + 1 : i + 8] == [
+        "track_start_frame", "track_end_frame", "track_frame_count",
+        "track_start_time", "track_end_time", "track_duration_seconds", "bbox_x",
+    ]
+    (row,) = rows
+    assert row[h["frame_number"]] == "150"
+    assert row[h["track_start_frame"]] == "60"
+    assert row[h["track_end_frame"]] == "300"
+    assert row[h["track_frame_count"]] == "3"
+    # 60 and 300 frames at 30 fps: two and ten seconds into the clip.
+    assert row[h["track_start_time"]] == "2024-06-15T09:00:02+00:00"
+    assert row[h["track_end_time"]] == "2024-06-15T09:00:10+00:00"
+    assert row[h["track_duration_seconds"]] == "8.0"
+
+
+def test_detections_export_span_has_no_duration_when_the_clip_has_no_frame_rate(client, db):
+    """A clip analysed before frame rates were stored cannot turn frames
+    into seconds: the duration is blank, never a guess, and the times
+    fall back to the clip's own, as everywhere frame_time is used."""
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    _tracked_clip(db, deployment, frame_rate=None)
+    db.commit()
+
+    h, (row,) = _csv(client, f"/api/projects/{project.id}/export/detections?format=csv")
+    assert row[h["track_start_frame"]] == "60"
+    assert row[h["track_duration_seconds"]] == ""
+    assert row[h["track_start_time"]] == row[h["track_end_time"]] == "2024-06-15T09:00:00+00:00"
+
+
+def test_frames_export_writes_every_frame_of_a_track_and_marks_the_card(client, db):
+    """One row per box of the track, in frame order, with the frame's time,
+    its seconds into the clip, and `is_representative` on the box the Detections
+    table shows. Same label and box columns as that table."""
+    from app.api.crud.export import FRAMES_HEADERS
+
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    video, _track = _tracked_clip(db, deployment)
+    db.commit()
+
+    h, rows = _csv(client, f"/api/projects/{project.id}/export/frames?format=csv")
+    assert sorted(h, key=h.get) == FRAMES_HEADERS
+    assert [r[h["frame_number"]] for r in rows] == ["60", "150", "300"]
+    assert {r[h["track_id"]] for r in rows} == {"3"}
+    assert {r[h["file_id"]] for r in rows} == {video.id}
+    assert [r[h["is_representative"]] for r in rows] == ["FALSE", "TRUE", "FALSE"]
+    assert [r[h["frame_offset_seconds"]] for r in rows] == ["2.0", "5.0", "10.0"]
+    assert rows[1][h["frame_time"]] == "2024-06-15T09:00:05+00:00"
+    assert {r[h["classification_label"]] for r in rows} == {"deer"}
+
+    # The Detections row of that track counts exactly these rows.
+    dh, (card,) = _csv(client, f"/api/projects/{project.id}/export/detections?format=csv")
+    assert int(card[dh["track_frame_count"]]) == len(rows)
+    assert card[dh["detection_id"]] == rows[1][h["detection_id"]]
+
+
+def test_frames_export_follows_the_card_not_the_frame(client, db):
+    """One gate, the player's: a track is in or out by its card. A weak
+    frame of a track whose card passes is in; every frame of a track
+    whose card does not pass is out, however strong."""
+    project, _site, deployment = _build_simple_project(db, timezone="UTC",
+                                                       counting_threshold=0.5)
+    video = make_file(db, deployment_id=deployment.id, file_type="video", file_format="mp4",
+                      frame_rate=30.0, captured_at_local=datetime(2024, 6, 15, 9, 0, 0))
+    kept = make_track(db, file_id=video.id, track_key=1, start_frame=0, end_frame=30,
+                      representative_frame_number=30)
+    make_detection(db, file_id=video.id, frame_number=0, track_id=kept.id, confidence=0.2)
+    make_detection(db, file_id=video.id, frame_number=30, track_id=kept.id, confidence=0.9)
+    dropped = make_track(db, file_id=video.id, track_key=2, start_frame=0, end_frame=30,
+                         representative_frame_number=0)
+    make_detection(db, file_id=video.id, frame_number=0, track_id=dropped.id, confidence=0.3)
+    make_detection(db, file_id=video.id, frame_number=30, track_id=dropped.id, confidence=0.9)
+    db.commit()
+
+    h, rows = _csv(client, f"/api/projects/{project.id}/export/frames?format=csv")
+    assert [(r[h["track_id"]], r[h["frame_number"]]) for r in rows] == [("1", "0"), ("1", "30")]
+
+
+def test_frames_export_leaves_out_untracked_boxes_and_photos(client, db):
+    """Untracked video boxes are visible nowhere, so they are in no
+    table; a photo's boxes are complete in the Detections table and have
+    no frames."""
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    video, _track = _tracked_clip(db, deployment)
+    make_detection(db, file_id=video.id, frame_number=7, confidence=0.95, label="fox")
+    photo = make_file(db, deployment_id=deployment.id,
+                      captured_at_local=datetime(2024, 6, 15, 9, 5, 0))
+    make_detection(db, file_id=photo.id, confidence=0.9, label="deer")
+    db.commit()
+
+    h, rows = _csv(client, f"/api/projects/{project.id}/export/frames?format=csv")
+    assert {r[h["file_id"]] for r in rows} == {video.id}
+    assert "7" not in {r[h["frame_number"]] for r in rows}
+    assert len(rows) == 3
+
+
+def test_frames_export_keeps_the_frames_of_a_rejected_track(client, db):
+    """A track a person marked false keeps its Detections row as the
+    record, so its frames stay too, all carrying the rejection."""
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    video, track = _tracked_clip(db, deployment, label="false detection")
+    for det in video.detections:
+        det.verified = True
+    db.commit()
+
+    h, rows = _csv(client, f"/api/projects/{project.id}/export/frames?format=csv")
+    assert len(rows) == 3
+    assert {r[h["classification_label"]] for r in rows} == {"false detection"}
+
+
+def test_frames_export_respects_excluded_classes_and_deployment_scope(client, db):
+    """The frames come from the same scope as every other table: an
+    excluded species is gone, and a deployment filter narrows it."""
+    project, site, deployment = _build_simple_project(db, timezone="UTC")
+    _tracked_clip(db, deployment, label="deer")
+    other = make_deployment(db, site_id=site.id, start_date_local=date(2024, 6, 1))
+    fox_clip, _ = _tracked_clip(db, other, label="fox")
+    db.commit()
+
+    base = f"/api/projects/{project.id}/export/frames?format=csv"
+    h, rows = _csv(client, f"{base}&deployment_ids={other.id}")
+    assert {r[h["file_id"]] for r in rows} == {fox_clip.id}
+
+    project.excluded_classes = ["deer"]
+    db.commit()
+    h, rows = _csv(client, base)
+    assert {r[h["classification_label"]] for r in rows} == {"fox"}
+
+
+def test_frames_export_streams_a_tsv_and_refuses_xlsx(client, db):
+    """CSV and TSV only: a marine project outgrows an Excel sheet."""
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    _tracked_clip(db, deployment)
+    db.commit()
+
+    resp = client.get(f"/api/projects/{project.id}/export/frames?format=tsv")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/tab-separated-values")
+    assert 'filename="frames-' in resp.headers["content-disposition"]
+    lines = resp.text.splitlines()
+    assert lines[0].split("\t")[0] == "detection_id"
+    assert len(lines) == 4
+
+    resp = client.get(f"/api/projects/{project.id}/export/frames?format=xlsx")
+    assert resp.status_code == 422
+
+
+def test_files_export_lists_every_label_sorted_and_pipe_separated(client, db):
+    """`all_labels` names everything on the file, not only the strongest
+    box: distinct, sorted, joined by `|`, named as the Summary names its
+    rows (a box without a species by its category). A rejected box is
+    not something that was found. An empty file reads blank."""
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    mixed = make_file(db, deployment_id=deployment.id,
+                      captured_at_local=datetime(2024, 6, 15, 9, 0, 0))
+    make_detection(db, file_id=mixed.id, category="animal", confidence=0.9, label="red deer")
+    make_detection(db, file_id=mixed.id, category="animal", confidence=0.8, label="red deer")
+    make_detection(db, file_id=mixed.id, category="animal", confidence=0.7, label="badger")
+    make_detection(db, file_id=mixed.id, category="person", confidence=0.95)
+    make_detection(db, file_id=mixed.id, category="animal", confidence=0.9,
+                   label="false detection", verified=True)
+    empty = make_file(db, deployment_id=deployment.id, observation_type="blank",
+                      captured_at_local=datetime(2024, 6, 15, 10, 0, 0))
+    db.commit()
+
+    h, rows = _csv(client, f"/api/projects/{project.id}/export/files?format=csv")
+    names = sorted(h, key=h.get)
+    assert names[names.index("all_labels") - 1] == "common_name"
+    by_file = {r[h["file_id"]]: r[h["all_labels"]] for r in rows}
+    assert by_file == {mixed.id: "badger|person|red deer", empty.id: ""}
+
+
+def test_files_export_lists_every_tracked_species_of_a_clip(client, db):
+    """Jamie's case: a clip whose strongest card is a vehicle still names
+    the bird that crossed it on another frame."""
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    clip = make_file(db, deployment_id=deployment.id, file_type="video", file_format="mp4",
+                     frame_rate=3.0, best_frame_number=0,
+                     captured_at_local=datetime(2024, 6, 15, 9, 0, 0))
+    make_video_box(db, file_id=clip.id, frame_number=0, category="vehicle", confidence=0.95)
+    make_video_box(db, file_id=clip.id, frame_number=40, category="animal",
+                   confidence=0.6, label="buzzard")
+    db.commit()
+
+    h, (row,) = _csv(client, f"/api/projects/{project.id}/export/files?format=csv")
+    # The species block still describes the strongest card, the vehicle.
+    assert row[h["detection_confidence"]] == "0.95"
+    assert row[h["classification_label"]] == ""
+    assert row[h["all_labels"]] == "buzzard|vehicle"
+
+
+def test_scoped_rows_do_not_load_the_clip_frame_list(db):
+    """`File.frames_processed` is a clip's whole sampled frame list, joined
+    onto every card row. No table reads it, so the shared scope defers it,
+    as it does the EXIF blob: loading it per row took a marine project of
+    11,699 cards to 3.7 GB. Reading it still works, lazily."""
+    from sqlalchemy import inspect
+
+    from app.api.crud.export import get_scoped_detection_rows
+
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    video, _track = _tracked_clip(db, deployment)
+    video.frames_processed = list(range(0, 301, 10))
+    db.commit()
+    db.expire_all()
+
+    rows = get_scoped_detection_rows(db, project)
+    clip = rows[0][0]
+    unloaded = inspect(clip).unloaded
+    assert "frames_processed" in unloaded and "exif_data" in unloaded
+    assert clip.frames_processed[-1] == 300
+
+
+def test_frames_export_is_empty_when_the_scope_holds_no_video(client, db):
+    """No video, no frames: 204 and no body, so the Export page saves
+    nothing instead of a header-only file. A video without a single
+    track in scope still gets its header, since frames could exist."""
+    project, site, deployment = _build_simple_project(db, timezone="UTC")
+    photo = make_file(db, deployment_id=deployment.id)
+    make_detection(db, file_id=photo.id, confidence=0.9, label="deer")
+    db.commit()
+
+    resp = client.get(f"/api/projects/{project.id}/export/frames?format=csv")
+    assert resp.status_code == 204
+    assert resp.content == b""
+
+    make_file(db, deployment_id=deployment.id, file_type="video", file_format="mp4")
+    db.commit()
+    resp = client.get(f"/api/projects/{project.id}/export/frames?format=csv")
+    assert resp.status_code == 200
+    assert resp.text.splitlines()[0].startswith("detection_id,")
+    assert len(resp.text.splitlines()) == 1
+
+
+def test_frames_export_survives_a_clip_with_more_tracks_than_sql_parameters(db):
+    """A long underwater clip holds thousands of tracks. Older SQLite
+    builds allow 999 bound parameters, so the tracks in scope must not
+    be sent as one IN list; here the limit is lowered to that and a clip
+    of 1,000 tracks still exports every box."""
+    import sqlite3
+
+    from app.api.crud.export import iter_frames_rows
+
+    project, _site, deployment = _build_simple_project(db, timezone="UTC")
+    video = make_file(db, deployment_id=deployment.id, file_type="video", file_format="mp4",
+                      frame_rate=30.0, captured_at_local=datetime(2024, 6, 15, 9, 0, 0))
+    for key in range(1, 1001):
+        track = make_track(db, file_id=video.id, track_key=key, start_frame=key,
+                           end_frame=key + 1, representative_frame_number=key, frame_count=2)
+        make_detection(db, file_id=video.id, frame_number=key, track_id=track.id,
+                       confidence=0.9, label="fish")
+        make_detection(db, file_id=video.id, frame_number=key + 1, track_id=track.id,
+                       confidence=0.2, label="fish")
+    db.commit()
+
+    raw = db.connection().connection.driver_connection
+    before = raw.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER)
+    raw.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 999)
+    try:
+        rows = list(iter_frames_rows(db, project))
+    finally:
+        raw.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, before)
+    assert len(rows) == 2000
+
+
+def test_table_exports_run_off_the_event_loop():
+    """The table endpoints do seconds of blocking work. As `async def`
+    they ran on the event loop and froze every other request meanwhile
+    (7.7 s for a list of projects during a marine frames export), so
+    they are plain functions, which FastAPI runs in its threadpool."""
+    import inspect
+
+    from app.api.routers import export as export_router
+
+    for name in ("deployments", "files", "detections", "frames", "observations",
+                 "summary", "spreadsheet", "spatial"):
+        endpoint = getattr(export_router, f"export_{name}")
+        assert not inspect.iscoroutinefunction(endpoint), name
