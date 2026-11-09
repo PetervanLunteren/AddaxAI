@@ -68,18 +68,23 @@ export const SETTING_CAPTIONS = {
     "This model classifies the whole photo, so no detector runs. This setting does not apply.",
   mediaFilter:
     "Which files the AI looks at. Files left out are not analysed and do not appear in the results. Images and videos is the default.",
-  // Two facts and a recommendation, nothing more. The cost is linear.
-  // Higher is not more accurate: TRACKING_BENCHMARK_RESULTS.md has MaxN
-  // falling from 66% exact at 0.5 fps to 48% at 12, over-counting more at
-  // every step, so never write "more is better" here. How the tracker
-  // links frames belongs in the guides, and in particular the two-second
-  // rule stays out: `track_buffer` is scaled by the frame rate
-  // (`tracking_script.py`), so two seconds is two seconds at any rate, and
-  // reading it next to this control implies it is a consequence of it.
+  // Two facts, the default and what going lower costs, nothing more. The
+  // cost is linear. Going lower costs review time, not counts: MaxN reads
+  // per frame and does not lean on tracks, so never write "counts get
+  // worse" here. Higher is not more accurate either: TRACKING_BENCHMARK_RESULTS.md
+  // has MaxN falling from 66% exact at 0.5 fps to 48% at 12 without the
+  // filter, and above 3 fps is unmeasured with it, so never write "more is
+  // better". How the tracker links frames belongs in the guides, and in
+  // particular the two-second rule stays out: `track_buffer` is scaled by
+  // the frame rate (`tracking_script.py`), so two seconds is two seconds at
+  // any rate, and reading it next to this control implies it is a
+  // consequence of it.
   videoFrameRate:
     "How many frames per second the AI looks at in a video. The detector " +
     "runs on every one, so 4 per second takes twice as long as 2. Three " +
-    "frames per second is often a good balance.",
+    "per second is the default. At lower rates the AI loses animals " +
+    "between frames more often, so one animal gets split into several " +
+    "detections and verifying takes longer.",
   independenceInterval:
     "Files at the same camera within this window are merged into one event. The default is 30 minutes.",
   smoothing:
