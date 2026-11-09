@@ -1128,6 +1128,23 @@ Without it, a first launch on a network that blocks `raw.githubusercontent.com` 
 
 **On Windows it gets its own C++ runtime.** The Windows micromamba is not self-contained: it imports `msvcp140.dll`, `vcruntime140.dll` and `vcruntime140_1.dll` from the machine, and it is built with toolset 14.44. Code built with 14.40 or newer crashes in `std::mutex` when it loads an older `msvcp140.dll`, so on a machine with an out-of-date Visual C++ Redistributable micromamba dies at start-up with exit 0xC0000005 and prints nothing. That is what users on 7.11.0 to 7.13.0 hit (`micromamba create failed (exit 3221225477): (no output)`, October 2026, Windows 10 and 11, older machines without a GPU): the crash came before micromamba's first line of output, a retry without sharded repodata (7.13.0, since removed) crashed the same way, and the same machines built conda environments fine with Miniconda, which brings its own runtime. Our backend made it the machine's call: PyInstaller's bootloader sets the backend's DLL directory to `_internal` and child processes inherit it, `_internal` has `VCRUNTIME140.dll` (14.38, from Python 3.11.9) but no `msvcp140.dll`, so micromamba took `msvcp140.dll` from `System32`. `_install_vc_runtime` copies the three 14.44 DLLs from `app/ml/vc-runtime/` next to `micromamba.exe`; Windows searches a program's own directory first, so they win over anything on the machine. Proven on a Windows test machine (2026-10-12): with `msvcp140.dll` 14.29 next to `micromamba.exe` it crashed 8 runs out of 8 with 0xC0000005 and no output, the Application log naming `MSVCP140.dll` 14.29 at offset 0x13020 loaded from micromamba's own folder; with the shipped 14.44 DLLs every run worked, a full solve included. The old `msvcp140.dll` alone is enough to crash it. Checked before every build, so a quarantined DLL heals. Provenance and how to replace them: `app/ml/vc-runtime/README.md`. `tests/ml/test_vc_runtime.py`.
 
+## Replacing an installed environment
+
+An installed env is never deleted in place. `EnvironmentManager.retire_env` renames it to `.env-<name>.old-<id>` first and deletes that copy afterwards. The drift rebuild (`run_setup` with `force_envs`) and `get_or_create_env` both go through it.
+
+**Why.** A delete in place stops at the first locked file, and what is left still passes every check. On 2026-11-03 a Windows beta tester clicked "Update now" for `env-addaxai-base`. `rmtree` removed the drift sentinel, `bin\` with exiftool and `conda-meta\`, then stopped at a locked `DLLs\select.pyd`. `run_setup` logged the error and carried on. `python.exe` and `Lib\` were still there, so the boot probe passed, no build ran, and the modal said "Environment updated". From then on every folder scan failed with "exiftool not found", the drift notice never came back, and reinstalling the app could not help because the installer never touches the data folder.
+
+**The rules.**
+
+- A rename is all or nothing. If Windows refuses it, `_rename_with_retries` waits out about 30 s of locks and then raises an error written for the user. The env is untouched and the drift notice stays.
+- A copy that cannot be deleted (antivirus still scanning) is only logged. `_create_env` sweeps `.env-<name>.old-*` before every build.
+- `/api/setup/status` does not run the boot probe while an install is in progress. The probe starts the env's own python, which keeps the env's DLLs open. The rebuild modal polls every 1.5 s, and its first poll lands within milliseconds of the wipe, which is what locked `select.pyd` in the report above.
+- The base env counts as present only when the boot probe passes and `bundled_exiftool_path()` (`app/utils/exiftool_bin.py`) exists. The probe cannot see exiftool. `run_setup` replaces a base env that fails this check instead of reusing it, so a machine left in the state above repairs itself through the setup wizard at the next launch.
+
+Whether Windows refuses to rename a folder while a DLL inside it is loaded is not established. Both outcomes are safe: a refusal leaves the env whole with a clear error, and a successful rename leaves a copy that is deleted now or swept later.
+
+Pinned by `tests/ml/test_env_retire.py`, the replace tests in `tests/test_setup_cli.py` and `test_status_does_not_probe_the_env_while_an_install_runs`.
+
 ## Why the PyTorch index is ours to replace
 
 `ADDAXAI_PYTORCH_INDEX_URL` swaps `https://download.pytorch.org/whl/` in the YAML copy for a mirror, keeping whatever CUDA suffix follows so one replacement covers the cu128 and cu118 lines.

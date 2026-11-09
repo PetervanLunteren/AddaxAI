@@ -31,6 +31,7 @@ from app.core.config import get_settings
 from app.core.job_cancellation import JobCancelledError, is_cancel_requested
 from app.core.logging_config import get_logger
 from app.ml.schemas.model_manifest import ModelManifest
+from app.utils.fs_remove import safe_rmtree
 from app.utils.subprocess_env import clean_python_env
 from app.utils.subprocess_runner import log_subprocess_failure, stream_with_tail
 
@@ -122,12 +123,17 @@ Delete this file to restore the default.
 _RENAME_WAITS = (1, 2, 4, 8, 15)
 
 
-def _rename_with_retries(src: Path, dst: Path) -> None:
+def _rename_with_retries(
+    src: Path,
+    dst: Path,
+    what: str = "move the finished environment into place",
+) -> None:
     """Rename src to dst, waiting out transient Windows file locks.
 
     Retries PermissionError only: that is what an antivirus-held handle
     raises. Any other error (target exists, source gone) is a different
-    bug and fails immediately.
+    bug and fails immediately. `what` names the move in the log and in
+    the error the user sees.
     """
     attempts = len(_RENAME_WAITS) + 1
     for attempt, wait in enumerate(_RENAME_WAITS, start=1):
@@ -136,7 +142,7 @@ def _rename_with_retries(src: Path, dst: Path) -> None:
             return
         except PermissionError as e:
             logger.warning(
-                f"Attempt {attempt}/{attempts} to move {src} into place "
+                f"Attempt {attempt}/{attempts} to {what} ({src}) "
                 f"was refused ({e}); retrying in {wait}s"
             )
             time.sleep(wait)
@@ -144,12 +150,13 @@ def _rename_with_retries(src: Path, dst: Path) -> None:
         src.rename(dst)
     except PermissionError as e:
         raise RuntimeError(
-            f"Windows refused to move the finished environment into place, "
-            f"even after {attempts} attempts over "
-            f"{sum(_RENAME_WAITS)} seconds ({e}). Another program is "
-            f"holding files in that folder, usually the antivirus. Add an "
+            f"Windows refused to {what}, even after {attempts} attempts "
+            f"over {sum(_RENAME_WAITS)} seconds ({e}). Another program is "
+            f"holding files in that folder: a running analysis, a second "
+            f"AddaxAI window, or the antivirus. Wait for running analyses "
+            f"to finish and try again. If it keeps happening, add an "
             f"antivirus exclusion for the AddaxAI folder in your user "
-            f"profile, or ask your IT department to, then try again."
+            f"profile, or ask your IT department to."
         ) from e
 
 
@@ -686,12 +693,12 @@ class EnvironmentManager:
             yaml_path = self.get_env_yaml_path(manifest.env)
 
             # If env_path exists but is invalid (from failed previous
-            # attempt), remove it before retrying.
+            # attempt), move it out of the way before retrying.
             if env_path.exists():
                 logger.warning(
-                    f"Removing invalid/incomplete environment at {env_path}"
+                    f"Replacing invalid/incomplete environment at {env_path}"
                 )
-                self._safe_rmtree(env_path)
+                self.retire_env(env_path)
 
             logger.info(f"Creating environment {env_name} from {yaml_path}")
             self._create_env(env_name, env_path, yaml_path, progress_callback, job_id)
@@ -804,6 +811,13 @@ class EnvironmentManager:
 
             # (temp_env_path is bound above the try, so the cleanup
             # handler can always read it.)
+
+            # Old copies that retire_env could not delete at the time
+            # (antivirus still scanning). Best effort: one that is still
+            # locked stays until a later build.
+            for old in env_path.parent.glob(f".{env_path.name}.old-*"):
+                if not safe_rmtree(old):
+                    logger.warning(f"Could not remove old environment {old}")
 
             # Clean up any existing temp directory from previous failed attempts
             if not self._discard_temp_env(temp_env_path, "stale"):
@@ -1205,6 +1219,31 @@ class EnvironmentManager:
             return None
 
         return stored != current
+
+    def retire_env(self, env_path: Path) -> None:
+        """
+        Move an installed environment out of the way, then delete it.
+
+        The one way an environment is replaced. Deleting in place stops
+        at the first locked file and leaves a half-deleted env whose
+        python still boots, so every check passes while files the app
+        needs are gone. That is what a Windows beta tester got from
+        "Update now" (2026-11-03): the delete stopped at a locked
+        `DLLs\\select.pyd` after `bin\\` with exiftool was already gone.
+
+        A rename is all or nothing. If it is refused, the RuntimeError
+        reaches the user and the environment is untouched. A copy that
+        cannot be deleted afterwards is harmless: `_create_env` sweeps
+        `.{name}.old-*` before every build.
+        """
+        old = env_path.parent / f".{env_path.name}.old-{uuid.uuid4().hex[:8]}"
+        logger.info(f"Moving environment {env_path} aside to {old}")
+        _rename_with_retries(env_path, old, what="move the old environment aside")
+        if not safe_rmtree(old):
+            logger.warning(
+                f"Old environment left at {old}; it is removed at the next "
+                "environment build"
+            )
 
     def _discard_temp_env(self, path: Path, why: str) -> bool:
         """

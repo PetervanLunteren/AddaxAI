@@ -110,3 +110,23 @@ def test_allow_endpoint_is_idempotent(client, own_data_dir) -> None:
     assert first.status_code == second.status_code == 200
     assert first.json() == second.json()
     assert revocation_skip_allowed() is True
+
+
+def test_status_does_not_probe_the_env_while_an_install_runs(
+    client, monkeypatch
+) -> None:
+    """The probe starts the env's own python, which holds its DLLs open.
+    During a rebuild that lock made the wipe fail on Windows (beta report,
+    2026-11-04), so the status poll must not touch the env until the
+    install is over."""
+    monkeypatch.setattr(
+        setup_router,
+        "_env_present",
+        lambda: pytest.fail("status probed the env during an install"),
+    )
+    setup_router._install_state.start()
+
+    body = client.get("/api/setup/status").json()
+
+    assert body["install_in_progress"] is True
+    assert body["env_installed"] is False

@@ -38,6 +38,7 @@ from app.ml.hf_downloader import NetworkBlockedError
 from app.ml.model_storage import ModelStorage
 from app.ml.schemas.model_manifest import ModelManifest
 from app.services import legacy_install
+from app.utils.exiftool_bin import bundled_exiftool_path
 from app.utils.fs_remove import safe_rmtree
 
 logger = get_logger(__name__)
@@ -131,14 +132,23 @@ def _models_present(models_dir: Path) -> bool:
     return True
 
 
+def _base_env_path() -> Path:
+    return _get_env_manager().envs_dir / f"env-{_REQUIRED_ENV}"
+
+
 def _env_present() -> bool:
-    em = _get_env_manager()
-    env_path = em.envs_dir / f"env-{_REQUIRED_ENV}"
+    env_path = _base_env_path()
     if not env_path.exists():
         return False
     # Reuse env_manager's own validation so a half-installed env counts
-    # as missing and the wizard re-runs cleanly.
-    return em._validate_env(env_path)
+    # as missing and the wizard re-runs cleanly. exiftool is checked as
+    # well because the boot probe cannot see it, and without it no
+    # folder can be scanned: a base env that lost its bin/ to a broken
+    # delete still boots fine (Windows beta report, 2026-11-04).
+    return (
+        _get_env_manager()._validate_env(env_path)
+        and bundled_exiftool_path(env_path).is_file()
+    )
 
 
 class SetupStatus(BaseModel):
@@ -166,7 +176,13 @@ def get_setup_status() -> SetupStatus:
     models_dir = settings.models_dir
 
     models_ok = _models_present(models_dir)
-    env_ok = _env_present()
+    # Never probe the env while an install runs. The probe starts the
+    # env's own python.exe, which keeps its DLLs open; a rebuild wiping
+    # that env at the same moment is refused on Windows. The rebuild
+    # modal polls this every 1.5 s, and its first poll lands within
+    # milliseconds of the wipe (beta report, 2026-11-04). "Not ready" is
+    # also simply true while it is being built.
+    env_ok = False if _install_state.in_progress else _env_present()
 
     return SetupStatus(
         ready=models_ok and env_ok,
@@ -246,37 +262,39 @@ def run_setup(
     CLI (app/setup_cli.py).
 
     `force_envs` lets the drift-rebuild flow request that specific
-    envs be wiped and rebuilt regardless of whether they already exist
-    on disk. Caller passes env names like "addaxai-base" or "pytorch".
+    envs be replaced and rebuilt regardless of whether they already
+    exist on disk. Caller passes env names like "addaxai-base" or
+    "pytorch". A base env that fails `_env_present()` is always
+    replaced, never reused.
     """
     settings = get_settings()
     models_dir = settings.models_dir
     storage = ModelStorage(models_dir)
     em = _get_env_manager()
 
-    # Wipe envs explicitly requested for rebuild before the
-    # presence check below decides whether to add an install step.
-    # Out-of-loop so the wipes are visible regardless of step
-    # ordering.
+    # Move aside the envs requested for rebuild, plus a base env that
+    # fails the presence check, before that check decides whether to
+    # add an install step. The second case matters because
+    # get_or_create_env only judges whether python boots, and would
+    # reuse a base env that lost its exiftool. retire_env raises when it
+    # cannot move an env, which ends the install with that message and
+    # leaves the env as it was.
     for env_name in force_envs:
-        wipe_path = em.envs_dir / f"env-{env_name}"
-        if wipe_path.exists():
-            logger.info(
-                f"Force-rebuild: wiping existing env at {wipe_path}"
-            )
-            try:
-                em._safe_rmtree(wipe_path)
-            except Exception as e:
-                logger.error(
-                    f"Failed to wipe env {env_name} for rebuild: {e}",
-                    exc_info=True,
-                )
+        retire_path = em.envs_dir / f"env-{env_name}"
+        if retire_path.exists():
+            logger.info(f"Force-rebuild: replacing env at {retire_path}")
+            em.retire_env(retire_path)
+    base_path = _base_env_path()
+    base_ok = _env_present()
+    if base_path.exists() and not base_ok:
+        logger.info(f"Replacing incomplete base env at {base_path}")
+        em.retire_env(base_path)
 
     # Each step: (label_for_logs, fn(progress_cb)). Skipped if already
     # complete so retries go straight to whatever's missing.
     steps: list[tuple[str, Callable[[Callable[[str, float], None]], None]]] = []
 
-    if not _env_present():
+    if not base_ok:
         def _env_step(cb: Callable[[str, float], None]) -> None:
             _get_env_manager().get_or_create_env(_build_env_manifest(), cb)
         steps.append(("Analysis environment", _env_step))
