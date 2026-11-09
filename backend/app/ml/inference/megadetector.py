@@ -430,8 +430,6 @@ class MegaDetectorV1000(DetectionModel):
                     for line in process.stdout:
                         line = line.strip()
                         if line:
-                            # Print TQDM progress directly to console for debugging
-                            print(f"[MEGADETECTOR] {line}", flush=True)
                             logger.info(f"MegaDetector: {line}")
 
                             # Parse device from PTDetector output (appears once during init)

@@ -2,6 +2,11 @@
 locale, and tells the child to write UTF-8. Left to the locale, a cp932
 parent reading a child that inherited PYTHONIOENCODING=utf-8 raised
 UnicodeDecodeError on the first non-ASCII line and failed the run.
+
+With the pipe in UTF-8, tqdm in the child draws Unicode bar characters.
+Those must only go to the log: echoing them to the backend's own stdout,
+a cp1252 pipe under Electron on Windows, raised UnicodeEncodeError and
+failed every image run in 7.18.0 and 7.18.1.
 """
 
 from __future__ import annotations
@@ -24,11 +29,11 @@ class _FakeEnvManager:
 
 
 class _FakeProcess:
-    def __init__(self, cmd):
+    def __init__(self, cmd, stdout_text: str = ""):
         file_list = json.loads(Path(cmd[-2]).read_text())
         results = [{"file": f, "detections": []} for f in file_list]
         Path(cmd[-1]).write_text(json.dumps({"images": results}))
-        self.stdout = io.StringIO("")
+        self.stdout = io.StringIO(stdout_text)
         self.returncode = 0
 
     def wait(self) -> int:
@@ -70,6 +75,33 @@ def test_the_pipe_is_utf8_on_both_ends(model, tmp_path, monkeypatch):
     assert captured["env"]["PYTHONIOENCODING"] == "utf-8"
     # The CUDA guard overrides still reach the child.
     assert captured["env"]["CUDA_GUARD"] == "1"
+
+
+def test_a_unicode_progress_bar_does_not_fail_the_run_on_a_cp1252_console(
+    model, tmp_path, monkeypatch, caplog
+):
+    folder = tmp_path / "deployment"
+    folder.mkdir()
+    (folder / "IMG_0.jpg").write_bytes(b"jpg")
+    bar = " 1%|\u258f         | 5/510 [00:00<00:42, 11.94it/s]"
+    monkeypatch.setattr(
+        md_module,
+        "popen_group",
+        lambda cmd, **_kwargs: _FakeProcess(cmd, stdout_text=bar + "\n"),
+    )
+    # The backend's stdout under Electron on Windows: a pipe in the locale
+    # code page, which has no block characters.
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(io.BytesIO(), encoding="cp1252"))
+
+    with caplog.at_level("INFO", logger=md_module.logger.name):
+        model.detect_to_json(
+            image_paths=[folder / "IMG_0.jpg"],
+            deployment_folder=folder,
+            confidence_threshold=0.01,
+            output_path=folder / "detection_image.json",
+        )
+
+    assert f"MegaDetector: {bar.strip()}" in caplog.text
 
 
 def test_non_ascii_output_survives_a_real_pipe():
