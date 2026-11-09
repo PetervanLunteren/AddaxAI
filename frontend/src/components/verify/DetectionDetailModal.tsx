@@ -40,7 +40,7 @@ import {
   placePill,
   svgRoundedRectPath,
   PILL_PAD_Y, LINE_GAP,
-  FONT, TEXT_START_X,
+  FONT, OVERLAY_FONT_FAMILY, TEXT_START_X,
   BBOX_STROKE_WIDTH, BBOX_OPACITY, BBOX_CORNER_RADIUS,
   DIM_FILL, PILL_BG,
 } from "../../lib/detection-overlay";
@@ -113,7 +113,7 @@ function BoxPill({
         x={TEXT_START_X} y={PILL_PAD_Y}
         fill="white"
         fontSize={FONT}
-        fontFamily="Arial, sans-serif"
+        fontFamily={OVERLAY_FONT_FAMILY}
         dominantBaseline="hanging"
       >
         {pill.categoryText}
@@ -123,7 +123,7 @@ function BoxPill({
           x={TEXT_START_X} y={PILL_PAD_Y + FONT + LINE_GAP}
           fill="white"
           fontSize={FONT}
-          fontFamily="Arial, sans-serif"
+          fontFamily={OVERLAY_FONT_FAMILY}
           dominantBaseline="hanging"
         >
           {pill.labelText}

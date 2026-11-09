@@ -22,6 +22,7 @@ import {
   PILL_PAD_Y,
   LINE_GAP,
   FONT,
+  OVERLAY_FONT_FAMILY,
   TEXT_START_X,
   BBOX_CORNER_RADIUS,
   BBOX_OPACITY,
@@ -748,6 +749,7 @@ export function AnnotationCanvas({
                     text={pill.categoryText}
                     fill="white"
                     fontSize={FONT}
+                    fontFamily={OVERLAY_FONT_FAMILY}
                   />
                   {pill.hasLabel && (
                     <Text
@@ -756,6 +758,7 @@ export function AnnotationCanvas({
                       text={pill.labelText}
                       fill="white"
                       fontSize={FONT}
+                      fontFamily={OVERLAY_FONT_FAMILY}
                     />
                   )}
                 </Group>
