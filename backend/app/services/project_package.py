@@ -296,12 +296,8 @@ def _connect(
     )
 
 
-def _attach_uri(path: Path, *, immutable: bool) -> str:
-    uri = f"{path.as_uri()}?mode=ro"
-    # A package is never written by anyone once made, so skipping the
-    # locks lets it open from read-only media (a drive mounted read-only,
-    # a share). The live database must not use it: it is being written.
-    return f"{uri}&immutable=1" if immutable else uri
+def _attach_uri(path: Path) -> str:
+    return f"{path.as_uri()}?mode=ro"
 
 
 def export_package(
@@ -369,7 +365,7 @@ def _write_package(
     with _connect(db_path) as conn:
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute(
-            "ATTACH DATABASE ? AS src", (_attach_uri(live_db, immutable=False),)
+            "ATTACH DATABASE ? AS src", (_attach_uri(live_db),)
         )
         try:
             # One transaction, so every table is read from the same
@@ -698,6 +694,14 @@ def import_package(
     (`purge_deployment_data`, through the session) and the inserts all
     share it, so either everything lands or nothing does. The session
     must not have a transaction open when this is called.
+
+    The package is attached by plain path, never as a ``file:`` URI.
+    SQLAlchemy opened this connection without URI handling, so SQLite
+    takes a URI for a literal file name, unless the library was built
+    with SQLITE_USE_URI. macOS and Debian builds are, the one in Python
+    for Windows is not, so a URI here worked everywhere except Windows.
+    Read-only needs no flag: only SELECTs touch ``pkg``, and the package
+    is written in DELETE journal mode, so no WAL file is needed beside it.
     """
     preview = inspect_package(db, package_dir)
     if preview.problems:
@@ -733,7 +737,7 @@ def import_package(
         db.commit()
         raw = db.connection().connection.dbapi_connection
         assert isinstance(raw, sqlite3.Connection)
-        raw.execute("ATTACH DATABASE ? AS pkg", (_attach_uri(source_db, immutable=True),))
+        raw.execute("ATTACH DATABASE ? AS pkg", (str(source_db),))
         try:
             raw.execute("BEGIN IMMEDIATE")
             raw.execute("CREATE TEMP TABLE scope (id TEXT PRIMARY KEY)")
