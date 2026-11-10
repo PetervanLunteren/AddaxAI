@@ -8,6 +8,11 @@ from a deployment or logon script after a silent install so the user's
 first click needs no downloads. `backend --list-models` prints the
 installable model IDs.
 
+Models that run on the ultralytics package (AGPL-3.0, app/ml/
+agpl_acceptance.py) need `--accept-agpl` the first time, the scripted
+form of the licence step the app shows. The flag records the acceptance
+for this user account, so later runs and the app itself ask nothing.
+
 Everything here writes to the invoking user's data directory, so on
 shared machines it runs once per user account, not once per machine.
 
@@ -123,6 +128,22 @@ def run_cli(argv: list[str]) -> int:
 
     model_ids = [a for a in argv if not a.startswith("-")]
 
+    from app.ml.agpl_acceptance import (
+        AGPL_LICENCE_URL,
+        CLI_ACCEPT_FLAG,
+        accept_agpl,
+        agpl_refusal_message,
+        needs_agpl_acceptance,
+    )
+
+    if CLI_ACCEPT_FLAG in argv:
+        accept_agpl()
+        print(
+            f"Recorded acceptance of the ultralytics licence (AGPL-3.0, "
+            f"{AGPL_LICENCE_URL}) for this user account",
+            flush=True,
+        )
+
     try:
         from fastapi import HTTPException
 
@@ -138,6 +159,19 @@ def run_cli(argv: list[str]) -> int:
         if model_ids:
             _sync_catalog()
             resolved = _resolve_models(model_ids)
+        # Before any download, so a missing flag fails in seconds.
+        blocked = [m.model_id for m in resolved if needs_agpl_acceptance(m)]
+        if blocked:
+            for model_id in blocked:
+                print(f"Error: {agpl_refusal_message(model_id)}", file=sys.stderr, flush=True)
+            print(
+                f"Read the licence, and if it fits how you use AddaxAI, add "
+                f"{CLI_ACCEPT_FLAG} to this command. The choice is remembered for this "
+                f"user account.",
+                file=sys.stderr,
+                flush=True,
+            )
+            return 1
 
         if setup_complete():
             print("Base setup already present", flush=True)

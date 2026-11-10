@@ -65,6 +65,7 @@ import {
 } from "../components/ui/alert-dialog";
 
 import { useTaskProgress } from "../hooks/useTaskProgress";
+import { useModelPrepare } from "../hooks/useModelPrepare";
 import { useReprocessSummary } from "../hooks/useReprocessSummary";
 import {
   Tooltip,
@@ -415,55 +416,34 @@ export default function SettingsPage() {
     }
   }, [classificationModelId, taxonomy, form]);
 
-  // Handler for detection model preparation
-  const handlePrepareDetectionModel = async () => {
-    if (!detectionModelId) return;
-
-    try {
+  // Model preparation, for whichever of the three models the user set up.
+  const modelTypeOf = (modelId: string): PreparingModelType =>
+    modelId === detectionModelId
+      ? "detection"
+      : modelId === embeddingModelId
+        ? "embedding"
+        : "classification";
+  const { prepare: prepareModel, agplDialog } = useModelPrepare({
+    onStarted: (modelId, taskId) => {
+      setPreparingModelType(modelTypeOf(modelId));
+      setPreparingTaskId(taskId);
       setPreparationStage("preparing");
-      setPreparingModelType("detection");
-      const response = await modelsApi.prepareModel(detectionModelId);
-      setPreparingTaskId(response.task_id);
-    } catch (error: any) {
-      setPreparationError(error.message || "Failed to start model preparation");
+    },
+    onError: (modelId, message) => {
+      setPreparingModelType(modelTypeOf(modelId));
+      setPreparationError(message || "Failed to start model preparation");
       setPreparationErrorKind(undefined);
       setPreparationStage("error");
-      setPreparingModelType(null);
-    }
+    },
+  });
+  const handlePrepareDetectionModel = () => {
+    if (detectionModelId) void prepareModel(detectionModelId);
   };
-
-  // Handler for classification model preparation
-  const handlePrepareClassificationModel = async () => {
-    if (!classificationModelId) return;
-
-    try {
-      setPreparationStage("preparing");
-      setPreparingModelType("classification");
-      const response = await modelsApi.prepareModel(classificationModelId);
-      setPreparingTaskId(response.task_id);
-    } catch (error: any) {
-      setPreparationError(error.message || "Failed to start model preparation");
-      setPreparationErrorKind(undefined);
-      setPreparationStage("error");
-      setPreparingModelType(null);
-    }
+  const handlePrepareClassificationModel = () => {
+    if (classificationModelId) void prepareModel(classificationModelId);
   };
-
-  // Handler for embedding model preparation
-  const handlePrepareEmbeddingModel = async () => {
-    if (!embeddingModelId) return;
-
-    try {
-      setPreparationStage("preparing");
-      setPreparingModelType("embedding");
-      const response = await modelsApi.prepareModel(embeddingModelId);
-      setPreparingTaskId(response.task_id);
-    } catch (error: any) {
-      setPreparationError(error.message || "Failed to start model preparation");
-      setPreparationErrorKind(undefined);
-      setPreparationStage("error");
-      setPreparingModelType(null);
-    }
+  const handlePrepareEmbeddingModel = () => {
+    if (embeddingModelId) void prepareModel(embeddingModelId);
   };
 
   // Handler for canceling preparation. Sends a real cancel over the
@@ -1473,6 +1453,7 @@ export default function SettingsPage() {
 
         {/* Save toast + effect-on-statistics modal */}
         {summaryUI}
+        {agplDialog}
 
         {/* Interval-change regroup confirmation */}
         {regroupImpact && (

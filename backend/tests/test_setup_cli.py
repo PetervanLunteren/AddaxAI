@@ -53,13 +53,62 @@ def test_run_cli_unknown_model_fails_before_downloading(monkeypatch, capsys):
 def test_run_cli_treats_non_flag_args_as_model_ids(monkeypatch):
     monkeypatch.setattr(setup_router, "setup_complete", lambda: True)
     monkeypatch.setattr(setup_cli, "_sync_catalog", lambda: None)
-    monkeypatch.setattr(setup_cli, "_resolve_models", lambda ids: ids)
+    monkeypatch.setattr(
+        setup_cli,
+        "_resolve_models",
+        lambda ids: [SimpleNamespace(model_id=i, env="pytorch") for i in ids],
+    )
 
     seen: list[list[str]] = []
-    monkeypatch.setattr(setup_cli, "_install_models", seen.append)
+    monkeypatch.setattr(
+        setup_cli, "_install_models", lambda ms: seen.append([m.model_id for m in ms])
+    )
 
     assert setup_cli.run_cli(["--setup", "A-v1", "B-v2"]) == 0
     assert seen == [["A-v1", "B-v2"]]
+
+
+def _ultralytics_model_requested(monkeypatch) -> list[list[str]]:
+    """The CLI asked for SharkTrack; returns what got installed."""
+    monkeypatch.setattr(setup_router, "setup_complete", lambda: True)
+    monkeypatch.setattr(setup_cli, "_sync_catalog", lambda: None)
+    monkeypatch.setattr(
+        setup_cli,
+        "_resolve_models",
+        lambda ids: [SimpleNamespace(model_id=i, env="ultralytics") for i in ids],
+    )
+    seen: list[list[str]] = []
+    monkeypatch.setattr(
+        setup_cli, "_install_models", lambda ms: seen.append([m.model_id for m in ms])
+    )
+    return seen
+
+
+def test_run_cli_refuses_an_ultralytics_model_without_the_flag(monkeypatch, capsys):
+    """The scripted form of the licence step: stop before any download and
+    say which model and which flag."""
+    seen = _ultralytics_model_requested(monkeypatch)
+    monkeypatch.setattr(
+        setup_router, "run_setup", lambda *a, **k: pytest.fail("no setup without the flag")
+    )
+
+    assert setup_cli.run_cli(["--setup", "SHARKTRACK-1-0"]) == 1
+    err = capsys.readouterr().err
+    assert "SHARKTRACK-1-0" in err and "AGPL-3.0" in err and "--accept-agpl" in err
+    assert seen == []
+
+
+def test_run_cli_accept_flag_records_then_installs(
+    monkeypatch, capsys, isolated_user_data_dir
+):
+    seen = _ultralytics_model_requested(monkeypatch)
+
+    assert setup_cli.run_cli(["--setup", "SHARKTRACK-1-0", "--accept-agpl"]) == 0
+    assert seen == [["SHARKTRACK-1-0"]]
+    assert (isolated_user_data_dir / ".agpl-accepted").is_file()
+    assert "Recorded acceptance" in capsys.readouterr().out
+    # Remembered: the next run needs no flag.
+    assert setup_cli.run_cli(["--setup", "SHARKTRACK-1-0"]) == 0
 
 
 def test_list_models_prints_catalog(monkeypatch, capsys):

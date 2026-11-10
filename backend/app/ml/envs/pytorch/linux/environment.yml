@@ -17,8 +17,11 @@ dependencies:
       - --extra-index-url https://download.pytorch.org/whl/cu128
       - torch==2.8.0+cu128
       - torchvision==0.23.0+cu128
-      - ultralytics==8.3.177
       - numpy==1.26.4
+      # Four classifiers' inference.py import pandas (GIF-JAP-v0-2, PAN-SDZWA-v1,
+      # WUSA-SDZWA-v1, SWUSA-SDZWA-v3). It used to arrive through ultralytics,
+      # which moved to env-ultralytics on 2026-11-09; 3.0.6 is what that resolved.
+      - pandas==3.0.6
       - humanfriendly==10.0
       - jsonpickle==3.0.2
       - timm

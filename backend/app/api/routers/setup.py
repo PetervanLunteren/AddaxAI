@@ -29,6 +29,7 @@ from pydantic import BaseModel
 
 from app.core.config import get_settings
 from app.core.logging_config import get_logger
+from app.ml.agpl_acceptance import AGPL_MARKER_FILENAME
 from app.ml.environment_manager import (
     EnvironmentManager,
     TlsRevocationCheckError,
@@ -170,9 +171,9 @@ def _required_envs(data_type: DataType = DEFAULT_DATA_TYPE) -> tuple[str, ...]:
     The base env is in every list whatever the user picked: the app's
     ffmpeg lives in it (`utils/ffmpeg_bin.APP_ENV`), so it is what
     decodes any video frame a user looks at, and the default embedder
-    runs in it too. Underwater adds `env-marine`, which both underwater
-    detectors share, so it is worth installing before the user has
-    chosen between them.
+    runs in it too. Underwater adds `env-marine`, the env of the default
+    underwater detector (the Community Fish Detector). SharkTrack runs in
+    `env-ultralytics`, built only once the user accepts its licence.
     """
     envs = [_REQUIRED_ENV]
     for spec in _DEFAULT_MODELS[data_type]:
@@ -612,7 +613,9 @@ def _legacy_disk_hint() -> str:
 # running backend process: even if a worker is mid-write into a log or
 # env, we're about to shut down anyway.
 _WIPE_DIRS = ("logs", "envs", "models", "bin", "thumbnails", "crash-dumps")
-_WIPE_FILES = (".last-shutdown-clean", ".last-launch-status.json")
+# The licence acceptance goes too: reset means a fresh install, and a
+# fresh install asks again (app/ml/agpl_acceptance.py).
+_WIPE_FILES = (".last-shutdown-clean", ".last-launch-status.json", AGPL_MARKER_FILENAME)
 
 # Read by lifespan() before init_db() on the next launch.
 DB_WIPE_MARKER = ".wipe-db-on-next-launch"

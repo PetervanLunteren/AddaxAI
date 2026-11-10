@@ -1,7 +1,7 @@
 name: env-marine
-# The environment for the underwater detectors: SharkTrack (an ultralytics
-# YOLOv8 checkpoint) and the Community Fish Detector (RF-DETR through the
-# megadetector package). Kept apart from env-addaxai-base on purpose: the
+# The environment for the Community Fish Detector (RF-DETR through the
+# megadetector package). SharkTrack, an ultralytics YOLOv8 checkpoint,
+# runs in env-ultralytics instead. Kept apart from env-addaxai-base: the
 # rfdetr package brings transformers 5 and supervision with it, and a
 # change to the base YAML would offer every existing user a rebuild of an
 # environment they use for camera traps. Only a machine that prepares a
@@ -40,18 +40,15 @@ dependencies:
     # the base env for why it cannot be a download.
     - ultralytics-yolov5 @ https://huggingface.co/Addax-Data-Science/pip-wheels/resolve/main/ultralytics_yolov5-0.1.1-py3-none-any.whl#sha256=d532e62d6d7cd6c7381e4453810f31f10fd269cf9f237494bc570e74168dc2e1
     - megadetector==10.0.24
-    # ultralytics loads SharkTrack's weights and carries the BoT-SORT
-    # tracker the tracking script runs for every detector.
-    - ultralytics==8.3.177
-    # OpenCV, for megadetector, ultralytics and the app's own frame reads
+    # OpenCV, for megadetector and the app's own frame reads
     # (video_iter.py). They set only a floor, so unpinned builds took the
     # newest: 4.x until 2026-07-02, the 5.0 major after it. 5.0.0.93 is the
     # version the test suite and the video benchmarks ran on.
     - opencv-python==5.0.0.93
-    # BoT-SORT's assignment solver. ultralytics does not depend on it and
-    # tries to pip install it the first time a tracker runs, which fails on
-    # a machine that is offline after setup, so it is pinned here.
+    # The app's own BoT-SORT (ml/inference/botsort.py), as in the base env:
+    # lap for its assignments, scipy for its Kalman updates.
     - lap==0.5.12
+    - scipy==1.17.1
     # RF-DETR runtime for the Community Fish Detector. 1.10.0 is the version
     # the 2026-07-06 CFD container was re-issued for; an older release
     # refuses that container with "older format" and a newer one may move

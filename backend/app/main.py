@@ -38,6 +38,7 @@ from app.api.routers import (
     tracks_router,
     websocket_router,
 )
+from app.api.routers.ml_models import refresh_manifest_cache
 from app.core.config import get_settings
 from app.core.logging_config import get_logger, setup_logging
 from app.core.ssl_trust import enable_os_trust_store
@@ -118,6 +119,11 @@ async def update_model_catalog(app: FastAPI) -> None:
             "drifted_envs": [],
             "error": str(e),
         }
+
+    # Also after a failed sync: it may have rewritten some manifests first.
+    # Without this the ML router keeps whatever it read before the sync,
+    # licence gate included, until the next launch.
+    await asyncio.to_thread(refresh_manifest_cache)
 
 
 async def _warm_up_query_caches() -> None:

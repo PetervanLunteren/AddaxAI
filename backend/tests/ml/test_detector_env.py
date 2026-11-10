@@ -32,14 +32,14 @@ def weights(tmp_path):
     return p
 
 
-@pytest.mark.parametrize("env", ["addaxai-base", "marine"])
+@pytest.mark.parametrize("env", ["addaxai-base", "marine", "ultralytics"])
 def test_image_detector_asks_for_the_manifests_env(weights, env):
     env_manager = _RecordingEnvManager()
     MegaDetectorV1000(weights, env_manager, env_name=env)
     assert env_manager.asked == [f"env-{env}"]
 
 
-@pytest.mark.parametrize("env", ["addaxai-base", "marine"])
+@pytest.mark.parametrize("env", ["addaxai-base", "marine", "ultralytics"])
 def test_video_detector_asks_for_the_manifests_env(weights, env):
     env_manager = _RecordingEnvManager()
     VideoDetectionModel(weights, env_manager, env_name=env)

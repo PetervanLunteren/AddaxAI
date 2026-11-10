@@ -9,7 +9,13 @@
 import type { QueryClient } from "@tanstack/react-query";
 
 import { api } from "../lib/api-client";
-import type { ModelInfo, ModelStatusResponse, TaxonomyResponse, GeofenceResponse } from "./types";
+import type {
+  GeofenceResponse,
+  ModelInfo,
+  ModelPrepareResponse,
+  ModelStatusResponse,
+  TaxonomyResponse,
+} from "./types";
 
 /**
  * Invalidate every query derived from a model's on-disk files. Call after
@@ -51,22 +57,18 @@ export const modelsApi = {
     api.get<ModelStatusResponse>(`/api/ml/models/${modelId}/status`),
 
   /**
-   * Prepare model (download weights + build environment)
+   * Prepare model (download weights + build environment). Go through
+   * `useModelPrepare`, which handles the licence step this can refuse with.
    */
   prepareModel: (modelId: string) =>
-    api.post<{ task_id: string }>(`/api/ml/models/${modelId}/prepare`),
+    api.post<ModelPrepareResponse>(`/api/ml/models/${modelId}/prepare`),
 
   /**
-   * Download model weights only
+   * Record that the user accepts the ultralytics licence (AGPL-3.0), once
+   * for this installation. The prepare that was refused can then be retried.
    */
-  prepareWeights: (modelId: string) =>
-    api.post(`/api/ml/models/${modelId}/prepare-weights`),
-
-  /**
-   * Build model environment only
-   */
-  prepareEnvironment: (modelId: string) =>
-    api.post(`/api/ml/models/${modelId}/prepare-env`),
+  acceptAgpl: () =>
+    api.post<{ status: "accepted"; marker_path: string }>("/api/ml/accept-agpl"),
 
   /**
    * Get taxonomy tree for a classification model

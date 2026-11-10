@@ -19,6 +19,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
+import { AGPL_LICENCE_URL, runsOnUltralytics } from "../../lib/agpl";
 
 // The catalog's `domain` values, in words. The same values key the
 // track post-filter (backend `app/ml/track_filter.py`).
@@ -294,6 +295,17 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
                   {model.license}
                   <ExternalLink className="h-3 w-3" />
                 </a>
+                {runsOnUltralytics(model) && (
+                  <a
+                    href={AGPL_LICENCE_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 text-xs text-muted-foreground hover:opacity-80 underline flex items-center gap-1"
+                  >
+                    Runs on ultralytics (AGPL-3.0)
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
               </div>
               <Separator />
             </>

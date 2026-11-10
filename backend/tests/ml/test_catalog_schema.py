@@ -213,3 +213,30 @@ def test_example_images_are_few_and_credited() -> None:
                 assert set(image) == {"url", "credit"}, f"{model_id}: {image}"
                 assert image["url"].startswith("https://"), f"{model_id}: {image['url']}"
                 assert image["credit"].strip(), f"{model_id}: an image without credit"
+
+
+# The models whose inference imports the AGPL ultralytics package, and so
+# run in env-ultralytics behind the licence step (app/ml/agpl_acceptance.py).
+ULTRALYTICS_MODELS = {
+    "MD1000-LARCH-0-0", "MD1000-SORREL-0-0", "SHARKTRACK-1-0",
+    "NAM-ADS-v1", "NZI-ADS-v1", "TKM-ADS-v1",
+}
+
+
+def test_exactly_the_ultralytics_models_run_in_the_ultralytics_env() -> None:
+    """The env is the licence gate's key, so a model put there by mistake
+    asks a question it should not, and a model that needs ultralytics but
+    sits elsewhere fails to load (no other env carries the package). A
+    model added to the catalog that needs ultralytics belongs in both this
+    set and the env."""
+    in_env = {e["model_id"] for _key, e in _catalog_entries() if e["env"] == "ultralytics"}
+    assert in_env == ULTRALYTICS_MODELS
+
+
+def test_every_catalog_env_has_a_recipe() -> None:
+    """A model whose env has no YAML dies in get_env_yaml_path the moment a
+    user prepares it."""
+    from app.ml.environment_manager import shipped_env_names
+
+    envs = {e["env"] for _key, e in _catalog_entries()}
+    assert envs <= set(shipped_env_names())

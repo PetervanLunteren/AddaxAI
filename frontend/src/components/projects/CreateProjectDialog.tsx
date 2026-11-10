@@ -18,6 +18,7 @@ import { DEFAULT_COUNTING_THRESHOLD } from "../../lib/confidence";
 import { ImageDropZone } from "./ImageDropZone";
 import { invalidateModelMetadata, modelsApi } from "../../api/models";
 import { useTaskProgress } from "../../hooks/useTaskProgress";
+import { useModelPrepare } from "../../hooks/useModelPrepare";
 import { ModelStatusBadge } from "./ModelStatusBadge";
 import { ModelPreparationView } from "./ModelPreparationView";
 import { ModelPreparationErrorView } from "./ModelPreparationErrorView";
@@ -342,20 +343,22 @@ export function CreateProjectDialog({
     },
   });
 
-  // Handler for model preparation, for the detector or the classifier
-  const handlePrepareModel = async (modelId: string | null | undefined) => {
-    if (!modelId) return;
-
-    try {
+  // Model preparation, for the detector or the classifier
+  const { prepare, agplDialog } = useModelPrepare({
+    onStarted: (modelId, taskId) => {
       setPreparingModelId(modelId);
+      setPreparingTaskId(taskId);
       setStage("preparing");
-      const response = await modelsApi.prepareModel(modelId);
-      setPreparingTaskId(response.task_id);
-    } catch (error: any) {
-      setPreparationError(error.message || "Failed to start model preparation");
+    },
+    onError: (modelId, message) => {
+      setPreparingModelId(modelId);
+      setPreparationError(message || "Failed to start model preparation");
       setPreparationErrorKind(undefined);
       setStage("error");
-    }
+    },
+  });
+  const handlePrepareModel = (modelId: string | null | undefined) => {
+    if (modelId) void prepare(modelId);
   };
 
   // Handler for canceling preparation. Sends a real cancel over the
@@ -653,6 +656,7 @@ export function CreateProjectDialog({
         open={showModelInfo}
         onOpenChange={setShowModelInfo}
       />
+      {agplDialog}
     </Dialog>
   );
 }

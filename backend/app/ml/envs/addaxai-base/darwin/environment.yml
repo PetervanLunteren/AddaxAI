@@ -18,8 +18,8 @@ dependencies:
   # installers do not bundle exiftool and fresh machines do not have
   # it on PATH; the backend resolves it from this env (exiftool_bin.py).
   - exiftool
-  # ffmpeg decodes the videos for "Track animals across frames" and the
-  # frames the viewer shows; pinned for the reason given in the marine env.
+  # ffmpeg decodes the videos for the tracking script and the frames the
+  # viewer shows; pinned for the reason given in the marine env.
   - ffmpeg=9.0.1
   - pip:
     # Image processing and metadata
@@ -59,13 +59,14 @@ dependencies:
     # process_video with "exit code 1" and made images silently return
     # nothing (beta report 2026-07-30).
     - yolov9pip==0.0.4
-    - ultralytics==8.3.177
-    # BoT-SORT's assignment solver, for "Track animals across frames" with
-    # MegaDetector. ultralytics does not depend on it and pip installs it
-    # the first time a tracker runs, which fails on a machine that is
-    # offline after setup.
+    # The app's own BoT-SORT (ml/inference/botsort.py, run by the tracking
+    # script for every video) solves its assignments with lap and its
+    # Kalman updates with scipy. lap is pinned because nothing else here
+    # depends on it; scipy arrives through scikit-learn (a megadetector
+    # dependency) and is pinned so a resolver change cannot drop it.
     - lap==0.5.12
-    # OpenCV, for megadetector, ultralytics and the app's own frame reads
+    - scipy==1.17.1
+    # OpenCV, for megadetector and the app's own frame reads
     # (video_iter.py). They set only a floor, so unpinned builds took the
     # newest: 4.x until 2026-07-02, the 5.0 major after it. 5.0.0.93 is the
     # version the test suite and the video benchmarks ran on.

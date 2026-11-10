@@ -1,5 +1,6 @@
 """Tests for the /api/ml endpoints."""
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -189,6 +190,68 @@ def test_prepare_model(client, mock_managers):
     assert resp.json()["task_id"] == "test-model"
 
 
+@pytest.fixture
+def own_data_dir(tmp_path, monkeypatch):
+    """The acceptance marker lands here, never in the real ~/AddaxAI."""
+    monkeypatch.setenv("ADDAXAI_USER_DATA_DIR", str(tmp_path))
+    return tmp_path
+
+
+def _ultralytics_model(mock_manifest) -> MagicMock:
+    manifest = MagicMock()
+    manifest.model_id = "SHARKTRACK-1-0"
+    manifest.env = "ultralytics"
+    mock_manifest.get_model.return_value = manifest
+    return manifest
+
+
+def test_prepare_refuses_an_ultralytics_model_until_the_licence_is_accepted(
+    client, mock_managers, own_data_dir
+):
+    """409 with an error_kind the UI turns into the licence step, and no
+    worker registered, so nothing is downloaded or built."""
+    _ultralytics_model(mock_managers[0])
+    with patch("app.api.routers.ml_models.ws_manager") as ws:
+        resp = client.post("/api/ml/models/SHARKTRACK-1-0/prepare")
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["error_kind"] == "agpl_acceptance_required"
+    assert "SHARKTRACK-1-0" in detail["message"] and "AGPL-3.0" in detail["message"]
+    ws.register_start.assert_not_called()
+
+
+def test_prepare_proceeds_once_the_licence_is_accepted(client, mock_managers, own_data_dir):
+    _ultralytics_model(mock_managers[0])
+    accepted = client.post("/api/ml/accept-agpl")
+    assert accepted.status_code == 200
+    assert accepted.json()["status"] == "accepted"
+    assert (own_data_dir / ".agpl-accepted").is_file()
+    # Asking twice is harmless.
+    assert client.post("/api/ml/accept-agpl").status_code == 200
+
+    with patch("app.api.routers.ml_models.ws_manager") as ws:
+        resp = client.post("/api/ml/models/SHARKTRACK-1-0/prepare")
+    assert resp.status_code == 200
+    ws.register_start.assert_called_once()
+
+
+def test_prepare_of_an_ordinary_model_asks_nothing(client, mock_managers, own_data_dir):
+    manifest = _ultralytics_model(mock_managers[0])
+    manifest.env = "addaxai-base"
+    with patch("app.api.routers.ml_models.ws_manager"):
+        resp = client.post("/api/ml/models/SHARKTRACK-1-0/prepare")
+    assert resp.status_code == 200
+    assert not (own_data_dir / ".agpl-accepted").exists()
+
+
+def test_the_weights_only_and_env_only_routes_are_gone(client, mock_managers):
+    """They had no caller and would have been two more doors past the
+    licence step; prepare is the only one."""
+    routes = {getattr(r, "path", None) for r in client.app.routes}
+    assert "/api/ml/models/{model_id}/prepare-weights" not in routes
+    assert "/api/ml/models/{model_id}/prepare-env" not in routes
+
+
 def test_prepare_model_not_found(client, mock_managers):
     mock_manifest, _, _ = mock_managers
     mock_manifest.get_model.side_effect = ValueError("Model not found")
@@ -264,11 +327,11 @@ def test_update_model_refuses_while_a_download_runs(client, mock_managers):
     from app.api.routers import ml_models
 
     _, _, mock_storage = mock_managers
-    ml_models._active_prepares.add("test-model-weights")
+    ml_models._active_prepares.add("test-model")
     try:
         resp = client.post("/api/ml/models/test-model/update")
     finally:
-        ml_models._active_prepares.discard("test-model-weights")
+        ml_models._active_prepares.discard("test-model")
 
     assert resp.status_code == 409
     mock_storage.update_stale_files.assert_not_called()
@@ -447,3 +510,62 @@ def test_prepare_model_hands_the_app_state_to_the_task(client, mock_managers):
     assert task.call_args.args[0] == "test-model"
     assert hasattr(task.call_args.args[3], "model_updates") or task.call_args.args[3] is not None
 
+
+
+def _write_manifest(models_dir, model_id: str, env: str) -> None:
+    model_dir = models_dir / "det" / model_id
+    model_dir.mkdir(parents=True, exist_ok=True)
+    (model_dir / "manifest.json").write_text(json.dumps({
+        "model_id": model_id, "friendly_name": model_id, "env": env,
+        "model_fname": "w.pt", "description": "", "developer": "d",
+        "info_url": "https://example.org", "min_app_version": "7.0.1",
+    }))
+
+
+def test_the_licence_gate_sees_a_model_that_moved_env_once_the_catalog_syncs(
+    client, own_data_dir, tmp_path
+):
+    """The first launch after an update: the model list is read while the
+    manifest on disk still has the old env, then the catalog sync moves the
+    model to env-ultralytics. Until 2026-11-10 the router kept the old env
+    until the next launch, so prepare skipped the licence step."""
+    from app.api.routers import ml_models
+    from app.ml.manifest_manager import ManifestManager
+
+    models_dir = tmp_path / "models"
+    _write_manifest(models_dir, "MD1000-SORREL-0-0", "addaxai-base")
+    with patch.object(ml_models, "manifest_manager", ManifestManager(models_dir)), \
+            patch("app.api.routers.ml_models.ws_manager"):
+        assert client.post("/api/ml/models/MD1000-SORREL-0-0/prepare").status_code == 200
+
+        _write_manifest(models_dir, "MD1000-SORREL-0-0", "ultralytics")  # the sync
+        ml_models.refresh_manifest_cache()
+
+        resp = client.post("/api/ml/models/MD1000-SORREL-0-0/prepare")
+        assert resp.status_code == 409
+        assert resp.json()["detail"]["error_kind"] == "agpl_acceptance_required"
+
+
+@pytest.mark.parametrize("sync_fails", [False, True])
+async def test_the_startup_sync_refreshes_the_ml_router_cache(monkeypatch, sync_fails):
+    """After the sync, whether it succeeded or failed partway (it may
+    already have rewritten some manifests), the router re-reads them."""
+    from types import SimpleNamespace
+
+    from app import main
+
+    async def sync(self):
+        if sync_fails:
+            raise RuntimeError("catalog unreachable")
+        return {"new_models": [], "refreshed_models": [], "drifted_models": [],
+                "drifted_envs": []}
+
+    calls = []
+    monkeypatch.setattr(main.ModelCatalogUpdater, "sync", sync)
+    monkeypatch.setattr(main, "refresh_manifest_cache", lambda: calls.append(1))
+    monkeypatch.setattr(
+        main, "get_settings",
+        lambda: SimpleNamespace(disable_model_updates=False, model_catalog_url="x"),
+    )
+    await main.update_model_catalog(SimpleNamespace(state=SimpleNamespace()))
+    assert calls == [1]

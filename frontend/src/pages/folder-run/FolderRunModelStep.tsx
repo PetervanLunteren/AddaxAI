@@ -116,6 +116,7 @@ import { ModelSelectItem } from "../../components/models/ModelSelectItem";
 import { ModelInfoSheet } from "../../components/models/ModelInfoSheet";
 import { ModelPreparationErrorView } from "../../components/projects/ModelPreparationErrorView";
 import { ModelPreparationView } from "../../components/projects/ModelPreparationView";
+import { useModelPrepare } from "../../hooks/useModelPrepare";
 import { Badge } from "../../components/ui/badge";
 import { ModelStatusBadge } from "../../components/projects/ModelStatusBadge";
 import {
@@ -538,24 +539,21 @@ export function FolderRunModelStep() {
     },
   });
 
-  const startPrepare = async (modelId: string) => {
-    try {
+  const { prepare: startPrepare, agplDialog } = useModelPrepare({
+    onStarted: (modelId, taskId) => {
       setPreparingModelId(modelId);
+      setPreparingTaskId(taskId);
       setPrepStage("preparing");
-      const response = (await modelsApi.prepareModel(modelId)) as {
-        task_id: string;
-      };
-      setPreparingTaskId(response.task_id);
-    } catch (err) {
-      setPreparationError(
-        err instanceof Error ? err.message : String(err),
-      );
+    },
+    onError: (modelId, message) => {
+      setPreparingModelId(modelId);
+      setPreparationError(message);
       // The request never reached a build, so there is no kind. Always
       // set alongside the message, so a kind cannot outlive it.
       setPreparationErrorKind(undefined);
       setPrepStage("error");
-    }
-  };
+    },
+  });
   const cancelPrepare = () => {
     // Real cancel over the WebSocket; the worker kills its subprocess and
     // replies "cancelled" (handled by onCancelled). Falls back to detaching
@@ -1601,6 +1599,8 @@ export function FolderRunModelStep() {
           )}
         </DialogContent>
       </Dialog>
+
+      {agplDialog}
 
       <RerunConfirmDialog
         open={rerunOpen}

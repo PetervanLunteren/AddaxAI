@@ -95,9 +95,9 @@ _REVOCATION_MARKERS = (
 
 # Written by the user from the setup screen to accept environment builds
 # without a revocation check. A file rather than a parameter because all
-# four build sites then honour it (setup wizard, drift rebuild,
-# prepare-env and the headless --setup CLI) with nothing threaded
-# through. Lives next to the other markers in the user data dir.
+# four build sites then honour it (setup wizard, drift rebuild, model
+# prepare and the headless --setup CLI) with nothing threaded through.
+# Lives next to the other markers in the user data dir.
 REVOCATION_MARKER_FILENAME = ".allow-no-revocation-check"
 
 _REVOCATION_MARKER_NOTE = """\
@@ -397,7 +397,7 @@ class EnvironmentManager:
 
     # Class-level so the locks are shared across every `EnvironmentManager`
     # instance in the process. Two callers (e.g. the setup install-env
-    # path and the per-model prepare-env path) used to race on
+    # path and the per-model prepare path) used to race on
     # `.<env>.tmp/` because they constructed their own managers; now they
     # serialise on the same per-env lock no matter who owns the instance.
     _env_locks: ClassVar[dict[str, threading.Lock]] = {}
@@ -585,7 +585,7 @@ class EnvironmentManager:
             return env_path
 
         # Serialise concurrent builds of the same env. Two pathways
-        # (`/api/setup/install-env` and `/api/ml/models/{id}/prepare-env`)
+        # (`/api/setup/install-env` and `/api/ml/models/{id}/prepare`)
         # used to race on `.{env_name}.tmp/` because they each created
         # their own `EnvironmentManager`; the lock is class-level so it
         # gates them both. Another env (different name) can still build

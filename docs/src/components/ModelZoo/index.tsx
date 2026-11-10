@@ -42,6 +42,9 @@ interface RawModel {
   license?: string;
   citation?: string;
   min_app_version?: string;
+  /** The environment the model runs in; "ultralytics" means it runs on
+   *  the AGPL ultralytics package, and the app asks once before it. */
+  env?: string;
   /** What a detector finds; classifiers carry their labels in species.json. */
   classes?: string[];
   /** What footage a detector is for: "camera_trap" or "underwater". */
@@ -425,6 +428,20 @@ export default function ModelZoo(): ReactElement {
                               <dd>
                                 <a href={row.license} target="_blank" rel="noreferrer">
                                   {row.license}
+                                </a>
+                              </dd>
+                            </>
+                          ) : null}
+                          {row.env === "ultralytics" ? (
+                            <>
+                              <dt>Runs on</dt>
+                              <dd>
+                                <a
+                                  href="https://www.ultralytics.com/license"
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  ultralytics (AGPL-3.0)
                                 </a>
                               </dd>
                             </>

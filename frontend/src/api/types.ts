@@ -878,6 +878,10 @@ export interface ModelInfo {
   citation?: string | null;
   license?: string | null;
   min_app_version?: string | null;
+  /** The environment the model runs in. "ultralytics" means it runs on
+   *  the AGPL ultralytics package: the model sheet says so, and preparing
+   *  it asks for the licence step first. `null` on the "none" entries. */
+  env?: string | null;
   embedding_dim?: number | null;
   /** The model labels the whole frame; no detector runs. The detector
    *  row and the detection settings are greyed out on it. */

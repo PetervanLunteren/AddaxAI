@@ -142,7 +142,7 @@ Lessons taken: review per track, not per frame; the deliverable is MaxN with its
 | 14 | Rejecting | X marks every box of the track false |
 | 15 | Split and merge | Out of scope |
 | 16 | MaxN check | Counts page, MaxN frame per species with jump to peak |
-| 17 | Tracker runtime | Our own script using ultralytics BoT-SORT |
+| 17 | Tracker runtime | Our own script using ultralytics BoT-SORT (since 2026-11-09 a vendored MIT BoT-SORT, `botsort.py`, with identical output) |
 | 18 | CFD environment | A new `marine` env; detectors choose their env from the catalog |
 | 19 | CPU | Supported and expected; larger models flagged as slow |
 | 20 | Species | Manual per track with custom labels and taxonomy lookup |
@@ -448,6 +448,13 @@ work. Deleting this section is the last item on it.
    them, so the marine dev database starts fresh afterwards.
 2. **`min_app_version` on the four marine models.** It says 7.8.0, which
    shipped in September without them. Set it to the release that ships this.
+   The same goes for the five other models that moved to `env-ultralytics`
+   on 2026-11-09 (MD1000-LARCH, MD1000-SORREL, NAM-ADS-v1, NZI-ADS-v1,
+   TKM-ADS-v1): an older build that syncs the live catalog after the merge
+   reads `"env": "ultralytics"`, has no recipe for it, and cannot set them
+   up. The bump hides them in that build's pickers; a project on an older
+   build that already uses one of them stops working until the user
+   updates. Say so in the release notes.
 3. **The MegaDetector pin.** Main moved to 10.0.26 for faster video
    detection; `env-addaxai-base` and `env-marine` here still pin 10.0.24.
    Align both, then re-test the tracking script.
@@ -477,7 +484,13 @@ work. Deleting this section is the last item on it.
 8. **The Ultralytics licence decision.** Ultralytics already ships as a
    MegaDetector dependency, but this branch makes its BoT-SORT tracker a
    core feature for every video. AGPL against an MIT app is a question for
-   the release that ships tracking, not for the merge.
+   the release that ships tracking, not for the merge. **Decided
+   2026-11-09:** AddaxAI stays MIT. The tracker is a vendored MIT BoT-SORT
+   with identical output, and ultralytics moved into `env-ultralytics`,
+   built only after a once-per-install licence step (DEVELOPERS.md, "The
+   ultralytics env and the licence step"). The release notes must say that
+   every existing user is offered one rebuild of the base env (and marine
+   and pytorch where installed).
 9. **`camera-trap-tracking-count-benchmark.md`** sits untracked in the
    worktree. Commit it beside `TRACKING_BENCHMARK_RESULTS.md` or drop it.
 10. **Delete this section.**

@@ -93,10 +93,15 @@ async function apiFetch<T>(
         errorMsg = `HTTP ${response.status}: ${response.statusText}`;
       }
 
-      logger.error(`API ${method} ${endpoint} failed: ${errorMsg}`, {
-        status: response.status,
-        endpoint,
-      });
+      // A refusal that names an `error_kind` is an outcome the UI handles
+      // (the licence step, for one), not a failure, so it is not an error
+      // in the log a user sends in.
+      const context = { status: response.status, endpoint };
+      if (detail !== null && typeof detail === "object" && "error_kind" in detail) {
+        logger.info(`API ${method} ${endpoint} refused: ${errorMsg}`, context);
+      } else {
+        logger.error(`API ${method} ${endpoint} failed: ${errorMsg}`, context);
+      }
 
       throw new ApiError(response.status, detail, errorMsg);
     }

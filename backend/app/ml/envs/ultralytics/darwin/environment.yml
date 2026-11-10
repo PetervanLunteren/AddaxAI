@@ -1,0 +1,58 @@
+name: env-ultralytics
+# The environment for the models that need the ultralytics package:
+# SharkTrack (YOLOv8), MDv1000-larch and MDv1000-sorrel (YOLO11, loaded by
+# megadetector's `model_type: ultralytics` path) and the YOLOv8 classifiers
+# NAM-ADS-v1, NZI-ADS-v1 and TKM-ADS-v1. A model runs here when its catalog
+# entry says `"env": "ultralytics"`.
+#
+# Kept apart from every other environment on purpose. ultralytics is
+# licensed under AGPL-3.0, and AddaxAI, which is MIT, asks the user to
+# accept that once before this environment is built (app/ml/
+# agpl_acceptance.py; the environment name is the gate's key). No other
+# environment may carry the package, or a user who never accepted it gets
+# it anyway; tests/ml/test_env_yamls.py holds that line.
+#
+# One package set for detectors and classifiers alike: the tracking script
+# runs in here for the three detectors, and the three classifiers need
+# nothing beyond torch, PIL, OpenCV and ultralytics.
+#
+# conda-forge only, for the same reasons as the base env: one host to pass
+# TLS, and no Anaconda commercial terms.
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  # ffmpeg decodes the videos for the tracking script, with the platform's
+  # hardware decoder (VideoToolbox, D3D11, VAAPI) when there is one; why not
+  # OpenCV is in DEVELOPERS.md. Pinned because the script depends on its
+  # command line flags, and a major release drops deprecated ones. 9.0.1 is
+  # the version the pipe was benchmarked on.
+  - ffmpeg=9.0.1
+  - pip:
+    # Utility packages the detectors and the tracker script read.
+    - requests
+    - pillow
+    - tqdm
+    - huggingface_hub
+
+    # MegaDetector package: loads SharkTrack and MDv1000-larch and -sorrel
+    # through its `model_type: ultralytics` path, and writes the JSON the
+    # app reads.
+    - setuptools<82  # yolov5 needs pkg_resources, removed in setuptools 82
+    # Prebuilt wheel for megadetector's ultralytics-yolov5 dependency; see
+    # the base env for why it cannot be a download.
+    - ultralytics-yolov5 @ https://huggingface.co/Addax-Data-Science/pip-wheels/resolve/main/ultralytics_yolov5-0.1.1-py3-none-any.whl#sha256=d532e62d6d7cd6c7381e4453810f31f10fd269cf9f237494bc570e74168dc2e1
+    - megadetector==10.0.24
+    # The reason this environment exists. AGPL-3.0: see the header.
+    - ultralytics==8.3.177
+    # OpenCV, for megadetector and the app's own frame reads
+    # (video_iter.py). They set only a floor, so unpinned builds took the
+    # newest: 4.x until 2026-07-02, the 5.0 major after it. 5.0.0.93 is the
+    # version the test suite and the video benchmarks ran on.
+    - opencv-python==5.0.0.93
+    # The app's own BoT-SORT (ml/inference/botsort.py), as in the base env:
+    # lap for its assignments, scipy for its Kalman updates. ultralytics'
+    # own tracker is never used.
+    - lap==0.5.12
+    - scipy==1.17.1

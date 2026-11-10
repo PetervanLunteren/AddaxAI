@@ -19,6 +19,12 @@ from app.core.job_cancellation import (
 )
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
+from app.ml.agpl_acceptance import (
+    AGPL_ERROR_KIND,
+    accept_agpl,
+    agpl_refusal_message,
+    needs_agpl_acceptance,
+)
 from app.ml.batch_size import (
     CLASSIFICATION_DEFAULT_CPU,
     CLASSIFICATION_DEFAULT_GPU,
@@ -44,7 +50,7 @@ manifest_manager = None
 env_manager = None
 model_storage = None
 
-# task_ids (= model_id, model_id-env, model_id-weights) with a worker
+# task_ids (= model_id, model_id-update) with a worker
 # currently running. Prepare reuses a stable task_id, so a stray double
 # "ready" (e.g. a torn-down dialog that still started a worker, then a
 # re-press) could otherwise spawn two workers downloading to the same
@@ -66,6 +72,23 @@ def _get_managers():
         model_storage = ModelStorage()
 
     return manifest_manager, env_manager, model_storage
+
+
+def refresh_manifest_cache() -> None:
+    """Re-read the manifests from disk; called once the startup catalog
+    sync has finished.
+
+    The router keeps one ManifestManager, loaded by the first request.
+    When that request lands before the sync has rewritten the manifests
+    (the first launch after an update), the cache keeps the old fields
+    until restart, and the licence gate in `prepare_model` reads `env`
+    from it: a model that moved to env-ultralytics was set up without
+    the licence step and in its old env. The reload replaces the cache
+    in one assignment, so a request in flight keeps the dict it has and
+    the next one sees the synced catalog.
+    """
+    if manifest_manager is not None:
+        manifest_manager.load_manifests(force_refresh=True)
 
 
 class ModelStatusResponse(BaseModel):
@@ -102,6 +125,11 @@ class ModelInfo(BaseModel):
     citation: str | None = None
     license: str | None = None
     min_app_version: str | None = None
+    # The environment the model runs in. "ultralytics" means it runs on
+    # the AGPL ultralytics package (app/ml/agpl_acceptance.py): the model
+    # sheet says so and the licence step lists these models. None only on
+    # the synthetic "none" entries, which run nothing.
+    env: str | None = None
     embedding_dim: int | None = None
     # Geographic region the cls model is trained for. Drives the
     # grouping in the classification dropdown. None for detection /
@@ -169,6 +197,7 @@ def _model_info(
         citation=manifest.citation,
         license=manifest.license,
         min_app_version=manifest.min_app_version,
+        env=manifest.env,
         embedding_dim=manifest.embedding_dim,
         region=manifest.region,
         full_image_cls=manifest.full_image_cls,
@@ -254,17 +283,29 @@ async def prepare_model(model_id: str, request: Request) -> ModelPrepareResponse
     2. Build environment with micromamba
 
     Progress updates sent via WebSocket at /ws/ml/prepare/{model_id}
+
+    The one door a model download goes through, so the licence step for
+    the models that run on ultralytics sits here: refused with 409 and
+    `error_kind` until the user has accepted it (`POST /api/ml/accept-agpl`).
     """
+    _get_managers()
     try:
-        # Initialize managers if needed
-        _get_managers()
-
-        # Get model manifest
         manifest = manifest_manager.get_model(model_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from None
 
-        # Use model_id as task_id for WebSocket tracking
-        task_id = model_id
+    if needs_agpl_acceptance(manifest):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error_kind": AGPL_ERROR_KIND, "message": agpl_refusal_message(model_id)},
+        )
 
+    # Use model_id as task_id for WebSocket tracking
+    task_id = model_id
+    try:
         # Register worker to start when frontend sends "ready" over WebSocket
         ws_manager.register_start(
             task_id,
@@ -272,18 +313,6 @@ async def prepare_model(model_id: str, request: Request) -> ModelPrepareResponse
                 _prepare_model_task(mid, m, tid, st)
             ),
         )
-
-        return ModelPrepareResponse(
-            model_id=model_id,
-            message="Model preparation started",
-            task_id=task_id,
-        )
-
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
-        ) from None
     except Exception as e:
         logger.error(f"Failed to start preparation for {model_id}: {e}")
         raise HTTPException(
@@ -291,49 +320,26 @@ async def prepare_model(model_id: str, request: Request) -> ModelPrepareResponse
             detail=f"Failed to start preparation: {e}",
         ) from None
 
+    return ModelPrepareResponse(
+        model_id=model_id,
+        message="Model preparation started",
+        task_id=task_id,
+    )
 
-@router.post("/models/{model_id}/prepare-weights", response_model=ModelPrepareResponse)
-async def prepare_model_weights(model_id: str, request: Request) -> ModelPrepareResponse:
+
+class AgplAcceptResponse(BaseModel):
+    status: Literal["accepted"]
+    marker_path: str
+
+
+@router.post("/accept-agpl", response_model=AgplAcceptResponse)
+def accept_agpl_licence() -> AgplAcceptResponse:
     """
-    Download model weights only (without building environment).
-
-    Progress updates sent via WebSocket at /ws/ml/prepare/{model_id}
+    Record that the user accepts the ultralytics licence (AGPL-3.0), once
+    for this installation. Writing it starts nothing: the caller retries
+    its own prepare afterwards.
     """
-    try:
-        # Initialize managers if needed
-        _get_managers()
-
-        # Get model manifest
-        manifest = manifest_manager.get_model(model_id)
-
-        # Use model_id as task_id for WebSocket tracking
-        task_id = f"{model_id}-weights"
-
-        # Register worker to start when frontend sends "ready" over WebSocket
-        ws_manager.register_start(
-            task_id,
-            lambda mid=model_id, m=manifest, tid=task_id, st=request.app.state: (
-                _prepare_weights_task(mid, m, tid, st)
-            ),
-        )
-
-        return ModelPrepareResponse(
-            model_id=model_id,
-            message="Weights download started",
-            task_id=task_id,
-        )
-
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
-        ) from None
-    except Exception as e:
-        logger.error(f"Failed to start weights download for {model_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to start weights download: {e}",
-        ) from None
+    return AgplAcceptResponse(status="accepted", marker_path=str(accept_agpl()))
 
 
 @router.post("/models/{model_id}/update", response_model=ModelUpdateResponse)
@@ -366,7 +372,7 @@ async def update_model(model_id: str, request: Request) -> ModelUpdateResponse:
     # Reuse the prepare registry rather than adding a second one, so an
     # update cannot run alongside a download writing to the same directory.
     task_id = f"{model_id}-update"
-    if {task_id, model_id, f"{model_id}-weights"} & _active_prepares:
+    if {task_id, model_id} & _active_prepares:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"A download for {model_id} is already running",
@@ -418,48 +424,6 @@ async def update_model(model_id: str, request: Request) -> ModelUpdateResponse:
             f"Updated {len(updated)} file(s)" if updated else "Already up to date"
         ),
     )
-
-
-@router.post("/models/{model_id}/prepare-env", response_model=ModelPrepareResponse)
-async def prepare_model_environment(model_id: str) -> ModelPrepareResponse:
-    """
-    Build model environment only (without downloading weights).
-
-    Progress updates sent via WebSocket at /ws/ml/prepare/{model_id}
-    """
-    try:
-        # Initialize managers if needed
-        _get_managers()
-
-        # Get model manifest
-        manifest = manifest_manager.get_model(model_id)
-
-        # Use model_id as task_id for WebSocket tracking
-        task_id = f"{model_id}-env"
-
-        # Register worker to start when frontend sends "ready" over WebSocket
-        ws_manager.register_start(
-            task_id,
-            lambda mid=model_id, m=manifest, tid=task_id: _prepare_env_task(mid, m, tid),
-        )
-
-        return ModelPrepareResponse(
-            model_id=model_id,
-            message="Environment build started",
-            task_id=task_id,
-        )
-
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
-        ) from None
-    except Exception as e:
-        logger.error(f"Failed to start environment build for {model_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to start environment build: {e}",
-        ) from None
 
 
 def _forget_model_update(app_state, key: str, model_id: str) -> None:
@@ -639,121 +603,6 @@ async def _prepare_model_task(
         _active_prepares.discard(task_id)
         # Drop the cancel flag so a re-prepare under the same task_id isn't
         # killed on arrival by a leftover request.
-        clear_cancel(task_id)
-
-
-async def _prepare_weights_task(
-    model_id: str, manifest, task_id: str, app_state=None
-) -> None:
-    """
-    Background task to download model weights only.
-
-    Args:
-        model_id: Model ID
-        manifest: Model manifest
-        task_id: Task ID for WebSocket tracking
-    """
-    if task_id in _active_prepares:
-        logger.info(f"Weights download for {task_id} already running; ignoring duplicate start")
-        return
-    _active_prepares.add(task_id)
-
-    def should_cancel() -> bool:
-        return is_cancel_requested(task_id)
-
-    try:
-        await ws_manager.send_progress(task_id, "Starting weights download...", 0.0)
-
-        # Get the current event loop for use in thread callbacks
-        loop = asyncio.get_running_loop()
-
-        def weights_progress(message: str, progress: float):
-            """Sync callback for weight download progress."""
-            # Schedule coroutine from thread using run_coroutine_threadsafe
-            asyncio.run_coroutine_threadsafe(
-                ws_manager.send_progress(task_id, message, progress), loop
-            )
-
-        # Download weights (blocking call in thread pool)
-        await asyncio.to_thread(
-            model_storage.download_weights,
-            manifest,
-            weights_progress,
-            should_cancel=should_cancel,
-        )
-
-        await ws_manager.send_complete(
-            task_id,
-            success=True,
-            message="Weights download complete",
-            data={"model_id": model_id},
-        )
-
-        logger.info(f"Weights for {model_id} downloaded successfully")
-        _forget_model_update(app_state, "new_models", model_id)
-
-    except JobCancelledError:
-        logger.info(f"Weights download for {model_id} cancelled")
-        await ws_manager.send_cancelled(task_id, "Weights download cancelled")
-    except Exception as e:
-        logger.error(f"Failed to download weights for {model_id}: {e}", exc_info=True)
-        await ws_manager.send_error(task_id, f"Weights download failed: {e}")
-    finally:
-        _active_prepares.discard(task_id)
-        clear_cancel(task_id)
-
-
-async def _prepare_env_task(model_id: str, manifest, task_id: str) -> None:
-    """
-    Background task to build model environment only.
-
-    Args:
-        model_id: Model ID
-        manifest: Model manifest
-        task_id: Task ID for WebSocket tracking
-    """
-    if task_id in _active_prepares:
-        logger.info(f"Environment build for {task_id} already running; ignoring duplicate start")
-        return
-    _active_prepares.add(task_id)
-
-    try:
-        await ws_manager.send_progress(task_id, "Starting environment build...", 0.0)
-
-        # Get the current event loop for use in thread callbacks
-        loop = asyncio.get_running_loop()
-
-        def env_progress(message: str, progress: float):
-            """Sync callback for environment build progress."""
-            logger.info(f"Environment progress: {message} ({progress:.1%})")
-            # Schedule coroutine from thread using run_coroutine_threadsafe
-            asyncio.run_coroutine_threadsafe(
-                ws_manager.send_progress(task_id, message, progress), loop
-            )
-
-        # Build environment (blocking call in thread pool). task_id as
-        # job_id makes the micromamba subprocess killable on cancel.
-        await asyncio.to_thread(
-            env_manager.get_or_create_env, manifest, env_progress, task_id
-        )
-
-        await ws_manager.send_complete(
-            task_id,
-            success=True,
-            message="Environment build complete",
-            data={"model_id": model_id},
-        )
-
-        logger.info(f"Environment for {model_id} built successfully")
-
-    except JobCancelledError:
-        logger.info(f"Environment build for {model_id} cancelled")
-        await ws_manager.send_cancelled(task_id, "Environment build cancelled")
-    except Exception as e:
-        logger.error(f"Failed to build environment for {model_id}: {e}", exc_info=True)
-        await ws_manager.send_error(task_id, f"Environment build failed: {e}")
-    finally:
-        _active_prepares.discard(task_id)
         clear_cancel(task_id)
 
 

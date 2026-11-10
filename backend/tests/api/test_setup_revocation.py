@@ -104,3 +104,16 @@ def test_allow_endpoint_is_idempotent(client, own_data_dir) -> None:
     assert first.status_code == second.status_code == 200
     assert first.json() == second.json()
     assert revocation_skip_allowed() is True
+
+
+def test_reset_forgets_the_licence_acceptance(client, own_data_dir) -> None:
+    """Reset means a fresh install, and a fresh install asks again. The
+    revocation opt-out is a fact about the network and survives."""
+    from app.ml.agpl_acceptance import accept_agpl
+
+    accept_agpl()
+    (own_data_dir / ".allow-no-revocation-check").write_text("x")
+    resp = client.post("/api/setup/reset", json={"confirmation": "RESET"})
+    assert resp.status_code == 200, resp.text
+    assert not (own_data_dir / ".agpl-accepted").exists()
+    assert (own_data_dir / ".allow-no-revocation-check").exists()

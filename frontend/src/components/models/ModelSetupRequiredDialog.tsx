@@ -18,7 +18,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, Loader2 } from "lucide-react";
 import {
   Dialog,
@@ -31,9 +31,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { projectsApi } from "@/api/projects";
-import { mlModelsApi } from "@/api/ml-models";
 import { invalidateModelMetadata } from "@/api/models";
 import { useTaskProgress } from "@/hooks/useTaskProgress";
+import { useModelPrepare } from "@/hooks/useModelPrepare";
 import { useModelSetupGate } from "@/lib/model-setup-gate";
 import type { MissingModel } from "@/api/types";
 
@@ -236,20 +236,25 @@ function MissingModelRow({
     },
   });
 
-  const prepare = useMutation({
-    mutationFn: () => mlModelsApi.prepare(missing.model_id),
-    onSuccess: (resp) => {
+  const { prepare, isStarting, agplDialog } = useModelPrepare({
+    onStarted: (_modelId, newTaskId) => {
       setErrorText(null);
-      setTaskId(resp.task_id);
+      setTaskId(newTaskId);
       onStarted(missing.model_id);
     },
-    onError: (err: Error) => {
-      setErrorText(err.message || "Failed to start setup");
+    onError: (_modelId, message) => {
+      setErrorText(message || "Failed to start setup");
+      onFinished(missing.model_id, false);
+    },
+    // Cancelling the licence step ends this row like a failure, so the
+    // queue moves on and the row says why nothing happened.
+    onDeclined: () => {
+      setErrorText("Not set up: its licence was not accepted.");
       onFinished(missing.model_id, false);
     },
   });
 
-  const inProgress = taskId !== null || prepare.isPending;
+  const inProgress = taskId !== null || isStarting;
   const pct = Math.min(100, Math.max(0, Math.round(progress * 100)));
 
   useEffect(() => {
@@ -258,7 +263,7 @@ function MissingModelRow({
     if (!justFlippedTrue) return;
     if (inProgress || done) return;
     setErrorText(null);
-    prepare.mutate();
+    void prepare(missing.model_id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldStart]);
 
@@ -305,6 +310,7 @@ function MissingModelRow({
           {errorText}
         </div>
       )}
+      {agplDialog}
     </div>
   );
 }

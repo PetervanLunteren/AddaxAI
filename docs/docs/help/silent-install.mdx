@@ -181,8 +181,17 @@ backend.exe --setup SPECIESNET-v4-0-2-A MD1000-REDWOOD-0-0
 
 This downloads those models and builds the environments they run in, the same as clicking install in the app. Find the model IDs in the [model zoo](../reference/model-zoo.mdx), or print them with `backend.exe --list-models`. An unknown ID stops the command before anything downloads.
 
+A few models run on the ultralytics package, which is licensed under AGPL-3.0. The model zoo marks them with a "Runs on" line. The app asks each user to accept that licence once before it sets one up; from a script, add `--accept-agpl` to accept it for the account the command runs as:
+
+```cmd
+backend.exe --setup SHARKTRACK-1-0 --accept-agpl
+```
+
+Without the flag the command names the model and stops before anything downloads. The [FAQ](faq.mdx) explains what the licence means.
+
 Things to know:
 
 - Progress prints to the console. Exit code 0 means success, 1 means failure. The full log is in `~/AddaxAI/logs/backend.log`.
 - It's safe to run repeatedly: finished parts are skipped, and an interrupted download resumes.
+- `--accept-agpl` is remembered for the user account, like the rest of the setup, so later runs and the app itself do not ask again.
 - Run it before the user opens the app, not while the app is running its own setup.
