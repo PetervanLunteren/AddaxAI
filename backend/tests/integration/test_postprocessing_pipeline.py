@@ -13,6 +13,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from app.ml.json_pipeline import load_json_to_database
 from app.ml.postprocessing import (
     build_smoother_input,
@@ -348,6 +350,193 @@ def test_label_exclusion_applied_before_smoothing(deployment_scaffold):
                 assert label_name != "lion", "Excluded label should be filtered out"
 
 
+_TAXONOMY_CSV = (
+    "model_class,class,order,family,genus,species\n"
+    "lion,mammalia,carnivora,felidae,panthera,leo\n"
+    "zebra,mammalia,perissodactyla,equidae,equus,quagga\n"
+    "giraffe,mammalia,artiodactyla,giraffidae,giraffa,camelopardalis\n"
+)
+
+
+def _postprocess_with_lion_excluded(s: dict, *, rollup: bool) -> None:
+    """Phase 7 against a model that ships a taxonomy.csv, with "lion"
+    excluded and smoothing off, written to the database the way the
+    workers do it. Every loaded detection reads lion 0.7, zebra 0.2,
+    giraffe 0.1, so the excluded class is the top-1 everywhere."""
+    db = s["db"]
+    json_path = _load_basic_images(s)
+
+    model_dir = s["tmp_path"] / "cls-model"
+    model_dir.mkdir()
+    (model_dir / "taxonomy.csv").write_text(_TAXONOMY_CSV)
+
+    project = s["project"]
+    project.excluded_classes = ["lion"]
+    project.event_smoothing = False
+    project.taxonomic_rollup = rollup
+    db.flush()
+
+    with patch(
+        "app.ml.postprocessing._find_classification_model_dir",
+        return_value=model_dir,
+    ):
+        results = run_postprocessing_for_deployment(
+            deployment_id=s["deployment"].id,
+            json_path=json_path,
+            deployment_folder=s["deploy_dir"],
+            project=project,
+            db=db,
+        )
+    update_database_from_smoothed_results(
+        s["deployment"].id, results, s["deploy_dir"], db,
+        excluded_classes=["lion"],
+    )
+
+
+def test_an_excluded_top1_becomes_the_next_best_class_when_rollup_is_off(
+    deployment_scaffold,
+):
+    """With rollup off, nothing else can redirect an excluded top-1, so
+    the plain filter must run even though the model ships a taxonomy.
+    Before this, a taxonomy.csv made the filter defer to a rollup that
+    never ran, the excluded label reached the database, and the final
+    sweep erased it: 736 of 799 moose lost their label in one run."""
+    _postprocess_with_lion_excluded(deployment_scaffold, rollup=False)
+
+    dets = deployment_scaffold["db"].query(Detection).all()
+    assert len(dets) == 3
+    for det in dets:
+        assert det.label == "zebra"
+        # Its own score, not renormalised to 1.0 like v6 did.
+        assert det.label_confidence == pytest.approx(0.2)
+
+
+def test_an_excluded_top1_rolls_up_when_rollup_is_on(deployment_scaffold):
+    """With rollup on, the filter stays out of the way and Path A takes
+    the excluded lion to the family its confidence supports."""
+    _postprocess_with_lion_excluded(deployment_scaffold, rollup=True)
+
+    dets = deployment_scaffold["db"].query(Detection).all()
+    assert len(dets) == 3
+    for det in dets:
+        assert det.label == "felidae"
+        assert det.label_confidence == pytest.approx(0.7)
+
+
+def test_the_raw_reload_drops_excluded_classes_the_same_way(
+    deployment_scaffold,
+):
+    """Smoothing and rollup both off take the raw-reload path. It applies
+    the same rule: excluded classes go, the next best included class
+    stays at its own score, and nothing rolls up."""
+    s = deployment_scaffold
+    json_path = _load_basic_images(s)
+
+    reload_raw_classifications_from_json(
+        s["deployment"].id, json_path, s["deploy_dir"], s["db"],
+        excluded_classes=["lion"],
+    )
+
+    dets = s["db"].query(Detection).all()
+    assert len(dets) == 3
+    for det in dets:
+        assert det.label == "zebra"
+        assert det.label_confidence == pytest.approx(0.2)
+
+
+def test_a_box_the_model_rejected_keeps_its_label_with_rollup_off(
+    deployment_scaffold,
+):
+    """With rollup off the plain exclusion filter runs. It removes the
+    user's exclusions only: "false detection" is the model's answer, not
+    an exclusion, so the box keeps that label and the file stays blank.
+    Stripping it here emptied the list (the next class sat far below the
+    scale minimum), the box came back unclassified, and a rejected stump
+    counted as an animal the moment rollup was turned off."""
+    s = deployment_scaffold
+    db = s["db"]
+    json_path = _load_basic_images(
+        s, label_map={"1": "false detection", "2": "zebra", "3": "giraffe"}
+    )
+    project = s["project"]
+    project.event_smoothing = False
+    project.taxonomic_rollup = False
+    db.flush()
+
+    with patch(
+        "app.ml.postprocessing._find_classification_model_dir",
+        return_value=None,
+    ):
+        results = run_postprocessing_for_deployment(
+            deployment_id=s["deployment"].id,
+            json_path=json_path,
+            deployment_folder=s["deploy_dir"],
+            project=project,
+            db=db,
+        )
+    counts = update_database_from_smoothed_results(
+        s["deployment"].id, results, s["deploy_dir"], db,
+    )
+
+    assert counts["errors"] == 0
+    for det in db.query(Detection).all():
+        assert det.label == "false detection"
+        assert det.label_confidence == pytest.approx(0.7)
+    for f in db.query(File).filter(File.deployment_id == s["deployment"].id):
+        assert f.observation_type == "blank"
+
+
+def test_the_raw_reload_keeps_a_rejected_box_too(deployment_scaffold):
+    """Same rule on the raw-reload path (smoothing and rollup both off)."""
+    s = deployment_scaffold
+    json_path = _load_basic_images(
+        s, label_map={"1": "false detection", "2": "zebra", "3": "giraffe"}
+    )
+
+    counts = reload_raw_classifications_from_json(
+        s["deployment"].id, json_path, s["deploy_dir"], s["db"],
+        excluded_classes=["giraffe"],
+    )
+
+    assert counts["errors"] == 0
+    for det in s["db"].query(Detection).all():
+        assert det.label == "false detection"
+
+
+def test_a_box_left_unclassified_keeps_its_animal_row_and_stays_filterable(
+    deployment_scaffold,
+):
+    """Excluding every class the model offered leaves the box with no
+    species, and it must then carry the builtin "Animal" row: the label
+    filter matches on taxonomy id, so a box with none is shown in the
+    grid and counted in the tab but missing from the tree and from
+    "Select all". A user with 733 such boxes read that as "no Animal
+    option" and had no way to find them."""
+    from app.api.crud.label_tree import build_label_filter_tree
+    from app.ml.taxonomy_db import ensure_builtin_labels
+
+    s = deployment_scaffold
+    db = s["db"]
+    json_path = _load_basic_images(s)
+    animal_row = ensure_builtin_labels(db)["animal"]
+
+    reload_raw_classifications_from_json(
+        s["deployment"].id, json_path, s["deploy_dir"], db,
+        excluded_classes=["lion", "zebra", "giraffe"],
+    )
+
+    dets = db.query(Detection).all()
+    assert len(dets) == 3
+    for det in dets:
+        assert det.label is None
+        assert det.label_confidence is None
+        assert det.label_taxonomy_id == animal_row
+        assert det.common_name == "Animal"
+
+    tree = build_label_filter_tree(s["project"].id, db, count_by="detection")
+    assert animal_row in tree["all_leaf_ids"]
+
+
 def test_reload_raw_classifications(deployment_scaffold):
     """After smoothing, reload_raw_classifications_from_json() reverts to raw values."""
     s = deployment_scaffold
@@ -677,6 +866,71 @@ def test_a_discarded_box_is_not_reported_as_a_reprocess_error(deployment_scaffol
     )
 
 
+def test_a_box_the_model_rejected_reprocesses_like_any_other(deployment_scaffold):
+    """A box whose top-1 is "false detection" is a row, so the matcher
+    finds it: no error, and the verdict stays when the smoothed JSON
+    keeps it. When smoothing turns it into a species (one rejected frame
+    in a zebra burst), the row takes the species and the file becomes an
+    animal. Under the old ingest skip both cases were lost: the box had
+    no row, so every reprocess counted it as an error and the smoother's
+    rescue had nothing to write to.
+    """
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    _load_basic_images(
+        s, label_map={"1": "false detection", "2": "zebra", "3": "giraffe"}
+    )
+
+    files = (
+        db.query(File)
+        .filter(File.deployment_id == s["deployment"].id)
+        .order_by(File.captured_at_local.asc())
+        .all()
+    )
+    kept, rescued = files[0], files[1]
+    for f in files:
+        assert f.observation_type == "blank"
+        assert db.query(Detection).filter(Detection.file_id == f.id).count() == 1
+
+    def _entry(f: File, classifications: list[list]) -> dict:
+        return {
+            "file": str(Path(f.file_path).relative_to(deploy_dir)),
+            "detections": [
+                {
+                    "category": "1",
+                    "conf": 0.9,
+                    "bbox": [0.1, 0.2, 0.3, 0.4],
+                    "classifications": classifications,
+                }
+            ],
+        }
+
+    smoothed = build_detection_json(
+        [
+            _entry(kept, [[1, 0.7], [2, 0.2]]),
+            _entry(rescued, [[2, 0.8], [1, 0.2]]),
+            _entry(files[2], [[1, 0.7], [2, 0.2]]),
+        ],
+        classification_categories={"1": "false detection", "2": "zebra", "3": "giraffe"},
+    )
+
+    counts = update_database_from_smoothed_results(
+        deployment_id=s["deployment"].id,
+        smoothed_results=smoothed,
+        deployment_folder=deploy_dir,
+        db=db,
+    )
+
+    assert counts["errors"] == 0
+    assert counts["updated"] == 1
+    db.refresh(kept)
+    db.refresh(rescued)
+    assert kept.detections[0].label == "false detection"
+    assert kept.observation_type == "blank"
+    assert rescued.detections[0].label == "zebra"
+    assert rescued.observation_type == "animal"
+
+
 def test_a_missing_box_on_an_unverified_file_is_still_an_error(deployment_scaffold):
     """The exemption reaches verified files only. A box the JSON lists
     that the database lacks on a file nobody signed off is still the one
@@ -796,6 +1050,9 @@ def test_an_unticked_files_rejected_boxes_reprocess_cleanly(deployment_scaffold)
     assert counts["errors"] == 0, "no phantom errors after the untick"
     db.refresh(weak)
     assert weak.label == "zebra", "the machine's call is restored"
+    # The sign-off wrote "human" onto the rejected box; the machine owns
+    # the row again, so its method says so. Exports read this column.
+    assert weak.classification_method == "machine"
     assert weak.verified is False
 
 
@@ -926,3 +1183,44 @@ def test_a_verified_card_keeps_its_label_through_the_vote(deployment_scaffold):
     s["db"].expire_all()
     assert rows[60].label == "fox" and rows[60].verified
     assert rows[90].label == "wolf"
+
+
+def test_update_db_refreshes_a_rounding_only_difference_quietly(deployment_scaffold):
+    """Rows written before SCORE_DIGITS hold five-decimal confidences. The
+    first reprocess after that change finds every one of them different
+    from the three-decimal value, which is not a change the user made:
+    the stored value is brought to three decimals, but it is not counted
+    as updated and the file is not re-derived."""
+    s = deployment_scaffold
+    db, deploy_dir = s["db"], s["deploy_dir"]
+    _load_basic_images(s)
+    dets = db.query(Detection).all()
+    for d in dets:
+        d.label_confidence = 0.70004
+    db.commit()
+
+    files = db.query(File).filter(File.deployment_id == s["deployment"].id).all()
+    smoothed = build_detection_json(
+        [
+            {
+                "file": str(Path(f.file_path).relative_to(deploy_dir)),
+                "detections": [{
+                    "category": "1", "conf": 0.9, "bbox": [0.1, 0.2, 0.3, 0.4],
+                    "classifications": [[1, 0.7], [2, 0.2], [3, 0.1]],
+                }],
+            }
+            for f in files
+        ],
+        classification_categories={"1": "lion", "2": "zebra", "3": "giraffe"},
+    )
+
+    counts = update_database_from_smoothed_results(
+        deployment_id=s["deployment"].id,
+        smoothed_results=smoothed,
+        deployment_folder=deploy_dir,
+        db=db,
+    )
+
+    assert counts["updated"] == 0
+    assert counts["unchanged"] == 3
+    assert all(d.label_confidence == 0.7 for d in db.query(Detection).all())

@@ -6,6 +6,7 @@ import 'react-day-picker/style.css'
 import './index.css'
 import App from './App.tsx'
 import { logger } from './lib/logger'
+import { ThemeProvider } from './lib/ThemeProvider'
 
 // Windows' Segoe UI Emoji ships without country flag glyphs by design,
 // so 🇪🇺 / 🇳🇱 / etc. render as the letter pair (e.g. "EU"). The
@@ -59,8 +60,27 @@ window.addEventListener('unhandledrejection', (event) => {
   }
 })
 
-createRoot(document.getElementById('root')!).render(
+// React 19 hands an error that an error boundary catches to this option
+// and never to window.onerror, so without it the diagnostics zip would
+// lose the stack that found the blank dashboard of 2026-10-31.
+createRoot(document.getElementById('root')!, {
+  onCaughtError: (error, errorInfo) => {
+    try {
+      logger.error(
+        'render error: ' + (error instanceof Error ? error.message : String(error)),
+        {
+          stack: error instanceof Error ? error.stack : undefined,
+          componentStack: errorInfo.componentStack,
+        },
+      )
+    } catch {
+      /* ignore */
+    }
+  },
+}).render(
   <StrictMode>
-    <App />
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
   </StrictMode>,
 )

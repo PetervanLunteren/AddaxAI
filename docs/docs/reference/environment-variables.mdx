@@ -16,6 +16,7 @@ AddaxAI reads these environment variables. All of them are optional. You need th
 | `ADDAXAI_USER_DATA_DIR` | Where the database, the models and the analysis environment live. Default `~/AddaxAI`, on Windows `C:\Users\<your user name>\AddaxAI`. |
 | `ADDAXAI_HF_ENDPOINT` | Base address for the model downloads, instead of `https://huggingface.co`. A mirror, or your own repository manager. |
 | `ADDAXAI_HF_TOKEN` | Token for that address, when it does not serve downloads anonymously. Needs AddaxAI 7.0.14 or newer. |
+| `ADDAXAI_HF_FALLBACK_ENDPOINT` | The relay the app tries once when the network answers a model download with a block page. Set by default to a relay run by Addax Data Science. Ignored when `ADDAXAI_HF_ENDPOINT` is set. Needs AddaxAI 7.8.0 or newer. |
 | `ADDAXAI_HF_HUB_DISABLE_XET` | Set to `1` to download models the plain way. Some mirrors need this. |
 | `ADDAXAI_PYTORCH_INDEX_URL` | Replaces `https://download.pytorch.org/whl` while the analysis environment is built. Leave the CUDA part off, AddaxAI adds it. |
 | `ADDAXAI_MODEL_CATALOG_URL` | Where the list of available models comes from. |

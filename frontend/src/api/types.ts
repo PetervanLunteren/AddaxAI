@@ -467,7 +467,9 @@ export type JobType =
   | "ml_inference"
   | "export"
   | "event_computation"
-  | "postprocessing";
+  | "postprocessing"
+  | "package_export"
+  | "package_import";
 
 export type JobStatus =
   | "pending"
@@ -540,6 +542,7 @@ export type ObservationType = string;
 // File types
 export interface DetectionResponse {
   id: string;
+  file_id: string;
   category: string;
   confidence: number;
   /** The analysis run that produced this box, or `null` when a person
@@ -580,6 +583,41 @@ export interface TrackResponse {
   frame_count: number;
   max_confidence: number;
   representative_frame_number: number;
+}
+
+/** One box as it was before an action. Mirrors
+ * `backend/app/api/schemas/undo.py`. No taxonomy id: the server
+ * re-derives it from the label on restore. */
+export interface DetectionState {
+  detection_id: string;
+  category: string;
+  label: string | null;
+  label_confidence: number | null;
+  scientific_name: string | null;
+  common_name: string | null;
+  classification_method: string | null;
+  verified: boolean;
+  verified_at_utc: string | null;
+}
+
+/** A file's sign-off as it was before an action. */
+export interface FileState {
+  file_id: string;
+  verified: boolean;
+  verified_at_utc: string | null;
+}
+
+/** Everything an action changed, as it was before. Every undoable
+ * action returns one as `before`; `POST /api/undo` takes it back. */
+export interface UndoSnapshot {
+  detections: DetectionState[];
+  files: FileState[];
+}
+
+/** What the bulk verify / relabel endpoints answer. */
+export interface BulkResult {
+  updated_count: number;
+  before: UndoSnapshot;
 }
 
 export interface FileResponse {
@@ -737,6 +775,18 @@ export interface EventObservationItem {
   max_n_frame_number: number | null;
   max_n_time: string | null;
   first_arrival_time: string | null;
+}
+
+/** One cohort as "Same as last" copies it: a species, its count and the
+ *  demographics of the individuals on that row. */
+export interface HumanObservationRow {
+  category: string;
+  count: number;
+  label: string | null;
+  label_taxonomy_id: string | null;
+  sex: string | null;
+  life_stage: string | null;
+  behavior: string | null;
 }
 
 /** Partial update of a row's demographics: a missing key leaves the field

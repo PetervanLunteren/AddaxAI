@@ -250,23 +250,11 @@ def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection
             db_detection.scientific_name,
         ) = resolve_label_names(data.label, tax, data.category)
     else:
-        # Unclassified (MD-only) — share the builtin taxonomy row so
-        # this detection gets the same color as the MD-produced ones.
-        from app.ml.taxonomy_db import BUILTIN_MODEL_ID
-        from app.models.label_taxonomy import LabelTaxonomy
+        # Unclassified (MD-only): the builtin row of its category, so it
+        # shares the colour of the machine boxes and sits in the filter.
+        from app.ml.taxonomy_db import clear_classification, ensure_builtin_labels
 
-        builtin = (
-            db.query(LabelTaxonomy)
-            .filter(
-                LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID,
-                LabelTaxonomy.name == data.category,
-            )
-            .first()
-        )
-        if builtin:
-            db_detection.label_taxonomy_id = builtin.id
-            db_detection.common_name = builtin.common_name
-            db_detection.scientific_name = builtin.scientific_name
+        clear_classification(db_detection, ensure_builtin_labels(db))
 
     db.commit()
     db.refresh(db_detection)
@@ -346,15 +334,15 @@ def update_detection(db: Session, detection_id: str, update: DetectionUpdate) ->
         track.crop_path = None
     if "label" in update.model_fields_set:
         detection.label = update.label
-        detection.label_taxonomy_id = _resolve_detection_taxonomy(
-            db, detection, update.label
-        )
         detection.classification_method = "human"
-        # Resolve both names from the taxonomy row (single source of truth).
         if update.label:
             from app.ml.taxonomic_rollup import resolve_label_names
             from app.models.label_taxonomy import LabelTaxonomy
 
+            detection.label_taxonomy_id = _resolve_detection_taxonomy(
+                db, detection, update.label
+            )
+            # Resolve both names from the taxonomy row (single source of truth).
             tax = (
                 db.query(LabelTaxonomy).get(detection.label_taxonomy_id)
                 if detection.label_taxonomy_id
@@ -364,33 +352,20 @@ def update_detection(db: Session, detection_id: str, update: DetectionUpdate) ->
                 detection.common_name,
                 detection.scientific_name,
             ) = resolve_label_names(update.label, tax, detection.category)
-        else:
-            detection.scientific_name = None
-            detection.common_name = None
-        # A human-assigned label has no model softmax score, so stamp 1.0
-        # (matches bulk relabel) rather than leaving the replaced label's
-        # stale score. Cleared label -> no confidence. An explicit
-        # label_confidence in the payload still overrides below.
-        detection.label_confidence = 1.0 if update.label else None
-    # When category changes to a builtin (person/vehicle/animal) without a
-    # label, resolve taxonomy from the category so scientific_name and the FK
-    # are set correctly.
-    if update.category and not detection.label:
-        from app.ml.taxonomy_db import BUILTIN_MODEL_ID
-        from app.models.label_taxonomy import LabelTaxonomy
+            # A human-assigned label has no model softmax score, so stamp 1.0
+            # (matches bulk relabel) rather than leaving the replaced label's
+            # stale score. An explicit label_confidence in the payload still
+            # overrides below.
+            detection.label_confidence = 1.0
+    # A cleared label, or a category change on an unlabelled box, leaves
+    # the detection on its category's builtin row (no confidence, names
+    # from the category), the same rule as every other writer.
+    if not detection.label and (
+        "label" in update.model_fields_set or update.category is not None
+    ):
+        from app.ml.taxonomy_db import clear_classification, ensure_builtin_labels
 
-        builtin = (
-            db.query(LabelTaxonomy)
-            .filter(
-                LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID,
-                LabelTaxonomy.name == update.category,
-            )
-            .first()
-        )
-        if builtin:
-            detection.label_taxonomy_id = builtin.id
-            detection.common_name = builtin.common_name
-            detection.scientific_name = builtin.scientific_name
+        clear_classification(detection, ensure_builtin_labels(db))
     if update.label_confidence is not None:
         detection.label_confidence = update.label_confidence
 
@@ -470,13 +445,16 @@ def _resolve_detection_taxonomy(
     if taxonomy_id:
         return taxonomy_id
 
-    # Auto-create a custom taxonomy entry for this label
+    # Auto-create a custom taxonomy entry for this label. Custom labels are
+    # global (project_id None), shared across all of AddaxAI, so a second box
+    # of the same name in any project reuses this row via resolve_taxonomy_id
+    # above rather than colliding on the unique key.
     from app.ml.taxonomic_rollup import format_common_name
     from app.models.label_taxonomy import LabelTaxonomy
 
     new_entry = LabelTaxonomy(
         is_custom=True,
-        project_id=project_id,
+        project_id=None,
         level="unknown",
         name=label_name,
         classification_model_id="",
@@ -628,11 +606,12 @@ def mark_detections_false(db: Session, detections: list[Detection]) -> None:
     label "false detection", so a box rejected here is
     indistinguishable from one a person pressed X on: same label, same
     taxonomy row, same verified flag. ``set_file_verified`` uses this
-    for the invisible sub-threshold boxes a file sign-off rejects. The
-    ``original_*`` mirror is untouched, so undo and a later unverify +
-    reprocess can both hand the box back to the machine.
+    for the invisible sub-threshold boxes a file sign-off rejects. Undo
+    puts the box's previous state back from the snapshot the sign-off
+    returned; the ``original_*`` mirror is untouched, so an unverify plus
+    reprocess can still hand the box back to the machine.
 
-    A parity test (`test_empty_verify_discards.py`) pins the two paths
+    A parity test (`test_file_verify_rejects.py`) pins the two paths
     against drift.
     """
     if not detections:

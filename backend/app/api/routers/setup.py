@@ -32,12 +32,15 @@ from app.core.logging_config import get_logger
 from app.ml.agpl_acceptance import AGPL_MARKER_FILENAME
 from app.ml.environment_manager import (
     EnvironmentManager,
+    NonAsciiPathError,
     TlsRevocationCheckError,
     allow_revocation_skip,
 )
+from app.ml.hf_downloader import NetworkBlockedError
 from app.ml.model_storage import ModelStorage
 from app.ml.schemas.model_manifest import ModelManifest
 from app.services import legacy_install
+from app.utils.exiftool_bin import bundled_exiftool_path
 from app.utils.ffmpeg_bin import APP_ENV
 from app.utils.fs_remove import safe_rmtree
 
@@ -182,14 +185,23 @@ def _required_envs(data_type: DataType = DEFAULT_DATA_TYPE) -> tuple[str, ...]:
     return tuple(envs)
 
 
+def _env_path(env_name: str = _REQUIRED_ENV) -> Path:
+    return _get_env_manager().envs_dir / f"env-{env_name}"
+
+
 def _env_present(env_name: str = _REQUIRED_ENV) -> bool:
-    em = _get_env_manager()
-    env_path = em.envs_dir / f"env-{env_name}"
+    env_path = _env_path(env_name)
     if not env_path.exists():
         return False
     # Reuse env_manager's own validation so a half-installed env counts
     # as missing and the wizard re-runs cleanly.
-    return em._validate_env(env_path)
+    if not _get_env_manager()._validate_env(env_path):
+        return False
+    # The base env is also checked for exiftool, which only it ships: the
+    # boot probe cannot see it, and without it no folder can be scanned.
+    # A base env that lost its bin/ to a broken delete still boots fine
+    # (Windows beta report, 2026-11-04).
+    return env_name != _REQUIRED_ENV or bundled_exiftool_path(env_path).is_file()
 
 
 def _envs_present(data_type: DataType = DEFAULT_DATA_TYPE) -> bool:
@@ -208,7 +220,9 @@ class SetupStatus(BaseModel):
     error: str | None
     # "tls_revocation" when the build died because Windows could not check
     # certificate revocation and the user has not accepted skipping it.
-    # The wizard uses this to offer that choice; None otherwise.
+    # The wizard uses this to offer that choice. "network_blocked" when a
+    # model download was answered with a web filter's block page; the
+    # wizard links the matching help section. None otherwise.
     error_kind: str | None
     user_data_dir: str
 
@@ -226,7 +240,13 @@ def get_setup_status(data_type: DataType = DEFAULT_DATA_TYPE) -> SetupStatus:
     models_dir = settings.models_dir
 
     models_ok = _models_present(models_dir, data_type)
-    env_ok = _envs_present(data_type)
+    # Never probe the envs while an install runs. The probe starts the
+    # env's own python.exe, which keeps its DLLs open; a rebuild wiping
+    # that env at the same moment is refused on Windows. The rebuild
+    # modal polls this every 1.5 s, and its first poll lands within
+    # milliseconds of the wipe (beta report, 2026-11-04). "Not ready" is
+    # also simply true while it is being built.
+    env_ok = False if _install_state.in_progress else _envs_present(data_type)
 
     return SetupStatus(
         ready=models_ok and env_ok,
@@ -307,31 +327,33 @@ def run_setup(
     CLI (app/setup_cli.py).
 
     `force_envs` lets the drift-rebuild flow request that specific
-    envs be wiped and rebuilt regardless of whether they already exist
-    on disk. Caller passes env names like "addaxai-base" or "pytorch".
+    envs be replaced and rebuilt regardless of whether they already
+    exist on disk. Caller passes env names like "addaxai-base" or
+    "pytorch". A required env that fails `_env_present()` is always
+    replaced, never reused.
     """
     settings = get_settings()
     models_dir = settings.models_dir
     storage = ModelStorage(models_dir)
     em = _get_env_manager()
 
-    # Wipe envs explicitly requested for rebuild before the
-    # presence check below decides whether to add an install step.
-    # Out-of-loop so the wipes are visible regardless of step
-    # ordering.
+    # Move aside the envs requested for rebuild, plus every required env
+    # that fails the presence check, before that check decides whether
+    # to add an install step. The second case matters because
+    # get_or_create_env only judges whether python boots, and would
+    # reuse a base env that lost its exiftool. retire_env raises when it
+    # cannot move an env, which ends the install with that message and
+    # leaves the env as it was.
     for env_name in force_envs:
-        wipe_path = em.envs_dir / f"env-{env_name}"
-        if wipe_path.exists():
-            logger.info(
-                f"Force-rebuild: wiping existing env at {wipe_path}"
-            )
-            try:
-                em._safe_rmtree(wipe_path)
-            except Exception as e:
-                logger.error(
-                    f"Failed to wipe env {env_name} for rebuild: {e}",
-                    exc_info=True,
-                )
+        retire_path = em.envs_dir / f"env-{env_name}"
+        if retire_path.exists():
+            logger.info(f"Force-rebuild: replacing env at {retire_path}")
+            em.retire_env(retire_path)
+    for env_name in _required_envs(data_type):
+        env_path = _env_path(env_name)
+        if env_path.exists() and not _env_present(env_name):
+            logger.info(f"Replacing incomplete env at {env_path}")
+            em.retire_env(env_path)
 
     # Each step: (label_for_logs, fn(progress_cb)). Skipped if already
     # complete so retries go straight to whatever's missing.
@@ -431,6 +453,16 @@ def _install_env_blocking(
         # failure.
         logger.error(f"Setup install failed: {e}", exc_info=True)
         _install_state.finish(error=str(e), error_kind="tls_revocation")
+    except NonAsciiPathError as e:
+        # The message names the character and the variable to set; the
+        # wizard links to the page that says how to set one.
+        logger.error(f"Setup install failed: {e}", exc_info=True)
+        _install_state.finish(error=str(e), error_kind="non_ascii_path")
+    except NetworkBlockedError as e:
+        # Same idea: the message names the blocked host and the wizard
+        # points at the help section for it, instead of inviting retries.
+        logger.error(f"Setup install failed: {e}", exc_info=True)
+        _install_state.finish(error=str(e), error_kind="network_blocked")
     except Exception as e:
         logger.error(f"Setup install failed: {e}", exc_info=True)
         _install_state.finish(error=str(e))
@@ -612,7 +644,7 @@ def _legacy_disk_hint() -> str:
 # Items wiped inline on POST /reset. None of these conflict with the
 # running backend process: even if a worker is mid-write into a log or
 # env, we're about to shut down anyway.
-_WIPE_DIRS = ("logs", "envs", "models", "bin", "thumbnails", "crash-dumps")
+_WIPE_DIRS = ("logs", "envs", "models", "bin", "mamba", "thumbnails", "crash-dumps")
 # The licence acceptance goes too: reset means a fresh install, and a
 # fresh install asks again (app/ml/agpl_acceptance.py).
 _WIPE_FILES = (".last-shutdown-clean", ".last-launch-status.json", AGPL_MARKER_FILENAME)

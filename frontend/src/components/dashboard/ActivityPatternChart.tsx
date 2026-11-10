@@ -5,24 +5,23 @@
  * a circle with hour 0 at the top, color-coded by time of day.
  * Hovering over any bar snaps to the nearest hour and shows the
  * count in the center. Counts are normalized to "per 100 trap
- * nights" when the parent supplies a trapNights prop.
+ * nights" when the parent supplies a trapNights prop. What it counts
+ * comes from the page as one `scope` (taxon, sites, dates).
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
-import { DashboardAboutPopover } from "./DashboardAboutPopover";
+import { Link } from "react-router-dom";
+import { Card, CardContent } from "../ui/card";
+import { CARD_HOVER_PILL } from "./card-hover-pill";
+import { DashboardCardHeader } from "./DashboardCardHeader";
 import { MissingDatesIcon } from "./MissingDatesWarning";
-import { statisticsApi, type SunBands } from "../../api/statistics";
-import { resolveSpeciesName } from "../../lib/species-name-mode";
-import type { DateRange } from "./index";
+import {
+  statisticsApi,
+  type SunBands,
+  type DashboardScope,
+} from "../../api/statistics";
+import { overlapsSunBand } from "../../lib/sun-bands";
 
 // Time-of-day color bands. Fed by project-specific sunrise/sunset
 // (astral, backend) so the dawn/day/dusk/night boundaries reflect
@@ -49,19 +48,11 @@ const DAY_COLOR = "#71b7ba";
 function getHourColor(hour: number, sunBands: SunBands | null): string {
   if (!sunBands) return DAY_COLOR;
   const { dawn, sunrise, sunset, dusk } = sunBands;
-  const start = hour;
-  const end = hour + 1;
+  const touches = (start: number, end: number) =>
+    overlapsSunBand(hour, hour + 1, start, end);
 
-  // Overlap with either twilight window?
-  const overlapsMorningTwilight = start < sunrise && end > dawn;
-  const overlapsEveningTwilight = start < dusk && end > sunset;
-  if (overlapsMorningTwilight || overlapsEveningTwilight) {
-    return TWILIGHT_COLOR;
-  }
-
-  // Overlap with the daylight window?
-  if (start < sunset && end > sunrise) return DAY_COLOR;
-
+  if (touches(dawn, sunrise) || touches(sunset, dusk)) return TWILIGHT_COLOR;
+  if (touches(sunrise, sunset)) return DAY_COLOR;
   return NIGHT_COLOR;
 }
 
@@ -128,7 +119,7 @@ function ActivityClock({ hours, normalized, sunBands }: ActivityClockProps) {
         cy={cy}
         r={innerR + maxBarLength * 0.5}
         fill="none"
-        stroke="rgba(0, 0, 0, 0.08)"
+        stroke="var(--chart-grid)"
         strokeWidth={0.5}
       />
       <circle
@@ -136,7 +127,7 @@ function ActivityClock({ hours, normalized, sunBands }: ActivityClockProps) {
         cy={cy}
         r={outerR}
         fill="none"
-        stroke="rgba(0, 0, 0, 0.08)"
+        stroke="var(--chart-grid)"
         strokeWidth={0.5}
       />
 
@@ -232,68 +223,23 @@ function ActivityClock({ hours, normalized, sunBands }: ActivityClockProps) {
 }
 
 interface ActivityPatternChartProps {
-  dateRange: DateRange;
   projectId: string;
-  siteIds?: string;
+  scope: DashboardScope;
+  /** Trap nights in the same scope, so bars read per 100 nights. */
   trapNights?: number;
-  taxonomicRank?: string;
+  /** Activity overlap with the same sites and dates. */
+  compareHref: string;
 }
 
 export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
-  dateRange,
   projectId,
-  siteIds,
+  scope,
   trapNights,
-  taxonomicRank,
+  compareHref,
 }) => {
-  const [selectedSpecies, setSelectedSpecies] = useState("all");
-
-  // Fetch species list for the selector
-  const { data: speciesList } = useQuery({
-    queryKey: [
-      "statistics",
-      "species",
-      projectId,
-      siteIds,
-      dateRange.startDate,
-      dateRange.endDate,
-      taxonomicRank,
-    ],
-    queryFn: () =>
-      statisticsApi.getSpeciesDistribution(
-        projectId,
-        siteIds,
-        dateRange.startDate || undefined,
-        dateRange.endDate || undefined,
-        taxonomicRank,
-      ),
-  });
-
-  // Reset species selection when species list changes
-  useEffect(() => {
-    setSelectedSpecies("all");
-  }, [speciesList]);
-
-  // Fetch activity pattern data
   const { data: activityData, isLoading } = useQuery({
-    queryKey: [
-      "statistics",
-      "activity-pattern",
-      projectId,
-      selectedSpecies,
-      siteIds,
-      dateRange.startDate,
-      dateRange.endDate,
-      taxonomicRank,
-    ],
-    queryFn: () =>
-      statisticsApi.getActivityPattern(projectId, {
-        species: selectedSpecies === "all" ? undefined : selectedSpecies,
-        siteIds,
-        dateFrom: dateRange.startDate || undefined,
-        dateTo: dateRange.endDate || undefined,
-        taxonomicRank,
-      }),
+    queryKey: ["statistics", "activity-pattern", projectId, scope],
+    queryFn: () => statisticsApi.getActivityPattern(projectId, scope),
   });
 
   const normalized = !!trapNights && trapNights > 0;
@@ -317,51 +263,35 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
   const sunBands: SunBands | null = activityData?.sun_bands ?? null;
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <div className="flex items-center gap-1.5">
-              <CardTitle className="text-lg">Activity pattern</CardTitle>
-              <MissingDatesIcon projectId={projectId} />
-              <DashboardAboutPopover>
-                <p>
-                  Individuals observed by hour of day (each event's
-                  confirmed count, or the AI's count where not yet
-                  confirmed). Filter by species to compare taxa.
-                </p>
-                <p>
-                  The bands show night, twilight, and day from the site
-                  coordinates and timezone. They are hidden when no site
-                  has coordinates.
-                </p>
-              </DashboardAboutPopover>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Observations by hour of day
+    <Card className="group">
+      <DashboardCardHeader
+        title="Activity pattern"
+        caption="Observations by hour of day"
+        marker={<MissingDatesIcon projectId={projectId} />}
+        actions={
+          <Link to={compareHref} className={CARD_HOVER_PILL}>
+            Compare species
+          </Link>
+        }
+        info={
+          <>
+            <p>
+              Observations by hour of day (each event's confirmed
+              count, or the AI's count where not yet confirmed) of
+              the labels, sites and dates chosen above.
             </p>
-          </div>
-          <Select value={selectedSpecies} onValueChange={setSelectedSpecies}>
-            <SelectTrigger
-              aria-label="Filter by species"
-              className="w-32 h-9 text-sm [&>span]:truncate"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="end">
-              <SelectItem value="all">All</SelectItem>
-              {speciesList?.map((s) => (
-                <SelectItem key={s.species} value={s.species}>
-                  {resolveSpeciesName({
-                    scientific_name: s.species,
-                    common_name: s.common_name,
-                  })}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </CardHeader>
+            <p>
+              The bands show night, twilight, and day from the site
+              coordinates and timezone. They are hidden when no site
+              has coordinates.
+            </p>
+            <p>
+              To set species side by side, use Compare species. It opens
+              Activity overlap with the same sites and dates.
+            </p>
+          </>
+        }
+      />
       <CardContent>
         <div className="aspect-square w-full max-h-80 mx-auto">
           {isLoading ? (

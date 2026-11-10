@@ -171,13 +171,13 @@ interface LogTableProps {
 function severityBadge(severity: Severity) {
   if (severity === "error") {
     return (
-      <span className="inline-flex items-center rounded-md bg-red-100 text-red-700 px-1.5 py-0.5 text-[11px] font-medium">
+      <span className="inline-flex items-center rounded-md bg-destructive-subtle text-destructive-ink px-1.5 py-0.5 text-[11px] font-medium">
         Error
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center rounded-md bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[11px] font-medium">
+    <span className="inline-flex items-center rounded-md bg-warning-subtle text-warning-ink px-1.5 py-0.5 text-[11px] font-medium">
       Warning
     </span>
   );
@@ -192,19 +192,19 @@ function LogTable({ rows }: LogTableProps) {
   };
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white">
-      <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-gray-200">
-        <p className="text-sm font-medium text-gray-900">
+    <div className="rounded-lg border border-border bg-card">
+      <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border">
+        <p className="text-sm font-medium text-foreground">
           {rows.length} issue{rows.length === 1 ? "" : "s"}
-          <span className="text-xs font-normal text-gray-500 ml-2">
+          <span className="text-xs font-normal text-muted-foreground ml-2">
             {warningCount > 0 && (
-              <span className="text-amber-700">
+              <span className="text-warning-ink">
                 {warningCount} warning{warningCount === 1 ? "" : "s"}
               </span>
             )}
             {warningCount > 0 && errorCount > 0 && <span> · </span>}
             {errorCount > 0 && (
-              <span className="text-red-700">
+              <span className="text-destructive-ink">
                 {errorCount} error{errorCount === 1 ? "" : "s"}
               </span>
             )}
@@ -222,7 +222,7 @@ function LogTable({ rows }: LogTableProps) {
 
       <div className="scroll-shade max-h-64 overflow-auto">
         <table className="w-full table-fixed text-left text-xs">
-          <thead className="bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500 sticky top-0">
+          <thead className="bg-muted text-[11px] uppercase tracking-wide text-muted-foreground sticky top-0">
             <tr>
               <th className="w-[92px] px-3 py-2 font-medium">Severity</th>
               <th className="w-[150px] px-3 py-2 font-medium">Type</th>
@@ -234,13 +234,13 @@ function LogTable({ rows }: LogTableProps) {
             {rows.map((r, i) => (
               <tr key={i}>
                 <td className="px-3 py-2">{severityBadge(r.severity)}</td>
-                <td className="truncate px-3 py-2 text-gray-900" title={r.typeLabel}>
+                <td className="truncate px-3 py-2 text-foreground" title={r.typeLabel}>
                   {r.typeLabel}
                 </td>
-                <td className="truncate px-3 py-2 text-gray-700" title={r.deployment}>
+                <td className="truncate px-3 py-2 text-muted-foreground" title={r.deployment}>
                   {r.deployment}
                 </td>
-                <td className="px-3 py-2 text-gray-700 font-mono" title={r.detail}>
+                <td className="px-3 py-2 text-muted-foreground font-mono" title={r.detail}>
                   {/* Which end to keep depends on what the row is about.
                       A warning names a file, so truncate from the start
                       and let the filename survive. An error is an
@@ -567,8 +567,8 @@ export function RunQueueModal({
             const iconColor = failureCount > 0
               ? '#882000'
               : warningCount > 0
-                ? '#b45309'
-                : '#156065';
+                ? 'var(--warning-ink)'
+                : 'var(--primary-ink)';
 
             return (
               <div className="flex items-start gap-3">
@@ -620,7 +620,7 @@ export function RunQueueModal({
               }
             }
             return (
-              <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+              <div className="flex items-start gap-3 rounded-md border border-warning-border bg-warning-subtle px-3 py-2 text-amber-900 dark:text-warning-ink">
                 <Ban className="h-5 w-5 shrink-0 mt-0.5" />
                 <div className="text-sm font-medium">
                   {parts.join('. ')}{parts[parts.length - 1]?.endsWith('.') ? '' : '.'}
@@ -762,7 +762,7 @@ export function RunQueueModal({
               )}
 
               {isCancelling && (
-                <div className="flex items-center gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+                <div className="flex items-center gap-3 rounded-md border border-warning-border bg-warning-subtle px-3 py-2 text-amber-900 dark:text-warning-ink">
                   <Loader2 className="h-4 w-4 animate-spin shrink-0" />
                   <span className="text-sm font-medium">
                     {mode === "folder-run"
@@ -784,8 +784,8 @@ export function RunQueueModal({
               )}
 
               {isProcessing && !isConnected && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                  <p className="text-xs text-yellow-800">
+                <div className="bg-warning-subtle border border-warning-border rounded-lg p-3">
+                  <p className="text-xs text-warning-ink">
                     <strong>Connecting to progress updates...</strong>
                   </p>
                 </div>

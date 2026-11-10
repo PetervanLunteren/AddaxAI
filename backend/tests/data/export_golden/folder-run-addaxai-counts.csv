@@ -1,0 +1,4 @@
+event_id,event_start,event_end,category,classification_label,taxon_class,taxon_order,taxon_family,taxon_genus,taxon_species,taxon_variant,scientific_name,common_name,count,ai_count,human_count,max_n_file_id,max_n_frame,max_n_offset_seconds,max_n_time,first_arrival_time,sex,life_stage,behavior,event_notes,is_confirmed
+ev-fox-0000,2024-06-03T21:15:00+02:00,2024-06-03T21:15:00+02:00,animal,red fox,mammalia,carnivora,canidae,vulpes,vulpes,,Vulpes vulpes,Red fox,2,1,2,,,,,2024-06-03T21:15:00+02:00,female,,,two foxes,TRUE
+ev-fox-0000,2024-06-03T21:15:00+02:00,2024-06-03T21:15:00+02:00,person,,,,,,,,,,1,1,,,,,,,,,,two foxes,TRUE
+ev-walk-0000,2024-06-07T21:15:00+02:00,2024-06-07T21:15:00+02:00,animal,red fox,mammalia,carnivora,canidae,vulpes,vulpes,,Vulpes vulpes,Red fox,2,2,,,,,,2024-06-07T21:15:00+02:00,,,,,FALSE

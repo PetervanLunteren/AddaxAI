@@ -2,23 +2,20 @@
  * Small single-marker Leaflet preview for the Site info sheet.
  *
  * Non-interactive by default (no scroll-wheel zoom, no double-click
- * zoom), just enough to show where the site is. Reuses the same
- * positron base layer the Map page uses so the visual style matches.
+ * zoom), just enough to show where the site is. Uses the same
+ * OpenFreeMap street style as the Map page so the visual style
+ * matches, with the same OSM raster fallback without WebGL2.
  */
 
-import { CircleMarker, MapContainer, TileLayer } from "react-leaflet";
+import { CircleMarker, MapContainer } from "react-leaflet";
+
+import { StreetBaseLayer } from "../map/StreetBaseLayer";
 
 interface SiteLocationMapProps {
   latitude: number;
   longitude: number;
   zoom?: number;
 }
-
-const POSITRON = {
-  url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-  attribution:
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-};
 
 export function SiteLocationMap({
   latitude,
@@ -30,12 +27,13 @@ export function SiteLocationMap({
       <MapContainer
         center={[latitude, longitude]}
         zoom={zoom}
+        maxZoom={18}
         style={{ height: "100%", width: "100%" }}
         scrollWheelZoom={false}
         doubleClickZoom={false}
         zoomControl={false}
       >
-        <TileLayer url={POSITRON.url} attribution={POSITRON.attribution} />
+        <StreetBaseLayer />
         <CircleMarker
           center={[latitude, longitude]}
           radius={7}

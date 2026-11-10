@@ -33,33 +33,6 @@ from app.models import Deployment, File, Site
 NO_SITE_LABEL = "(no site)"
 
 
-def _collapse_rollover_chains(
-    intervals: list[tuple[date, date]],
-) -> list[tuple[date, date]]:
-    """Merge adjacent intervals within a single deployment that share an
-    exact boundary day (one's `end` equals the next one's `start`). This
-    is the Reconyx / Bushnell rollover case: `100MEDIA.end` == `101MEDIA.start`
-    is one camera session, not two. Used for both the Gantt bars and the
-    concurrent-cameras sweep, so the bar + tooltip show the whole chain
-    as one continuous interval and the sweep does not spike on the shared
-    day. Genuinely parallel subfolders (same start and same end, or
-    multi-day partial overlap) do NOT match the rule and stay separate.
-
-    This is a timeline-presentation concern. `trap_nights.py` still
-    returns one interval per subfolder; the collapse happens here."""
-    if not intervals:
-        return []
-    ordered = sorted(intervals)
-    out = [ordered[0]]
-    for start, end in ordered[1:]:
-        last_start, last_end = out[-1]
-        if start == last_end:
-            out[-1] = (last_start, end)
-        else:
-            out.append((start, end))
-    return out
-
-
 def _concurrent_sweep(
     intervals: list[tuple[date, date]],
 ) -> list[ConcurrentPoint]:
@@ -167,8 +140,15 @@ def get_deployment_timeline(
     site_ids: list[str] | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    include_heatmap: bool = True,
 ) -> TimelineResponse:
-    """Build the Insights → Deployment timeline payload for a project."""
+    """Build the Insights → Deployment timeline payload for a project.
+
+    `include_heatmap=False` skips the per-site daily file counts, by far
+    the largest part of the payload (6.6 of 6.7 MB on a 369k-file
+    project). The dashboard's survey-effort calendar only needs the
+    cameras-running series.
+    """
     query = select(Deployment).where(Deployment.project_id == project_id)
     site_clause = site_ids_filter(site_ids)
     if site_clause is not None:
@@ -195,12 +175,16 @@ def get_deployment_timeline(
     intervals_by_dep = compute_intervals_for_deployments(
         db, deployment_ids, clip_start=date_from, clip_end=date_to
     )
-    heatmap = _daily_file_counts(
-        db,
-        deployment_ids,
-        {d.id: d.site_id for d in deployments},
-        date_from,
-        date_to,
+    heatmap = (
+        _daily_file_counts(
+            db,
+            deployment_ids,
+            {d.id: d.site_id for d in deployments},
+            date_from,
+            date_to,
+        )
+        if include_heatmap
+        else []
     )
 
     # One query for file counts per deployment (tooltip metric).
@@ -229,14 +213,11 @@ def get_deployment_timeline(
     all_intervals: list[tuple[date, date]] = []
 
     for dep in deployments:
-        # Collapse rollover chains up-front so the Gantt bars, tooltips,
-        # sweep, and metrics all read the same continuous-capture intervals.
-        # Per-subfolder granularity is abandoned for rollover chains (one
-        # camera session, one bar). Parallel / multi-day-overlap subfolders
-        # stay separate.
-        dep_intervals = _collapse_rollover_chains(
-            intervals_by_dep.get(dep.id, [])
-        )
+        # One bar per camera session: a rollover chain is one interval
+        # already (trap_nights.py), parallel subfolders stay separate, and
+        # the bars, tooltips, sweep and metrics read the same intervals
+        # the dashboard sums.
+        dep_intervals = intervals_by_dep.get(dep.id, [])
         tn_intervals = [
             TrapNightInterval(
                 start=s, end=e, trap_nights=(e - s).days + 1

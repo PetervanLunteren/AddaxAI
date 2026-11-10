@@ -285,3 +285,44 @@ def test_worker_accepts_an_empty_scoring_map_when_there_are_no_videos(tmp_path):
     correct and must not trip either guard."""
     out = _run_worker(tmp_path, {"items": [], "scoring_detections": {}})
     assert out["best_frames"] == {}
+
+
+def test_worker_reports_a_crop_on_an_unreachable_frame_as_a_failure(tmp_path, make_video):
+    """The detector can pin a crop to a frame the worker's walk never
+    yields: a container that advertises more frames than it holds, or a
+    detector that counted frames with a different decoder. Such a crop
+    must come back as a failure the parent can read, never as a bare
+    null. Four beta runs died on exactly that null (2026-10-29)."""
+    video = tmp_path / "short.mp4"
+    make_video(video, total_frames=10, fps=10)
+    frames_dir = tmp_path / "frames" / "short.mp4"
+
+    def item(frame_number):
+        return {
+            "source": "video",
+            "video_path": str(video),
+            "frame_number": frame_number,
+            "bbox": [0.3, 0.3, 0.3, 0.3],
+            "detection_conf": 0.55,
+        }
+
+    payload = {
+        "items": [item(4), item(999)],
+        "best_frame_outputs": {str(video): str(frames_dir)},
+        "scoring_detections": {
+            str(video): [
+                {"frame_number": 4, "conf": 0.55, "bbox": [0.3, 0.3, 0.3, 0.3]},
+                {"frame_number": 999, "conf": 0.55, "bbox": [0.3, 0.3, 0.3, 0.3]},
+            ]
+        },
+    }
+
+    out = _run_worker(tmp_path, payload)
+
+    reachable, unreachable = out["results"]
+    assert reachable["success"] is True
+    assert unreachable["success"] is False
+    assert "Frame 999 of" in unreachable["error"]
+    assert None not in out["results"]
+    # The clip itself was fine, so it still gets its thumbnail.
+    assert str(video) in out["best_frames"]

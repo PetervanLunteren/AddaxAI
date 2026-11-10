@@ -25,6 +25,7 @@ One file holding every detection, label, correction and confirmed count.
 |---|---|
 | macOS and Linux | `~/AddaxAI/` |
 | Windows | `%USERPROFILE%\AddaxAI\` |
+| Windows, installed for one user, user name with a character such as ñ or é | `C:\AddaxAI-data\` |
 
 This is the default location. The folder [can live somewhere else](../help/locked-down-computers.mdx) if your organization blocks programs in user folders. The app opens this folder for you from File > Open user data folder. The parts worth knowing about:
 
@@ -48,14 +49,20 @@ If you move, rename or unplug a folder of photos, the app can no longer find tho
 
 The folder itself can move, but what is inside it has to stay the same. AddaxAI looks for each photo at its old place inside the folder, so renaming subfolders or shuffling photos between them means it can no longer match them up. If that has happened, delete the deployment and add the folder again.
 
+Moving photos to another disk on the same computer, like an external drive to free up space, needs nothing more than this: move the folders and reconnect. The backup and restore steps below are only for moving to another computer.
+
 <img src="/img/reconnect-folders.webp" alt="Two messages about missing folders. The first suggests a renamed folder and asks you to confirm, the second offers a button to choose the folder yourself" style={{maxWidth: '620px', width: '100%', display: 'block'}} />
 
 ## Moving to another computer
+
+To move one project, export it as an [AddaxAI bundle](../guides/work-as-a-team.mdx) with the photos included and import it on the other computer. Nothing needs reconnecting.
+
+To move everything at once, every project and the backups folder:
 
 1. Copy the photos to the new machine, or to an external drive. The `.addaxai` folders sit inside them, so they travel along and you do not have to worry about those.
 
 2. Back up the database with File > Back up database, and save it to the same drive. This writes one complete file, which copying `addaxai.db` by hand does not. See [back up and restore](../help/back-up-and-restore.md).
 
-3. On the new machine, use File > Restore from backup and pick that file. The app restarts with your work in place. Your models do not travel with the backup, so the first analysis downloads them again. Do that while you still have a good connection.
+3. On the new machine, use File > Restore from backup and pick that file. The app restarts with your work in place. This replaces whatever database the new machine had. Your models do not travel with the backup, so the first analysis downloads them again. Do that while you still have a good connection.
 
 4. Open your project. The paths have changed, so the deployments come up as missing. [Reconnect them](#when-a-folder-moves).

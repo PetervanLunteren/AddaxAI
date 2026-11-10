@@ -26,7 +26,10 @@ export interface AnalysisSettingsValues {
   independence_interval: number;
 }
 
-function Row({
+/** One settings row: label and caption on the left, the control on the
+ *  right. Exported so the folder-run panel's own rows (threshold, species
+ *  selection) share the layout instead of copying the markup. */
+export function SettingsRow({
   label,
   caption,
   children,
@@ -74,7 +77,7 @@ export function AnalysisSettingsRows({
   return (
     <>
       {showClassifierFields && (
-        <Row
+        <SettingsRow
           label="Smoothing"
           caption={withNote(SETTING_CAPTIONS.smoothing, smoothingNote)}
         >
@@ -88,10 +91,10 @@ export function AnalysisSettingsRows({
             }}
             options={SMOOTHING_LEVELS}
           />
-        </Row>
+        </SettingsRow>
       )}
 
-      <Row
+      <SettingsRow
         label="Independence interval"
         caption={withNote(SETTING_CAPTIONS.independenceInterval, intervalNote)}
       >
@@ -99,10 +102,10 @@ export function AnalysisSettingsRows({
           value={values.independence_interval}
           onChange={onIntervalChange}
         />
-      </Row>
+      </SettingsRow>
 
       {showClassifierFields && (
-        <Row
+        <SettingsRow
           label="Taxonomic rollup"
           caption={withNote(SETTING_CAPTIONS.taxonomicRollup, rollupNote)}
         >
@@ -110,7 +113,7 @@ export function AnalysisSettingsRows({
             checked={values.taxonomic_rollup}
             onCheckedChange={onRollupChange}
           />
-        </Row>
+        </SettingsRow>
       )}
     </>
   );

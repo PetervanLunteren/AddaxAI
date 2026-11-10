@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.logging_config import get_logger
-from app.ml.label_exclusion import is_wildlife_category
+from app.ml.label_exclusion import is_a_real_detection, is_wildlife_category
 from app.models import Deployment, Detection, File, Project
 
 logger = get_logger(__name__)
@@ -125,7 +125,9 @@ def _auto_select_for_project(
     thumbnails_dir: Path,
 ) -> None:
     """Pick a random image from the top 10% detections."""
-    # Get the 10 highest-confidence animal detections
+    # The 10 highest-confidence animal detections. A rejected box (the
+    # model's or a person's "false detection") is left out: a confident
+    # stump must not become the project's cover photo.
     candidates = (
         db.query(Detection, File)
         .join(File, Detection.file_id == File.id)
@@ -133,6 +135,7 @@ def _auto_select_for_project(
         .filter(
             Deployment.project_id == project.id,
             is_wildlife_category(Detection.category),
+            is_a_real_detection(),
         )
         .order_by(desc(Detection.confidence))
         .limit(10)

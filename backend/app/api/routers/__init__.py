@@ -1,6 +1,7 @@
 """API routers."""
 
 from .backup import router as backup_router
+from .calibration import router as calibration_router
 from .deployment_queue import router as deployment_queue_router
 from .deployments import router as deployments_router
 from .detections import router as detections_router
@@ -12,15 +13,18 @@ from .jobs import router as jobs_router
 from .labels import router as labels_router
 from .logs import router as logs_router
 from .ml_models import router as ml_models_router
+from .packages import router as packages_router
 from .projects import router as projects_router
 from .setup import router as setup_router
 from .sites import router as sites_router
 from .statistics import router as statistics_router
 from .tracks import router as tracks_router
+from .undo import router as undo_router
 from .websocket import router as websocket_router
 
 __all__ = [
     "backup_router",
+    "calibration_router",
     "deployment_queue_router",
     "deployments_router",
     "detections_router",
@@ -31,11 +35,13 @@ __all__ = [
     "jobs_router",
     "logs_router",
     "ml_models_router",
+    "packages_router",
     "labels_router",
     "projects_router",
     "setup_router",
     "sites_router",
     "statistics_router",
     "tracks_router",
+    "undo_router",
     "websocket_router",
 ]

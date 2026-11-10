@@ -20,14 +20,14 @@ Version 6 is not maintained. New models and bug fixes only go into the latest ve
 
 ## Version 6 and version 7 are separate
 
-Version 6 and version 7 do not share data, and they install in different places. If you prefer version 6 over version 7, you'll need to uninstall version 7 manually. The steps are [here](../start-here/install.mdx).
+Version 6 and version 7 do not share data, and they install in different places. If you prefer version 6 over version 7, you'll need to uninstall version 7 manually. The steps are [here](../start-here/install.mdx). The other way round, removing version 6 from a computer that runs version 7, is under [start over with a clean install](faq.mdx#how-do-i-start-over-with-a-clean-install).
 
 ## Windows
 
 1. Download [windows-installer.exe](https://github.com/PetervanLunteren/AddaxAI/releases/download/v6.37/windows-installer.exe).
 2. Run it. Windows may warn that the publisher is unknown. Choose More info, then Run anyway.
 
-If the installer is blocked on your machine, for example by antivirus or a company policy, you can [install version 6 manually](https://github.com/PetervanLunteren/AddaxAI/blob/v6/install_files/windows/manual-install.md) from a ZIP file. If the app later fails to download its analysis environments, you can [download those manually](https://github.com/PetervanLunteren/AddaxAI/blob/v6/markdown/manual-download-environments.md) as well.
+If the installer is blocked on your machine, for example by antivirus or a company policy, you can [install version 6 manually](https://github.com/PetervanLunteren/AddaxAI/blob/v6/install_files/windows/manual-install.md) from a ZIP file. If the app later fails to download its analysis environments, you can [download those manually](https://github.com/PetervanLunteren/AddaxAI/blob/v6/markdown/manual-download-environments.md) as well. The same goes for a model that fails to download: the [manual model download page](https://github.com/PetervanLunteren/AddaxAI/blob/v6/markdown/manual-download-weights.md) lists every model with its file and folder.
 
 ## macOS
 

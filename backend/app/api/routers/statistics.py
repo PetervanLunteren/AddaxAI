@@ -13,8 +13,11 @@ from app.api.schemas.performance import PerformanceResponse
 from app.api.schemas.statistics import (
     ActivityOverlapResponse,
     ActivityPatternResponse,
+    AnimalPhoto,
     CaptureDateCoverage,
     DashboardOverview,
+    DashboardSummary,
+    Demographics,
     DetectionCategories,
     DetectionTrendPoint,
     ObservationRateMapResponse,
@@ -32,6 +35,24 @@ def _parse_site_ids(site_ids: str | None) -> list[str] | None:
     if not site_ids:
         return None
     return [s.strip() for s in site_ids.split(",") if s.strip()]
+
+
+def _parse_taxon_ids(label_taxonomy_ids: str | None) -> list[str] | None:
+    """The dashboard label filter: absent means every label, a list narrows.
+
+    A param that is present but holds no ids is refused rather than read
+    as "all": a taxon whose ids resolved to nothing must never widen
+    every card to the whole project without anyone noticing.
+    """
+    if label_taxonomy_ids is None:
+        return None
+    ids = _parse_site_ids(label_taxonomy_ids)
+    if not ids:
+        raise HTTPException(
+            status_code=422,
+            detail="label_taxonomy_ids is present but holds no ids",
+        )
+    return ids
 
 
 def _valid_date(value: str | None, field: str) -> str | None:
@@ -79,8 +100,8 @@ def species_distribution(
     wildlife_only: bool = Query(False),
     db: Session = Depends(get_db),
 ) -> list[SpeciesCount]:
-    # Returns every observed species. The dashboard trims to the top 10
-    # client-side; the chart species selectors use the full list.
+    # Returns every observed species. The dashboard bars trim to the top
+    # 10 client-side; the Explore and activity overlap pickers list them all.
     return stats_crud.get_species_distribution(
         db, project_id, _parse_site_ids(site_ids),
         _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
@@ -91,17 +112,16 @@ def species_distribution(
 @router.get("/activity-pattern", response_model=ActivityPatternResponse)
 def activity_pattern(
     project_id: str = Query(...),
-    species: str | None = Query(None),
+    label_taxonomy_ids: str | None = Query(None),
     site_ids: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
-    taxonomic_rank: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> ActivityPatternResponse:
     return stats_crud.get_activity_pattern(
-        db, project_id, species, _parse_site_ids(site_ids),
+        db, project_id, _parse_taxon_ids(label_taxonomy_ids),
+        _parse_site_ids(site_ids),
         _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
-        taxonomic_rank,
     )
 
 
@@ -156,17 +176,70 @@ def activity_overlap(
 @router.get("/detection-trend", response_model=list[DetectionTrendPoint])
 def detection_trend(
     project_id: str = Query(...),
-    species: str | None = Query(None),
+    label_taxonomy_ids: str | None = Query(None),
     site_ids: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
-    taxonomic_rank: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> list[DetectionTrendPoint]:
     return stats_crud.get_detection_trend(
-        db, project_id, species, _parse_site_ids(site_ids),
+        db, project_id, _parse_taxon_ids(label_taxonomy_ids),
+        _parse_site_ids(site_ids),
         _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
-        taxonomic_rank,
+    )
+
+
+@router.get("/summary", response_model=DashboardSummary)
+def dashboard_summary(
+    project_id: str = Query(...),
+    label_taxonomy_ids: str | None = Query(None),
+    site_ids: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> DashboardSummary:
+    """Headline figures for the dashboard tiles."""
+    return stats_crud.get_dashboard_summary(
+        db, project_id, _parse_taxon_ids(label_taxonomy_ids),
+        _parse_site_ids(site_ids),
+        _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
+    )
+
+
+@router.get("/demographics", response_model=Demographics)
+def demographics(
+    project_id: str = Query(...),
+    label_taxonomy_ids: str | None = Query(None),
+    site_ids: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> Demographics:
+    """Observations split by sex, life stage and behaviour."""
+    return stats_crud.get_demographics(
+        db, project_id, _parse_taxon_ids(label_taxonomy_ids),
+        _parse_site_ids(site_ids),
+        _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
+    )
+
+
+@router.get("/animal-photos", response_model=list[AnimalPhoto])
+def animal_photos(
+    project_id: str = Query(...),
+    limit: int = Query(..., ge=1, le=12),
+    label_taxonomy_ids: str | None = Query(None),
+    site_ids: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    wildlife_only: bool = Query(False),
+    db: Session = Depends(get_db),
+) -> list[AnimalPhoto]:
+    """Random confident detections for the dashboard photos."""
+    return stats_crud.get_animal_photos(
+        db, project_id, limit, _parse_taxon_ids(label_taxonomy_ids),
+        _parse_site_ids(site_ids),
+        _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
+        wildlife_only,
     )
 
 
@@ -227,6 +300,9 @@ def deployment_timeline(
     site_ids: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
+    heatmap: bool = Query(
+        True, description="Include the per-site daily file counts"
+    ),
     db: Session = Depends(get_db),
 ) -> TimelineResponse:
     """Deployment timeline payload for the Insights → Deployment timeline page."""
@@ -236,6 +312,7 @@ def deployment_timeline(
         site_ids=_parse_site_ids(site_ids),
         date_from=_parse_date(date_from, "date_from"),
         date_to=_parse_date(date_to, "date_to"),
+        include_heatmap=heatmap,
     )
 
 

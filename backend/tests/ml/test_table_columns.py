@@ -8,7 +8,6 @@ prove they call it.
 
 from app.ml.postprocessing_outputs._table_columns import (
     OMITTED_COLUMNS,
-    folder_run_columns,
     folder_run_table,
 )
 
@@ -20,11 +19,18 @@ def test_drops_deployment_id_and_notes():
     out_headers, out_rows = folder_run_table(headers, rows)
 
     assert out_headers == ["file_id", "event_id", "file_type"]
-    assert out_rows == [["f1", "e1", "image"]]
+    assert list(out_rows) == [["f1", "e1", "image"]]
 
 
 def test_omitted_columns_is_the_documented_set():
-    assert OMITTED_COLUMNS == {"deployment_id", "notes"}
+    assert OMITTED_COLUMNS == {
+        # The site and deployment part of the context block: a folder run
+        # has no site and one synthetic deployment.
+        "site_name", "latitude", "longitude", "site_tags",
+        "deployment_id", "deployment_start", "deployment_end", "deployment_tags",
+        "trap_nights",
+        "notes",
+    }
 
 
 def test_keeps_n_events_and_n_individuals():
@@ -36,7 +42,7 @@ def test_keeps_n_events_and_n_individuals():
     out_headers, out_rows = folder_run_table(headers, rows)
 
     assert out_headers == headers
-    assert out_rows == rows
+    assert list(out_rows) == rows
 
 
 def test_keeps_event_id():
@@ -48,7 +54,7 @@ def test_keeps_event_id():
     out_headers, out_rows = folder_run_table(headers, rows)
 
     assert out_headers == ["file_id", "event_id"]
-    assert out_rows == [["f1", "e1"]]
+    assert list(out_rows) == [["f1", "e1"]]
 
 
 def test_does_not_mutate_input_rows():
@@ -67,7 +73,7 @@ def test_table_without_omitted_columns_passes_through():
     out_headers, out_rows = folder_run_table(headers, rows)
 
     assert out_headers == headers
-    assert out_rows == rows
+    assert list(out_rows) == rows
 
 
 def test_preserves_column_order():
@@ -77,17 +83,4 @@ def test_preserves_column_order():
     out_headers, out_rows = folder_run_table(headers, rows)
 
     assert out_headers == ["a", "b", "c"]
-    assert out_rows == [[1, 3, 5]]
-
-
-def test_folder_run_columns_keeps_what_folder_run_table_keeps():
-    """The Frames table is trimmed row by row with these indices; they
-    must pick the same columns as the list form."""
-    headers = ["detection_id", "file_id", "deployment_id", "event_id", "is_representative"]
-    row = ["d1", "f1", "dep1", "e1", "TRUE"]
-
-    keep = folder_run_columns(headers)
-    out_headers, (out_row,) = folder_run_table(headers, [row])
-
-    assert [headers[i] for i in keep] == out_headers
-    assert [row[i] for i in keep] == out_row
+    assert list(out_rows) == [[1, 3, 5]]

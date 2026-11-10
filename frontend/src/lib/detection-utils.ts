@@ -42,8 +42,10 @@ export function getDetectionColor(detection: {
  * Labels that mean "nothing is here". Mirrors `NON_LABEL_CLASSES` in
  * `backend/app/ml/label_exclusion.py` — keep the two in sync.
  *
- * The ingest skip keeps the AI's own such calls out of the database, so
- * the only way one gets in is a person pressing X on the Labels page.
+ * Two writers produce the same row: a species model with such a class
+ * writes it at ingest with its own score, and a person writes it by
+ * pressing X on the Labels page. Either way the box is stored, shown as
+ * a card, and kept out of every count and off every canvas.
  */
 export const NON_LABEL_CLASSES = new Set([
   "bait",
@@ -167,7 +169,7 @@ export function getObservationBadge(type: string): {
     case "animal":
       return {
         label: "Animal",
-        className: "bg-green-100 text-green-800 border-green-200",
+        className: "bg-success-subtle text-success-ink border-success-border",
       };
     case "person":
       return {
@@ -178,17 +180,17 @@ export function getObservationBadge(type: string): {
     case "vehicle":
       return {
         label: "Vehicle",
-        className: "bg-blue-100 text-blue-800 border-blue-200",
+        className: "bg-info-subtle text-info-ink border-info-border",
       };
     case "blank":
       return {
         label: "Blank",
-        className: "bg-gray-100 text-gray-600 border-gray-200",
+        className: "bg-muted text-muted-foreground border-border",
       };
     case "unknown":
       return {
         label: "Unknown",
-        className: "bg-yellow-100 text-yellow-800 border-yellow-200",
+        className: "bg-warning-subtle text-warning-ink border-warning-border",
       };
     default:
       // A category from a detector we know nothing about ("shark",
@@ -196,7 +198,7 @@ export function getObservationBadge(type: string): {
       // would be a lie: the detector was perfectly clear about it.
       return {
         label: type ? type[0].toUpperCase() + type.slice(1) : "Unclassified",
-        className: "bg-gray-50 text-gray-500 border-gray-200",
+        className: "bg-muted text-muted-foreground border-border",
       };
   }
 }

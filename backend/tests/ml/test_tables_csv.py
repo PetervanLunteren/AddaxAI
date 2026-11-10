@@ -157,10 +157,18 @@ def test_folder_run_headers_omit_deployment_id_and_notes(db, tmp_path):
         (target / DETECTIONS_FILENAME).read_text().splitlines()[0].split(",")
     )
     for headers in (files_headers, det_headers):
-        assert "deployment_id" not in headers
-        assert "notes" not in headers
-        assert "file_id" in headers
-        assert "event_id" in headers
+        # The site and deployment part of the context block goes with
+        # deployment_id: a folder run has no site and one deployment.
+        for name in (
+            "deployment_id", "notes",
+            "site_name", "latitude", "longitude", "site_tags",
+            "deployment_start", "deployment_end", "deployment_tags",
+            "trap_nights",
+        ):
+            assert name not in headers
+        # The event part stays: it is what says which files share a burst.
+        for name in ("file_id", "event_id", "event_start", "event_end"):
+            assert name in headers
 
     assert "detection_id" in det_headers
     assert "relative_path" in files_headers
@@ -249,10 +257,7 @@ def test_projects_mode_builders_keep_every_column(db, tmp_path):
     )
 
     files_headers, _rows = export_crud.build_files_rows(db, project)
-    scoped = export_crud.get_scoped_detection_rows(db, project)
-    det_headers, _det_rows = export_crud.build_detection_rows(
-        db, project, scoped
-    )
+    det_headers, _det_rows = export_crud.build_detection_rows(db, project)
 
     assert "deployment_id" in files_headers
     assert "notes" in files_headers

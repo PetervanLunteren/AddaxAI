@@ -7,11 +7,21 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Ban, Check, CircleHelp, ImageOff, Tag, Play } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import {
+  Ban,
+  Check,
+  CircleHelp,
+  CircleMinus,
+  ImageOff,
+  Play,
+  SquareDashed,
+  Tag,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
+import { Kbd } from "../ui/kbd";
 import { fileQueryOptions } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { labelsApi } from "../../api/labels";
@@ -36,13 +46,15 @@ import {
   placePill,
   svgRoundedRectPath,
   PILL_PAD_Y, LINE_GAP,
-  FONT, TEXT_START_X,
+  FONT, OVERLAY_FONT_FAMILY, TEXT_START_X,
   BBOX_STROKE_WIDTH, BBOX_OPACITY, BBOX_CORNER_RADIUS,
   DIM_FILL, PILL_BG,
 } from "../../lib/detection-overlay";
 import type { DetectionSummary } from "../../api/types";
 import type { LabelOption } from "../../hooks/useLabelOptions";
+import { AnnotationCanvas } from "./AnnotationCanvas";
 import { LabelPicker } from "./LabelPicker";
+import type { UndoStack } from "./useUndoStack";
 import { ViewerToolRail } from "./ViewerToolRail";
 import { useFileTriage, useImageAdjust } from "./viewer-tools";
 import { downloadBlob } from "../../lib/download";
@@ -57,6 +69,10 @@ interface DetectionDetailModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onActionComplete: () => void;
+  /** The grid's undo history. This view runs its own API calls and
+   *  pushes their `before` here; drawing a box clears it. Cmd+Z is the
+   *  grid's handler, which stays live while this view is open. */
+  undo: UndoStack;
   onRelabel?: (detectionId: string, label: string, category: string) => void;
   /** False while a track is opened: a verdict from here stays on this
    *  frame instead of reaching the whole animal and its card, the same
@@ -85,11 +101,59 @@ interface DetectionDetailModalProps {
   labelOptionsLoading?: boolean;
 }
 
+/** The label pill on a box: category and confidence, species below when
+ *  there is one. One pill for the focused box and for every other box,
+ *  so what a box is reads the same everywhere; the dim overlay is what
+ *  sets the focused one apart, not a second style. */
+function BoxPill({
+  pill,
+  x,
+  y,
+  s,
+}: {
+  pill: ReturnType<typeof computePillLayout>;
+  x: number;
+  y: number;
+  s: number;
+}) {
+  return (
+    <g transform={`translate(${x}, ${y}) scale(${s})`}>
+      <rect
+        x={0} y={0}
+        width={pill.pillWidth} height={pill.pillHeight}
+        rx={BBOX_CORNER_RADIUS}
+        fill={PILL_BG}
+      />
+      <text
+        x={TEXT_START_X} y={PILL_PAD_Y}
+        fill="white"
+        fontSize={FONT}
+        fontFamily={OVERLAY_FONT_FAMILY}
+        dominantBaseline="hanging"
+      >
+        {pill.categoryText}
+      </text>
+      {pill.hasLabel && (
+        <text
+          x={TEXT_START_X} y={PILL_PAD_Y + FONT + LINE_GAP}
+          fill="white"
+          fontSize={FONT}
+          fontFamily={OVERLAY_FONT_FAMILY}
+          dominantBaseline="hanging"
+        >
+          {pill.labelText}
+        </text>
+      )}
+    </g>
+  );
+}
+
 export function DetectionDetailModal({
   detection,
   open,
   onOpenChange,
   onActionComplete,
+  undo,
   onRelabel,
   expandTracks = true,
   onMarkFalse,
@@ -110,6 +174,30 @@ export function DetectionDetailModal({
   });
   const [forceOpenPicker, setForceOpenPicker] = useState(false);
 
+  // Draw a box (D): an animal the detector missed gets its box right
+  // here, on this photo. While on, the image panel hands itself to
+  // `AnnotationCanvas`, the Files viewer's drawing surface, so there is
+  // one drawing code in the app. The canvas saves the box on release
+  // and switches draw mode off; `drawnId` then points the picker at
+  // the new box for its species, after which this crop is unchanged
+  // and still open. One box per press, like the Files viewer.
+  const [drawMode, setDrawMode] = useState(false);
+  const [drawnId, setDrawnId] = useState<string | null>(null);
+  // "Add new label" closes the picker before it applies the label
+  // (`LabelPicker` documents the trap), and the close clears `drawnId`,
+  // so the label would land on the crop instead. The ref keeps the box
+  // the picker was about across that gap, as `FileDetailModal` does.
+  // Cleared once a label lands and whenever the picker opens for the
+  // crop, so a cancelled naming cannot redirect a later R.
+  const drawnIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (drawnId) drawnIdRef.current = drawnId;
+  }, [drawnId]);
+  const openCropPicker = useCallback(() => {
+    drawnIdRef.current = null;
+    setForceOpenPicker(true);
+  }, []);
+
   // Source-image zoom (scroll wheel) + pan (drag while zoomed). The
   // image-detail modals zoom via a Konva stage, but this modal shows a
   // plain <img> + SVG overlay, so we scale their shared wrapper with a
@@ -122,8 +210,7 @@ export function DetectionDetailModal({
   // viewer): brightness/contrast on the source image, the box toggle,
   // and the flag/like writes the F key shares.
   const [boxesHidden, setBoxesHidden] = useState(false);
-  const { brightness, setBrightness, contrast, setContrast, imageFilter } =
-    useImageAdjust();
+  const { imageFilter } = useImageAdjust();
   // The base hook's writes, plus the grid's optimistic patch: the crops
   // of a flagged file show the badge without waiting for a re-sort.
   const baseTriage = useFileTriage();
@@ -199,11 +286,15 @@ export function DetectionDetailModal({
 
   // Reset zoom/pan when the detection changes or the modal closes.
   // `imageFailed` rides along: stepping from a missing file to a present
-  // one must not keep showing the placeholder.
+  // one must not keep showing the placeholder. Draw mode too: a
+  // crosshair must not follow you onto the next crop.
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
     setImageFailed(false);
+    setDrawMode(false);
+    setDrawnId(null);
+    drawnIdRef.current = null;
   }, [detection?.detection_id, open]);
 
   // Drag to pan while zoomed in. Global listeners so the drag survives
@@ -284,9 +375,26 @@ export function DetectionDetailModal({
     });
   }, [detection, fileData, onOpenChange, setSearchParams]);
 
+  /** The species for a box just drawn. The grid's `bulk-relabel`, which
+   *  also verifies that box; this crop is not touched. The refresh
+   *  redraws the photo with the new box and its pill. */
+  const nameDrawnBox = useCallback(
+    (id: string, option: LabelOption) => {
+      setDrawnId(null);
+      detectionsApi
+        .bulkRelabel([id], option.label, option.category)
+        .then((r) => {
+          undo.push(r.before);
+          onActionComplete();
+        })
+        .catch((err: Error) => toast.error(err.message));
+    },
+    [onActionComplete, undo],
+  );
+
   /** The rail's Download: the crop this modal is about, saved as a
-   *  file. The whole annotated photo lives one "Open in files view"
-   *  away, so this stays the cheap honest thing. */
+   *  file. The whole annotated photo is the Files viewer's download, so
+   *  this stays the cheap honest thing. */
   const downloadCrop = useCallback(async () => {
     if (!detection) return;
     try {
@@ -305,19 +413,28 @@ export function DetectionDetailModal({
   // Fetch 10 nearest neighbors for the Label Agreement thumbnails
   const { data: neighborsData } = useQuery({
     queryKey: ["detection-neighbors", detection?.detection_id],
-    queryFn: () =>
-      labelsApi.search(projectId!, {
-        anchor_detection_id: detection!.detection_id,
-        limit: 11,
-      }),
+    // Aborted by React Query when the modal closes or steps to another
+    // crop before the answer arrives, so the backend stops the search.
+    queryFn: ({ signal }) =>
+      labelsApi.search(
+        projectId!,
+        {
+          anchor_detection_id: detection!.detection_id,
+          limit: 11,
+        },
+        signal,
+      ),
     enabled: open && !!detection?.detection_id && !!projectId,
   });
 
+  // The button's Verify / Unverify toggle. Through the bulk route, the
+  // one path every verify in the app takes, which answers `before`.
   const verifyMutation = useMutation({
     // The bulk route, for one id: it is the one that takes `expandTracks`.
     mutationFn: () =>
       detectionsApi.bulkVerify([detection!.detection_id], !detection!.verified, expandTracks),
-    onSuccess: () => {
+    onSuccess: (r) => {
+      undo.push(r.before);
       onVerify?.(detection!.detection_id, !detection!.verified);
       onActionComplete();
     },
@@ -327,7 +444,8 @@ export function DetectionDetailModal({
   const relabelMutation = useMutation({
     mutationFn: ({ label, category }: { label: string | null; category: string }) =>
       detectionsApi.bulkRelabel([detection!.detection_id], label, category, expandTracks),
-    onSuccess: (_, { label, category }) => {
+    onSuccess: (r, { label, category }) => {
+      undo.push(r.before);
       onRelabel?.(detection!.detection_id, label ?? category, category);
       onActionComplete();
       onNavigate?.("nextUnverified");
@@ -337,10 +455,9 @@ export function DetectionDetailModal({
 
   const markFalseMutation = useMutation({
     mutationFn: () =>
-      detectionsApi.bulkRelabel(
-        [detection!.detection_id], "false detection", undefined, expandTracks,
-      ),
-    onSuccess: () => {
+      detectionsApi.bulkRelabel([detection!.detection_id], "false detection", undefined, expandTracks),
+    onSuccess: (r) => {
+      undo.push(r.before);
       onMarkFalse?.(detection!.detection_id);
       onActionComplete();
       onNavigate?.("nextUnverified");
@@ -351,7 +468,8 @@ export function DetectionDetailModal({
   const markUnknownMutation = useMutation({
     mutationFn: () =>
       detectionsApi.bulkRelabel([detection!.detection_id], "unknown", undefined, expandTracks),
-    onSuccess: () => {
+    onSuccess: (r) => {
+      undo.push(r.before);
       onMarkUnknown?.(detection!.detection_id);
       onActionComplete();
       onNavigate?.("nextUnverified");
@@ -369,12 +487,17 @@ export function DetectionDetailModal({
     // Patch local state immediately so navigation sees updated verified status
     onVerify?.(detection.detection_id);
     onNavigate?.("nextUnverified");
-    // Fire API call in background
+    // Fire API call in background. The undo entry needs the `before`
+    // it answers, so it is pushed on response; two Enters in quick
+    // succession can therefore land in response order, which is fine.
     detectionsApi
       .bulkVerify([detection.detection_id], true, expandTracks)
-      .then(() => onActionComplete())
+      .then((r) => {
+        undo.push(r.before);
+        onActionComplete();
+      })
       .catch((err: Error) => toast.error(err.message));
-  }, [detection, expandTracks, onActionComplete, onNavigate, onVerify]);
+  }, [detection, expandTracks, onActionComplete, onNavigate, onVerify, undo]);
 
   // Keyboard navigation while modal is open
   useEffect(() => {
@@ -395,6 +518,12 @@ export function DetectionDetailModal({
 
       const key = e.key.toLowerCase();
 
+      // Mid-drawing, the verdict keys and the arrows would act on the
+      // crop under the crosshair, or step away from the photo being
+      // drawn on. Only D (off again) works; Escape closes the view, as
+      // in the Files viewer.
+      if (drawMode && key !== "d") return;
+
       if (e.key === "ArrowLeft") {
         e.preventDefault();
         onNavigate!("prev");
@@ -413,7 +542,7 @@ export function DetectionDetailModal({
         if (!markUnknownMutation.isPending) markUnknownMutation.mutate();
       } else if (key === "r") {
         e.preventDefault();
-        setForceOpenPicker(true);
+        openCropPicker();
       } else if (key === "a") {
         e.preventDefault();
         if (
@@ -434,6 +563,11 @@ export function DetectionDetailModal({
         // Flag the detection's file for review.
         e.preventDefault();
         if (fileData) triage.toggleFlag(fileData);
+      } else if (key === "d") {
+        // Draw a box, the Files viewer's key. Needs the file row the
+        // canvas is built from.
+        e.preventDefault();
+        if (fileData) setDrawMode((v) => !v);
       }
     }
 
@@ -442,6 +576,8 @@ export function DetectionDetailModal({
   }, [
     open,
     onNavigate,
+    drawMode,
+    openCropPicker,
     handleVerifyAndAdvance,
     markFalseMutation,
     markUnknownMutation,
@@ -514,13 +650,9 @@ export function DetectionDetailModal({
       onNavigate={onNavigate}
       // The shared rail: how you look at the picture, identical to the
       // Counts modal and the Files viewer. Download here means the crop;
-      // the whole annotated photo is one "Open in files view" away.
+      // the whole annotated photo is the Files viewer's download.
       toolbar={
         <ViewerToolRail
-          brightness={brightness}
-          onBrightnessChange={setBrightness}
-          contrast={contrast}
-          onContrastChange={setContrast}
           boxesHidden={boxesHidden}
           onToggleBoxes={() => setBoxesHidden((v) => !v)}
           file={fileData}
@@ -531,7 +663,10 @@ export function DetectionDetailModal({
       }
       // Scroll to zoom, drag to pan when zoomed, double-click to reset.
       // The shell owns the panel's classes; the behaviour stays here.
-      imagePanelProps={{
+      // Not while drawing: the canvas has its own zoom and pan, and a
+      // pointerdown taken for a pan here would eat the drag that draws.
+      // Dropping the ref detaches the wheel listener with it.
+      imagePanelProps={drawMode ? undefined : {
         ref: attachImagePanel,
         style: {
           cursor: zoom > 1 ? (isPanning ? "grabbing" : "grab") : "default",
@@ -556,6 +691,32 @@ export function DetectionDetailModal({
         },
       }}
       image={
+        drawMode && fileData ? (
+          // The Files viewer's drawing surface, in this same frame. It
+          // saves the box on release, turns draw mode off through
+          // `onDrawModeChange`, and hands the new id to the picker.
+          <AnnotationCanvas
+            file={fileData}
+            // The frame this card shows: on a clip a drawn box is saved on
+            // that frame, not on the cover.
+            frameNumber={stillFrame}
+            detectionThreshold={detectionThreshold}
+            selectedDetectionId={null}
+            onSelectDetection={() => {}}
+            drawMode
+            onDrawModeChange={setDrawMode}
+            // A drawn box cannot be undone, so it starts a fresh history:
+            // Cmd+Z must never reach past it to an older action.
+            onMutated={() => {
+              undo.clear();
+              onActionComplete();
+            }}
+            onCreated={setDrawnId}
+            boxesHidden={boxesHidden}
+            imageFilter={imageFilter}
+            defaultCategory="animal"
+          />
+        ) : (
             <div
               className="relative inline-flex"
               style={{
@@ -621,10 +782,13 @@ export function DetectionDetailModal({
                 // lie: with only the focused box drawn, a second animal
                 // in the dim area read as "the AI missed it", which it
                 // never had (this modal shows one detection's context,
-                // not the file's verification). Drawn BEFORE the dim
-                // overlay, so the spotlight itself mutes them and the
-                // focused box stays the accent. Same rule as the Files
-                // viewer: every rendered photo shows every visible box.
+                // not the file's verification). Each gets the same box
+                // and pill as the focused one, so a box you just drew
+                // and named in the Files viewer comes back saying what
+                // it is. Drawn BEFORE the dim overlay, so the spotlight
+                // itself mutes them and the focused box stays the
+                // accent. Same rule as the Files viewer: every rendered
+                // photo shows every visible box.
                 const otherBoxes = (
                   fileData ? frameBoxes(fileData, detectionThreshold, stillFrame) : []
                 ).filter((d) => d.id !== fullDetection.id);
@@ -638,20 +802,34 @@ export function DetectionDetailModal({
                     viewBox={`0 0 ${imgW} ${imgH}`}
                     preserveAspectRatio="xMidYMid meet"
                   >
-                    {otherBoxes.map((d) => (
-                      <rect
-                        key={d.id}
-                        x={d.bbox_x * imgW}
-                        y={d.bbox_y * imgH}
-                        width={d.bbox_width * imgW}
-                        height={d.bbox_height * imgH}
-                        rx={BBOX_CORNER_RADIUS * s}
-                        fill="none"
-                        stroke={getDetectionColor(d)}
-                        strokeWidth={BBOX_STROKE_WIDTH * s}
-                        opacity={BBOX_OPACITY}
-                      />
-                    ))}
+                    {otherBoxes.map((d) => {
+                      const box = {
+                        x: d.bbox_x * imgW,
+                        y: d.bbox_y * imgH,
+                        width: d.bbox_width * imgW,
+                        height: d.bbox_height * imgH,
+                      };
+                      const p = computePillLayout(d);
+                      const at = placePill(
+                        box,
+                        { width: p.pillWidth * s, height: p.pillHeight * s },
+                        { width: imgW, height: imgH },
+                      );
+                      return (
+                        <g key={d.id}>
+                          <rect
+                            x={box.x} y={box.y}
+                            width={box.width} height={box.height}
+                            rx={BBOX_CORNER_RADIUS * s}
+                            fill="none"
+                            stroke={getDetectionColor(d)}
+                            strokeWidth={BBOX_STROKE_WIDTH * s}
+                            opacity={BBOX_OPACITY}
+                          />
+                          <BoxPill pill={p} x={at.x} y={at.y} s={s} />
+                        </g>
+                      );
+                    })}
                     {/* Spotlight dim overlay */}
                     <path fillRule="evenodd" d={spotlightPath} fill={DIM_FILL} />
                     {/* The animal's path through the clip: its box centres
@@ -691,38 +869,12 @@ export function DetectionDetailModal({
                     />
 
                     {/* Pill label */}
-                    <g transform={`translate(${pillX}, ${pillY}) scale(${s})`}>
-                      <rect
-                        x={0} y={0}
-                        width={pill.pillWidth} height={pill.pillHeight}
-                        rx={BBOX_CORNER_RADIUS}
-                        fill={PILL_BG}
-                      />
-                      <text
-                        x={TEXT_START_X} y={PILL_PAD_Y}
-                        fill="white"
-                        fontSize={FONT}
-                        fontFamily="Arial, sans-serif"
-                        dominantBaseline="hanging"
-                      >
-                        {pill.categoryText}
-                      </text>
-                      {pill.hasLabel && (
-                        <text
-                          x={TEXT_START_X} y={PILL_PAD_Y + FONT + LINE_GAP}
-                          fill="white"
-                          fontSize={FONT}
-                          fontFamily="Arial, sans-serif"
-                          dominantBaseline="hanging"
-                        >
-                          {pill.labelText}
-                        </text>
-                      )}
-                    </g>
+                    <BoxPill pill={pill} x={pillX} y={pillY} s={s} />
                   </svg>
                 );
               })()}
             </div>
+        )
       }
       details={
         <>
@@ -808,6 +960,7 @@ export function DetectionDetailModal({
                             fileId={file.id}
                             file={file}
                             detectionThreshold={detectionThreshold}
+                            imageFilter={imageFilter}
                           />
                           {file.file_type === "video" && (
                             <span className="pointer-events-none absolute bottom-0.5 left-0.5 flex items-center justify-center rounded-full bg-black/60 p-0.5">
@@ -823,6 +976,7 @@ export function DetectionDetailModal({
                               fileId={file.id}
                               file={file}
                               detectionThreshold={detectionThreshold}
+                              imageFilter={imageFilter}
                             />
                           </div>
                           <p className="mt-1.5 px-0.5 text-[11px] text-muted-foreground">
@@ -856,7 +1010,7 @@ export function DetectionDetailModal({
                         muted track. Disagreement is just the unfilled
                         remainder, not a red "wrong" signal. */}
                     <div className="relative h-3 w-full overflow-hidden rounded-full bg-muted-foreground/15">
-                      <div style={{ width: `${pct}%`, backgroundColor: "#0f6064" }} className="h-full transition-all duration-500 ease-out" />
+                      <div style={{ width: `${pct}%`, backgroundColor: "var(--primary-ink)" }} className="h-full transition-all duration-500 ease-out" />
                     </div>
                     <p className="text-xs text-muted-foreground text-center">
                       {count} of 10 similar crops share this label
@@ -882,12 +1036,13 @@ export function DetectionDetailModal({
                         src={`${API_BASE_URL}${n.crop_url}`}
                         alt={getDetectionDisplayName(n)}
                         className="h-full w-full object-cover"
+                        style={imageFilter ? { filter: imageFilter } : undefined}
                       />
                     );
                     return {
                       key: n.detection_id,
                       borderClassName: agrees
-                        ? "border-[#0f6064]"
+                        ? "border-primary-ink"
                         : "border-muted-foreground/30",
                       tile: crop,
                       preview: (
@@ -919,6 +1074,25 @@ export function DetectionDetailModal({
       // the modal. Each action operates on this single detection.
       actions={
         <>
+              {/* The one action about the photo rather than this box:
+                  an animal the detector missed gets its box here. First,
+                  so it reads apart from the verdict buttons; Verify
+                  stays last. */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-center"
+                onClick={() => setDrawMode((v) => !v)}
+                disabled={!fileData}
+                title="Drag a box around an animal the AI missed, then name it (D)"
+              >
+                <SquareDashed className="h-4 w-4 mr-1" />
+                {drawMode ? "Stop drawing" : "Draw a box"}
+                <Kbd>
+                  D
+                </Kbd>
+              </Button>
+
               {detection.neighbor_top_label &&
                 detection.neighbor_top_label !== detection.label && (
                   <Button
@@ -938,9 +1112,9 @@ export function DetectionDetailModal({
                     {detection.neighbor_top_scientific_name ||
                       detection.neighbor_top_label}
                     &rdquo;
-                    <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
+                    <Kbd>
                       A
-                    </kbd>
+                    </Kbd>
                   </Button>
                 )}
 
@@ -948,13 +1122,13 @@ export function DetectionDetailModal({
                 variant="outline"
                 size="sm"
                 className="w-full justify-center"
-                onClick={() => setForceOpenPicker(true)}
+                onClick={openCropPicker}
               >
                 <Tag className="h-4 w-4 mr-1" />
                 Relabel
-                <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
+                <Kbd>
                   R
-                </kbd>
+                </Kbd>
               </Button>
               {/* Hidden LabelPicker. The Relabel button above is the
                   visible trigger; this picker's own trigger is taken
@@ -966,9 +1140,21 @@ export function DetectionDetailModal({
                 className="absolute h-0 w-0 overflow-hidden pointer-events-none"
               >
                 <LabelPicker
-                  value={detection.label}
-                  displayName={detection.scientific_name}
+                  // One picker, two targets: this crop (R, Relabel), or
+                  // the box just drawn, which has no label to show yet.
+                  // Closing it without a choice leaves a drawn box as
+                  // "animal", as the Files viewer does.
+                  value={drawnId ? null : detection.label}
+                  displayName={drawnId ? null : detection.scientific_name}
                   onSelect={(option) => {
+                    // The state when the pick follows the open, the
+                    // ref when creating a label closed the picker first.
+                    const drawn = drawnId ?? drawnIdRef.current;
+                    drawnIdRef.current = null;
+                    if (drawn) {
+                      nameDrawnBox(drawn, option);
+                      return;
+                    }
                     relabelMutation.mutate({
                       label: option.label,
                       category: option.category,
@@ -976,9 +1162,12 @@ export function DetectionDetailModal({
                   }}
                   options={labelOptions}
                   isLoading={labelOptionsLoading}
-                  forceOpen={forceOpenPicker}
+                  forceOpen={forceOpenPicker || !!drawnId}
                   onOpenChange={(open) => {
-                    if (!open) setForceOpenPicker(false);
+                    if (!open) {
+                      setForceOpenPicker(false);
+                      setDrawnId(null);
+                    }
                   }}
                   projectId={projectId}
                 />
@@ -993,9 +1182,9 @@ export function DetectionDetailModal({
               >
                 <Ban className="h-4 w-4 mr-1" />
                 Mark false
-                <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
+                <Kbd>
                   X
-                </kbd>
+                </Kbd>
               </Button>
 
               <Button
@@ -1008,9 +1197,9 @@ export function DetectionDetailModal({
               >
                 <CircleHelp className="h-4 w-4 mr-1" />
                 Unknown
-                <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
+                <Kbd>
                   U
-                </kbd>
+                </Kbd>
               </Button>
 
               <Button
@@ -1024,7 +1213,11 @@ export function DetectionDetailModal({
                 disabled={verifyMutation.isPending}
                 variant={detection.verified ? "outline" : "default"}
               >
-                <Check className="h-4 w-4 mr-1 shrink-0" />
+                {detection.verified ? (
+                  <CircleMinus className="h-4 w-4 mr-1 shrink-0" />
+                ) : (
+                  <Check className="h-4 w-4 mr-1 shrink-0" />
+                )}
                 <span className="flex min-w-0">
                   <span className="shrink-0">
                     {detection.verified ? "Unverify" : "Verify"}&nbsp;
@@ -1034,9 +1227,9 @@ export function DetectionDetailModal({
                   </TruncateStart>
                 </span>
                 {!detection.verified && (
-                  <kbd className="ml-1.5 text-[10px] font-sans text-primary-foreground/60 border border-primary-foreground/30 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(255,255,255,0.1)] leading-none">
+                  <Kbd onPrimary>
                     ⏎
-                  </kbd>
+                  </Kbd>
                 )}
               </Button>
         </>

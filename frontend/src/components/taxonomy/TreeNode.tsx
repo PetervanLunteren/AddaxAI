@@ -139,7 +139,7 @@ export function TreeNode({
               needsLine ? (
                 <div
                   key={`ancestor-${idx}`}
-                  className="absolute border-l border-gray-300"
+                  className="absolute border-l border-input"
                   style={{
                     left: `${idx * INDENT_PX + INDENT_PX / 2}px`,
                     top: 0,
@@ -151,7 +151,7 @@ export function TreeNode({
 
             {/* Vertical line for current level */}
             <div
-              className="absolute border-l border-gray-300"
+              className="absolute border-l border-input"
               style={{
                 left: `${(level - 1) * INDENT_PX + INDENT_PX / 2}px`,
                 top: 0,
@@ -160,7 +160,7 @@ export function TreeNode({
             />
             {/* Horizontal line */}
             <div
-              className="absolute border-b border-gray-300"
+              className="absolute border-b border-input"
               style={{
                 left: `${(level - 1) * INDENT_PX + INDENT_PX / 2}px`,
                 top: "50%",

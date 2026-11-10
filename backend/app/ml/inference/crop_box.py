@@ -1,6 +1,7 @@
 """
 The geometry of a detection crop: a square around the box with context
-padding, and a blurred fill where the square runs off the picture.
+padding (or a shaped window for a caller that asks for an aspect), and a
+blurred fill where it runs off the picture.
 
 Shared by the crop service (photo cards, cut on request), the tracking
 script (track cards, cut while the video is decoded) and the two places
@@ -28,8 +29,16 @@ def compute_expanded_crop_region(
     img_w: int,
     img_h: int,
     padding: float = 0.10,
+    aspect: float | None = None,
 ) -> tuple[int, int, int, int]:
-    """Compute square crop region centered on bbox with padding.
+    """Compute the crop region around a bbox with padding.
+
+    Without `aspect`: a square centered on the bbox. With `aspect`
+    (width / height): the padded bbox widened to that shape, then slid
+    inside the photo so the frame fills with real pixels, the way a
+    camera would pan, rather than with blur. The whole padded bbox stays
+    in view either way. Only a window larger than the photo itself is
+    left centered, and its overflow blurred like a square crop's.
 
     Returns (left, top, right, bottom) in pixel coords. Values may be
     negative or exceed image dimensions; the caller handles overflow
@@ -40,13 +49,31 @@ def compute_expanded_crop_region(
 
     max_side = max(bw, bh)
     pad = max_side * padding
-    crop_side = max_side + 2 * pad
-
     cx, cy = bx + bw / 2, by + bh / 2
-    left = cx - crop_side / 2
-    top = cy - crop_side / 2
 
-    return int(left), int(top), int(left + crop_side), int(top + crop_side)
+    if aspect is None:
+        crop_side = max_side + 2 * pad
+        left = cx - crop_side / 2
+        top = cy - crop_side / 2
+        return int(left), int(top), int(left + crop_side), int(top + crop_side)
+
+    win_w = max(bw + 2 * pad, (bh + 2 * pad) * aspect)
+    win_h = win_w / aspect
+    left = _slide_inside(cx - win_w / 2, win_w, img_w)
+    top = _slide_inside(cy - win_h / 2, win_h, img_h)
+    return int(left), int(top), int(left + win_w), int(top + win_h)
+
+
+def _slide_inside(start: float, length: float, limit: int) -> float:
+    """Move a window along one axis so it lies within [0, limit].
+
+    A window longer than the photo cannot fit, so it keeps its centered
+    start and the overflow is blurred. Sliding a window that contains the
+    bbox toward the inside of the photo keeps the bbox in it.
+    """
+    if length >= limit:
+        return start
+    return min(max(start, 0.0), limit - length)
 
 
 def crop_with_blur_fill(

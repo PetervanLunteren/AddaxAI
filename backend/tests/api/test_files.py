@@ -1,8 +1,11 @@
 """Tests for the /api/files endpoints."""
 
+import io
 import tempfile
 import uuid
 from pathlib import Path
+
+from PIL import Image
 
 from app.models import LabelTaxonomy
 from tests.conftest import (
@@ -191,6 +194,49 @@ def test_label_tree_count_by_file(client, db):
     assert body["count_unit"] == "file"
 
 
+def test_label_tree_count_by_file_reads_a_video_on_its_best_frame(client, db):
+    """A video counts for a label only when the box sits on the frame the
+    app shows. The count query used to leave File unjoined, so the frame
+    rule was checked against every file in the project (a cross join) and
+    any image made the video's off-frame box count."""
+    p = make_project(db, counting_threshold=0.5)
+    s = make_site(db, project_id=p.id)
+    d = make_deployment(db, site_id=s.id)
+    cls_model_id = p.classification_model_id or str(uuid.uuid4())
+    p.classification_model_id = cls_model_id
+    tax = LabelTaxonomy(
+        id=str(uuid.uuid4()),
+        classification_model_id=cls_model_id,
+        name="wolf",
+        taxon_class="mammalia",
+        level="species",
+    )
+    db.add(tax)
+    db.flush()
+
+    img = make_file(db, deployment_id=d.id, file_type="image")
+    make_detection(
+        db, file_id=img.id, confidence=0.9,
+        label="wolf", label_taxonomy_id=tax.id,
+    )
+    video = make_file(
+        db, deployment_id=d.id, file_type="video", file_format="mp4",
+        best_frame_number=3,
+    )
+    make_detection(
+        db, file_id=video.id, confidence=0.9, frame_number=1,
+        label="wolf", label_taxonomy_id=tax.id,
+    )
+    db.commit()
+
+    resp = client.get(
+        f"/api/events/label-tree?project_id={p.id}&count_by=file"
+    )
+    assert resp.status_code == 200
+    # The image only: the video's wolf is not on its best frame.
+    assert resp.json()["label_event_counts"].get("wolf") == 1
+
+
 def test_label_tree_rejects_invalid_count_by(client, db):
     p = make_project(db)
     resp = client.get(
@@ -219,7 +265,15 @@ def test_bulk_verify_signs_off_every_file_in_one_request(client, db):
 
     resp = _bulk_verify(client, [a.id, b.id])
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"updated_count": 2}
+    body = resp.json()
+    assert body["updated_count"] == 2
+    # The before-state for undo: both files, and the boxes the sign-off
+    # touched (both of a's, b has none).
+    assert {s["file_id"] for s in body["before"]["files"]} == {a.id, b.id}
+    assert {s["detection_id"] for s in body["before"]["detections"]} == {
+        strong_id,
+        weak_id,
+    }
 
     db.expire_all()
     assert a.verified is True
@@ -247,7 +301,10 @@ def test_bulk_unverify_takes_the_sign_off_back(client, db):
 
 
 def test_bulk_verify_of_nothing_is_a_no_op_and_of_unknown_ids_a_404(client, db):
-    assert _bulk_verify(client, []).json() == {"updated_count": 0}
+    assert _bulk_verify(client, []).json() == {
+        "updated_count": 0,
+        "before": {"detections": [], "files": []},
+    }
     assert _bulk_verify(client, [str(uuid.uuid4())]).status_code == 404
 
 
@@ -345,3 +402,20 @@ def test_max_at_once_of_a_photo_has_no_frame(client, db):
         {"label_taxonomy_id": None, "label": None, "category": "animal",
          "count": 2, "frame_number": None}
     ]
+
+
+def test_thumbnail_of_a_rotated_photo_comes_out_upright(client, db, tmp_path):
+    """The thumbnail is re-encoded without EXIF, so the browser cannot
+    rotate it the way it rotates the original; the pixels are rotated
+    here instead, matching the boxes drawn over them."""
+    d, _ = _setup_deployment(db)
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    path = tmp_path / "sideways.jpg"
+    Image.new("RGB", (120, 200), (90, 90, 90)).save(path, "JPEG", exif=exif.tobytes())
+    f = make_file(db, deployment_id=d.id, file_path=str(path), file_format="jpg")
+
+    resp = client.get(f"/api/files/{f.id}/image?size=thumb")
+
+    assert resp.status_code == 200
+    assert Image.open(io.BytesIO(resp.content)).size == (200, 120)

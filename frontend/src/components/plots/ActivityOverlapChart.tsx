@@ -21,6 +21,8 @@
 
 import { useMemo } from "react";
 import { Line } from "react-chartjs-2";
+
+import { useChartColors, useTheme } from "../../lib/theme";
 import {
   CategoryScale,
   Chart as ChartJS,
@@ -39,6 +41,7 @@ import type {
   ActivityOverlapResponse,
   SunBands,
 } from "../../api/statistics";
+import { inSunBand } from "../../lib/sun-bands";
 
 ChartJS.register(
   CategoryScale,
@@ -51,10 +54,14 @@ ChartJS.register(
 );
 
 // Species colors pinned to slots A and B so the picker swatches, the
-// chart curves, and the legend badges always agree. Picked to match
-// the AddaxAI palette (teal + accent orange).
-export const SPECIES_A_COLOR = "#0f6064";
-export const SPECIES_B_COLOR = "#ff8945";
+// chart curves, and the legend badges always agree. Slot A is the
+// theme's teal ink (lighter in dark); slot B is the accent orange,
+// which reads on both themes. One hook so every consumer stays in
+// sync with the theme.
+export function useSpeciesSlotColors(): { a: string; b: string } {
+  const colors = useChartColors();
+  return { a: colors.primaryInk, b: "#ff8945" };
+}
 const OVERLAP_FILL = "rgba(120, 120, 120, 0.28)";
 const RUG_HEIGHT_PX = 6;
 
@@ -67,7 +74,11 @@ const RUG_HEIGHT_PX = 6;
 const twilightBandsPlugin: Plugin<"line"> = {
   id: "twilightBands",
   beforeDatasetsDraw(chart, _args, options) {
-    const opts = options as { sunBands?: SunBands | null; visible?: boolean };
+    const opts = options as {
+      sunBands?: SunBands | null;
+      visible?: boolean;
+      nightFill?: string;
+    };
     if (!opts.visible || !opts.sunBands) return;
     const { dawn, sunrise, sunset, dusk } = opts.sunBands;
     const { ctx, chartArea, scales } = chart;
@@ -77,18 +88,26 @@ const twilightBandsPlugin: Plugin<"line"> = {
     const bottom = chartArea.bottom;
 
     const xAt = (h: number) => xScale.getPixelForValue(h);
+    // A band may cross the axis edge (dusk at 24.5), so paint it one
+    // day either side too and let the clip keep what is on the axis.
+    const paintBand = (start: number, end: number) => {
+      for (const shift of [-24, 0, 24]) {
+        const x = xAt(start + shift);
+        ctx.fillRect(x, top, xAt(end + shift) - x, bottom - top);
+      }
+    };
 
     ctx.save();
+    ctx.beginPath();
+    ctx.rect(chartArea.left, top, chartArea.right - chartArea.left, bottom - top);
+    ctx.clip();
 
-    // Night bands: 0..dawn and dusk..24
-    ctx.fillStyle = "rgba(30, 41, 59, 0.06)";
-    ctx.fillRect(chartArea.left, top, xAt(dawn) - chartArea.left, bottom - top);
-    ctx.fillRect(xAt(dusk), top, chartArea.right - xAt(dusk), bottom - top);
+    ctx.fillStyle = opts.nightFill ?? "rgba(30, 41, 59, 0.06)";
+    paintBand(dusk, dawn + 24);
 
-    // Twilight bands: dawn..sunrise and sunset..dusk
     ctx.fillStyle = "rgba(255, 165, 0, 0.10)";
-    ctx.fillRect(xAt(dawn), top, xAt(sunrise) - xAt(dawn), bottom - top);
-    ctx.fillRect(xAt(sunset), top, xAt(dusk) - xAt(sunset), bottom - top);
+    paintBand(dawn, sunrise);
+    paintBand(sunset, dusk);
 
     ctx.restore();
   },
@@ -130,16 +149,15 @@ const rugTicksPlugin: Plugin<"line"> = {
       ctx.restore();
     };
 
-    drawRug(
-      opts.speciesA,
-      chartArea.bottom - 2 * RUG_HEIGHT_PX - 2,
-      opts.colorA ?? SPECIES_A_COLOR,
-    );
-    drawRug(
-      opts.speciesB,
-      chartArea.bottom - RUG_HEIGHT_PX,
-      opts.colorB ?? SPECIES_B_COLOR,
-    );
+    // Colours always come through the options block (injected per
+    // render from the theme); no module-level fallback, so a theme
+    // flip can never leave a stale closure colour behind.
+    if (opts.colorA) {
+      drawRug(opts.speciesA, chartArea.bottom - 2 * RUG_HEIGHT_PX - 2, opts.colorA);
+    }
+    if (opts.colorB) {
+      drawRug(opts.speciesB, chartArea.bottom - RUG_HEIGHT_PX, opts.colorB);
+    }
   },
 };
 
@@ -196,6 +214,10 @@ export function ActivityOverlapChart({
     return a.map((v, i) => Math.min(v, b[i] ?? 0));
   }, [data]);
 
+  const colors = useChartColors();
+  const slotColors = useSpeciesSlotColors();
+  const { resolvedTheme } = useTheme();
+
   const chartData: ChartData<"line"> = useMemo(() => {
     const datasets: ChartData<"line">["datasets"] = [];
 
@@ -216,7 +238,7 @@ export function ActivityOverlapChart({
     datasets.push({
       label: speciesAName ?? data.species_a.label,
       data: data.species_a.kde_density,
-      borderColor: SPECIES_A_COLOR,
+      borderColor: slotColors.a,
       backgroundColor: "transparent",
       borderWidth: 2,
       pointRadius: 0,
@@ -229,7 +251,7 @@ export function ActivityOverlapChart({
       datasets.push({
         label: speciesBName ?? data.species_b.label,
         data: data.species_b.kde_density,
-        borderColor: SPECIES_B_COLOR,
+        borderColor: slotColors.b,
         backgroundColor: "transparent",
         borderWidth: 2,
         pointRadius: 0,
@@ -243,7 +265,7 @@ export function ActivityOverlapChart({
       labels: gridX,
       datasets,
     };
-  }, [data, overlapMin, gridX]);
+  }, [data, overlapMin, gridX, speciesAName, speciesBName, slotColors]);
 
   const options: ChartOptions<"line"> = useMemo(() => {
     const isSun = timeAxis === "sun";
@@ -296,6 +318,7 @@ export function ActivityOverlapChart({
           min: xMin,
           max: xMax,
           ticks: {
+            color: colors.axis,
             ...(isSun
               ? {
                   autoSkip: false,
@@ -306,29 +329,34 @@ export function ActivityOverlapChart({
                   callback: (v) => fmtTick(Number(v)),
                 }),
           },
+          grid: { color: colors.grid },
           afterBuildTicks: isSun && rawBands
             ? (scale) => {
                 // dawn and dusk ticks dropped: they sit so close to
                 // sunrise / sunset that their labels always collide.
                 // The twilight bands themselves still mark those
-                // transitions visually.
+                // transitions visually. A sunset past midnight (Nome,
+                // Alaska in May) lies beyond the axis and is dropped;
+                // its band still paints next to the midnight tick.
                 scale.ticks = [
                   { value: xMin },
                   { value: sunrisePos },
                   { value: noonPos },
                   { value: sunsetPos },
                   { value: xMax },
-                ];
+                ].filter((t) => t.value <= xMax);
               }
             : undefined,
-          title: { display: !!xTitle, text: xTitle },
+          title: { display: !!xTitle, text: xTitle, color: colors.axis },
         },
         y: {
           beginAtZero: true,
-          title: { display: true, text: "Activity density" },
+          title: { display: true, text: "Activity density", color: colors.axis },
           ticks: {
             callback: (value) => Number(value).toFixed(2),
+            color: colors.axis,
           },
+          grid: { color: colors.grid },
         },
       },
       plugins: {
@@ -337,6 +365,7 @@ export function ActivityOverlapChart({
           position: "top",
           labels: {
             filter: (item) => item.text !== "Overlap",
+            color: colors.axis,
           },
         },
         tooltip: {
@@ -344,10 +373,9 @@ export function ActivityOverlapChart({
             title: (items) => {
               const x = Number(items[0]?.label ?? 0);
               if (isSun) {
-                if (x < dawnPos) return "night";
-                if (x < sunrisePos) return "dawn";
-                if (x < sunsetPos) return "day";
-                if (x < duskPos) return "dusk";
+                if (inSunBand(x, dawnPos, sunrisePos)) return "dawn";
+                if (inSunBand(x, sunrisePos, sunsetPos)) return "day";
+                if (inSunBand(x, sunsetPos, duskPos)) return "dusk";
                 return "night";
               }
               const h = Math.floor(x);
@@ -363,16 +391,20 @@ export function ActivityOverlapChart({
         twilightBands: {
           sunBands: bandsForMode,
           visible: bandsForMode !== null,
+          // On dark the night region darkens instead of greying out.
+          nightFill: resolvedTheme === "dark"
+            ? "rgba(0, 0, 0, 0.30)"
+            : "rgba(30, 41, 59, 0.06)",
         },
         rugTicks: {
           speciesA: data.species_a.raw_detection_times.map((t) => t - sunShift),
           speciesB: data.species_b?.raw_detection_times.map((t) => t - sunShift),
-          colorA: SPECIES_A_COLOR,
-          colorB: SPECIES_B_COLOR,
+          colorA: slotColors.a,
+          colorB: slotColors.b,
         },
       },
     };
-  }, [data, timeAxis, sunShift]);
+  }, [data, timeAxis, sunShift, colors, slotColors, resolvedTheme]);
 
   return (
     <div className="h-full w-full">

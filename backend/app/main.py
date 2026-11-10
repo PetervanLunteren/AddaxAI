@@ -20,6 +20,7 @@ from starlette.responses import FileResponse
 from app import __version__
 from app.api.routers import (
     backup_router,
+    calibration_router,
     deployment_queue_router,
     deployments_router,
     detections_router,
@@ -31,11 +32,13 @@ from app.api.routers import (
     labels_router,
     logs_router,
     ml_models_router,
+    packages_router,
     projects_router,
     setup_router,
     sites_router,
     statistics_router,
     tracks_router,
+    undo_router,
     websocket_router,
 )
 from app.api.routers.ml_models import refresh_manifest_cache
@@ -591,9 +594,12 @@ def create_app() -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(logs_router)
     app.include_router(ml_models_router)
+    app.include_router(packages_router)
     app.include_router(labels_router)
     app.include_router(statistics_router)
     app.include_router(tracks_router)
+    app.include_router(calibration_router)
+    app.include_router(undo_router)
     app.include_router(websocket_router)
 
     # Health check endpoint

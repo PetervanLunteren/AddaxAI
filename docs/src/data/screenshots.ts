@@ -98,6 +98,10 @@ export const shots: Record<string, Shot> = {
     src: "/img/insights-per-class-performance.webp",
     alt: "Per-species accuracy of the AI against the confirmed labels",
   },
+  calibration: {
+    src: "/img/insights-calibration.webp",
+    alt: "Calibration page: per label the answers so far and the score to trust it from, with one label's curve opened",
+  },
   folderRun1Setup: {
     src: "/img/folder-run-1-setup.webp",
     alt: "Analyse a folder, step 1: pick the folder and the models",

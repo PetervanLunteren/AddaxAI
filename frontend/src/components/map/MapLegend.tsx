@@ -24,7 +24,12 @@ export function MapLegend({ domain }: MapLegendProps) {
 
     legend.onAdd = () => {
       const div = L.DomUtil.create("div", "info legend");
-      div.style.backgroundColor = "white";
+      // Theme tokens, not literals: the legend is raw Leaflet DOM, so
+      // it does not inherit Tailwind classes and must reference the
+      // CSS variables itself to follow dark mode.
+      div.style.backgroundColor = "hsl(var(--card))";
+      div.style.color = "hsl(var(--card-foreground))";
+      div.style.border = "1px solid hsl(var(--border))";
       div.style.padding = "10px";
       div.style.borderRadius = "4px";
       div.style.boxShadow = "0 2px 4px rgba(0,0,0,0.1)";
@@ -41,7 +46,7 @@ export function MapLegend({ domain }: MapLegendProps) {
             width: 20px;
             height: 150px;
             background: linear-gradient(to bottom, ${gradientColors});
-            border: 1px solid rgba(0,0,0,0.2);
+            border: 1px solid hsl(var(--border));
             border-radius: 2px;
             margin-right: 8px;
           "></div>

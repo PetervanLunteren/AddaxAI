@@ -36,6 +36,7 @@ import {
   PILL_PAD_Y,
   LINE_GAP,
   FONT,
+  OVERLAY_FONT_FAMILY,
   TEXT_START_X,
   BBOX_STROKE_WIDTH,
   BBOX_OPACITY,
@@ -44,6 +45,7 @@ import {
   PILL_BG,
 } from "../../lib/detection-overlay";
 import { SpotlightDim } from "./SpotlightDim";
+import { useImageFilter } from "./viewer-tools";
 import type { FileWithDetections, DetectionResponse } from "../../api/types";
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
 import { clipDurationFrames } from "../../lib/track-utils";
@@ -212,7 +214,7 @@ function drawOverlayFrame(
     ctx.fill();
 
     // Text — both lines share one font, regular white.
-    ctx.font = `${FONT * scale}px Arial, sans-serif`;
+    ctx.font = `${FONT * scale}px ${OVERLAY_FONT_FAMILY}`;
     ctx.fillStyle = "white";
     ctx.fillText(pill.categoryText, x + TEXT_START_X * scale, pillY + PILL_PAD_Y * scale);
     if (pill.hasLabel) {
@@ -247,6 +249,9 @@ export function VideoPlayer({
   // Repaint when the project's colour map lands or changes.
   useSpeciesColorsVersion();
   const videoRef = useRef<HTMLVideoElement>(null);
+  // Shared brightness/contrast; on the video element only, so the SVG
+  // box overlay stays crisp. The export records the file as is.
+  const imageFilter = useImageFilter();
   const containerRef = useRef<HTMLDivElement>(null);
   const [currentFrame, setCurrentFrame] = useState<number>(0);
   // The same position, unrounded. The overlay interpolates between the
@@ -583,6 +588,7 @@ export function VideoPlayer({
           controls
           controlsList="nodownload"
           className="w-full h-full object-contain"
+          style={imageFilter ? { filter: imageFilter } : undefined}
           onLoadedMetadata={(e) =>
             setMetadataFrames(Math.round(e.currentTarget.duration * frameRate))
           }
@@ -710,7 +716,7 @@ export function VideoPlayer({
                     y={PILL_PAD_Y}
                     fill="white"
                     fontSize={FONT}
-                    fontFamily="Arial, sans-serif"
+                    fontFamily={OVERLAY_FONT_FAMILY}
                     dominantBaseline="hanging"
                   >
                     {pill.categoryText}
@@ -721,7 +727,7 @@ export function VideoPlayer({
                       y={PILL_PAD_Y + FONT + LINE_GAP}
                       fill="white"
                       fontSize={FONT}
-                      fontFamily="Arial, sans-serif"
+                      fontFamily={OVERLAY_FONT_FAMILY}
                       dominantBaseline="hanging"
                     >
                       {pill.labelText}

@@ -11,11 +11,13 @@ Following DEVELOPERS.md principles:
 """
 
 import hashlib
+import io
 import os
 import platform
 import re
 import shutil
 import subprocess
+import tarfile
 import threading
 import time
 import urllib.request
@@ -29,6 +31,7 @@ from app.core.config import get_settings
 from app.core.job_cancellation import JobCancelledError, is_cancel_requested
 from app.core.logging_config import get_logger
 from app.ml.schemas.model_manifest import ModelManifest
+from app.utils.fs_remove import safe_rmtree
 from app.utils.subprocess_env import clean_python_env
 from app.utils.subprocess_runner import log_subprocess_failure, stream_with_tail
 
@@ -82,6 +85,24 @@ class TlsRevocationCheckError(RuntimeError):
     """
 
 
+class NonAsciiPathError(RuntimeError):
+    """The data folder path holds a character micromamba cannot open on Windows.
+
+    micromamba converts its command line to UTF-8 and checks that the
+    spec file exists through the wide Windows API, which passes. It then
+    hands the UTF-8 path to yaml-cpp's LoadFile, which opens it through
+    the narrow C runtime, and that decodes the bytes in the ANSI code
+    page: an "ñ" becomes "Ã±", the open fails, and libmamba dies with
+    "YAML error in spec file" followed by yaml-cpp's "bad file". Every
+    later step would have taken the wide path, so this is the one place
+    the build breaks (libmamba 2.9.0, api/install.cpp, read_yaml_file).
+    A Windows user folder with an ñ hit it at the first setup step
+    (beta report 2026-10-23). Raised instead of the generic build
+    failure so the user is told to move the data folder rather than
+    shown a YAML error about a file that is fine.
+    """
+
+
 # schannel's two "I could not check revocation" verdicts. 0x80092012 is
 # what a network that inspects TLS produces: it re-signs traffic with its
 # own certificate authority, and those certificates carry no CRL or OCSP
@@ -123,12 +144,17 @@ Delete this file to restore the default.
 _RENAME_WAITS = (1, 2, 4, 8, 15)
 
 
-def _rename_with_retries(src: Path, dst: Path) -> None:
+def _rename_with_retries(
+    src: Path,
+    dst: Path,
+    what: str = "move the finished environment into place",
+) -> None:
     """Rename src to dst, waiting out transient Windows file locks.
 
     Retries PermissionError only: that is what an antivirus-held handle
     raises. Any other error (target exists, source gone) is a different
-    bug and fails immediately.
+    bug and fails immediately. `what` names the move in the log and in
+    the error the user sees.
     """
     attempts = len(_RENAME_WAITS) + 1
     for attempt, wait in enumerate(_RENAME_WAITS, start=1):
@@ -137,7 +163,7 @@ def _rename_with_retries(src: Path, dst: Path) -> None:
             return
         except PermissionError as e:
             logger.warning(
-                f"Attempt {attempt}/{attempts} to move {src} into place "
+                f"Attempt {attempt}/{attempts} to {what} ({src}) "
                 f"was refused ({e}); retrying in {wait}s"
             )
             time.sleep(wait)
@@ -145,12 +171,13 @@ def _rename_with_retries(src: Path, dst: Path) -> None:
         src.rename(dst)
     except PermissionError as e:
         raise RuntimeError(
-            f"Windows refused to move the finished environment into place, "
-            f"even after {attempts} attempts over "
-            f"{sum(_RENAME_WAITS)} seconds ({e}). Another program is "
-            f"holding files in that folder, usually the antivirus. Ask "
-            f"your IT department to add an antivirus exclusion for the "
-            f"AddaxAI folder in your user profile, then try again."
+            f"Windows refused to {what}, even after {attempts} attempts "
+            f"over {sum(_RENAME_WAITS)} seconds ({e}). Another program is "
+            f"holding files in that folder: a running analysis, a second "
+            f"AddaxAI window, or the antivirus. Wait for running analyses "
+            f"to finish and try again. If it keeps happening, add an "
+            f"antivirus exclusion for the AddaxAI folder in your user "
+            f"profile, or ask your IT department to."
         ) from e
 
 
@@ -192,6 +219,27 @@ def is_revocation_failure(output_lines: list[str]) -> bool:
         for line in output_lines
         for marker in _REVOCATION_MARKERS
     )
+
+
+# yaml-cpp's verdict when the spec file could not be opened at all, as
+# opposed to a parse error inside it. libmamba prints it as the final
+# "critical libmamba bad file: <path>" line.
+_SPEC_OPEN_FAILED_MARKER = "bad file"
+
+
+def is_non_ascii_path_failure(output_lines: list[str], spec_path: Path) -> bool:
+    """True when micromamba could not open the spec file because its path
+    holds a character outside ASCII (see NonAsciiPathError).
+
+    Windows only in practice: on POSIX the narrow open takes the UTF-8
+    bytes as they are and works, so the caller gates on the platform.
+    The marker is required as well as the path, so a build on a machine
+    that runs in UTF-8 mode, where the open succeeds, still reports
+    whatever actually failed.
+    """
+    if str(spec_path).isascii():
+        return False
+    return any(_SPEC_OPEN_FAILED_MARKER in line for line in output_lines)
 
 
 def hash_yaml_file(yaml_path: Path) -> str:
@@ -387,6 +435,55 @@ def parse_micromamba_progress(
     return current_progress, line[:80]
 
 
+# micromamba is pinned, never `latest`: an upstream release must not reach
+# users before it has been tested here. The binary lives in bin/<version>/,
+# so bumping the version makes every install, old or new, download the new
+# build once. The version goes in the directory, never the filename:
+# micromamba's activation hook only works when the binary is called exactly
+# micromamba (see MICROMAMBA_FILENAME). Each hash is the sha256 of the
+# conda-forge archive that micro.mamba.pm redirects to (listed per platform
+# at https://api.anaconda.org/package/conda-forge/micromamba/files). To
+# bump: change the version and replace all five hashes.
+MICROMAMBA_VERSION = "2.9.0"
+_MICROMAMBA_SHA256 = {
+    "win-64": "97a336f4ab794bd96a6a4da5e6ed63e75a1d31830414a182419b23d3b36f3fe0",
+    "osx-arm64": "500f5074feb8d02c4296ef9921c3650ed2874171805a9fbb8fbb53896433646b",
+    "osx-64": "0426ecdc41636d369f57b8fe6acbf4385a69eca45b56d9ee7d3a840a9965d44f",
+    "linux-64": "8761c382127e6363bd9e0a2451aa3ef90d071a79133f736e2f759a3bf13040dd",
+    "linux-aarch64": "e705ffeed90ce0659eb546e4b1e1028c9eaf0bc9cc854867b19ac5ce0ba5852f",
+}
+# Exactly this name. micromamba's shell hook takes the basename of
+# MAMBA_EXE minus its extension and does nothing for anything other than
+# `micromamba` or `mamba`, so `micromamba run`, and the pip step of
+# `micromamba create`, then use whichever python is first on PATH.
+MICROMAMBA_FILENAME = "micromamba.exe" if platform.system() == "Windows" else "micromamba"
+
+# Microsoft's C++ runtime, copied next to micromamba.exe on Windows. The
+# Windows micromamba loads msvcp140.dll and vcruntime140(_1).dll from the
+# machine and is built with toolset 14.44; an msvcp140.dll older than 14.40
+# makes it die at start-up with 0xC0000005 and no output (std::mutex). That
+# is the crash users on 7.11.0 to 7.13.0 hit at the first setup step. Our
+# own backend ships no msvcp140.dll, so the machine's copy decided. Windows
+# looks in the program's directory first, so these win. See
+# vc-runtime/README.md for where they come from.
+VC_RUNTIME_DIR = Path(__file__).resolve().parent / "vc-runtime"
+VC_RUNTIME_DLLS = ("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll")
+
+
+def _micromamba_subdir() -> str:
+    """The conda platform name of the micromamba build for this machine."""
+    system, machine = platform.system(), platform.machine()
+    if system == "Windows":
+        return "win-64"
+    if system == "Darwin":
+        return "osx-arm64" if machine == "arm64" else "osx-64"
+    if system == "Linux":
+        return "linux-aarch64" if machine == "aarch64" else "linux-64"
+    raise RuntimeError(
+        f"Unsupported platform: {system} {machine}. Please install micromamba manually."
+    )
+
+
 class EnvironmentManager:
     """
     Manages micromamba environments using static YAML files.
@@ -402,6 +499,12 @@ class EnvironmentManager:
     # serialise on the same per-env lock no matter who owns the instance.
     _env_locks: ClassVar[dict[str, threading.Lock]] = {}
     _env_locks_registry_lock: ClassVar[threading.Lock] = threading.Lock()
+
+    # Opening the setup screen constructs several managers within a second
+    # (startup sync, setup status, model updates). Each used to find the
+    # binary missing and download it to the same path; the late ones then
+    # failed with a 500, unable to overwrite the copy already running.
+    _micromamba_lock: ClassVar[threading.Lock] = threading.Lock()
 
     @classmethod
     def _env_build_lock(cls, env_name: str) -> threading.Lock:
@@ -419,15 +522,18 @@ class EnvironmentManager:
 
         Args:
             envs_dir: Directory to store environments (default: <user data dir>/envs)
-            micromamba_path: Path to micromamba binary (default: <user data dir>/bin/micromamba)
+            micromamba_path: Path to micromamba binary
+                (default: <user data dir>/bin/<MICROMAMBA_VERSION>/<MICROMAMBA_FILENAME>)
         """
         user_data_dir = get_settings().user_data_dir
         self.envs_dir = envs_dir or (user_data_dir / "envs")
-
-        bin_dir = user_data_dir / "bin"
-        # Windows uses .exe extension
-        micromamba_name = "micromamba.exe" if platform.system() == "Windows" else "micromamba"
-        self.micromamba_path = micromamba_path or (bin_dir / micromamba_name)
+        self.micromamba_path = micromamba_path or (
+            user_data_dir / "bin" / MICROMAMBA_VERSION / MICROMAMBA_FILENAME
+        )
+        # micromamba's own cache (packages and package index). Inside the
+        # app's data dir so a reinstall or Reset starts truly clean; see
+        # MAMBA_ROOT_PREFIX in _create_env.
+        self.mamba_root_prefix = user_data_dir / "mamba"
 
         self._ensure_runtime_dirs()
 
@@ -442,76 +548,64 @@ class EnvironmentManager:
         """
         self.envs_dir.mkdir(parents=True, exist_ok=True)
         self.micromamba_path.parent.mkdir(parents=True, exist_ok=True)
-        if not self.micromamba_path.exists():
-            logger.info("Micromamba not found, downloading...")
-            self._download_micromamba()
+        with self._micromamba_lock:
+            if not self.micromamba_path.exists():
+                logger.info("Micromamba not found, downloading...")
+                self._download_micromamba()
+            if platform.system() == "Windows":
+                self._install_vc_runtime()
 
-    def _download_micromamba(self):
-        """Download micromamba binary for the current platform."""
-        system = platform.system()
-        machine = platform.machine()
+    def _install_vc_runtime(self) -> None:
+        """Copy the shipped C++ runtime next to micromamba.exe (see
+        VC_RUNTIME_DLLS). Each file is copied under a temporary name and
+        renamed into place, so a half-written DLL never counts as present."""
+        for name in VC_RUNTIME_DLLS:
+            target = self.micromamba_path.parent / name
+            if target.exists():
+                continue
+            partial = target.with_name(name + ".copy")
+            shutil.copyfile(VC_RUNTIME_DIR / name, partial)
+            os.replace(partial, target)
+            logger.info(f"Installed {name} next to micromamba")
 
-        # Determine download URL based on platform
-        if system == "Darwin":
-            if machine == "arm64":
-                url = "https://micro.mamba.pm/api/micromamba/osx-arm64/latest"
-            else:
-                url = "https://micro.mamba.pm/api/micromamba/osx-64/latest"
-        elif system == "Linux":
-            if machine == "aarch64":
-                url = "https://micro.mamba.pm/api/micromamba/linux-aarch64/latest"
-            else:
-                url = "https://micro.mamba.pm/api/micromamba/linux-64/latest"
-        elif system == "Windows":
-            url = "https://micro.mamba.pm/api/micromamba/win-64/latest"
-        else:
-            raise RuntimeError(
-                f"Unsupported platform: {system} {machine}. " f"Please install micromamba manually."
-            )
+    def _download_micromamba(self) -> None:
+        """Download the pinned micromamba build and install it atomically.
 
-        logger.info(f"Downloading micromamba from {url}")
+        The binary is written next to its final path and renamed into
+        place only once it is complete, so a download that dies half way
+        never leaves a file that counts as installed.
+        """
+        subdir = _micromamba_subdir()
+        url = f"https://micro.mamba.pm/api/micromamba/{subdir}/{MICROMAMBA_VERSION}"
+        member = "Library/bin/micromamba.exe" if subdir.startswith("win") else "bin/micromamba"
+        partial = self.micromamba_path.with_name(self.micromamba_path.name + ".download")
+        logger.info(f"Downloading micromamba {MICROMAMBA_VERSION} from {url}")
 
         try:
-            # Download the compressed tar archive
             with urllib.request.urlopen(url, timeout=60) as response:
-                compressed_content = response.read()
+                archive = response.read()
+            logger.info(f"Downloaded {len(archive)} bytes")
 
-            logger.info(f"Downloaded {len(compressed_content)} bytes")
+            digest = hashlib.sha256(archive).hexdigest()
+            if digest != _MICROMAMBA_SHA256[subdir]:
+                raise RuntimeError(
+                    f"the download does not match the checksum of micromamba "
+                    f"{MICROMAMBA_VERSION} for {subdir} (got sha256 {digest}), "
+                    f"so it was cut off or altered on the way"
+                )
 
-            # Decompress bz2
-            import bz2
-            import tarfile
-            import tempfile
+            with tarfile.open(fileobj=io.BytesIO(archive), mode="r:bz2") as tar:
+                extracted = tar.extractfile(member)
+                if extracted is None:
+                    raise RuntimeError(f"{member} in the archive is not a file")
+                partial.write_bytes(extracted.read())
 
-            tar_content = bz2.decompress(compressed_content)
-            logger.info(f"Decompressed to {len(tar_content)} bytes")
-
-            # Extract bin/micromamba from tar archive
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".tar") as tmp_tar:
-                tmp_tar.write(tar_content)
-                tmp_tar_path = tmp_tar.name
-
-            try:
-                with tarfile.open(tmp_tar_path, "r") as tar:
-                    # Windows uses Library/bin/micromamba.exe, others use bin/micromamba
-                    if system == "Windows":
-                        member_path = "Library/bin/micromamba.exe"
-                    else:
-                        member_path = "bin/micromamba"
-                    member = tar.getmember(member_path)
-                    member_file = tar.extractfile(member)
-                    if member_file:
-                        with open(self.micromamba_path, "wb") as f:
-                            f.write(member_file.read())
-                        logger.info(f"Extracted micromamba binary from {member_path}")
-            finally:
-                Path(tmp_tar_path).unlink()
-
-            # Make executable
-            self.micromamba_path.chmod(0o755)
+            partial.chmod(0o755)
+            os.replace(partial, self.micromamba_path)
             logger.info(f"Micromamba installed successfully at {self.micromamba_path}")
 
         except Exception as e:
+            partial.unlink(missing_ok=True)
             raise RuntimeError(f"Failed to download micromamba: {e}") from e
 
     def get_env_yaml_path(self, env_name: str) -> Path:
@@ -618,12 +712,12 @@ class EnvironmentManager:
             yaml_path = self.get_env_yaml_path(manifest.env)
 
             # If env_path exists but is invalid (from failed previous
-            # attempt), remove it before retrying.
+            # attempt), move it out of the way before retrying.
             if env_path.exists():
                 logger.warning(
-                    f"Removing invalid/incomplete environment at {env_path}"
+                    f"Replacing invalid/incomplete environment at {env_path}"
                 )
-                self._safe_rmtree(env_path)
+                self.retire_env(env_path)
 
             logger.info(f"Creating environment {env_name} from {yaml_path}")
             self._create_env(env_name, env_path, yaml_path, progress_callback, job_id)
@@ -737,23 +831,25 @@ class EnvironmentManager:
             # (temp_env_path is bound above the try, so the cleanup
             # handler can always read it.)
 
+            # Old copies that retire_env could not delete at the time
+            # (antivirus still scanning). Best effort: one that is still
+            # locked stays until a later build.
+            for old in env_path.parent.glob(f".{env_path.name}.old-*"):
+                if not safe_rmtree(old):
+                    logger.warning(f"Could not remove old environment {old}")
+
             # Clean up any existing temp directory from previous failed attempts
-            if temp_env_path.exists():
-                logger.warning(f"Removing stale temporary environment at {temp_env_path}")
-                try:
-                    self._safe_rmtree(temp_env_path)
-                except Exception as e:
-                    logger.error(f"Failed to remove stale temp directory: {e}")
-                    # On Windows a killed run can leave the temp dir locked
-                    # (open handle, antivirus scan). Building into a leftover
-                    # half-env is exactly what made a retry stall early, so
-                    # don't reuse it: fall back to a fresh unique temp path.
-                    temp_env_path = (
-                        env_path.parent / f".{env_name}.tmp-{uuid.uuid4().hex[:8]}"
-                    )
-                    logger.warning(
-                        f"Building into a fresh temp path instead: {temp_env_path}"
-                    )
+            if not self._discard_temp_env(temp_env_path, "stale"):
+                # On Windows a killed run can leave the temp dir locked
+                # (open handle, antivirus scan). Building into a leftover
+                # half-env is exactly what made a retry stall early, so
+                # don't reuse it: fall back to a fresh unique temp path.
+                temp_env_path = (
+                    env_path.parent / f".{env_name}.tmp-{uuid.uuid4().hex[:8]}"
+                )
+                logger.warning(
+                    f"Building into a fresh temp path instead: {temp_env_path}"
+                )
 
             # micromamba materialises temp files next to the spec file
             # (pip requirement fragments), so the yaml's directory must be
@@ -820,6 +916,15 @@ class EnvironmentManager:
             env["MAMBA_REMOTE_CONNECT_TIMEOUT_SECS"] = "120"
             env["MAMBA_REMOTE_READ_TIMEOUT_SECS"] = "120"
             env["MAMBA_REMOTE_MAX_RETRIES"] = "5"
+            # Without a root prefix micromamba caches packages and the
+            # package index in %APPDATA%\mamba or ~/.mamba, outside
+            # anything a reinstall or Reset removes, and shared with any
+            # other conda install the user has. A malformed cached shard
+            # index crashes micromamba 2.9.0 on every run (memory fault,
+            # no output), and a bad cache there would survive anything a
+            # user tries. Overrides a root prefix the user set for
+            # something else.
+            env["MAMBA_ROOT_PREFIX"] = str(self.mamba_root_prefix)
             # Windows schannel refuses a certificate whose revocation it
             # cannot check, and a network that inspects TLS re-signs with
             # certificates carrying no CRL or OCSP pointer, so every
@@ -851,17 +956,6 @@ class EnvironmentManager:
             # section, because one env var covers all five envs on all
             # three platforms and cannot drift between the 15 files.
             env["PIP_PREFER_BINARY"] = "1"
-            # We read this pipe as UTF-8 (stream_with_tail). micromamba is
-            # a native binary and emits UTF-8 whatever the locale, but the
-            # pip it runs is Python and would use the system codepage, so
-            # on a cp932 / cp936 / cp949 machine pip's non-ASCII output
-            # (user paths in tracebacks) would reach us as U+FFFD, losing
-            # the diagnostic exactly when the install failed. Forcing the
-            # nested interpreter to UTF-8 makes the whole stream one
-            # encoding. PYTHONIOENCODING, not PYTHONUTF8: the latter is
-            # ignored for stdio whenever the former is already set (PEP
-            # 540), so it cannot be relied on to win.
-            env["PYTHONIOENCODING"] = "utf-8"
 
             # pip stages downloads and build dirs in TMPDIR. On Ubuntu
             # 24.10+ /tmp is a tmpfs capped at half the RAM with per-user
@@ -918,19 +1012,17 @@ class EnvironmentManager:
             # so the user sees "cancelled", not a scary error. Clean the
             # half-built temp env either way.
             if job_id is not None and is_cancel_requested(job_id):
-                if temp_env_path.exists():
-                    self._safe_rmtree(temp_env_path)
+                self._discard_temp_env(temp_env_path, "cancelled")
                 logger.info(f"Environment build for {env_name} cancelled")
                 raise JobCancelledError()
 
             if result.returncode != 0:
-                # Clean up failed temp environment
-                if temp_env_path.exists():
-                    logger.warning(f"Removing failed temporary environment at {temp_env_path}")
-                    self._safe_rmtree(temp_env_path)
                 # Surface the captured tail at ERROR so backend.log holds
                 # the pip stack-trace, not just the libmamba summary line.
+                # This comes before the cleanup on purpose: the cleanup can
+                # fail, and the log must hold the build error regardless.
                 log_subprocess_failure("micromamba create", cmd, result)
+                self._discard_temp_env(temp_env_path, "failed")
                 # Windows could not check whether the download server's
                 # certificate was revoked. Scan the whole captured output,
                 # not the five lines shown below: the schannel line sits
@@ -947,6 +1039,26 @@ class EnvironmentManager:
                         "revoked, so the analysis environment could not "
                         "be downloaded. This is common on a company "
                         "network that inspects secure traffic."
+                    )
+                # yaml-cpp could not open the spec file. On Windows that
+                # is the data folder path holding a non-ASCII character
+                # (see NonAsciiPathError). The fix is moving the folder,
+                # so say that instead of showing the YAML error.
+                if platform.system() == "Windows" and is_non_ascii_path_failure(
+                    result.output_tail, yaml_copy_path
+                ):
+                    chars = ", ".join(
+                        sorted({c for c in str(yaml_copy_path) if not c.isascii()})
+                    )
+                    raise NonAsciiPathError(
+                        f"The analysis environment cannot be built in "
+                        f"{self.envs_dir.parent}. The folder name contains a "
+                        f"character outside the basic Latin alphabet ({chars}), "
+                        f"and the tool that builds the environment cannot open "
+                        f"files on such a path on Windows. Point AddaxAI at a "
+                        f"folder without such characters by setting "
+                        f"ADDAXAI_USER_DATA_DIR, for example to "
+                        f"C:\\AddaxAI-data, then start AddaxAI again."
                     )
                 # micromamba's final line on any pip failure is the
                 # constant "critical libmamba pip failed to install
@@ -1010,21 +1122,17 @@ class EnvironmentManager:
             # cancel checkpoint above; propagate cleanly so the worker
             # reports cancellation rather than a build failure.
             raise
-        except TlsRevocationCheckError:
+        except (TlsRevocationCheckError, NonAsciiPathError):
             # Same reason as the cancel above: the failure branch already
             # removed the temp env, and the message is written for the
             # user. Re-wrapping it would bury both the wording and the
-            # type the API needs to offer the opt-out.
+            # type the API needs to tag the failure for the wizard.
             raise
         except Exception as e:
             # Clean up failed environment - only if rename hasn't happened yet
             # If temp still exists, remove it. If rename happened, remove final location.
             if temp_env_path.exists():
-                logger.warning(f"Cleaning up failed temporary environment at {temp_env_path}")
-                try:
-                    self._safe_rmtree(temp_env_path)
-                except Exception as cleanup_error:
-                    logger.warning(f"Failed to clean up temp environment: {cleanup_error}")
+                self._discard_temp_env(temp_env_path, "failed")
             elif env_path.exists():
                 # Rename happened but something failed after
                 logger.warning(f"Cleaning up failed environment at {env_path}")
@@ -1130,6 +1238,57 @@ class EnvironmentManager:
             return None
 
         return stored != current
+
+    def retire_env(self, env_path: Path) -> None:
+        """
+        Move an installed environment out of the way, then delete it.
+
+        The one way an environment is replaced. Deleting in place stops
+        at the first locked file and leaves a half-deleted env whose
+        python still boots, so every check passes while files the app
+        needs are gone. That is what a Windows beta tester got from
+        "Update now" (2026-11-03): the delete stopped at a locked
+        `DLLs\\select.pyd` after `bin\\` with exiftool was already gone.
+
+        A rename is all or nothing. If it is refused, the RuntimeError
+        reaches the user and the environment is untouched. A copy that
+        cannot be deleted afterwards is harmless: `_create_env` sweeps
+        `.{name}.old-*` before every build.
+        """
+        old = env_path.parent / f".{env_path.name}.old-{uuid.uuid4().hex[:8]}"
+        logger.info(f"Moving environment {env_path} aside to {old}")
+        _rename_with_retries(env_path, old, what="move the old environment aside")
+        if not safe_rmtree(old):
+            logger.warning(
+                f"Old environment left at {old}; it is removed at the next "
+                "environment build"
+            )
+
+    def _discard_temp_env(self, path: Path, why: str) -> bool:
+        """
+        Best-effort removal of a half-built temporary environment.
+
+        Returns True when the path is gone afterwards (or never existed).
+
+        Deliberately swallows, unlike `_safe_rmtree`, because a temp env
+        is removed on the way to reporting something else: a failed build,
+        a cancel, or a stale folder before a fresh build. On Windows the
+        antivirus is often still scanning the files micromamba just wrote,
+        and the delete then fails with WinError 5 on one `.pyd`. Letting
+        that escape replaced the build error on the setup screen with the
+        cleanup error, which names a file and not a cause (beta report,
+        McAfee, 2026-09-10). A folder that survives is harmless: the next
+        build cannot remove it either and moves to a fresh temp path.
+        """
+        if not path.exists():
+            return True
+        logger.warning(f"Removing {why} temporary environment at {path}")
+        try:
+            self._safe_rmtree(path)
+        except Exception as e:
+            logger.warning(f"Could not remove temporary environment {path}: {e}")
+            return False
+        return not path.exists()
 
     def _safe_rmtree(self, path: Path) -> None:
         """

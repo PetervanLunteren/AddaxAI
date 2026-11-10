@@ -22,12 +22,15 @@ import { queryClient } from "./lib/query-client";
 import { AppLayout } from "./components/layout/AppLayout";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { AnalysesPage } from "./pages/AnalysesPage";
-import DashboardPage from "./pages/DashboardPage";
+import DashboardLayout from "./pages/dashboard/DashboardLayout";
+import DashboardOverview from "./pages/dashboard/DashboardOverview";
+import DashboardExplore from "./pages/dashboard/DashboardExplore";
 import { MapPage } from "./pages/MapPage";
 import { DeploymentTimelinePage } from "./pages/DeploymentTimelinePage";
 import { ActivityOverlapPage } from "./pages/ActivityOverlapPage";
 import { ConfusionMatrixPage } from "./pages/ConfusionMatrixPage";
 import { PerClassPerformancePage } from "./pages/PerClassPerformancePage";
+import { CalibrationPage } from "./pages/CalibrationPage";
 import LabelsPage from "./pages/LabelsPage";
 import CountsPage from "./pages/CountsPage";
 import ExportPage from "./pages/ExportPage";
@@ -45,6 +48,7 @@ import { FolderRunResumeIndex } from "./pages/folder-run/FolderRunResumeIndex";
 import { Button } from "./components/ui/button";
 import { CrashBanner } from "./components/layout/CrashBanner";
 import { MenuCommands } from "./components/layout/MenuCommands";
+import { RouteErrorBoundary } from "./components/layout/RouteErrorBoundary";
 import { EnvRebuildButton } from "./components/layout/EnvRebuildButton";
 import { Toaster } from "./components/ui/sonner";
 import { api } from "./lib/api-client";
@@ -414,6 +418,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <SetupGate>
+          <RouteErrorBoundary>
           <Routes>
             <Route path="/setup" element={<SetupPage />} />
             <Route path="/about" element={<AboutPage />} />
@@ -444,19 +449,30 @@ function App() {
               <Route path="process" element={<AnalysesPage />} />
               <Route path="labels" element={<LabelsPage />} />
               <Route path="counts" element={<CountsPage />} />
-              <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="dashboard" element={<DashboardLayout />}>
+                <Route index element={<DashboardOverview />} />
+                <Route path="explore" element={<DashboardExplore />} />
+              </Route>
               <Route path="insights" element={<Navigate to="map" replace />} />
               <Route path="insights/map" element={<MapPage />} />
               <Route path="insights/timeline" element={<DeploymentTimelinePage />} />
               <Route path="insights/activity-overlap" element={<ActivityOverlapPage />} />
               <Route path="insights/confusion-matrix" element={<ConfusionMatrixPage />} />
               <Route path="insights/per-class-performance" element={<PerClassPerformancePage />} />
+              <Route path="insights/calibration" element={<CalibrationPage />} />
               <Route path="sites" element={<SitesPage />} />
               <Route path="deployments" element={<DeploymentsPage />} />
               <Route path="export" element={<ExportPage />} />
               <Route path="settings" element={<SettingsPage />} />
+              {/* A mistyped or outdated project URL lands on the
+                  dashboard instead of a blank window. */}
+              <Route path="*" element={<Navigate to="dashboard" replace />} />
             </Route>
+
+            {/* Same safety net outside a project. */}
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </RouteErrorBoundary>
         </SetupGate>
 
         {/* Native menu command bridge (Electron only) + global toasts */}

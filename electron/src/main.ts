@@ -8,11 +8,34 @@
  * - Clean shutdown of backend on quit
  */
 
-import { app, BrowserWindow, crashReporter, session, shell, ipcMain, dialog, Menu, powerSaveBlocker } from 'electron';
+import { app, BrowserWindow, crashReporter, session, shell, ipcMain, dialog, Menu, nativeTheme, powerSaveBlocker } from 'electron';
+import Store from 'electron-store';
 import { spawn, execSync, ChildProcess } from 'child_process';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
+
+// Mirror of the renderer's theme preference (its localStorage stays the
+// source of truth). The mirror exists so the window can be created with
+// the right background colour before any renderer code runs: without
+// it, a dark launch flashes white between the splash and the SPA.
+// Updated on every 'menu:theme-mode' message.
+type ThemePref = 'system' | 'light' | 'dark';
+const prefsStore = new Store<{ themePref: ThemePref }>({ name: 'prefs' });
+
+function storedThemePref(): ThemePref {
+  const pref = prefsStore.get('themePref');
+  return pref === 'light' || pref === 'dark' ? pref : 'system';
+}
+
+// Lets nativeTheme resolve shouldUseDarkColors correctly from the first
+// paint (system pref maps to 'system', explicit choices pin it).
+nativeTheme.themeSource = storedThemePref();
+
+function themeBackgroundColor(): string {
+  // Must match --background in frontend/src/index.css for both themes.
+  return nativeTheme.shouldUseDarkColors ? '#151515' : '#ffffff';
+}
 
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
@@ -30,7 +53,9 @@ const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
 /**
  * The user data directory, resolved the same way the backend resolves
  * it (`ADDAXAI_USER_DATA_DIR`, falling back to `~/AddaxAI`). Every path below
- * derives from this.
+ * derives from this. On Windows the installer may have set the variable
+ * itself, for a user folder micromamba cannot open files in (a character
+ * outside ASCII in the path); see AddaxAIDataDir in build/installer.nsh.
  *
  * The two processes have to agree: they communicate through files in
  * here (the crash sentinels, the startup error, the restore and wipe
@@ -885,6 +910,9 @@ async function createWindow(): Promise<void> {
     // discoverability wins over aesthetics. No-op on macOS where the menu
     // lives on the system menu bar.
     autoHideMenuBar: false,
+    // Painted before any content loads; keyed to the theme so a dark
+    // launch never flashes white (and a light one never flashes dark).
+    backgroundColor: themeBackgroundColor(),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -1139,6 +1167,7 @@ function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
     label: 'File',
     submenu: [
       { id: 'new-project', label: 'New project…', click: () => sendMenuCommand('new-project') },
+      { id: 'import-package', label: 'Import bundle…', click: () => sendMenuCommand('import-package') },
       { id: 'new-folder-run', label: 'Analyse a folder…', click: () => sendMenuCommand('new-folder-run') },
       { type: 'separator' },
       { id: 'nav-home', label: 'Home', click: () => sendMenuCommand('nav-home') },
@@ -1188,6 +1217,17 @@ function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
             click: () => sendMenuCommand('species-scientific'),
           },
         ],
+      },
+      {
+        id: 'theme',
+        label: 'Theme',
+        submenu: (['system', 'light', 'dark'] as const).map((mode) => ({
+          id: `theme-${mode}`,
+          label: mode.charAt(0).toUpperCase() + mode.slice(1),
+          type: 'radio' as const,
+          checked: storedThemePref() === mode,
+          click: () => sendMenuCommand(`theme-${mode}`),
+        })),
       },
       {
         id: 'data-type',
@@ -1269,6 +1309,7 @@ function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
 // enabled so a stuck setup can still be inspected or recovered.
 const SETUP_GATED_MENU_IDS = [
   'new-project',
+  'import-package',
   'new-folder-run',
   'nav-home',
   'open-backups',
@@ -1314,11 +1355,16 @@ function setupApplicationMenu(): void {
 // is open, nor open two pickers in parallel by double-clicking the
 // drop zone. Resolves the sender's window via event.sender so the
 // handler attaches to whichever window made the call.
-ipcMain.handle('dialog:selectFolder', async (event) => {
+// Folder picker. `opts.title` names what the folder is for; the
+// default is the analysis case. Window-modal to the calling window.
+ipcMain.handle(
+  'dialog:selectFolder',
+  async (event, opts?: { title?: string; defaultPath?: string }) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const options: Electron.OpenDialogOptions = {
     properties: ['openDirectory'],
-    title: 'Select folder with camera trap images',
+    title: opts?.title ?? 'Select folder with camera trap images',
+    defaultPath: opts?.defaultPath,
   };
   const result = win
     ? await dialog.showOpenDialog(win, options)
@@ -1329,7 +1375,8 @@ ipcMain.handle('dialog:selectFolder', async (event) => {
   }
 
   return result.filePaths[0] || null;
-});
+  },
+);
 
 // Handle single-file selection dialog. Caller can pass `filters` to
 // constrain the picker (e.g. .db files for the Restore-from-backup flow).
@@ -1483,8 +1530,22 @@ ipcMain.on('menu:species-mode', (_event, mode: string) => {
   if (item) item.checked = true;
 });
 
+// Keep the View → Theme radio, nativeTheme and the stored mirror in sync
+// with the renderer's theme preference. The renderer sends it on mount
+// and after every change. Deliberately NOT setup-gated: the theme works
+// during the first-run wizard too.
+ipcMain.on('menu:theme-mode', (_event, mode: string) => {
+  const pref: ThemePref =
+    mode === 'light' || mode === 'dark' ? mode : 'system';
+  const item = Menu.getApplicationMenu()?.getMenuItemById(`theme-${pref}`);
+  if (item) item.checked = true;
+  nativeTheme.themeSource = pref;
+  prefsStore.set('themePref', pref);
+});
+
 // Same for View → Data type: which footage the user works on, which
-// decides the models the app offers. Renderer-owned like the mode above.
+// decides the models the app offers. Renderer-owned like the species-name
+// mode.
 ipcMain.on('menu:data-type', (_event, dataType: string) => {
   const id =
     dataType === 'underwater' ? 'data-type-underwater' : 'data-type-camera-trap';

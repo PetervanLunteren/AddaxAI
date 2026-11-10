@@ -29,6 +29,8 @@ import subprocess
 import threading
 import time
 from collections.abc import AsyncIterator, Iterator
+from datetime import datetime
+from datetime import time as dtime
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +54,12 @@ from app.utils.subprocess_env import clean_python_env
 logger = get_logger(__name__)
 
 _SCRIPT_PATH = Path(__file__).resolve().parent.parent / "ml" / "inference" / "similarity_script.py"
+
+# Hard ceiling for one labels subprocess. Progress streams to the UI and a
+# client disconnect kills the process at once, so this only catches a true
+# hang. Flat on purpose: the per-cap formula it replaced read a parameter no
+# caller sent, so every operation got 180 s whatever its pool size.
+LABELS_SUBPROCESS_TIMEOUT_S = 600
 
 
 def _get_env_python() -> Path:
@@ -84,10 +92,18 @@ def _filters_to_dict(filters: LabelFilters) -> dict[str, Any]:
         ]
     if filters.site_ids:
         d["site_ids"] = filters.site_ids
+    # The sort worker compares these as text against what SQLite stores,
+    # 'YYYY-MM-DD HH:MM:SS.ffffff'. `isoformat()` put a 'T' in the middle,
+    # which sorts after the space, so the first day fell out of the range;
+    # and a bare day as the upper bound sorts before any time on that day,
+    # so the last day fell out too. Same shape as the stored value, and the
+    # end day whole, as the Files tab and the Counts page do it.
     if filters.date_from is not None:
-        d["date_from"] = filters.date_from.isoformat()
+        d["date_from"] = filters.date_from.strftime("%Y-%m-%d %H:%M:%S")
     if filters.date_to is not None:
-        d["date_to"] = filters.date_to.isoformat()
+        d["date_to"] = datetime.combine(filters.date_to.date(), dtime.max).strftime(
+            "%Y-%m-%d %H:%M:%S.%f"
+        )
     if filters.min_confidence is not None:
         d["min_confidence"] = filters.min_confidence
     if filters.max_confidence is not None:
@@ -138,22 +154,20 @@ def stream_labels_subprocess(
 
     logger.info(f"Streaming labels subprocess: {operation} for project {project_id}")
 
-    env = clean_python_env(PYTHONUNBUFFERED="1")
+    env = clean_python_env()
 
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         env=env,
         bufsize=1,
     )
 
-    # 60s base + 6s per 1k of the fixed cap (20k → 180s). Subprocess
-    # progress reaches us steadily so this is a hard ceiling, not the
-    # typical wait. process.wait() at the end enforces it.
-    cap = int(params.get("max_detections", 20000))
-    timeout_s = 60 + (cap // 1000) * 6
+    timeout_s = LABELS_SUBPROCESS_TIMEOUT_S
 
     saw_terminal_event = False
     try:
@@ -267,6 +281,26 @@ def _apply_project_threshold(
     return filters
 
 
+def count_detections_by_label(
+    db: Session, project_id: str, filters: LabelFilters
+) -> dict[str, int]:
+    """Boxes per label under every filter except the label filter: what
+    the Labels grid would show if that label were ticked alone. Built
+    from the grid's own SQL (``_build_query`` in the sort script, run on
+    this session's connection), so the tree cannot drift from the grid.
+    """
+    from app.ml.inference.similarity_script import COUNT_BY_LABEL_SQL, _build_query
+
+    scoped = _apply_project_threshold(
+        filters.model_copy(update={"labels": None}), project_id, db
+    )
+    sql, params = _build_query(project_id, _filters_to_dict(scoped), COUNT_BY_LABEL_SQL)
+    sql += " GROUP BY d.label_taxonomy_id"
+    db.flush()
+    raw = db.connection().connection.dbapi_connection
+    return {tid: n for tid, n in raw.execute(sql, params).fetchall() if tid}
+
+
 def _build_sort_params(
     project_id: str, body: SortRequest, db: Session
 ) -> dict[str, Any]:
@@ -364,7 +398,7 @@ async def stream_labels_subprocess_async(
     blocked on ``process.stdout.readline()``: Starlette can only deliver
     a ``GeneratorExit`` at a yield point, and the subprocess holds the
     generator off the yield point indefinitely. In the wild that meant a
-    refreshed tab left a similarity subprocess running until its 180 s
+    refreshed tab left a similarity subprocess running until its
     timeout, holding one of the browser's six per-host connection slots
     so the next page load queued behind it. This generator reads stdout on
     a background thread and pops with a 0.5 s queue-poll tick, rechecking
@@ -386,18 +420,19 @@ async def stream_labels_subprocess_async(
     logger.info(
         f"Streaming labels subprocess (async): {operation} for project {project_id}"
     )
-    env = clean_python_env(PYTHONUNBUFFERED="1")
+    env = clean_python_env()
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         env=env,
         bufsize=1,
     )
 
-    cap = int(params.get("max_detections", 20000))
-    timeout_s = 60 + (cap // 1000) * 6
+    timeout_s = LABELS_SUBPROCESS_TIMEOUT_S
     deadline = time.monotonic() + timeout_s
     loop = asyncio.get_running_loop()
     saw_terminal_event = False

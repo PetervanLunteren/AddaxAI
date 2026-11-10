@@ -39,33 +39,39 @@ interface CalloutProps {
   className?: string;
 }
 
+// Boxes and icons use the intent trios from index.css (identical to
+// the old tailwind tints in light by construction). Body text is the
+// one deliberate exception to the no-dark:-variants rule: the light
+// -900 shades are darker than the inks and keeping them keeps light
+// mode pixel-identical, so the dark override lives here, in the one
+// component, instead of as a fourth token.
 const VARIANTS: Record<
   CalloutVariant,
   { box: string; text: string; icon: LucideIcon; iconColor: string }
 > = {
   info: {
-    box: "bg-blue-50 border-blue-200",
-    text: "text-blue-900",
+    box: "bg-info-subtle border-info-border",
+    text: "text-blue-900 dark:text-info-ink",
     icon: Info,
-    iconColor: "text-blue-600",
+    iconColor: "text-info-ink",
   },
   warning: {
-    box: "bg-amber-50 border-amber-200",
-    text: "text-amber-900",
+    box: "bg-warning-subtle border-warning-border",
+    text: "text-amber-900 dark:text-warning-ink",
     icon: AlertTriangle,
-    iconColor: "text-amber-600",
+    iconColor: "text-warning-ink",
   },
   success: {
-    box: "bg-green-50 border-green-200",
-    text: "text-green-900",
+    box: "bg-success-subtle border-success-border",
+    text: "text-green-900 dark:text-success-ink",
     icon: CheckCircle2,
-    iconColor: "text-green-600",
+    iconColor: "text-success-ink",
   },
   error: {
-    box: "bg-red-50 border-red-200",
-    text: "text-red-900",
+    box: "bg-destructive-subtle border-destructive-border",
+    text: "text-red-900 dark:text-destructive-ink",
     icon: AlertCircle,
-    iconColor: "text-red-600",
+    iconColor: "text-destructive-ink",
   },
 };
 

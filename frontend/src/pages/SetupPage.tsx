@@ -47,6 +47,7 @@ import { Callout } from "../components/ui/callout";
 import { LogoPlate } from "../components/layout/LogoPlate";
 import { PhotoBackdrop } from "../components/layout/PhotoBackdrop";
 import { ContinueWithoutRevocationChecks } from "../components/setup/ContinueWithoutRevocationChecks";
+import { LockedDownHelp } from "../components/setup/LockedDownHelp";
 
 const POLL_INTERVAL_MS = 1500;
 
@@ -57,7 +58,7 @@ const POLL_INTERVAL_MS = 1500;
  */
 function SetupFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="relative min-h-screen overflow-hidden">
+    <div className="relative min-h-screen overflow-hidden" data-full-bleed>
       <PhotoBackdrop />
       <div className="relative z-10 flex min-h-screen flex-col items-center justify-center px-4 py-8">
         {children}
@@ -230,19 +231,27 @@ export default function SetupPage() {
             <Button onClick={() => install.mutate()} className="w-full">
               Try again
             </Button>
-            {/* Only for the one failure plain retrying cannot fix. The
-                backend stops sending this kind once the choice has been
-                made, so the offer never repeats uselessly. */}
-            {showRevocationOptOut && (
+            {/* The revocation opt-out is the one failure with a button of
+                its own, and it links its help section itself. The backend
+                stops sending that kind once the choice has been made, so
+                the offer never repeats uselessly. Every other failure gets
+                the one static line to the locked-down help page: a first
+                launch fails almost only on managed computers and inspected
+                networks, and the page is where the answers are. */}
+            {showRevocationOptOut ? (
               <ContinueWithoutRevocationChecks
                 onRetry={() => install.mutate()}
+              />
+            ) : (
+              <LockedDownHelp
+                errorKind={statusError !== null ? status.error_kind : null}
               />
             )}
           </div>
         )}
 
         {status.ready && (
-          <div className="mt-6 text-sm text-[#0f6064]">
+          <div className="mt-6 text-sm text-primary-ink">
             Setup complete. Opening AddaxAI...
           </div>
         )}
@@ -260,7 +269,7 @@ function Row({ label, ok }: RowProps) {
   return (
     <div className="flex items-center justify-between">
       <span>{label}</span>
-      <span className={ok ? "text-[#0f6064]" : "text-muted-foreground"}>
+      <span className={ok ? "text-primary-ink" : "text-muted-foreground"}>
         {ok ? "Ready" : "Not ready"}
       </span>
     </div>

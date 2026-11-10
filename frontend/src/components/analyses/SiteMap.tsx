@@ -11,6 +11,9 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Map, Marker, NavigationControl } from "react-map-gl/maplibre";
+
+import { useTheme } from "../../lib/theme";
+import { openFreeMapStyleUrl } from "../map/basemap-styles";
 import type { StyleSpecification } from "maplibre-gl";
 import { MapPin, MapIcon, Satellite } from "lucide-react";
 import { sitesApi } from "@/api/sites";
@@ -28,7 +31,8 @@ const MAP_STYLES = {
   streets: {
     name: "Streets",
     icon: MapIcon,
-    url: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+    // Resolved per theme in streetsStyleUrl below.
+    url: "https://tiles.openfreemap.org/styles/positron",
   },
   satellite: {
     name: "Satellite",
@@ -59,6 +63,10 @@ const MAP_STYLES = {
 
 type MapStyleKey = keyof typeof MAP_STYLES;
 
+function streetsStyleUrl(dark: boolean): string {
+  return openFreeMapStyleUrl(dark);
+}
+
 interface SiteMapProps {
   projectId: string;
   selectedLocation: { lat: number; lon: number } | null;
@@ -77,6 +85,7 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
 
   // Map style state
   const [mapStyle, setMapStyle] = useState<MapStyleKey>("satellite");
+  const { resolvedTheme } = useTheme();
 
   // Map viewport state
   const [viewState, setViewState] = useState({
@@ -174,7 +183,7 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
   );
 
   return (
-    <div className="relative h-[400px] w-full rounded-lg overflow-hidden border border-gray-200">
+    <div className="relative h-[400px] w-full rounded-lg overflow-hidden border border-border">
       <Map
         {...viewState}
         onMove={(evt) => {
@@ -182,7 +191,11 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
         }}
         onLoad={handleMapLoad}
         onClick={handleMapClick}
-        mapStyle={MAP_STYLES[mapStyle].url as string | StyleSpecification}
+        mapStyle={
+          (mapStyle === "streets"
+            ? streetsStyleUrl(resolvedTheme === "dark")
+            : MAP_STYLES[mapStyle].url) as string | StyleSpecification
+        }
         onError={onMapError}
         style={{ width: "100%", height: "100%" }}
       >
@@ -228,7 +241,7 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
                 anchor="bottom"
               >
                 <div className="relative group">
-                  <MapPin className="h-6 w-6 text-blue-600 drop-shadow-lg" fill="currentColor" />
+                  <MapPin className="h-6 w-6 text-info-ink drop-shadow-lg" fill="currentColor" />
                   {/* Tooltip */}
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                     {site.name}
@@ -246,10 +259,10 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
             anchor="bottom"
           >
             <div className="relative animate-bounce">
-              <MapPin className="h-8 w-8 text-red-600 drop-shadow-lg" fill="currentColor" />
+              <MapPin className="h-8 w-8 text-destructive-ink drop-shadow-lg" fill="currentColor" />
               {/* Pulse effect */}
               <div className="absolute inset-0 h-8 w-8 animate-ping">
-                <MapPin className="h-8 w-8 text-red-600 opacity-75" fill="currentColor" />
+                <MapPin className="h-8 w-8 text-destructive-ink opacity-75" fill="currentColor" />
               </div>
             </div>
           </Marker>
@@ -257,13 +270,13 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
       </Map>
 
       {/* Help text */}
-      <div className="absolute bottom-2 left-2 bg-white px-3 py-1.5 rounded shadow-md text-xs text-gray-600 max-w-[200px]">
+      <div className="absolute bottom-2 left-2 bg-card px-3 py-1.5 rounded shadow-md text-xs text-muted-foreground max-w-[200px]">
         Click anywhere on the map to place your site marker
       </div>
 
       {/* Coordinates display */}
       {selectedLocation && (
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white px-3 py-1.5 rounded shadow-md text-xs font-mono">
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-card px-3 py-1.5 rounded shadow-md text-xs font-mono">
           {selectedLocation.lat.toFixed(6)}, {selectedLocation.lon.toFixed(6)}
         </div>
       )}

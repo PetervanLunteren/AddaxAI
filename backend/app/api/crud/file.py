@@ -3,7 +3,7 @@ CRUD operations for files.
 """
 
 from collections.abc import Iterable
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime
 from typing import NamedTuple
 
 from sqlalchemy import Integer, and_, func, or_, select
@@ -18,6 +18,8 @@ from app.api.crud.event_observation import (
     get_event_ids_for_files,
     recalculate_max_n_for_events,
 )
+from app.api.crud.file_filters import file_flag_clauses, tri_state
+from app.api.crud.ordering import file_time_order
 from app.api.schemas.file import (
     DetectionResponse,
     FileResponse,
@@ -27,13 +29,18 @@ from app.api.schemas.file import (
     MaxAtOnce,
     TrackResponse,
 )
+from app.api.schemas.undo import DetectionState, FileState, UndoSnapshot
 from app.core.confidence import effective_floor
 from app.ml.detection_visibility import (
     on_representative_frame,
     on_visible_frame,
     on_visible_frame_of,
 )
-from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
+from app.ml.label_exclusion import (
+    classification_score_in_range,
+    is_a_real_detection,
+    threshold_or_verified,
+)
 from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, Event, File, Project
 from app.models.event import event_files
@@ -91,11 +98,8 @@ def get_files(
     query = db.query(File)
     if observation_type:
         query = query.filter(File.observation_type == observation_type)
-    # file_path tiebreak (here and in the sibling queries below): burst
-    # shots share one second-resolution timestamp, and offset pagination
-    # over a non-unique sort key can skip or repeat rows across pages.
     return (
-        query.order_by(File.captured_at_local.desc(), File.file_path.desc())
+        query.order_by(*file_time_order(newest_first=True))
         .offset(skip)
         .limit(limit)
         .all()
@@ -126,7 +130,7 @@ def get_files_by_deployment(
     if observation_type:
         query = query.filter(File.observation_type == observation_type)
     return (
-        query.order_by(File.captured_at_local.desc(), File.file_path.desc())
+        query.order_by(*file_time_order(newest_first=True))
         .offset(skip)
         .limit(limit)
         .all()
@@ -162,7 +166,7 @@ def get_files_by_project(
     if observation_type:
         query = query.filter(File.observation_type == observation_type)
     return (
-        query.order_by(File.captured_at_local.desc(), File.file_path.desc())
+        query.order_by(*file_time_order(newest_first=True))
         .offset(skip)
         .limit(limit)
         .all()
@@ -170,6 +174,176 @@ def get_files_by_project(
 
 
 LABELS_FILES_SORT_VALUES = frozenset({"path", "newest", "oldest", "random"})
+
+
+def _passing_box_clauses(floor: float) -> list:
+    """What makes a box count on the Files tab: on the visible surface, a
+    real detection, and at or above ``floor`` or verified."""
+    return [
+        on_visible_frame(),
+        is_a_real_detection(),
+        or_(
+            Detection.confidence >= floor,
+            Detection.verified == True,  # noqa: E712
+        ),
+    ]
+
+
+def _box_range_clauses(
+    floor: float,
+    min_confidence: float | None,
+    max_confidence: float | None,
+    min_label_confidence: float | None,
+    max_label_confidence: float | None,
+) -> list:
+    """The Detections tab's range rules lifted to boxes on the Files tab.
+
+    ``min_confidence`` at or below the floor is a no-op: the Files slider
+    is clamped at the project threshold ("empty" is defined by that one
+    setting, never by a transient slider), so a lower value can only
+    arrive from a stale URL. Above the floor it is literal, exactly as
+    the sort worker applies it, so a verified low-confidence box cannot
+    satisfy a narrowed range there either. The classifier-score range is
+    classified boxes only, an unclassified box passes it (see
+    ``classification_score_in_range``), the same as the sort worker."""
+    clauses = []
+    if min_confidence is not None and min_confidence > floor:
+        clauses.append(Detection.confidence >= min_confidence)
+    if max_confidence is not None:
+        clauses.append(Detection.confidence <= max_confidence)
+    if min_label_confidence is not None or max_label_confidence is not None:
+        clauses.append(
+            classification_score_in_range(min_label_confidence, max_label_confidence)
+        )
+    return clauses
+
+
+def _labels_files_query(
+    db: Session,
+    project_id: str,
+    *,
+    floor: float,
+    empty: str,
+    site_ids: list[str] | None,
+    date_from: datetime | None,
+    date_to: datetime | None,
+    verification: str | None,
+    flagged: str | None,
+    favorited: str | None,
+    labels: list[str] | None,
+    min_confidence: float | None,
+    max_confidence: float | None,
+    min_label_confidence: float | None,
+    max_label_confidence: float | None,
+):
+    """The Files tab's filtered file query, before ordering and paging.
+    Shared by the page itself and by the label tree's counts, so the
+    number beside a label is what ticking it would list."""
+    from app.api.crud.deployment import site_ids_filter
+
+    passing = (
+        select(Detection.id)
+        .where(Detection.file_id == File.id)
+        .where(*_passing_box_clauses(floor))
+    )
+    query = (
+        db.query(File)
+        .join(Deployment, Deployment.id == File.deployment_id)
+        .filter(Deployment.project_id == project_id)
+    )
+    if empty == "show_only":
+        query = query.filter(~passing.exists())
+    elif empty == "hide":
+        query = query.filter(passing.exists())
+
+    # Box-level filters, the Detections tab's rules lifted to files: a
+    # file shows when ONE box matches all of them together (species AND
+    # confidence range), on the same `passing` scope as the empty
+    # partition, so an invisible box can never match. One combined
+    # EXISTS, not one per filter: a file with dog@0.9 and cat@0.3 must
+    # not match "dogs below 40%" off two different boxes. Files without
+    # any box only appear while no box filter is active (or through
+    # "Show only empty").
+    box_filters = _box_range_clauses(
+        floor, min_confidence, max_confidence,
+        min_label_confidence, max_label_confidence,
+    )
+    if labels:
+        box_filters.append(Detection.label_taxonomy_id.in_(labels))
+    if box_filters:
+        query = query.filter(passing.where(*box_filters).exists())
+
+    site_clause = site_ids_filter(site_ids)
+    if site_clause is not None:
+        query = query.filter(site_clause)
+    # Date range and the triage marks: one definition, shared with the
+    # media export (`file_filters.py`). The marks live on the file
+    # itself, so unlike the events endpoint no EXISTS is needed; None
+    # and "all" mean no clause, matching `get_events`.
+    query = query.filter(
+        *file_flag_clauses(
+            date_from=date_from,
+            date_to=date_to,
+            verified=tri_state(verification, "verified", "unverified"),
+            flagged=tri_state(flagged, "flagged", "not_flagged"),
+            favorited=tri_state(favorited, "favorited", "not_favorited"),
+        )
+    )
+    return query
+
+
+def count_labels_files_by_label(
+    db: Session,
+    project_id: str,
+    *,
+    floor: float,
+    empty: str = "all",
+    site_ids: list[str] | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    verification: str | None = None,
+    flagged: str | None = None,
+    favorited: str | None = None,
+    min_confidence: float | None = None,
+    max_confidence: float | None = None,
+    min_label_confidence: float | None = None,
+    max_label_confidence: float | None = None,
+) -> dict[str, int]:
+    """Files per label under every filter except the label filter: what
+    the Files tab would list if that label were ticked alone. The file
+    set comes from the tab's own query, the boxes from its own passing
+    rule, so the two cannot disagree."""
+    files = _labels_files_query(
+        db, project_id, floor=floor, empty=empty, site_ids=site_ids,
+        date_from=date_from, date_to=date_to, verification=verification,
+        flagged=flagged, favorited=favorited, labels=None,
+        min_confidence=min_confidence, max_confidence=max_confidence,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
+    ).with_entities(File.id).subquery()
+    rows = (
+        db.query(
+            Detection.label_taxonomy_id,
+            func.count(func.distinct(Detection.file_id)),
+        )
+        # ``on_visible_frame`` reads File columns. Without this join
+        # SQLite paired every detection with every file: ten minutes and
+        # "database or disk is full" on 40k files, and a video's frame
+        # rule satisfied by any image in the project.
+        .join(File, File.id == Detection.file_id)
+        .filter(Detection.file_id.in_(select(files.c.id)))
+        .filter(Detection.label_taxonomy_id.isnot(None))
+        .filter(*_passing_box_clauses(floor))
+        .filter(
+            *_box_range_clauses(
+                floor, min_confidence, max_confidence,
+                min_label_confidence, max_label_confidence,
+            )
+        )
+        .group_by(Detection.label_taxonomy_id)
+        .all()
+    )
+    return {tid: n for tid, n in rows}
 
 
 def get_labels_files(
@@ -219,102 +393,24 @@ def get_labels_files(
     deployment folder. Reviewing files means scanning the same scene
     over and over, and capture-time order interleaves cameras.
     """
-    from app.api.crud.deployment import site_ids_filter
-
-    passing = (
-        select(Detection.id)
-        .where(Detection.file_id == File.id)
-        .where(on_visible_frame())
-        .where(is_a_real_detection())
-        .where(
-            or_(
-                Detection.confidence >= floor,
-                Detection.verified == True,  # noqa: E712
-            )
-        )
+    query = _labels_files_query(
+        db, project_id, floor=floor, empty=empty, site_ids=site_ids,
+        date_from=date_from, date_to=date_to, verification=verification,
+        flagged=flagged, favorited=favorited, labels=labels,
+        min_confidence=min_confidence, max_confidence=max_confidence,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
     )
-    query = (
-        db.query(File)
-        .join(Deployment, Deployment.id == File.deployment_id)
-        .filter(Deployment.project_id == project_id)
-    )
-    if empty == "show_only":
-        query = query.filter(~passing.exists())
-    elif empty == "hide":
-        query = query.filter(passing.exists())
-
-    # Box-level filters, the Detections tab's rules lifted to files: a
-    # file shows when ONE box matches all of them together (species AND
-    # confidence range), on the same `passing` scope as the empty
-    # partition, so an invisible box can never match. One combined
-    # EXISTS, not one per filter: a file with dog@0.9 and cat@0.3 must
-    # not match "dogs below 40%" off two different boxes.
-    #
-    # `min_confidence` at or below the floor is a no-op: the Files
-    # slider is clamped at the project threshold ("empty" is defined by
-    # that one setting, never by a transient slider), so a lower value
-    # can only arrive from a stale URL. Above the floor it is literal,
-    # exactly as the sort worker applies it, so a verified
-    # low-confidence box cannot satisfy a narrowed range there either.
-    # Files without any box only appear while no box filter is active
-    # (or through "Show only empty").
-    box_filters = []
-    if labels:
-        box_filters.append(Detection.label_taxonomy_id.in_(labels))
-    if min_confidence is not None and min_confidence > floor:
-        box_filters.append(Detection.confidence >= min_confidence)
-    if max_confidence is not None:
-        box_filters.append(Detection.confidence <= max_confidence)
-    # Classifier-score range. NULL label_confidence fails the comparison
-    # in SQL, so unclassified boxes are excluded automatically once a
-    # bound is set, the same behaviour as the Detections sort worker.
-    if min_label_confidence is not None:
-        box_filters.append(Detection.label_confidence >= min_label_confidence)
-    if max_label_confidence is not None:
-        box_filters.append(Detection.label_confidence <= max_label_confidence)
-    if box_filters:
-        query = query.filter(passing.where(*box_filters).exists())
-
-    site_clause = site_ids_filter(site_ids)
-    if site_clause is not None:
-        query = query.filter(site_clause)
-    if date_from is not None:
-        query = query.filter(File.captured_at_local >= date_from)
-    if date_to is not None:
-        # Include the whole end day, matching the event filters.
-        query = query.filter(
-            File.captured_at_local
-            <= datetime.combine(date_to.date(), time.max)
-        )
-    if verification == "verified":
-        query = query.filter(File.verified.is_(True))
-    elif verification == "unverified":
-        query = query.filter(File.verified.is_(False))
-    # Triage marks live on the file itself, so unlike the events
-    # endpoint no EXISTS is needed. Anything else (None, "all") means
-    # no clause, matching `get_events`.
-    if flagged in ("flagged", "not_flagged"):
-        query = query.filter(File.flagged.is_(flagged == "flagged"))
-    if favorited in ("favorited", "not_favorited"):
-        query = query.filter(File.favorited.is_(favorited == "favorited"))
 
     total = query.count()
 
-    # File.id breaks every tie, so paging is stable. Files with no
-    # capture time sort last rather than wherever SQLite puts NULL.
-    undated_last = File.captured_at_local.is_(None).asc()
-    # Same-second ties resolve by file name, not by row id: a burst shot
-    # within one second must come back in shooting order, and camera
-    # filenames are sequential. Lexicographic, which equals human order
-    # for the fixed-width names cameras write (IMG_0102); a true natural
-    # sort would need a computed key and no real data has asked for it.
-    name_break = [File.file_path.asc(), File.id.asc()]
+    # Time sorts share one rule with the exports (see crud/ordering.py).
     if sort == "path":
         order = [File.file_path.asc(), File.id.asc()]
     elif sort == "newest":
-        order = [undated_last, File.captured_at_local.desc(), *name_break]
+        order = file_time_order(newest_first=True)
     elif sort == "oldest":
-        order = [undated_last, File.captured_at_local.asc(), *name_break]
+        order = file_time_order(newest_first=False)
     elif sort == "random":
         if seed is None:
             raise ValueError("random sort requires a seed")
@@ -346,9 +442,7 @@ def get_labels_files(
             event_start_sq.is_(None).asc(),
             event_start_sq.desc(),
             event_id_sq.asc(),
-            undated_last,
-            File.captured_at_local.asc(),
-            *name_break,
+            *file_time_order(newest_first=False),
         ]
     else:
         raise ValueError(f"unknown sort: {sort}")
@@ -419,13 +513,19 @@ def get_label_progress(
 
     - every detection that passes the project threshold, which is one
       card in the Crops tab, and
-    - every file where nothing passes, which is one card in the Empties
-      tab carrying the label "nothing here".
+    - every file with no real passing detection, which is one card in
+      the Empties tab carrying the label "nothing here".
 
-    The two never overlap and together they cover the project, because a
-    file either has a passing detection or it does not. So this total is
-    exactly the number of cards across both tabs, and 100% means every
-    one of them has been looked at.
+    Together they cover the project, and this total is the number of
+    cards across both tabs, so 100% means every one of them has been
+    looked at. The crop half uses the grid's own scope rule, so a box the
+    model called "false detection" is a card to check like any other. The
+    empties half uses the Empties grid's rule, which ignores such boxes.
+    The two therefore overlap on exactly one shape: a file whose only
+    passing boxes are rejections is one crop label and one empty label.
+    That is honest, since it does appear on both tabs, and verifying
+    either card cascades to the other (``recompute_file_verified`` and
+    ``set_file_verified``), so one click clears both.
 
     That is what makes one bar work for a page with two halves, and what
     stops it reading 100% while the empty files are untouched. Counting
@@ -456,7 +556,12 @@ def get_label_progress(
     if project is None:
         return LabelCounts(0, 0, 0, 0)
     floor = effective_floor(project.counting_threshold, min_confidence)
-    passes = and_(
+    # What the Detections grid shows: its sort worker applies the same
+    # clause in SQL (`similarity_script.py`).
+    is_a_card = threshold_or_verified(floor)
+    # What the Empties grid asks in `get_labels_files`: a file with none
+    # of these is empty.
+    is_a_real_passing_box = and_(
         is_a_real_detection(),
         or_(
             Detection.confidence >= floor,
@@ -471,14 +576,9 @@ def get_label_progress(
         site_clause = site_ids_filter(site_ids)
         if site_clause is not None:
             query = query.filter(site_clause)
-        if date_from is not None:
-            query = query.filter(File.captured_at_local >= date_from)
-        if date_to is not None:
-            query = query.filter(
-                File.captured_at_local
-                <= datetime.combine(date_to.date(), time.max)
-            )
-        return query
+        return query.filter(
+            *file_flag_clauses(date_from=date_from, date_to=date_to)
+        )
 
     verified_sum = func.coalesce(
         func.sum(func.cast(Detection.verified, Integer)), 0
@@ -488,14 +588,14 @@ def get_label_progress(
         .select_from(Detection)
         .join(File, File.id == Detection.file_id)
         .filter(on_visible_frame())
-        .filter(passes)
+        .filter(is_a_card)
     ).one()
 
     has_passing = (
         select(Detection.id)
         .where(Detection.file_id == File.id)
         .where(on_visible_frame())
-        .where(passes)
+        .where(is_a_real_passing_box)
     )
     empty_total, empty_verified = in_scope(
         db.query(
@@ -717,7 +817,7 @@ def recompute_file_verified_for_detections(
     recompute_file_verified(db, file_ids)
 
 
-def set_file_verified(db: Session, file: File, verified: bool) -> None:
+def set_file_verified(db: Session, file: File, verified: bool) -> UndoSnapshot:
     """Sign a file off, or take the sign-off back. No commit.
 
     Verifying a file says "the boxes you can see are all there is". So on
@@ -755,10 +855,28 @@ def set_file_verified(db: Session, file: File, verified: bool) -> None:
     Idempotent, so re-verifying picks up boxes added since. Both paths
     re-derive ``observation_type`` and the event MaxN, as the detection
     endpoints do. The caller commits.
+
+    Returns the before-state of the file and of every box on it, for undo
+    (``schemas/undo.py``). It is built here, not in the router, because
+    the rows a sign-off touches are defined by the predicates above, and
+    the rejected weak boxes and the labels passed to a track's frames
+    never leave this function any other way.
     """
     threshold = _project_threshold_for_file(db, file)
     now = datetime.now(UTC)
+    # Keep the file_id clause: the video branches of the predicate carry
+    # only the frame clause.
     on_frame = and_(Detection.file_id == file.id, on_visible_frame_of(file))
+    # Every box of the file, taken before any write: a sign-off writes its
+    # cards' labels to the frames behind them, and an unverify clears every
+    # box, so either can change a box that is not a card.
+    before = UndoSnapshot(
+        detections=[
+            DetectionState.from_detection(d)
+            for d in db.query(Detection).filter(Detection.file_id == file.id).all()
+        ],
+        files=[FileState.from_file(file)],
+    )
     if verified:
         weak = (
             db.query(Detection)
@@ -780,23 +898,22 @@ def set_file_verified(db: Session, file: File, verified: bool) -> None:
             .filter(on_frame, Detection.verified == False)  # noqa: E712
             .all()
         )
-        visible_ids = [det.id for det in visible_cards]
         # Signing a clip off is a verdict on every card in it, so each
         # track takes its card's label, exactly as pressing V on one card
         # does. Without this a sign-off froze the classifier's per-frame
         # disagreements as human-verified truth.
         apply_card_labels(db, visible_cards)
-        db.query(Detection).filter(Detection.id.in_(visible_ids)).update(
-            {"verified": True, "verified_at_utc": now},
-            synchronize_session=False,
-        )
+        for det in visible_cards:
+            det.verified = True
+            det.verified_at_utc = now
         file.verified = True
         file.verified_at_utc = now
     else:
-        db.query(Detection).filter(Detection.file_id == file.id).update(
-            {"verified": False, "verified_at_utc": None},
-            synchronize_session=False,
-        )
+        for det in db.query(Detection).filter(
+            Detection.file_id == file.id, Detection.verified == True  # noqa: E712
+        ):
+            det.verified = False
+            det.verified_at_utc = None
         release_inherited_labels(db, Detection.file_id == file.id)
         file.verified = False
         file.verified_at_utc = None
@@ -805,6 +922,7 @@ def set_file_verified(db: Session, file: File, verified: bool) -> None:
     event_ids = get_event_ids_for_files(db, [file.id])
     if event_ids:
         recalculate_max_n_for_events(db, event_ids, threshold)
+    return before
 
 
 def update_file(db: Session, file_id: str, update: FileUpdate) -> File | None:

@@ -43,7 +43,7 @@ export default function CountsPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b bg-white/80 backdrop-blur-sm">
+      <header className="border-b bg-card/80 backdrop-blur-sm">
         <div className={shell("py-4")}>
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Counts</h1>

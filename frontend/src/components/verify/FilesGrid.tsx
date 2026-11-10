@@ -32,6 +32,7 @@ import {
   useSpeciesColorsVersion,
 } from "../../utils/species-colors";
 import { FrameThumbnail } from "./FrameThumbnail";
+import { useImageFilter } from "./viewer-tools";
 import { StatusBadgeCluster } from "./StatusBadgeCluster";
 import { columnsForWidth, useWideModeValue } from "./wide-mode";
 import type { LabelsFileItem } from "../../api/types";
@@ -236,6 +237,9 @@ const FileTile = memo(function FileTile({
   aspect,
 }: FileTileProps) {
   const isSmall = tileSize === "S";
+  // Shared brightness/contrast, applied inside FrameThumbnail on the
+  // photo only.
+  const imageFilter = useImageFilter();
   // The cards scope: the cover's boxes, one box per track and the MaxN
   // per species, all a tile draws. The viewer fetches the full file when
   // a tile is opened and prefetches the next. Until 2026-11-02 the tile
@@ -274,7 +278,7 @@ const FileTile = memo(function FileTile({
         "relative group cursor-pointer rounded-lg border bg-card text-card-foreground",
         "transition-[box-shadow,transform] duration-150",
         "hover:-translate-y-0.5 hover:shadow-md",
-        selected && "ring-2 ring-offset-2 ring-[#0f6064]",
+        selected && "ring-2 ring-offset-2 ring-offset-background ring-primary",
       )}
       data-file-id={item.id}
       onClick={(e) => onSelect(item.id, e)}
@@ -315,6 +319,7 @@ const FileTile = memo(function FileTile({
           file={file}
           detectionThreshold={detectionThreshold}
           fit="contain"
+          imageFilter={imageFilter}
         />
         {/* A video reads as a photo here, because the tile is the clip's
             cover frame. Without this, someone scanning a wall of tiles

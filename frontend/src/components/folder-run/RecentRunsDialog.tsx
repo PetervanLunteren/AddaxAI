@@ -163,9 +163,9 @@ export function RecentRunsDialog({ open, onOpenChange }: RecentRunsDialogProps) 
                   <div
                     key={run.id}
                     className={cn(
-                      "flex items-center gap-3 rounded-lg border bg-white p-2.5",
+                      "flex items-center gap-3 rounded-lg border bg-card p-2.5",
                       run.folder_exists
-                        ? "hover:border-[#0f6064]/40"
+                        ? "hover:border-primary/40"
                         : "opacity-60",
                     )}
                   >

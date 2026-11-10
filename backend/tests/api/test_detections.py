@@ -268,94 +268,6 @@ def test_create_detection_rejects_half_set_bbox(client, db):
     assert resp.status_code == 422
 
 
-def test_bulk_revert_to_original_restores_ai_label(client, db):
-    """Undo: a human relabel + verify is reverted to the model's
-    original prediction, verified cleared, method back to machine."""
-    f = _setup_file(db)
-    det = make_detection(
-        db,
-        file_id=f.id,
-        category="animal",
-        label="deer",
-        label_confidence=0.42,
-        original_label="deer",
-        original_label_confidence=0.42,
-        classification_method="machine",
-        verified=False,
-    )
-    # Simulate a human match-majority: relabel + verify.
-    client.post(
-        "/api/detections/bulk-relabel",
-        json={"detection_ids": [det.id], "label": "elk"},
-    )
-    db.refresh(det)
-    assert det.label == "elk" and det.verified is True
-    assert det.classification_method == "human"
-
-    resp = client.post(
-        "/api/detections/bulk-revert-to-original",
-        json={"detection_ids": [det.id]},
-    )
-    assert resp.status_code == 200
-    reverted = resp.json()["reverted"]
-    assert reverted[0]["detection_id"] == det.id
-    assert reverted[0]["label"] == "deer"
-    assert reverted[0]["verified"] is False
-
-    db.refresh(det)
-    assert det.label == "deer"
-    assert det.label_confidence == 0.42
-    assert det.verified is False
-    assert det.classification_method == "machine"
-
-
-def test_bulk_revert_unverifies_a_plain_verify(client, db):
-    """A detection that was only verified (label untouched) reverts to
-    unverified with its label intact."""
-    f = _setup_file(db)
-    det = make_detection(
-        db, file_id=f.id, label="fox", original_label="fox", verified=False
-    )
-    client.post(
-        "/api/detections/bulk-verify",
-        json={"detection_ids": [det.id], "verified": True},
-    )
-    db.refresh(det)
-    assert det.verified is True
-
-    client.post(
-        "/api/detections/bulk-revert-to-original",
-        json={"detection_ids": [det.id]},
-    )
-    db.refresh(det)
-    assert det.verified is False
-    assert det.label == "fox"
-
-
-def test_bulk_revert_no_original_clears_label(client, db):
-    """A detection with no original AI label (e.g. added by hand) reverts
-    to an unlabeled, unverified state."""
-    f = _setup_file(db)
-    det = make_detection(
-        db, file_id=f.id, label="dog", original_label=None, verified=True
-    )
-    client.post(
-        "/api/detections/bulk-revert-to-original",
-        json={"detection_ids": [det.id]},
-    )
-    db.refresh(det)
-    assert det.label is None
-    assert det.verified is False
-
-
-def test_bulk_revert_404_for_unknown(client):
-    resp = client.post(
-        "/api/detections/bulk-revert-to-original",
-        json={"detection_ids": ["nope"]},
-    )
-    assert resp.status_code == 404
-
-
 def test_a_hand_drawn_box_is_created_verified(client, db):
     """A box someone drew by hand is the strongest signal there is, so
     it gets the same protection as a box they confirmed.
@@ -431,34 +343,30 @@ def test_a_label_only_edit_recomputes_what_the_file_is_about(client, db):
 
 
 def test_an_empty_bulk_request_is_zero_rows_not_a_missing_row(client, db):
-    """All three bulk endpoints answer the same way to an empty list.
+    """Both bulk endpoints answer the same way to an empty list.
 
-    Relabel and revert used to 404 with "No detections found" while
-    bulk-verify answered 200 with a count of zero. Nothing asked for is
-    nothing done.
+    Relabel used to 404 with "No detections found" while bulk-verify
+    answered 200 with a count of zero. Nothing asked for is nothing done,
+    and there is nothing to undo.
     """
+    nothing = {"updated_count": 0, "before": {"detections": [], "files": []}}
     assert client.post(
         "/api/detections/bulk-verify",
         json={"detection_ids": [], "verified": True},
-    ).json() == {"updated_count": 0}
+    ).json() == nothing
     assert client.post(
         "/api/detections/bulk-relabel",
         json={"detection_ids": [], "label": "chital"},
-    ).json() == {"updated_count": 0}
-    assert client.post(
-        "/api/detections/bulk-revert-to-original", json={"detection_ids": []}
-    ).json() == {"reverted": []}
+    ).json() == nothing
 
 
 def test_an_unknown_id_in_a_bulk_request_is_still_a_404(client, db):
     """The empty-list shortcut must not swallow a genuinely missing row."""
-    for path, body in (
-        ("/api/detections/bulk-relabel",
-         {"detection_ids": ["ghost"], "label": "chital"}),
-        ("/api/detections/bulk-revert-to-original",
-         {"detection_ids": ["ghost"]}),
-    ):
-        assert client.post(path, json=body).status_code == 404
+    resp = client.post(
+        "/api/detections/bulk-relabel",
+        json={"detection_ids": ["ghost"], "label": "chital"},
+    )
+    assert resp.status_code == 404
 
 
 def test_drawing_a_box_marks_the_file_verified_past_the_request(client, db):
@@ -519,3 +427,23 @@ def test_drawing_a_box_takes_the_photo_out_of_the_empties(client, db):
 
     after = client.get(f"/api/projects/{project_id}/labels/files", params=show_only).json()
     assert after["total"] == 0
+
+
+def test_clearing_a_label_leaves_the_builtin_animal_row(client, db):
+    """A PATCH that empties the label must not empty the taxonomy id: the
+    label filter matches on that id, so a box without one is counted and
+    shown but unreachable through "Select all" or the Animal leaf."""
+    from app.ml.taxonomy_db import ensure_builtin_labels
+
+    animal_row = ensure_builtin_labels(db)["animal"]
+    f = _setup_file(db)
+    det = make_detection(db, file_id=f.id, label="deer", label_confidence=0.6)
+
+    resp = client.patch(f"/api/detections/{det.id}", json={"label": None})
+    assert resp.status_code == 200
+
+    db.refresh(det)
+    assert det.label is None
+    assert det.label_confidence is None
+    assert det.label_taxonomy_id == animal_row
+    assert det.common_name == "Animal"

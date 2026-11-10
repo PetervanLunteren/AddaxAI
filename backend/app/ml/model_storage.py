@@ -20,7 +20,7 @@ from huggingface_hub.errors import RepositoryNotFoundError
 from app.core.config import get_settings
 from app.core.job_cancellation import JobCancelledError
 from app.core.logging_config import get_logger
-from app.ml.hf_downloader import HuggingFaceRepoDownloader
+from app.ml.hf_downloader import HuggingFaceRepoDownloader, NetworkBlockedError
 from app.ml.schemas.model_manifest import ModelManifest, resolve_hf_repo
 from app.utils.fs_remove import safe_rmtree
 
@@ -68,6 +68,71 @@ def _clear_downloaded_files(model_dir: Path) -> None:
         if entry.name == "manifest.json":
             continue
         safe_rmtree(entry)
+
+
+def _download_repo_with_relay(
+    hf_repo: str,
+    model_path: Path,
+    progress_callback: Callable[[str, float], None] | None,
+    should_cancel: Callable[[], bool] | None,
+) -> bool:
+    """
+    Download a repo from HuggingFace, and once more through our relay
+    when the network answered HuggingFace with a block page.
+
+    Everyone downloads from HuggingFace first. The retry is taken only on
+    `NetworkBlockedError`, the one failure a retry against the same host
+    can never fix (a web filter that forbids huggingface.co and *.hf.co,
+    first seen on a US state laptop on 2026-09-11), and only when
+    `Settings.hf_fallback_url` names a relay, which it does not for a
+    user who configured their own mirror. Every other failure keeps the
+    behaviour it had: False from the downloader, or the exception.
+
+    If the relay cannot help either (blocked as well, unreachable, over
+    its daily quota, or any other failure), the *original* error is
+    raised, so the wizard still tells the user to have IT allow
+    huggingface.co and hf.co, which is the fix, rather than a generic
+    "Download failed" or a relay host nobody at their IT department has
+    heard of. The relay's own error travels along as the cause for the
+    log. Only a cancel passes through as itself, so the caller's cleanup
+    for a cancelled download still runs.
+    """
+    try:
+        return HuggingFaceRepoDownloader(max_workers=4).download_repo(
+            repo_id=hf_repo,
+            local_dir=model_path,
+            progress_callback=progress_callback,
+            revision="main",
+            should_cancel=should_cancel,
+        )
+    except NetworkBlockedError as blocked:
+        relay = get_settings().hf_fallback_url
+        if relay is None:
+            raise
+        logger.warning(
+            f"{blocked.host} answered with a block page, retrying {hf_repo} "
+            f"through the relay at {relay}"
+        )
+        if progress_callback:
+            progress_callback("Downloading through the AddaxAI relay...", 0.0)
+        try:
+            success = HuggingFaceRepoDownloader(max_workers=4, endpoint=relay).download_repo(
+                repo_id=hf_repo,
+                local_dir=model_path,
+                progress_callback=progress_callback,
+                revision="main",
+                should_cancel=should_cancel,
+            )
+        except JobCancelledError:
+            raise
+        except Exception as relay_error:
+            logger.error(f"The relay did not help either: {relay_error}")
+            raise blocked from relay_error
+        if success:
+            return True
+        # download_repo already logged why the relay attempt failed.
+        logger.error(f"The relay could not serve {hf_repo} either")
+        raise blocked
 
 
 def git_blob_sha1(path: Path) -> str:
@@ -258,13 +323,10 @@ class ModelStorage:
             )
 
         try:
-            # Download using multi-threaded downloader
-            downloader = HuggingFaceRepoDownloader(max_workers=4)
-            success = downloader.download_repo(
-                repo_id=hf_repo,
-                local_dir=model_path,
+            success = _download_repo_with_relay(
+                hf_repo,
+                model_path,
                 progress_callback=progress_callback,
-                revision="main",
                 should_cancel=should_cancel,
             )
 
@@ -293,6 +355,12 @@ class ModelStorage:
             # _clear_downloaded_files.
             logger.info(f"Cleaning up cancelled download at {model_path}")
             _clear_downloaded_files(model_path)
+            raise
+        except NetworkBlockedError:
+            # Already worded for the user and tagged for the wizard; the
+            # generic wrapper below would turn it back into "Download
+            # failed for <repo>", which is what got twelve retries on
+            # 2026-09-11. Same no-cleanup rule as any other failure.
             raise
         except Exception as e:
             # No cleanup on failure, on purpose. Every file is streamed to a

@@ -41,17 +41,23 @@ import numpy as np
 # overlay here and the crop the service cuts cannot drift apart.
 from crop_box import bbox_within_crop
 
-# Two independent limits (see the sort load paths):
-#   MAX_EMBEDDINGS — the FAISS budget: the most embedding vectors held in
-#     RAM and walked. Similarity walks every embedded detection; event sort
-#     walks one representative per event. This is the sharp memory/compute
-#     limit, so it stays tight.
-#   MAX_DETECTIONS — the payload/grid budget: the most detections returned
-#     to (and rendered by) the frontend. No FAISS cost, so it can be larger.
-# For similarity the two coincide (it loads FROM embeddings); for event /
-# time sorts the detection budget is what usually binds.
+# Three independent limits (see the load paths):
+#   MAX_EMBEDDINGS: the walk budget. The similarity sort runs one FAISS
+#     search per detection to chain them, so its cost grows with the square
+#     of the pool (about 8 s at 20k, 218 s at 100k on an M-series Mac). Also
+#     caps the event representatives and the find-similar pool.
+#   MAX_SUGGESTION_EMBEDDINGS: the neighbour-vote budget for the suggestions
+#     sort and the cohorts badge. One batched search, no walk (about 5 s at
+#     100k), so it can be five times larger. Peak memory is about 0.5 GB.
+#   MAX_DETECTIONS: the payload/grid budget, the most detections returned
+#     to (and rendered by) the frontend by the event sort. No FAISS cost.
 MAX_EMBEDDINGS = 20_000
+MAX_SUGGESTION_EMBEDDINGS = 100_000
 MAX_DETECTIONS = 50_000
+
+# Rows per batched neighbour search. Chunking gives identical results (the
+# index is exact) and lets the progress bar move during the search.
+NEIGHBOR_SEARCH_CHUNK = 2_000
 
 # How often to emit progress events during long loops. Tuned for ~50ms
 # between updates at typical scales: 500 rows per SQL emission, 200
@@ -166,6 +172,17 @@ FROM detections d
 {_COMMON_JOINS}
 """
 
+# The label filter tree's counts: boxes per label under every other
+# filter, from the grid's own scope and clauses, so the number beside a
+# label is what ticking that label alone would show. Run by the backend
+# (``label_service.count_detections_by_label``), not by this script; the
+# caller appends the GROUP BY after ``_build_query``'s AND clauses.
+COUNT_BY_LABEL_SQL = f"""
+SELECT d.label_taxonomy_id AS label_taxonomy_id, COUNT(*) AS n
+FROM detections d
+{_COMMON_JOINS}
+"""
+
 # Which filtered detections have an embedding — ids only, no vectors. Used
 # by "Sort by event" to pick one representative per event without loading
 # every embedded vector.
@@ -247,14 +264,17 @@ def _build_query(
         clauses.append("d.confidence <= ?")
         params.append(filters["max_confidence"])
 
-    # NULL label_confidence is excluded automatically by the comparison —
-    # SQLite treats `NULL >= 0.0` as NULL, which a `WHERE` rejects.
+    # Hand-written copy of `classification_score_in_range` in
+    # app/ml/label_exclusion.py (no app.* imports here): the range is a
+    # filter on classified boxes only, so an unclassified box (NULL
+    # score) passes it. A bare `>=` would reject it, since SQLite treats
+    # `NULL >= 0.0` as NULL. Keep the two in step.
     if filters.get("min_label_confidence") is not None:
-        clauses.append("d.label_confidence >= ?")
+        clauses.append("(d.label_confidence IS NULL OR d.label_confidence >= ?)")
         params.append(filters["min_label_confidence"])
 
     if filters.get("max_label_confidence") is not None:
-        clauses.append("d.label_confidence <= ?")
+        clauses.append("(d.label_confidence IS NULL OR d.label_confidence <= ?)")
         params.append(filters["max_label_confidence"])
 
     if filters.get("category"):
@@ -763,36 +783,35 @@ def _compute_neighbor_signals(
 
     k_neighbors = 10
     k_query = min(k_neighbors + 1, n)  # +1 because first result is self
-    _, neighbor_idxs = index.search(vectors, k_query)
 
     _emit_progress("neighbors", 0, n)
     agreement_scores = np.zeros(n, dtype=np.float32)
     top_labels: list[str | None] = [None] * n
-    for i in range(n):
-        current_label = label_list[i]
-        matches = 0
-        count = 0
-        neighbor_labels: list[str] = []
-        for j in neighbor_idxs[i]:
-            if j < 0 or j == i:
-                continue
-            count += 1
-            if label_list[j]:
-                neighbor_labels.append(label_list[j])
-            if label_list[j] == current_label:
-                matches += 1
-        agreement_scores[i] = matches / count if count > 0 else 1.0
-        if neighbor_labels:
-            top_label, top_count = Counter(neighbor_labels).most_common(1)[0]
-            # Plurality is too weak: a 3/10 winner produces noisy
-            # suggestions. Require a clear majority share before
-            # surfacing the candidate.
-            if top_count / len(neighbor_labels) >= NEIGHBOR_MAJORITY_FRACTION:
-                top_labels[i] = top_label
-        if (i + 1) % PROGRESS_LOOP_EVERY == 0:
-            _emit_progress("neighbors", i + 1, n)
-
-    _emit_progress("neighbors", n, n)
+    for start in range(0, n, NEIGHBOR_SEARCH_CHUNK):
+        end = min(start + NEIGHBOR_SEARCH_CHUNK, n)
+        _, neighbor_idxs = index.search(vectors[start:end], k_query)
+        for i in range(start, end):
+            current_label = label_list[i]
+            matches = 0
+            count = 0
+            neighbor_labels: list[str] = []
+            for j in neighbor_idxs[i - start]:
+                if j < 0 or j == i:
+                    continue
+                count += 1
+                if label_list[j]:
+                    neighbor_labels.append(label_list[j])
+                if label_list[j] == current_label:
+                    matches += 1
+            agreement_scores[i] = matches / count if count > 0 else 1.0
+            if neighbor_labels:
+                top_label, top_count = Counter(neighbor_labels).most_common(1)[0]
+                # Plurality is too weak: a 3/10 winner produces noisy
+                # suggestions. Require a clear majority share before
+                # surfacing the candidate.
+                if top_count / len(neighbor_labels) >= NEIGHBOR_MAJORITY_FRACTION:
+                    top_labels[i] = top_label
+        _emit_progress("neighbors", end, n)
 
     # Taxonomy filter: keep descendant promotions (canis → domestic dog)
     # and same-rank swaps (grey fox → coyote, which is the most common
@@ -964,9 +983,13 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
     filters = params.get("filters", {})
     sort_mode = params.get("sort", "similarity")
     max_detections = int(params.get("max_detections", MAX_DETECTIONS))
-    max_embeddings = int(params.get("max_embeddings", MAX_EMBEDDINGS))
     if sort_mode not in VALID_SORTS:
         raise ValueError(f"Unknown sort mode: {sort_mode}")
+    # Suggestions need no walk, so they get the larger neighbour-vote budget.
+    default_cap = (
+        MAX_SUGGESTION_EMBEDDINGS if sort_mode == "suggestions" else MAX_EMBEDDINGS
+    )
+    max_embeddings = int(params.get("max_embeddings", default_cap))
 
     # "Sort by event": always show the full detection population grouped
     # by event (embedded or not). With embeddings, order the still-atomic
@@ -1137,8 +1160,11 @@ def do_cohorts(db_path: str, project_id: str, params: dict) -> dict:
         raise ValueError(f"max_cohorts must be >= 1, got {max_cohorts}")
 
     filters = params.get("filters", {})
+    # Same budget as the suggestions sort, so the badge counts the pool
+    # that "Review" searches.
+    max_embeddings = int(params.get("max_embeddings", MAX_SUGGESTION_EMBEDDINGS))
     vectors, det_ids, metas, _ = _load_embeddings(
-        db_path, project_id, filters, max_embeddings=MAX_EMBEDDINGS
+        db_path, project_id, filters, max_embeddings=max_embeddings
     )
 
     n = len(det_ids)

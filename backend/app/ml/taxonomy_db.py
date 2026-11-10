@@ -8,7 +8,7 @@ the label_taxonomy table in sync with what's in Detection.label.
 import csv
 from pathlib import Path
 
-from sqlalchemy import func
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
@@ -206,6 +206,24 @@ def add_rollup_taxonomy_entry(
 
 BUILTIN_MODEL_ID = "__builtin__"
 
+
+def custom_scope():
+    """The filter clause that selects global custom labels.
+
+    Custom labels are shared across all of AddaxAI: one set, visible in
+    every folder run and every project. They live at `project_id IS NULL`
+    with `is_custom=True` (model-independent, `classification_model_id=""`).
+    This is the single source of truth for that scope; every custom-label
+    read uses it so the scope cannot drift between call sites.
+    """
+    from app.models.label_taxonomy import LabelTaxonomy
+
+    return and_(
+        LabelTaxonomy.is_custom.is_(True),
+        LabelTaxonomy.project_id.is_(None),
+    )
+
+
 BUILTIN_LABELS = [
     {"name": "animal", "category": "animal"},
     {"name": "person", "category": "person"},
@@ -254,6 +272,32 @@ def ensure_builtin_labels(db: Session) -> dict[str, str]:
         logger.info(f"Seeded {inserted} builtin label(s) in label_taxonomy")
 
     return existing
+
+
+def clear_classification(
+    detection: Detection, builtin_ids: dict[str, str]
+) -> None:
+    """
+    Leave a detection with no species and its category's builtin row.
+
+    One rule for every writer that clears a label: the ingest, the
+    postprocessing update and its exclusion sweep, revert to AI, a drawn
+    box without a label, and a PATCH that empties one. The label filter
+    tree and "Select all" match on ``label_taxonomy_id``, so a box left
+    with no row is counted in the Detections tab and shown in the grid
+    but absent from the filter that would find it: no "Animal" leaf and
+    no hint that anything is hidden. That is how a user with 733 such
+    boxes read "no Animal option" (2026-09-06). ``builtin_ids`` is
+    ``ensure_builtin_labels(db)``. A category the builtins do not know
+    (a detector emitting ``shark``) gets no row, as before.
+    """
+    detection.label = None
+    detection.label_confidence = None
+    tid = builtin_ids.get(detection.category) if detection.category else None
+    detection.label_taxonomy_id = tid
+    name = detection.category.capitalize() if tid else None
+    detection.scientific_name = name
+    detection.common_name = name
 
 
 def batch_resolve_taxonomy_ids(
@@ -306,7 +350,7 @@ def batch_resolve_taxonomy_ids(
         for tid, name, sci, common in model_rows:
             result[name.lower()] = (tid, sci, common)
 
-    # 2. Custom labels for this project
+    # 2. Custom labels (global, shared across all of AddaxAI)
     custom_rows = (
         db.query(
             LabelTaxonomy.id,
@@ -315,8 +359,7 @@ def batch_resolve_taxonomy_ids(
             LabelTaxonomy.common_name,
         )
         .filter(
-            LabelTaxonomy.project_id == project_id,
-            LabelTaxonomy.is_custom == True,  # noqa: E712
+            custom_scope(),
             LabelTaxonomy.name.in_(lookup_names),
         )
         .all()
@@ -425,7 +468,7 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
             for tid, name, sci, common in model_rows:
                 name_to_taxonomy[name] = (tid, sci, common)
 
-        # 2. Custom labels for this project
+        # 2. Custom labels (global, shared across all of AddaxAI)
         custom_rows = (
             db.query(
                 LabelTaxonomy.id,
@@ -434,8 +477,7 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
                 LabelTaxonomy.common_name,
             )
             .filter(
-                LabelTaxonomy.project_id == project_id,
-                LabelTaxonomy.is_custom == True,  # noqa: E712
+                custom_scope(),
                 LabelTaxonomy.name.in_(lookup_names),
             )
             .all()
@@ -578,12 +620,11 @@ def resolve_taxonomy_id(label_name: str, project_id: str, db: Session) -> str | 
         if row:
             return row[0]
 
-    # 2. Custom labels for this project
+    # 2. Custom labels (global, shared across all of AddaxAI)
     row = (
         db.query(LabelTaxonomy.id)
         .filter(
-            LabelTaxonomy.project_id == project_id,
-            LabelTaxonomy.is_custom == True,  # noqa: E712
+            custom_scope(),
             LabelTaxonomy.name == label_name,
         )
         .first()

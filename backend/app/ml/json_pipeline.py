@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.api.crud import detection as detection_crud
 from app.api.schemas.detection import DetectionCreate
+from app.core.confidence import SCORE_DIGITS
 from app.core.job_cancellation import JobCancelledError, is_cancel_requested
 from app.core.logging_config import get_logger
 from app.core.media_types import VIDEO_EXTENSIONS
@@ -35,7 +36,9 @@ from app.ml.json_utils import (
 from app.ml.observation_type import derive_observation_type
 from app.ml.progress import ProgressTicker
 from app.ml.results_json import iter_images, read_top_level_object
+from app.ml.taxonomy_db import clear_classification
 from app.models import Deployment, Detection, File, Project, Track
+from app.utils.json_io import write_json_verified
 from app.utils.media_dates import (
     date_from_exif_dict,
     extract_image_date,
@@ -179,17 +182,9 @@ def load_json_to_database(
         # pass rather than in a held-in-memory dict.
         logger.info("Streaming images/videos to database")
 
-        # Build non-label ID set for skip logic
-        from app.ml.label_exclusion import (
-            build_non_label_class_ids,
-            is_wildlife,
-            should_skip_detection,
-        )
-
         class_categories = read_top_level_object(
             json_path, "classification_categories"
         )
-        non_label_ids = build_non_label_class_ids(class_categories)
 
         # The detector's own category vocabulary, e.g. MegaDetector's
         # {"1": "animal", "2": "person", "3": "vehicle"}. Read from the
@@ -242,7 +237,6 @@ def load_json_to_database(
         person_count = 0
         vehicle_count = 0
         classified_count = 0
-        skipped_non_label = 0
         skipped_missing_timestamp: list[str] = []
         # Files whose capture time came from the opt-in mtime fallback.
         # Counted, not recorded per file: when the fallback is on these
@@ -503,12 +497,13 @@ def load_json_to_database(
                         f"({sorted(detection_categories)})."
                     )
 
-                if is_wildlife(category) and should_skip_detection(
-                    det, non_label_ids,
-                ):
-                    skipped_non_label += 1
-                    continue
-
+                # Every box the detector found is stored, whatever the
+                # classifier called it. A top-1 of "false detection" or
+                # "blank" is a label like any other: the row is kept,
+                # `is_a_real_detection()` keeps it out of every count, and
+                # the Labels grid shows it as a card a person can confirm
+                # or rescue. Until 2026-09 such boxes were dropped here,
+                # which deleted the model's own evidence with no trace.
                 total_detections += 1
 
                 # Count by category
@@ -531,7 +526,7 @@ def load_json_to_database(
                     # are applied in Phase 7 (postprocessing).
                     top_class_id, top_conf = det["classifications"][0]
                     label = class_categories.get(str(top_class_id))
-                    label_confidence = float(top_conf)
+                    label_confidence = round(float(top_conf), SCORE_DIGITS)
 
                     if label:
                         classified_count += 1
@@ -580,17 +575,12 @@ def load_json_to_database(
                             detection_record.scientific_name = resolved[1]
                             detection_record.common_name = resolved[2]
 
-                # Set builtin taxonomy ID for unclassified detections
-                if not label and builtin_taxonomy_ids:
-                    builtin_tid = builtin_taxonomy_ids.get(category)
-                    if builtin_tid:
-                        detection_record.label_taxonomy_id = builtin_tid
-                        detection_record.scientific_name = (
-                            category.capitalize()
-                        )
-                        detection_record.common_name = (
-                            category.capitalize()
-                        )
+                # An unclassified detection carries its category's
+                # builtin taxonomy row, one rule with every other writer.
+                if not label:
+                    clear_classification(
+                        detection_record, builtin_taxonomy_ids or {}
+                    )
 
             if tracked_records:
                 _link_tracks(
@@ -650,8 +640,7 @@ def load_json_to_database(
 
         logger.info(
             f"Database load complete: {total_detections} detections, "
-            f"{classified_count} classified, "
-            f"{skipped_non_label} skipped (non-label)"
+            f"{classified_count} classified"
         )
 
         return PipelineResult(
@@ -765,6 +754,25 @@ def load_json_to_database_owned_session(
         db.close()
 
 
+def load_results_json(json_path: Path) -> dict:
+    """Load a results JSON, turning a corrupt file into an actionable error.
+
+    A results file that fails to parse means the bytes on disk differ
+    from what the writer produced (full or failing drive, see
+    `app/utils/json_io.py`). The raw JSONDecodeError names a character
+    offset nobody can act on; this names the file and the way out.
+    """
+    try:
+        with open(json_path) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        raise RuntimeError(
+            f"The results file {json_path} is corrupt and cannot be read "
+            f"({e}). The drive it is stored on may be full or failing. "
+            f"Re-running the analysis on this folder recreates it."
+        ) from e
+
+
 async def run_classification_on_json(
     json_path: Path,
     classification_model,
@@ -807,8 +815,7 @@ async def run_classification_on_json(
     """
     logger.info("Running per-detection classification")
 
-    with open(json_path) as f:
-        md_results = json.load(f)
+    md_results = load_results_json(json_path)
 
     animal_detections = extract_wildlife_detections(
         md_results, min_confidence=classification_gate
@@ -1023,8 +1030,7 @@ async def run_classification_on_json(
                     if descriptions:
                         md_results["classification_category_descriptions"] = descriptions
 
-        with open(json_path, "w") as f:
-            json.dump(md_results, f, indent=2)
+        write_json_verified(json_path, md_results)
 
         logger.info(f"Classified {classified_count}/{total_animals} animals")
         logger.info(
@@ -1162,8 +1168,7 @@ def merge_json_files(
         # this; key order is not semantically meaningful to any consumer.
         merged_data["images"] = merged_data.pop("images")
 
-        with open(output_file, "w") as f:
-            json.dump(merged_data, f, indent=2)
+        write_json_verified(output_file, merged_data)
 
         logger.info(f"Merged {len(json_files)} JSON files to {output_file}")
 

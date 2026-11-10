@@ -1,10 +1,12 @@
 """Tests for the /api/deployments endpoints."""
 
+import io
 import os
 from datetime import date, datetime
 from unittest.mock import patch
 
 import pytest
+from PIL import Image
 
 from app.models.event_observation import EventObservation
 from tests.conftest import (
@@ -574,6 +576,28 @@ def test_relink_refusal_names_a_missing_file(db, tmp_path, caplog):
     assert "Relink refused" in caplog.text
 
 
+def test_relink_to_the_folder_it_was_already_at_says_so(db, tmp_path):
+    """A candidate equal to the current folder means the caller sent the
+    old path back (a frontend substitution bug did, for 69 deployments at
+    once). The refusal must name that, and keep the "Folder not found"
+    prefix the dialog's headline keys on."""
+    import shutil
+
+    from app.api.crud.deployment import relink_deployment
+
+    old = tmp_path / "old"
+    deployment = _deployment_with_files_on_disk(db, old, [("a.jpg", 100)])
+    shutil.rmtree(old)
+
+    result = relink_deployment(db, deployment.id, str(old))
+
+    assert result.success is False
+    assert len(result.verify_result.mismatches) == 1
+    reason = result.verify_result.mismatches[0]
+    assert reason.startswith("Folder not found")
+    assert "already at" in reason
+
+
 def test_relink_refusal_changes_nothing_in_the_database(db, tmp_path):
     """The refusal path must not half-apply. Files keep their old paths and
     the deployment keeps its folder, so retrying with the right folder is
@@ -849,3 +873,22 @@ def test_camera_offsets_need_paired_cameras_and_a_valid_folder(client, db, tmp_p
     )
     assert resp.status_code == 200
     assert resp.json()["camera_offsets"] == {}
+
+
+def test_preview_image_of_a_rotated_photo_comes_out_upright(client, tmp_path):
+    """The folder preview is re-encoded without EXIF, so a photo stored on
+    its side has to be rotated here or the preview shows it sideways."""
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    (tmp_path / "sideways.jpg").parent.mkdir(exist_ok=True)
+    Image.new("RGB", (120, 200), (90, 90, 90)).save(
+        tmp_path / "sideways.jpg", "JPEG", exif=exif.tobytes()
+    )
+
+    resp = client.get(
+        "/api/deployments/preview-image",
+        params={"folder": str(tmp_path), "file": "sideways.jpg"},
+    )
+
+    assert resp.status_code == 200
+    assert Image.open(io.BytesIO(resp.content)).size == (200, 120)

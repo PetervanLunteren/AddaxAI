@@ -43,7 +43,7 @@
  * empty. Navigation keys stay live.
  *
  * The label actions are the Detections grid's, with one scope rule:
- * actions act on what you see. V, R, X, U and the saved labels 1 to 5
+ * actions act on what you see. V, R, X, U and the saved number-key labels
  * act on the selected detection, and with none selected on every
  * detection on screen (`onScreen`): a photo's boxes, or the animals on
  * the clip frame shown, each through all of its frames. A clip's other
@@ -51,15 +51,16 @@
  * them (they were, until 2026-11-03: a V on the MaxN frame signed off
  * the whole drop). One rule decides what happens next (`settleAfter`):
  * the picture moves on only when agreeing (Enter, V) leaves every box
- * on it checked; a correction (X, U, R, M, 1 to 5, naming a drawn box)
+ * on it checked; a correction (X, U, R, M, a number key, naming a drawn box)
  * stays where the person is working. A photo is one frame, so the
  * rule is the same there. Click a box, Tab through the boxes on screen, or
  * click a bar on a clip's timeline to select one; the buttons say which
  * scope they are in. M relabels every detection on screen to the most
- * common label among them, whatever is selected. Cmd+Z reverts the last
- * label change, as in the grid; a file sign-off (its own scope of
- * boxes) and a drawn box (no original label to go back to) are not
- * undoable.
+ * common label among them, whatever is selected. Cmd+Z is the tab's
+ * undo, shared with the grid: it puts back exactly what the last action
+ * changed, a label, a verify or an unverify, on whichever file that was,
+ * and shows that file. Drawing or moving a box cannot be undone, so it
+ * starts a fresh history.
  *
  * The left rail is the shared `ViewerToolRail`, the same one as the
  * Counts modal: brightness/contrast, hide boxes (B), flag (F), like,
@@ -100,6 +101,7 @@ import {
   CheckCheck,
   ChevronDown,
   CircleHelp,
+  CircleMinus,
   Loader2,
   Play,
   Plus,
@@ -124,8 +126,13 @@ import {
 import { canvasImage, frameImageUrl, warmClipFrames } from "../../lib/clip-frames";
 import { basename } from "../../lib/path-utils";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
-import { useShortcutLabels } from "../../hooks/useShortcutLabels";
+import {
+  SHORTCUT_SLOTS,
+  shortcutSlotFromKey,
+  useShortcutLabels,
+} from "../../hooks/useShortcutLabels";
 import { Button } from "../ui/button";
+import { Kbd } from "../ui/kbd";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
 import {
@@ -142,7 +149,9 @@ import { DetailCard, VerifyDetailShell } from "./VerifyDetailShell";
 import { SignOffDialog } from "./SignOffDialog";
 import { FileLocation } from "./FileLocation";
 import { UNDO_KBD } from "./shortcuts";
-import type { LabelsFileItem } from "../../api/types";
+import type { UndoStack } from "./useUndoStack";
+import { mergeSnapshots } from "../../lib/undo-snapshot";
+import type { LabelsFileItem, UndoSnapshot } from "../../api/types";
 
 interface FileDetailModalProps {
   projectId: string;
@@ -165,21 +174,10 @@ interface FileDetailModalProps {
    *  track selected, so the detection the person was looking at is the
    *  one on screen. Ignored when the file has no such track. */
   openTrackId?: string | null;
-}
-
-/** The keyboard hint on a button. */
-function Kbd({ children, onPrimary }: { children: string; onPrimary?: boolean }) {
-  return (
-    <kbd
-      className={
-        onPrimary
-          ? "ml-1.5 text-[10px] font-sans text-primary-foreground/60 border border-primary-foreground/30 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(255,255,255,0.1)] leading-none"
-          : "ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none"
-      }
-    >
-      {children}
-    </kbd>
-  );
+  /** The tab's undo history, shared so an action here and Cmd+Z in the
+   *  grid are one sequence. The tab refetches the tiles on undo; the
+   *  viewer adds what only it knows (`handleUndo`). */
+  undo: UndoStack;
 }
 
 export function FileDetailModal({
@@ -192,6 +190,7 @@ export function FileDetailModal({
   loadingMore,
   onChanged,
   openTrackId = null,
+  undo,
 }: FileDetailModalProps) {
   const queryClient = useQueryClient();
   const [drawMode, setDrawMode] = useState(false);
@@ -229,8 +228,7 @@ export function FileDetailModal({
   const exportFnRef = useRef<(() => void) | null>(null);
   // The shared rail's state: brightness/contrast and the flag/like
   // writes (the F key below shares the same mutation).
-  const { brightness, setBrightness, contrast, setContrast, imageFilter } =
-    useImageAdjust();
+  const { imageFilter } = useImageAdjust();
   const triage = useFileTriage();
   const [selectedDetectionId, setSelectedDetectionId] = useState<string | null>(
     null,
@@ -253,26 +251,19 @@ export function FileDetailModal({
   // which is when the grid refetches anyway.
   const verifiedHere = useRef<Set<string>>(new Set());
 
-  // Undo, the grid's way: a stack of the ids each label action touched,
-  // reverted through `bulk-revert-to-original`. Per file: an undo that
-  // reached into a file no longer on screen would change something the
-  // person cannot see.
-  const [undoStack, setUndoStack] = useState<string[][]>([]);
-
   const item = index === null ? undefined : items[index];
 
-  // Draw mode, the selection and the undo history are per-file, not
-  // sticky: leaving draw mode on while paging would put the next Enter
-  // on a crosshair. Reset during render rather than in an effect, so the
-  // canvas never paints one frame in the wrong mode. Hiding the boxes is
-  // a way of looking, so it stays.
+  // Draw mode and the selection are per-file, not sticky: leaving draw
+  // mode on while paging would put the next Enter on a crosshair. Reset
+  // during render rather than in an effect, so the canvas never paints
+  // one frame in the wrong mode. Hiding the boxes is a way of looking,
+  // so it stays.
   const [stateFor, setStateFor] = useState(item?.id);
   if (item?.id !== stateFor) {
     setStateFor(item?.id);
     setDrawMode(false);
     setSelectedDetectionId(null);
     setRelabelTargets(null);
-    setUndoStack([]);
     setViewMode("frame");
     setShownFrame(null);
     setFrameReady(false);
@@ -294,7 +285,7 @@ export function FileDetailModal({
   const { options: labelOptions, isLoading: labelOptionsLoading } =
     useLabelOptions(project?.classification_model_id ?? null, projectId);
 
-  // The 1 to 5 slots, the same project-wide ones the Detections grid
+  // The number-key slots, the same project-wide ones the Detections grid
   // uses; set or changed from either place.
   const { shortcutLabels, updateShortcutLabels } = useShortcutLabels(projectId);
   const pinnedOptions = useMemo<PinnedOption[]>(
@@ -574,10 +565,22 @@ export function FileDetailModal({
     onExhausted();
   }, [index, items, onIndexChange, onExhausted]);
 
+  // Through the bulk route, the one path every file verify in the app
+  // takes, which answers `before` for the undo history. `alongside` is
+  // the snapshot of a label change made by the same keypress (a
+  // whole-picture X, U or number key relabels and then signs off): the
+  // two merge into one entry, so one press is one undo.
   const { mutate: setVerified, isPending: verifying } = useMutation({
-    mutationFn: ({ id, verified }: { id: string; verified: boolean }) =>
-      filesApi.update(id, { verified }),
-    onSuccess: (_result, { id, verified }) => {
+    mutationFn: ({
+      id,
+      verified,
+    }: {
+      id: string;
+      verified: boolean;
+      alongside?: UndoSnapshot;
+    }) => filesApi.bulkVerify([id], verified),
+    onSuccess: (r, { id, verified, alongside }) => {
+      undo.push(alongside ? mergeSnapshots([alongside, r.before]) : r.before);
       if (verified) verifiedHere.current.add(id);
       else verifiedHere.current.delete(id);
       onChanged();
@@ -594,11 +597,14 @@ export function FileDetailModal({
    *  the sentence true for such a file too. Unverifying stays on the
    *  button, where it cannot be hit by a person leaning on Enter. Same
    *  rule as the Detections viewer's `handleVerifyAndAdvance`. */
-  const verifyAndAdvance = useCallback(() => {
-    if (!item) return;
-    setVerified({ id: item.id, verified: true });
-    advance();
-  }, [item, setVerified, advance]);
+  const verifyAndAdvance = useCallback(
+    (alongside?: UndoSnapshot) => {
+      if (!item) return;
+      setVerified({ id: item.id, verified: true, alongside });
+      advance();
+    },
+    [item, setVerified, advance],
+  );
 
   // Warm the next file while this one is being looked at. Measured on a
   // real file: 1.47 MB for the picture and a 698-byte row, and the row
@@ -744,16 +750,22 @@ export function FileDetailModal({
    *    rejecting the weak boxes underneath. */
   const settleAfter = useCallback(
     (ids: string[], agreeing: boolean) => {
-      const stay = () => {
+      // Each returned step takes the verdict's undo snapshot: it goes on
+      // the history as one entry, merged with the sign-off when the
+      // verdict finishes the file, so one press is one undo.
+      const stay = (before: UndoSnapshot) => {
+        undo.push(before);
         setSelectedDetectionId(null);
         handleCanvasChange();
       };
       const waiting = waitingAfter(ids);
       if (waiting.length === 0) {
         if (agreeing) return verifyAndAdvance;
-        return () => {
-          if (item) setVerified({ id: item.id, verified: true });
-          stay();
+        return (before: UndoSnapshot) => {
+          if (item) setVerified({ id: item.id, verified: true, alongside: before });
+          else undo.push(before);
+          setSelectedDetectionId(null);
+          handleCanvasChange();
         };
       }
       if (!agreeing) return stay;
@@ -769,14 +781,16 @@ export function FileDetailModal({
         (b) => (b.track_id ? waitingTracks.has(b.track_id) : waitingIds.has(b.id)),
       );
       if (nextBox) {
-        return () => {
+        return (before: UndoSnapshot) => {
+          undo.push(before);
           setSelectedDetectionId(nextBox.id);
           handleCanvasChange();
         };
       }
       const next = nextWaitingAfter(ids);
       const fromSelection = selectedDetectionId != null;
-      return () => {
+      return (before: UndoSnapshot) => {
+        undo.push(before);
         if (fromSelection) selectCard(next);
         else if (next?.track_id) {
           const track = file?.tracks.find((t) => t.id === next.track_id);
@@ -797,6 +811,7 @@ export function FileDetailModal({
       file,
       showFrame,
       handleCanvasChange,
+      undo,
     ],
   );
 
@@ -821,11 +836,8 @@ export function FileDetailModal({
       }
       detectionsApi
         .bulkVerify(ids, true)
-        .then(() => {
-          // Same stack as a relabel: `bulkRevertToOriginal` undoes a
-          // human verify as well as a human label.
-          setUndoStack((s) => [...s, ids]);
-          after();
+        .then((r) => {
+          after(r.before);
         })
         .catch((err: Error) => toast.error(err.message));
     },
@@ -838,7 +850,8 @@ export function FileDetailModal({
   const markTargetsCorrect = useCallback(() => verify(targetIds), [verify, targetIds]);
 
   /** Every label action goes through here: the grid's `bulk-relabel`
-   *  (which verifies), then the undo stack, then `settleAfter`'s rule
+   *  (which verifies), its `before` onto the undo history, then
+   *  `settleAfter`'s rule
    *  for a correction: stay on the picture. Like `verify`, nothing while
    *  the frame is on its way.
    *
@@ -866,10 +879,7 @@ export function FileDetailModal({
       const after = settleAfter(ids, false);
       detectionsApi
         .bulkRelabel(sent, label, category)
-        .then(() => {
-          setUndoStack((s) => [...s, sent]);
-          after();
-        })
+        .then((r) => after(r.before))
         .catch((err: Error) => toast.error(err.message));
     },
     [canJudge, file, settleAfter],
@@ -905,20 +915,26 @@ export function FileDetailModal({
     [applyLabel, shortcutLabels, targetIds],
   );
 
-  const handleUndo = useCallback(() => {
-    if (undoStack.length === 0) return;
-    const ids = undoStack[undoStack.length - 1];
-    detectionsApi
-      .bulkRevertToOriginal(ids)
-      .then(() => {
-        setUndoStack((s) => s.slice(0, -1));
-        // An undo hands the file back unchecked; a sign-off by the
-        // verdict it undoes must not leave "next unverified" skipping it.
-        if (item) verifiedHere.current.delete(item.id);
-        handleCanvasChange();
-      })
-      .catch((err: Error) => toast.error(err.message));
-  }, [undoStack, item, handleCanvasChange]);
+  /** Cmd+Z and the Undo button. The tab's shared history does the
+   *  restore and refetches the tiles; here is what only the viewer
+   *  knows. `verifiedHere` follows the restored sign-offs, or "next
+   *  unverified" would skip a file that undo just reopened. And the
+   *  restored file is shown: after Enter advanced, the file undo put
+   *  back is the previous one, and what undo did has to be visible. */
+  const handleUndo = useCallback(async () => {
+    const result = await undo.undo();
+    if (!result) return;
+    for (const f of result.snapshot.files) {
+      if (f.verified) verifiedHere.current.add(f.file_id);
+      else verifiedHere.current.delete(f.file_id);
+    }
+    const restored = new Set(result.snapshot.files.map((f) => f.file_id));
+    for (const d of result.detections) restored.add(d.file_id);
+    if (item && !restored.has(item.id)) {
+      const idx = items.findIndex((i) => restored.has(i.id));
+      if (idx !== -1) onIndexChange(idx);
+    }
+  }, [undo, item, items, onIndexChange]);
 
   /** Tab / Shift+Tab: move the selection through `visibleBoxes`, with
    *  "none" as one more stop so a full cycle also clears it. Keyboard-only
@@ -1019,9 +1035,9 @@ export function FileDetailModal({
       } else if (key === "m") {
         e.preventDefault();
         matchMajority();
-      } else if (e.key >= "1" && e.key <= "5" && !e.metaKey && !e.ctrlKey) {
+      } else if (shortcutSlotFromKey(e) !== null) {
         e.preventDefault();
-        applyShortcut(parseInt(e.key));
+        applyShortcut(shortcutSlotFromKey(e)!);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1083,7 +1099,7 @@ export function FileDetailModal({
   // frame between animals): Enter has nothing to do, so the button is
   // off and shows no key.
   const nothingOnScreen = cards.length > 0 && onScreen.length === 0;
-  const freeSlot = [1, 2, 3, 4, 5].find((n) => !shortcutLabels[n]);
+  const freeSlot = SHORTCUT_SLOTS.find((n) => !shortcutLabels[n]);
 
   return (
     <VerifyDetailShell
@@ -1110,10 +1126,6 @@ export function FileDetailModal({
       // verdict actions stay in the right column, in words.
       toolbar={
         <ViewerToolRail
-          brightness={brightness}
-          onBrightnessChange={setBrightness}
-          contrast={contrast}
-          onContrastChange={setContrast}
           boxesHidden={boxesHidden}
           onToggleBoxes={() => setBoxesHidden((v) => !v)}
           file={file}
@@ -1156,7 +1168,13 @@ export function FileDetailModal({
                 onRequestRelabel={(id) => setRelabelTargets([id])}
                 drawMode={drawMode}
                 onDrawModeChange={setDrawMode}
-                onMutated={handleCanvasChange}
+                // A drawn or moved box cannot be undone, so it starts a
+                // fresh history: Cmd+Z must never reach past it to an
+                // older action.
+                onMutated={() => {
+                  undo.clear();
+                  handleCanvasChange();
+                }}
                 onCreated={handleCreated}
                 onLoadingChange={handleLoading}
                 onScrubFrame={stepFrame}
@@ -1357,14 +1375,14 @@ export function FileDetailModal({
                 <Kbd>R</Kbd>
               </Button>
 
-              {/* The saved labels, the same 1 to 5 slots as the
+              {/* The saved labels, the same number-key slots as the
                   Detections grid, as split buttons: the body applies the
                   slot's label (the key does the same), the chevron
                   segment opens the label search that changes it. Only
                   the set slots show, plus one row to fill the next free
                   slot; changes are saved on the project, so both tabs
                   see them. */}
-              {[1, 2, 3, 4, 5]
+              {SHORTCUT_SLOTS
                 .filter((n) => shortcutLabels[n])
                 .map((n) => (
                   <div key={n} className="flex w-full">
@@ -1456,9 +1474,9 @@ export function FileDetailModal({
             variant="outline"
             size="sm"
             className="w-full justify-center"
-            disabled={undoStack.length === 0}
+            disabled={!undo.canUndo}
             onClick={handleUndo}
-            title="Undo the last label change on this file"
+            title="Undo the last action"
           >
             <Undo2 className="h-4 w-4 mr-1" />
             Undo
@@ -1483,7 +1501,11 @@ export function FileDetailModal({
                   : `Verify every ${unit} in this ${noun} as it is and go to the next file`
             }
           >
-            <Check className="h-4 w-4 mr-1" />
+            {isVerified ? (
+              <CircleMinus className="h-4 w-4 mr-1" />
+            ) : (
+              <Check className="h-4 w-4 mr-1" />
+            )}
             {isVerified ? "Unverify" : verifyLabel}
             {!isVerified && !nothingOnScreen && canJudge && <Kbd onPrimary>⏎</Kbd>}
           </Button>

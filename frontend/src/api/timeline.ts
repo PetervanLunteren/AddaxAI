@@ -61,6 +61,9 @@ export interface TimelineFilters {
   siteIds?: string[];
   dateFrom?: string;
   dateTo?: string;
+  /** Leave out the per-site daily file counts, the bulk of the payload,
+   *  when only the cameras-running series is needed. */
+  withoutHeatmap?: boolean;
 }
 
 export const timelineApi = {
@@ -70,6 +73,7 @@ export const timelineApi = {
     if (filters.siteIds?.length) params.set("site_ids", filters.siteIds.join(","));
     if (filters.dateFrom) params.set("date_from", filters.dateFrom);
     if (filters.dateTo) params.set("date_to", filters.dateTo);
+    if (filters.withoutHeatmap) params.set("heatmap", "false");
     return api.get<TimelineResponse>(
       `/api/statistics/timeline?${params.toString()}`
     );

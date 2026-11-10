@@ -8,11 +8,12 @@
  * host's own looking-tools (the Counts modal's event loop) so the rail
  * stays one component without pretending the hosts are identical.
  *
- * The state behind it lives in `viewer-tools.ts` (`useImageAdjust`,
- * `useFileTriage`), instantiated by the host: the host also consumes
- * them (the filter lands on its image, the F key on its keydown
- * handler), and a hook and the rail sharing one mutation is what keeps
- * the key and the button from drifting.
+ * The state behind it lives in `viewer-tools.ts`: brightness/contrast
+ * in one shared persisted store (`useImageAdjust`), triage per host
+ * (`useFileTriage`). The host consumes them too (the filter lands on
+ * its image, the F key on its keydown handler), and a hook and the
+ * rail sharing one mutation is what keeps the key and the button from
+ * drifting.
  */
 
 import type { ReactNode } from "react";
@@ -32,10 +33,6 @@ import { ViewControls } from "./ViewControls";
 import type { FileTriage, RailFile } from "./viewer-tools";
 
 interface ViewerToolRailProps {
-  brightness: number;
-  onBrightnessChange: (v: number) => void;
-  contrast: number;
-  onContrastChange: (v: number) => void;
   boxesHidden: boolean;
   onToggleBoxes: () => void;
   /** The focused file; the flag, like and explorer buttons wait for it. */
@@ -44,22 +41,22 @@ interface ViewerToolRailProps {
   /** "Download video" / "Download image" / "Download crop". */
   downloadLabel: string;
   onDownload: () => void;
+  /** The flag shortcut shown in the tooltip. The Counts modal says "T"
+   *  because its count panel owns F (sex: female). */
+  flagKey?: string;
   /** Extra rail tools between the box toggle and the flag (the Counts
    *  modal's event loop). */
   children?: ReactNode;
 }
 
 export function ViewerToolRail({
-  brightness,
-  onBrightnessChange,
-  contrast,
-  onContrastChange,
   boxesHidden,
   onToggleBoxes,
   file,
   triage,
   downloadLabel,
   onDownload,
+  flagKey = "F",
   children,
 }: ViewerToolRailProps) {
   const revealInFolder = useRevealInFolder();
@@ -67,12 +64,7 @@ export function ViewerToolRail({
   return (
     <>
       {/* Image: brightness / contrast (seeing a dark IR animal). */}
-      <ViewControls
-        brightness={brightness}
-        onBrightnessChange={onBrightnessChange}
-        contrast={contrast}
-        onContrastChange={onContrastChange}
-      />
+      <ViewControls />
       {/* Show / hide the AI boxes — toggle off to see the scene without
           the AI's boxes anchoring you. */}
       <Button
@@ -92,7 +84,7 @@ export function ViewerToolRail({
         className="h-8 w-8"
         onClick={() => file && triage.toggleFlag(file)}
         disabled={!file || triage.pending}
-        title={file?.flagged ? "Remove flag" : "Flag for review (F)"}
+        title={file?.flagged ? "Remove flag" : `Flag for review (${flagKey})`}
       >
         <Flag
           className={cn("h-4 w-4", file?.flagged && "fill-[#71b7ba] text-[#71b7ba]")}

@@ -35,20 +35,27 @@ import { DuplicateProjectDialog } from "../components/projects/DuplicateProjectD
 import { EditProjectDialog } from "../components/projects/EditProjectDialog";
 
 import { DeleteProjectDialog } from "../components/projects/DeleteProjectDialog";
+import { ImportPackageDialog } from "../components/projects/ImportPackageDialog";
 
 export function ProjectsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectWithStats | null>(null);
   const [duplicatingProject, setDuplicatingProject] = useState<ProjectWithStats | null>(null);
   const [deletingProject, setDeletingProject] = useState<ProjectWithStats | null>(null);
 
-  // The "New project…" app-menu item navigates here with ?new=1; open the
-  // create dialog and drop the param so a refresh doesn't reopen it.
+  // The "New project…" and "Import bundle…" app-menu items navigate here
+  // with ?new=1 / ?import=1; open the dialog and drop the param so a
+  // refresh doesn't reopen it. Import has no button: it is rare, and the
+  // File menu is where the guide sends people.
   useEffect(() => {
     if (searchParams.get("new") === "1") {
       setCreateDialogOpen(true);
+      setSearchParams({}, { replace: true });
+    } else if (searchParams.get("import") === "1") {
+      setImportDialogOpen(true);
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams]);
@@ -77,10 +84,10 @@ export function ProjectsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="min-h-screen bg-gradient-to-br from-background to-muted">
       {/* Header sits above <main> (relative z-40) so it never paints
           behind the project cards. */}
-      <header className="relative z-40 border-b bg-white/80 backdrop-blur-sm">
+      <header className="relative z-40 border-b bg-card/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -147,8 +154,8 @@ export function ProjectsPage() {
                       />
                     </div>
                   ) : (
-                    <div className="aspect-video rounded-t-lg bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center">
-                      <ImageIcon className="h-10 w-10 text-slate-300" />
+                    <div className="aspect-video rounded-t-lg bg-gradient-to-br from-muted to-border flex items-center justify-center">
+                      <ImageIcon className="h-10 w-10 text-muted-foreground/50" />
                     </div>
                   )}
                   <DropdownMenu>
@@ -255,6 +262,11 @@ export function ProjectsPage() {
       <CreateProjectDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
+      />
+
+      <ImportPackageDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
       />
 
       <DuplicateProjectDialog

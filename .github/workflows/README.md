@@ -3,15 +3,15 @@
 ## `build-electron.yml`
 
 Builds the AddaxAI desktop app for macOS, Linux, and Windows. macOS is the
-canonical target and is signed and notarized; Linux and Windows are
-unsigned and currently non-blocking.
+canonical target and is signed and notarized. Windows is Authenticode
+signed. Linux is unsigned and non-blocking.
 
 ### Triggers
 
 | Event | What happens |
 |-------|--------------|
 | `release.published` | A release was created in the GitHub UI (with notes) and clicked "Publish". The workflow builds binaries and attaches them to that release. |
-| `workflow_dispatch` | Manual run from the Actions tab. Produces unsigned debug builds (workflow artifacts only, kept 14 days). |
+| `workflow_dispatch` | Manual run from the Actions tab. Produces debug builds (workflow artifacts only, kept 14 days). Windows builds are signed; macOS is signed only if its secrets are set. |
 
 There is no `push: tags: v*` trigger. Releases are deliberately a two-step
 process: write release notes in the UI first, then publish. Failed builds
@@ -22,18 +22,18 @@ re-pushing.
 
 | OS | Runner | Arch | Outputs | Blocking |
 |----|--------|------|---------|----------|
-| macOS | `macos-14` | arm64 | `.dmg`, `-mac.zip` | Yes |
+| macOS | `macos-15` | arm64 | `.dmg`, `-mac.zip` | Yes |
 | Linux | `ubuntu-22.04` | x64 | `.deb` | No (`continue-on-error`) |
-| Windows | `windows-2022` | x64 | `.exe` (NSIS), `-win.zip` | No (`continue-on-error`) |
+| Windows | `windows-2022` | x64 | `.exe` (NSIS), `-win.zip` | Yes |
 
 macOS runs on Apple Silicon only. There is no Intel x64 build. Anyone on a
 2019 or older Intel Mac will not get a working binary; this is a deliberate
 trade-off (Apple stopped selling Intel Macs in 2023, and PyInstaller
 universal builds are awkward).
 
-Linux and Windows are non-blocking: the workflow is marked successful even
-if either of them fails. Once each is verified end-to-end, flip
-`continue-on-error: false` for that matrix entry.
+Linux is non-blocking: the workflow is marked successful even if it
+fails. Once it is verified end-to-end, flip `continue-on-error: false`
+for that matrix entry.
 
 ### Versioning
 
@@ -83,7 +83,7 @@ mode where electron-builder produces an unsigned-but-named-correctly
 
 ### Linux and Windows
 
-No signing yet. Linux uses `electron-builder --linux` (deb only; targets
+Linux is not signed. It uses `electron-builder --linux` (deb only; targets
 Ubuntu/Debian/Mint, which is the supported Linux audience for the beta).
 The deb ships a custom after-install script
 (`electron/build/deb-after-install.sh`) that sets the SUID bit on
@@ -92,9 +92,13 @@ template tests for user namespaces as root and therefore skips the bit
 on Ubuntu 23.10+, where AppArmor blocks unprivileged user namespaces at
 runtime and the app aborts on launch. An AppImage was shipped before
 this; it cannot work sandboxed on Ubuntu 23.10+ (nosuid FUSE mount), so
-it was dropped. Windows uses `electron-builder --win` (NSIS + zip). End
-users see SmartScreen / Gatekeeper warnings on these platforms; that's
-expected until signing is wired up.
+it was dropped.
+
+Windows uses `electron-builder --win` (NSIS + zip) and is Authenticode
+signed on every build, debug builds included. The job fails before
+building if `ADDAX_3YEAR_2025_BASE64` or `ADDAX_3YEAR_2025_PFX_PASSWORD`
+is missing. electron-builder signs through `CSC_LINK` and
+`CSC_KEY_PASSWORD`. SmartScreen can still warn on locked-down machines.
 
 ### Releasing
 
@@ -114,10 +118,9 @@ release → Choose a tag → Create new tag on publish"). Either path works.
 
 ### Manual debug build
 
-`Actions tab → Build Electron App → Run workflow`. Produces unsigned
-binaries as workflow artifacts (14-day retention). Only the macOS arm64
-artifacts are guaranteed to load on a host machine; Linux/Windows artifacts
-are best-effort while those matrix entries are non-blocking.
+`Actions tab → Build Electron App → Run workflow`. Produces binaries as
+workflow artifacts (14-day retention). Windows artifacts are signed. Linux
+artifacts are best-effort while that matrix entry is non-blocking.
 
 ### Cost
 
@@ -131,12 +134,13 @@ charged minutes per release, i.e. ~16 releases/month within the free tier.
 | Symptom | Likely cause |
 |---------|--------------|
 | `Missing required secret: ...` at the top of the macOS job | Secrets not configured in repo settings |
-| `lipo` reports `x86_64` instead of `arm64` | Runner image was bumped or PyInstaller was run on a different host arch. Check `matrix.runs-on` is `macos-14` |
+| `lipo` reports `x86_64` instead of `arm64` | Runner image was bumped or PyInstaller was run on a different host arch. Check `matrix.runs-on` is `macos-15` |
 | `codesign --verify` fails | `remove_python_signature.py` did not strip a stale signature. Inspect `_internal/` for foreign Team IDs |
 | `xcrun stapler validate` fails | Notarization completed but ticket was not stapled. Re-run; usually transient |
 | Notarization stuck > 30 min | Apple servers are slow. The hook does 3 retries totalling 45 min; if all 3 time out the workflow fails. Re-run when Apple recovers |
 | `npm ci` fails on Windows | Lockfile drift (someone ran `npm install` without committing the lockfile) |
-| Linux/Windows job marked yellow | They are non-blocking; the workflow still succeeded. Look at the failed step to fix |
+| Linux job marked yellow | It is non-blocking; the workflow still succeeded. Look at the failed step to fix |
+| `Missing required secret: ADDAX_3YEAR_2025_...` on Windows | Windows signing secrets not configured in repo settings |
 
 ## `download-metrics.yml`
 

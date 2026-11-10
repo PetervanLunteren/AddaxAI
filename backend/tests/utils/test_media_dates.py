@@ -1,18 +1,79 @@
-"""Tests for the two opt-in capture-date fallbacks.
+"""Tests for the video date ladder and the two opt-in capture-date fallbacks.
 
-The `addaxai-YYYYMMDD-HHMMSS` filename marker, and the file modification
-time the user can opt into when a folder's metadata carries no dates.
+The exiftool video reader, the `addaxai-YYYYMMDD-HHMMSS` filename marker,
+and the file modification time the user can opt into when a folder's
+metadata carries no dates.
 """
 
 from __future__ import annotations
 
 import os
 from datetime import datetime
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from app.utils.media_dates import (
+    extract_video_dates,
     file_mtime_datetime,
     parse_addaxai_filename_datetime,
 )
+
+# ── video dates via exiftool ──────────────────────────────────────────────
+#
+# The video ladder has to parse what exiftool prints, and with the `-G`
+# grouping pyexiftool uses, Apple's Keys:CreationDate and Microsoft's Xtra
+# EncodingTime arrive under the QuickTime prefix with a timezone suffix.
+# Until 2026-10 the video path had its own parser that returned None on
+# any suffix, so such a value could never be read. It now shares
+# `parse_exif_datetime` with the image path.
+
+
+def _video_dates(metadata: dict[str, str]) -> dict[Path, datetime]:
+    """Run `extract_video_dates` on one fake clip with the given exiftool
+    output, without an exiftool binary."""
+    clip = Path("/clips/VID_0001.mp4")
+    helper = MagicMock()
+    helper.__enter__.return_value = helper
+    helper.get_metadata.return_value = [metadata]
+    with (
+        patch("app.utils.media_dates.resolve_exiftool", return_value="exiftool"),
+        patch("app.utils.media_dates.exiftool.ExifToolHelper", return_value=helper),
+    ):
+        return extract_video_dates([clip])
+
+
+def test_plain_create_date_parses():
+    dates = _video_dates({"QuickTime:CreateDate": "2026:09:30 14:03:22"})
+    assert list(dates.values()) == [datetime(2026, 9, 30, 14, 3, 22)]
+
+
+def test_utc_suffix_is_dropped_not_applied():
+    dates = _video_dates({"QuickTime:CreateDate": "2026:09:30 14:03:22Z"})
+    assert list(dates.values()) == [datetime(2026, 9, 30, 14, 3, 22)]
+
+
+def test_offset_suffix_keeps_the_wall_clock():
+    """A Keys-style value is the camera's local time plus its offset. The
+    stored value is the wall clock, so the offset is dropped, never added."""
+    dates = _video_dates({"QuickTime:CreateDate": "2026:09:30 10:03:22-04:00"})
+    assert list(dates.values()) == [datetime(2026, 9, 30, 10, 3, 22)]
+
+
+def test_zero_stamp_falls_through_to_the_next_field():
+    dates = _video_dates(
+        {
+            "QuickTime:CreateDate": "0000:00:00 00:00:00",
+            "QuickTime:MediaCreateDate": "2026:09:30 14:03:22",
+        }
+    )
+    assert list(dates.values()) == [datetime(2026, 9, 30, 14, 3, 22)]
+
+
+def test_only_zero_stamps_yields_no_date():
+    assert _video_dates({"QuickTime:CreateDate": "0000:00:00 00:00:00"}) == {}
+
+
+# ── filename marker ───────────────────────────────────────────────────────
 
 
 def test_parses_marked_filename():

@@ -7,6 +7,10 @@ title: Exports
 
 What is in the files AddaxAI writes. Most of this page covers the columns in the CSV and XLSX tables, which hold the same columns either way; XLSX just puts each table on its own sheet. The recognition file is described at the end.
 
+In a project, every export on the Export page works the same way: press Export, choose which deployments, pick the variant, pick a folder, Start. The files are written into that folder and the last screen opens it. An export never replaces a file that is already there: a second spreadsheet of the same project on the same day is saved with `_2` in the name. The recognition file is the one exception, it goes into each deployment folder and replaces the previous one, because that is where Timelapse looks.
+
+Files are named after what they hold, the project and the date, for example `spreadsheet-kenya-2026-10-14.xlsx`. The spreadsheet is either one XLSX workbook with the five tables as sheets, or the same five tables as CSV or TSV files (`summary-…`, `counts-…`, `detections-…`, `files-…`, `deployments-…`).
+
 One limit to know if your project is large: an Excel sheet holds at most 1,048,576 rows, so a table bigger than that cannot be saved as XLSX. AddaxAI tells you when this happens instead of writing a file Excel cannot open. Pick CSV for those projects, it has no row limit.
 
 AddaxAI exports six tables. Which one you want depends on the question you are asking. A folder run has no [sites and no deployments](../understanding/how-a-project-is-organised.mdx), so the Deployments table is projects only.
@@ -22,13 +26,21 @@ AddaxAI exports six tables. Which one you want depends on the question you are a
 
 ## What the tables contain
 
-The tables hold the same set of detections, and it is the same set the app shows you. Two rules decide it, and they work the same way in a project and in a folder run.
+The tables hold the same set of detections, and it is the same set the app shows you. Three rules decide it, and they work the same way in a project and in a folder run.
 
 Anything below your [counting threshold](../understanding/confidence-and-verification.md) is left out, unless you verified it yourself. A detection you verified always stays in, whatever it scored, because your decision outranks the score.
 
 For videos, the Detections table is the Labels page as a table: one row per card, so one row per animal the AI followed, with its box on the frame where the AI saw it best and the frames it was on screen. Its other boxes are in the Frames table.
 
+Species you left out of the project's species selection are left out of the tables too, unless you verified them. A photo that only shows such a species still has its row in the Files table, without a species.
+
 The recognition file described at the end of this page is complete on purpose: it also holds the boxes below your counting threshold.
+
+## Every row says where it came from
+
+Counts, Detections and Files repeat the site, the camera period and the event on every row, in the same columns and the same order: `site_name`, `latitude`, `longitude`, `site_tags`, then `deployment_id`, `deployment_start`, `deployment_end`, `deployment_tags`, then `event_id`, `event_start`, `event_end`. Detections also carries its file: `file_id`, `relative_path`, `datetime`, `image_width`, `image_height`. So you can filter one table on a site, a tag or a date in Excel without looking anything up in another table. The ids are still there if you prefer to join.
+
+Detections and Files are in capture order. Photos taken in the same second follow their file names, which is the order the camera took them in, and photos without a capture time come last. Boxes on one photo or video frame are listed strongest first. The recognition file uses the same order.
 
 ## Summary
 
@@ -56,7 +68,9 @@ One row per species per event, with the count. Each row is one [observation](../
 | Column | Meaning |
 |---|---|
 | `event_id` | Identifier of the event |
-| `deployment_id` | Which camera period it came from |
+| `site_name`, `latitude`, `longitude`, `site_tags` | The site, as in the Deployments table |
+| `deployment_id`, `deployment_start`, `deployment_end`, `deployment_tags` | The camera period, as in the Deployments table |
+| `trap_nights` | How long that camera was out, as in the Deployments table, so count per trap night is one formula on the row |
 | `event_start` | Time of the first photo in the event, camera local time |
 | `event_end` | Time of the last photo in the event |
 | `category` | animal, person or vehicle |
@@ -67,9 +81,11 @@ One row per species per event, with the count. Each row is one [observation](../
 | `taxon_genus` | Genus, for example vulpes |
 | `taxon_species` | Species |
 | `taxon_variant` | One level below species, when the model predicts it, for example adult or juvenile. Empty for most models |
-| `scientific_name` | Scientific name for display |
+| `scientific_name` | Scientific name, written in full |
 | `common_name` | Common name for display |
 | `count` | Number of individuals. Your confirmed number if you set one, otherwise the AI's highest number seen in a single photo or video frame |
+| `ai_count` | The AI's number: the highest count seen in a single photo or video frame of the event |
+| `human_count` | The number you set on the Counts page. Empty if you did not set one |
 | `max_n_file_id` | The photo or video the AI's count was made on. Empty for a row you added by hand |
 | `max_n_frame` | For a video, the frame the AI's count was made on. Empty for a photo and for a row you added by hand |
 | `max_n_offset_seconds` | For a video, how many seconds into the clip that frame is. Empty for a photo and for a row you added by hand |
@@ -88,10 +104,13 @@ One row per card on the Labels page, including the ones you marked false. For a 
 | Column | Meaning |
 |---|---|
 | `detection_id` | Identifier of the box |
+| `site_name`, `latitude`, `longitude`, `site_tags` | The site, as in the Deployments table |
+| `deployment_id`, `deployment_start`, `deployment_end`, `deployment_tags` | The camera period, as in the Deployments table |
+| `event_id`, `event_start`, `event_end` | Which event, and when. Empty if not grouped |
 | `file_id` | Which file it is on |
-| `relative_path` | Path inside the deployment folder, so you can find the photo without joining to the Files table |
-| `deployment_id` | Which camera period |
-| `event_id` | Which event, empty if not grouped |
+| `relative_path` | Path inside the deployment folder. The full path is in the Files table |
+| `datetime` | Capture time of the file, camera local time |
+| `image_width`, `image_height` | Size of the image in pixels. Empty when the size was not recorded |
 | `detection_category` | animal, person or vehicle |
 | `detection_confidence` | How sure the detector was there is something there |
 | `classification_label` | The current species label. May be your correction |
@@ -114,7 +133,7 @@ One row per card on the Labels page, including the ones you marked false. For a 
 
 The `track_` columns are empty for photos.
 
-Box positions are fractions of the image, not pixels. Multiply by the image width and height to get pixels.
+Box positions are fractions of the image, not pixels. Multiply by `image_width` and `image_height` on the same row to get pixels.
 
 To see where the AI was wrong, compare `ai_classification_label` with `classification_label` on rows where `is_verified` is TRUE.
 
@@ -138,12 +157,14 @@ One row per photo or video, whether or not anything was found.
 | Column | Meaning |
 |---|---|
 | `file_id` | Identifier of the file |
-| `deployment_id` | Which camera period |
-| `event_id` | Which event, empty if not grouped |
+| `site_name`, `latitude`, `longitude`, `site_tags` | The site, as in the Deployments table |
+| `deployment_id`, `deployment_start`, `deployment_end`, `deployment_tags` | The camera period, as in the Deployments table |
+| `event_id`, `event_start`, `event_end` | Which event, and when. Empty if not grouped |
 | `file_type` | image or video |
 | `relative_path` | Path inside the deployment folder |
 | `absolute_path` | Full path on the machine that ran the analysis |
 | `datetime` | Capture time, camera local time. Empty if the file had no readable date |
+| `image_width`, `image_height` | Size in pixels. Empty when the size was not recorded |
 | `camera_make` | Camera manufacturer, from the image's own EXIF (`Make`), read once during analysis |
 | `camera_model` | Camera model, from EXIF `Model`, read once during analysis |
 | `ambient_temperature` | Temperature at capture, from EXIF `AmbientTemperature`, read once during analysis. The standard says degrees Celsius, but camera trap thermometers are rough, so treat it as indicative |
@@ -184,32 +205,54 @@ One row per camera period. This is your effort table.
 
 ## Folder runs
 
-In the five tables a folder run writes, `deployment_id` is dropped because there is no deployment, and `notes` because nothing ever fills it. Everything else is the same as in a project, so `event_id` in the Files and Detections tables points at the rows of the Counts table, and the Summary's `n_individuals` is that table's total. In the Excel workbook the sheets come in the same order as in a project, minus Deployments.
+In the five tables a folder run writes, the site and camera period columns (`site_name` to `deployment_tags`, and `trap_nights`) are dropped because a folder run has no sites and no camera periods, and `notes` because nothing ever fills it. Everything else is the same as in a project, so `event_id` in the Files and Detections tables points at the rows of the Counts table, and the Summary's `n_individuals` is that table's total. In the Excel workbook the sheets come in the same order as in a project, minus Deployments.
 
-One thing to know about the times: a folder run has no timezone setting, so `event_start`, `max_n_time`, `first_arrival_time` and `datetime` carry a `+00:00` offset, and so do `frame_time`, `track_start_time` and `track_end_time`. The clock values are the camera's own; only the offset is a placeholder.
+One thing to know about the times: a folder run has no timezone setting, so `event_start`, `event_end`, `max_n_time`, `first_arrival_time` and `datetime` carry a `+00:00` offset, and so do `frame_time`, `track_start_time` and `track_end_time`. The clock values are the camera's own; only the offset is a placeholder.
 
 ## Recognition file (JSON)
 
-A folder run also writes `addaxai-recognitions.json`. This is the file Timelapse reads.
+A folder run writes `addaxai-recognitions.json` into its output folder, and a project writes one into each deployment folder from the Export page. This is the file Timelapse reads.
 
-It follows the MegaDetector output format, version 1.6, which is [documented here](https://microsoft.github.io/MegaDetector/output_format/). Five things are worth knowing on top of that spec:
+It follows the MegaDetector output format, version 1.6, which is [documented here](https://microsoft.github.io/MegaDetector/output_format/). Six things are worth knowing on top of that spec:
 
 1. The `info` block carries an extra `addaxai` section with the app version and the settings the run used, such as smoothing, rollup and the independence interval. So the file records how it was produced.
 2. Each detection keeps only the top classification, not the full list the format allows.
 3. Nothing is filtered by a threshold. Every detection AddaxAI stored is in the file.
 4. File paths are relative to the folder the JSON sits in.
 5. The `exif_metadata` block per image is the file's raw EXIF, copied verbatim. A date correction made with Adjust dates does not change it: the corrected timestamps are in the `datetime` column of the files table, while this block stays in sync with what the image files themselves say, which is also what Timelapse reads from them.
+6. Your corrections are in it. A relabelled box carries the label you gave it, and every box has a `verified` flag. A box you rejected stays in the file with the label `false detection` and `verified: true`, so a program reading the file can tell it apart from a box the AI called an animal. The file is a snapshot: correct more, then export again to replace it.
+
+## Image copies
+
+Copies of your images and videos, sorted into folders, for browsing or sharing in another program. A folder run writes them from its save step; a project writes them from the Export page, under "Image copies". Both show the same options.
+
+What you get, in an `addaxai-media` folder inside the folder you choose:
+
+- One folder per species, or nested by taxonomy (class, order, family, genus, species), or no species folders at all. Each file goes into one folder only, the species of its strongest detection, or the species its event was mostly verified as when "Keep events together" is on. People, vehicles and empty files get their own folders.
+- Under the species folder, your own folder structure. A folder run keeps the subfolders of the folder it analysed. A project puts the deployment's folder name first, then its subfolders, so `wolf/CAM07/100RECNX/IMG_0012.JPG` says which camera the photo came from. With "Species folder last" the order flips: `CAM07/100RECNX/wolf/IMG_0012.JPG`. Two deployments whose folders have the same name land in the same folder, and a file that would overwrite another gets a `_2` suffix.
+- The species in the image metadata: the XMP subject tag, which digiKam, Lightroom and most photo managers read as keywords, plus a caption with every detection. A copy also keeps the original's own metadata (EXIF, XMP, IPTC, colour profile). A copy with boxes or blur drops the embedded thumbnail, because it would show the original pixels. Your originals are never changed, only the copies carry the tags.
+- Optionally boxes drawn on each image, and people and vehicles blurred. A video cannot be drawn on, so it gets a still image with the boxes next to it; with blur on, a video is written as its blurred still only.
+
+You can narrow what is copied, in a folder run and in a project alike: to the labels you choose, to the files you liked or verified on the Labels page, and to a date range. A project with several cameras also lets you pick which of them. Both start with every label and every camera in, so check the count beside the options before you copy a whole project. A file without a capture time is left out as soon as a date is set. The folder tree, the count and the size of what will be written are shown beside the options before you start.
+
+Exporting again into the same folder replaces its `addaxai-media` folder. Pick another folder if you want to keep both.
 
 ## Spatial
 
-Projects can also export point layers for GIS tools such as QGIS and ArcGIS, as GeoJSON, Shapefile or GeoPackage. You get two layers: one point per camera, and one point per camera per species. Deployments with no site coordinates are left out.
+Projects can also export point layers for GIS tools such as QGIS and ArcGIS, as GeoPackage, GeoJSON or Shapefile (`spatial-<project>-<date>.gpkg`, `.geojson` or `.zip`). You get two layers: one point per camera, and one point per camera per species. Only the deployments you pick are in it, and deployments with no site coordinates are left out; the dialog says how many. Both layers count the same detections as the tables, so the species points of a camera add up to its total.
 
 ## Camtrap DP
 
-Projects can also export Camtrap DP, a standard format for camera trap data. It uses its own column names and a fixed structure, so other tools and archives can read your data without knowing anything about AddaxAI. Use it when you share data or deposit it in a repository.
+Projects can also export Camtrap DP (`camtrap-dp-<project>-<date>.zip`), a standard format for camera trap data, for the deployments you pick. It uses its own column names and a fixed structure, so other tools and archives can read your data without knowing anything about AddaxAI. Use it when you share data or deposit it in a repository.
+
+A photo whose only animal is a species you left out of the species selection keeps its media row but gets no observation: an empty observation would claim there was nothing there.
 
 For models that predict below species level (adult or juvenile fox, for example), `scientificName` always carries the real species name. The variant goes into `lifeStage` (adult, subadult, juvenile) or `sex` (female, male) when it fits those fields, and into `observationComments` otherwise.
 
 What you set on the Counts page goes into the same fields: `sex`, `lifeStage` and `behavior` per row, and your note on the event into `observationComments` of each of its rows. Unknown stays empty. A favourite file gets `favorite` set to true in the media table.
 
 A video is one media row, and each animal the AI followed through it is one media-level observation: `eventStart` and `eventEnd` are the seconds the animal was on screen, the box is the one from the frame it was seen best on, `individualID` names the animal within the clip (the file's id and its `track_id`; it is the AI following one animal through one clip, not a recognised individual, so an animal that leaves and comes back gets a new one), and `observationTags` carries the frame numbers (`frameStart`, `frameEnd`, `bboxFrame`, `frameRate`), since the standard has no field for them. The event-level row per species carries the count, MaxN or your own number, with `countMethod:MaxN` and the file and frame the MaxN was made on in its tags.
+
+## AddaxAI bundle
+
+A folder with your labels, corrections and counts for some or all deployments, which another AddaxAI opens. It is named after the project and ends in `.addaxai-bundle`. See [work as a team](../guides/work-as-a-team.mdx).

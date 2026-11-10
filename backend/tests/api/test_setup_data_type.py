@@ -10,6 +10,8 @@ The base environment is in every list on purpose: the app's ffmpeg
 lives in it, so it decodes every video frame a user looks at.
 """
 
+import os
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -69,7 +71,12 @@ def _stub_install(monkeypatch, present_envs: tuple[str, ...] = ()):
     monkeypatch.setattr(
         setup_router,
         "_get_env_manager",
-        lambda: SimpleNamespace(get_or_create_env=get_or_create_env),
+        # envs_dir for run_setup's "replace an incomplete env" pass: a
+        # folder with no env in it, so nothing is retired.
+        lambda: SimpleNamespace(
+            get_or_create_env=get_or_create_env,
+            envs_dir=Path(os.environ["ADDAXAI_USER_DATA_DIR"]) / "envs",
+        ),
     )
     monkeypatch.setattr(
         setup_router, "_env_present", lambda name=None: name in present_envs

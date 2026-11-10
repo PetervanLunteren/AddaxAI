@@ -1,8 +1,10 @@
 /**
- * Line chart showing detection trends over time with gradient fill.
+ * Line chart showing observations over time with gradient fill.
  *
- * Supports day/week/month granularity and species filtering.
- * Auto-selects the most observed species and optimal granularity on load.
+ * Supports day/week/month granularity and picks one from the span on load.
+ * What it counts comes from the page: the Explore tab's taxon, sites and
+ * dates, passed in as one `scope`, so this card can never disagree with
+ * the cards beside it.
  */
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
@@ -19,14 +21,15 @@ import {
   Filler,
   type ChartOptions,
 } from "chart.js";
-import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
+import { Card, CardContent } from "../ui/card";
+import { DashboardCardHeader } from "./DashboardCardHeader";
+import { useChartColors } from "../../lib/theme";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { DashboardAboutPopover } from "./DashboardAboutPopover";
 import { MissingDatesIcon } from "./MissingDatesWarning";
+import { WideSpanNotice } from "./WideSpanNotice";
+import { exceedsChartYears, yearSpan } from "../../lib/date-span";
 import { statisticsApi } from "../../api/statistics";
-import { resolveSpeciesName } from "../../lib/species-name-mode";
-import type { DateRange } from "./index";
-import type { DetectionTrendPoint } from "../../api/statistics";
+import type { DetectionTrendPoint, DashboardScope } from "../../api/statistics";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
 
@@ -76,6 +79,20 @@ function denseRangeKeys(
   return keys;
 }
 
+/**
+ * Inclusive chart range: the user's date filter wins, otherwise the first
+ * and last observed dates (points arrive sorted by date).
+ */
+function chartRange(
+  points: DetectionTrendPoint[],
+  rangeStart: string | null,
+  rangeEnd: string | null,
+): { from: string; to: string } | null {
+  const from = rangeStart ?? points[0]?.date;
+  const to = rangeEnd ?? points[points.length - 1]?.date;
+  return from && to ? { from, to } : null;
+}
+
 function groupData(
   points: DetectionTrendPoint[],
   granularity: Granularity,
@@ -97,14 +114,11 @@ function groupData(
     bucketed.set(k, (bucketed.get(k) ?? 0) + point.count);
   }
 
-  // Inclusive range bounds: user's filter wins; otherwise fall back to
-  // the first and last observed dates in the data.
-  const from = rangeStart ?? points[0]?.date;
-  const to = rangeEnd ?? points[points.length - 1]?.date;
-  if (!from || !to) return { labels: [], values: [] };
+  const range = chartRange(points, rangeStart, rangeEnd);
+  if (!range) return { labels: [], values: [] };
 
   // Dense list of bucket keys across the whole range, then zero-fill.
-  const labels = denseRangeKeys(new Date(from), new Date(to), keyOf);
+  const labels = denseRangeKeys(new Date(range.from), new Date(range.to), keyOf);
   const values = labels.map((k) => bucketed.get(k) ?? 0);
   return { labels, values };
 }
@@ -154,67 +168,27 @@ function trailingMovingAverage(
 }
 
 interface DetectionTrendChartProps {
-  dateRange: DateRange;
   projectId: string;
-  siteIds?: string;
+  scope: DashboardScope;
+  /** Trap nights in the same scope, so the line reads per 100 nights. */
   trapNights?: number;
-  taxonomicRank?: string;
 }
 
 export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
-  dateRange,
   projectId,
-  siteIds,
+  scope,
   trapNights,
-  taxonomicRank,
 }) => {
   const [granularity, setGranularity] = useState<Granularity>("day");
-  const [selectedSpecies, setSelectedSpecies] = useState("all");
   const chartRef = useRef<ChartJS<"line"> | null>(null);
+  const rangeStart = scope.dateFrom ?? null;
+  const rangeEnd = scope.dateTo ?? null;
 
   const norm = (n: number) => trapNights && trapNights > 0 ? +(n / trapNights * 100).toFixed(2) : n;
 
-  // Fetch species list for the selector
-  const { data: speciesList } = useQuery({
-    queryKey: ["statistics", "species", projectId, siteIds, dateRange.startDate, dateRange.endDate, taxonomicRank],
-    queryFn: () =>
-      statisticsApi.getSpeciesDistribution(
-        projectId,
-        siteIds,
-        dateRange.startDate || undefined,
-        dateRange.endDate || undefined,
-        taxonomicRank,
-      ),
-  });
-
-  // Auto-select the most observed species on load and when species list changes
-  useEffect(() => {
-    if (speciesList && speciesList.length > 0) {
-      const top = speciesList.reduce((best, s) => (s.count > best.count ? s : best), speciesList[0]);
-      setSelectedSpecies(top.species);
-    }
-  }, [speciesList]);
-
-  // Fetch trend data
   const { data: trendData, isLoading } = useQuery({
-    queryKey: [
-      "statistics",
-      "detection-trend",
-      projectId,
-      selectedSpecies,
-      siteIds,
-      dateRange.startDate,
-      dateRange.endDate,
-      taxonomicRank,
-    ],
-    queryFn: () =>
-      statisticsApi.getDetectionTrend(projectId, {
-        species: selectedSpecies === "all" ? undefined : selectedSpecies,
-        siteIds,
-        dateFrom: dateRange.startDate || undefined,
-        dateTo: dateRange.endDate || undefined,
-        taxonomicRank,
-      }),
+    queryKey: ["statistics", "detection-trend", projectId, scope],
+    queryFn: () => statisticsApi.getDetectionTrend(projectId, scope),
   });
 
   // Auto-select optimal granularity when data arrives. Keyed on the
@@ -223,27 +197,27 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
   // empty days the point count is roughly equal to the span anyway.
   useEffect(() => {
     if (!trendData || trendData.length === 0) return;
-    const first = dateRange.startDate ?? trendData[0].date;
-    const last =
-      dateRange.endDate ?? trendData[trendData.length - 1].date;
+    const range = chartRange(trendData, rangeStart, rangeEnd);
+    if (!range) return;
     const days =
       Math.round(
-        (new Date(last).getTime() - new Date(first).getTime()) / 86400000,
+        (new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400000,
       ) + 1;
     setGranularity(pickGranularity(days));
-  }, [trendData, dateRange.startDate, dateRange.endDate]);
+  }, [trendData, rangeStart, rangeEnd]);
+
+  // A corrupt capture year makes the range millennia wide; zero-filling
+  // it day by day froze the page for a minute, so it is not drawn.
+  const range = trendData ? chartRange(trendData, rangeStart, rangeEnd) : null;
+  const span = range ? yearSpan(range.from, range.to) : null;
+  const tooWide = span !== null && exceedsChartYears(span);
 
   const { labels, values } = useMemo(
     () =>
-      trendData
-        ? groupData(
-            trendData,
-            granularity,
-            dateRange.startDate,
-            dateRange.endDate,
-          )
+      trendData && !tooWide
+        ? groupData(trendData, granularity, rangeStart, rangeEnd)
         : { labels: [], values: [] },
-    [trendData, granularity, dateRange.startDate, dateRange.endDate],
+    [trendData, tooWide, granularity, rangeStart, rangeEnd],
   );
 
   const normalizedValues = useMemo(() => values.map(norm), [values, trapNights]);
@@ -257,21 +231,22 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
     [normalizedValues, smoothingWindow],
   );
 
-  // One series at a time, so the color carries no information: always teal.
-  // Species colors from species-colors.ts are for charts where several
-  // species appear together; the light end of that gradient is barely
-  // visible as a single line on the white card.
-  const lineColor = "#0f6064";
+  // One series at a time, so the color carries no information: always
+  // teal ink from the theme (lighter in dark, where raw brand teal
+  // disappears into the card). Species colors from species-colors.ts
+  // are for charts where several species appear together.
+  const colors = useChartColors();
+  const lineColor = colors.primaryInk;
 
   // Build gradient fill for the line
   const createGradient = useCallback(
     (ctx: CanvasRenderingContext2D, chartArea: { top: number; bottom: number }) => {
       const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-      gradient.addColorStop(0, "rgba(15, 96, 100, 0.4)");
-      gradient.addColorStop(1, "rgba(15, 96, 100, 0.02)");
+      gradient.addColorStop(0, colors.withAlpha(lineColor, 0.4));
+      gradient.addColorStop(1, colors.withAlpha(lineColor, 0.02));
       return gradient;
     },
-    [],
+    [colors, lineColor],
   );
 
   const chartData = useMemo(
@@ -284,7 +259,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
           borderColor: lineColor,
           backgroundColor: (context: { chart: ChartJS }) => {
             const { chart } = context;
-            if (!chart.chartArea) return "rgba(15, 96, 100, 0.2)";
+            if (!chart.chartArea) return colors.withAlpha(lineColor, 0.2);
             return createGradient(chart.ctx, chart.chartArea);
           },
           fill: true,
@@ -310,6 +285,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
       normalizedValues,
       movingAverage,
       smoothingLabel,
+      colors,
       lineColor,
       createGradient,
     ],
@@ -324,7 +300,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
         display: true,
         position: "top",
         align: "end",
-        labels: { boxWidth: 24, usePointStyle: false },
+        labels: { boxWidth: 24, usePointStyle: false, color: colors.axis },
       },
       tooltip: {
         // Drop the moving-average's warm-up null points from the tooltip.
@@ -343,41 +319,40 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
         ticks: {
           maxTicksLimit: 12,
           maxRotation: 45,
+          color: colors.axis,
         },
         grid: { display: false },
       },
       y: {
         beginAtZero: true,
-        title: { display: true, text: "Per 100 trap nights" },
+        title: { display: true, text: "Per 100 trap nights", color: colors.axis },
         ticks: {
           callback: (value) => Number(value).toLocaleString(),
+          color: colors.axis,
         },
+        grid: { color: colors.grid },
       },
     },
   };
 
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-1.5">
-              <CardTitle className="text-lg">Observation trend</CardTitle>
-              <MissingDatesIcon projectId={projectId} />
-              <DashboardAboutPopover>
-                <p>
-                  Individuals observed per bin (each event's confirmed
-                  count, or the AI's count where not yet confirmed), not
-                  detections. Filter by species. Bin by day, week, or
-                  month.
-                </p>
-              </DashboardAboutPopover>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Observations over time
+      <DashboardCardHeader
+        title="Observation trend"
+        caption="Observations over time"
+        marker={<MissingDatesIcon projectId={projectId} />}
+        info={
+          <>
+            <p>
+              Observations per bin (each event's confirmed count, or
+              the AI's count where not yet confirmed), not
+              detections, per 100 trap nights, of the labels, sites
+              and dates chosen above. Bin by day, week, or month.
             </p>
-          </div>
-          <div className="flex items-center gap-2">
+          </>
+        }
+        actions={
+          <>
             <Select value={granularity} onValueChange={(v) => setGranularity(v as Granularity)}>
               <SelectTrigger className="w-28 h-9 text-sm">
                 <SelectValue />
@@ -388,30 +363,18 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
                 <SelectItem value="month">Monthly</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={selectedSpecies} onValueChange={setSelectedSpecies}>
-              <SelectTrigger className="w-44 h-9 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                {speciesList?.map((s) => (
-                  <SelectItem key={s.species} value={s.species}>
-                    {resolveSpeciesName({
-                      scientific_name: s.species,
-                      common_name: s.common_name,
-                    })}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </CardHeader>
+          </>
+        }
+      />
       <CardContent>
         <div className="h-80">
           {isLoading ? (
             <div className="flex items-center justify-center h-full">
               <p className="text-muted-foreground">Loading...</p>
+            </div>
+          ) : tooWide ? (
+            <div className="flex items-center justify-center h-full">
+              <WideSpanNotice span={span} className="max-w-md" />
             </div>
           ) : values.length > 0 ? (
             <Line ref={chartRef} data={chartData} options={chartOptions} />

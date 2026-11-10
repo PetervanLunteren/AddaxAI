@@ -49,6 +49,10 @@ jobs:
         working-directory: frontend
         run: npm run typecheck
 
+      - name: Unit tests (vitest)
+        working-directory: frontend
+        run: npm test
+
   backend-lint:
     name: Backend lint (ruff)
     runs-on: ubuntu-latest

@@ -48,8 +48,10 @@ from app.api.schemas.deployment import (
 from app.core.logging_config import get_logger
 from app.core.media_types import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from app.db.base import get_db
+from app.ml.inference.image_io import open_image_rgb
 from app.services.csv_import_deployments import (
     CAMERA_OFFSETS_NEED_PAIRED,
+    FOLDER_IS_A_FILE,
     check_paired_camera_layout,
 )
 from app.services.folder_scanner import scan_folder
@@ -156,6 +158,18 @@ def preview_folder_path(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Permission denied: {str(e)}",
         ) from e
+    except NotADirectoryError as e:
+        # A file was dropped on the folder picker (the click path is
+        # directory-only, the drop path takes anything). This is an
+        # OSError too, so it has to be caught before the drive branch
+        # below: a user who dropped a video was told their drive was
+        # failing, with the real reason in brackets. Same wording as the
+        # CSV import, which applies the same rule per row.
+        logger.info(f"Not a folder: {path}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=FOLDER_IS_A_FILE,
+        ) from e
     except OSError as e:
         # The folder exists but could not be listed. Reported separately
         # because the answer for the user is "check the drive", not "pick
@@ -257,8 +271,8 @@ def preview_image(
             buf = io.BytesIO(result.stdout)
             return StreamingResponse(buf, media_type="image/jpeg")
 
-        # Image: open with Pillow, resize, serve as JPEG
-        img = Image.open(file_path)
+        # Image: open upright (see image_io), resize, serve as JPEG
+        img = open_image_rgb(file_path)
         if img.width > _PREVIEW_MAX_WIDTH:
             ratio = _PREVIEW_MAX_WIDTH / img.width
             img = img.resize(
@@ -266,7 +280,7 @@ def preview_image(
                 Image.Resampling.LANCZOS,
             )
         buf = io.BytesIO()
-        img.convert("RGB").save(buf, format="JPEG", quality=80)
+        img.save(buf, format="JPEG", quality=80)
         buf.seek(0)
         return StreamingResponse(buf, media_type="image/jpeg")
     except Exception as e:

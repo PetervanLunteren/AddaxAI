@@ -32,7 +32,10 @@ sync: changing the rule means changing one module, not seven.
 
 from __future__ import annotations
 
-from sqlalchemy import or_, select
+from collections.abc import Collection
+from typing import Any
+
+from sqlalchemy import Row, or_, select
 from sqlalchemy.orm import Session
 
 from app.ml.detection_visibility import on_visible_frame_of
@@ -41,15 +44,17 @@ from app.models import Detection, File
 
 
 def detection_is_excluded(
-    detection: Detection,
-    excluded_label_ids: frozenset[str] | None,
+    detection: Detection | Row[Any],
+    excluded_label_ids: Collection[str] | None,
 ) -> bool:
     """Return True when the user's exclusion set covers this detection.
 
-    Either the detection's taxonomy id or its raw label string can
-    match — the set is heterogeneous (UUIDs for taxonomy-mapped
-    labels, plain strings for unmapped ones from the "Other"
-    branch of the label tree).
+    Either the taxonomy id or the raw label string can match: the set is
+    heterogeneous (UUIDs for taxonomy-mapped labels, plain strings for
+    unmapped ones from the "Other" branch of the label tree). Takes a
+    ``Detection`` or a query row that selects ``label`` and
+    ``label_taxonomy_id``. Every output module filters through this one
+    rule.
     """
     if not excluded_label_ids:
         return False

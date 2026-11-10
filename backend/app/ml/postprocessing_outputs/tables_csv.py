@@ -32,10 +32,7 @@ from sqlalchemy.orm import Session
 from app.api.crud import export as export_crud
 from app.api.crud import export_formats
 from app.core.logging_config import get_logger
-from app.ml.postprocessing_outputs._table_columns import (
-    folder_run_columns,
-    folder_run_table,
-)
+from app.ml.postprocessing_outputs._table_columns import folder_run_table
 from app.models import Project
 
 logger = get_logger(__name__)
@@ -87,71 +84,54 @@ def write_tables_csv(
     # user could actually check and correct. ``addaxai-recognitions.json``
     # stays the complete record of the run.
     #
-    # Fetched and released before the files table below loads its own row
-    # set, so the two biggest allocations of the save job never coexist.
-    # The summary is a handful of rows built from the same fetch, so it
-    # rides along without changing that peak.
-    scoped = export_crud.get_scoped_detection_rows(db, project)
-    det_headers, det_rows = folder_run_table(
-        *export_crud.build_detection_rows(db, project, scoped)
-    )
-    summary_headers, summary_rows = folder_run_table(
-        *export_crud.build_summary_rows(db, project, scoped)
-    )
-    del scoped
+    # Every table is streamed from its own query straight into its file,
+    # so the save job holds one batch of rows at a time, whatever the size
+    # of the run.
     detections_path = target_dir / DETECTIONS_FILENAME
-    with open(detections_path, "wb") as f:
-        f.write(export_formats.serialize_csv(det_headers, det_rows))
-    detection_count = len(det_rows)
-    del det_rows
-
-    summary_path = target_dir / SUMMARY_FILENAME
-    with open(summary_path, "wb") as f:
-        f.write(export_formats.serialize_csv(summary_headers, summary_rows))
-
-    # One row per species per event, the count a person confirmed on the
-    # Counts step or else the AI's MaxN. A handful of rows next to the two
-    # big tables, so it does not move the memory peak described above.
-    counts_headers, counts_rows = folder_run_table(
-        *export_crud.build_observation_rows(db, project)
+    detection_count = export_formats.write_csv(
+        detections_path,
+        *folder_run_table(*export_crud.build_detection_rows(db, project)),
     )
+    summary_path = target_dir / SUMMARY_FILENAME
+    summary_count = export_formats.write_csv(
+        summary_path,
+        *folder_run_table(*export_crud.build_summary_rows(db, project)),
+    )
+    # One row per species per event, the count a person confirmed on the
+    # Counts step or else the AI's MaxN.
     counts_path = target_dir / COUNTS_FILENAME
-    with open(counts_path, "wb") as f:
-        f.write(export_formats.serialize_csv(counts_headers, counts_rows))
-
+    counts_count = export_formats.write_csv(
+        counts_path,
+        *folder_run_table(*export_crud.build_observation_rows(db, project)),
+    )
     # Same scope as the detections table above, so the two agree: a file
     # whose species columns are empty has no rows in addaxai-detections.csv
-    # either. Its own fetch, because the detections row set was released
-    # above to keep peak memory down.
-    files_headers, files_rows = folder_run_table(
-        *export_crud.build_files_rows(db, project)
-    )
+    # either.
     files_path = target_dir / FILES_FILENAME
-    with open(files_path, "wb") as f:
-        f.write(export_formats.serialize_csv(files_headers, files_rows))
+    files_count = export_formats.write_csv(
+        files_path,
+        *folder_run_table(*export_crud.build_files_rows(db, project)),
+    )
 
     # Every box of the tracks in the detections table, one row per
-    # sampled frame. Written row by row: on a marine run it is an order of
-    # magnitude bigger than every other table together, so it is never
-    # held as one list. A run without videos gets no frames file at all,
-    # rather than an empty one.
+    # sampled frame. On a marine run it is an order of magnitude bigger
+    # than every other table together. A run without videos gets no
+    # frames file at all, rather than an empty one.
     frames_paths: list[Path] = []
     frame_count = 0
     if export_crud.scope_has_videos(db, project):
         frames_path = target_dir / FRAMES_FILENAME
-        keep = folder_run_columns(export_crud.FRAMES_HEADERS)
-        rows = export_crud.iter_frames_rows(db, project)
-        with open(frames_path, "w", encoding="utf-8", newline="") as f:
-            frame_count = export_formats.write_delimited(
-                f,
-                [export_crud.FRAMES_HEADERS[i] for i in keep],
-                ([row[i] for i in keep] for row in rows),
-            )
+        frame_count = export_formats.write_csv(
+            frames_path,
+            *folder_run_table(
+                export_crud.FRAMES_HEADERS, export_crud.iter_frames_rows(db, project)
+            ),
+        )
         frames_paths.append(frames_path)
 
     logger.info(
-        f"tables_csv: project={project_id} summary={len(summary_rows)} "
-        f"counts={len(counts_rows)} files={len(files_rows)} "
+        f"tables_csv: project={project_id} summary={summary_count} "
+        f"counts={counts_count} files={files_count} "
         f"detections={detection_count} frames={frame_count}"
     )
 
@@ -164,10 +144,6 @@ def write_tables_csv(
             *(str(p) for p in frames_paths),
         ],
         row_count=(
-            len(summary_rows)
-            + len(counts_rows)
-            + len(files_rows)
-            + detection_count
-            + frame_count
+            summary_count + counts_count + files_count + detection_count + frame_count
         ),
     )

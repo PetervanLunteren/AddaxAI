@@ -2,78 +2,24 @@ import type { ReactNode } from "react";
 import Layout from "@theme/Layout";
 import Link from "@docusaurus/Link";
 import useBaseUrl from "@docusaurus/useBaseUrl";
+import pagesData from "@site/src/data/pages.json";
 import styles from "./index.module.css";
 
 // Documentation home. This site explains how AddaxAI works and what the
 // numbers mean. It is not a sales page: the job here is to get a reader to
 // the right page in one click.
 
-interface Card {
-  title: string;
-  body: string;
+interface Section {
+  label: string;
+  description: string;
   to: string;
-  links: Array<{ label: string; to: string }>;
-  /** Spans both columns, so an odd last card does not leave a gap. */
-  wide?: boolean;
+  pages: Array<{ label: string; to: string }>;
 }
 
-const SECTIONS: Card[] = [
-  {
-    title: "Start here",
-    body: "New to AddaxAI. Install it, run it once, and pick the path that fits your workflow.",
-    to: "/docs/start-here/what-is-addaxai",
-    links: [
-      { label: "What AddaxAI does", to: "/docs/start-here/what-is-addaxai" },
-      { label: "Install", to: "/docs/start-here/install" },
-      { label: "Choose a workflow", to: "/docs/start-here/choose-a-workflow" },
-    ],
-  },
-  {
-    title: "Guides",
-    body: "Step by step: run an analysis, check labels and counts. In a project, results add up into charts and maps.",
-    to: "/docs/guides/analyse-a-folder",
-    links: [
-      { label: "Analyse a folder", to: "/docs/guides/analyse-a-folder" },
-      { label: "Build a project", to: "/docs/guides/build-a-project" },
-      { label: "Check the labels", to: "/docs/guides/check-labels" },
-      { label: "Confirm the counts", to: "/docs/guides/confirm-counts" },
-      { label: "Use results in Timelapse", to: "/docs/guides/timelapse" },
-    ],
-  },
-  {
-    title: "Understanding your results",
-    body: "Where the numbers come from. Read this before you use the output in a paper or a report.",
-    to: "/docs/understanding/detections-events-observations",
-    links: [
-      { label: "Detections, events and observations", to: "/docs/understanding/detections-events-observations" },
-      { label: "How trap nights are counted", to: "/docs/understanding/trap-nights" },
-      { label: "Confidence and verification", to: "/docs/understanding/confidence-and-verification" },
-      { label: "The charts explained", to: "/docs/understanding/insights" },
-    ],
-  },
-  {
-    title: "Reference",
-    body: "Look things up: what is in every export, and what every model can recognise.",
-    to: "/docs/reference/exports",
-    links: [
-      { label: "Exports", to: "/docs/reference/exports" },
-      { label: "Model zoo", to: "/docs/reference/model-zoo" },
-      { label: "Where your files live", to: "/docs/reference/file-locations" },
-    ],
-  },
-  {
-    title: "Help",
-    body: "Answers to the questions people ask most, and what to do when something goes wrong.",
-    to: "/docs/help/faq",
-    wide: true,
-    links: [
-      { label: "FAQ", to: "/docs/help/faq" },
-      { label: "Troubleshooting", to: "/docs/help/troubleshooting" },
-      { label: "Back up and restore", to: "/docs/help/back-up-and-restore" },
-      { label: "Go back to version 6", to: "/docs/help/go-back-to-v6" },
-    ],
-  },
-];
+// Written by scripts/sync-pages.mjs before every start and build, from the
+// same folders and frontmatter the sidebar is generated from. Never edit
+// the list here: add or reorder pages under docs/ and both update.
+const SECTIONS = pagesData as Section[];
 
 function Hero(): ReactNode {
   const logo = useBaseUrl("/img/logo-wordmark.png");
@@ -103,17 +49,22 @@ function Sections(): ReactNode {
     <section className={`${styles.section} ${styles.sectionAlt}`}>
       <div className={styles.wide}>
         <div className={styles.cards}>
-          {SECTIONS.map((c) => (
+          {SECTIONS.map((c, i) => (
             <div
-              key={c.title}
-              className={c.wide ? `${styles.card} ${styles.cardWide}` : styles.card}
+              key={c.label}
+              // An odd last card spans both columns, so it leaves no gap.
+              className={
+                i === SECTIONS.length - 1 && SECTIONS.length % 2 === 1
+                  ? `${styles.card} ${styles.cardWide}`
+                  : styles.card
+              }
             >
               <h2 className={styles.cardTitle}>
-                <Link to={c.to}>{c.title}</Link>
+                <Link to={c.to}>{c.label}</Link>
               </h2>
-              <p className={styles.cardBody}>{c.body}</p>
+              <p className={styles.cardBody}>{c.description}</p>
               <ul className={styles.cardLinks}>
-                {c.links.map((l) => (
+                {c.pages.map((l) => (
                   <li key={l.to}>
                     <Link to={l.to}>{l.label}</Link>
                   </li>

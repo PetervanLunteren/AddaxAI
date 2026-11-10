@@ -19,9 +19,9 @@ import { projectsApi, type ProjectUpdate } from "../api/projects";
 import { invalidateModelMetadata, modelsApi } from "../api/models";
 import {
   LabelSelectionField,
-  toApiCountryCode,
   useLabelSelectionCaption,
 } from "../components/taxonomy/LabelSelectionField";
+import { clearSpeciesSelection, toApiCountryCode } from "../lib/speciesSelection";
 import { AnalysisSettingsRows } from "../components/settings/AnalysisSettingsRows";
 import { ApplySettingsModal } from "../components/settings/ApplySettingsModal";
 import {
@@ -159,7 +159,6 @@ export default function SettingsPage() {
   // The sticky save bar is `fixed` and spans the content area, so its
   // left edge has to track the sidebar/rail width.
   const sidebarCollapsed = useSidebarCollapsed();
-  const [excludedClasses, setExcludedClasses] = useState<string[]>([]);
   const [showModelInfo, setShowModelInfo] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
 
@@ -256,17 +255,9 @@ export default function SettingsPage() {
   // counts as default" has one definition across both flows.
   const changedAdvanced = advancedNonDefaultKeys(form.watch());
 
-  // The classification model as loaded from the project. The excluded_classes
-  // filter below must fire only on a genuine USER model change, never on the
-  // initial load, or it would drop saved exclusions and dirty the form with no
-  // user action. Compare against this ref, never against a watch() value: the
-  // two are written in different commits (see the note on that effect).
-  const loadedModelRef = useRef<string | null | undefined>(undefined);
-
   // Update form values when project loads
   useEffect(() => {
     if (project) {
-      loadedModelRef.current = project.classification_model_id ?? null;
       const values: SettingsFormData = {
         detection_model_id: project.detection_model_id,
         classification_model_id: project.classification_model_id ?? null,
@@ -373,14 +364,6 @@ export default function SettingsPage() {
     },
   });
 
-  // Initialize excludedClasses state when project loads
-  useEffect(() => {
-    if (project) {
-      const savedExcluded = project.excluded_classes || [];
-      setExcludedClasses(savedExcluded);
-    }
-  }, [project]);
-
   // There is deliberately no "clear state_code when the country changes"
   // effect. The location picker sets country AND state together (see
   // onLocationChange below), so state is already null before any such effect
@@ -391,30 +374,10 @@ export default function SettingsPage() {
   // phantom "You have unsaved changes". FolderRunModelStep uses the same
   // picker with no such effect and never had the bug.
 
-  // Drop excluded classes the newly-picked model doesn't have.
-  useEffect(() => {
-    // Read the LIVE value, not the watched one. When the project is already
-    // in the react-query cache, this effect and the project-load effect above
-    // run in the SAME commit: the watched value is still the pre-reset
-    // default while the ref and the form are already updated. Comparing
-    // stale-to-fresh is exactly what produced the phantom-dirty bug in the
-    // sibling effect this replaced. `classificationModelId` stays in the deps
-    // as the trigger; only the read moves.
-    const modelId = form.getValues("classification_model_id");
-    if (modelId === loadedModelRef.current) return;
-    if (modelId && taxonomy?.all_classes) {
-      const currentExcluded = form.getValues("excluded_classes");
-      const validExcluded = currentExcluded.filter((cls) =>
-        taxonomy.all_classes.includes(cls),
-      );
-
-      // Only update if some classes were removed
-      if (validExcluded.length !== currentExcluded.length) {
-        form.setValue("excluded_classes", validExcluded, { shouldDirty: true });
-        setExcludedClasses(validExcluded);
-      }
-    }
-  }, [classificationModelId, taxonomy, form]);
+  // A model switch clears the species selection in the dropdown's change
+  // handler (clearSpeciesSelection), not in an effect keyed on the model
+  // id: such an effect also fires on load, in the same commit as the reset
+  // above, which is the phantom-dirty trap described there.
 
   // Model preparation, for whichever of the three models the user set up.
   const modelTypeOf = (modelId: string): PreparingModelType =>
@@ -728,7 +691,6 @@ export default function SettingsPage() {
         classification_batch_size: project.classification_batch_size ?? null,
         embedding_batch_size: project.embedding_batch_size ?? null,
       });
-      setExcludedClasses(project.excluded_classes || []);
     }
   };
 
@@ -753,7 +715,7 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm">
+      <header className="border-b bg-card/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <div>
@@ -846,6 +808,7 @@ export default function SettingsPage() {
                             if (val === "none" && field.value && field.value !== "none") {
                               setRemoveClsConfirmOpen(true);
                             } else {
+                              if (val !== field.value) clearSpeciesSelection(form.setValue);
                               field.onChange(val);
                             }
                           }}
@@ -1020,12 +983,11 @@ export default function SettingsPage() {
                     <div>
                       <LabelSelectionField
                         modelId={classificationModelId}
-                        excludedClasses={excludedClasses}
+                        excludedClasses={form.watch("excluded_classes")}
                         allClasses={taxonomy.all_classes ?? []}
                         countryCode={countryCode}
                         stateCode={form.watch("state_code")}
                         onExclusionChange={(classes) => {
-                          setExcludedClasses(classes);
                           form.setValue("excluded_classes", classes, { shouldDirty: true });
                         }}
                         onLocationChange={(country, state) => {
@@ -1532,6 +1494,7 @@ export default function SettingsPage() {
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction onClick={() => {
+                clearSpeciesSelection(form.setValue);
                 form.setValue("classification_model_id", "none", { shouldDirty: true });
                 setRemoveClsConfirmOpen(false);
               }}>

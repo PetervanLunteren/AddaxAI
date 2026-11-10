@@ -61,7 +61,7 @@ export function HomePage() {
   const navigate = useNavigate();
 
   return (
-    <div className="relative min-h-screen overflow-hidden text-white">
+    <div className="relative min-h-screen overflow-hidden text-white" data-full-bleed>
       <PhotoBackdrop />
 
       <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-7 lg:px-8">

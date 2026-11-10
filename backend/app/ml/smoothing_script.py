@@ -96,7 +96,9 @@ def main() -> None:
 
     # Generic "other" categories that the smoother can overwrite with a dominant
     # real label. Non-label classes (blank, empty, false detection, none) are
-    # already stripped by label exclusion before smoothing runs.
+    # deliberately not in this list: the smoother sees them as ordinary
+    # classes, so one "false detection" frame in a fox burst becomes fox,
+    # and a dominant "false detection" is not overwritten by a stray fox.
     base_other = [
         "other",
         "unknown",

@@ -32,6 +32,11 @@ from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# Exit code 0xC0000005: Windows' report of a native program that read or
+# wrote memory it does not own (access violation). Not an error the
+# program chose to return, so it comes with no message of its own.
+WINDOWS_ACCESS_VIOLATION = 3221225477
+
 
 @dataclass
 class StreamedResult:

@@ -40,6 +40,10 @@ from tqdm import tqdm
 # from `app/__init__.py`. See the comment there for the full reasoning.
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
+# `image_io` lives next to this script; the script's directory is on
+# sys.path, so a flat import works in the subprocess (no app.* there).
+from image_io import open_image_rgb  # noqa: E402
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Compute DINOv2 embeddings for detection crops")
@@ -200,7 +204,7 @@ def main() -> None:
         # Cache image loading
         if image_path not in image_cache:
             try:
-                image_cache[image_path] = Image.open(image_path).convert("RGB")
+                image_cache[image_path] = open_image_rgb(image_path)
             except Exception as e:
                 print(f"Failed to open {image_path}: {e}", file=sys.stderr)
                 pbar.update(len(dets))

@@ -7,6 +7,23 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AddaxAI</title>
+    <script>
+      // Apply the theme class before the bundle loads, so a dark
+      // launch never flashes light. Mirrors readPref/resolve in
+      // src/lib/theme.tsx; keep the two in agreement.
+      (function () {
+        try {
+          var pref = localStorage.getItem("addaxai:theme");
+          var dark =
+            pref === "dark" ||
+            (pref !== "light" &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) document.documentElement.classList.add("dark");
+        } catch (e) {
+          /* blocked storage: stay light until the provider decides */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

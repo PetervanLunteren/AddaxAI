@@ -1,11 +1,16 @@
 import { Toaster as Sonner } from "sonner"
 
+import { useTheme } from "../../lib/theme"
+
 type ToasterProps = React.ComponentProps<typeof Sonner>
 
 const Toaster = ({ ...props }: ToasterProps) => {
+  // The raw preference, not the resolved theme: sonner understands
+  // "system" itself, so the two stay in agreement by construction.
+  const { theme } = useTheme()
   return (
     <Sonner
-      theme="light"
+      theme={theme}
       className="toaster group"
       closeButton
       toastOptions={{

@@ -23,6 +23,7 @@ from unittest.mock import patch
 import pytest
 
 from app.core.job_cancellation import JobCancelledError
+from app.ml.hf_downloader import NetworkBlockedError
 from app.ml.model_storage import ModelStorage
 from app.ml.schemas.model_manifest import ModelManifest
 
@@ -166,3 +167,20 @@ def test_an_already_installed_model_is_not_redownloaded(model_dir: Path) -> None
         _storage(model_dir).download_weights(_manifest())
 
     mock_download.assert_not_called()
+
+
+def test_a_blocked_network_passes_through_untouched(model_dir: Path) -> None:
+    """
+    The typed error is what lets the setup wizard say "your network blocks
+    huggingface.co" instead of "Download failed for <repo>". Wrapping it in
+    the generic RuntimeError, as every other failure is, throws that away.
+    """
+    with patch(
+        "app.ml.hf_downloader.HuggingFaceRepoDownloader.download_repo",
+        side_effect=NetworkBlockedError("huggingface.co"),
+    ):
+        with pytest.raises(NetworkBlockedError):
+            _storage(model_dir).download_weights(_manifest())
+
+    # And like every other failure, nothing on disk is touched.
+    assert (model_dir / "manifest.json").exists()

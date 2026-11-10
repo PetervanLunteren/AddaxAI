@@ -52,9 +52,9 @@ import {
 import { ModelInfoSheet } from "../models/ModelInfoSheet";
 import {
   LabelSelectionField,
-  toApiCountryCode,
   useLabelSelectionCaption,
 } from "../taxonomy/LabelSelectionField";
+import { clearSpeciesSelection, toApiCountryCode } from "../../lib/speciesSelection";
 import { ModelSelect } from "../models/ModelSelect";
 import { ModelSelectItem } from "../models/ModelSelectItem";
 import { toApiModelId } from "@/lib/model-id";
@@ -250,24 +250,9 @@ export function CreateProjectDialog({
     const cur = form.getValues("classification_model_id");
     if (cur && cur !== "none" && !classificationModels.some((m) => m.model_id === cur)) {
       form.setValue("classification_model_id", null);
-      form.setValue("country_code", null);
-      form.setValue("state_code", null);
-      form.setValue("excluded_classes", []);
+      clearSpeciesSelection(form.setValue);
     }
   }, [open, classificationModels, form]);
-
-  // Keep exclusions consistent with the selected model's taxonomy. On a
-  // sticky pre-fill the stored exclusions match the stored model and survive;
-  // switching models drops the now-stale ones. Mirrors SettingsPage.
-  useEffect(() => {
-    if (hasClassificationModel && taxonomy?.all_classes) {
-      const current = form.getValues("excluded_classes");
-      const valid = current.filter((c) => taxonomy.all_classes.includes(c));
-      if (valid.length !== current.length) {
-        form.setValue("excluded_classes", valid, { shouldDirty: true });
-      }
-    }
-  }, [classificationModelId, taxonomy, hasClassificationModel, form]);
 
   // WebSocket progress tracking for model preparation
   const { progress, message, cancel } = useTaskProgress({
@@ -458,7 +443,7 @@ export function CreateProjectDialog({
                       <FormMessage />
                       <p className={`text-xs ${
                         (field.value?.length || 0) > 450
-                          ? "text-orange-600"
+                          ? "text-warning-ink"
                           : "text-muted-foreground"
                       }`}>
                         {field.value?.length || 0} / 500
@@ -519,7 +504,10 @@ export function CreateProjectDialog({
                       <>
                         <ModelSelect
                           value={field.value ?? "none"}
-                          onValueChange={(val) => field.onChange(val === "none" ? "none" : val)}
+                          onValueChange={(val) => {
+                            if (val !== field.value) clearSpeciesSelection(form.setValue);
+                            field.onChange(val);
+                          }}
                           models={classificationModels}
                           placeholder="Select classification model"
                           noneValue="none"

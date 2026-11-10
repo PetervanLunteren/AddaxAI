@@ -30,6 +30,7 @@ from app.api.crud.event import get_event_verification_stats
 from app.core.confidence import ROLLUP_THRESHOLD, format_confidence_pct
 from app.core.config import get_settings
 from app.core.logging_config import get_logger
+from app.ml.detection_visibility import on_visible_frame
 from app.ml.label_exclusion import threshold_or_verified
 from app.ml.manifest_manager import ManifestManager
 from app.models import Deployment, Detection, File, Project
@@ -140,7 +141,9 @@ def _detection_counts_by_category(
     db: Session, project_id: str, threshold: float
 ) -> dict[str, int]:
     """Detections per category (animal / person / vehicle) passing
-    the project threshold-with-verified rule."""
+    the project threshold-with-verified rule, counted on the cards (every
+    photo box, a video's one box per track), so these counts describe the
+    same boxes as the tables beside the readme."""
 
     rows = db.execute(
         select(Detection.category, func.count(Detection.id))
@@ -148,6 +151,7 @@ def _detection_counts_by_category(
         .join(Deployment, File.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
         .where(threshold_or_verified(threshold))
+        .where(on_visible_frame())
         .group_by(Detection.category)
     ).all()
     return {category: int(count) for category, count in rows}
@@ -162,8 +166,7 @@ def _top_species(
     the heading says species."""
     from app.api.crud import export as export_crud
 
-    scoped = export_crud.get_scoped_detection_rows(db, project)
-    headers, rows = export_crud.build_summary_rows(db, project, scoped)
+    headers, rows = export_crud.build_summary_rows(db, project)
     label_i = headers.index("classification_label")
     count_i = headers.index("n_detections")
     return [

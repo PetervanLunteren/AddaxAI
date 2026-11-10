@@ -16,8 +16,14 @@ from app.ml.environment_manager import (
 
 
 @pytest.fixture(autouse=True)
-def clean_install_state():
-    """Module-level state leaks between tests otherwise."""
+def clean_install_state(monkeypatch):
+    """Module-level state leaks between tests otherwise.
+
+    The status route checks the env through an EnvironmentManager, whose
+    constructor downloads micromamba when it is missing. Stub the check so
+    these tests never reach the network; a slow micro.mamba.pm failed CI.
+    """
+    monkeypatch.setattr(setup_router, "_env_present", lambda name=None: False)
     setup_router._install_state.finish(None)
     yield
     setup_router._install_state.finish(None)
@@ -117,3 +123,23 @@ def test_reset_forgets_the_licence_acceptance(client, own_data_dir) -> None:
     assert resp.status_code == 200, resp.text
     assert not (own_data_dir / ".agpl-accepted").exists()
     assert (own_data_dir / ".allow-no-revocation-check").exists()
+
+
+def test_status_does_not_probe_the_env_while_an_install_runs(
+    client, monkeypatch
+) -> None:
+    """The probe starts the env's own python, which holds its DLLs open.
+    During a rebuild that lock made the wipe fail on Windows (beta report,
+    2026-11-04), so the status poll must not touch the env until the
+    install is over."""
+    monkeypatch.setattr(
+        setup_router,
+        "_env_present",
+        lambda *_: pytest.fail("status probed the env during an install"),
+    )
+    setup_router._install_state.start()
+
+    body = client.get("/api/setup/status").json()
+
+    assert body["install_in_progress"] is True
+    assert body["env_installed"] is False

@@ -59,6 +59,14 @@ MD_OUTPUT_CONFIDENCE_THRESHOLD = 0.01
 DEFAULT_CLASSIFICATION_GATE = 0.1
 DEFAULT_COUNTING_THRESHOLD = 0.5
 
+# CONFIDENCE_SCALE_MIN — the lowest score any confidence slider can show
+# (the frontend constant of the same name in confidence-slider.tsx).
+# Also the floor for the class that takes over after an exclusion with
+# rollup off: a 99% cat with every felid excluded leaves "snowshoe hare
+# 0.3%" as the best remaining class, and a label nobody can even filter
+# for is worse than an honest unclassified box.
+CONFIDENCE_SCALE_MIN = 0.01
+
 # ROLLUP_THRESHOLD — the confidence below which taxonomic rollup rolls a
 # species call up the tree (species -> genus -> family -> ...). Fixed
 # policy, not a preference: it is never user-facing or per-project, and
@@ -66,6 +74,22 @@ DEFAULT_COUNTING_THRESHOLD = 0.5
 # app/ml/taxonomic_rollup.py default to this; it lives here so all
 # confidence policy sits in one file.
 ROLLUP_THRESHOLD = 0.65
+
+# SCORE_DIGITS — the decimals a classification score is stored with.
+# The official SpeciesNet pipeline keeps full precision through its
+# rollup sums and rounds once, to three decimals, on output; rounding
+# earlier (results.json used to carry five) sums rounded values and
+# puts a third decimal off against it. So: full precision in
+# results.json and in the rollup, rounded here when a score becomes a
+# detection's label_confidence.
+SCORE_DIGITS = 3
+
+# PHOTO_MIN_CONFIDENCE — the floor for the random animal photos on the
+# dashboard. Both the box and, when there is one, the species name must
+# reach it (or a person verified the box), so the photo shows an animal
+# under a name the AI is sure of. Display only: it filters nothing that
+# is counted.
+PHOTO_MIN_CONFIDENCE = 0.8
 
 
 def effective_floor(

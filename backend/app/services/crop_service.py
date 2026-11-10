@@ -8,6 +8,12 @@ extension so the bbox stays centered. The geometry lives in
 `app/ml/inference/crop_box.py`, shared with the tracking script, which
 cuts a track's card the same way while it decodes the video. Cached in
 an in-memory LRU.
+
+A caller that shows the crop in a non-square frame (the dashboard's hero
+photo) asks for an `aspect`. The window then takes that shape and slides
+inside the photo, so the rest of the picture fills the frame instead of
+blur. Square crops never slide: the Labels grid draws its bbox overlay
+from a centred square (`_compute_crop_bbox` in similarity_script).
 """
 
 import io
@@ -20,6 +26,7 @@ from sqlalchemy.orm import Session
 from app.core.logging_config import get_logger
 from app.ml.embedding_utils import video_pixels_for
 from app.ml.inference.crop_box import compute_expanded_crop_region, crop_with_blur_fill
+from app.ml.inference.image_io import open_image_rgb
 from app.models import Detection, File
 from app.services.video_frame_service import decode_frame_jpeg, warm_track_frames
 
@@ -91,6 +98,18 @@ def _resolve_source(
     return jpeg, own_bbox
 
 
+def _centre_to_aspect(img: Image.Image, aspect: float) -> Image.Image:
+    """The centre of ``img`` cut to ``aspect`` (width / height)."""
+    w, h = img.size
+    if aspect > w / h:
+        new_h = max(1, round(w / aspect))
+        top = (h - new_h) // 2
+        return img.crop((0, top, w, top + new_h))
+    new_w = max(1, round(h * aspect))
+    left = (w - new_w) // 2
+    return img.crop((left, 0, left + new_w, h))
+
+
 def _track_frames_of(db: Session, file: File, detection: Detection) -> list[int] | None:
     """The frames of this detection's track, ascending, for the chunk
     decode of rung 3; None for a photo or an untracked box."""
@@ -106,14 +125,17 @@ def _track_frames_of(db: Session, file: File, detection: Detection) -> list[int]
     return [r[0] for r in rows]
 
 
-def get_or_create_crop(detection_id: str, size: int, db: Session) -> bytes | None:
+def get_or_create_crop(
+    detection_id: str, size: int, db: Session, aspect: float | None = None
+) -> bytes | None:
     """
     Get or create a cropped thumbnail for a detection.
 
-    Returns JPEG bytes from an in-memory LRU cache, or None if the
-    source image is missing.
+    `size` is the long side in pixels; `aspect` (width / height) asks for
+    a shaped crop, see `compute_expanded_crop_region`. Returns JPEG bytes
+    from an in-memory LRU cache, or None if the source image is missing.
     """
-    cache_key = f"{detection_id}_{size}"
+    cache_key = f"{detection_id}_{size}" + (f"_{aspect}" if aspect else "")
 
     if cache_key in _cache:
         _cache.move_to_end(cache_key)
@@ -139,24 +161,37 @@ def get_or_create_crop(detection_id: str, size: int, db: Session) -> bytes | Non
     picture, bbox = source
 
     try:
-        img = Image.open(picture if isinstance(picture, Path) else io.BytesIO(picture))
+        if isinstance(picture, Path):
+            # Rotated per EXIF and RGB, as MegaDetector saw the photo: the
+            # bbox fractions refer to that frame (see image_io).
+            img = open_image_rgb(picture)
+        else:
+            # A frame decoded from the clip: no EXIF to honour.
+            img = Image.open(io.BytesIO(picture)).convert("RGB")
         w, h = img.size
 
-        if img.mode != "RGB":
-            img = img.convert("RGB")
-
         if bbox == _WHOLE_IMAGE:
-            # A stored track crop is already the padded square.
-            crop = img
+            # A stored track crop is already the padded square. A shaped
+            # request takes its centre, which keeps the box: the square is
+            # centred on it.
+            crop = img if aspect is None or aspect == 1 else _centre_to_aspect(img, aspect)
         else:
-            left, top, right, bottom = compute_expanded_crop_region(*bbox, w, h)
+            left, top, right, bottom = compute_expanded_crop_region(
+                *bbox, w, h, aspect=aspect
+            )
             crop_w = right - left
             crop_h = bottom - top
             if crop_w <= 0 or crop_h <= 0:
                 logger.warning(f"Invalid crop bbox for detection {detection_id}")
                 return None
             crop = crop_with_blur_fill(img, left, top, right, bottom)
-        crop = crop.resize((size, size), Image.LANCZOS)
+        if aspect is None or aspect == 1:
+            out_size = (size, size)
+        elif aspect > 1:
+            out_size = (size, max(1, round(size / aspect)))
+        else:
+            out_size = (max(1, round(size * aspect)), size)
+        crop = crop.resize(out_size, Image.LANCZOS)
 
         buf = io.BytesIO()
         crop.save(buf, "JPEG", quality=85)

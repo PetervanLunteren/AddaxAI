@@ -1,7 +1,8 @@
 /**
  * BulkActionBar - floating bar for bulk operations on a selection.
  *
- * Appears when one or more items are selected. Actions: Verify, Mark
+ * Appears when one or more items are selected. Actions: Verify,
+ * Unverify (only when the selection holds a verified item), Mark
  * false, Unknown, Match majority, Relabel, Undo, Deselect.
  *
  * Two hosts, one bar. The Detections grid selects boxes and lets the
@@ -9,14 +10,28 @@
  * passes `performAction`, which replaces those calls with its own
  * (mapping the file selection to the files' visible boxes) while the
  * bar stays pixel-identical, so the two grids cannot drift apart.
+ *
+ * Every built-in call answers with `before`, the undo snapshot, which
+ * the success callbacks hand to the host to push on its undo stack.
  */
 
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Ban, Check, CheckCheck, CircleHelp, Tag, Undo2, X } from "lucide-react";
+import {
+  Ban,
+  Check,
+  CheckCheck,
+  CircleHelp,
+  CircleMinus,
+  Tag,
+  Undo2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
+import { Kbd } from "../ui/kbd";
 import { detectionsApi } from "../../api/detections";
+import type { BulkResult, UndoSnapshot } from "../../api/types";
 import { LabelPicker } from "./LabelPicker";
 import { UNDO_KBD } from "./shortcuts";
 import type { LabelOption } from "../../hooks/useLabelOptions";
@@ -27,12 +42,22 @@ interface BulkActionBarProps {
   labelOptions: LabelOption[];
   labelOptionsLoading: boolean;
   onActionComplete: () => void;
-  onRelabel?: (ids: string[], label: string | null, category: string, displayName: string) => void;
-  onVerify?: (ids: string[]) => void;
-  onMarkFalse?: (ids: string[]) => void;
+  onRelabel?: (
+    ids: string[],
+    label: string | null,
+    category: string,
+    displayName: string,
+    before: UndoSnapshot,
+  ) => void;
+  onVerify?: (ids: string[], before: UndoSnapshot) => void;
+  /** Take the verified mark off the selection. Labels stay. */
+  onUnverify?: (ids: string[], before: UndoSnapshot) => void;
+  /** Show the Unverify button: the selection holds a verified item. */
+  showUnverify?: boolean;
+  onMarkFalse?: (ids: string[], before: UndoSnapshot) => void;
   /** Mark the selection as "unknown" (a real, unidentifiable observation)
    *  and verify, so it leaves the queue but stays countable. */
-  onMarkUnknown?: (ids: string[]) => void;
+  onMarkUnknown?: (ids: string[], before: UndoSnapshot) => void;
   /** Relabel the selection to its most common label and verify. The
    *  parent owns the mode-finding + API call because it has the full
    *  detection metadata; this prop just wires the button. */
@@ -45,9 +70,9 @@ interface BulkActionBarProps {
   /** Controlled state for the relabel picker (keyboard shortcut). */
   relabelOpen?: boolean;
   onRelabelOpenChange?: (open: boolean) => void;
-  /** Undo the last label action (revert to the model's prediction).
-   *  Acts on history, not the current selection. Hidden when nothing
-   *  is on the undo stack. */
+  /** Undo the last action: put back what was there before it. Acts on
+   *  history, not the current selection. Hidden when the history is
+   *  empty. */
   onUndo?: () => void;
   canUndo?: boolean;
   /** When set, replaces the built-in detection API calls: the host runs
@@ -65,6 +90,7 @@ interface BulkActionBarProps {
 /** What the host is asked to run when it owns the actions. */
 export type BulkBarAction =
   | "verify"
+  | "unverify"
   | "false"
   | "unknown"
   | { relabel: LabelOption };
@@ -77,6 +103,8 @@ export function BulkActionBar({
   onActionComplete,
   onRelabel,
   onVerify,
+  onUnverify,
+  showUnverify,
   onMarkFalse,
   onMarkUnknown,
   onMatchMajority,
@@ -95,69 +123,68 @@ export function BulkActionBar({
   const count = selectedIds.size;
   const ids = Array.from(selectedIds);
 
+  /** Either the host ran it (nothing to hand back) or the built-in call
+   *  did, and its `before` goes to the host's success callback. */
+  async function run(
+    action: BulkBarAction,
+    builtin: () => Promise<BulkResult>,
+  ): Promise<BulkResult | undefined> {
+    if (performAction) {
+      await performAction(action);
+      return undefined;
+    }
+    return builtin();
+  }
+
+  function finish(
+    data: BulkResult | undefined,
+    callback: ((ids: string[], before: UndoSnapshot) => void) | undefined,
+  ) {
+    if (!data) return;
+    if (callback) {
+      // Parent advances the selection to the next card; don't clear here.
+      callback(ids, data.before);
+    } else {
+      onActionComplete();
+      onDeselectAll();
+    }
+  }
+
   const verifyMutation = useMutation({
-    mutationFn: async () => {
-      if (performAction) return performAction("verify");
-      return detectionsApi.bulkVerify(ids, true, expandTracks);
-    },
-    onSuccess: () => {
-      if (performAction) return;
-      if (onVerify) {
-        // Parent advances the selection to the next card; don't clear here.
-        onVerify(ids);
-      } else {
-        onActionComplete();
-        onDeselectAll();
-      }
-    },
+    mutationFn: () => run("verify", () => detectionsApi.bulkVerify(ids, true, expandTracks)),
+    onSuccess: (data) => finish(data, onVerify),
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const unverifyMutation = useMutation({
+    mutationFn: () => run("unverify", () => detectionsApi.bulkVerify(ids, false, expandTracks)),
+    onSuccess: (data) => finish(data, onUnverify),
     onError: (err: Error) => toast.error(err.message),
   });
 
   const markFalseMutation = useMutation({
-    mutationFn: async () => {
-      if (performAction) return performAction("false");
-      return detectionsApi.bulkRelabel(ids, "false detection", undefined, expandTracks);
-    },
-    onSuccess: () => {
-      if (performAction) return;
-      if (onMarkFalse) {
-        onMarkFalse(ids);
-      } else {
-        onActionComplete();
-        onDeselectAll();
-      }
-    },
+    mutationFn: () =>
+      run("false", () => detectionsApi.bulkRelabel(ids, "false detection", undefined, expandTracks)),
+    onSuccess: (data) => finish(data, onMarkFalse),
     onError: (err: Error) => toast.error(err.message),
   });
 
   // "Unknown" is a real observation (unlike "false detection"): keep the
   // category, just relabel to unknown and verify so it leaves the queue.
   const markUnknownMutation = useMutation({
-    mutationFn: async () => {
-      if (performAction) return performAction("unknown");
-      return detectionsApi.bulkRelabel(ids, "unknown", undefined, expandTracks);
-    },
-    onSuccess: () => {
-      if (performAction) return;
-      if (onMarkUnknown) {
-        onMarkUnknown(ids);
-      } else {
-        onActionComplete();
-        onDeselectAll();
-      }
-    },
+    mutationFn: () =>
+      run("unknown", () => detectionsApi.bulkRelabel(ids, "unknown", undefined, expandTracks)),
+    onSuccess: (data) => finish(data, onMarkUnknown),
     onError: (err: Error) => toast.error(err.message),
   });
 
   const relabelMutation = useMutation({
-    mutationFn: async (opt: LabelOption) => {
-      if (performAction) return performAction({ relabel: opt });
-      return detectionsApi.bulkRelabel(ids, opt.label, opt.category, expandTracks);
-    },
-    onSuccess: (_data, opt) => {
-      if (performAction) return;
+    mutationFn: (opt: LabelOption) =>
+      run({ relabel: opt }, () => detectionsApi.bulkRelabel(ids, opt.label, opt.category, expandTracks)),
+    onSuccess: (data, opt) => {
+      if (!data) return;
       if (onRelabel) {
-        onRelabel(ids, opt.label, opt.category, opt.displayName);
+        onRelabel(ids, opt.label, opt.category, opt.displayName, data.before);
       } else {
         onActionComplete();
         onDeselectAll();
@@ -192,8 +219,21 @@ export function BulkActionBar({
       >
         <Check className="h-4 w-4 mr-1" />
         Verify
-        <kbd className="ml-1.5 text-[10px] font-sans text-primary-foreground/60 border border-primary-foreground/30 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(255,255,255,0.1)] leading-none">⏎</kbd>
+        <Kbd onPrimary>⏎</Kbd>
       </Button>
+
+      {showUnverify && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => unverifyMutation.mutate()}
+          disabled={unverifyMutation.isPending}
+          title="Take the verified mark off. Labels stay."
+        >
+          <CircleMinus className="h-4 w-4 mr-1" />
+          Unverify
+        </Button>
+      )}
 
       <Button
         variant="outline"
@@ -203,7 +243,7 @@ export function BulkActionBar({
       >
         <Ban className="h-4 w-4 mr-1" />
         Mark false
-        <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">X</kbd>
+        <Kbd>X</Kbd>
       </Button>
 
       <Button
@@ -215,7 +255,7 @@ export function BulkActionBar({
       >
         <CircleHelp className="h-4 w-4 mr-1" />
         Unknown
-        <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">U</kbd>
+        <Kbd>U</Kbd>
       </Button>
 
       {onMatchMajority && majorityLabel && (
@@ -229,7 +269,7 @@ export function BulkActionBar({
           <span className="truncate max-w-[180px]">
             Set to <span className="capitalize">{majorityLabel}</span>
           </span>
-          <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">M</kbd>
+          <Kbd>M</Kbd>
         </Button>
       )}
 
@@ -241,7 +281,7 @@ export function BulkActionBar({
         >
           <Tag className="h-4 w-4 mr-1" />
           Relabel
-          <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">R</kbd>
+          <Kbd>R</Kbd>
         </Button>
         <div className="absolute bottom-full mb-2 left-0 z-50">
           <LabelPicker
@@ -270,9 +310,9 @@ export function BulkActionBar({
         >
           <Undo2 className="h-4 w-4 mr-1" />
           Undo
-          <kbd className="ml-1.5 text-[10px] font-sans text-muted-foreground/60 border border-border/60 rounded px-1 py-0.5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] leading-none">
+          <Kbd>
             {UNDO_KBD}
-          </kbd>
+          </Kbd>
         </Button>
       )}
 

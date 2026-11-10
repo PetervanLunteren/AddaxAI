@@ -39,8 +39,6 @@ interface PlotExplainerProps {
   what: React.ReactNode;
   /** "How is it computed?" Method summary + key parameters. */
   how: React.ReactNode;
-  /** Free-form caveats, sample-size warnings, pitfalls. Rendered as-is. */
-  caveats?: React.ReactNode;
   /** Project settings that flow into this plot's output. */
   settings?: PlotSettingInfluence[];
   /** Scientific references backing the plot's methods and defaults. */
@@ -88,7 +86,6 @@ export function PlotExplainer({
   plotKey,
   what,
   how,
-  caveats,
   settings,
   references,
 }: PlotExplainerProps) {
@@ -121,8 +118,6 @@ export function PlotExplainer({
         <div className="space-y-6 border-t px-4 py-4">
           <Section title="What it shows">{what}</Section>
           <Section title="How it's computed">{how}</Section>
-
-          {caveats && <Section title="Caveats">{caveats}</Section>}
 
           {settings && settings.length > 0 && (
             <Section title="Project settings">

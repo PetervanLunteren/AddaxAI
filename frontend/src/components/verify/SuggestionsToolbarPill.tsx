@@ -29,7 +29,9 @@ export function SuggestionsToolbarPill({
 }: SuggestionsToolbarPillProps) {
   const { data } = useQuery({
     queryKey: ["cohorts", projectId],
-    queryFn: () => labelsApi.cohorts(projectId),
+    // React Query aborts the signal when the badge leaves the page mid-run,
+    // which closes the request and stops the backend's subprocess.
+    queryFn: ({ signal }) => labelsApi.cohorts(projectId, signal),
     // The same expensive ML pass that powers the suggestions sort.
     // Cache for 5 minutes so the toolbar doesn't re-fetch as the user
     // moves around the page; bulk-relabel invalidates the key.

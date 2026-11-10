@@ -9,7 +9,10 @@ export interface ElectronAPI {
    * an IPC round-trip.
    */
   platform: NodeJS.Platform;
-  selectFolder: () => Promise<string | null>;
+  selectFolder: (opts?: {
+    title?: string;
+    defaultPath?: string;
+  }) => Promise<string | null>;
   /**
    * Open a single-file picker. `filters` is the standard Electron
    * file-filter shape; the dialog rejects extensions not listed.
@@ -73,6 +76,12 @@ export interface ElectronAPI {
    * of truth.
    */
   setSpeciesNameMenuMode: (mode: "common" | "scientific") => void;
+  /**
+   * Report the stored theme preference so the View → Theme radio shows
+   * the correct checkmark and the main process can sync nativeTheme.
+   * One-way; localStorage remains the source of truth.
+   */
+  setThemeMenuMode?: (mode: "system" | "light" | "dark") => void;
   /**
    * Report the active data type so the View → Data type radio shows the
    * correct checkmark. One-way, like the species-name mode above.

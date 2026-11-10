@@ -12,11 +12,13 @@ All tests are pure Python: no DB, no FastAPI.
 
 from datetime import date
 
+import numpy as np
 import pytest
 
 from app.ml.sun_time import (
     compute_anchor_bands,
     compute_anchors,
+    in_sun_band,
     per_date_sun_phases,
     transform_to_sun_time,
 )
@@ -90,24 +92,41 @@ def test_per_date_sun_phases_unwraps_dusk_past_midnight():
     assert dusk > 24.0
 
 
-def test_compute_anchor_bands_wraps_mean_back_into_24h():
-    """When per-date phases extend past 24 h (for solstice unwrap), the
-    mean anchor values must still land in [0, 24) so the chart can plot
-    them on a 0..24 axis."""
-    phases = {
-        date(2024, 6, 21): (2.0, 3.9, 22.7, 24.5),   # summer, unwrapped dusk
-        date(2024, 11, 15): (7.5, 8.25, 15.8, 16.5), # winter
-    }
+def test_per_date_sun_phases_unwraps_sunset_past_midnight():
+    """Nome, Alaska runs its clock about three hours ahead of the sun, so
+    in mid May sunset itself falls past midnight (astral: ~00:10) while
+    the sun is still up. Sunset and dusk both unwrap past 24 h."""
+    d = date(2026, 5, 14)
+    phases = per_date_sun_phases(
+        [d], lat=64.5, lon=-165.4, tz_name="America/Nome"
+    )[d]
+    assert phases is not None
+    dawn, sunrise, sunset, dusk = phases
+    assert dawn < sunrise < sunset < dusk < dawn + 24
+    assert sunset > 24.0
+
+
+def test_compute_anchor_bands_keeps_dusk_past_midnight_after_sunset():
+    """Issue #126: the mean of unwrapped dusks past midnight used to be
+    wrapped back with % 24, which put dusk before sunset and corrupted
+    the chart and the diel fractions. Oslo, June 12 to 30."""
+    dates = [date(2026, 6, day) for day in range(12, 31)]
+    phases = per_date_sun_phases(
+        dates, lat=59.91, lon=10.75, tz_name="Europe/Oslo"
+    )
     bands = compute_anchor_bands(phases)
     assert bands is not None
     dawn, sunrise, sunset, dusk = bands
-    assert 0 <= dawn < 24
-    assert 0 <= sunrise < 24
-    assert 0 <= sunset < 24
-    assert 0 <= dusk < 24
-    # Mean dusk = (24.5 + 16.5) / 2 = 20.5. No wrap needed since it
-    # stays under 24.
-    assert dusk == 20.5
+    assert dawn < sunrise < sunset < dusk
+    assert dusk > 24.0
+
+
+def test_in_sun_band_crosses_midnight():
+    """Evening twilight 22:43 to 00:30 (dusk sent as 24.5), on a float
+    and on a numpy array."""
+    assert in_sun_band(0.25, 22.72, 24.5)
+    mask = in_sun_band(np.array([21.0, 23.0, 0.25, 0.5]), 22.72, 24.5)
+    assert mask.tolist() == [False, True, True, False]
 
 
 def test_per_date_sun_phases_dst_differs():
@@ -257,6 +276,18 @@ def test_transform_night_wraparound():
         [(2.0, d)], phases, anchor_sunrise=6.0, anchor_sunset=18.0
     )
     assert result2[0] == pytest.approx((18 + 9 * (12 / 14)) % 24)
+
+
+def test_transform_daylight_past_midnight_stays_day():
+    """Sunset past midnight (Nome in May, unwrapped to 24.2): 00:06 is
+    still daylight and lands just before the anchor sunset, not in the
+    night. Day here is 18.4 h, anchor day 12 h."""
+    d = date(2026, 5, 14)
+    phases = {d: (3.9, 5.8, 24.2, 26.0)}
+    result, _ = transform_to_sun_time(
+        [(0.1, d)], phases, anchor_sunrise=6.0, anchor_sunset=18.0
+    )
+    assert result[0] == pytest.approx(6 + (24.1 - 5.8) * (12 / 18.4))
 
 
 def test_transform_drops_polar_dates():

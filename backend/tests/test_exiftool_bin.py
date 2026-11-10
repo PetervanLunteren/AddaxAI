@@ -128,3 +128,26 @@ def test_verify_spawnable_raises_with_stderr(tmp_path, monkeypatch):
 
     with pytest.raises(RuntimeError, match="Image/ExifTool.pm"):
         exiftool_bin._verify_spawnable(str(bad))
+
+
+@pytest.mark.parametrize(
+    ("os_name", "filename"), [("nt", "exiftool.bat"), ("posix", "exiftool")]
+)
+def test_bundled_exiftool_path_per_platform(tmp_path, monkeypatch, os_name, filename):
+    """Windows runs the pl2bat wrapper, everything else the perl script.
+    Setup's presence check and resolve_exiftool read this one function."""
+    monkeypatch.setattr(exiftool_bin.os, "name", os_name)
+
+    assert exiftool_bin.bundled_exiftool_path(tmp_path) == tmp_path / "bin" / filename
+
+
+def test_missing_message_points_at_a_restart(tmp_path, monkeypatch):
+    """A restart opens the setup wizard, which repairs the env. The old
+    advice, re-running the initial setup, named nothing a user can click."""
+    monkeypatch.setattr(
+        exiftool_bin, "get_settings", lambda: _fake_settings(tmp_path)
+    )
+    monkeypatch.setattr(exiftool_bin.shutil, "which", lambda _: None)
+
+    with pytest.raises(RuntimeError, match="Restart AddaxAI to repair"):
+        exiftool_bin.resolve_exiftool()

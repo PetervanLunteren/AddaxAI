@@ -37,6 +37,7 @@ paths.
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 from app.core.config import get_settings
 
@@ -44,23 +45,30 @@ from app.core.config import get_settings
 _verified: set[str] = set()
 
 
+def bundled_exiftool_path(env_dir: Path) -> Path:
+    """Where exiftool sits inside an env-addaxai-base at ``env_dir``.
+
+    The one place that knows the layout. Setup reads it too: a base env
+    without exiftool counts as not installed, so the wizard rebuilds it.
+    """
+    name = "exiftool.bat" if os.name == "nt" else "exiftool"
+    return env_dir / "bin" / name
+
+
 def resolve_exiftool() -> str:
     """Return the absolute path to the exiftool binary."""
     env_dir = get_settings().user_data_dir / "envs" / "env-addaxai-base"
 
-    if os.name == "nt":
-        candidate = env_dir / "bin" / "exiftool.bat"
-        if candidate.is_file():
+    candidate = bundled_exiftool_path(env_dir)
+    if candidate.is_file():
+        if os.name == "nt":
             _ensure_env_on_path(
                 str(env_dir / "Library" / "bin"),
                 str(env_dir / "bin"),
             )
-            return _verify_spawnable(str(candidate))
-    else:
-        candidate = env_dir / "bin" / "exiftool"
-        if candidate.is_file():
+        else:
             _ensure_env_on_path(str(env_dir / "bin"))
-            return _verify_spawnable(str(candidate))
+        return _verify_spawnable(str(candidate))
 
     on_path = shutil.which("exiftool")
     if on_path is not None:
@@ -68,8 +76,8 @@ def resolve_exiftool() -> str:
 
     raise RuntimeError(
         "exiftool not found. Expected it inside the analysis environment "
-        f"({env_dir}) or on PATH. Re-run the initial setup to rebuild the "
-        "analysis environment."
+        f"({env_dir}) or on PATH. Restart AddaxAI to repair the analysis "
+        "environment."
     )
 
 

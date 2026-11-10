@@ -37,7 +37,7 @@ export function WizardProgress({ steps, icons }: WizardProgressProps) {
                       ? "bg-gradient-to-br from-green-500 to-green-600 text-white shadow-md cursor-pointer hover:scale-110"
                       : isCurrent
                       ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg ring-4 ring-blue-100"
-                      : "bg-gray-200 text-gray-500"
+                      : "bg-muted text-muted-foreground"
                   }
                 `}
               >
@@ -56,10 +56,10 @@ export function WizardProgress({ steps, icons }: WizardProgressProps) {
                   ml-3 mr-4 text-sm font-medium transition-colors duration-300
                   ${
                     isCompleted
-                      ? "text-green-700"
+                      ? "text-success-ink"
                       : isCurrent
-                      ? "text-blue-700"
-                      : "text-gray-500"
+                      ? "text-info-ink"
+                      : "text-muted-foreground"
                   }
                 `}
               >
@@ -75,7 +75,7 @@ export function WizardProgress({ steps, icons }: WizardProgressProps) {
                       ${
                         index < currentStep
                           ? "bg-gradient-to-r from-green-500 to-green-400"
-                          : "bg-gray-200"
+                          : "bg-muted"
                       }
                     `}
                   />

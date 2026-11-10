@@ -16,6 +16,9 @@ import L, { latLngBounds } from "leaflet";
 import { Info } from "lucide-react";
 import { MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 
+import { OSM_LAYER } from "./basemap-styles";
+import { StreetBaseLayer } from "./StreetBaseLayer";
+
 import { statisticsApi } from "../../api/statistics";
 import type {
   ObservationRateMapFeature,
@@ -90,7 +93,7 @@ function FitBounds({ points }: { points: [number, number][] }) {
   return null;
 }
 
-function getTileLayer(base: BaseLayer) {
+function getRasterLayer(base: Exclude<BaseLayer, "positron">) {
   switch (base) {
     case "satellite":
       return {
@@ -99,18 +102,8 @@ function getTileLayer(base: BaseLayer) {
           "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
       };
     case "osm":
-      return {
-        url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      };
-    case "positron":
     default:
-      return {
-        url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      };
+      return OSM_LAYER;
   }
 }
 
@@ -196,21 +189,31 @@ export function ObservationRateMap({
     );
   }
 
-  const tile = getTileLayer(baseLayer);
+  // The default street map is the shared StreetBaseLayer (OpenFreeMap
+  // vector, OSM raster without WebGL2); the other choices are raster.
+  const raster = baseLayer === "positron" ? null : getRasterLayer(baseLayer);
 
   return (
     <div className="flex h-[600px] flex-col overflow-hidden rounded-lg border bg-card">
       <MapContainer
         center={mapCenter}
         zoom={12}
+        // Set on the container, not only the layers: the zoom range
+        // must be bounded before FitBounds runs on a single point, or
+        // Leaflet zooms to Infinity and MapLibre crashes on init.
+        maxZoom={18}
         style={{ width: "100%" }}
         className="min-h-0 flex-1"
       >
-        <TileLayer
-          key={baseLayer}
-          attribution={tile.attribution}
-          url={tile.url}
-        />
+        {raster === null ? (
+          <StreetBaseLayer />
+        ) : (
+          <TileLayer
+            key={raster.url}
+            attribution={raster.attribution}
+            url={raster.url}
+          />
+        )}
 
         <MapEventHandler
           onZoomChange={handleZoomChange}

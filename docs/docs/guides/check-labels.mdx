@@ -30,7 +30,7 @@ Use Files to judge whole pictures: check that the AI did not miss anything, and 
 
 <AppShot name="verifyEmpties" />
 
-Select the files that are right and click Verify to sign them off in one go; when the selection holds a video, the app first tells you how many of its detections nobody has looked at. Double-click a file to see it full size, where Enter verifies it and takes you to the next one you have not checked. Verifying a file means the boxes you see are all there is: every box on it is verified, and weak boxes below your threshold are set aside as false detections. Unverify the file if you change your mind, and the AI takes them back on the next reprocess. If you do see an animal without a box, click "Draw a box" or press D and drag around it; on a clip the box is saved on the frame you are looking at. The species search opens so you can name it right away, and you stay on the picture with nothing selected, so D draws the next one. Drag a box, or its corners, to fix where it sits. Click a box to select it, or press Tab to step through the boxes; the other boxes fade so the one you picked stands out. V accepts it as it is and selects the next box you have not checked, R relabels it, X (or Backspace) marks it as a false detection and 1 to 5 apply your saved labels. Agreeing moves you on once every box on the picture is checked; a correction keeps you where you are, so you can fix several boxes in a row. With no box selected the same keys act on every box in the picture, and M relabels them all to the picture's most common label. Ctrl+Z (Cmd+Z on Mac) undoes a label change. B hides the boxes so you can see what is under them.
+Select the files that are right and click Verify to sign them off in one go; when the selection holds a video, the app first tells you how many of its detections nobody has looked at. Double-click a file to see it full size, where Enter verifies it and takes you to the next one you have not checked. Verifying a file means the boxes you see are all there is: every box on it is verified, and weak boxes below your threshold are set aside as false detections. Unverify the file if you change your mind, on the file itself or with the Unverify button for a whole selection, and the AI takes them back on the next reprocess. If you do see an animal without a box, click "Draw a box" or press D and drag around it; on a clip the box is saved on the frame you are looking at. The species search opens so you can name it right away, and you stay on the picture with nothing selected, so D draws the next one. Drag a box, or its corners, to fix where it sits. Click a box to select it, or press Tab to step through the boxes; the other boxes fade so the one you picked stands out. V accepts it as it is and selects the next box you have not checked, R relabels it, X (or Backspace) marks it as a false detection and 1 to 9 apply your saved labels. Agreeing moves you on once every box on the picture is checked; a correction keeps you where you are, so you can fix several boxes in a row. With no box selected the same keys act on every box in the picture, and M relabels them all to the picture's most common label. Ctrl+Z (Cmd+Z on Mac) undoes the last change, a label, a verify or an unverify, and puts back exactly what was there. Drawing or moving a box cannot be undone, so it starts a fresh history. B hides the boxes so you can see what is under them.
 
 Most empty photos do have a box, the AI just scored it too low to show you. Lower the detection confidence in More filters and those photos get their boxes back, where a cropped card in Detections is faster to judge than a whole frame.
 
@@ -54,7 +54,7 @@ To watch a clip, press P or the play button. The clip opens at the frame you wer
 
 ## Same in folder runs and projects
 
-It is the same grid in both modes: step 2 of a folder run, and the Labels page of a project. The one difference is where you change the refine settings, like thresholds and the event interval. In a folder run, use the Refine results button. In a project, they are on the Settings page.
+It is the same grid in both modes: step 2 of a folder run, and the Labels page of a project. The one difference is where you change the refine settings, like thresholds, the species selection and the event interval. In a folder run, use the Refine results button. In a project, they are on the Settings page.
 
 ## Let look-alikes sit together
 
@@ -66,11 +66,13 @@ Both need the embedding model. Without it, sorting falls back to date order.
 
 ## Handle a group at once
 
-Work in bulk, not photo by photo. Select a group of cards, then apply one action to all of them: verify the ones that are right, relabel the ones that are wrong.
+Work in bulk, not photo by photo. Select a group of cards, then apply one action to all of them: verify the ones that are right, relabel the ones that are wrong, or unverify the ones you signed off too soon. The Unverify button appears when the selection holds a verified card.
 
 A fast way is to sort per event and use the keyboard. Press E to select the whole event, then M to set it to the majority label. This is very fast if your independence interval fits your ecological context and few events hold more than one species, since then most events are a single species.
 
-The other keys: Enter verifies, R relabels, X marks a false detection, U marks it unknown, and 1 to 5 apply your saved labels. Made a mistake? Ctrl+Z (Cmd+Z on Mac) undoes it, as many steps back as you need. The keyboard icon in the toolbar lists every key and lets you set the 1 to 5 slots.
+The other keys: Enter verifies, R relabels, X marks a false detection, U marks it unknown, and 1 to 9 apply your saved labels. Made a mistake? Ctrl+Z (Cmd+Z on Mac) undoes it and puts back exactly what was there, label and verified mark, as many steps back as you need. Drawing a box starts a fresh history. The keyboard icon in the toolbar lists every key and lets you set the 1 to 9 slots.
+
+Open a card to see the crop on its photo. If the AI missed an animal there, press D or click "Draw a box", drag a box around the animal and name it. The card you were on stays open.
 
 Verified cards are hidden by default, so every group you clear leaves the grid.
 
@@ -79,6 +81,8 @@ Verified cards are hidden by default, so every group you clear leaves the grid.
 The app can point out likely mistakes for you. It pairs the AI's labels with the embedding model: for each animal it looks at its closest look-alikes, and if they mostly carry a different label, it flags that as a suggestion. A detection labelled "canis" whose look-alikes are all "domestic dog" is the classic case.
 
 When the toolbar shows a suggestions badge, click Review. The suggestions come grouped into cohorts, one fix each. Accept relabels and verifies the whole cohort in one click. Dismiss hides it and changes nothing. Your filters are set aside while you review, because a suggestion compares each animal with its look-alikes across the whole run. Back to detections, or Esc, brings them back.
+
+Suggestions look at the newest 100,000 detections that match the filters. In a larger project, set a date range or pick sites to search the rest.
 
 ## Filters
 

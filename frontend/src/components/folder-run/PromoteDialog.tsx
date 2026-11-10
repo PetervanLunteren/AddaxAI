@@ -151,7 +151,7 @@ export function PromoteDialog({
               <p
                 className={`text-xs ${
                   description.length > 450
-                    ? "text-orange-600"
+                    ? "text-warning-ink"
                     : "text-muted-foreground"
                 }`}
               >

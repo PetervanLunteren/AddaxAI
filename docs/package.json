@@ -5,14 +5,15 @@
   "description": "AddaxAI documentation site (Docusaurus)",
   "scripts": {
     "sync-models": "node scripts/sync-models.mjs",
-    "prestart": "npm run sync-models && npm run fetch-species",
-    "prebuild": "npm run sync-models && npm run fetch-species",
+    "prestart": "npm run sync-models && npm run sync-pages && npm run fetch-species",
+    "prebuild": "npm run sync-models && npm run sync-pages && npm run fetch-species",
     "start": "docusaurus start",
     "build": "docusaurus build",
     "serve": "docusaurus serve",
     "clear": "docusaurus clear",
     "typecheck": "tsc",
-    "fetch-species": "node scripts/fetch-species.mjs"
+    "fetch-species": "node scripts/fetch-species.mjs",
+    "sync-pages": "node scripts/sync-pages.mjs"
   },
   "dependencies": {
     "@docusaurus/core": "^3.7.0",

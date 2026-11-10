@@ -102,14 +102,20 @@ export function replacePrefix(
   oldPrefix: string,
   newPrefix: string
 ): string {
-  // Preserve each prefix's own separator style so a Windows path
+  // Strip ALL trailing separators before picking a separator style.
+  // Callers append "/" to a prefix regardless of platform
+  // (RelinkGroupBanner), so a Windows prefix can arrive as
+  // `C:\...\TrailCam/`. Picking the separator first saw that foreign
+  // slash, chose "/", and the startsWith check below could never match
+  // the backslash path: the old path came back unchanged and the
+  // backend was asked to relink every deployment to the very folder
+  // that had gone missing. Stripping first leaves a pure native prefix,
+  // and preserves each prefix's own separator style so a Windows path
   // survives the substitution as a Windows path.
-  const oldSep = pickSeparator(oldPrefix);
-  const newSep = pickSeparator(newPrefix);
-  const stripTrailing = (p: string, sep: string) =>
-    p.endsWith(sep) ? p.slice(0, -sep.length) : p;
-  const oldBase = stripTrailing(oldPrefix, oldSep);
-  const newBase = stripTrailing(newPrefix, newSep);
+  const oldBase = oldPrefix.replace(TRAIL_SEP_RE, "");
+  const newBase = newPrefix.replace(TRAIL_SEP_RE, "");
+  const oldSep = pickSeparator(oldBase);
+  const newSep = pickSeparator(newBase);
 
   if (path === oldBase) return newBase;
 

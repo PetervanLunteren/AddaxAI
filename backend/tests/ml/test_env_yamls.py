@@ -74,6 +74,22 @@ def test_detector_envs_pin_the_yolov5_wheel_and_megadetector(env: str, platform_
     )
 
 
+def test_every_detector_env_pins_one_megadetector() -> None:
+    """The tracking script runs in whichever env the detector lives in,
+    so all of them meet the same package. A pin moved in one env only
+    (as the base env went to 10.0.28 while marine stayed on 10.0.24)
+    gives one video path two behaviours."""
+    pins = {
+        f"{env}/{platform_dir}": next(
+            d for d in _pip_deps(ENVS_DIR / env / platform_dir / "environment.yml")
+            if d.startswith("megadetector==")
+        )
+        for env in DETECTOR_ENVS
+        for platform_dir in ADDAXAI_BASE_PLATFORMS
+    }
+    assert len(set(pins.values())) == 1, pins
+
+
 @pytest.mark.parametrize("platform_dir", ADDAXAI_BASE_PLATFORMS)
 @pytest.mark.parametrize("env", DETECTOR_ENVS)
 def test_detector_envs_carry_the_trackers_solvers(env: str, platform_dir: str) -> None:

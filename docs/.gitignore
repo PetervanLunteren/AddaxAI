@@ -13,6 +13,11 @@
 # real catalog.
 /src/data/models.json
 
+# Generated at build time from docs/ by scripts/sync-pages.mjs: the
+# sections and pages the home page lists. Never committed, so the home
+# page cannot drift from the sidebar.
+/src/data/pages.json
+
 # Misc
 .DS_Store
 .env.local

@@ -30,6 +30,13 @@ import type { MediaFilter } from "../api/types";
 
 const KEY = "addaxai.folderRun.lastSettings";
 
+/** Bumped when a stored record must not be restored as it is. Version 2
+ *  (2026-10-19): the country and the species list used to be able to
+ *  disagree, because a model switch kept the country and pruned the list.
+ *  A record without this version loses both, so the user picks the
+ *  country again; everything else in it is kept. */
+const VERSION = 2;
+
 export interface PersistedAnalysisSettings {
   detection_model_id?: string;
   classification_model_id?: string | null;
@@ -62,7 +69,10 @@ export function saveLastUsedSettings(
 ): void {
   try {
     const prev = loadLastUsedSettings() ?? {};
-    localStorage.setItem(KEY, JSON.stringify({ ...prev, ...patch }));
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({ ...prev, ...patch, version: VERSION }),
+    );
   } catch {
     // localStorage can be unavailable / full; remembering settings is
     // a convenience, not load-bearing, so swallow and move on.
@@ -74,10 +84,16 @@ export function loadLastUsedSettings(): PersistedAnalysisSettings | null {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") {
-      return parsed as PersistedAnalysisSettings;
+    if (!parsed || typeof parsed !== "object") return null;
+    const { version, ...stored } = parsed as PersistedAnalysisSettings & {
+      version?: number;
+    };
+    if (version !== VERSION) {
+      delete stored.country_code;
+      delete stored.state_code;
+      delete stored.excluded_classes;
     }
-    return null;
+    return stored;
   } catch {
     return null;
   }
@@ -86,10 +102,11 @@ export function loadLastUsedSettings(): PersistedAnalysisSettings | null {
 // ── Save outputs step ───────────────────────────────────────────────
 //
 // Same idea as above: remember the last-used output choices so the next
-// run's Save step starts where the user left off. Saved on Save (the
-// moment the user commits the outputs), not on every toggle. The output
-// folder is deliberately not stored — it's derived per run from the
-// source folder, not a sticky preference.
+// save starts where the user left off, in the folder-run Save step and
+// the project image copies dialog alike. Saved on Save (the moment the
+// user commits the outputs), not on every toggle. The output folder,
+// the labels, the deployments and the file filters are deliberately not
+// stored: they describe one export, not a preference.
 
 const SAVE_OUTPUTS_KEY = "addaxai.folderRun.lastSaveOutputs";
 
@@ -118,11 +135,19 @@ export interface PersistedSaveOutputsSettings {
   mediaThreshold?: number;
 }
 
+/**
+ * Merge `patch` into the stored choices, like `saveLastUsedSettings`
+ * above. The media hook writes the media fields and the folder-run form
+ * writes the export fields, each from the surface that owns them, so a
+ * project image copies export and a folder-run save share one record
+ * without either wiping the other's half.
+ */
 export function saveLastUsedSaveOutputs(
-  settings: PersistedSaveOutputsSettings,
+  patch: Partial<PersistedSaveOutputsSettings>,
 ): void {
   try {
-    localStorage.setItem(SAVE_OUTPUTS_KEY, JSON.stringify(settings));
+    const prev = loadLastUsedSaveOutputs() ?? {};
+    localStorage.setItem(SAVE_OUTPUTS_KEY, JSON.stringify({ ...prev, ...patch }));
   } catch {
     // Convenience only; ignore storage failures.
   }

@@ -19,7 +19,7 @@ import type { ReactNode } from "react";
 
 export function StepActionBar({ children }: { children: ReactNode }) {
   return (
-    <div className="sticky bottom-0 z-30 -mx-4 border-t bg-white/80 px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+    <div className="sticky bottom-0 z-30 -mx-4 border-t bg-card/80 px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
         {children}
       </div>

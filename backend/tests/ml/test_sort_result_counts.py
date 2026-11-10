@@ -9,8 +9,10 @@ holds for the similarity and event sorts (both return every row they
 load) and is wrong for `suggestions`, which narrows to cohort members by
 design. A project with 814 embedded detections and one 8-member cohort
 showed "showing the newest 8 of 814, capped to stay responsive" on a pool
-nowhere near the 20,000 cap. These tests pin all three counts per sort
-mode so that comparison cannot be reintroduced.
+nowhere near the cap. These tests pin all three counts per sort mode so
+that comparison cannot be reintroduced, and which cap each sort reads:
+the similarity sort walks its pool and keeps the small budget, the
+suggestions sort and the cohorts badge only vote and get the large one.
 
 FAISS is not installed in the backend venv (it lives in env-addaxai-base,
 where the script really runs), so the suggestions path gets a numpy
@@ -19,6 +21,7 @@ product, which numpy reproduces exactly at these sizes, so the stub
 changes nothing about what is under test.
 """
 
+import json
 import sys
 import types
 import uuid
@@ -31,7 +34,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
-from app.ml.inference.similarity_script import do_sort
+from app.ml.inference import similarity_script
+from app.ml.inference.similarity_script import (
+    _compute_neighbor_signals,
+    do_cohorts,
+    do_sort,
+)
 from app.models.detection_embedding import DetectionEmbedding
 from app.models.label_taxonomy import LabelTaxonomy
 from tests.conftest import make_deployment, make_detection, make_file, make_project
@@ -353,6 +361,40 @@ def test_flagged_and_liked_ride_on_rows_and_filter_the_pool(sort_db):
     assert [d["file_id"] for d in got["detections"]] == [plain.id]
 
 
+def test_a_box_the_model_rejected_is_a_card_like_any_other(sort_db):
+    """A box the classifier called "false detection" is stored unverified
+    and the grid shows it like any other unverified card, label and all,
+    so a person can agree or rescue it. Nothing here hides it: the model's
+    verdict is a label, not a filter."""
+    db_path, s = sort_db
+    p = make_project(s, classification_model_id=CLS_MODEL)
+    dep = make_deployment(s, project_id=p.id)
+
+    def det(day, **kw):
+        f = make_file(
+            s,
+            deployment_id=dep.id,
+            captured_at_local=datetime(2024, 1, day, 12),
+            width_px=1920,
+            height_px=1080,
+        )
+        return make_detection(s, file_id=f.id, confidence=0.9, **kw)
+
+    rejected = det(1, label="false detection", label_confidence=0.95)
+    plain = det(2, label="canis")
+    s.commit()
+
+    rows = do_sort(
+        db_path,
+        p.id,
+        {"sort": "events", "filters": {"verified": False, "project_floor": 0.2}},
+    )
+    by_id = {d["detection_id"]: d for d in rows["detections"]}
+    assert set(by_id) == {rejected.id, plain.id}
+    assert by_id[rejected.id]["label"] == "false detection"
+    assert by_id[rejected.id]["verified"] is False
+
+
 def test_empty_result_carries_every_count(sort_db, fake_faiss):
     """Nothing matched: all three counts are present and zero."""
     db_path, s = sort_db
@@ -365,3 +407,111 @@ def test_empty_result_carries_every_count(sort_db, fake_faiss):
         assert result["total_detections"] == 0, mode
         assert result["total_loaded"] == 0, mode
         assert result["total_matching"] == 0, mode
+
+
+# ── which cap each operation reads ───────────────────────────────────────
+
+
+@pytest.fixture
+def small_caps(monkeypatch):
+    """Shrink both embedding budgets so a 9-row pool can exceed them."""
+    monkeypatch.setattr(similarity_script, "MAX_EMBEDDINGS", 4)
+    monkeypatch.setattr(similarity_script, "MAX_SUGGESTION_EMBEDDINGS", 7)
+
+
+def test_similarity_sort_keeps_the_walk_budget(sort_db, fake_faiss, small_caps):
+    db_path, s = sort_db
+    p = make_project(s, classification_model_id=CLS_MODEL)
+    dep = make_deployment(s, project_id=p.id)
+    _canis_and_dogs(s, dep.id, canis=3, dogs=6)
+    s.commit()
+
+    result = do_sort(db_path, p.id, {"sort": "similarity", "filters": {}})
+
+    assert result["total_loaded"] == 4
+    assert result["total_matching"] == 9
+
+
+def test_suggestions_sort_gets_the_larger_budget(sort_db, fake_faiss, small_caps):
+    db_path, s = sort_db
+    p = make_project(s, classification_model_id=CLS_MODEL)
+    dep = make_deployment(s, project_id=p.id)
+    _canis_and_dogs(s, dep.id, canis=3, dogs=6)
+    s.commit()
+
+    result = do_sort(
+        db_path, p.id, {"sort": "suggestions", "filters": {}, "min_count": 2}
+    )
+
+    assert result["total_loaded"] == 7
+    assert result["total_matching"] == 9
+
+
+def test_cohorts_search_the_same_pool_as_the_suggestions_sort(
+    sort_db, fake_faiss, small_caps
+):
+    """The badge counts what "Review" will search, so both use one budget.
+
+    Loading is newest first: the 7 newest rows are 1 canis and 6 dogs
+    (`_canis_and_dogs` dates the canis rows first). The walk budget of 4
+    would hold dogs only and find no cohort; the suggestions budget of 7
+    holds the one canis, so a min_count of 1 finds it.
+    """
+    db_path, s = sort_db
+    p = make_project(s, classification_model_id=CLS_MODEL)
+    dep = make_deployment(s, project_id=p.id)
+    made = _canis_and_dogs(s, dep.id, canis=3, dogs=6)
+    s.commit()
+
+    result = do_cohorts(
+        db_path, p.id, {"filters": {}, "min_count": 1, "max_cohorts": 10}
+    )
+
+    assert len(result["cohorts"]) == 1
+    assert result["cohorts"][0]["detection_ids"] == [made[2].id]
+
+
+# ── the neighbour search runs in chunks ──────────────────────────────────
+
+
+def test_chunked_neighbour_search_matches_one_batch(monkeypatch, capsys):
+    """Chunking only splits the queries; an exact index answers each row
+    the same either way. Clustered random vectors so every row has a
+    distinct neighbour list, and labels that make some rows disagree."""
+    monkeypatch.setattr(
+        similarity_script,
+        "_load_label_taxonomy",
+        lambda db_path, project_id, labels: {
+            "canis": {"level": "genus", "taxon_genus": "canis"},
+            "domestic dog": {
+                "level": "species",
+                "taxon_genus": "canis",
+                "taxon_species": "familiaris",
+            },
+        },
+    )
+    rng = np.random.default_rng(0)
+    centres = rng.normal(size=(3, 8))
+    vectors = np.vstack(
+        [c + 0.1 * rng.normal(size=(10, 8)) for c in centres]
+    ).astype(np.float32)
+    vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
+    labels = [("canis" if i % 7 == 0 else "domestic dog") for i in range(30)]
+    index = _NumpyFlatIP(8)
+    index.add(vectors)
+
+    monkeypatch.setattr(similarity_script, "NEIGHBOR_SEARCH_CHUNK", 1_000)
+    whole = _compute_neighbor_signals(index, vectors, labels, "db", "p")
+    capsys.readouterr()
+
+    monkeypatch.setattr(similarity_script, "NEIGHBOR_SEARCH_CHUNK", 4)
+    chunked = _compute_neighbor_signals(index, vectors, labels, "db", "p")
+    events = [
+        json.loads(line) for line in capsys.readouterr().out.splitlines()
+    ]
+
+    assert np.array_equal(whole[0], chunked[0])
+    assert whole[1] == chunked[1]
+    assert any(t is not None for t in chunked[1])  # the vote did something
+    # 0/30 first, then one event per chunk of 4, ending on 30/30.
+    assert [e["done"] for e in events] == [0, 4, 8, 12, 16, 20, 24, 28, 30]

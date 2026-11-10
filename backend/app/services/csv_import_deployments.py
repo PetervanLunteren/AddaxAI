@@ -67,7 +67,7 @@ FOLDER_NOT_FOUND = (
     "This folder was not found. Check the path, and make sure the drive is connected."
 )
 FOLDER_IS_A_FILE = (
-    "This is a file, not a folder. Enter the folder that contains the images or videos."
+    "This is a file, not a folder. Choose the folder that contains the images or videos."
 )
 FOLDER_DUPLICATED_IN_FILE = (
     "This folder is listed in more than one row. Each folder can only be added once. "

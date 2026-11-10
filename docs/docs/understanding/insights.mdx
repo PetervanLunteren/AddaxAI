@@ -7,13 +7,23 @@ import AppShot from "@site/src/components/AppShot";
 
 # The charts explained
 
-A project turns your results into charts. The Dashboard gives you the overview, and the Insights pages go deeper, each with its own filters.
+A project turns your results into charts. The Dashboard gives you the overview, and the Insights pages go deeper, each with its own filters. Insights need capture times and, for the map, site coordinates. Files with no readable timestamp are still detected and classified, but they drop out of the time-based views.
 
 The screenshots below come from a demo survey of 12 camera sites across Pennsylvania. The photos are real, from the [ENA24 dataset](https://lila.science/datasets/ena24detection/), but we edited the capture times in the files to build a survey that spreads over a season and several cameras. So the animals and the species are genuine, while the dates, trends and trap nights are made up for the demo.
 
 ## Dashboard
 
-The Dashboard is the quick overview: how many sites, deployments, trap nights, and observations, plus the top species, a trend over time, and the day and night activity pattern.
+The Dashboard has two tabs.
+
+**Overview** shows the whole project, without filters. You see a random animal photo (a new one every time you open the dashboard, or press the refresh button for another), how many files were recorded and how many trap nights that took, a calendar of when your cameras were running (one row per year, one square per week, darker for more cameras), the top ten wildlife taxa, and how much of the work you have verified. Pick a higher rank in the chart to compare groups, such as mammals against birds at class level. Click a bar to explore it.
+
+**Explore** shows every label by default, people and vehicles included, at the sites, site tags and dates you choose. Pick labels in the same tree as on the Counts page to narrow it: one species, a whole family, a set like livestock, or everything except people and vehicles. Every card follows the same choice: the number of events and observations, each per 100 trap nights, random photos, the day and night activity pattern, a trend over time, and a small map of where it was seen. To compare when species are active, use Compare species on the activity card. It opens [Activity overlap](#activity-overlap) with the same sites and dates.
+
+The photos are picked at random from detections the AI is sure about, so the name under a photo is one the AI is confident of. Click a photo to open the file on the Labels page and check it.
+
+Explore also shows sex, age and behaviour. The AI does not fill these in, so they read Unknown until you set them per event on the Counts page.
+
+The Overview's chart and random animal show wildlife only, which their titles say. Labels like blank or false detection never count anywhere. A class that only comes from the detector, like "shark" from a marine detector without a classifier, counts as wildlife but cannot be picked on its own yet.
 
 <AppShot name="dashboard" />
 
@@ -45,4 +55,10 @@ Where you have verified labels, these two views compare the AI's labels against 
 
 <AppShot name="perClass" />
 
-Insights need capture times and, for the map, site coordinates. Files with no readable timestamp are still detected and classified, but they drop out of the time-based views.
+## Calibration
+
+How far can you trust a score? Calibration answers that per label. Click Calibrate on a label and you get "Is the AI label right?", one crop at a time. Answer Y (yes), N (no) or U (can't tell), and the left arrow goes back one. The crops are spread over the label's whole score range, and the score itself is hidden so it can't sway you. Your answers are only used here, they don't verify or relabel anything.
+
+From 10 right and 10 wrong answers, the row shows the score from which 90, 95 and 99% of that label's detections are right. The dialog tells you when you have enough, and Show result opens the row: the curve with its 95% band, and under it the same result in words. Labels with fewer than 100 detections are left out, since by the time a curve shows you have answered nearly all of them. With no wrong answers yet, it shows the share right your answers can vouch for instead. The thresholds describe the project you answered on, so treat them as advice rather than a setting to copy to another survey.
+
+<AppShot name="calibration" />

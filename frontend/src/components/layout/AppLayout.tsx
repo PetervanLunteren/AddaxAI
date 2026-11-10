@@ -7,6 +7,7 @@ import { Outlet, useParams } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { SidebarCollapseContext } from "./sidebar-context";
 import { DeploymentHealthToast } from "./DeploymentHealthToast";
+import { RouteErrorBoundary } from "./RouteErrorBoundary";
 import { ModelSetupRequiredDialog } from "../models/ModelSetupRequiredDialog";
 import { cn } from "../../lib/utils";
 import { useLabelColors } from "../../hooks/useLabelColors";
@@ -39,14 +40,16 @@ export function AppLayout() {
           expanded one's. */}
       <main
         className={cn(
-          "flex-1 bg-gradient-to-br from-slate-50 to-slate-100 transition-[margin] duration-200",
+          "flex-1 bg-gradient-to-br from-background to-muted transition-[margin] duration-200",
           collapsed ? "ml-[72px]" : "ml-64",
         )}
       >
         {/* No breadcrumb here: the sidebar already shows the project
             name and a "Back to projects" link. The logo links Home. */}
         <SidebarCollapseContext.Provider value={collapsed}>
-          <Outlet />
+          <RouteErrorBoundary>
+            <Outlet />
+          </RouteErrorBoundary>
         </SidebarCollapseContext.Provider>
       </main>
       <DeploymentHealthToast />

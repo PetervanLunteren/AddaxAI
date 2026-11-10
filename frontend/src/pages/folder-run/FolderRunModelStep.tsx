@@ -121,9 +121,9 @@ import { Badge } from "../../components/ui/badge";
 import { ModelStatusBadge } from "../../components/projects/ModelStatusBadge";
 import {
   LabelSelectionField,
-  toApiCountryCode,
   useLabelSelectionCaption,
 } from "../../components/taxonomy/LabelSelectionField";
+import { clearSpeciesSelection, toApiCountryCode } from "../../lib/speciesSelection";
 import { ModelSelect } from "../../components/models/ModelSelect";
 import { NoClassifierNotice } from "../../components/models/NoClassifierNotice";
 import {
@@ -493,19 +493,6 @@ export function FolderRunModelStep() {
     enabled: hasClassifier,
   });
 
-  // Switching models drops the exclusions the new model does not know.
-  // Without this the default SpeciesNet geofence (1,800+ names) followed
-  // the run into every other model and its promoted project. Mirrors
-  // CreateProjectDialog and SettingsPage.
-  useEffect(() => {
-    if (!hasClassifier || !taxonomy?.all_classes) return;
-    const current = form.getValues("excluded_classes") ?? [];
-    const valid = current.filter((c) => taxonomy.all_classes.includes(c));
-    if (valid.length !== current.length) {
-      form.setValue("excluded_classes", valid, { shouldDirty: true });
-    }
-  }, [classificationModelId, taxonomy, hasClassifier, form]);
-
   // Same query (and cache entry) as LabelSelectionField uses internally.
   // Needed here to know whether the selected classifier is geofenced,
   // which makes the country choice a required field on submit.
@@ -618,7 +605,11 @@ export function FolderRunModelStep() {
       return resp;
     },
     onSuccess: (resp) => {
+      // Both keys hold this project (the filter bar reads the plural,
+      // the slot hook the singular), and the save above may have given
+      // the run inherited hotkey slots.
       queryClient.invalidateQueries({ queryKey: ["projects", runId] });
+      queryClient.invalidateQueries({ queryKey: ["project", runId] });
       if (resp.jobs_started === 0 || resp.job_ids.length === 0) {
         // Nothing pending to process (e.g. the queue entry was already
         // consumed or is in a non-pending state). Surface it rather
@@ -699,7 +690,11 @@ export function FolderRunModelStep() {
       return resp;
     },
     onSuccess: (resp) => {
+      // Both keys hold this project (the filter bar reads the plural,
+      // the slot hook the singular), and the save above may have given
+      // the run inherited hotkey slots.
       queryClient.invalidateQueries({ queryKey: ["projects", runId] });
+      queryClient.invalidateQueries({ queryKey: ["project", runId] });
       if (resp.jobs_started === 0 || resp.job_ids.length === 0) {
         setNothingToRun(true);
         return;
@@ -1064,11 +1059,12 @@ export function FolderRunModelStep() {
                             <>
                               <ModelSelect
                                 value={field.value ?? NO_CLASSIFIER}
-                                onValueChange={(val) =>
-                                  field.onChange(
-                                    val === NO_CLASSIFIER ? NO_CLASSIFIER : val,
-                                  )
-                                }
+                                onValueChange={(val) => {
+                                  if (val !== field.value) {
+                                    clearSpeciesSelection(form.setValue);
+                                  }
+                                  field.onChange(val);
+                                }}
                                 models={classificationModels}
                                 placeholder="Select classification model"
                                 noneValue={NO_CLASSIFIER}

@@ -10,6 +10,7 @@ import { useMemo } from "react";
 import { Info, Loader2 } from "lucide-react";
 
 import { matrixCellColor } from "../../lib/metric-colors";
+import { useTheme } from "../../lib/theme";
 import { getSpeciesNameMode } from "../../lib/species-name-mode";
 import type { PerformanceResponse } from "../../api/performance";
 import type { MatrixMode } from "./PerformanceFilterBar";
@@ -47,6 +48,7 @@ export function ConfusionMatrix({
   loading,
   mode = "counts",
 }: ConfusionMatrixProps) {
+  const { resolvedTheme } = useTheme();
   const rowMaxes = useMemo(() => {
     if (!data) return [] as number[];
     return data.matrix.map((row) => row.reduce((m, n) => (n > m ? n : m), 0));
@@ -212,7 +214,7 @@ export function ConfusionMatrix({
                           ? count / rowMax
                           : 0
                         : ratio;
-                    const style = matrixCellColor(intensity);
+                    const style = matrixCellColor(intensity, resolvedTheme === "dark");
                     const isDiag = i === j;
                     const colOther = col === "other";
                     const displayValue =

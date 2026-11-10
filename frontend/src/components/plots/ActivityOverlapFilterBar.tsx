@@ -29,7 +29,7 @@ import { DateRangePicker } from "../ui/date-range-picker";
 import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
 import { SegmentedControl } from "../ui/segmented-control";
 import { SpeciesPicker } from "./SpeciesPicker";
-import { SPECIES_A_COLOR, SPECIES_B_COLOR } from "./ActivityOverlapChart";
+import { useSpeciesSlotColors } from "./ActivityOverlapChart";
 
 export type TimeAxis = "clock" | "sun";
 
@@ -58,6 +58,7 @@ export function ActivityOverlapFilterBar({
   filters,
   onChange,
 }: ActivityOverlapFilterBarProps) {
+  const slotColors = useSpeciesSlotColors();
   const { data: sites } = useQuery({
     queryKey: ["sites", projectId],
     queryFn: () => sitesApi.list(projectId),
@@ -90,7 +91,7 @@ export function ActivityOverlapFilterBar({
             dateFrom={filters.dateFrom ?? undefined}
             dateTo={filters.dateTo ?? undefined}
             excludeValue={filters.speciesB}
-            swatchColor={SPECIES_A_COLOR}
+            swatchColor={slotColors.a}
           />
         </div>
 
@@ -108,7 +109,7 @@ export function ActivityOverlapFilterBar({
             dateFrom={filters.dateFrom ?? undefined}
             dateTo={filters.dateTo ?? undefined}
             excludeValue={filters.speciesA}
-            swatchColor={SPECIES_B_COLOR}
+            swatchColor={slotColors.b}
           />
         </div>
 

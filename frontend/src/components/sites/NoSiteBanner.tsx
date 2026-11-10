@@ -39,7 +39,7 @@ export function NoSiteBanner({
       action={
         <Link
           to={`/projects/${projectId}/deployments?site=missing`}
-          className={buttonVariants({ variant: "outline", size: "sm" }) + " bg-white"}
+          className={buttonVariants({ variant: "outline", size: "sm" }) + " bg-card"}
         >
           <ArrowRight />
           Assign a site

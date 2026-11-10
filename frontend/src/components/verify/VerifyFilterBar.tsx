@@ -20,7 +20,6 @@
 
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
 
 import { eventsApi } from "../../api/events";
 import { projectsApi } from "../../api/projects";
@@ -28,12 +27,12 @@ import { sitesApi } from "../../api/sites";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { buildSiteOptions } from "../../lib/site-filter-options";
 import { speciesLabelMap } from "../../lib/species-name-mode";
+import { reconcileEmptyFilter } from "../../lib/empty-filter";
 import type {
   EmptyFilter,
   EventFilterParams,
   VerificationFilter,
 } from "../../api/types";
-import { Button } from "../ui/button";
 import { DateRangePicker } from "../ui/date-range-picker";
 import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
 import {
@@ -44,7 +43,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { FilterChips } from "./FilterChips";
-import { LabelFilterModal } from "./LabelFilterModal";
+import { LabelFilterField } from "./LabelFilterField";
 import { VerifyMoreFilters } from "./VerifyMoreFilters";
 
 export interface VerificationOption {
@@ -111,7 +110,7 @@ interface VerifyFilterBarProps {
 
 export function VerifyFilterBar({
   filters,
-  onChange,
+  onChange: onChangeRaw,
   projectId,
   classificationModelId,
   detectionFloor = 0,
@@ -125,7 +124,10 @@ export function VerifyFilterBar({
   showLabels = true,
   clampReason,
 }: VerifyFilterBarProps) {
-  const [labelModalOpen, setLabelModalOpen] = useState(false);
+  // Every control goes through here, so "Empty only" and the label and
+  // confidence filters can never end up set together.
+  const onChange = (next: EventFilterParams) =>
+    onChangeRaw(reconcileEmptyFilter(filters, next));
 
   // Event scope (Counts page) confirms; detection/file scope (Labels)
   // verifies. Drives the verification filter's wording.
@@ -157,24 +159,6 @@ export function VerifyFilterBar({
     enabled: !!projectId,
   });
 
-  const { data: labelTree } = useQuery({
-    queryKey: [
-      "label-tree",
-      projectId,
-      countBy,
-      filters.site_ids,
-      filters.date_from,
-      filters.date_to,
-    ],
-    queryFn: () =>
-      eventsApi.getLabelTree(projectId, countBy, {
-        siteIds: filters.site_ids,
-        dateFrom: filters.date_from,
-        dateTo: filters.date_to,
-      }),
-    enabled: !!projectId,
-  });
-  const hasTaxonomy = !!labelTree?.tree?.length;
 
   // Id → name map for the active-filter chips' site labels.
   const siteNames: Record<string, string> = {};
@@ -185,18 +169,12 @@ export function VerifyFilterBar({
     noSite?.count ?? 0,
   );
 
-  const labelNames = filterOptions ? speciesLabelMap(filterOptions) : {};
-  const labelFilterOptions: MultiSelectOption[] =
-    filterOptions?.labels.map((lbl) => ({
-      value: lbl,
-      label: labelNames[lbl] ?? lbl,
-    })) ?? [];
 
   // Four controls without Sites (folder runs), five with it (projects).
   const gridCols = showSites ? "lg:grid-cols-5" : "lg:grid-cols-4";
 
   return (
-    <div className="space-y-2 rounded-lg border bg-white px-3 py-2">
+    <div className="space-y-2 rounded-lg border bg-card px-3 py-2">
       <div className={`grid grid-cols-1 sm:grid-cols-2 ${gridCols} gap-3`}>
         {showSites && (
           <div className="space-y-1.5">
@@ -231,51 +209,33 @@ export function VerifyFilterBar({
         {showLabels && (
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">Labels</label>
-          {hasTaxonomy ? (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full h-9 justify-start text-sm font-normal"
-                onClick={() => setLabelModalOpen(true)}
-              >
-                <span className="truncate">
-                  {filters.labels?.length
-                    ? `${filters.labels.length} labels`
-                    : "All labels"}
-                </span>
-              </Button>
-              <LabelFilterModal
-                preBuiltTree={labelTree!.tree}
-                allLeafIds={labelTree!.all_leaf_ids}
-                selectedLabels={filters.labels ?? []}
-                onApply={(labels) => {
-                  const allLeafs = labelTree!.all_leaf_ids;
-                  const isAll = labels.length >= allLeafs.length;
-                  onChange({
-                    ...filters,
-                    labels: isAll ? undefined : labels.length ? labels : undefined,
-                  });
-                }}
-                open={labelModalOpen}
-                onOpenChange={setLabelModalOpen}
-                countUnit={labelTree!.count_unit}
-              />
-            </>
-          ) : (
-            <MultiSelect
-              options={labelFilterOptions}
-              value={filters.labels ?? []}
-              onChange={(v) =>
-                onChange({ ...filters, labels: v.length ? v : undefined })
-              }
-              placeholder="All labels"
-              searchPlaceholder="Search labels..."
-              emptyMessage="No labels found."
-              summary={(n) => `${n} labels`}
-              capitalize
-            />
-          )}
+          <LabelFilterField
+            projectId={projectId}
+            value={filters.labels}
+            onChange={(labels) => onChange({ ...filters, labels })}
+            countBy={countBy}
+            // What the page sends, defaults included, so the number
+            // beside a label is what ticking it alone would show.
+            scope={{
+              siteIds: filters.site_ids,
+              dateFrom: filters.date_from,
+              dateTo: filters.date_to,
+              verification: filters.verification ?? verificationDefault,
+              flagged: showLikedFlaggedEmpty ? filters.flagged : undefined,
+              favorited: showLikedFlaggedEmpty ? filters.favorited : undefined,
+              // Ticking a label turns "Empty only" off (see
+              // `reconcileEmptyFilter`), so count as if it were off.
+              empty: showEmpty
+                ? filters.empty && filters.empty !== "show_only"
+                  ? filters.empty
+                  : emptyDefault
+                : undefined,
+              minConfidence: filters.min_confidence,
+              maxConfidence: filters.max_confidence,
+              minLabelConfidence: filters.min_label_confidence,
+              maxLabelConfidence: filters.max_label_confidence,
+            }}
+          />
         </div>
         )}
 

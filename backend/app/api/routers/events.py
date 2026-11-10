@@ -4,12 +4,15 @@ Events API router.
 Provides endpoints for event grouping, browsing, and navigation.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.crud import event as event_crud
@@ -176,15 +179,24 @@ def get_label_tree(
     site_ids: str | None = Query(None, description="Comma-separated site IDs"),
     date_from: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
     date_to: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
+    verification: str | None = Query(None, description="Verification filter"),
+    flagged: str | None = Query(None, description="Flagged filter"),
+    favorited: str | None = Query(None, description="Favorited filter"),
+    empty: str | None = Query(None, description="Empty filter"),
+    min_confidence: float | None = Query(None, ge=0, le=1),
+    max_confidence: float | None = Query(None, ge=0, le=1),
+    min_label_confidence: float | None = Query(None, ge=0, le=1),
+    max_label_confidence: float | None = Query(None, ge=0, le=1),
     db: Session = Depends(get_db),
 ) -> LabelTreeResponse | None:
     """
     Get the label filter tree built from the label_taxonomy table.
 
-    Returns a pre-built tree with only detected labels, annotated with counts.
-    Counts are scoped to the active site + date filters so the tree matches the
-    slice the user has narrowed to. Returns null if no taxonomy data is
-    available (frontend falls back to flat list).
+    Every label present in the project is a leaf; the count beside it
+    follows the page's active filters (the same parameters the list
+    endpoints take), the label filter itself left out, so the number is
+    what ticking that label alone would show. Returns null if no taxonomy
+    data is available (frontend falls back to flat list).
     """
     if count_by not in ("event", "file", "detection"):
         raise HTTPException(
@@ -198,6 +210,14 @@ def get_label_tree(
         site_ids=site_ids.split(",") if site_ids else None,
         date_from=date_from,
         date_to=date_to,
+        verification=verification,
+        flagged=flagged,
+        favorited=favorited,
+        empty=empty,
+        min_confidence=min_confidence,
+        max_confidence=max_confidence,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
     )
     if result is None:
         return None
@@ -445,6 +465,22 @@ def _obs_item(
     )
 
 
+@contextmanager
+def _reject_unknown_taxonomy(db: Session) -> Iterator[None]:
+    """A client-supplied label_taxonomy_id that names no row fails the
+    foreign key at commit, which surfaced as a bare 500. Nothing is half
+    applied (the write is one transaction), so answer 422 naming the
+    field. Wraps every observation write that accepts the id."""
+    try:
+        yield
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=422,
+            detail="label_taxonomy_id does not name an existing taxonomy row",
+        ) from e
+
+
 class EventConfirmRequest(BaseModel):
     """Set the human confirmation of an event's species and counts."""
 
@@ -472,6 +508,26 @@ class RelabelObservationRequest(BaseModel):
     category: str
     label: str | None = None
     label_taxonomy_id: str | None = None
+
+
+class HumanObservationRow(BaseModel):
+    """One cohort as "Same as last" copies it: a species, its count and
+    the demographics of the individuals on that row."""
+
+    category: str
+    count: int = Field(..., ge=1)
+    label: str | None = None
+    label_taxonomy_id: str | None = None
+    sex: Sex | None = None
+    life_stage: LifeStage | None = None
+    behavior: Behavior | None = None
+
+
+class SetHumanObservationsRequest(BaseModel):
+    """Replace the event's human layer so its visible rows become exactly
+    these cohorts."""
+
+    observations: list[HumanObservationRow] = Field(..., min_length=1)
 
 
 class SetObservationAttributesRequest(BaseModel):
@@ -525,14 +581,32 @@ async def add_event_observation(
     """Add a species the AI missed (or set the count of an existing one)."""
     if not db.get(Event, event_id):
         raise HTTPException(status_code=404, detail="Event not found")
-    event_obs_crud.add_human_species(
-        db,
-        event_id,
-        category=body.category,
-        count=body.count,
-        label=body.label,
-        label_taxonomy_id=body.label_taxonomy_id,
-    )
+    with _reject_unknown_taxonomy(db):
+        event_obs_crud.add_human_species(
+            db,
+            event_id,
+            category=body.category,
+            count=body.count,
+            label=body.label,
+            label_taxonomy_id=body.label_taxonomy_id,
+        )
+    return await get_event(event_id, db)
+
+
+@router.put("/{event_id}/observations", response_model=EventWithFiles)
+async def set_human_observations(
+    event_id: str,
+    body: SetHumanObservationsRequest,
+    db: Session = Depends(get_db),
+):
+    """Replace the event's visible cohorts with the given rows ("Same as
+    last" on the Counts page)."""
+    with _reject_unknown_taxonomy(db):
+        event = event_obs_crud.set_human_observations(
+            db, event_id, [row.model_dump() for row in body.observations]
+        )
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
     return await get_event(event_id, db)
 
 
@@ -567,14 +641,15 @@ async def relabel_event_observation(
 ):
     """Change the species of one count row; its count moves to the target
     (summing into the target species when it already has a row)."""
-    obs = event_obs_crud.relabel_observation(
-        db,
-        observation_id,
-        category=body.category,
-        label=body.label,
-        label_taxonomy_id=body.label_taxonomy_id,
-        event_id=event_id,
-    )
+    with _reject_unknown_taxonomy(db):
+        obs = event_obs_crud.relabel_observation(
+            db,
+            observation_id,
+            category=body.category,
+            label=body.label,
+            label_taxonomy_id=body.label_taxonomy_id,
+            event_id=event_id,
+        )
     if obs is None:
         raise HTTPException(status_code=404, detail="Observation not found")
     return await get_event(event_id, db)

@@ -34,6 +34,7 @@ from typing import Literal
 import numpy as np
 
 from app.api.schemas.statistics import SunBands
+from app.ml.sun_time import in_sun_band
 
 DielClass = Literal["diurnal", "nocturnal", "crepuscular", "cathemeral"]
 DeltaEstimator = Literal["delta1", "delta4"]
@@ -221,11 +222,10 @@ def classify_diel(
         night = max(0.0, 1.0 - day)
         density_by_phase = {"day": day, "night": night, "twilight": 0.0}
     else:
-        day_mask = (grid_hours >= sun_bands.sunrise) & (grid_hours < sun_bands.sunset)
-        twilight_mask = (
-            ((grid_hours >= sun_bands.dawn) & (grid_hours < sun_bands.sunrise))
-            | ((grid_hours >= sun_bands.sunset) & (grid_hours < sun_bands.dusk))
-        )
+        day_mask = in_sun_band(grid_hours, sun_bands.sunrise, sun_bands.sunset)
+        twilight_mask = in_sun_band(
+            grid_hours, sun_bands.dawn, sun_bands.sunrise
+        ) | in_sun_band(grid_hours, sun_bands.sunset, sun_bands.dusk)
         day = float(density[day_mask].sum() * dx)
         twilight = float(density[twilight_mask].sum() * dx)
         night = max(0.0, 1.0 - day - twilight)

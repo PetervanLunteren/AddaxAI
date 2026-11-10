@@ -40,25 +40,25 @@ export function SitePopup({ feature }: SitePopupProps) {
   return (
     <div className="p-1 min-w-[220px]">
       <div className="font-semibold text-sm mb-1">{site_name}</div>
-      <div className="text-xs text-gray-600 mb-2">
+      <div className="text-xs text-muted-foreground mb-2">
         {endStr ? `${startStr} to ${endStr}` : startStr}
       </div>
 
       <div className="space-y-1 text-xs">
         <div className="flex justify-between">
-          <span className="text-gray-600">Deployments</span>
+          <span className="text-muted-foreground">Deployments</span>
           <span className="font-medium">{deployment_count}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-600">Trap nights</span>
+          <span className="text-muted-foreground">Trap nights</span>
           <span className="font-medium">{trap_nights}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-600">Observations</span>
+          <span className="text-muted-foreground">Observations</span>
           <span className="font-medium">{observation_count}</span>
         </div>
         <div className="flex justify-between border-t pt-1 mt-1">
-          <span className="text-gray-600">Rate</span>
+          <span className="text-muted-foreground">Rate</span>
           <span className="font-semibold">
             {rate_per_100.toFixed(2)} / 100 trap nights
           </span>
@@ -67,7 +67,7 @@ export function SitePopup({ feature }: SitePopupProps) {
 
       {species_breakdown.length > 0 && (
         <div className="mt-3 pt-2 border-t">
-          <div className="text-xs font-semibold text-gray-700 mb-1">
+          <div className="text-xs font-semibold text-muted-foreground mb-1">
             Top species
           </div>
           <div className="flex flex-wrap gap-1">

@@ -71,8 +71,11 @@ export function RelinkGroupBanner({
   const suggestedPath = group.suggested_path;
   const count = group.items.length;
 
-  // Synthesize the legacy PrefixGroup shape the dialog expects.
-  // Trailing slash matters so replacePrefix can substitute cleanly.
+  // Synthesize the legacy PrefixGroup shape the dialog expects. The
+  // appended "/" is for the dialog's display slice (it trims the prefix
+  // plus one separator off each path); replacePrefix strips trailing
+  // separators of either style itself, so the "/" is safe on Windows
+  // paths too.
   const dialogGroup = useMemo<PrefixGroup<DeploymentPathItem>>(
     () => ({
       prefix: missingPath + "/",
@@ -231,7 +234,7 @@ function LabeledPath({ label, diff, side }: LabeledPathProps) {
   return (
     <div className="space-y-1">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="ml-3 flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-xs">
+      <div className="ml-3 flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-xs">
         <Folder className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
         <span className="font-mono break-all text-muted-foreground">
           {prefix}
@@ -257,7 +260,7 @@ function ManualPrompt({ missingPath, onChoose }: ManualPromptProps) {
     <div className="space-y-3">
       <div className="space-y-1">
         <div className="text-xs text-muted-foreground">The data was at</div>
-        <div className="ml-3 flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-xs">
+        <div className="ml-3 flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-xs">
           <Folder className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <span className="font-mono break-all text-muted-foreground">
             {missingPath}

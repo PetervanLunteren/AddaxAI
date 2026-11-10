@@ -102,21 +102,21 @@ export function ReEmbedModal({ open, onOpenChange, jobId, onComplete, onError }:
     if (status === "Waiting...") {
       return (
         <div className="flex items-center gap-2">
-          <Clock className="h-3.5 w-3.5" style={{ color: '#156065' }} />
+          <Clock className="h-3.5 w-3.5" style={{ color: 'var(--primary-ink)' }} />
           <span>{status}</span>
         </div>
       );
     } else if (status === "Starting up...") {
       return (
         <div className="flex items-center gap-2">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: '#156065' }} />
+          <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: 'var(--primary-ink)' }} />
           <span>{status}</span>
         </div>
       );
     } else if (status === "Complete") {
       return (
         <div className="flex items-center gap-2">
-          <CheckCircle2 className="h-3.5 w-3.5" style={{ color: '#156065' }} />
+          <CheckCircle2 className="h-3.5 w-3.5" style={{ color: 'var(--primary-ink)' }} />
           <span>{status}</span>
         </div>
       );
@@ -141,16 +141,16 @@ export function ReEmbedModal({ open, onOpenChange, jobId, onComplete, onError }:
           {/* Error State */}
           {hasError && (
             <div className="flex items-center gap-3">
-              <XCircle className="h-5 w-5 text-red-600" />
-              <span className="text-sm font-medium text-red-600">{errorMessage || "Re-embedding failed"}</span>
+              <XCircle className="h-5 w-5 text-destructive-ink" />
+              <span className="text-sm font-medium text-destructive-ink">{errorMessage || "Re-embedding failed"}</span>
             </div>
           )}
 
           {/* Complete State */}
           {isComplete && !hasError && (
             <div className="flex items-center gap-3">
-              <CheckCircle2 className="h-5 w-5" style={{ color: '#156065' }} />
-              <span className="text-sm font-medium" style={{ color: '#156065' }}>
+              <CheckCircle2 className="h-5 w-5" style={{ color: 'var(--primary-ink)' }} />
+              <span className="text-sm font-medium" style={{ color: 'var(--primary-ink)' }}>
                 {message || "Re-embedding complete!"}
               </span>
             </div>
@@ -162,7 +162,7 @@ export function ReEmbedModal({ open, onOpenChange, jobId, onComplete, onError }:
               {/* Spinner while waiting for job */}
               {isWaitingForJob && (
                 <div className="flex items-center gap-3">
-                  <Loader2 className="h-5 w-5 animate-spin" style={{ color: '#0f6064' }} />
+                  <Loader2 className="h-5 w-5 animate-spin" style={{ color: 'var(--primary-ink)' }} />
                   <span className="text-sm font-medium">{message || "Initializing..."}</span>
                 </div>
               )}
@@ -174,13 +174,13 @@ export function ReEmbedModal({ open, onOpenChange, jobId, onComplete, onError }:
               {isProcessing && (
                 <div className="border rounded-lg p-4 space-y-2">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-medium text-gray-700">Embedding</p>
-                    <span className="text-xs text-gray-500 font-mono">{embeddingProgress.toFixed(0)}%</span>
+                    <p className="text-xs font-medium text-muted-foreground">Embedding</p>
+                    <span className="text-xs text-muted-foreground font-mono">{embeddingProgress.toFixed(0)}%</span>
                   </div>
                   <Progress value={embeddingProgress} className="h-2" />
 
                   {showInfoCard ? (
-                    <div className="text-[11px] space-y-0.5 rounded-md bg-gray-50 p-3 font-mono text-gray-600">
+                    <div className="text-[11px] space-y-0.5 rounded-md bg-muted p-3 font-mono text-muted-foreground">
                       <div className="flex justify-between">
                         <span>Processing {metrics.unit || 'crops'}:</span>
                         <span>{metrics.current?.toLocaleString()} of {metrics.total?.toLocaleString()}</span>
@@ -205,13 +205,13 @@ export function ReEmbedModal({ open, onOpenChange, jobId, onComplete, onError }:
                       )}
                       <div className="flex justify-between">
                         <span>Running on:</span>
-                        <span className={computeDevice ? "" : "text-gray-400"}>
+                        <span className={computeDevice ? "" : "text-muted-foreground"}>
                           {computeDevice ?? "detecting..."}
                         </span>
                       </div>
                     </div>
                   ) : (
-                    <div className="text-[11px] rounded-md bg-gray-50 p-3 font-mono text-gray-600">
+                    <div className="text-[11px] rounded-md bg-muted p-3 font-mono text-muted-foreground">
                       {renderStatusWithIcon(embeddingStatus)}
                     </div>
                   )}

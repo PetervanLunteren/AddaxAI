@@ -17,11 +17,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
 
   /**
-   * Open native folder picker dialog
+   * Open native folder picker dialog. `title` says what the folder is
+   * for (defaults to the camera-trap wording).
    * @returns Selected folder path, or null if cancelled
    */
-  selectFolder: async (): Promise<string | null> => {
-    return await ipcRenderer.invoke('dialog:selectFolder');
+  selectFolder: async (opts?: {
+    title?: string;
+    defaultPath?: string;
+  }): Promise<string | null> => {
+    return await ipcRenderer.invoke('dialog:selectFolder', opts);
   },
 
   /**
@@ -167,6 +171,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   setSpeciesNameMenuMode: (mode: 'common' | 'scientific'): void => {
     ipcRenderer.send('menu:species-mode', mode);
+  },
+
+  /**
+   * Tell the main process the stored theme preference so the View → Theme
+   * radio, nativeTheme and the pre-paint window background stay in sync.
+   * Sent on mount and after each change. One-way; the renderer's
+   * localStorage stays the single source of truth.
+   */
+  setThemeMenuMode: (mode: 'system' | 'light' | 'dark'): void => {
+    ipcRenderer.send('menu:theme-mode', mode);
   },
 
   /**

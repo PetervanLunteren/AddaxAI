@@ -102,7 +102,6 @@ alembic/versions/*.pyc
 *.db-shm
 
 # stuff for myself
-future-plans/*
 skills/send-draft-model/
 
 # VERSION is deliberately tracked, do not add it here. backend.spec

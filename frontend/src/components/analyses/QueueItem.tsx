@@ -56,27 +56,27 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
     switch (entry.status) {
       case "pending":
         return {
-          classes: `${baseClasses} bg-gray-100 text-gray-700`,
+          classes: `${baseClasses} bg-muted text-muted-foreground`,
           label: "Pending"
         };
       case "processing":
         return {
-          classes: `${baseClasses} bg-teal-50 text-teal-700`,
+          classes: `${baseClasses} bg-primary/10 text-primary-ink`,
           label: "Processing"
         };
       case "completed":
         return {
-          classes: `${baseClasses} bg-green-50 text-green-700`,
+          classes: `${baseClasses} bg-success-subtle text-success-ink`,
           label: "Completed"
         };
       case "failed":
         return {
-          classes: `${baseClasses} bg-red-100 text-red-700`,
+          classes: `${baseClasses} bg-destructive-subtle text-destructive-ink`,
           label: "Failed"
         };
       default:
         return {
-          classes: `${baseClasses} bg-gray-100 text-gray-700`,
+          classes: `${baseClasses} bg-muted text-muted-foreground`,
           label: entry.status
         };
     }
@@ -85,13 +85,13 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
   const statusBadge = getStatusBadge();
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-3 hover:shadow-sm transition-shadow">
+    <div className="rounded-lg border border-border bg-card p-3 hover:shadow-sm transition-shadow">
       <div className="flex items-center justify-between gap-3">
         {/* Main info */}
         <div className="flex-1 min-w-0">
           {/* Deployment name */}
           <div className="flex items-center gap-2 mb-1">
-            <Folder className="h-4 w-4 text-gray-400 shrink-0" />
+            <Folder className="h-4 w-4 text-muted-foreground shrink-0" />
             <h3 className="font-medium text-sm truncate" title={deploymentName}>
               {deploymentName}
             </h3>
@@ -104,7 +104,7 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
               trailing deployment folder stays visible. */}
           <p
             dir="rtl"
-            className="text-xs text-gray-500 font-mono truncate text-left"
+            className="text-xs text-muted-foreground font-mono truncate text-left"
             title={entry.folder_path}
           >
             <bdi>{entry.folder_path}</bdi>
@@ -135,7 +135,7 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+            className="h-8 w-8 text-destructive-ink hover:text-destructive-ink hover:bg-destructive-subtle"
             onClick={() => onDelete(entry.id)}
             title="Delete"
           >
@@ -146,15 +146,15 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
 
       {/* Details section */}
       {showDetails && (
-        <div className="mt-3 pt-3 border-t border-gray-200">
+        <div className="mt-3 pt-3 border-t border-border">
           <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-xs">
             {/* Site */}
-            <dt className="text-gray-500 font-medium">Site:</dt>
-            <dd className="text-gray-900">{siteLabel}</dd>
+            <dt className="text-muted-foreground font-medium">Site:</dt>
+            <dd className="text-foreground">{siteLabel}</dd>
 
             {/* Files */}
-            <dt className="text-gray-500 font-medium">Files:</dt>
-            <dd className="text-gray-900">
+            <dt className="text-muted-foreground font-medium">Files:</dt>
+            <dd className="text-foreground">
               {isScanning ? (
                 "Scanning..."
               ) : scanResult?.total_count ? (
@@ -167,8 +167,8 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
             {/* GPS (from folder scan) */}
             {!isScanning && scanResult && (
               <>
-                <dt className="text-gray-500 font-medium">GPS:</dt>
-                <dd className="text-gray-900">
+                <dt className="text-muted-foreground font-medium">GPS:</dt>
+                <dd className="text-foreground">
                   {scanResult.gps_location ? "Found in EXIF" : "Not found"}
                 </dd>
               </>
@@ -189,8 +189,8 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
               if (!range) return null;
               return (
                 <>
-                  <dt className="text-gray-500 font-medium">Date range:</dt>
-                  <dd className="text-gray-900">
+                  <dt className="text-muted-foreground font-medium">Date range:</dt>
+                  <dd className="text-foreground">
                     {`roughly ${range}`}
                     {fromFileMtime && " (from file dates)"}
                   </dd>
@@ -199,14 +199,14 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
             })()}
 
             {/* Created */}
-            <dt className="text-gray-500 font-medium">Created:</dt>
-            <dd className="text-gray-900">{new Date(entry.created_at_utc).toLocaleString()}</dd>
+            <dt className="text-muted-foreground font-medium">Created:</dt>
+            <dd className="text-foreground">{new Date(entry.created_at_utc).toLocaleString()}</dd>
 
             {/* Datetime offset (only when non-zero) */}
             {hasOffset && (
               <>
-                <dt className="text-gray-500 font-medium">Time offset:</dt>
-                <dd className="text-gray-900">
+                <dt className="text-muted-foreground font-medium">Time offset:</dt>
+                <dd className="text-foreground">
                   {formatOffsetSummary(
                     entry.datetime_offset_seconds ?? 0,
                     entry.camera_offsets ?? {},
@@ -218,16 +218,16 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
             {/* Paired cameras (only when on) */}
             {entry.paired_cameras && (
               <>
-                <dt className="text-gray-500 font-medium">Paired cameras:</dt>
-                <dd className="text-gray-900">Subfolders count as one camera</dd>
+                <dt className="text-muted-foreground font-medium">Paired cameras:</dt>
+                <dd className="text-foreground">Subfolders count as one camera</dd>
               </>
             )}
 
             {/* Notes */}
             {entry.notes && (
               <>
-                <dt className="text-gray-500 font-medium">Notes:</dt>
-                <dd className="text-gray-900 whitespace-pre-wrap break-words">
+                <dt className="text-muted-foreground font-medium">Notes:</dt>
+                <dd className="text-foreground whitespace-pre-wrap break-words">
                   {entry.notes}
                 </dd>
               </>
@@ -236,8 +236,8 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
             {/* Tags */}
             {hasTags && (
               <>
-                <dt className="text-gray-500 font-medium">Tags:</dt>
-                <dd className="text-gray-900">
+                <dt className="text-muted-foreground font-medium">Tags:</dt>
+                <dd className="text-foreground">
                   <TagPills tags={entry.tags} maxVisible={8} />
                 </dd>
               </>
@@ -250,8 +250,8 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
                 reporting it does not start with hunting through a menu. */}
             {entry.error && (
               <>
-                <dt className="text-red-600 font-medium">Error:</dt>
-                <dd className="text-red-600">
+                <dt className="text-destructive-ink font-medium">Error:</dt>
+                <dd className="text-destructive-ink">
                   {entry.error}
                   <Button
                     variant="outline"

@@ -3,17 +3,22 @@
 ``tables_csv`` and ``tables_xlsx`` build their rows with the same
 ``export_crud`` builders that back the projects Export page, so the two
 modes stay column-identical by default. A folder run has no sites and one
-synthetic deployment, which leaves two of those columns carrying nothing.
+synthetic deployment, which leaves the site and deployment columns
+carrying nothing.
 This module trims them.
 
 The trimming lives here, on the folder-run side, rather than in the
 shared builders. Projects-mode exports therefore cannot regress by
 construction: nothing in this file is reachable from them.
 
-``deployment_id`` is dropped. A folder run creates exactly one queue
-entry, which becomes exactly one synthetic deployment (``rerun`` reuses
-it), so the column is the same UUID on every row and points at a table
-the run never exports. That holds for the counts table too.
+``deployment_id`` is dropped, and with it the rest of the site and
+deployment part of the context block (``site_name``, ``latitude``,
+``longitude``, ``site_tags``, ``deployment_start``, ``deployment_end``,
+``deployment_tags``, ``trap_nights``). A folder run creates exactly one
+queue entry, which becomes exactly one synthetic deployment (``rerun``
+reuses it) with no site, so the id is the same UUID on every row and
+points at a table the run never exports, and the other columns are
+blank or repeat one value. That holds for the counts table too.
 
 ``notes`` is dropped. ``File.notes`` is writable over the API but no UI
 ever sets it, so the column is always empty.
@@ -22,36 +27,46 @@ Everything else stays, the Summary's ``n_events`` and ``n_individuals``
 included: a folder run writes the Counts table since its Counts step came
 back (2026-09), so both columns count rows the user can open and check.
 
-``event_id`` is kept: it says which files belong to the same burst, and
-it points at the rows of the counts table.
+``event_id`` is kept, and so are ``event_start`` and ``event_end``: they
+are the only columns that say which files belong to the same burst and
+when it was, and ``event_id`` points at the rows of the counts table. A
+key a user can group on is not a figure.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
 from typing import Any
 
 # Columns the shared builders emit that say nothing in a folder run.
-OMITTED_COLUMNS = frozenset({"deployment_id", "notes"})
-
-
-def folder_run_columns(headers: list[str]) -> list[int]:
-    """The indices of the columns a folder run keeps, in order. For a
-    table written row by row (the Frames table), which cannot go through
-    ``folder_run_table`` as one list."""
-    return [i for i, h in enumerate(headers) if h not in OMITTED_COLUMNS]
+OMITTED_COLUMNS = frozenset(
+    {
+        "site_name",
+        "latitude",
+        "longitude",
+        "site_tags",
+        "deployment_id",
+        "deployment_start",
+        "deployment_end",
+        "deployment_tags",
+        "trap_nights",
+        "notes",
+    }
+)
 
 
 def folder_run_table(
     headers: list[str],
-    rows: list[list[Any]],
-) -> tuple[list[str], list[list[Any]]]:
+    rows: Iterable[list[Any]],
+) -> tuple[list[str], Iterator[list[Any]]]:
     """Return `(headers, rows)` without `OMITTED_COLUMNS`.
 
-    Input is not mutated. Tables that carry none of the omitted columns
-    pass through unchanged.
+    ``rows`` is mapped lazily, one row at a time, so a streamed table stays
+    streamed. Input is not mutated. Tables that carry none of the omitted
+    columns pass through unchanged.
     """
-    keep = folder_run_columns(headers)
+    keep = [i for i, h in enumerate(headers) if h not in OMITTED_COLUMNS]
     return (
         [headers[i] for i in keep],
-        [[row[i] for i in keep] for row in rows],
+        ([row[i] for i in keep] for row in rows),
     )

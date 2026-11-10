@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronsUpDown, Pencil, Plus, type LucideIcon } from "lucide-react";
+import { Check, ChevronsUpDown, Pencil, Plus, Trash2, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../../lib/utils";
 import { getSpeciesColor } from "../../utils/species-colors";
@@ -24,6 +24,7 @@ import {
   CommandList,
 } from "../ui/command";
 import { TaxonomySheet } from "./TaxonomySheet";
+import { DeleteCustomLabelDialog } from "./DeleteCustomLabelDialog";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 import type { CustomLabelResponse } from "../../api/types";
 import { invalidateLabelQueries } from "../../lib/invalidate-label-queries";
@@ -59,10 +60,10 @@ function TaxonomyCaption({
   );
 }
 
-// Five, matching the 1-5 quick-label slots: one number for "the labels
-// this project keeps at hand". Three was too few — a typical project
-// cycles 4-6 common taxa (beta feedback), so the one needed most kept
-// falling off the list.
+// Five recent labels. Three was too few: a typical project cycles 4 to 6
+// common taxa (beta feedback), so the one needed most kept falling off
+// the list. Not tied to the number of quick-label slots, which is a
+// separate choice.
 const RECENT_LABELS_MAX = 5;
 
 function getRecentLabelKeys(projectId?: string): string[] {
@@ -140,6 +141,7 @@ export function LabelPicker({
   const [search, setSearch] = useState("");
   const [taxonomyLabel, setTaxonomyLabel] = useState<CustomLabelResponse | null>(null);
   const [taxonomySheetOpen, setTaxonomySheetOpen] = useState(false);
+  const [deleteLabel, setDeleteLabel] = useState<CustomLabelResponse | null>(null);
   const pendingOptionRef = useRef<LabelOption | null>(null);
   // Set by "Add new label" so the taxonomy sheet opens only once this
   // dialog has finished closing (see onCloseAutoFocus below).
@@ -355,7 +357,7 @@ export function LabelPicker({
                       onSelect={() => handleSelect(opt)}
                       className="odd:bg-muted/40"
                     >
-                      <code className="bg-zinc-100 text-zinc-500 px-1 rounded text-[10px] mr-1.5">
+                      <code className="bg-muted text-muted-foreground px-1 rounded text-[10px] mr-1.5">
                         {key}
                       </code>
                       <div
@@ -497,10 +499,11 @@ export function LabelPicker({
                         <span>{opt.displayName}</span>
                         <TaxonomyCaption commonName={opt.label} caption={opt.taxonomyCaption} />
                       </div>
-                      <span className="ml-auto flex items-center gap-0.5 shrink-0">
+                      <span className="ml-auto flex items-center gap-1.5 shrink-0">
                         <button
                           type="button"
                           className="p-0.5 rounded hover:bg-accent opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Edit label"
                           onClick={(e) => {
                             e.stopPropagation();
                             const cl = customLabelsMap.get(opt.customId!);
@@ -511,6 +514,18 @@ export function LabelPicker({
                           }}
                         >
                           <Pencil className="h-3 w-3 text-muted-foreground" />
+                        </button>
+                        <button
+                          type="button"
+                          className="p-0.5 rounded hover:bg-accent opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Delete label (removed everywhere)"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const cl = customLabelsMap.get(opt.customId!);
+                            if (cl) setDeleteLabel(cl);
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3 text-muted-foreground" />
                         </button>
                         <Check
                           className={cn(
@@ -560,6 +575,16 @@ export function LabelPicker({
           open={taxonomySheetOpen}
           onOpenChange={handleTaxonomySheetClose}
           onCreated={handleTaxonomySheetCreated}
+        />
+      )}
+      {projectId && (
+        <DeleteCustomLabelDialog
+          label={deleteLabel}
+          projectId={projectId}
+          open={deleteLabel !== null}
+          onOpenChange={(next) => {
+            if (!next) setDeleteLabel(null);
+          }}
         />
       )}
     </>

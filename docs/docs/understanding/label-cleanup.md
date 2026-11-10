@@ -7,9 +7,11 @@ title: How labels get cleaned up
 
 The label you see is not always what the model said. Between the model and your screen, AddaxAI cleans up the results in a few steps. This page explains what they do, so a label that surprises you still makes sense.
 
-## 1. Empty results are dropped
+## 1. Empty results are set aside, not thrown away
 
-Some models can answer "nothing here", with labels like blank, empty or false detection. When that is the model's top answer, the detection is dropped. So a box that would have read "Animal 68%, false detection 80%" never reaches your results at all. If every detection in a file is dropped, the file is marked blank.
+Some models can answer "nothing here", with labels like blank, empty or false detection. When that is the model's top answer, the box is kept with that label, but it is not counted: it draws no box on the photo, it is not an observation on the Counts page, it is in no chart, and a file with nothing else on it is marked blank. So a box that reads "Animal 68%, false detection 80%" is a box the detector found and the species model rejected.
+
+The model can be wrong about that, so the box is not hidden from you. It is a card on the Labels page like any other, with the label the model gave it. Press Enter to agree, or relabel it if there is an animal after all, and it counts from then on. The detections table and the recognition file carry these boxes too, with the model's label, so nothing the AI found is lost.
 
 ## 2. One species per animal in a video
 
@@ -40,3 +42,5 @@ Two things follow from the steps above. Your own corrections are never touched, 
 ## Changing it
 
 Steps 3 and 4 are project settings. You can turn rollup off, and you can make smoothing milder or stronger or turn it off. Steps 1 and 2 always run.
+
+Rollup also decides what happens to species you left out of your selection. With rollup on, a photo the model reads as a species you excluded is moved up to the nearest group you did allow, with the model's full confidence. With rollup off, the excluded species are simply dropped and the next best species from your selection becomes the label, at the score the model gave it. If that score is below 1%, the animal stays unlabelled instead.

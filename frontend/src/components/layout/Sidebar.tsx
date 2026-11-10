@@ -23,6 +23,7 @@ import {
   ChevronRight,
   Download,
   GanttChartSquare,
+  Gauge,
   Grid3x3,
   LayoutDashboard,
   Lightbulb,
@@ -123,6 +124,11 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
           icon: Table2,
           label: "Class performance",
         },
+        {
+          to: `/projects/${projectId}/insights/calibration`,
+          icon: Gauge,
+          label: "Calibration",
+        },
       ],
     },
     { to: `/projects/${projectId}/export`, icon: Download, label: "Export" },
@@ -164,7 +170,7 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
           put. Keep the two in step if either padding changes. */}
       <aside
         className={cn(
-          "fixed left-0 top-0 flex h-screen flex-col border-r bg-white transition-[width] duration-200",
+          "fixed left-0 top-0 flex h-screen flex-col border-r bg-card transition-[width] duration-200",
           collapsed ? "w-[72px]" : "w-64",
         )}
       >
@@ -179,15 +185,30 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
           )}
         >
           <NavLink to="/" aria-label="Home" title="Home">
-            <img
-              src={
-                collapsed
-                  ? "/branding/logo-mark.png"
-                  : "/branding/logo-wordmark.png"
-              }
-              alt="AddaxAI"
-              className={collapsed ? "h-9 w-9" : "h-14 w-auto"}
-            />
+            {/* The mark (teal squircle) works on both themes; the
+                wordmark's teal text drowns on dark, so the expanded
+                sidebar swaps to the cream-text asset. An asset swap,
+                not a colour, hence the sanctioned dark: classes. */}
+            {collapsed ? (
+              <img
+                src="/branding/logo-mark.png"
+                alt="AddaxAI"
+                className="h-9 w-9"
+              />
+            ) : (
+              <>
+                <img
+                  src="/branding/logo-wordmark.png"
+                  alt="AddaxAI"
+                  className="h-14 w-auto dark:hidden"
+                />
+                <img
+                  src="/branding/logo-wordmark-ondark.png"
+                  alt="AddaxAI"
+                  className="hidden h-14 w-auto dark:block"
+                />
+              </>
+            )}
           </NavLink>
         </div>
 
@@ -329,7 +350,7 @@ function LeafNavLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
         <item.icon className="h-4 w-4" />
         {item.dot && (
           <span
-            className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-red-600 ring-2 ring-white"
+            className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-destructive ring-2 ring-card"
             aria-hidden
           />
         )}

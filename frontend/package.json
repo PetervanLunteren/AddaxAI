@@ -8,11 +8,13 @@
     "build": "vite build",
     "build:check": "tsc -b && vite build",
     "typecheck": "tsc -b",
+    "test": "vitest run",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
+    "@maplibre/maplibre-gl-leaflet": "^0.1.4",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-collapsible": "^1.1.12",
@@ -45,7 +47,6 @@
     "konva": "^10.2.0",
     "leaflet": "^1.9.4",
     "maplibre-gl": "^5.15.0",
-    "next-themes": "^0.4.6",
     "react": "^19.2.0",
     "react-chartjs-2": "^5.3.1",
     "react-day-picker": "^9.14.0",
@@ -84,6 +85,7 @@
     "tailwindcss-animate": "^1.0.7",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
-    "vite": "^7.2.4"
+    "vite": "^7.2.4",
+    "vitest": "^4.1.11"
   }
 }

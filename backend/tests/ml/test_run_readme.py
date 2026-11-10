@@ -19,6 +19,7 @@ from tests.conftest import (
     make_detection,
     make_file,
     make_project,
+    make_track,
     make_video_box,
 )
 
@@ -334,3 +335,27 @@ def test_readme_has_no_skipped_section_when_nothing_was_skipped(db, tmp_path):
 
     assert "Files skipped" not in text
     assert "could not be read" not in text
+
+
+def test_readme_counts_only_the_visible_frame(db):
+    """The readme's per-category counts describe the same boxes as the
+    tables next to it: a video's cards, one per track. A sibling frame of
+    a track, and an untracked box even when verified, is not a card."""
+    from app.ml.postprocessing_outputs.run_readme import _detection_counts_by_category
+
+    project = make_project(db, name="readme-frames", timezone="UTC", counting_threshold=0.5)
+    deployment = make_deployment(db, project_id=project.id, folder_path="/src")
+    video = make_file(
+        db, deployment_id=deployment.id, file_type="video", best_frame_number=3
+    )
+    deer = make_track(db, file_id=video.id, start_frame=3, end_frame=7,
+                      representative_frame_number=3)
+    car = make_track(db, file_id=video.id, track_key=2, start_frame=8, end_frame=8,
+                     representative_frame_number=8)
+    make_detection(db, file_id=video.id, frame_number=3, track_id=deer.id)
+    make_detection(db, file_id=video.id, frame_number=7, track_id=deer.id)
+    make_detection(db, file_id=video.id, frame_number=8, category="vehicle", track_id=car.id)
+    make_detection(db, file_id=video.id, frame_number=9, verified=True)
+    db.commit()
+
+    assert _detection_counts_by_category(db, project.id, 0.5) == {"animal": 1, "vehicle": 1}

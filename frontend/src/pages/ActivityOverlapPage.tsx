@@ -26,8 +26,7 @@ import type {
 } from "../api/statistics";
 import {
   ActivityOverlapChart,
-  SPECIES_A_COLOR,
-  SPECIES_B_COLOR,
+  useSpeciesSlotColors,
 } from "../components/plots/ActivityOverlapChart";
 import {
   ActivityOverlapFilterBar,
@@ -232,6 +231,7 @@ function OverlapReadout({ data }: OverlapReadoutProps) {
 }
 
 export function ActivityOverlapPage() {
+  const slotColors = useSpeciesSlotColors();
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -475,7 +475,7 @@ export function ActivityOverlapPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b bg-white/80 backdrop-blur-sm">
+      <header className="border-b bg-card/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <div>
@@ -554,13 +554,13 @@ export function ActivityOverlapPage() {
             <div className="space-y-2 border-t pt-3">
               <SpeciesLegend
                 species={data.species_a}
-                swatchColor={SPECIES_A_COLOR}
+                swatchColor={slotColors.a}
                 commonName={commonNameByKey.get(data.species_a.label)}
               />
               {data.species_b && (
                 <SpeciesLegend
                   species={data.species_b}
-                  swatchColor={SPECIES_B_COLOR}
+                  swatchColor={slotColors.b}
                   commonName={commonNameByKey.get(data.species_b.label)}
                 />
               )}

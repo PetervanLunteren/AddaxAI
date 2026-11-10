@@ -90,8 +90,8 @@ export function ProjectSettingsModal({
         <div className="space-y-4 py-4">
           {/* Detection model */}
           <div>
-            <p className="text-sm font-medium text-gray-700 mb-1">Detection model</p>
-            <p className="text-sm text-gray-900">
+            <p className="text-sm font-medium text-muted-foreground mb-1">Detection model</p>
+            <p className="text-sm text-foreground">
               {detectionModel?.emoji} {detectionModel?.friendly_name || project.detection_model_id}
               {classificationModel?.full_image_cls && (
                 <span className="text-muted-foreground">
@@ -104,8 +104,8 @@ export function ProjectSettingsModal({
 
           {/* Classification model */}
           <div>
-            <p className="text-sm font-medium text-gray-700 mb-1">Classification model</p>
-            <p className="text-sm text-gray-900">
+            <p className="text-sm font-medium text-muted-foreground mb-1">Classification model</p>
+            <p className="text-sm text-foreground">
               {classificationModel?.emoji}{" "}
               {classificationModel?.friendly_name || project.classification_model_id || "None"}
             </p>
@@ -114,21 +114,21 @@ export function ProjectSettingsModal({
           {/* Label selection */}
           {project.classification_model_id && (
             <div>
-              <p className="text-sm font-medium text-gray-700 mb-1">Label selection</p>
-              <p className="text-sm text-gray-900">{selectedCount}</p>
+              <p className="text-sm font-medium text-muted-foreground mb-1">Label selection</p>
+              <p className="text-sm text-foreground">{selectedCount}</p>
             </div>
           )}
 
           {/* Video frame rate */}
           <div>
-            <p className="text-sm font-medium text-gray-700 mb-1">Video frame rate</p>
-            <p className="text-sm text-gray-900">{project.video_fps} FPS</p>
+            <p className="text-sm font-medium text-muted-foreground mb-1">Video frame rate</p>
+            <p className="text-sm text-foreground">{project.video_fps} FPS</p>
           </div>
 
           {/* Detection image size */}
           <div>
-            <p className="text-sm font-medium text-gray-700 mb-1">Detection image size</p>
-            <p className="text-sm text-gray-900">
+            <p className="text-sm font-medium text-muted-foreground mb-1">Detection image size</p>
+            <p className="text-sm text-foreground">
               {project.detection_image_size
                 ? `${project.detection_image_size} px`
                 : "Model default"}
@@ -137,8 +137,8 @@ export function ProjectSettingsModal({
 
           {/* Image augmentation */}
           <div>
-            <p className="text-sm font-medium text-gray-700 mb-1">Image augmentation</p>
-            <p className="text-sm text-gray-900">
+            <p className="text-sm font-medium text-muted-foreground mb-1">Image augmentation</p>
+            <p className="text-sm text-foreground">
               {project.detection_augment ? "On" : "Off"}
             </p>
           </div>

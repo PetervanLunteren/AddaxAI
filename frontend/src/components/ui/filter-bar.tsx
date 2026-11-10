@@ -238,7 +238,7 @@ export function FilterBar({
   }
 
   return (
-    <div className="rounded-lg border bg-white pt-2 pb-3 px-3 space-y-3">
+    <div className="rounded-lg border bg-card pt-2 pb-3 px-3 space-y-3">
       <div className={`grid grid-cols-1 sm:grid-cols-2 ${gridCols} gap-4`}>
         {fields.map((field) => (
           <div key={field.key} className="space-y-1.5">

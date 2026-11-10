@@ -16,6 +16,43 @@ This document outlines the conventions, patterns, and design decisions for the A
 
 ## Design System
 
+### Dark mode (read this before writing any colour)
+
+The app has a light and a dark theme (`View → Theme` in the app menu,
+default follows the OS). Every colour lives in `src/index.css`: the
+shadcn HSL triplets in `:root` / `.dark`, plus a second generation of
+full-value tokens (teal ink, status inks, the four intent trios,
+chart grid). Changing a colour later is one line in that file.
+
+The rules that keep it that way:
+
+- **Components never carry a hex or a raw Tailwind colour.** No
+  `bg-white`, `text-gray-500`, `bg-red-50`, `#0f6064`. Use the
+  semantic classes: `bg-card`, `bg-background`, `text-foreground`,
+  `text-muted-foreground`, `border-border`, `border-input`,
+  `bg-muted`, `hover:bg-accent`.
+- **No `dark:` variants for colours.** The token resolves per theme by
+  itself. The two sanctioned exceptions: asset swaps (the sidebar
+  wordmark) and the `-900`-on-tint body texts inside Callout-style
+  boxes, which keep their light shade with a `dark:text-*-ink`
+  override.
+- **Teal as text, link or icon is `text-primary-ink`** (or
+  `var(--primary-ink)` in an inline style). Raw `#0f6064` as text is
+  2.5:1 on dark and unreadable. Teal fills (buttons, badges) stay
+  `bg-primary`.
+- **Feedback colours use the intent trios**: `bg-{destructive,warning,
+  info,success}-subtle` + `text-*-ink` + `border-*-border`. Status
+  text uses `text-good-ink` / `text-bad-ink` / `text-middle`.
+- **Charts read their colours from `useChartColors()`**
+  (`src/lib/theme.ts`) per render: ticks/grid/legend colours are set
+  explicitly, never left to Chart.js defaults. SVG charts may use
+  `hsl(var(--...))` / `var(--chart-grid)` directly. A tint from a
+  token value goes through `withAlpha` or CSS `color-mix`, never hex
+  concatenation.
+- **Theme-independent by design** (do not tokenise): species pill
+  colours (backend map, must match exports), the annotated-export
+  drawing colours, map marker hexes, whites over photos or video.
+
 ### Colors
 
 We use a HSL-based color system defined in `src/index.css`:
@@ -56,6 +93,12 @@ Good / active   = #0f6064
 2 = #ff8945
 3 = #71b7ba
 4 = #882000
+
+In components use the tokens `var(--chart-1)` to `var(--chart-4)` from
+`src/index.css`, never the hex. They are fills for categories that are
+names, not magnitudes (sex, behaviour), assigned by position. They are
+separate from the inks on purpose: in dark mode teal ink sits next to
+`--middle` and bad ink next to the orange, so two categories read as one.
 
 ### Use this gradient if you need a gradient somewhere
 For example for gradients in heatmaps or other multi level color scales
@@ -107,7 +150,7 @@ per-page styling experiments.
 
 ```tsx
 <div className="min-h-screen">
-  <header className="border-b bg-white/80 backdrop-blur-sm">
+  <header className="border-b bg-card/80 backdrop-blur-sm">
     <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
       <div className="flex items-center justify-between">
         <div>
@@ -131,7 +174,7 @@ per-page styling experiments.
 **Rules:**
 
 - **Outer wrapper**: `<div className="min-h-screen">` — no background. The body of the app supplies the page background.
-- **Header element**: must be a real `<header>` with `border-b bg-white/80 backdrop-blur-sm`. The translucent surface + bottom border is the canonical visual treatment.
+- **Header element**: must be a real `<header>` with `border-b bg-card/80 backdrop-blur-sm`. The translucent surface + bottom border is the canonical visual treatment (card token, never `bg-white`, so dark mode works).
 - **Header inner container**: `mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8`. Same max-width as the body.
 - **Title**: `text-2xl font-bold tracking-tight`. Always `text-2xl` — never `text-3xl`. Always include `tracking-tight`.
 - **Subtitle**: `text-sm text-muted-foreground`. No `mt-1` (the parent block handles spacing).
@@ -227,6 +270,17 @@ const [open, setOpen] = useState(false);
   </DialogContent>
 </Dialog>
 ```
+
+### Card help: subtitle always, (i) only for method
+
+Every dashboard and insights card has a short subtitle under its title
+that says what it shows. A card gets an (i) popover
+(`DashboardAboutPopover`) only when its numbers rest on a method a reader
+needs to trust them: what an observation is, MaxN, frequency against
+abundance, what "verified" counts, what the day and night bands mean.
+Never add an (i) that repeats the subtitle: empty ones teach people to
+skip the useful ones. Form fields follow the same idea with inline
+captions instead of (i) tooltips.
 
 ### API Query Pattern
 

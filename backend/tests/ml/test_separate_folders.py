@@ -210,6 +210,28 @@ def test_separate_skips_missing_source(db, tmp_path):
     assert any("nope" in err for err in result.errors)
 
 
+def test_separate_does_not_report_a_missing_file_it_would_skip(db, tmp_path):
+    """The disk check runs after the filters: a missing empty file with
+    empties off is nobody's business, not an issue in the result."""
+    project = make_project(db, name="sep-missing-skipped")
+    dep = make_deployment(db, project_id=project.id)
+    make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=str(tmp_path / "nope" / "IMG_Y.jpg"),
+        observation_type="blank",
+    )
+
+    target = tmp_path / "out"
+    result = separate_into_folders(
+        db, project.id, _ctx(target), media_threshold=0.5, include_empty=False
+    )
+
+    assert result.copied_count == 0
+    assert result.skipped_missing_source == 0
+    assert result.errors == []
+
+
 def test_separate_preserves_original(db, tmp_path):
     project = make_project(db, name="sep-preserve")
     dep = make_deployment(db, project_id=project.id)

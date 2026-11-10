@@ -15,6 +15,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.api.crud import detection as detection_crud
 from app.api.crud import file as file_crud
+from app.api.crud import undo as undo_crud
 from app.api.crud.event_observation import (
     get_event_ids_for_detections,
     get_project_threshold_for_detections,
@@ -25,6 +26,7 @@ from app.api.schemas.detection import (
     DetectionResponse,
     DetectionUpdate,
 )
+from app.api.schemas.undo import UndoSnapshot
 from app.db.base import get_db
 from app.ml.label_exclusion import NON_WILDLIFE_CATEGORIES
 from app.models import Detection, File
@@ -189,16 +191,28 @@ def delete_detection(
 @router.get("/{detection_id}/crop")
 def get_detection_crop(
     detection_id: str,
-    size: int = Query(200, ge=32, le=512, description="Crop size in pixels"),
+    size: int = Query(
+        200, ge=32, le=1024, description="Long side of the crop in pixels"
+    ),
+    aspect: float | None = Query(
+        None,
+        ge=0.25,
+        le=4.0,
+        description=(
+            "Width / height of a shaped crop that slides inside the photo; "
+            "omit for the centred square the Labels grid uses"
+        ),
+    ),
     db: Session = Depends(get_db),
 ):
     """
     Serve a cropped thumbnail of a detection.
 
-    Generates and caches a square JPEG crop from the source image
-    at the detection's bounding box location.
+    Generates and caches a JPEG crop from the source image at the
+    detection's bounding box location: a centred square by default, or
+    a frame of the given `aspect` that fills with the photo around it.
     """
-    jpeg_bytes = get_or_create_crop(detection_id, size, db)
+    jpeg_bytes = get_or_create_crop(detection_id, size, db, aspect)
     if not jpeg_bytes:
         raise HTTPException(status_code=404, detail="Could not generate crop")
 
@@ -254,11 +268,6 @@ class BulkRelabelRequest(BaseModel):
     expand_tracks: bool = True
 
 
-class BulkRevertRequest(BaseModel):
-    detection_ids: list[str] = Field(..., max_length=500)
-    expand_tracks: bool = True
-
-
 class BulkDismissRequest(BaseModel):
     detection_ids: list[str] = Field(..., max_length=500)
     # True hides the cohort from suggestions; False undoes a dismiss.
@@ -306,18 +315,26 @@ def bulk_verify_detections(
     body: BulkVerifyRequest,
     db: Session = Depends(get_db),
 ):
-    """Bulk verify/unverify detections (max 500), whole tracks included."""
+    """Bulk verify/unverify detections (max 500), whole tracks included.
+
+    `before` is the state to send to `POST /api/undo` to take it back. It
+    holds every box the verdict can write, so with the cascade on that is
+    the whole of each track (the card's label reaches its siblings), not
+    only the ids sent: undo then puts the track back as one.
+    """
+    touched = (
+        db.query(Detection)
+        .filter(_cascade(body.detection_ids, body.expand_tracks))
+        .all()
+    )
+    before = undo_crud.snapshot(db, touched)
     now = datetime.now(UTC) if body.verified else None
     if body.verified and body.expand_tracks:
         # Each card carries its own label to its own track. Not when the
         # cascade is off: there the person is judging single frames, and
         # the frame is the whole of what they acted on.
-        cards = (
-            db.query(Detection)
-            .filter(Detection.id.in_(body.detection_ids))
-            .all()
-        )
-        detection_crud.apply_card_labels(db, cards)
+        chosen = set(body.detection_ids)
+        detection_crud.apply_card_labels(db, [d for d in touched if d.id in chosen])
     # The flag lands on the given ids and their tracks' cards; the label
     # already reached the siblings above. With the cascade off (an opened
     # track) a verdict is about the frames picked and nothing else. See
@@ -345,16 +362,10 @@ def bulk_verify_detections(
     db.commit()
     # Verifying can flip observation_type (verified detections always pass),
     # so re-derive it for every touched file.
-    file_ids = {
-        fid
-        for (fid,) in db.query(Detection.file_id)
-        .filter(Detection.id.in_(body.detection_ids))
-        .all()
-    }
-    for fid in file_ids:
+    for fid in {det.file_id for det in touched}:
         file_crud.recalculate_observation_type(db, fid)
     _recalculate_max_n(db, body.detection_ids)
-    return {"updated_count": updated}
+    return {"updated_count": updated, "before": before}
 
 
 @router.post("/bulk-dismiss")
@@ -386,13 +397,15 @@ def bulk_relabel_detections(
     body: BulkRelabelRequest,
     db: Session = Depends(get_db),
 ):
-    """Bulk relabel detections (max 500), whole tracks included. Sets
-    classification_method='human'."""
+    """Bulk relabel detections (max 500). Sets classification_method='human'.
+
+    `before` is the state to send to `POST /api/undo` to take it back.
+    """
     # Nothing asked for is nothing done, not a missing row. Answered before
     # the query so the code below can assume a non-empty list (it reads
     # `detections[0]` to resolve the taxonomy). Matches bulk-verify.
     if not body.detection_ids:
-        return {"updated_count": 0}
+        return {"updated_count": 0, "before": UndoSnapshot()}
 
     detections = (
         db.query(Detection)
@@ -401,6 +414,7 @@ def bulk_relabel_detections(
     )
     if not detections:
         raise HTTPException(status_code=404, detail="No detections found")
+    before = undo_crud.snapshot(db, detections)
 
     # Resolve taxonomy ID for the new label
     new_taxonomy_id = None
@@ -495,93 +509,4 @@ def bulk_relabel_detections(
         file_crud.recalculate_observation_type(db, fid)
 
     _recalculate_max_n(db, body.detection_ids)
-    return {"updated_count": len(detections)}
-
-
-@router.post("/bulk-revert-to-original")
-def bulk_revert_to_original(
-    body: BulkRevertRequest,
-    db: Session = Depends(get_db),
-):
-    """Undo human label edits / verifications (max 500).
-
-    Restores each detection to the machine's final label from the
-    ``original_*`` columns (the surfaced post-rollup / post-smoothing call,
-    which relabeling never overwrites): label, label_confidence, taxonomy
-    FK, and display names, with classification_method reset to "machine"
-    (its fresh-processed value). Clears the verified flag. Category is left
-    as-is — there is no original category stored, and the label actions do
-    not change it.
-
-    Powers the labels grid's Undo. Returns the reverted rows so the
-    client can patch its grid in place without a re-sort.
-    """
-    from app.api.crud.detection import _resolve_detection_taxonomy
-    from app.ml.taxonomic_rollup import resolve_label_names
-    from app.models.label_taxonomy import LabelTaxonomy
-
-    if not body.detection_ids:
-        return {"reverted": []}
-
-    detections = (
-        db.query(Detection)
-        .filter(_cascade(body.detection_ids, body.expand_tracks))
-        .all()
-    )
-    if not detections:
-        raise HTTPException(status_code=404, detail="No detections found")
-
-    reverted: list[dict] = []
-    # As in `bulk_relabel`: the ids are the boxes the undo is about, the
-    # rest are their tracks' siblings, and a sibling a person labelled by
-    # hand keeps it. Undoing a card verify used to wipe the frames someone
-    # had relabelled inside that track, the way a tracker that switched
-    # animals is put right.
-    chosen = set(body.detection_ids)
-    for det in detections:
-        if det.id not in chosen and det.classification_method == "human":
-            continue
-        orig = det.original_label
-        if orig:
-            tax_id = _resolve_detection_taxonomy(db, det, orig)
-            tax = db.query(LabelTaxonomy).get(tax_id) if tax_id else None
-            common, scientific = resolve_label_names(orig, tax, det.category or "")
-            det.label = orig
-            det.label_confidence = det.original_label_confidence
-            det.label_taxonomy_id = tax_id
-            det.scientific_name = scientific
-            det.common_name = common
-            det.classification_method = "machine"
-        else:
-            det.label = None
-            det.label_confidence = None
-            det.label_taxonomy_id = None
-            det.scientific_name = None
-            det.common_name = None
-            det.classification_method = None
-        det.verified = False
-        det.verified_at_utc = None
-        reverted.append(
-            {
-                "detection_id": det.id,
-                "label": det.label,
-                "category": det.category,
-                "label_confidence": det.label_confidence,
-                "label_taxonomy_id": det.label_taxonomy_id,
-                "scientific_name": det.scientific_name,
-                "common_name": det.common_name,
-                "verified": det.verified,
-            }
-        )
-
-    file_crud.recompute_file_verified_for_detections(db, body.detection_ids)
-    db.commit()
-
-    # Unverifying can flip observation_type back (a box that only passed
-    # because it was verified no longer counts), so recompute per file.
-    file_ids = {det.file_id for det in detections}
-    for fid in file_ids:
-        file_crud.recalculate_observation_type(db, fid)
-
-    _recalculate_max_n(db, body.detection_ids)
-    return {"reverted": reverted}
+    return {"updated_count": len(detections), "before": before}

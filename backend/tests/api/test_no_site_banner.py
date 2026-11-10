@@ -17,7 +17,7 @@ from app.api.crud.statistics import (
     get_activity_pattern,
     get_observation_rate_map,
 )
-from tests.api.test_export import _run_camtrap_dp_export
+from tests.api.test_export import _export, _run_camtrap_dp_export
 from tests.conftest import (
     make_deployment,
     make_event_with_files,
@@ -84,7 +84,7 @@ def test_activity_pattern_reports_missing_sites(db):
 def test_export_deployments_csv_writes_blanks_for_null_site(client, db):
     project, _site, _d1, _d2, _dep_null = _seed_project_with_mixed_sites(db)
 
-    resp = client.get(f"/api/projects/{project.id}/export/deployments?format=csv")
+    resp = _export(client, project.id, "deployments")
     assert resp.status_code == 200
     body = resp.content.decode("utf-8")
     lines = body.strip().splitlines()
@@ -118,12 +118,15 @@ def test_export_camtrap_dp_omits_a_deployment_with_no_site(client, db):
     assert dep_with_site.id in ids
 
 
-def test_export_camtrap_dp_422_when_only_null_sites(client, db):
+def test_export_camtrap_dp_422_when_only_null_sites(client, db, tmp_path):
     project = make_project(db)
     make_deployment(db, project_id=project.id, site_id=None)
     db.commit()
 
     # 422 fires inside /prepare; bypass the helper to inspect the
     # prepare response directly without trying to run the worker.
-    resp = client.post(f"/api/projects/{project.id}/export/camtrap-dp/prepare")
+    resp = client.post(
+        f"/api/projects/{project.id}/export/camtrap-dp/prepare",
+        json={"output_dir": str(tmp_path)},
+    )
     assert resp.status_code == 422

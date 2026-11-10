@@ -14,6 +14,17 @@ export const PILL_PAD_X = 6;
 export const PILL_PAD_Y = 4;
 export const LINE_GAP = 2;
 export const FONT = 12; // both pill lines share one size
+/**
+ * The one font every box label is measured and drawn with: the system
+ * UI font, the same one the rest of the app shows. Never a named font:
+ * a Mac with a broken copy of one still "has" it, so the browser never
+ * falls back and draws every glyph as a boxed "?" (reported 2026-11-04),
+ * and Linux may not have it at all. Konva's own default is such a named
+ * font, so every Konva Text here must pass this. Pinned by
+ * `detection-overlay.test.ts`.
+ */
+export const OVERLAY_FONT_FAMILY =
+  'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 export const TEXT_START_X = PILL_PAD_X; // no dot, text starts at the pad
 
 export const BBOX_STROKE_WIDTH = 2;
@@ -41,7 +52,7 @@ export function measureTextWidth(
   if (!_measureCtx) {
     _measureCtx = document.createElement("canvas").getContext("2d")!;
   }
-  _measureCtx.font = `${bold ? "bold " : ""}${fontSize}px Arial, sans-serif`;
+  _measureCtx.font = `${bold ? "bold " : ""}${fontSize}px ${OVERLAY_FONT_FAMILY}`;
   return _measureCtx.measureText(text).width;
 }
 

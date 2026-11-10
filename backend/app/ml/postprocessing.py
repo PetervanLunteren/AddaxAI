@@ -21,6 +21,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from app.core.confidence import SCORE_DIGITS
 from app.core.job_cancellation import (
     JobCancelledError,
     is_cancel_requested,
@@ -291,21 +292,28 @@ def run_postprocessing_for_deployment(
         logger.info("Rebuilt classification_category_descriptions to 7-token format")
 
     # Apply label exclusion in memory (JSON on disk stays as ground truth).
-    # When taxonomy is available, this is a no-op: excluded species are
-    # handled by the geofence-aware rollup below instead.
+    # One owner per run: with rollup on, the geofence-aware rollup below
+    # redirects an excluded top-1 to its nearest allowed ancestor and
+    # needs the full classification list to do so; with rollup off, the
+    # excluded classes are simply dropped here and the next best included
+    # class becomes the label, at its own score. This used to defer to
+    # rollup whenever a taxonomy.csv existed, whether or not rollup was
+    # on, so with rollup off nothing handled the excluded top-1: it was
+    # written to the database and then erased by the final sweep in
+    # `update_database_from_smoothed_results`. A user who excluded 86 of
+    # 87 classes lost 736 of 799 labels that way (2026-09-06).
     from app.ml.label_exclusion import apply_label_exclusion_to_results
 
     cls_model_dir = _find_classification_model_dir(project, db)
-    exclusion_taxonomy = None
-    if cls_model_dir:
-        _tax = cls_model_dir / "taxonomy.csv"
-        if _tax.exists():
-            from app.ml.taxonomic_rollup import load_taxonomy_lookup
-
-            exclusion_taxonomy = load_taxonomy_lookup(_tax)
-
+    rollup_available = bool(
+        project.taxonomic_rollup
+        and cls_model_dir
+        and (cls_model_dir / "taxonomy.csv").exists()
+    )
     apply_label_exclusion_to_results(
-        md_results, project.excluded_classes, exclusion_taxonomy
+        md_results,
+        project.excluded_classes,
+        rollup_handles_exclusion=rollup_available,
     )
 
     # Every frame of a track gets the species its frames agree on. After
@@ -432,6 +440,8 @@ def run_postprocessing_for_deployment(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             env=clean_python_env(),
         )
         timeout_s = _smoothing_timeout_s(len(md_results.get("images") or []))
@@ -495,7 +505,6 @@ def update_database_from_smoothed_results(
     smoothed_results: dict,
     deployment_folder: Path,
     db: Session,
-    taxonomy_lookup: dict[str, dict[str, str]] | None = None,
     excluded_classes: list[str] | None = None,
     excluded_taxonomy_ids: set[str] | None = None,
     taxonomy_name_to_id: (
@@ -517,7 +526,6 @@ def update_database_from_smoothed_results(
         smoothed_results: Smoothed MegaDetector-format dict
         deployment_folder: Path to deployment folder
         db: Database session
-        taxonomy_lookup: Optional taxonomy for scientific_name lookup
         excluded_classes: Optional list of excluded label names
             (legacy, used as fallback when excluded_taxonomy_ids
             is not provided).
@@ -530,7 +538,10 @@ def update_database_from_smoothed_results(
     Returns:
         Dict with counts: {updated, unchanged, errors}
     """
+    from app.ml.taxonomy_db import clear_classification, ensure_builtin_labels
+
     class_names = smoothed_results.get("classification_categories", {})
+    builtin_ids = ensure_builtin_labels(db)
 
     # Build lookup: (file_path, bbox_key, frame_number) -> Detection record.
     # Post-2026-05 every detection points directly at its parent file row
@@ -632,7 +643,7 @@ def update_database_from_smoothed_results(
                 if classifications:
                     top_class_id, top_conf = classifications[0]
                     new_label = class_names.get(str(top_class_id))
-                    new_confidence = float(top_conf)
+                    new_confidence = round(float(top_conf), SCORE_DIGITS)
                 else:
                     new_label = None
                     new_confidence = None
@@ -672,12 +683,29 @@ def update_database_from_smoothed_results(
                         )
                         new_common = format_common_name(new_label)
 
-                if db_det.label != new_label or db_det.label_confidence != new_confidence:
-                    db_det.label = new_label
+                # A stored confidence that only differs in rounding (rows
+                # written with five decimals before SCORE_DIGITS) is
+                # refreshed quietly: it is not a change the user made or
+                # needs to hear about, so no updated count and no file
+                # re-derivation.
+                rounding_only = (
+                    db_det.label == new_label
+                    and new_confidence is not None
+                    and db_det.label_confidence is not None
+                    and round(db_det.label_confidence, SCORE_DIGITS) == new_confidence
+                )
+                if rounding_only:
                     db_det.label_confidence = new_confidence
-                    db_det.scientific_name = new_scientific
-                    db_det.common_name = new_common
-                    db_det.label_taxonomy_id = new_taxonomy_id
+                    unchanged += 1
+                elif db_det.label != new_label or db_det.label_confidence != new_confidence:
+                    if new_label is None:
+                        clear_classification(db_det, builtin_ids)
+                    else:
+                        db_det.label = new_label
+                        db_det.label_confidence = new_confidence
+                        db_det.scientific_name = new_scientific
+                        db_det.common_name = new_common
+                        db_det.label_taxonomy_id = new_taxonomy_id
                     updated += 1
                     changed_file_ids.add(db_det.file_id)
                 else:
@@ -688,8 +716,12 @@ def update_database_from_smoothed_results(
                 errors += 1
 
     # Final sweep: clear any non-verified detection whose label is
-    # still excluded. Catches edge cases where smoothing re-introduces
-    # an excluded label or rollup couldn't find an included ancestor.
+    # still excluded. A safety net, not a step: exclusion is handled
+    # before smoothing (filtered out, or redirected by rollup), so this
+    # should find nothing. It is counted on its own and logged, because
+    # a sweep that fires means a label the user never asked for reached
+    # the database and was then thrown away rather than replaced.
+    swept = 0
     if excluded_taxonomy_ids:
         for det in detections:
             if is_human_decided(det):
@@ -698,26 +730,24 @@ def update_database_from_smoothed_results(
                 det.label_taxonomy_id
                 and det.label_taxonomy_id in excluded_taxonomy_ids
             ):
-                det.label = None
-                det.label_confidence = None
-                det.scientific_name = None
-                det.common_name = None
-                det.label_taxonomy_id = None
+                clear_classification(det, builtin_ids)
                 changed_file_ids.add(det.file_id)
-                updated += 1
+                swept += 1
     elif excluded_classes:
         excluded_lower = {name.lower() for name in excluded_classes}
         for det in detections:
             if is_human_decided(det):
                 continue
             if det.label and det.label.lower() in excluded_lower:
-                det.label = None
-                det.label_confidence = None
-                det.scientific_name = None
-                det.common_name = None
-                det.label_taxonomy_id = None
+                clear_classification(det, builtin_ids)
                 changed_file_ids.add(det.file_id)
-                updated += 1
+                swept += 1
+    updated += swept
+    if swept:
+        logger.warning(
+            f"Exclusion sweep cleared {swept} detection(s) whose label was "
+            f"still an excluded class after postprocessing"
+        )
 
     # Mirror the machine-final label into original_label so exports, the
     # confusion matrix, and "revert to AI" show the label the UI showed,
@@ -725,11 +755,20 @@ def update_database_from_smoothed_results(
     # above (rollup, smoothing, excluded->NULL sweep), so it captures the
     # final state. Verified detections are frozen: human judgment outranks
     # the machine, and postprocessing never touches them.
+    #
+    # The method follows the label: whatever an unverified row reads after
+    # this pass is the machine's call, even when the label text did not
+    # change. A file sign-off writes "human" onto the weak boxes it rejects
+    # and an untick hands them back unverified; without this the machine's
+    # relabel kept that "human" and detections.csv reported a machine label
+    # as a person's. Mirrors the ingest: "machine" with a label, None
+    # without one.
     for det in detections:
         if is_human_decided(det):
             continue
         det.original_label = det.label
         det.original_label_confidence = det.label_confidence
+        det.classification_method = "machine" if det.label else None
 
     # Recompute observation_type for files with changed detections, from
     # the file's passing detections (over the project threshold or
@@ -774,7 +813,8 @@ def update_database_from_smoothed_results(
 
     logger.info(
         f"Database update complete: {updated} updated, {unchanged} unchanged, "
-        f"{errors} errors, {skipped_verified} skipped (verified)"
+        f"{errors} errors, {skipped_verified} skipped (verified), "
+        f"{swept} swept (excluded)"
     )
 
     return {
@@ -791,17 +831,16 @@ def reload_raw_classifications_from_json(
     deployment_folder: Path,
     db: Session,
     excluded_classes: list[str] | None = None,
-    taxonomy_csv_path: Path | None = None,
-    excluded_names: frozenset[str] | None = None,
-    allowed_taxonomy_keys: frozenset[str] | None = None,
 ) -> dict:
     """
     Reload raw (unsmoothed) classifications from JSON back to database.
 
-    Reads the raw JSON back into the DB records, with the two steps that
-    always run: the track vote (a card gets the species its frames agree
-    on) and, when a taxonomy is available, geofence-aware rollup. It is
-    "raw" in the sense of unsmoothed, not of untouched.
+    The path for a project with smoothing and rollup both off: the raw
+    JSON is the result, minus the excluded classes. Nothing rolls up here;
+    it used to, whenever the model shipped a taxonomy.csv, which applied a
+    rollup the user had switched off. The track vote still runs (a card
+    gets the species its frames agree on), so it is "raw" in the sense of
+    unsmoothed, not of untouched.
 
     Args:
         deployment_id: Deployment UUID
@@ -809,9 +848,6 @@ def reload_raw_classifications_from_json(
         deployment_folder: Path to deployment folder
         db: Database session
         excluded_classes: Optional list of label names to exclude
-        taxonomy_csv_path: Optional path to taxonomy.csv for rollup
-        excluded_names: Lowercase excluded species names for rollup
-        allowed_taxonomy_keys: Geofence taxonomy keys for rollup
 
     Returns:
         Dict with counts: {updated, unchanged, errors}
@@ -821,35 +857,13 @@ def reload_raw_classifications_from_json(
 
     from app.ml.label_exclusion import apply_label_exclusion_to_results
 
-    taxonomy_lookup = None
-    if taxonomy_csv_path and taxonomy_csv_path.exists():
-        from app.ml.taxonomic_rollup import load_taxonomy_lookup
-
-        taxonomy_lookup = load_taxonomy_lookup(taxonomy_csv_path)
-
-    apply_label_exclusion_to_results(
-        raw_results, excluded_classes, taxonomy_lookup
-    )
+    apply_label_exclusion_to_results(raw_results, excluded_classes)
 
     # Same vote as the main path, same position (see there).
     voted = vote_tracks(raw_results)
     logger.info(f"Track vote: {voted} cards changed species")
 
-    # Apply geofence-aware rollup (same logic as main postprocessing)
-    if taxonomy_csv_path and taxonomy_csv_path.exists():
-        from app.ml.taxonomic_rollup import (
-            apply_taxonomic_rollup_to_results,
-        )
-
-        rollup_result = apply_taxonomic_rollup_to_results(
-            raw_results,
-            taxonomy_csv_path,
-            excluded_names=excluded_names,
-            allowed_taxonomy_keys=allowed_taxonomy_keys,
-        )
-        raw_results = rollup_result.md_results
-
     return update_database_from_smoothed_results(
-        deployment_id, raw_results, deployment_folder, db, taxonomy_lookup,
+        deployment_id, raw_results, deployment_folder, db,
         excluded_classes=excluded_classes,
     )

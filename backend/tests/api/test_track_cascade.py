@@ -139,10 +139,15 @@ def test_bulk_verify_dismiss_and_undo_reach_the_track(client, db):
 
     # Verify flags the card alone (the label travels separately, see
     # `apply_card_labels`); dismiss is about the animal and still cascades.
-    assert client.post(
+    verify = client.post(
         "/api/detections/bulk-verify",
         json={"detection_ids": [card.id], "verified": True},
-    ).json()["updated_count"] == 1
+    ).json()
+    assert verify["updated_count"] == 1
+    # The undo state covers the whole track, since the label reached it.
+    assert {d["detection_id"] for d in verify["before"]["detections"]} == {
+        b.id for b in boxes["one"]
+    }
     db.expire_all()
     assert card.verified
     assert not any(b.verified for b in boxes["one"] if b.id != card.id)
@@ -155,11 +160,9 @@ def test_bulk_verify_dismiss_and_undo_reach_the_track(client, db):
     assert all(b.suggestion_dismissed for b in boxes["one"])
     assert not any(b.suggestion_dismissed for b in boxes["two"])
 
-    resp = client.post(
-        "/api/detections/bulk-revert-to-original", json={"detection_ids": [card.id]}
-    )
+    resp = client.post("/api/undo", json=verify["before"])
     assert resp.status_code == 200
-    assert {r["detection_id"] for r in resp.json()["reverted"]} == {b.id for b in boxes["one"]}
+    assert {d["id"] for d in resp.json()["detections"]} == {b.id for b in boxes["one"]}
     db.expire_all()
     assert not any(b.verified for b in boxes["one"])
 
@@ -396,7 +399,9 @@ def test_a_card_verdict_leaves_a_frame_a_person_labelled(client, db):
 
 def test_undoing_a_card_verdict_leaves_a_frame_a_person_labelled(client, db):
     """Undo of the card reverts the animal, not the frames a person fixed
-    inside it; until 2026-11-06 it handed those back to the AI too."""
+    inside it: the snapshot holds each box as it was, so the frame a
+    person labelled comes back labelled. Until 2026-11-06 the old revert
+    handed those back to the AI too."""
     _, _, _, _, boxes = _tracked_video(db)
     card, mine = boxes["one"][1], boxes["one"][2]
     for box in boxes["one"]:
@@ -404,14 +409,13 @@ def test_undoing_a_card_verdict_leaves_a_frame_a_person_labelled(client, db):
         box.classification_method = "machine"
     mine.label, mine.classification_method, mine.verified = "blacktip", "human", True
     db.commit()
-    client.patch(f"/api/detections/{card.id}/verify", json={"verified": True})
+    verify = client.post(
+        "/api/detections/bulk-verify", json={"detection_ids": [card.id], "verified": True}
+    ).json()
 
-    resp = client.post(
-        "/api/detections/bulk-revert-to-original", json={"detection_ids": [card.id]}
-    )
+    resp = client.post("/api/undo", json=verify["before"])
 
     assert resp.status_code == 200
-    assert mine.id not in {r["detection_id"] for r in resp.json()["reverted"]}
     rows = _rows(db, [b.id for b in boxes["one"]])
     for row in rows.values():
         db.refresh(row)

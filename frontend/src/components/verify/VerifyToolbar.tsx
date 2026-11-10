@@ -26,7 +26,7 @@ export function VerifyToolbar({ children, className }: VerifyToolbarProps) {
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-3 min-h-12 py-2 px-3 bg-white rounded-lg border shadow-sm",
+        "flex flex-wrap items-center gap-3 min-h-12 py-2 px-3 bg-card rounded-lg border shadow-sm",
         className,
       )}
     >
@@ -122,7 +122,7 @@ export function VerifyProgressPill({
       <div className="relative h-2 w-20 overflow-hidden rounded-full bg-muted">
         <div
           className="h-full transition-all duration-500 ease-out rounded-full"
-          style={{ width: `${clamped}%`, backgroundColor: "#0f6064" }}
+          style={{ width: `${clamped}%`, backgroundColor: "var(--primary-ink)" }}
         />
       </div>
       {Math.round(clamped)}% {label}

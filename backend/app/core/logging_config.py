@@ -98,6 +98,15 @@ def setup_logging() -> logging.Logger:
         ):
             logging.getLogger(sa_logger_name).setLevel(logging.WARNING)
 
+    # Pillow's TIFF plugin logs one DEBUG line per EXIF tag per image it
+    # opens, and the ingest opens every image for its capture time. On a
+    # beta tester's machine that was 152,000 lines and 87% of the log
+    # (2026-09-06), so the 33 MB file rolled over within a day and the
+    # week of history the diagnostic report promises was gone. Same
+    # trade as SQLAlchemy above: errors still surface, the tag dump
+    # does not.
+    logging.getLogger("PIL").setLevel(logging.INFO)
+
     # Set up exception hook to log uncaught exceptions
     import sys
 

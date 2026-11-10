@@ -37,6 +37,8 @@ from app.ml.label_exclusion import threshold_or_verified
 from app.models import Detection, File, Project
 from app.utils.exiftool_bin import resolve_exiftool
 
+from ._label_filter import detection_is_excluded
+
 logger = get_logger(__name__)
 
 
@@ -98,18 +100,9 @@ def build_tag_set(
     ).scalars().all()
 
     if excluded_label_ids:
-        # Same filter rule as _label_filter.detection_is_excluded —
-        # match by taxonomy id OR label string so the heterogeneous
-        # exclusion set (UUIDs for mapped, strings for unmapped)
-        # behaves consistently across modules.
-        def _excluded(det: Detection) -> bool:
-            if det.label_taxonomy_id and det.label_taxonomy_id in excluded_label_ids:
-                return True
-            if det.label and det.label in excluded_label_ids:
-                return True
-            return False
-
-        rows = [r for r in rows if not _excluded(r)]
+        rows = [
+            r for r in rows if not detection_is_excluded(r, excluded_label_ids)
+        ]
 
     if not rows:
         return None
@@ -227,8 +220,35 @@ class ExifBatch(AbstractContextManager["ExifBatch"]):
             self._helper.__exit__(exc_type, exc, tb)
             self._helper = None
 
-    def write(self, path: Path, tag_set: DetectionTagSet) -> None:
+    def write(
+        self,
+        path: Path,
+        tag_set: DetectionTagSet,
+        *,
+        source: Path | None = None,
+        upright: bool = False,
+    ) -> None:
         """Write the tag set onto the file at ``path``.
+
+        With ``source`` the same call first copies every tag of that
+        file onto ``path``, for a copy that was re-encoded (boxes, blur)
+        and so lost the original's XMP, IPTC and colour profile. Three
+        things happen in one exiftool run, in this order: the copy,
+        then the deletion of the embedded thumbnail and preview, then
+        the tag set. Every tag this call writes is left out of the copy,
+        so ours replace whatever the original carried, as they do on a
+        plain copy (for a list tag like the subject an assignment after
+        a copy would append instead). The previews go because they show
+        the original pixels: a blurred copy would otherwise carry an
+        unblurred person in its thumbnail. Exiftool
+        skips its "unsafe" EXIF tags here on purpose (they describe the
+        image data, which the re-encode rewrote). Maker notes are copied
+        as one block; a preview inside them cannot be deleted, exiftool
+        zeroes it instead and warns.
+
+        ``upright`` says the pixels at ``path`` were rotated into the
+        orientation the source's tag described, so that tag is not
+        copied: the copy keeps the orientation 1 it was saved with.
 
         ``-overwrite_original`` prevents exiftool from leaving a
         ``<filename>_original`` backup next to every modified file
@@ -236,11 +256,21 @@ class ExifBatch(AbstractContextManager["ExifBatch"]):
         """
         if self._helper is None:
             raise RuntimeError("ExifBatch.write called outside its context")
-        self._helper.set_tags(
-            [str(path)],
-            tags=tag_set.to_exiftool_dict(),
-            params=["-overwrite_original"],
-        )
+        params = ["-overwrite_original"]
+        tags: dict[str, object] = tag_set.to_exiftool_dict()
+        if source is not None:
+            # An empty assignment deletes the tag; absent is a no-op.
+            tags = {"ThumbnailImage": "", "PreviewImage": "", **tags}
+            params += [
+                "-TagsFromFile",
+                str(source),
+                "-all:all",
+                "-icc_profile",
+                *(f"--{tag}" for tag in tags),
+            ]
+            if upright:
+                params.append("--Orientation")
+        self._helper.set_tags([str(path)], tags=tags, params=params)
 
 
 def is_image_path(path: Path) -> bool:

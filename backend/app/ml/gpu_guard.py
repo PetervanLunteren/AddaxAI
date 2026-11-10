@@ -113,6 +113,8 @@ def cuda_guard_overrides(env_manager: "EnvironmentManager") -> dict[str, str]:
             env=clean_python_env(),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=_PROBE_TIMEOUT_S,
         )
     except (OSError, subprocess.TimeoutExpired) as e:

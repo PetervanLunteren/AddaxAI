@@ -43,7 +43,7 @@ dependencies:
     # Prebuilt wheel for megadetector's ultralytics-yolov5 dependency; see
     # the base env for why it cannot be a download.
     - ultralytics-yolov5 @ https://huggingface.co/Addax-Data-Science/pip-wheels/resolve/main/ultralytics_yolov5-0.1.1-py3-none-any.whl#sha256=d532e62d6d7cd6c7381e4453810f31f10fd269cf9f237494bc570e74168dc2e1
-    - megadetector==10.0.24
+    - megadetector==10.0.28
     # The reason this environment exists. AGPL-3.0: see the header.
     - ultralytics==8.3.177
     # OpenCV, for megadetector and the app's own frame reads

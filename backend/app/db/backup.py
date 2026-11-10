@@ -31,6 +31,7 @@ user saves to their own folder are not listed here and are theirs to
 manage.
 """
 
+import os
 import re
 import shutil
 import sqlite3
@@ -186,7 +187,7 @@ def force_ring_buffer_backup(settings: Settings) -> Path:
     Manual and pre-restore snapshots have their own tagged writers below
     so the restore UI can tell them apart from a daily rollover.
     """
-    src = _live_db_path(settings)
+    src = live_db_path(settings)
     backups_dir = _backups_dir(settings)
     dst = backups_dir / _daily_filename(_backup_timestamp())
     snapshot_db(src, dst)
@@ -202,7 +203,7 @@ def manual_snapshot(settings: Settings, note: str | None = None) -> Path:
     An optional note is slugged into the filename so the restore picker
     can show why the snapshot was taken.
     """
-    src = _live_db_path(settings)
+    src = live_db_path(settings)
     dst = _backups_dir(settings) / manual_backup_filename(note)
     snapshot_db(src, dst)
     logger.info(f"Wrote manual backup: {dst.name}")
@@ -227,7 +228,7 @@ def pre_restore_snapshot(settings: Settings) -> Path:
     state stays recoverable (the "undo the restore" safety net). Rolls:
     keeps the newest `BACKUP_KEEP`.
     """
-    src = _live_db_path(settings)
+    src = live_db_path(settings)
     backups_dir = _backups_dir(settings)
     dst = backups_dir / _pre_restore_filename(_backup_timestamp())
     snapshot_db(src, dst)
@@ -251,7 +252,7 @@ def pre_upgrade_backup(settings: Settings, rev: str | None) -> Path | None:
     span schema versions you can't roll back across anyway, and each is
     a full DB copy, so unbounded accumulation is just wasted disk.
     """
-    src = _live_db_path(settings)
+    src = live_db_path(settings)
     backups_dir = _backups_dir(settings)
     dst = backups_dir / _pre_upgrade_filename(rev, _backup_timestamp())
 
@@ -343,17 +344,39 @@ def restore_db(settings: Settings, source_path: Path) -> None:
     defence against time-of-check / time-of-use races. The current DB
     is force-snapshotted to the ring buffer first as a safety net so a
     wrong-file mistake stays recoverable.
+
+    The source is copied to a staging file before anything destructive
+    runs, and the live DB is replaced by one atomic rename at the end.
+    Both halves are load-bearing: the pre-restore snapshot prunes its
+    ring, which deletes the selected source when it is the oldest of
+    `BACKUP_KEEP` pre-restore backups, and a copy that fails partway
+    (full disk, unplugged drive) must not leave the live DB missing.
+    The live DB therefore survives until its replacement is fully on
+    disk, whatever fails.
     """
     validate_backup(source_path)
 
-    live = _live_db_path(settings)
-    if live.is_file():
-        pre_restore_snapshot(settings)
+    live = live_db_path(settings)
+    # Same directory as the live DB, so os.replace stays on one
+    # filesystem. Matches no backup filename pattern, so the restore
+    # picker never lists a leftover from a crashed restore.
+    staged = live.with_name(live.name + ".restore-staging")
+    staged.unlink(missing_ok=True)
+    try:
+        shutil.copyfile(source_path, staged)
 
-    for sibling in (live, live.with_name(live.name + "-wal"), live.with_name(live.name + "-shm")):
-        sibling.unlink(missing_ok=True)
+        if live.is_file():
+            pre_restore_snapshot(settings)
 
-    shutil.copyfile(source_path, live)
+        # The sidecars belong to the outgoing DB; the snapshot above
+        # read through the WAL, so nothing in them is lost.
+        for sibling in (live.with_name(live.name + "-wal"), live.with_name(live.name + "-shm")):
+            sibling.unlink(missing_ok=True)
+
+        os.replace(staged, live)
+    finally:
+        staged.unlink(missing_ok=True)
+
     logger.warning(f"Restored DB from {source_path}")
 
 
@@ -367,7 +390,7 @@ def _backups_dir(settings: Settings) -> Path:
     return path
 
 
-def _live_db_path(settings: Settings) -> Path:
+def live_db_path(settings: Settings) -> Path:
     """Resolve the configured `database_url` to a filesystem path.
 
     Crashes for non-`sqlite:///` URLs because nothing else in the app

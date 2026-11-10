@@ -42,7 +42,7 @@ export function WizardNavigation({
             variant="ghost"
             onClick={onReset}
             disabled={isSubmitting}
-            className="text-gray-600 hover:text-gray-900"
+            className="text-muted-foreground hover:text-foreground"
           >
             <RotateCcw className="w-4 h-4 mr-2" />
             Start Over

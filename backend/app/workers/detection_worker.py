@@ -41,8 +41,35 @@ from app.models import Deployment
 from app.services.folder_scanner import walk_media_files
 from app.services.thumbnail_service import ensure_project_thumbnail
 from app.utils.fs_hidden import mkdir_hidden_addaxai
+from app.utils.windows_security import with_smart_app_control_hint
 
 logger = get_logger(__name__)
+
+
+def _failure_message(error: Exception, folder: Path | None) -> str:
+    """The text a failed queue entry shows the user.
+
+    A folder that can no longer be reached is the one failure whose cause
+    we can state for certain, and on an external drive it is the common
+    one: the drive drops off the bus mid-run and every later read fails
+    with whatever errno the OS picked (ENXIO, ENOENT, EIO), surfacing as a
+    subprocess's stack text. So we ask the folder, not the exception.
+    Anything else is unexplained and keeps the raw error plus the Smart
+    App Control hint.
+    """
+    if folder is not None:
+        try:
+            reachable = folder.exists()
+        except OSError:
+            reachable = False
+        if not reachable:
+            return (
+                f"The folder {folder} could not be reached any more during "
+                "the run. If it is on an external or network drive, check "
+                "the connection and try again. Detection work "
+                "that was already finished is kept."
+            )
+    return with_smart_app_control_hint(str(error))
 
 
 async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list[str], db) -> None:
@@ -138,6 +165,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
     try:
         for idx, entry_id in enumerate(queue_entry_ids, start=1):
             deployment = None  # reset: each iteration creates its own
+            # Reset too: the failure handler asks this folder whether it
+            # is still there, and must never ask the previous entry's.
+            folder_path: Path | None = None
             try:
                 # Get queue entry
                 entry = queue_crud.get_queue_entry(db, entry_id)
@@ -960,13 +990,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         deployment.warnings = warning_entries
                         db.commit()
 
-                    # Defensive fallback: link any detections that weren't
-                    # resolved inline (should be a no-op)
-                    try:
-                        link_detections_to_taxonomy(project_id, db)
-                    except Exception as e:
-                        logger.warning(f"Failed to link detections to taxonomy: {e}")
-
                 # ============================================================
                 # PHASE 7: Postprocessing (exclusion + rollup + smoothing)
                 # This is the single code path for all label processing.
@@ -1020,7 +1043,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         final_json_path,
                         folder_path,
                         classification_model_id,
-                        cls_model_dir,
                         taxonomy_name_to_id,
                         job_id=job_id,
                         progress_callback=sync_postprocessing_progress,
@@ -1045,6 +1067,15 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         )
                         deployment.warnings = combined
                         db.commit()
+
+                # Safety net: link any detection phase 6 or 7 left without
+                # a taxonomy row. Every writer resolves its row inline, so
+                # this should be a no-op; it runs after phase 7 because a
+                # pass before it could not see what phase 7 wrote.
+                try:
+                    link_detections_to_taxonomy(project_id, db)
+                except Exception as e:
+                    logger.warning(f"Failed to link detections to taxonomy: {e}")
 
                 # Events before embeddings. Embeddings are optional and the
                 # one phase that has died on a large video deployment (the
@@ -1219,7 +1250,10 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         )
                         db.rollback()
                 queue_crud.update_queue_status(
-                    db, entry_id, status="failed", error=str(e)
+                    db,
+                    entry_id,
+                    status="failed",
+                    error=_failure_message(e, folder_path),
                 )
 
         # How the run ended is read back off the queue rows themselves,
@@ -1352,7 +1386,12 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
         for entry_id in queue_entry_ids:
             entry = queue_crud.get_queue_entry(db, entry_id)
             if entry and entry.status == "processing":
-                queue_crud.update_queue_status(db, entry_id, status="failed", error=str(e))
+                queue_crud.update_queue_status(
+                    db,
+                    entry_id,
+                    status="failed",
+                    error=with_smart_app_control_hint(str(e)),
+                )
 
         await ws_manager.send_error(job_id, str(e))
         raise
@@ -1433,7 +1472,10 @@ async def process_deployment_analysis(job_id: str) -> None:
                 queue_entry_id = job.payload.get("queue_entry_id")
                 if queue_entry_id:
                     queue_crud.update_queue_status(
-                        db, queue_entry_id, status="failed", error=str(e)
+                        db,
+                        queue_entry_id,
+                        status="failed",
+                        error=with_smart_app_control_hint(str(e)),
                     )
                     logger.info(f"Updated queue entry {queue_entry_id} to failed")
 
@@ -1451,7 +1493,6 @@ def _run_postprocessing_owned_session(
     json_path: Path,
     deployment_folder: Path,
     classification_model_id: str | None,
-    cls_model_dir: Path | None,
     taxonomy_name_to_id: dict | None,
     job_id: str | None = None,
     progress_callback: Callable[[int, int], None] | None = None,
@@ -1483,7 +1524,6 @@ def _run_postprocessing_owned_session(
         run_postprocessing_for_deployment,
         update_database_from_smoothed_results,
     )
-    from app.ml.taxonomic_rollup import load_taxonomy_lookup
     from app.ml.taxonomy_db import batch_resolve_taxonomy_ids
     from app.models import Project
     from app.models.label_taxonomy import LabelTaxonomy
@@ -1499,13 +1539,6 @@ def _run_postprocessing_owned_session(
             job_id=job_id,
             warnings=warnings,
         )
-
-        # Taxonomy for scientific_name formatting.
-        pp_tax = None
-        if classification_model_id and cls_model_dir:
-            taxonomy_csv = cls_model_dir / "taxonomy.csv"
-            if taxonomy_csv.exists():
-                pp_tax = load_taxonomy_lookup(taxonomy_csv)
 
         # Resolve excluded_classes to taxonomy UUIDs.
         excluded_tax_ids: set[str] | None = None
@@ -1530,7 +1563,7 @@ def _run_postprocessing_owned_session(
         )
 
         return update_database_from_smoothed_results(
-            deployment_id, smoothed, deployment_folder, db, pp_tax,
+            deployment_id, smoothed, deployment_folder, db,
             excluded_classes=project.excluded_classes,
             excluded_taxonomy_ids=excluded_tax_ids,
             taxonomy_name_to_id=pp_name_to_id,

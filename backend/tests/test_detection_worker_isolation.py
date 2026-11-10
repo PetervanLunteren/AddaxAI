@@ -198,6 +198,76 @@ async def test_one_failed_deployment_does_not_stop_the_others(db, tmp_path):
     assert db.get(type(job), job.id).status == "completed"
 
 
+async def test_a_failed_entry_carries_the_smart_app_control_hint(
+    db, tmp_path, monkeypatch
+):
+    """The hint rides on the stored error, which is what the receipt shows.
+
+    The real helper appends nothing on CI (not Windows, no Smart App
+    Control), so a sentinel stands in to prove the unexplained-exception
+    path goes through it at all. The hint's own behaviour is pinned in
+    tests/utils/test_windows_security.py.
+    """
+    monkeypatch.setattr(
+        detection_worker,
+        "with_smart_app_control_hint",
+        lambda error: error + " [SAC HINT]",
+    )
+    project, job, entries = _seed(db, tmp_path, [_broken_folder(tmp_path, "one")])
+
+    await _process_batch_job(job.id, project.id, [e.id for e in entries], db)
+
+    failed = db.get(DeploymentQueue, entries[0].id)
+    assert failed.status == "failed"
+    assert failed.error.endswith("[SAC HINT]")
+
+
+async def test_a_folder_that_disappears_mid_run_says_so(
+    db, tmp_path, monkeypatch
+):
+    """An external drive dropping off mid-run, in plain words.
+
+    A user's 137k-image run died twice this way (2026-11-03): the drive
+    vanished during embeddings and later during classification, and the
+    receipt showed a subprocess's stack text and `[Errno 6] Device not
+    configured`. The stand-in removes the folder and then fails, which is
+    what the worker sees when a drive goes: the folder is gone, and
+    whatever was reading it raises some OSError.
+    """
+    import shutil
+
+    folder = _empty_folder(tmp_path, "drive")
+    (folder / "IMG_0001.jpg").write_bytes(b"not really a jpeg")
+
+    def _drive_drops(path):
+        shutil.rmtree(folder)
+        raise OSError(6, "Device not configured")
+
+    monkeypatch.setattr(detection_worker, "mkdir_hidden_addaxai", _drive_drops)
+    project, job, entries = _seed(db, tmp_path, [folder])
+
+    await _process_batch_job(job.id, project.id, [e.id for e in entries], db)
+
+    failed = db.get(DeploymentQueue, entries[0].id)
+    assert failed.status == "failed"
+    assert str(folder) in failed.error
+    assert "could not be reached" in failed.error
+    assert "Errno" not in failed.error
+
+
+async def test_a_failure_with_the_folder_still_there_keeps_the_raw_error(
+    db, tmp_path
+):
+    """The reachability check must not swallow an unexplained failure."""
+    project, job, entries = _seed(db, tmp_path, [_broken_folder(tmp_path, "here")])
+
+    await _process_batch_job(job.id, project.id, [e.id for e in entries], db)
+
+    failed = db.get(DeploymentQueue, entries[0].id)
+    assert "could not be reached" not in failed.error
+    assert "Not a directory" in failed.error or "addaxai" in failed.error
+
+
 async def test_failed_entry_leaves_no_placeholder_deployment(db, tmp_path):
     """The placeholder row is created before the failing step.
 

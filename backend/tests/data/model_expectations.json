@@ -1140,6 +1140,138 @@
           }
         ]
       ]
+    },
+    "NZI-ADS-v2": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "other bird",
+          "confidence": 0.9380645155906677
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "other bird",
+            "confidence": 0.9380645155906677
+          },
+          {
+            "label": "kea",
+            "confidence": 0.011342529207468033
+          },
+          {
+            "label": "hedgehog",
+            "confidence": 0.004086953122168779
+          },
+          {
+            "label": "kiwi",
+            "confidence": 0.0037457251455634832
+          },
+          {
+            "label": "takahe",
+            "confidence": 0.0028447615914046764
+          }
+        ]
+      ]
+    },
+    "EUR-DF-v1-5": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "bird",
+          "confidence": 0.9997630715370178
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "bird",
+            "confidence": 0.9997630715370178
+          },
+          {
+            "label": "cat",
+            "confidence": 4.6643133828183636e-05
+          },
+          {
+            "label": "micromammal",
+            "confidence": 4.101422382518649e-05
+          },
+          {
+            "label": "squirrel",
+            "confidence": 3.509417365421541e-05
+          },
+          {
+            "label": "roe deer",
+            "confidence": 1.083599818230141e-05
+          }
+        ]
+      ]
+    },
+    "ARC-ADS-v1": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "raven",
+          "confidence": 0.9576600790023804
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "raven",
+            "confidence": 0.9576600790023804
+          },
+          {
+            "label": "snow goose",
+            "confidence": 0.0018530389061197639
+          },
+          {
+            "label": "arctic fox adult",
+            "confidence": 0.0015175447333604097
+          },
+          {
+            "label": "wolf",
+            "confidence": 0.0014081952394917607
+          },
+          {
+            "label": "herring gull",
+            "confidence": 0.0013545833062380552
+          }
+        ]
+      ]
+    },
+    "CONGO-CMR-v1": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "african forest elephant",
+          "confidence": 0.7010096907615662
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "african forest elephant",
+            "confidence": 0.7010096907615662
+          },
+          {
+            "label": "african brush-tailed porcupine",
+            "confidence": 0.09903194010257721
+          },
+          {
+            "label": "blue duiker",
+            "confidence": 0.07942382991313934
+          },
+          {
+            "label": "sitatunga",
+            "confidence": 0.04368957504630089
+          },
+          {
+            "label": "yellow-backed duiker",
+            "confidence": 0.030306315049529076
+          }
+        ]
+      ]
     }
   }
 }

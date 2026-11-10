@@ -77,6 +77,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 # `video_iter` and `scoring` live next to this script. Python adds the
 # script's directory to sys.path automatically, so a flat import works
 # in the subprocess (which has no app.* on its path).
+from image_io import open_image_rgb  # noqa: E402
 from scoring import choose_frame_number  # noqa: E402
 from video_iter import (  # noqa: E402
     iter_wanted_frames,
@@ -317,11 +318,9 @@ def _process_image_group(
             per_crop_progress(len(image_items))
         return
 
-    # Convert to RGB at open time so every model's get_crop receives a
-    # 3-channel image. Camera-trap frames are almost always RGB JPEGs, but
-    # a grayscale, palette, or RGBA source would otherwise reach a model
-    # with the wrong channel count if that model crops before converting.
-    image = Image.open(path).convert("RGB")
+    # Rotated per EXIF and RGB, the way MegaDetector saw the frame, so
+    # the bbox lands on the same pixels (see image_io).
+    image = open_image_rgb(path)
     for orig_idx, item in image_items:
         _classify_one(
             model_inference, image, item["bbox"], batched_state, orig_idx, results
@@ -607,6 +606,21 @@ def _run_items(
     # Flush any leftover batch crops from the last video.
     if batched_state is not None:
         batched_state["flush_batch"]()
+
+    # A crop whose frame the walk never reached has no result yet. The
+    # detector numbered frames on its own decode, and the walk above can
+    # yield fewer: a container that advertises more frames than it holds,
+    # or the detector's MSMF retry on Windows counting past what FFmpeg
+    # yields (see "Mixed pixel format videos" in DEVELOPERS.md). The parent
+    # reads one dict per item and takes `error` from a failure, so report
+    # these as failures rather than leave a hole it cannot read.
+    for i, item in enumerate(items):
+        if results[i] is None:
+            where = item.get("video_path") or item.get("image_path", "<unknown>")
+            results[i] = {
+                "success": False,
+                "error": f"Frame {item.get('frame_number')} of {where} was never decoded",
+            }
 
     return results, best_frames
 
