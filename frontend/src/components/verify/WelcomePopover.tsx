@@ -5,6 +5,8 @@
 
 import { CircleHelp, ExternalLink } from "lucide-react";
 import { Button } from "../ui/button";
+import { MODAL_OVERLAY_CLASS } from "../ui/overlay";
+import { cn } from "../../lib/utils";
 
 const GUIDE_URL = "https://docs.addaxai.com/docs/guides/confirm-counts/";
 
@@ -17,7 +19,7 @@ export function WelcomePopover({ open, onDismiss }: WelcomePopoverProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={cn(MODAL_OVERLAY_CLASS, "flex items-center justify-center")}>
       <div className="bg-white rounded-lg shadow-xl max-w-md mx-4 p-6 space-y-4">
         <h2 className="text-lg font-semibold">Check the AI's counts</h2>
         <div className="space-y-3 text-sm text-muted-foreground">

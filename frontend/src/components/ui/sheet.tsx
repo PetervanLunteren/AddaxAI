@@ -3,6 +3,7 @@ import * as SheetPrimitive from "@radix-ui/react-dialog"
 import { Cross2Icon } from "@radix-ui/react-icons"
 
 import { cn } from "@/lib/utils"
+import { MODAL_OVERLAY_CLASS } from "./overlay"
 
 const Sheet = SheetPrimitive.Root
 
@@ -18,7 +19,7 @@ const SheetOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
     className={cn(
-      "fixed inset-0 z-50 bg-black/80  data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      MODAL_OVERLAY_CLASS,
       className
     )}
     {...props}
