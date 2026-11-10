@@ -75,14 +75,14 @@ def vote_tracks(md_results: dict) -> int:
     is the frames at or above the classification gate; the weaker frames
     of the track were never classified and have nothing to say.
     ``score[class] = sum(p * conf) / sum(conf)`` over the voters, sorted
-    descending and rounded to 5 decimals like the worker writes them,
-    written onto every box of the track, those that did not vote too. The
-    whole list is kept: rollup reads its own top-5 and smoothing its
-    top-1.
+    descending and kept at full precision (a score is rounded once, when it
+    becomes a label confidence: SCORE_DIGITS), written onto every box of
+    the track, those that did not vote too. The whole list is kept:
+    rollup reads its own top-5 and smoothing its top-1.
 
     A track with no voters (a person, a vehicle, a run without a
     classifier) is left as it is. A track whose only voter is the card
-    comes out as its own list, up to rounding.
+    comes out as its own list.
     """
     changed = 0
     for card, boxes in _tracks(md_results):
@@ -97,7 +97,7 @@ def vote_tracks(md_results: dict) -> int:
                 score[str(class_id)] += float(p) * conf
 
         voted = [
-            [class_id, round(total / weight, 5)]
+            [class_id, total / weight]
             for class_id, total in sorted(score.items(), key=lambda item: (-item[1], item[0]))
         ]
         before = card.get("classifications") or []

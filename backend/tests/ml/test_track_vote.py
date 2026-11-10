@@ -7,6 +7,8 @@ tracking script writes it; tracked boxes change, nothing else does.
 
 import copy
 
+import pytest
+
 from app.ml.track_vote import tracks_follow_their_cards, vote_tracks
 
 FOX, WOLF, BOAR, DEER = "1", "2", "3", "4"
@@ -48,7 +50,7 @@ def test_a_misread_card_frame_is_outvoted_by_its_track():
     assert vote_tracks(res) == 1
     assert _top1(card) == WOLF
     # 0.9 * 0.4 + 4 * 0.8 * 0.95 over 0.9 + 3.2
-    assert card["classifications"][0][1] == round((0.36 + 3.04) / 4.1, 5)
+    assert card["classifications"][0][1] == pytest.approx((0.36 + 3.04) / 4.1)
 
 
 def test_blurry_tail_frames_weigh_less_than_sharp_ones():
@@ -130,10 +132,10 @@ def test_a_single_voter_track_keeps_its_own_scores():
     assert card["classifications"] == [[WOLF, 0.7], [FOX, 0.3]]
 
 
-def test_scores_come_back_sorted_and_rounded():
+def test_scores_come_back_sorted_at_full_precision():
     """Rollup reads the first five entries and smoothing the first one,
-    so the list must lead with the strongest class, in the five-decimal
-    form the classification worker writes."""
+    so the list must lead with the strongest class. Not rounded: a score
+    is rounded once, when it becomes a label confidence (SCORE_DIGITS)."""
     card = _box(60, 0.5, 1, [[FOX, 0.5], [BOAR, 0.3], [DEER, 0.2]])
     other = _box(90, 0.5, 1, [[DEER, 0.6], [WOLF, 0.4]])
     res = _results(card, other)
@@ -141,8 +143,10 @@ def test_scores_come_back_sorted_and_rounded():
     vote_tracks(res)
     scores = card["classifications"]
     assert [c for c, _ in scores] == [DEER, FOX, WOLF, BOAR]
-    assert scores == [[DEER, 0.4], [FOX, 0.25], [WOLF, 0.2], [BOAR, 0.15]]
-    assert all(round(p, 5) == p for _, p in scores)
+    assert scores == [
+        [DEER, pytest.approx(0.4)], [FOX, pytest.approx(0.25)],
+        [WOLF, pytest.approx(0.2)], [BOAR, pytest.approx(0.15)],
+    ]
 
 
 LYNX = "5"
