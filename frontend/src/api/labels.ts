@@ -159,8 +159,9 @@ export const labelsApi = {
   search: async (
     projectId: string,
     body: SearchRequest,
+    signal?: AbortSignal,
   ): Promise<SearchResponse> => {
-    return labelsApi.searchStream(projectId, body, () => {});
+    return labelsApi.searchStream(projectId, body, () => {}, signal);
   },
 
   searchStream: async (
@@ -274,8 +275,11 @@ export const labelsApi = {
    * stream and returns only the final result. Use `cohortsStream` to
    * surface progress.
    */
-  cohorts: async (projectId: string): Promise<CohortsResponse> => {
-    return labelsApi.cohortsStream(projectId, () => {});
+  cohorts: async (
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<CohortsResponse> => {
+    return labelsApi.cohortsStream(projectId, () => {}, signal);
   },
 
   cohortsStream: async (

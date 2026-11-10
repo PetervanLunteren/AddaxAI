@@ -379,11 +379,17 @@ export function DetectionDetailModal({
   // Fetch 10 nearest neighbors for the Label Agreement thumbnails
   const { data: neighborsData } = useQuery({
     queryKey: ["detection-neighbors", detection?.detection_id],
-    queryFn: () =>
-      labelsApi.search(projectId!, {
-        anchor_detection_id: detection!.detection_id,
-        limit: 11,
-      }),
+    // Aborted by React Query when the modal closes or steps to another
+    // crop before the answer arrives, so the backend stops the search.
+    queryFn: ({ signal }) =>
+      labelsApi.search(
+        projectId!,
+        {
+          anchor_detection_id: detection!.detection_id,
+          limit: 11,
+        },
+        signal,
+      ),
     enabled: open && !!detection?.detection_id && !!projectId,
   });
 

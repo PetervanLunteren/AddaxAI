@@ -466,20 +466,32 @@ export function LabelsTab({
     null,
   );
 
+  // Aborts the running sort. Only the latest sort can reach the grid, so a
+  // new one cancels the one before it, and leaving the page cancels the
+  // last. Closing the request is what makes the backend kill its
+  // subprocess; without this an abandoned run kept its memory and CPU to
+  // the end.
+  const sortAbortRef = useRef<AbortController | null>(null);
+
   // Sort mutation — takes the sort mode as the mutation argument so
   // `onSuccess` can pin the resulting data to it. Otherwise a rapid
   // sort-mode flip would race the in-flight result against the latest
   // `lblSort` state and paint the wrong dividers on the response.
   const sortMutation = useMutation({
-    mutationFn: (vars: { sort: LabelSort; background?: boolean }) =>
-      labelsApi.sortStream(
+    mutationFn: (vars: { sort: LabelSort; background?: boolean }) => {
+      sortAbortRef.current?.abort();
+      const controller = new AbortController();
+      sortAbortRef.current = controller;
+      return labelsApi.sortStream(
         projectId,
         {
           filters: toLabelFilters(lblFilters),
           sort: vars.sort,
         },
         setProgress,
-      ),
+        controller.signal,
+      );
+    },
     onMutate: (vars) => {
       setIsSorting(true);
       setIsBackgroundSort(!!vars.background);
@@ -495,6 +507,9 @@ export function LabelsTab({
       setSortError(null);
     },
     onError: (err: Error) => {
+      // A cancelled sort is not a failure: the sort that replaced it owns
+      // the loading state, or the page is gone.
+      if (err.name === "AbortError") return;
       setSortError(err.message);
       setIsSorting(false);
       setProgress(null);
@@ -519,6 +534,18 @@ export function LabelsTab({
   // requires embeddings.
   const canSort =
     lblSort === "events" ? !!stats : (stats?.embedded_detections ?? 0) > 0;
+
+  // Cancel the running sort when the page closes. Forgetting the last key
+  // makes a remount sort again rather than wait on the cancelled run
+  // (React's StrictMode remounts every component once in development).
+  // Declared before the auto-sort effect so a remount runs this first.
+  useEffect(
+    () => () => {
+      sortAbortRef.current?.abort();
+      lastSortKeyRef.current = null;
+    },
+    [],
+  );
 
   // Auto-sort on mount and when filters or sort mode settle.
   useEffect(() => {
