@@ -29,6 +29,7 @@ from app.core.media_types import VIDEO_EXTENSIONS
 from app.ml.detection_visibility import visible_detections
 from app.ml.inference.base import PipelineResult
 from app.ml.inference.scoring import summarise_tracks, track_crop_filename
+from app.ml.inference.verified_json import write_json_verified
 from app.ml.json_utils import (
     build_classification_category_descriptions,
     extract_wildlife_detections,
@@ -38,7 +39,6 @@ from app.ml.progress import ProgressTicker
 from app.ml.results_json import iter_images, read_top_level_object
 from app.ml.taxonomy_db import clear_classification
 from app.models import Deployment, Detection, File, Project, Track
-from app.utils.json_io import write_json_verified
 from app.utils.media_dates import (
     date_from_exif_dict,
     extract_image_date,
@@ -759,7 +759,7 @@ def load_results_json(json_path: Path) -> dict:
 
     A results file that fails to parse means the bytes on disk differ
     from what the writer produced (full or failing drive, see
-    `app/utils/json_io.py`). The raw JSONDecodeError names a character
+    `app/ml/inference/verified_json.py`). The raw JSONDecodeError names a character
     offset nobody can act on; this names the file and the way out.
     """
     try:

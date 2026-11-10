@@ -28,8 +28,8 @@ from app.ml.environment_manager import EnvironmentManager
 from app.ml.gpu_guard import cuda_guard_overrides
 from app.ml.inference.base import DetectionModel
 from app.ml.inference.class_mapping import write_class_mapping
+from app.ml.inference.verified_json import write_json_verified
 from app.utils.fs_hidden import mkdir_hidden_addaxai
-from app.utils.json_io import write_json_verified
 from app.utils.subprocess_env import clean_python_env
 
 logger = get_logger(__name__)

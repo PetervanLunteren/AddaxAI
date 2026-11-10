@@ -10,16 +10,22 @@ write returned cleanly, and nine seconds later the file was unparseable
 that differ from what Python wrote are a storage problem; the job here
 is to catch that while the data still exists in memory, when a retry
 is still possible.
+
+No ``app.*`` imports, like ``crop_box``: the tracking script runs in the
+detector's own environment and loads this file by path, so the backend
+and the script write their results through the one function.
 """
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
-from app.core.logging_config import get_logger
-
-logger = get_logger(__name__)
+# Standard logging, not the app's get_logger: in the backend it reaches
+# backend.log through the root handlers, in the script it goes to stderr,
+# which the backend keeps as the tail of a failed run.
+logger = logging.getLogger(__name__)
 
 WRITE_ATTEMPTS = 3
 

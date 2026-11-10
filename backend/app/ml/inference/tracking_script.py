@@ -86,7 +86,6 @@ import argparse
 import importlib.util
 import io
 import json
-import os
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -112,6 +111,7 @@ open_video = _load_sibling("video_iter").open_video
 track_crop_filename = _load_sibling("scoring").track_crop_filename
 _crop_box = _load_sibling("crop_box")
 _botsort = _load_sibling("botsort")
+write_json_verified = _load_sibling("verified_json").write_json_verified
 
 # --- SharkTrack's BoT-SORT association parameters (tracker_3fps.yaml) ------
 # The confidence floors are not here: they come in on the command line
@@ -495,41 +495,8 @@ def write_results(
         },
     }
     output_json.parent.mkdir(parents=True, exist_ok=True)
-    write_json_verified(output_json, payload)
-
-
-WRITE_ATTEMPTS = 3
-
-
-def write_json_verified(path: Path, obj: dict) -> None:
-    """Write ``obj`` to ``path`` the way the backend writes its result
-    JSONs (``app/utils/json_io.py``, which this script cannot import):
-    to a ``.partial`` sibling, fsynced, parsed back, then renamed over
-    ``path``, three attempts before an OSError. A tracking run can be
-    hours of GPU work, and a write the OS reports as done can still land
-    corrupt on an external drive. Keep the two in step."""
-    partial = path.with_name(path.name + ".partial")
-    last_error: Exception | None = None
-    try:
-        for _ in range(WRITE_ATTEMPTS):
-            try:
-                with open(partial, "w") as f:
-                    json.dump(obj, f, indent=1)
-                    f.flush()
-                    os.fsync(f.fileno())
-                with open(partial) as f:
-                    json.load(f, object_pairs_hook=lambda pairs: None)
-                os.replace(partial, path)
-                return
-            except (OSError, ValueError) as e:
-                last_error = e
-        raise OSError(
-            f"Could not write a readable results file to {path} after "
-            f"{WRITE_ATTEMPTS} attempts. The drive may be full or failing. "
-            f"Last error: {last_error}"
-        )
-    finally:
-        partial.unlink(missing_ok=True)
+    # Verified and atomic, the backend's own writer (see that module for why).
+    write_json_verified(output_json, payload, indent=1)
 
 
 # --- The run -----------------------------------------------------------------

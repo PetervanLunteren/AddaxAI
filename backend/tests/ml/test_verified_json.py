@@ -1,4 +1,4 @@
-"""Tests for `app.utils.json_io.write_json_verified` and the reader side.
+"""Tests for `app.ml.inference.verified_json.write_json_verified` and the reader side.
 
 The failure these pin is a storage layer that corrupts a file the OS
 reported as written (full or failing drive). Fault injection happens by
@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
+from app.ml.inference import verified_json as json_io
+from app.ml.inference.verified_json import write_json_verified
 from app.ml.json_pipeline import load_results_json
-from app.utils import json_io
-from app.utils.json_io import write_json_verified
 
 
 def test_writes_readable_json_and_leaves_no_partial(tmp_path: Path) -> None:
