@@ -36,11 +36,6 @@ from typing import Any
 
 import numpy as np
 
-# Sibling module, imported by name because this script is run by path so
-# its own directory is sys.path[0]. Holds the crop geometry, so the card
-# overlay here and the crop the service cuts cannot drift apart.
-from crop_box import bbox_within_crop
-
 # Three independent limits (see the load paths):
 #   MAX_EMBEDDINGS: the walk budget. The similarity sort runs one FAISS
 #     search per detection to chain them, so its cost grows with the square
@@ -602,7 +597,14 @@ def _compute_crop_bbox(meta: dict) -> dict | None:
     One line, because the geometry lives in ``crop_box.bbox_within_crop``
     beside the crop it describes; the track endpoint answers with the
     same function.
+
+    Imported here, not at the top: `crop_box` is a sibling file, found by
+    name because the script runs by path. The backend also imports this
+    module in-process (the label tree's counts), where the sibling is not
+    on the path; it never computes a crop there.
     """
+    from crop_box import bbox_within_crop
+
     return bbox_within_crop(
         meta["bbox_width"], meta["bbox_height"],
         meta.get("width_px"), meta.get("height_px"),
