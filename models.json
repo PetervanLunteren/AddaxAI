@@ -130,7 +130,7 @@
           {"url": "https://huggingface.co/Addax-Data-Science/MD1000-LARCH-0-0/resolve/main/examples/3.jpg", "credit": "ENA24 (Yousif et al.), via LILA BC (CDLA-Permissive)"},
           {"url": "https://huggingface.co/Addax-Data-Science/MD1000-LARCH-0-0/resolve/main/examples/4.jpg", "credit": "Snapshot Serengeti (Swanson et al.), via LILA BC (CDLA-Permissive)"}
         ],
-        "min_app_version": "7.0.1",
+        "min_app_version": "7.20.0",
         "domain": "camera_trap"
       },
       {
@@ -152,7 +152,7 @@
           {"url": "https://huggingface.co/Addax-Data-Science/MD1000-SORREL-0-0/resolve/main/examples/3.jpg", "credit": "ENA24 (Yousif et al.), via LILA BC (CDLA-Permissive)"},
           {"url": "https://huggingface.co/Addax-Data-Science/MD1000-SORREL-0-0/resolve/main/examples/4.jpg", "credit": "Snapshot Serengeti (Swanson et al.), via LILA BC (CDLA-Permissive)"}
         ],
-        "min_app_version": "7.0.1",
+        "min_app_version": "7.20.0",
         "domain": "camera_trap"
       },
       {
@@ -169,7 +169,7 @@
         "license": "https://github.com/filippovarini/sharktrack#readme",
         "info_url": "https://www.fvarini.com/sharktrack",
         "release_date": "2024-06",
-        "min_app_version": "7.8.0",
+        "min_app_version": "7.20.0",
         "domain": "underwater"
       },
       {
@@ -191,7 +191,7 @@
           {"url": "https://huggingface.co/Addax-Data-Science/CFD-NANO-1-0/resolve/main/examples/3.jpg", "credit": "Roboflow Fish dataset (CC0), Community Fish Detection Dataset via LILA BC"},
           {"url": "https://huggingface.co/Addax-Data-Science/CFD-NANO-1-0/resolve/main/examples/4.jpg", "credit": "MIT Sea Grant River Herring (CDLA-Permissive), Community Fish Detection Dataset via LILA BC"}
         ],
-        "min_app_version": "7.8.0",
+        "min_app_version": "7.20.0",
         "domain": "underwater"
       },
       {
@@ -213,7 +213,7 @@
           {"url": "https://huggingface.co/Addax-Data-Science/CFD-SMALL-1-0/resolve/main/examples/3.jpg", "credit": "Roboflow Fish dataset (CC0), Community Fish Detection Dataset via LILA BC"},
           {"url": "https://huggingface.co/Addax-Data-Science/CFD-SMALL-1-0/resolve/main/examples/4.jpg", "credit": "MIT Sea Grant River Herring (CDLA-Permissive), Community Fish Detection Dataset via LILA BC"}
         ],
-        "min_app_version": "7.8.0",
+        "min_app_version": "7.20.0",
         "domain": "underwater"
       },
       {
@@ -235,7 +235,7 @@
           {"url": "https://huggingface.co/Addax-Data-Science/CFD-MEDIUM-1-0/resolve/main/examples/3.jpg", "credit": "Roboflow Fish dataset (CC0), Community Fish Detection Dataset via LILA BC"},
           {"url": "https://huggingface.co/Addax-Data-Science/CFD-MEDIUM-1-0/resolve/main/examples/4.jpg", "credit": "MIT Sea Grant River Herring (CDLA-Permissive), Community Fish Detection Dataset via LILA BC"}
         ],
-        "min_app_version": "7.8.0",
+        "min_app_version": "7.20.0",
         "domain": "underwater"
       }
     ],
@@ -361,7 +361,7 @@
           {"url": "https://huggingface.co/Addax-Data-Science/NAM-ADS-v1/resolve/main/examples/3.jpg", "credit": "Desert Lion Conservation Camera Traps, via LILA BC (CDLA-Permissive)"},
           {"url": "https://huggingface.co/Addax-Data-Science/NAM-ADS-v1/resolve/main/examples/4.jpg", "credit": "Desert Lion Conservation Camera Traps, via LILA BC (CDLA-Permissive)"}
         ],
-        "min_app_version": "7.0.1",
+        "min_app_version": "7.20.0",
         "region": "africa",
         "domain": "camera_trap"
       },
@@ -384,7 +384,7 @@
           {"url": "https://huggingface.co/Addax-Data-Science/NZI-ADS-v1/resolve/main/examples/3.jpg", "credit": "Trail Camera Images of New Zealand Animals, Department of Conservation NZ, via LILA BC (CDLA-Permissive)"},
           {"url": "https://huggingface.co/Addax-Data-Science/NZI-ADS-v1/resolve/main/examples/4.jpg", "credit": "Trail Camera Images of New Zealand Animals, Department of Conservation NZ, via LILA BC (CDLA-Permissive)"}
         ],
-        "min_app_version": "7.0.1",
+        "min_app_version": "7.20.0",
         "region": "oceania",
         "domain": "camera_trap"
       },
@@ -416,7 +416,7 @@
         "license": "https://www.gnu.org/licenses/agpl-3.0.html",
         "info_url": "https://addaxdatascience.com/",
         "release_date": "2024-07",
-        "min_app_version": "7.0.1",
+        "min_app_version": "7.20.0",
         "region": "asia",
         "domain": "camera_trap"
       },
