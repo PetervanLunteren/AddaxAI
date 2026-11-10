@@ -422,6 +422,34 @@ def test_max_n_groups_per_frame_for_videos(db):
     assert obs_by_label["deer"].max_n == 3
 
 
+def test_a_track_voted_to_a_rejection_counts_nothing(db):
+    """The other half of the vote rule: a track whose every box carries a
+    rejection label (the vote gave it "false detection") adds no species
+    to the event, while the fox track beside it still counts."""
+    project = make_project(db, counting_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    ev, files, _ = _make_event_with_detections(
+        db, dep.id, datetime(2024, 1, 1, 12), [{"detections": []}],
+    )
+    clip = files[0]
+    clip.file_type = "video"
+    for key, label in ((1, "fox"), (2, "false detection")):
+        track = make_track(db, file_id=clip.id, track_key=key, start_frame=10,
+                           end_frame=20, representative_frame_number=10)
+        for frame in (10, 20):
+            make_detection(
+                db, file_id=clip.id, category="animal", confidence=0.9, label=label,
+                bbox_x=0.1, bbox_y=0.1, bbox_width=0.2, bbox_height=0.2,
+                frame_number=frame, track_id=track.id,
+            )
+    db.flush()
+
+    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+
+    assert {o.label: o.max_n for o in obs} == {"fox": 1}
+
+
 # ── Human count layer + event sign-off ─────────────────────────────
 
 

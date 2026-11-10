@@ -12,6 +12,7 @@ import pytest
 from app.ml.track_vote import tracks_follow_their_cards, vote_tracks
 
 FOX, WOLF, BOAR, DEER = "1", "2", "3", "4"
+REJECTED = "9"
 
 
 def _box(frame, conf, track=None, classifications=None):
@@ -30,7 +31,9 @@ def _box(frame, conf, track=None, classifications=None):
 
 def _results(*dets, file="clip.mp4"):
     return {
-        "classification_categories": {FOX: "fox", WOLF: "wolf", BOAR: "boar", DEER: "deer"},
+        "classification_categories": {
+            FOX: "fox", WOLF: "wolf", BOAR: "boar", DEER: "deer", REJECTED: "false detection",
+        },
         "images": [{"file": file, "detections": list(dets)}],
     }
 
@@ -197,3 +200,18 @@ def test_every_box_gets_its_own_copy_of_the_scores():
     tracks_follow_their_cards(res)
     other["classifications"][0][1] = 0.0
     assert card["classifications"][0][1] != 0.0
+
+
+def test_a_track_the_classifier_mostly_rejects_is_rejected_as_a_whole():
+    """Decided 2026-11-10: the model's own rejection class ("false
+    detection", "blank") votes like any other, so a track whose frames
+    mostly reject it carries the rejection on every box, the card's too.
+    One animal, one verdict; the counts leave it out as a whole
+    (`is_a_real_detection`) and the Labels grid still shows it as a card
+    a person can rescue."""
+    card = _box(60, 0.9, 1, [[FOX, 0.55], [REJECTED, 0.45]])
+    siblings = [_box(f, 0.7, 1, [[REJECTED, 0.9], [FOX, 0.1]]) for f in (30, 90, 120)]
+    res = _results(card, *siblings)
+
+    assert vote_tracks(res) == 1
+    assert {_top1(b) for b in (card, *siblings)} == {REJECTED}
