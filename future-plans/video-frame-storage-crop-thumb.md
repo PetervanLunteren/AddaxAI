@@ -2,7 +2,7 @@
 
 Plan for a future change. Not scheduled. Captured here so we can pick it up without re-deriving the design. None of this is built. It records the current video-frame storage model, why it costs more disk than it needs to, and the smaller-footprint scheme we would switch to if storage becomes a real problem.
 
-The likely trigger is marine BRUVS support, where videos are long and store far more per clip. See [marine-bruvs-mode.md](marine-bruvs-mode.md); the two notes interact (last section).
+The likely trigger is marine BRUVS support, where videos are long and store far more per clip. See `MARINE_VIDEOS_DESIGN.md` in the repo root; the two interact (last section).
 
 ## Why
 
@@ -79,7 +79,7 @@ Per video, ~300 KB (one 1920 frame) becomes ~85 KB (one 512 thumb + ~1.5 crops a
 
 ## Interaction with marine BRUVS mode
 
-Marine BRUVS is the scenario that most likely forces this. Those clips are long (30+ min) and multi-species, and the MaxN model needs a peak frame **per species**, not one best frame per clip (see [marine-bruvs-mode.md](marine-bruvs-mode.md)). That multiplies persisted frames and crops per video, so a lean per-frame footprint matters far more there than for camera traps. If marine lands first, design the storage scheme with it in mind (per-species peak frames + their crops), and this camera-trap-scale change likely folds into that larger effort rather than shipping on its own.
+Marine BRUVS is the scenario that most likely forces this. Those clips are long (30+ min) and multi-species, and the MaxN model needs a peak frame **per species**, not one best frame per clip (see `MARINE_VIDEOS_DESIGN.md` in the repo root). That multiplies persisted frames and crops per video, so a lean per-frame footprint matters far more there than for camera traps. If marine lands first, design the storage scheme with it in mind (per-species peak frames + their crops), and this camera-trap-scale change likely folds into that larger effort rather than shipping on its own.
 
 ## Effort and when to do it
 
