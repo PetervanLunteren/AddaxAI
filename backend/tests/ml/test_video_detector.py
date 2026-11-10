@@ -12,6 +12,7 @@ import pytest
 
 from app.ml.inference.video_detector import VideoDetectionModel
 from app.ml.track_filter import TRACK_FILTER_BY_DOMAIN
+from app.utils.subprocess_runner import StreamedResult
 
 
 class _FakeEnvManager:
@@ -59,7 +60,7 @@ def test_writes_the_file_list_and_runs_the_tracking_script(model, tmp_path, monk
     def fake_stream(command, env, progress_callback, job_id):
         commands.append(command)
         output_json.write_text("{}")
-        return 0
+        return StreamedResult(returncode=0, last_line="", output_tail=[])
 
     monkeypatch.setattr(model, "_stream_process", fake_stream)
     videos = [tmp_path / "a.mp4", tmp_path / "sub" / "b.MP4"]
@@ -90,7 +91,7 @@ def test_a_class_mapping_is_written_beside_the_file_list(
     def fake_stream(command, env, progress_callback, job_id):
         commands.append(command)
         output_json.write_text("{}")
-        return 0
+        return StreamedResult(returncode=0, last_line="", output_tail=[])
 
     monkeypatch.setattr(model, "_stream_process", fake_stream)
 
@@ -108,10 +109,18 @@ def test_a_class_mapping_is_written_beside_the_file_list(
     assert json.loads(mapping_path.read_text()) == {"0": "elasmobranch"}
 
 
-def test_a_failing_script_is_an_error(model, tmp_path, monkeypatch):
-    monkeypatch.setattr(model, "_stream_process", lambda *a: 1)
-    with pytest.raises(RuntimeError, match="exit code 1"):
+def test_a_failing_script_is_an_error_that_says_why(model, tmp_path, monkeypatch, caplog):
+    """The script's last line (its exception) is in the error, and the
+    tail of its output is in the log, so a crash in the field can be
+    read from the diagnostic report rather than guessed at."""
+    tail = ["Traceback (most recent call last):", "OSError: No space left on device"]
+    monkeypatch.setattr(
+        model, "_stream_process",
+        lambda *a: StreamedResult(returncode=1, last_line=tail[-1], output_tail=tail),
+    )
+    with pytest.raises(RuntimeError, match="exit code 1: OSError: No space left"):
         _run(model, tmp_path, tmp_path / "out.json", [tmp_path / "a.mp4"])
+    assert "Traceback (most recent call last)" in caplog.text
 
 
 def test_without_videos_is_a_configuration_error(model, tmp_path):

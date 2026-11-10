@@ -20,16 +20,19 @@ from app.core.confidence import DEFAULT_COUNTING_THRESHOLD, MD_OUTPUT_CONFIDENCE
 from app.core.job_cancellation import (
     JobCancelledError,
     is_cancel_requested,
-    track_subprocess,
 )
 from app.core.logging_config import get_logger
-from app.core.subprocess_group import popen_group
 from app.ml.environment_manager import EnvironmentManager
 from app.ml.gpu_guard import cuda_guard_overrides
 from app.ml.inference.class_mapping import write_class_mapping
 from app.ml.track_filter import TrackFilter
 from app.utils.ffmpeg_bin import resolve_ffmpeg
 from app.utils.subprocess_env import clean_python_env
+from app.utils.subprocess_runner import (
+    StreamedResult,
+    log_subprocess_failure,
+    stream_with_tail,
+)
 
 logger = get_logger(__name__)
 
@@ -207,7 +210,7 @@ class VideoDetectionModel:
 
         try:
             base_env = clean_python_env(**cuda_guard_overrides(self.env_manager))
-            return_code = self._stream_process(
+            result = self._stream_process(
                 command, base_env, progress_callback, job_id
             )
 
@@ -223,10 +226,14 @@ class VideoDetectionModel:
             if progress_callback:
                 progress_callback("Video detection complete", 1.0)
 
-            if return_code != 0:
-                error_msg = f"Video detection failed with exit code {return_code}"
-                logger.error(error_msg)
-                raise RuntimeError(error_msg)
+            if result.returncode != 0:
+                # The script's own traceback is in the tail; its last line
+                # names the error, the rest goes to the log.
+                log_subprocess_failure("Video detection", command, result)
+                raise RuntimeError(
+                    f"Video detection failed with exit code {result.returncode}: "
+                    f"{result.last_line}"
+                )
 
             if not output_json.exists():
                 raise RuntimeError("Output JSON was not created")
@@ -250,81 +257,62 @@ class VideoDetectionModel:
         env: dict[str, str],
         progress_callback: Callable[[str, float], None] | None,
         job_id: str | None,
-    ) -> int:
+    ) -> StreamedResult:
         """
-        Spawn `command`, stream its output into the log and the progress
-        callback, and return its exit code.
+        Run `command`, stream its output into the log and the progress
+        callback, and return its exit code with the tail of its output
+        (`stream_with_tail`), which is what a crash is explained by.
         """
-        # Run subprocess with progress streaming in its own process
-        # group so cancel can take the whole tree down.
-        process = popen_group(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
-            universal_newlines=True,
-            env=env,
-        )
 
-        # Stream output and parse progress
-        with track_subprocess(job_id, process):
-                for line in process.stdout:
-                    line = line.strip()
+        def on_line(line: str) -> None:
+            logger.debug(f"[VideoDetector] {line}")
 
-                    # Log output
-                    logger.debug(f"[VideoDetector] {line}")
-
-                    # Parse device from PTDetector output (appears once during init)
-                    if "PTDetector using device" in line:
-                        raw = line.split("PTDetector using device")[-1].strip()
-                        device_name = self._format_device_name(raw)
-                        # Log at INFO so backend.log preserves the device for
-                        # post-mortem checks (e.g. "did the GPU actually run
-                        # this analysis?"). Without this the device only
-                        # surfaces on the live progress modal, which the
-                        # diagnostic ZIP can't reconstruct after the fact.
-                        logger.info(
-                            f"VideoDetector device: {device_name} (raw: {raw})"
+            # Parse device from PTDetector output (appears once during init)
+            if "PTDetector using device" in line:
+                raw = line.split("PTDetector using device")[-1].strip()
+                device_name = self._format_device_name(raw)
+                # Log at INFO so backend.log preserves the device for
+                # post-mortem checks (e.g. "did the GPU actually run
+                # this analysis?"). Without this the device only
+                # surfaces on the live progress modal, which the
+                # diagnostic ZIP can't reconstruct after the fact.
+                logger.info(f"VideoDetector device: {device_name} (raw: {raw})")
+                if progress_callback:
+                    try:
+                        progress_callback(
+                            "Initializing detector...", 0.0,
+                            {"compute_device": device_name},
                         )
-                        if progress_callback:
-                            try:
-                                progress_callback(
-                                    "Initializing detector...", 0.0,
-                                    {"compute_device": device_name},
-                                )
-                            except TypeError:
-                                pass
+                    except TypeError:
+                        pass
 
-                    # Parse progress from tqdm output: the script's bar over
-                    # every sampled frame of the run ("45/100"). Every line
-                    # is forwarded, as the image detector does: the bar
-                    # refreshes at most once a second (`mininterval=1.0` in
-                    # the tracking script), and a one-percent gate meant an
-                    # hour-long drop (97,257 frames at 8 a second) said
-                    # nothing for the first two and a half minutes and then
-                    # moved once every two (2026-11-04).
-                    progress_match = re.search(r"(\d+)/(\d+)", line)
-                    if progress_match and progress_callback:
-                        current, total = map(int, progress_match.groups())
-                        metrics = self._parse_tqdm_metrics(line)
-                        try:
-                            progress_callback(
-                                line if metrics else f"Tracking frame {current}/{total}",
-                                current / total,
-                                metrics,
-                            )
-                        except TypeError:
-                            # Fallback for callbacks that don't accept metrics
-                            progress_callback(
-                                f"Tracking frame {current}/{total}",
-                                current / total,
-                            )
+            # Parse progress from tqdm output: the script's bar over
+            # every sampled frame of the run ("45/100"). Every line
+            # is forwarded, as the image detector does: the bar
+            # refreshes at most once a second (`mininterval=1.0` in
+            # the tracking script), and a one-percent gate meant an
+            # hour-long drop (97,257 frames at 8 a second) said
+            # nothing for the first two and a half minutes and then
+            # moved once every two (2026-11-04).
+            progress_match = re.search(r"(\d+)/(\d+)", line)
+            if progress_match and progress_callback:
+                current, total = map(int, progress_match.groups())
+                metrics = self._parse_tqdm_metrics(line)
+                try:
+                    progress_callback(
+                        line if metrics else f"Tracking frame {current}/{total}",
+                        current / total,
+                        metrics,
+                    )
+                except TypeError:
+                    # Fallback for callbacks that don't accept metrics
+                    progress_callback(
+                        f"Tracking frame {current}/{total}",
+                        current / total,
+                    )
 
-                process.stdout.close()
-                return process.wait()
+        # In its own process group (job_id), so cancel takes the tree down.
+        return stream_with_tail(command, env=env, on_line=on_line, job_id=job_id)
 
     @staticmethod
     def _format_device_name(raw: str) -> str:

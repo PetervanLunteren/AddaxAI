@@ -86,6 +86,7 @@ import argparse
 import importlib.util
 import io
 import json
+import os
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -494,8 +495,41 @@ def write_results(
         },
     }
     output_json.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_json, "w") as f:
-        json.dump(payload, f, indent=1)
+    write_json_verified(output_json, payload)
+
+
+WRITE_ATTEMPTS = 3
+
+
+def write_json_verified(path: Path, obj: dict) -> None:
+    """Write ``obj`` to ``path`` the way the backend writes its result
+    JSONs (``app/utils/json_io.py``, which this script cannot import):
+    to a ``.partial`` sibling, fsynced, parsed back, then renamed over
+    ``path``, three attempts before an OSError. A tracking run can be
+    hours of GPU work, and a write the OS reports as done can still land
+    corrupt on an external drive. Keep the two in step."""
+    partial = path.with_name(path.name + ".partial")
+    last_error: Exception | None = None
+    try:
+        for _ in range(WRITE_ATTEMPTS):
+            try:
+                with open(partial, "w") as f:
+                    json.dump(obj, f, indent=1)
+                    f.flush()
+                    os.fsync(f.fileno())
+                with open(partial) as f:
+                    json.load(f, object_pairs_hook=lambda pairs: None)
+                os.replace(partial, path)
+                return
+            except (OSError, ValueError) as e:
+                last_error = e
+        raise OSError(
+            f"Could not write a readable results file to {path} after "
+            f"{WRITE_ATTEMPTS} attempts. The drive may be full or failing. "
+            f"Last error: {last_error}"
+        )
+    finally:
+        partial.unlink(missing_ok=True)
 
 
 # --- The run -----------------------------------------------------------------

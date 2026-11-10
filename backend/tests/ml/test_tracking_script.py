@@ -358,3 +358,32 @@ def test_a_box_never_confirmed_is_never_stored(tmp_path, make_video):
     _, boxes, _ = _run_loop(tmp_path, make_video, script)
     assert {b["track_id"] for b in boxes} == {1}
     assert len(boxes) == 12
+
+
+def test_results_are_written_verified_and_never_half(tmp_path, monkeypatch):
+    """A write the OS reports as done can land truncated on a failing
+    drive. The script parses its own file back before it renames it over
+    the real name, retries, and gives up with an error rather than leave
+    a results file the ingest cannot read."""
+    out = tmp_path / "video_results.json"
+    real_dump = json.dump
+    calls = {"n": 0}
+
+    def truncating_dump(obj, f, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            f.write('{"images": [')  # a half file, as a failing drive leaves it
+            return
+        real_dump(obj, f, **kw)
+
+    monkeypatch.setattr(ts.json, "dump", truncating_dump)
+    ts.write_results(out, images=[], categories={"0": "animal"}, info={})
+
+    assert calls["n"] == 2
+    assert json.loads(out.read_text())["detection_categories"] == {"0": "animal"}
+    assert not (tmp_path / "video_results.json.partial").exists()
+
+    monkeypatch.setattr(ts.json, "dump", lambda obj, f, **kw: f.write("{"))
+    with pytest.raises(OSError, match="readable results file"):
+        ts.write_results(tmp_path / "never.json", images=[], categories={}, info={})
+    assert not (tmp_path / "never.json").exists()
