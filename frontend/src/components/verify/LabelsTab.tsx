@@ -824,8 +824,11 @@ export function LabelsTab({
     // the divider's Accept button.
     queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
     // Cascade to the Media / Events views (File.verified rollup) and the
-    // verified-progress pill — see applyDetectionAction.
+    // verified-progress pill, whose key the events prefix does not reach
+    // (see applyDetectionAction). Undoing a track's verdict lands here, not
+    // in the patch path: its snapshot holds frames the grid does not show.
     queryClient.invalidateQueries({ queryKey: ["events"] });
+    queryClient.invalidateQueries({ queryKey: ["labels-progress", projectId] });
     // The large view draws its box and pill from the file query; without
     // this, stepping back onto a relabelled crop showed the old label on
     // the photo next to the new one on the button.
