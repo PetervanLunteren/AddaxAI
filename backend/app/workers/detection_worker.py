@@ -72,6 +72,20 @@ def _failure_message(error: Exception, folder: Path | None) -> str:
     return with_smart_app_control_hint(str(error))
 
 
+def video_frame_failure_warnings(failures: list[dict]) -> list[dict]:
+    """One deployment warning per video that was analysed with frames the
+    detector failed on (`PipelineResult.video_frame_failures`). The video
+    is in the database; the warning says its boxes are incomplete."""
+    return [
+        {
+            "type": "video_frames_failed",
+            "path": f["file"],
+            "reason": f"{f['failed']} of {f['sampled']} frames could not be analysed",
+        }
+        for f in failures
+    ]
+
+
 async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list[str], db) -> None:
     """
     Process multiple queue entries sequentially within one job.
@@ -976,6 +990,14 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                                 "reason": f["reason"],
                             }
                             for f in result.skipped_video_failures
+                        )
+                    if result.video_frame_failures:
+                        logger.warning(
+                            f"{len(result.video_frame_failures)} video(s) were "
+                            "analysed with frames the detector failed on"
+                        )
+                        warning_entries.extend(
+                            video_frame_failure_warnings(result.video_frame_failures)
                         )
                     if warning_entries:
                         queue_crud.update_queue_warnings(

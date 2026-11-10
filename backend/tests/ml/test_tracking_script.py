@@ -307,9 +307,11 @@ class _ScriptedDetector:
         self.script = script
         self.calls = 0
 
-    def detect(self, frame_bgr: np.ndarray) -> np.ndarray:
+    def detect(self, frame_bgr: np.ndarray) -> np.ndarray | None:
         rows = self.script.get(self.calls, [])
         self.calls += 1
+        if rows is None:  # scripted as a frame the detector failed on
+            return None
         return np.asarray(rows, dtype=np.float32).reshape(-1, 6)
 
 
@@ -332,7 +334,7 @@ def _walker(first: int, last: int, conf: float = 0.9) -> dict[int, list[list[flo
 
 
 def test_the_first_frame_of_a_video_confirms_a_track_at_once(tmp_path, make_video):
-    processed, boxes, crops = _run_loop(tmp_path, make_video, _walker(0, 11))
+    processed, boxes, crops, _ = _run_loop(tmp_path, make_video, _walker(0, 11))
     assert processed == list(range(12))
     assert [b["frame_number"] for b in boxes] == list(range(12))
     assert {b["track_id"] for b in boxes} == {1}
@@ -342,7 +344,7 @@ def test_the_first_frame_of_a_video_confirms_a_track_at_once(tmp_path, make_vide
 def test_a_track_born_later_stores_its_first_box_once_confirmed(tmp_path, make_video):
     """A track that starts on frame 3 is reported from frame 4; the box it
     started from is stored then, in frame order, and only once."""
-    _, boxes, _ = _run_loop(tmp_path, make_video, _walker(3, 11))
+    _, boxes, _, _ = _run_loop(tmp_path, make_video, _walker(3, 11))
     frames = [b["frame_number"] for b in boxes]
     assert frames == list(range(3, 12))
     # The stored box is the detector's own, not a filtered estimate.
@@ -355,7 +357,7 @@ def test_a_box_never_confirmed_is_never_stored(tmp_path, make_video):
     is in memory; the caller writes crops for surviving tracks only."""
     script = _walker(0, 11)
     script[6] = [*script[6], [40, 30, 60, 46, 0.9, 0]]
-    _, boxes, _ = _run_loop(tmp_path, make_video, script)
+    _, boxes, _, _ = _run_loop(tmp_path, make_video, script)
     assert {b["track_id"] for b in boxes} == {1}
     assert len(boxes) == 12
 
@@ -387,3 +389,38 @@ def test_results_are_written_verified_and_never_half(tmp_path, monkeypatch):
     with pytest.raises(OSError, match="readable results file"):
         ts.write_results(tmp_path / "never.json", images=[], categories={}, info={})
     assert not (tmp_path / "never.json").exists()
+
+
+def test_a_frame_the_detector_failed_on_is_left_out_and_counted(tmp_path, make_video):
+    """A failed frame is not "no animals". It is not listed as processed
+    and the tracker never sees it, so the animal keeps its track across
+    the gap, and the count comes back for the deployment's warning."""
+    script: dict = _walker(0, 11)
+    script[5] = None
+    processed, boxes, _, failed = _run_loop(tmp_path, make_video, script)
+
+    assert failed == 1
+    assert processed == [f for f in range(12) if f != 5]
+    assert [b["frame_number"] for b in boxes] == processed
+    assert {b["track_id"] for b in boxes} == {1}
+
+
+def test_the_detector_wrapper_tells_a_failure_from_an_empty_frame():
+    class _Package:
+        def __init__(self, result):
+            self.result = result
+
+        def generate_detections_one_image(self, image, **kw):
+            return self.result
+
+    detector = object.__new__(ts._Detector)
+    detector.conf, detector.is_rfdetr = 0.01, False
+    detector.image_size, detector.augment = None, False
+    frame = np.zeros((48, 64, 3), dtype=np.uint8)
+
+    detector.detector = _Package({"file": "frame", "detections": [], "failure": None})
+    assert detector.detect(frame).shape == (0, 6)
+    detector.detector = _Package(
+        {"file": "frame", "detections": None, "failure": "Failure inference"}
+    )
+    assert detector.detect(frame) is None

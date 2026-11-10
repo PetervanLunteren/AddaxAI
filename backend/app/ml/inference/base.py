@@ -61,6 +61,10 @@ class PipelineResult:
     # Surfaced to the user as a non-fatal warning on the queue entry so
     # they know which videos to look at.
     skipped_video_failures: list[dict] = field(default_factory=list)
+    # Videos that were analysed with some sampled frames left out, because
+    # the detector failed on them: `{"file", "failed", "sampled"}`. The
+    # video is ingested; the warning says its boxes are incomplete.
+    video_frame_failures: list[dict] = field(default_factory=list)
 
 
 class DetectionModel:

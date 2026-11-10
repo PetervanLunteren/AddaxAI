@@ -248,6 +248,7 @@ def load_json_to_database(
         # during the insert pass instead of a separate collect_md_failures
         # pass over the whole dict.
         skipped_video_failures: list[dict] = []
+        video_frame_failures: list[dict] = []
 
         # Pass 1: pre-extract video dates using exiftool (single process for
         # all videos). Skip MegaDetector-failure entries (video could not be
@@ -294,6 +295,15 @@ def load_json_to_database(
                 )
                 continue
             relative_file = img["file"]
+            if img.get("frames_failed"):
+                video_frame_failures.append(
+                    {
+                        "file": relative_file,
+                        "failed": img["frames_failed"],
+                        "sampled": img["frames_failed"]
+                        + len(img.get("frames_processed") or []),
+                    }
+                )
             # Never resolve(): on Windows that rewrites a mapped drive to
             # its UNC form, and this is the path every File row stores.
             # See DEVELOPERS.md "Paths to user media are never resolved".
@@ -652,6 +662,7 @@ def load_json_to_database(
             classified_detections=classified_count,
             skipped_missing_timestamp=skipped_missing_timestamp,
             skipped_video_failures=skipped_video_failures,
+            video_frame_failures=video_frame_failures,
         )
 
     except JobCancelledError:

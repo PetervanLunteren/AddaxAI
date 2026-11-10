@@ -230,7 +230,9 @@ class DeploymentInfoResponse(BaseModel):
     #   extractable EXIF / QuickTime capture timestamp, and
     #   {"type": "video_processing_failure", "path": ..., "reason": ...}
     #   for videos the decoder rejected (corrupt file, unsupported
-    #   codec, etc). None when the run had nothing to flag.
+    #   codec, etc). `video_frames_failed` is the one entry about a file
+    #   that was ingested: some of its sampled frames are missing.
+    #   None when the run had nothing to flag.
     warnings: list[dict] | None = None
 
 

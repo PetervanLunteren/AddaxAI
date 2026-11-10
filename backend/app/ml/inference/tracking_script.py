@@ -210,7 +210,10 @@ class _Detector:
         device = getattr(self.detector, "device", None) or _device()
         print(f"PTDetector using device {device}", flush=True)
 
-    def detect(self, frame_bgr: np.ndarray) -> np.ndarray:
+    def detect(self, frame_bgr: np.ndarray) -> np.ndarray | None:
+        """The boxes on one frame, or None when the detector reports a
+        failure on it. None is not "no animals": the caller leaves the
+        frame out and counts it, so the run can say so."""
         height, width = frame_bgr.shape[:2]
         # The package takes PIL in RGB, like the app's own image path.
         image = Image.fromarray(np.ascontiguousarray(frame_bgr[:, :, ::-1]))
@@ -221,6 +224,8 @@ class _Detector:
             image_size=None if self.is_rfdetr else self.image_size,
             augment=self.augment,
         )
+        if result.get("failure"):
+            return None
         rows = []
         for det in result.get("detections") or []:
             x, y, w, h = det["bbox"]
@@ -471,14 +476,15 @@ def write_track_crops(
             print(f"could not write {dest}: {e}", file=sys.stderr, flush=True)
 
 
-def failure_entry(relative_path: str) -> dict:
-    """MegaDetector's failure shape for a video that would not open."""
+def failure_entry(relative_path: str, reason: str = "Failure video access") -> dict:
+    """MegaDetector's failure shape for a video with nothing to ingest:
+    one that would not open, or one the detector failed on throughout."""
     return {
         "file": relative_path,
         "frame_rate": -1,
         "frames_processed": [],
         "detections": None,
-        "failure": "Failure video access",
+        "failure": reason,
     }
 
 
@@ -549,12 +555,16 @@ def track_video(
     filter_motion: float,
     filter_exempt: float,
     raw_out: list[dict] | None = None,
-) -> tuple[list[int], list[dict], dict[int, tuple[float, int, bytes]]]:
+) -> tuple[list[int], list[dict], dict[int, tuple[float, int, bytes]], int]:
     """Run one video's sampled frames through the detector and a fresh
-    tracker. Returns the frames actually decoded, the surviving boxes,
-    and the best crop per track (surviving tracks included, the filtered
-    ones too; the caller writes only the survivors). ``raw_out``, when
-    given, receives every detector box of every sampled frame."""
+    tracker. Returns the frames analysed, the surviving boxes, the best
+    crop per track (surviving tracks included, the filtered ones too; the
+    caller writes only the survivors) and how many frames the detector
+    failed on. ``raw_out``, when given, receives every detector box of
+    every sampled frame.
+
+    A failed frame is left out: not listed as processed and not shown to
+    the tracker, which treats it as any other gap between samples."""
     stride = sampling_stride(native_fps, fps)
     out_w, out_h = decode_size(*size)
     tracker = make_tracker(fps, high, low, out_w)
@@ -563,9 +573,14 @@ def track_video(
     best_crops: dict[int, tuple[float, int, bytes]] = {}
     # The first box of each track started on the previous frame, by track.
     births: dict[int, dict] = {}
+    failed = 0
     for frame_number, frame_bgr in ffmpeg_frames(ffmpeg, path, stride, out_w, out_h):
-        processed.append(frame_number)
         detections = detector.detect(frame_bgr)
+        if detections is None:
+            failed += 1
+            progress.update(1)
+            continue
+        processed.append(frame_number)
         if raw_out is not None:
             raw_out.extend(normalise_detection_rows(detections, out_w, out_h, frame_number))
         # BoT-SORT wants the frame for its camera-motion compensation.
@@ -586,7 +601,7 @@ def track_video(
     boxes_out = filter_tracks(
         boxes_out, fps, min_motion=filter_motion, exempt_conf=filter_exempt
     )
-    return processed, boxes_out, best_crops
+    return processed, boxes_out, best_crops, failed
 
 
 def main() -> int:
@@ -665,25 +680,35 @@ def main() -> int:
                 raw_images.append(failure_entry(relative))
                 continue
             raw_boxes: list[dict] | None = [] if args.raw_detections_json else None
-            processed, boxes, best_crops = track_video(
+            processed, boxes, best_crops, failed = track_video(
                 detector, args.track_high_thresh, args.track_low_thresh, args.ffmpeg,
                 path, args.fps, native_fps,
                 (width, height), progress, args.track_filter_motion,
                 args.track_filter_exempt, raw_out=raw_boxes,
             )
             if not processed:
-                images.append(failure_entry(relative))
-                raw_images.append(failure_entry(relative))
+                reason = (
+                    "Detection failed on every sampled frame"
+                    if failed
+                    else "Failure video access"
+                )
+                images.append(failure_entry(relative, reason))
+                raw_images.append(failure_entry(relative, reason))
                 continue
             write_track_crops(
                 args.crops_dir / relative, best_crops, {b["track_id"] for b in boxes}
             )
-            images.append({
+            entry = {
                 "file": relative,
                 "frame_rate": native_fps,
                 "frames_processed": processed,
                 "detections": boxes,
-            })
+            }
+            # Only when it happened, so a clean run's JSON is unchanged. The
+            # ingest turns it into a warning on the deployment.
+            if failed:
+                entry["frames_failed"] = failed
+            images.append(entry)
             if raw_boxes is not None:
                 raw_images.append({
                     "file": relative,

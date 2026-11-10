@@ -267,6 +267,7 @@ export interface DeploymentWarning {
   type:
     | "missing_timestamp"
     | "video_processing_failure"
+    | "video_frames_failed"
     | "smoothing_failed"
     | string;
   path?: string;

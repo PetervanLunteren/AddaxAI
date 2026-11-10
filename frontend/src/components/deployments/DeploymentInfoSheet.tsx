@@ -290,6 +290,8 @@ function describeWarningType(type: string): string {
   switch (type) {
     case "video_processing_failure":
       return "Could not be read";
+    case "video_frames_failed":
+      return "Some frames not analysed";
     case "skipped_by_media_filter":
       // Not a fault: the user asked for this. It is listed because the files
       // are absent from every count and export, so the deployment has to say

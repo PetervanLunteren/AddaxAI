@@ -94,6 +94,36 @@ def test_failed_video_entries_are_counted_in_the_total(deployment_scaffold):
     assert len(result.skipped_video_failures) == 1
 
 
+def test_a_video_with_failed_frames_is_loaded_and_reported(deployment_scaffold):
+    """The tracking script leaves a frame the detector failed on out and
+    writes how many. The video is ingested like any other, and the count
+    comes back so the worker can put a warning on the deployment."""
+    from app.workers.detection_worker import video_frame_failure_warnings
+
+    result = _load(
+        deployment_scaffold,
+        [
+            {
+                "file": "clip.mp4",
+                "frame_rate": 30.0,
+                "frames_processed": [0, 10, 30],
+                "frames_failed": 1,
+                "detections": [],
+            }
+        ],
+    )
+
+    assert result.video_frame_failures == [{"file": "clip.mp4", "failed": 1, "sampled": 4}]
+    assert result.skipped_video_failures == []
+    assert video_frame_failure_warnings(result.video_frame_failures) == [
+        {
+            "type": "video_frames_failed",
+            "path": "clip.mp4",
+            "reason": "1 of 4 frames could not be analysed",
+        }
+    ]
+
+
 def test_cancel_raises_cancelled_not_failed(deployment_scaffold):
     """
     A user's cancel must not be reported as a crash.

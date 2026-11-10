@@ -58,6 +58,7 @@ interface LogRow {
 const TYPE_LABELS: Record<string, string> = {
   missing_timestamp: "No capture timestamp",
   video_processing_failure: "Could not be read",
+  video_frames_failed: "Some frames not analysed",
   skipped_by_media_filter: "Skipped by 'Media to analyse'",
   smoothing_failed: "Smoothing did not run",
   job_failed: "Deployment failed",
@@ -69,7 +70,8 @@ const TYPE_LABELS: Record<string, string> = {
 // counted there makes the summary claim a file was skipped when none
 // was, so they are excluded from every file tally. One line to add
 // another, same as TYPE_LABELS above.
-const RUN_LEVEL_WARNING_TYPES = new Set(["smoothing_failed"]);
+// `video_frames_failed` names a file, but one that did make it in.
+const RUN_LEVEL_WARNING_TYPES = new Set(["smoothing_failed", "video_frames_failed"]);
 
 function isSkippedFileRow(row: { severity: string; type: string }): boolean {
   return row.severity === "warning" && !RUN_LEVEL_WARNING_TYPES.has(row.type);
