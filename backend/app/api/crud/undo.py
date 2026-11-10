@@ -7,7 +7,8 @@ builds its own snapshot because only it knows which boxes a file sign-off
 touches. ``restore`` is the one writer behind ``POST /api/undo``.
 """
 
-from typing import NamedTuple
+from collections.abc import Iterable
+from typing import NamedTuple, TypeVar
 
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,8 @@ from app.api.schemas.undo import DetectionState, FileState, UndoSnapshot
 from app.db.sql_params import iter_id_chunks
 from app.ml.taxonomy_db import clear_classification, ensure_builtin_labels
 from app.models import Detection, File
+
+_Row = TypeVar("_Row", Detection, File)
 
 
 def snapshot(db: Session, detections: list[Detection]) -> UndoSnapshot:
@@ -38,10 +41,10 @@ def snapshot(db: Session, detections: list[Detection]) -> UndoSnapshot:
     )
 
 
-def _rows(db: Session, model, ids) -> list:
+def _rows(db: Session, model: type[_Row], ids: Iterable[str]) -> list[_Row]:
     """The rows with these ids, read in chunks: a snapshot of a tracked
     clip holds every box of its tracks, past SQLite's parameter limit."""
-    rows: list = []
+    rows: list[_Row] = []
     for chunk in iter_id_chunks(ids):
         rows.extend(db.query(model).filter(model.id.in_(chunk)).all())
     return rows
