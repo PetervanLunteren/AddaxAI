@@ -80,8 +80,7 @@ export const SETTING_CAPTIONS = {
   // any rate, and reading it next to this control implies it is a
   // consequence of it.
   videoFrameRate:
-    "How many frames per second the AI looks at in a video. The detector " +
-    "runs on every one, so 4 per second takes twice as long as 2. Three " +
+    "How many frames per second the AI looks at in a video. Three " +
     "per second is the default. At lower rates the AI loses animals " +
     "between frames more often, so one animal gets split into several " +
     "detections and verifying takes longer.",
