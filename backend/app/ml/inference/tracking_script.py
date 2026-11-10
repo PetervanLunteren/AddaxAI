@@ -210,44 +210,27 @@ class _Detector:
         device = getattr(self.detector, "device", None) or _device()
         print(f"PTDetector using device {device}", flush=True)
 
-    def detect_batch(self, frames_bgr: list[np.ndarray]) -> list[np.ndarray]:
-        """One detector call for several sampled frames, in order. The
-        single-image call is this same call with one frame in it (the
-        package's own ``generate_detections_one_image``), so a batch of
-        one is exactly the old path.
-
-        A frame the package reports as failed raises: an empty row set
-        would read as "no animals" and quietly end every track running
-        through that frame."""
-        images = [
-            # The package takes PIL in RGB, like the app's own image path.
-            Image.fromarray(np.ascontiguousarray(frame[:, :, ::-1]))
-            for frame in frames_bgr
-        ]
-        results = self.detector.generate_detections_one_batch(
-            images,
-            image_id=[f"frame{i}" for i in range(len(images))],
+    def detect(self, frame_bgr: np.ndarray) -> np.ndarray:
+        height, width = frame_bgr.shape[:2]
+        # The package takes PIL in RGB, like the app's own image path.
+        image = Image.fromarray(np.ascontiguousarray(frame_bgr[:, :, ::-1]))
+        result = self.detector.generate_detections_one_image(
+            image,
+            image_id="frame",
             detection_threshold=self.conf,
             image_size=None if self.is_rfdetr else self.image_size,
             augment=self.augment,
         )
-        out = []
-        for frame, result in zip(frames_bgr, results, strict=True):
-            if result.get("failure"):
-                raise RuntimeError(f"Detection failed on a video frame: {result['failure']}")
-            height, width = frame.shape[:2]
-            rows = []
-            for det in result.get("detections") or []:
-                x, y, w, h = det["bbox"]
-                rows.append(
-                    [x * width, y * height, (x + w) * width, (y + h) * height,
-                     float(det["conf"]), int(det["category"])]
-                )
-            out.append(
-                np.asarray(rows, dtype=np.float32) if rows
-                else np.zeros((0, 6), dtype=np.float32)
+        rows = []
+        for det in result.get("detections") or []:
+            x, y, w, h = det["bbox"]
+            rows.append(
+                [x * width, y * height, (x + w) * width, (y + h) * height,
+                 float(det["conf"]), int(det["category"])]
             )
-        return out
+        if not rows:
+            return np.zeros((0, 6), dtype=np.float32)
+        return np.asarray(rows, dtype=np.float32)
 
 
 # --- Pure helpers (unit tested) ---------------------------------------------
@@ -599,17 +582,12 @@ def track_video(
     filter_motion: float,
     filter_exempt: float,
     raw_out: list[dict] | None = None,
-    batch_size: int = 1,
 ) -> tuple[list[int], list[dict], dict[int, tuple[float, int, bytes]]]:
     """Run one video's sampled frames through the detector and a fresh
     tracker. Returns the frames actually decoded, the surviving boxes,
     and the best crop per track (surviving tracks included, the filtered
     ones too; the caller writes only the survivors). ``raw_out``, when
-    given, receives every detector box of every sampled frame.
-
-    The detector sees ``batch_size`` frames per call; the tracker then
-    takes them one at a time, in frame order, so batching changes how
-    fast the boxes come and not which tracks they make."""
+    given, receives every detector box of every sampled frame."""
     stride = sampling_stride(native_fps, fps)
     out_w, out_h = decode_size(*size)
     tracker = make_tracker(fps, high, low, out_w)
@@ -618,46 +596,30 @@ def track_video(
     best_crops: dict[int, tuple[float, int, bytes]] = {}
     # The first box of each track started on the previous frame, by track.
     births: dict[int, dict] = {}
-    for batch in _batched(ffmpeg_frames(ffmpeg, path, stride, out_w, out_h), batch_size):
-        detected = detector.detect_batch([frame for _n, frame in batch])
-        for (frame_number, frame_bgr), detections in zip(batch, detected, strict=True):
-            processed.append(frame_number)
-            if raw_out is not None:
-                raw_out.extend(
-                    normalise_detection_rows(detections, out_w, out_h, frame_number)
-                )
-            # BoT-SORT wants the frame for its camera-motion compensation.
-            confirmed, born = tracker.update(detections, frame_bgr)
-            boxes = normalise_track_rows(confirmed, out_w, out_h, frame_number)
-            # A track reported for the first time brings the box it started from.
-            boxes_out.extend(births[b["track_id"]] for b in boxes if b["track_id"] in births)
-            boxes_out.extend(boxes)
-            births = {
-                b["track_id"]: b for b in normalise_track_rows(born, out_w, out_h, frame_number)
-            }
-            # Births are cut here, while their frame is in memory; a birth that
-            # never becomes a track leaves an entry nobody writes.
-            keep_best_crop(best_crops, [*births.values(), *boxes], frame_bgr, frame_number)
-            progress.update(1)
+    for frame_number, frame_bgr in ffmpeg_frames(ffmpeg, path, stride, out_w, out_h):
+        processed.append(frame_number)
+        detections = detector.detect(frame_bgr)
+        if raw_out is not None:
+            raw_out.extend(normalise_detection_rows(detections, out_w, out_h, frame_number))
+        # BoT-SORT wants the frame for its camera-motion compensation.
+        confirmed, born = tracker.update(detections, frame_bgr)
+        boxes = normalise_track_rows(confirmed, out_w, out_h, frame_number)
+        # A track reported for the first time brings the box it started from.
+        boxes_out.extend(births[b["track_id"]] for b in boxes if b["track_id"] in births)
+        boxes_out.extend(boxes)
+        births = {
+            b["track_id"]: b for b in normalise_track_rows(born, out_w, out_h, frame_number)
+        }
+        # Births are cut here, while their frame is in memory; a birth that
+        # never becomes a track leaves an entry nobody writes.
+        keep_best_crop(best_crops, [*births.values(), *boxes], frame_bgr, frame_number)
+        progress.update(1)
     # A birth is stored one frame late; back into frame order.
     boxes_out.sort(key=lambda b: b["frame_number"])
     boxes_out = filter_tracks(
         boxes_out, fps, min_motion=filter_motion, exempt_conf=filter_exempt
     )
     return processed, boxes_out, best_crops
-
-
-def _batched(frames, size: int):
-    """``(frame_number, frame)`` pairs in lists of ``size``, the last one
-    shorter, so one batch of decoded frames is in memory at a time."""
-    batch = []
-    for item in frames:
-        batch.append(item)
-        if len(batch) >= size:
-            yield batch
-            batch = []
-    if batch:
-        yield batch
 
 
 def main() -> int:
@@ -704,10 +666,6 @@ def main() -> int:
         help="a track whose best box reaches this confidence survives the filter",
     )
     parser.add_argument(
-        "--batch_size", type=int, default=1,
-        help="sampled frames per detector call (the project's detection batch size)",
-    )
-    parser.add_argument(
         "--raw_detections_json", type=Path, default=None,
         help="also write every detector box of every sampled frame, untracked, "
              "in the same shape (for benchmarks that replay the tracker offline)",
@@ -744,7 +702,7 @@ def main() -> int:
                 detector, args.track_high_thresh, args.track_low_thresh, args.ffmpeg,
                 path, args.fps, native_fps,
                 (width, height), progress, args.track_filter_motion,
-                args.track_filter_exempt, raw_out=raw_boxes, batch_size=args.batch_size,
+                args.track_filter_exempt, raw_out=raw_boxes,
             )
             if not processed:
                 images.append(failure_entry(relative))

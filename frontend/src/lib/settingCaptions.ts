@@ -94,7 +94,7 @@ export const SETTING_CAPTIONS = {
     "Images and video frames are resized to this size before detection. Larger can find small or distant animals but is slower and uses more memory. The model default is best in most cases.",
   imageAugmentation:
     "A slower detection mode that can find a few more animals in difficult images or frames, but may add false positives. Off by default.",
-  detectionBatchSize: batchSizeCaption("images or video frames the detection model handles"),
+  detectionBatchSize: batchSizeCaption("images the detection model handles"),
   classificationBatchSize: batchSizeCaption(
     "crops the classification model handles",
   ),

@@ -51,7 +51,6 @@ def _build_tracking_cmd(
     track_filter: TrackFilter,
     image_size: int | None,
     augment: bool,
-    batch_size: int | None,
 ) -> list[str]:
     """Assemble the ``tracking_script`` command line. The script takes an
     explicit file list rather than walking the folder, so the videos it
@@ -97,10 +96,6 @@ def _build_tracking_cmd(
         command += ["--image_size", str(image_size)]
     if augment:
         command.append("--augment")
-    # Unset is the package's own default (1), as for images
-    # (`app/ml/batch_size.py`); a project's custom value travels as is.
-    if batch_size is not None:
-        command += ["--batch_size", str(batch_size)]
     return command
 
 
@@ -149,7 +144,6 @@ class VideoDetectionModel:
         track_filter: TrackFilter,
         image_size: int | None = None,
         augment: bool = False,
-        batch_size: int | None = None,
         progress_callback: Callable[[str, float], None] | None = None,
         job_id: str | None = None,
     ) -> Path:
@@ -171,8 +165,6 @@ class VideoDetectionModel:
             track_filter: The post-filter's values for the detector's domain.
             image_size: Override the detector's long-edge resize size.
             augment: Run detection with augmentation.
-            batch_size: Sampled frames per detector call; None for the
-                package's default.
             progress_callback: Optional callback(message, progress[, metrics]).
             job_id: For cancellation.
 
@@ -209,7 +201,6 @@ class VideoDetectionModel:
             track_filter=track_filter,
             image_size=image_size,
             augment=augment,
-            batch_size=batch_size,
         )
 
         logger.info(f"Running command: {' '.join(command)}")
