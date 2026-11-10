@@ -45,6 +45,7 @@ import {
   MD_OUTPUT_CONFIDENCE_THRESHOLD,
 } from "../../lib/confidence";
 import { invalidateProjectData } from "../../lib/invalidate-project";
+import { overallProgressPct } from "../../lib/labels-progress";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
 import {
   fromFilterBarFilters,
@@ -226,20 +227,20 @@ const NARROW_TIP_MIN_TOTAL = 5000;
  * indeterminate spinner during the brief window before the first
  * event arrives.
  *
- * The subprocess emits three phases (load, sort, neighbors), each
- * with its own 0 → N counter. To avoid the bar resetting to 0%
- * between phases (which reads like a flicker), each phase is mapped
- * to one slice of the overall 0 → 100% bar.
+ * `sort` is the sort that is running, which decides how the phases
+ * share the bar (see `overallProgressPct`).
  */
 function LabelsLoadingState({
   progress,
+  sort,
 }: {
   progress: LabelsProgressEvent | null;
+  sort: LabelSort;
 }) {
   const phaseLabel = progress
     ? PHASE_LABELS[progress.phase] ?? progress.phase
     : null;
-  const overallPct = progress ? overallProgressPct(progress) : 0;
+  const overallPct = progress ? overallProgressPct(progress, sort) : 0;
   const showNarrowTip = (progress?.total ?? 0) >= NARROW_TIP_MIN_TOTAL;
 
   return (
@@ -269,31 +270,6 @@ const PHASE_LABELS: Record<LabelsProgressEvent["phase"], string> = {
   sort: "Ordering by similarity",
   neighbors: "Comparing neighbours",
 };
-
-// Slice each phase into a chunk of the overall 0-100% bar so the
-// per-phase resets don't flicker the bar back to 0%. Order matches
-// the subprocess: load → sort → neighbors. Weights are 1/3 each;
-// not perfectly proportional to wall-clock time but close enough
-// that the bar moves smoothly forward.
-const PHASE_RANGES: Record<
-  LabelsProgressEvent["phase"],
-  { start: number; end: number }
-> = {
-  // The metadata sorts (event / time) emit only this phase, so it spans
-  // the whole bar. The embedding sorts use load → sort → neighbours below.
-  detections: { start: 0, end: 100 },
-  load: { start: 0, end: 33 },
-  sort: { start: 33, end: 66 },
-  neighbors: { start: 66, end: 100 },
-};
-
-function overallProgressPct(progress: LabelsProgressEvent): number {
-  const range = PHASE_RANGES[progress.phase];
-  if (!range) return 0;
-  const phaseFrac =
-    progress.total > 0 ? Math.min(1, progress.done / progress.total) : 0;
-  return Math.round(range.start + (range.end - range.start) * phaseFrac);
-}
 
 export function LabelsTab({
   projectId,
@@ -912,11 +888,14 @@ export function LabelsTab({
   const relabelCohort = useCallback(
     async (cohort: CohortItem) => {
       try {
-        await detectionsApi.bulkRelabel(
+        const { before } = await detectionsApi.bulkRelabel(
           cohort.detection_ids,
           cohort.suggested_label,
           cohort.category ?? undefined,
         );
+        // Undoable like every other relabel: Cmd+Z puts the whole
+        // cohort back as it was.
+        undo.push(before);
         const idSet = new Set(cohort.detection_ids);
         setSortResult((prev) =>
           prev
@@ -948,7 +927,7 @@ export function LabelsTab({
         toast.error(err instanceof Error ? err.message : "Relabel failed");
       }
     },
-    [projectId, queryClient],
+    [projectId, queryClient, undo],
   );
 
   // Dismiss a whole cohort straight from the divider button — no confirm
@@ -1616,7 +1595,10 @@ export function LabelsTab({
         // fired yet (e.g. stats still loading). Either way, show the
         // loading state.
         <div className="flex items-center justify-center h-64">
-          <LabelsLoadingState progress={progress} />
+          <LabelsLoadingState
+            progress={progress}
+            sort={sortMutation.variables?.sort ?? lblSort}
+          />
         </div>
       ) : lblSort === "suggestions" && allDetections.length === 0 ? (
         <Card>
