@@ -141,6 +141,8 @@ def _deployment_tables(src: str) -> list[tuple[str, str]]:
     return [
         ("deployments", f"t.id IN {_SCOPE}"),
         ("files", f"t.deployment_id IN {_SCOPE}"),
+        # Before detections: every video box points at its track.
+        ("tracks", f"t.file_id IN {_files_in(src)}"),
         ("detections", f"t.file_id IN {_files_in(src)}"),
         ("detection_embeddings", f"t.detection_id IN {_detections_in(src)}"),
         ("calibration_answers", f"t.detection_id IN {_detections_in(src)}"),
@@ -636,9 +638,16 @@ def _inspect(db: Session, package_dir: Path) -> PackagePreview:
 # `replace` turns the other operating system's separators into this
 # one's, so a package made on Windows reads on macOS and the reverse.
 _REWRITE_SQL = (
-    'UPDATE files SET "{col}" = :new || :sep || '
+    'UPDATE {table} SET "{col}" = :new || :sep || '
     'replace(ltrim(substr("{col}", length(:old) + 1), \'/\\\'), :other, :sep) '
-    'WHERE deployment_id = :dep AND substr("{col}", 1, length(:old)) = :old'
+    'WHERE {scope} AND substr("{col}", 1, length(:old)) = :old'
+)
+# The stored paths under a deployment folder: the files' own and their
+# cover frames, and each track's crop (`video_frames/`, beside the cover).
+_PATH_COLUMNS = (
+    ("files", "file_path", "deployment_id = :dep"),
+    ("files", "best_frame_path", "deployment_id = :dep"),
+    ("tracks", "crop_path", "file_id IN (SELECT id FROM files WHERE deployment_id = :dep)"),
 )
 
 
@@ -654,8 +663,8 @@ def _rewrite_paths(
         "sep": sep,
         "other": other,
     }
-    for col in ("file_path", "best_frame_path"):
-        raw.execute(_REWRITE_SQL.format(col=col), params)
+    for table, col, scope in _PATH_COLUMNS:
+        raw.execute(_REWRITE_SQL.format(table=table, col=col, scope=scope), params)
     raw.execute(
         "UPDATE deployments SET folder_path = :new, folder_status = 'needs_relink', "
         "last_validated_at_utc = NULL WHERE id = :dep",

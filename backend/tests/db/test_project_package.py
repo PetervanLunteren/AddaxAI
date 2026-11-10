@@ -34,6 +34,7 @@ from app.models import (
     LabelTaxonomy,
     Project,
     Site,
+    Track,
 )
 from app.services import project_package as pkg
 from tests.conftest import (
@@ -44,6 +45,7 @@ from tests.conftest import (
     make_job,
     make_project,
     make_site,
+    make_track,
 )
 from tests.db.conftest import Machine, insert_row, make_machine
 
@@ -955,3 +957,42 @@ def test_replace_without_photos_keeps_the_local_folder(
 
     with lead.session() as db:
         assert db.get(Deployment, seed.deployments[0]).folder_path == str(folder)
+
+
+def test_a_tracked_video_keeps_its_tracks_and_its_crops(
+    lead: Machine, member: Machine, tmp_path: Path
+) -> None:
+    """A video box points at its track and the track at its crop under the
+    deployment folder. The bundle carries the tracks, so the card stays a
+    card on the other machine, and the crop path moves with the folder."""
+    folder = tmp_path / "cams" / "A"
+    with lead.session() as db:
+        seed = seed_project(db, [folder])
+        video = make_file(
+            db, deployment_id=seed.deployments[0], file_path=str(folder / "clip.mp4"),
+            file_type="video", file_format="mp4",
+        )
+        crop = folder / ".addaxai" / "projects" / seed.project_id / "video_frames" / "t1.jpg"
+        track = make_track(
+            db, file_id=video.id, start_frame=0, end_frame=30,
+            representative_frame_number=0, crop_path=str(crop),
+        )
+        for frame in (0, 30):
+            make_detection(db, file_id=video.id, frame_number=frame, track_id=track.id)
+        db.commit()
+        track_id = track.id
+    package_dir = export(lead, seed.project_id, seed.deployments, tmp_path, include_media=True)
+
+    import_into(member, package_dir)
+
+    media = package_dir / "media" / "A"
+    with member.session() as db:
+        copied = db.get(Track, track_id)
+        assert copied is not None
+        assert copied.crop_path == str(
+            media / ".addaxai" / "projects" / seed.project_id / "video_frames" / "t1.jpg"
+        )
+        boxes = db.execute(
+            select(Detection.track_id).where(Detection.file_id == copied.file_id)
+        ).scalars().all()
+        assert boxes == [track_id, track_id]
