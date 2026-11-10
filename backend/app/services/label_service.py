@@ -55,6 +55,12 @@ logger = get_logger(__name__)
 
 _SCRIPT_PATH = Path(__file__).resolve().parent.parent / "ml" / "inference" / "similarity_script.py"
 
+# Hard ceiling for one labels subprocess. Progress streams to the UI and a
+# client disconnect kills the process at once, so this only catches a true
+# hang. Flat on purpose: the per-cap formula it replaced read a parameter no
+# caller sent, so every operation got 180 s whatever its pool size.
+LABELS_SUBPROCESS_TIMEOUT_S = 600
+
 
 def _get_env_python() -> Path:
     """Get Python path from the addaxai-base conda environment."""
@@ -161,11 +167,7 @@ def stream_labels_subprocess(
         bufsize=1,
     )
 
-    # 60s base + 6s per 1k of the fixed cap (20k → 180s). Subprocess
-    # progress reaches us steadily so this is a hard ceiling, not the
-    # typical wait. process.wait() at the end enforces it.
-    cap = int(params.get("max_detections", 20000))
-    timeout_s = 60 + (cap // 1000) * 6
+    timeout_s = LABELS_SUBPROCESS_TIMEOUT_S
 
     saw_terminal_event = False
     try:
@@ -396,7 +398,7 @@ async def stream_labels_subprocess_async(
     blocked on ``process.stdout.readline()``: Starlette can only deliver
     a ``GeneratorExit`` at a yield point, and the subprocess holds the
     generator off the yield point indefinitely. In the wild that meant a
-    refreshed tab left a similarity subprocess running until its 180 s
+    refreshed tab left a similarity subprocess running until its
     timeout, holding one of the browser's six per-host connection slots
     so the next page load queued behind it. This generator reads stdout on
     a background thread and pops with a 0.5 s queue-poll tick, rechecking
@@ -430,8 +432,7 @@ async def stream_labels_subprocess_async(
         bufsize=1,
     )
 
-    cap = int(params.get("max_detections", 20000))
-    timeout_s = 60 + (cap // 1000) * 6
+    timeout_s = LABELS_SUBPROCESS_TIMEOUT_S
     deadline = time.monotonic() + timeout_s
     loop = asyncio.get_running_loop()
     saw_terminal_event = False

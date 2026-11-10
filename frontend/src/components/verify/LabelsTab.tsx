@@ -564,9 +564,9 @@ export function LabelsTab({
   const loadedCount = sortResult?.total_loaded ?? 0;
   const totalMatching = sortResult?.total_matching ?? 0;
   const isCapped = totalMatching > loadedCount;
-  // Name the actual cap: similarity / suggestions walk embeddings (cap
-  // 20k), event sort renders detections (cap 50k). Keyed off the sort
-  // that produced the current result, not the dropdown.
+  // Name the actual cap: similarity (cap 20k) and suggestions (cap 100k)
+  // load embeddings, event sort renders detections (cap 50k). Keyed off
+  // the sort that produced the current result, not the dropdown.
   const capNoun =
     resultSort === "similarity" || resultSort === "suggestions"
       ? "embedded detections"
@@ -1663,9 +1663,8 @@ export function LabelsTab({
                 <>
                   Suggestions were found in the newest{" "}
                   {loadedCount.toLocaleString()} of{" "}
-                  {totalMatching.toLocaleString()} {capNoun}, capped to stay
-                  responsive. Verify some and reload to search the rest, or
-                  narrow the filters.
+                  {totalMatching.toLocaleString()} {capNoun}. Narrow the
+                  filters, for example by date, to search the rest.
                 </>
               ) : (
                 <>
