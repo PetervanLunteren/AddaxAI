@@ -89,7 +89,7 @@ export function AgplLicenceDialog({
                 </a>
               </p>
               {saveFailed && (
-                <p style={{ color: "#882000" }}>Could not save that choice. Try again.</p>
+                <p className="text-destructive-ink">Could not save that choice. Try again.</p>
               )}
             </div>
           </AlertDialogDescription>

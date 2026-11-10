@@ -200,7 +200,7 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
             <>
               <div>
                 <h3 className="text-sm font-semibold mb-2">Made for</h3>
-                <p className="text-sm text-gray-700 leading-relaxed">
+                <p className="text-sm text-muted-foreground leading-relaxed">
                   {DOMAIN_LABELS[model.domain] ?? model.domain}
                 </p>
               </div>
@@ -213,7 +213,7 @@ export function ModelInfoSheet({ modelId, open, onOpenChange }: ModelInfoSheetPr
             <>
               <div>
                 <h3 className="text-sm font-semibold mb-2">Released</h3>
-                <p className="text-sm text-gray-700 leading-relaxed">
+                <p className="text-sm text-muted-foreground leading-relaxed">
                   {formatReleaseMonth(model.release_date)}
                 </p>
               </div>

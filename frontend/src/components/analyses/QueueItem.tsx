@@ -113,7 +113,7 @@ export function QueueItem({ entry, onDelete }: QueueItemProps) {
               lands after a crash; the detail toggle is not where anyone
               looks for an error. Delete and re-add is the retry. */}
           {entry.status === "failed" && entry.error && (
-            <p className="mt-1 text-xs text-red-700">{entry.error}</p>
+            <p className="mt-1 text-xs text-destructive-ink">{entry.error}</p>
           )}
         </div>
 
