@@ -21,6 +21,7 @@ from tests.conftest import (
     make_file,
     make_project,
     make_site,
+    make_track,
 )
 
 
@@ -277,3 +278,65 @@ def test_undo_skips_rows_that_are_gone_and_restores_the_rest(client, db):
     assert [r["id"] for r in body["detections"]] == [a.id]
     db.expire_all()
     assert a.label == "fox" and a.verified is False
+
+
+def test_undoing_a_clip_sign_off_hands_the_track_its_own_labels_back(client, db):
+    """Signing a clip off gives each track its card's label on every frame.
+    The snapshot holds every box of the file, so undo puts back the frame
+    the classifier read differently, not only the card."""
+    p, d, _ = _project_file(db, threshold=0.2)
+    clip = make_file(db, deployment_id=d.id, file_type="video", file_format="mp4")
+    track = make_track(db, file_id=clip.id, start_frame=0, end_frame=60,
+                       representative_frame_number=30)
+    boxes = {
+        frame: make_detection(
+            db, file_id=clip.id, frame_number=frame, track_id=track.id,
+            confidence=0.9, label=label, original_label=label,
+            classification_method="machine",
+        )
+        for frame, label in ((0, "fox"), (30, "fox"), (60, "badger"))
+    }
+    db.commit()
+
+    before = _verify_files(client, [clip.id])
+    db.expire_all()
+    assert boxes[60].label == "fox"
+    assert {s["detection_id"] for s in before["detections"]} == {b.id for b in boxes.values()}
+
+    _undo(client, before)
+    db.expire_all()
+    assert boxes[60].label == "badger" and boxes[60].classification_method == "machine"
+    assert not any(b.verified for b in boxes.values())
+    assert clip.verified is False
+
+
+def test_undo_restores_more_boxes_than_sqlite_takes_parameters(client, db):
+    """A track-wide snapshot of a long clip holds thousands of boxes. Older
+    SQLite builds allow 999 bound parameters, so restore reads in chunks."""
+    import sqlite3
+
+    _, d, _ = _project_file(db)
+    f = make_file(db, deployment_id=d.id, file_type="video", file_format="mp4")
+    track = make_track(db, file_id=f.id, start_frame=0, end_frame=1199,
+                       representative_frame_number=0, frame_count=1200)
+    card = None
+    for frame in range(1200):
+        box = make_detection(db, file_id=f.id, frame_number=frame, track_id=track.id,
+                             confidence=0.9, label="fish")
+        card = card or box
+    db.commit()
+    # One card: its label reaches all 1,200 boxes, and so does the snapshot.
+    before = _relabel(client, [card.id], "shark")
+    assert len(before["detections"]) == 1200
+
+    raw = db.connection().connection.driver_connection
+    limit = raw.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER)
+    raw.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 999)
+    try:
+        _undo(client, before)
+    finally:
+        raw.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, limit)
+    db.expire_all()
+    assert {det.label for det in db.query(Detection).filter(Detection.file_id == f.id)} == {
+        "fish"
+    }

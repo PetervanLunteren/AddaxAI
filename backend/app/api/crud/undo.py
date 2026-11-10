@@ -18,6 +18,7 @@ from app.api.crud.event_observation import (
 )
 from app.api.crud.file import _project_threshold_for_file, _set_observation_type
 from app.api.schemas.undo import DetectionState, FileState, UndoSnapshot
+from app.db.sql_params import iter_id_chunks
 from app.ml.taxonomy_db import clear_classification, ensure_builtin_labels
 from app.models import Detection, File
 
@@ -30,11 +31,20 @@ def snapshot(db: Session, detections: list[Detection]) -> UndoSnapshot:
     undo has to put that back too. Take it before any write.
     """
     file_ids = list(dict.fromkeys(d.file_id for d in detections))
-    files = db.query(File).filter(File.id.in_(file_ids)).all() if file_ids else []
+    files = _rows(db, File, file_ids)
     return UndoSnapshot(
         detections=[DetectionState.from_detection(d) for d in detections],
         files=[FileState.from_file(f) for f in files],
     )
+
+
+def _rows(db: Session, model, ids) -> list:
+    """The rows with these ids, read in chunks: a snapshot of a tracked
+    clip holds every box of its tracks, past SQLite's parameter limit."""
+    rows: list = []
+    for chunk in iter_id_chunks(ids):
+        rows.extend(db.query(model).filter(model.id.in_(chunk)).all())
+    return rows
 
 
 class Restored(NamedTuple):
@@ -57,9 +67,7 @@ def restore(db: Session, snap: UndoSnapshot) -> Restored:
     with it. The commit is unconditional (``get_db`` never commits).
     """
     det_ids = [s.detection_id for s in snap.detections]
-    detections = (
-        db.query(Detection).filter(Detection.id.in_(det_ids)).all() if det_ids else []
-    )
+    detections = _rows(db, Detection, det_ids)
     det_state = {s.detection_id: s for s in snap.detections}
     builtin_ids = ensure_builtin_labels(db) if detections else {}
     for det in detections:
@@ -79,7 +87,7 @@ def restore(db: Session, snap: UndoSnapshot) -> Restored:
         det.verified_at_utc = state.verified_at_utc
 
     file_ids = [s.file_id for s in snap.files]
-    files = db.query(File).filter(File.id.in_(file_ids)).all() if file_ids else []
+    files = _rows(db, File, file_ids)
     file_state = {s.file_id: s for s in snap.files}
     for f in files:
         state = file_state[f.id]
@@ -88,7 +96,7 @@ def restore(db: Session, snap: UndoSnapshot) -> Restored:
     db.flush()
 
     touched = {f.id for f in files} | {d.file_id for d in detections}
-    derive = db.query(File).filter(File.id.in_(touched)).all() if touched else []
+    derive = _rows(db, File, touched)
     # One MaxN pass per event, at its own project's threshold.
     event_thresholds: dict[str, float] = {}
     for f in derive:
