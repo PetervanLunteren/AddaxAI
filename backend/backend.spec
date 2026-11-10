@@ -99,6 +99,9 @@ a = Analysis(
         'ruff',
         'tkinter',
         'matplotlib',
+        # Dev only, for the tracker's tests; the tracker runs in the model envs.
+        'scipy',
+        'lap',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

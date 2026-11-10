@@ -1,17 +1,19 @@
-"""The tracking script's pure parts: sampling, box normalisation, finding
-the detection behind each tracked box, the SharkTrack false-positive
+"""The tracking script: sampling, box normalisation, the loop that hands
+boxes to the tracker and keeps births, the SharkTrack false-positive
 filter, the track crops and the JSON writer.
 
-The detector and the tracker themselves need the marine env and real
-frames; they are exercised by hand on footage (see the design's test
-plan). Everything here runs on the dev interpreter.
+The detector needs a model env and real weights, so the loop test fakes
+it; the tracker itself (``botsort.py``) runs for real, here and in
+``test_botsort.py``. Everything runs on the dev interpreter.
 """
 
 import json
-from types import SimpleNamespace as T
+import shutil
+from pathlib import Path
 
 import numpy as np
 import pytest
+from tqdm import tqdm
 
 from app.ml.inference import tracking_script as ts
 
@@ -49,20 +51,20 @@ def test_the_catalogs_class_mapping_outranks_the_packages_own_names():
 
 def test_tracker_buffer_scales_with_the_sampling_rate():
     """Two seconds of lost track before it is dropped, at any fps."""
-    assert ts._tracker_args(3.0, 0.2, 0.01).track_buffer == 6
-    assert ts._tracker_args(5.0, 0.2, 0.01).track_buffer == 10
-    assert ts._tracker_args(1.0, 0.2, 0.01).track_buffer == 2
-    assert ts._tracker_args(0.25, 0.2, 0.01).track_buffer == 1
+    assert ts.track_buffer(3.0) == 6
+    assert ts.track_buffer(5.0) == 10
+    assert ts.track_buffer(1.0) == 2
+    assert ts.track_buffer(0.25) == 1
 
 
 def test_tracker_floors_come_from_the_command_line():
     """A track starts from a box at the high floor and keeps boxes down
     to the low one; the script holds no floor of its own."""
-    args = ts._tracker_args(2.0, 0.2, 0.01)
-    assert (args.track_high_thresh, args.new_track_thresh, args.track_low_thresh) == (
-        0.2, 0.2, 0.01
-    )
-    assert args.match_thresh == 0.97 and args.with_reid is False
+    tracker = ts.make_tracker(2.0, 0.2, 0.01, 3840)
+    assert (tracker.high_thresh, tracker.low_thresh) == (0.2, 0.01)
+    assert tracker.match_thresh == 0.97
+    assert tracker.max_time_lost == 4
+    assert tracker.gmc.downscale == 4
 
 
 def test_track_rows_become_normalised_boxes_with_their_track_id():
@@ -80,72 +82,6 @@ def test_track_rows_become_normalised_boxes_with_their_track_id():
     assert boxes[1]["bbox"] == [0.0, 0.0, 0.05, 1.0]
     assert boxes[1]["category"] == "1" and boxes[1]["track_id"] == 8
     assert ts.normalise_track_rows(np.zeros((0, 7)), 10, 10, 0) == []
-
-
-# A frame's detections as the detector hands them to BoT-SORT, mixed across
-# the two score groups at high 0.5, low 0.01: rows 0 and 2 are the high
-# group (idx 0 and 1 there), rows 1 and 3 the second group (idx 0 and 1).
-FRAME = np.array([
-    # x1, y1, x2, y2, conf, cls
-    [10, 10, 50, 50, 0.9, 0],
-    [60, 10, 90, 40, 0.3, 0],
-    [100, 100, 200, 200, 0.7, 1],
-    [300, 300, 320, 330, 0.05, 0],
-], dtype=np.float32)
-
-
-def _tracked(*rows):
-    """BoT-SORT output rows: its own Kalman box, then track_id, score, cls, idx."""
-    return np.array(rows, dtype=np.float32).reshape(-1, 8)
-
-
-def test_a_tracked_box_is_the_detection_it_matched_not_the_kalman_box():
-    """The tracker's row says where its filter thinks the animal is; the
-    stored box is the detection behind it, found by idx in its group."""
-    tracked = _tracked(
-        [105, 95, 205, 190, 4, 0.7, 1, 1],  # high group, second member: FRAME row 2
-        [12, 14, 52, 55, 3, 0.9, 0, 0],     # high group, first member: FRAME row 0
-    )
-    rows = ts.matched_detections(tracked, FRAME, high=0.5, low=0.01)
-    assert rows.tolist() == [
-        [100, 100, 200, 200, 4, np.float32(0.7), 1],
-        [10, 10, 50, 50, 3, np.float32(0.9), 0],
-    ]
-
-
-def test_a_low_score_box_is_looked_up_in_the_second_group():
-    """idx restarts in the second group, so idx 1 there is FRAME row 3,
-    not the high group's second member."""
-    rows = ts.matched_detections(
-        _tracked([301, 302, 321, 333, 9, 0.05, 0, 1]), FRAME, high=0.5, low=0.01
-    )
-    assert rows[0, :4].tolist() == [300, 300, 320, 330]
-    assert ts.matched_detections(_tracked(), FRAME, 0.5, 0.01).shape == (0, 7)
-
-
-def test_a_row_that_names_the_wrong_detection_stops_the_run():
-    """A score or class that does not match the detection idx names means
-    ultralytics numbers differently now: crash, never misplace a box."""
-    for row in (
-        [0, 0, 1, 1, 3, 0.8, 0, 0],  # high group idx 0 scores 0.9, not 0.8
-        [0, 0, 1, 1, 3, 0.9, 1, 0],  # right score, wrong class
-        [0, 0, 1, 1, 3, 0.9, 0, 5],  # no such member
-    ):
-        with pytest.raises(RuntimeError, match="ultralytics 8.3.177"):
-            ts.matched_detections(_tracked(row), FRAME, high=0.5, low=0.01)
-
-
-def test_born_detections_are_the_unconfirmed_tracks_of_this_frame():
-    """A track started on this frame waits unconfirmed in tracked_stracks;
-    its first detection is taken from there, the reported tracks are not."""
-    f32 = np.float32
-    tracker = T(tracked_stracks=[
-        T(track_id=11, is_activated=False, score=f32(0.7), cls=f32(1), idx=f32(1)),
-        T(track_id=3, is_activated=True, score=f32(0.9), cls=f32(0), idx=f32(0)),
-    ])
-    rows = ts.born_detections(tracker, FRAME, high=0.5, low=0.01)
-    assert rows.tolist() == [[100, 100, 200, 200, 11, f32(0.7), 1]]
-    assert ts.born_detections(T(tracked_stracks=[]), FRAME, 0.5, 0.01).shape == (0, 7)
 
 
 def test_raw_detection_rows_keep_every_box_and_carry_no_track():
@@ -361,3 +297,64 @@ def test_ffmpeg_frames_number_the_frames_like_process_video(tmp_path, make_video
         assert frame.shape == (48, 64, 3)
         # Blue channel is the source frame index (within codec noise).
         assert abs(int(frame[24, 32, 0]) - n) <= 4, (n, int(frame[24, 32, 0]))
+
+
+class _ScriptedDetector:
+    """Hands the tracker the rows scripted for each sampled frame, in the
+    detector's own format: float32 x1, y1, x2, y2, conf, cls in pixels."""
+
+    def __init__(self, script: dict[int, list[list[float]]]):
+        self.script = script
+        self.calls = 0
+
+    def detect(self, frame_bgr: np.ndarray) -> np.ndarray:
+        rows = self.script.get(self.calls, [])
+        self.calls += 1
+        return np.asarray(rows, dtype=np.float32).reshape(-1, 6)
+
+
+def _run_loop(tmp_path: Path, make_video, script: dict[int, list[list[float]]]):
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        pytest.skip("ffmpeg not on PATH")
+    video = tmp_path / "clip.mp4"
+    make_video(video, total_frames=12, fps=10, size=(64, 48))
+    # 10 fps sampled at 10 fps: every frame, so call n is frame n.
+    return ts.track_video(
+        _ScriptedDetector(script), 0.5, 0.01, ffmpeg, video, 10.0, 10.0, (64, 48),
+        tqdm(disable=True), filter_motion=0.0, filter_exempt=0.0,
+    )
+
+
+def _walker(first: int, last: int, conf: float = 0.9) -> dict[int, list[list[float]]]:
+    """One box drifting a pixel a frame from frame ``first`` to ``last``."""
+    return {f: [[10 + f, 10, 30 + f, 30, conf, 0]] for f in range(first, last + 1)}
+
+
+def test_the_first_frame_of_a_video_confirms_a_track_at_once(tmp_path, make_video):
+    processed, boxes, crops = _run_loop(tmp_path, make_video, _walker(0, 11))
+    assert processed == list(range(12))
+    assert [b["frame_number"] for b in boxes] == list(range(12))
+    assert {b["track_id"] for b in boxes} == {1}
+    assert set(crops) == {1}
+
+
+def test_a_track_born_later_stores_its_first_box_once_confirmed(tmp_path, make_video):
+    """A track that starts on frame 3 is reported from frame 4; the box it
+    started from is stored then, in frame order, and only once."""
+    _, boxes, _ = _run_loop(tmp_path, make_video, _walker(3, 11))
+    frames = [b["frame_number"] for b in boxes]
+    assert frames == list(range(3, 12))
+    # The stored box is the detector's own, not a filtered estimate.
+    assert boxes[0]["bbox"] == pytest.approx([13 / 64, 10 / 48, 20 / 64, 20 / 48], abs=1e-4)
+
+
+def test_a_box_never_confirmed_is_never_stored(tmp_path, make_video):
+    """A one-frame box starts a track that is dropped on the next frame,
+    so nothing of it reaches the JSON. Its crop may be cut while its frame
+    is in memory; the caller writes crops for surviving tracks only."""
+    script = _walker(0, 11)
+    script[6] = [*script[6], [40, 30, 60, 46, 0.9, 0]]
+    _, boxes, _ = _run_loop(tmp_path, make_video, script)
+    assert {b["track_id"] for b in boxes} == {1}
+    assert len(boxes) == 12

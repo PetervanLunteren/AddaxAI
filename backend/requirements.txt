@@ -56,3 +56,8 @@ pytest-cov==6.0.0
 httpx==0.28.1
 ruff==0.8.4
 mypy==1.13.0
+# The vendored tracker (app/ml/inference/botsort.py) and its tests. Dev
+# only: the tracker runs inside the model envs, which pin both, and the
+# bundled backend never imports it (backend.spec excludes them).
+scipy==1.17.1
+lap==0.5.12

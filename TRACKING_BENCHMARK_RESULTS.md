@@ -710,7 +710,7 @@ The ten largest overcounts and undercounts of the app's tracker at 2 fps on PanA
 - iWildCam counts of 9 were dropped as a suspected 9+ cap (176 sequences); 68 empties counted as 1 dropped. MD5A boxes were used, not the MDv4 boxes shipped with the dataset.
 - The Roboflow trackers ran with the app's floors and two-second budget, otherwise package defaults. Experiment 3 tunes only the app's own tracker, on PanAf train and half of iWildCam's locations; SA-FARI is never tuned on.
 - PanAf500's licence page was unreachable tonight; the videos came from Bristol's open file server. SA-FARI and MammAlps are CC BY-NC.
-- ultralytics is AGPL-3.0 inside an MIT app. Unrelated to the counts, noted for the licence review the plan asks for.
+- ultralytics is AGPL-3.0 inside an MIT app. Unrelated to the counts, noted for the licence review the plan asks for. Resolved on 2026-11-09: see the last section.
 ## Decisions, reasons and changes (2026-09-14)
 
 Settled with Peter after the run, one rule per setting. The tuning and the threshold sweep that informed them ran on the same cached MD5A boxes; the numbers below are from data the choice was not tuned on unless stated.
@@ -751,5 +751,9 @@ Photo sequences (iWildCam, grid on half the locations, scored on the other half)
 
 - Counting threshold sweep on the Mote BRUV clips against a hand count (settles 0.5 for SharkTrack and CFD). The scripts on the drive do it in an hour once a labelled clip set exists.
 - MD1000-REDWOOD overnight benchmark with the same scripts (`detect.py` plus a model path).
-- The ultralytics AGPL licence (TODO.md).
+- The ultralytics AGPL licence (TODO.md). Resolved on 2026-11-09: see the last section.
 - If marine users see junk static tracks surviving at 0.5 to 0.7 or the reverse, the domain values are the one place to change.
+
+## Tracker swapped to a vendored MIT BoT-SORT (2026-11-09)
+
+The numbers above were measured with ultralytics' BoT-SORT. The tracking script now runs its own MIT copy (`backend/app/ml/inference/botsort.py`), which gives the same output, so they still stand (DEVELOPERS.md, "The tracker is ours, and MIT").

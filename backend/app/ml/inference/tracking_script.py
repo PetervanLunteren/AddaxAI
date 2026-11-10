@@ -3,7 +3,8 @@ Detect and track animals through videos in one pass, writing MegaDetector
 JSON with a ``track_id`` on every box.
 
 Runs as a subprocess in the detector's own environment (env-marine for
-the underwater detectors) with no ``app.*`` imports, like
+the Community Fish Detector, env-ultralytics for SharkTrack and
+MDv1000-larch and -sorrel) with no ``app.*`` imports, like
 ``classification_worker.py``. It is started with ``python -P`` so its
 own directory stays off ``sys.path`` (that directory holds the app's
 ``megadetector.py``, which would shadow the megadetector package), and
@@ -12,11 +13,11 @@ read) by file path instead. Everything the app knows about the run comes
 in on the command line; everything it learns goes out in the JSON.
 
 Per video: decode every ``round(native_fps / fps)``-th frame through an
-ffmpeg pipe, run the detector on each, hand the boxes to BoT-SORT, and
-store for every box it followed the detection it matched, from the one
-that started the track: the tracker decides which detections are one
-animal, every stored box is the detector's own (``matched_detections``,
-``born_detections``). ffmpeg rather than MegaDetector's
+ffmpeg pipe, run the detector on each, hand the boxes to BoT-SORT
+(vendored, MIT, in ``botsort.py``), and store for every box it followed
+the detection it matched, from the one that started the track: the
+tracker decides which detections are one animal, every stored box is the
+detector's own. ffmpeg rather than MegaDetector's
 ``video_utils`` because it is a separate process that decodes the next
 frame while the detector works on this one, with the platform's
 hardware decoder and the downscale in the same pass: a whole 65 minute
@@ -89,7 +90,6 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 from PIL import Image
@@ -110,6 +110,7 @@ def _load_sibling(name: str):
 open_video = _load_sibling("video_iter").open_video
 track_crop_filename = _load_sibling("scoring").track_crop_filename
 _crop_box = _load_sibling("crop_box")
+_botsort = _load_sibling("botsort")
 
 # --- SharkTrack's BoT-SORT association parameters (tracker_3fps.yaml) ------
 # The confidence floors are not here: they come in on the command line
@@ -133,26 +134,25 @@ TRACK_CROP_QUALITY = 85
 FILTER_MIN_LIFE_SECONDS = 1.0
 
 
-def _tracker_args(fps: float, high: float, low: float) -> SimpleNamespace:
-    """BoT-SORT's config namespace: a track starts from a box at ``high``
-    or above and keeps boxes down to ``low``; SharkTrack's association
-    values; buffer scaled to the sampling rate. ``fuse_score`` off:
-    SharkTrack ran on ultralytics 8.1.47, which did not fuse scores into
-    the IoU distance. ReID off: the app carries no ReID model and
+def track_buffer(fps: float) -> int:
+    """How many sampled frames a lost track is kept: two seconds at any
+    sampling rate."""
+    return max(1, round(TRACK_BUFFER_SECONDS * fps))
+
+
+def make_tracker(fps: float, high: float, low: float, frame_width: int):
+    """A fresh BoT-SORT for one video: a track starts from a box at
+    ``high`` or above and keeps boxes down to ``low``; SharkTrack's
+    association values; buffer scaled to the sampling rate. No score
+    fusion: SharkTrack ran on ultralytics 8.1.47, which did not fuse scores
+    into the IoU distance. No ReID: the app carries no ReID model and
     SharkTrack found no need."""
-    return SimpleNamespace(
-        tracker_type="botsort",
-        track_high_thresh=high,
-        track_low_thresh=low,
-        new_track_thresh=high,
-        track_buffer=max(1, round(TRACK_BUFFER_SECONDS * fps)),
+    return _botsort.BoTSORT(
+        high_thresh=high,
+        low_thresh=low,
         match_thresh=MATCH_THRESH,
-        fuse_score=False,
-        gmc_method="sparseOptFlow",
-        proximity_thresh=1.0,
-        appearance_thresh=0.25,
-        with_reid=False,
-        model="auto",
+        track_buffer=track_buffer(fps),
+        gmc_downscale=gmc_downscale(frame_width),
     )
 
 
@@ -359,88 +359,11 @@ def _normalised_box(
     }
 
 
-def _score_groups(
-    detections: np.ndarray, high: float, low: float
-) -> tuple[np.ndarray, np.ndarray]:
-    """The two groups BoT-SORT splits a frame's detections into before it
-    matches them, as indices into ``detections``: the high group
-    (``conf >= high``) and the second group (``low < conf < high``), by
-    the rule of ultralytics' ``BYTETracker.update``."""
-    conf = detections[:, 4]
-    return np.flatnonzero(conf >= high), np.flatnonzero((conf > low) & (conf < high))
-
-
-def _detection_of(
-    detections: np.ndarray,
-    groups: tuple[np.ndarray, np.ndarray],
-    high: float,
-    score: np.float32,
-    cls: np.float32,
-    idx: np.float32,
-) -> np.ndarray:
-    """The detector row a track took on this frame. BoT-SORT numbers the
-    detections inside each score group from 0 (``init_track`` runs once
-    per group), so its ``idx`` is a position in the track's own group,
-    which the track's score names. The track copies the detection's
-    float32 score and class, so the row found must carry exactly those;
-    anything else means ultralytics changed how it numbers, and every box
-    after it could sit on the wrong animal, so the run stops."""
-    group = groups[0] if score >= high else groups[1]
-    i = int(idx)
-    if i < len(group) and detections[group[i], 4] == score and detections[group[i], 5] == cls:
-        return detections[group[i]]
-    raise RuntimeError(
-        f"BoT-SORT's output no longer points at its input: a track's idx {i} "
-        f"does not name a detection with its score {float(score)} and class "
-        f"{int(cls)}. The tracking script relies on how ultralytics 8.3.177 "
-        "numbers idx; check the ultralytics installed in this environment."
-    )
-
-
-def matched_detections(
-    tracked: np.ndarray, detections: np.ndarray, high: float, low: float
-) -> np.ndarray:
-    """Rows (x1, y1, x2, y2, track_id, conf, cls) for the tracks BoT-SORT
-    reported on a frame, with the box of the detection each one matched.
-    The tracker's own row holds its Kalman estimate, which trails a
-    moving animal (median IoU 0.80 against its own detection on a reef
-    drop, 2026-11-05); the app stores what the detector saw, as it does
-    for a photo, and takes only the identity from the tracker."""
-    groups = _score_groups(detections, high, low)
-    rows = []
-    for _x1, _y1, _x2, _y2, track_id, score, cls, idx in tracked:
-        x1, y1, x2, y2 = _detection_of(detections, groups, high, score, cls, idx)[:4]
-        rows.append([x1, y1, x2, y2, track_id, score, cls])
-    return np.asarray(rows, dtype=np.float32).reshape(-1, 7)
-
-
-def born_detections(
-    tracker, detections: np.ndarray, high: float, low: float
-) -> np.ndarray:
-    """Rows like ``matched_detections`` for the tracks started on this
-    frame. BoT-SORT reports a track from its second matched frame on (on
-    the first frame of a video at once), so the detection that started it
-    is never in its output; it waits unconfirmed in ``tracked_stracks``
-    and is matched on the next frame or removed. The caller keeps these
-    one frame and stores the box when the track is reported."""
-    groups = _score_groups(detections, high, low)
-    rows = []
-    for track in tracker.tracked_stracks:
-        if track.is_activated:
-            continue
-        x1, y1, x2, y2 = _detection_of(
-            detections, groups, high, track.score, track.cls, track.idx
-        )[:4]
-        rows.append([x1, y1, x2, y2, track.track_id, track.score, track.cls])
-    return np.asarray(rows, dtype=np.float32).reshape(-1, 7)
-
-
 def normalise_track_rows(
     rows: np.ndarray, width: int, height: int, frame_number: int
 ) -> list[dict]:
-    """Rows (x1, y1, x2, y2, track_id, conf, cls) from
-    ``matched_detections`` or ``born_detections`` to JSON boxes with their
-    ``track_id``."""
+    """Rows (x1, y1, x2, y2, track_id, conf, cls) from ``BoTSORT.update``
+    to JSON boxes with their ``track_id``."""
     boxes = []
     for x1, y1, x2, y2, track_id, conf, cls in rows.tolist():
         box = _normalised_box(x1, y1, x2, y2, conf, cls, width, height, frame_number)
@@ -614,7 +537,8 @@ def _video_frame_counts(videos: list[Path]) -> dict[Path, tuple[float, int, int,
 
 def track_video(
     detector,
-    tracker_args: SimpleNamespace,
+    high: float,
+    low: float,
     ffmpeg: str,
     path: Path,
     fps: float,
@@ -630,15 +554,9 @@ def track_video(
     and the best crop per track (surviving tracks included, the filtered
     ones too; the caller writes only the survivors). ``raw_out``, when
     given, receives every detector box of every sampled frame."""
-    from ultralytics.engine.results import Boxes
-    from ultralytics.trackers import BOTSORT
-    from ultralytics.trackers.utils.gmc import GMC
-
     stride = sampling_stride(native_fps, fps)
     out_w, out_h = decode_size(*size)
-    tracker = BOTSORT(tracker_args)
-    tracker.gmc = GMC(method=tracker_args.gmc_method, downscale=gmc_downscale(out_w))
-    high, low = tracker_args.track_high_thresh, tracker_args.track_low_thresh
+    tracker = make_tracker(fps, high, low, out_w)
     processed: list[int] = []
     boxes_out: list[dict] = []
     best_crops: dict[int, tuple[float, int, bytes]] = {}
@@ -650,18 +568,13 @@ def track_video(
         if raw_out is not None:
             raw_out.extend(normalise_detection_rows(detections, out_w, out_h, frame_number))
         # BoT-SORT wants the frame for its camera-motion compensation.
-        tracked = tracker.update(Boxes(detections, (out_h, out_w)), frame_bgr)
-        boxes = normalise_track_rows(
-            matched_detections(tracked, detections, high, low), out_w, out_h, frame_number
-        )
+        confirmed, born = tracker.update(detections, frame_bgr)
+        boxes = normalise_track_rows(confirmed, out_w, out_h, frame_number)
         # A track reported for the first time brings the box it started from.
         boxes_out.extend(births[b["track_id"]] for b in boxes if b["track_id"] in births)
         boxes_out.extend(boxes)
         births = {
-            b["track_id"]: b
-            for b in normalise_track_rows(
-                born_detections(tracker, detections, high, low), out_w, out_h, frame_number
-            )
+            b["track_id"]: b for b in normalise_track_rows(born, out_w, out_h, frame_number)
         }
         # Births are cut here, while their frame is in memory; a birth that
         # never becomes a track leaves an entry nobody writes.
@@ -734,7 +647,6 @@ def main() -> int:
         args.model, args.image_size, args.augment, args.track_low_thresh,
         class_mapping=class_mapping,
     )
-    tracker_args = _tracker_args(args.fps, args.track_high_thresh, args.track_low_thresh)
     counts = _video_frame_counts(videos)
     total_frames = sum(
         len(sampled_frames(n, native, args.fps)) for native, n, _w, _h in counts.values()
@@ -753,7 +665,8 @@ def main() -> int:
                 continue
             raw_boxes: list[dict] | None = [] if args.raw_detections_json else None
             processed, boxes, best_crops = track_video(
-                detector, tracker_args, args.ffmpeg, path, args.fps, native_fps,
+                detector, args.track_high_thresh, args.track_low_thresh, args.ffmpeg,
+                path, args.fps, native_fps,
                 (width, height), progress, args.track_filter_motion,
                 args.track_filter_exempt, raw_out=raw_boxes,
             )
