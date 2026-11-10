@@ -1563,9 +1563,10 @@ def get_animal_photos(
     the Overview's "Gracious random animal". Rejected boxes never. No
     ranking: a real detection whose box passes the project's scope at a floor
     of at least PHOTO_MIN_CONFIDENCE, its species name (when it has one)
-    reaches the same floor or a person verified it, and the crop endpoint
-    can draw it (a bbox, and for a video the saved best frame). Among
-    those the pick is random, so every dashboard visit shows another one.
+    reaches the same floor or a person verified it, and it is a card the
+    crop endpoint can cut (a bbox; for a video the box on its track's
+    representative frame, `on_visible_frame`). Among those the pick is
+    random, so every dashboard visit shows another one.
     """
     floor = max(PHOTO_MIN_CONFIDENCE, _get_counting_threshold(db, project_id))
     query = (
@@ -1594,16 +1595,7 @@ def get_animal_photos(
                 Detection.label_confidence >= PHOTO_MIN_CONFIDENCE,
             )
         )
-        .where(
-            or_(
-                File.file_type == "image",
-                and_(
-                    File.file_type == "video",
-                    Detection.frame_number == File.best_frame_number,
-                    File.best_frame_path.isnot(None),
-                ),
-            )
-        )
+        .where(on_visible_frame())
         .order_by(func.random())
         .limit(limit)
     )

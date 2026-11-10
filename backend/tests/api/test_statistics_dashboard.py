@@ -20,6 +20,7 @@ from tests.conftest import (
     make_file,
     make_project,
     make_site,
+    make_track,
 )
 
 
@@ -325,21 +326,23 @@ def test_a_rejected_box_never_shows(db):
     assert _photo_ids(db, project) == set()
 
 
-def test_videos_show_only_their_saved_best_frame(db):
+def test_videos_show_only_their_track_cards(db):
+    """A clip's photo is a card: the box on its track's representative
+    frame, wherever in the clip that is. A sibling frame of the track is
+    the same animal, and an untracked box (a pre-tracking leftover) is on
+    no surface at all, even on the cover frame."""
     project, dep = _photo_project(db)
-    saved = make_file(
+    clip = make_file(
         db, deployment_id=dep.id, file_type="video", file_format="mp4",
         best_frame_number=4, best_frame_path="/fake/best.jpg",
     )
-    on_best = make_detection(db, file_id=saved.id, frame_number=4)
-    make_detection(db, file_id=saved.id, frame_number=9)
-    unsaved = make_file(
-        db, deployment_id=dep.id, file_type="video", file_format="mp4",
-        best_frame_number=2, best_frame_path=None,
-    )
-    make_detection(db, file_id=unsaved.id, frame_number=2)
+    track = make_track(db, file_id=clip.id, start_frame=6, end_frame=9,
+                       representative_frame_number=9)
+    card = make_detection(db, file_id=clip.id, frame_number=9, track_id=track.id)
+    make_detection(db, file_id=clip.id, frame_number=6, track_id=track.id)
+    make_detection(db, file_id=clip.id, frame_number=4)
 
-    assert _photo_ids(db, project) == {on_best.id}
+    assert _photo_ids(db, project) == {card.id}
 
 
 def test_photos_follow_taxon_and_limit(db):
