@@ -307,13 +307,18 @@ class _ScriptedDetector:
         self.script = script
         self.calls = 0
 
-    def detect(self, frame_bgr: np.ndarray) -> np.ndarray:
-        rows = self.script.get(self.calls, [])
-        self.calls += 1
-        return np.asarray(rows, dtype=np.float32).reshape(-1, 6)
+    def detect_batch(self, frames: list[np.ndarray]) -> list[np.ndarray]:
+        out = []
+        for _frame in frames:
+            rows = self.script.get(self.calls, [])
+            self.calls += 1
+            out.append(np.asarray(rows, dtype=np.float32).reshape(-1, 6))
+        return out
 
 
-def _run_loop(tmp_path: Path, make_video, script: dict[int, list[list[float]]]):
+def _run_loop(
+    tmp_path: Path, make_video, script: dict[int, list[list[float]]], batch_size: int = 1
+):
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
         pytest.skip("ffmpeg not on PATH")
@@ -322,7 +327,7 @@ def _run_loop(tmp_path: Path, make_video, script: dict[int, list[list[float]]]):
     # 10 fps sampled at 10 fps: every frame, so call n is frame n.
     return ts.track_video(
         _ScriptedDetector(script), 0.5, 0.01, ffmpeg, video, 10.0, 10.0, (64, 48),
-        tqdm(disable=True), filter_motion=0.0, filter_exempt=0.0,
+        tqdm(disable=True), filter_motion=0.0, filter_exempt=0.0, batch_size=batch_size,
     )
 
 
@@ -387,3 +392,35 @@ def test_results_are_written_verified_and_never_half(tmp_path, monkeypatch):
     with pytest.raises(OSError, match="readable results file"):
         ts.write_results(tmp_path / "never.json", images=[], categories={}, info={})
     assert not (tmp_path / "never.json").exists()
+
+
+@pytest.mark.parametrize("batch_size", [2, 5, 12, 50])
+def test_batching_changes_nothing_the_tracker_sees(tmp_path, make_video, batch_size):
+    """The detector takes the frames in batches, the last one shorter; the
+    tracker still takes them one by one in frame order, so the tracks, the
+    boxes and the crops are those of one frame per call."""
+    script = {**_walker(0, 5), **{f: [[40, 20, 60, 40, 0.8, 0]] for f in range(3, 12)}}
+    (tmp_path / "one").mkdir()
+    (tmp_path / "many").mkdir()
+    one = _run_loop(tmp_path / "one", make_video, script)
+    many = _run_loop(tmp_path / "many", make_video, script, batch_size=batch_size)
+    assert many[0] == one[0] and many[1] == one[1]
+    assert {k: v[:2] for k, v in many[2].items()} == {k: v[:2] for k, v in one[2].items()}
+
+
+def test_a_frame_the_detector_failed_on_stops_the_run():
+    """An empty row set would read as "no animals here" and end every
+    track through that frame, so a failure the package reports raises."""
+
+    class _Failing:
+        def generate_detections_one_batch(self, images, **kw):
+            return [{"file": "frame0", "detections": None, "failure": "Failure inference"}]
+
+    detector = object.__new__(ts._Detector)
+    detector.detector = _Failing()
+    detector.conf = 0.01
+    detector.is_rfdetr = False
+    detector.image_size = None
+    detector.augment = False
+    with pytest.raises(RuntimeError, match="Failure inference"):
+        detector.detect_batch([np.zeros((48, 64, 3), dtype=np.uint8)])

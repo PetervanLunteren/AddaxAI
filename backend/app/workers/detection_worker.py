@@ -483,6 +483,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                             track_filter=track_filter_for(det_manifest),
                             image_size=project.detection_image_size,
                             augment=project.detection_augment,
+                            batch_size=project.detection_batch_size,
                             progress_callback=sync_video_detection_progress,
                             job_id=_jid,
                         ),

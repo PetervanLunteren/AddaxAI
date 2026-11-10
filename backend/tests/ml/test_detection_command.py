@@ -139,9 +139,19 @@ def _tracking_cmd(**overrides) -> list[str]:
         track_filter=TRACK_FILTER_BY_DOMAIN["camera_trap"],
         image_size=None,
         augment=False,
+        batch_size=None,
     )
     kwargs.update(overrides)
     return _build_tracking_cmd(**kwargs)
+
+
+def test_tracking_cmd_passes_a_custom_batch_size_and_no_flag_by_default():
+    """The project's detection batch size reaches video too: frames go to
+    the detector in batches. Unset means no flag, the package's own
+    default, the same rule as for images (`app/ml/batch_size.py`)."""
+    assert "--batch_size" not in _tracking_cmd()
+    cmd = _tracking_cmd(batch_size=8)
+    assert cmd[cmd.index("--batch_size") + 1] == "8"
 
 
 def test_tracking_cmd_runs_the_script_with_the_file_list():
