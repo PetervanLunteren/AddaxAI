@@ -770,9 +770,14 @@ export function LabelsTab({
     setOpenTrack(null);
     // Actions inside the track skipped the background re-sort, so the
     // sorted list and the progress counts are behind by however much was
-    // done in there. Catch up once, on the way out.
+    // done in there. Catch up once, on the way out. The re-sort is asked
+    // for by name: `handleActionComplete` was made while the track was
+    // open, so it still skips its own (until 2026-11-11 that left the
+    // catch-up out altogether, and a card undone from inside another
+    // track kept its check mark).
+    sortMutation.mutate({ sort: lblSort, background: true });
     handleActionCompleteRef.current?.();
-  }, [clearSelection]);
+  }, [clearSelection, lblSort]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The large view navigates a list pinned when it opens. The grid list
   // drops a crop the moment it is verified (default filter "Unverified",
@@ -833,6 +838,10 @@ export function LabelsTab({
     // this, stepping back onto a relabelled crop showed the old label on
     // the photo next to the new one on the button.
     queryClient.invalidateQueries({ queryKey: ["file"] });
+    // An opened track's frames have their own query, and this is the only
+    // refresh they get: an undo that reaches past the frames on screen (a
+    // card verdict made before the track was opened) lands here.
+    queryClient.invalidateQueries({ queryKey: ["track-detections"] });
   }, [lblSort, queryClient, projectId, openTrack]); // eslint-disable-line react-hooks/exhaustive-deps
 
   handleActionCompleteRef.current = handleActionComplete;
@@ -978,8 +987,12 @@ export function LabelsTab({
     // A restored crop the grid no longer holds cannot be patched in: the
     // suggestions sort strips acted crops, and the detail view re-sorts
     // after each action. Refresh the grid instead, as after any action.
+    // "The grid" is the opened track's frames while one is open: they are
+    // what the patch path writes to then (`patchLocalDetections`).
     const loaded = new Set(
-      (sortResult?.detections ?? []).map((d) => d.detection_id),
+      (openTrack ? trackFrames : (sortResult?.detections ?? [])).map(
+        (d) => d.detection_id,
+      ),
     );
     if (detections.some((r) => !loaded.has(r.id))) {
       handleActionComplete();

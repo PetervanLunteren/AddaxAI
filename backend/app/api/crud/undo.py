@@ -73,6 +73,10 @@ def restore(db: Session, snap: UndoSnapshot) -> Restored:
     detections = _rows(db, Detection, det_ids)
     det_state = {s.detection_id: s for s in snap.detections}
     builtin_ids = ensure_builtin_labels(db) if detections else {}
+    # One lookup per file and label, not per box: a track's boxes share
+    # both, and a long clip's sign-off restores tens of thousands of them.
+    # Keyed on the file because the label resolves within its project.
+    taxonomy_ids: dict[tuple[str, str], str | None] = {}
     for det in detections:
         state = det_state[det.id]
         # Category first: clear_classification picks the builtin row from it.
@@ -84,7 +88,10 @@ def restore(db: Session, snap: UndoSnapshot) -> Restored:
             det.label_confidence = state.label_confidence
             det.scientific_name = state.scientific_name
             det.common_name = state.common_name
-            det.label_taxonomy_id = _resolve_detection_taxonomy(db, det, state.label)
+            key = (det.file_id, state.label)
+            if key not in taxonomy_ids:
+                taxonomy_ids[key] = _resolve_detection_taxonomy(db, det, state.label)
+            det.label_taxonomy_id = taxonomy_ids[key]
         det.classification_method = state.classification_method
         det.verified = state.verified
         det.verified_at_utc = state.verified_at_utc

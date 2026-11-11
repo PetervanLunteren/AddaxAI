@@ -340,3 +340,40 @@ def test_undo_restores_more_boxes_than_sqlite_takes_parameters(client, db):
     assert {det.label for det in db.query(Detection).filter(Detection.file_id == f.id)} == {
         "fish"
     }
+
+
+def test_undo_looks_a_label_up_once_not_once_per_box(client, db, monkeypatch):
+    """A track's boxes share their label, and a long clip's snapshot holds
+    tens of thousands of them. One lookup per box made undoing a 12,000-box
+    verdict take five times as long as the verdict itself."""
+    from app.api.crud import undo as undo_crud
+
+    p, d, _ = _project_file(db)
+    clip = make_file(db, deployment_id=d.id, file_type="video", file_format="mp4")
+    track = make_track(db, file_id=clip.id, start_frame=0, end_frame=40,
+                       representative_frame_number=0, frame_count=5)
+    boxes = [
+        make_detection(db, file_id=clip.id, frame_number=frame, track_id=track.id,
+                       confidence=0.9, label="fish")
+        for frame in range(0, 50, 10)
+    ]
+    db.commit()
+    before = _relabel(client, [boxes[0].id], "shark")
+    assert len(before["detections"]) == 5
+
+    lookups = []
+    resolve = undo_crud._resolve_detection_taxonomy
+
+    def counted(db, det, label):
+        lookups.append(label)
+        return resolve(db, det, label)
+
+    monkeypatch.setattr(undo_crud, "_resolve_detection_taxonomy", counted)
+    _undo(client, before)
+
+    assert lookups == ["fish"]
+    db.expire_all()
+    fish_id = resolve_taxonomy_id("fish", p.id, db)
+    assert fish_id is not None
+    assert {(b.label, b.label_taxonomy_id) for b in boxes} == {("fish", fish_id)}
+
