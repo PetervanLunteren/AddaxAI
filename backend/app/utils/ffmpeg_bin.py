@@ -15,6 +15,7 @@ single frame is decoded, with a message that says what to rebuild.
 
 import os
 import shutil
+from pathlib import Path
 
 from app.core.config import get_settings
 
@@ -24,14 +25,23 @@ from app.core.config import get_settings
 APP_ENV = "addaxai-base"
 
 
+def bundled_ffmpeg_path(env_dir: Path) -> Path:
+    """Where ffmpeg sits inside an analysis env at ``env_dir``.
+
+    The one place that knows the layout. Setup reads it too: a base env
+    without ffmpeg counts as not installed, so the wizard rebuilds it
+    (an env built before 7.20.0 has none, and no video can be analysed
+    with it).
+    """
+    if os.name == "nt":
+        return env_dir / "Library" / "bin" / "ffmpeg.exe"
+    return env_dir / "bin" / "ffmpeg"
+
+
 def resolve_ffmpeg(env_name: str) -> str:
     """Absolute path to ffmpeg for ``env-<env_name>``."""
     env_dir = get_settings().user_data_dir / "envs" / f"env-{env_name}"
-    candidate = (
-        env_dir / "Library" / "bin" / "ffmpeg.exe"
-        if os.name == "nt"
-        else env_dir / "bin" / "ffmpeg"
-    )
+    candidate = bundled_ffmpeg_path(env_dir)
     if candidate.is_file():
         return str(candidate)
 

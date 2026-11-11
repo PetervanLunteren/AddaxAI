@@ -41,7 +41,7 @@ from app.ml.model_storage import ModelStorage
 from app.ml.schemas.model_manifest import ModelManifest
 from app.services import legacy_install
 from app.utils.exiftool_bin import bundled_exiftool_path
-from app.utils.ffmpeg_bin import APP_ENV
+from app.utils.ffmpeg_bin import APP_ENV, bundled_ffmpeg_path
 from app.utils.fs_remove import safe_rmtree
 
 logger = get_logger(__name__)
@@ -197,11 +197,21 @@ def _env_present(env_name: str = _REQUIRED_ENV) -> bool:
     # as missing and the wizard re-runs cleanly.
     if not _get_env_manager()._validate_env(env_path):
         return False
-    # The base env is also checked for exiftool, which only it ships: the
-    # boot probe cannot see it, and without it no folder can be scanned.
-    # A base env that lost its bin/ to a broken delete still boots fine
-    # (Windows beta report, 2026-11-04).
-    return env_name != _REQUIRED_ENV or bundled_exiftool_path(env_path).is_file()
+    # The base env is also checked for its two binaries, which the boot
+    # probe cannot see. exiftool, which only it ships: without it no
+    # folder can be scanned, and a base env that lost its bin/ to a broken
+    # delete still boots fine (Windows beta report, 2026-11-04). ffmpeg:
+    # without it no video can be analysed, and a base env from before
+    # 7.20.0 has none. Rebuilding such an env is otherwise only offered,
+    # in a notice that can be closed, so this is what makes the update
+    # happen: setup reads the env as missing and replaces it. Only the
+    # base env is asked, because no other env predates its own ffmpeg.
+    if env_name != _REQUIRED_ENV:
+        return True
+    return (
+        bundled_exiftool_path(env_path).is_file()
+        and bundled_ffmpeg_path(env_path).is_file()
+    )
 
 
 def _envs_present(data_type: DataType = DEFAULT_DATA_TYPE) -> bool:
@@ -341,7 +351,7 @@ def run_setup(
     # that fails the presence check, before that check decides whether
     # to add an install step. The second case matters because
     # get_or_create_env only judges whether python boots, and would
-    # reuse a base env that lost its exiftool. retire_env raises when it
+    # reuse a base env without its exiftool or ffmpeg. retire_env raises when it
     # cannot move an env, which ends the install with that message and
     # leaves the env as it was.
     for env_name in force_envs:

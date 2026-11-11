@@ -295,27 +295,32 @@ def test_run_setup_leaves_a_healthy_base_env_alone(monkeypatch, tmp_path):
     assert em.built == []
 
 
-@pytest.mark.parametrize("has_exiftool", [True, False])
-def test_env_present_requires_exiftool(monkeypatch, tmp_path, has_exiftool):
-    """The boot probe cannot see exiftool, so a base env that boots but
-    has no exiftool must still read as not installed."""
+@pytest.mark.parametrize("missing", [None, "exiftool", "ffmpeg"])
+def test_env_present_requires_the_base_envs_binaries(monkeypatch, tmp_path, missing):
+    """The boot probe cannot see exiftool or ffmpeg, so a base env that
+    boots without one of them must still read as not installed: one that
+    lost its bin/, or one built before 7.20.0, which has no ffmpeg and
+    cannot analyse a video."""
     from app.utils.exiftool_bin import bundled_exiftool_path
+    from app.utils.ffmpeg_bin import bundled_ffmpeg_path
 
     env = _base_env(tmp_path)
-    if has_exiftool:
-        exiftool = bundled_exiftool_path(env)
-        exiftool.parent.mkdir(parents=True)
-        exiftool.write_text("")
+    binaries = {"exiftool": bundled_exiftool_path(env), "ffmpeg": bundled_ffmpeg_path(env)}
+    for name, path in binaries.items():
+        if name != missing:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("")
     em = SimpleNamespace(envs_dir=tmp_path / "envs", _validate_env=lambda p: True)
     monkeypatch.setattr(setup_router, "_get_env_manager", lambda: em)
 
-    assert setup_router._env_present() is has_exiftool
+    assert setup_router._env_present() is (missing is None)
 
 
-def test_only_the_base_env_needs_exiftool(monkeypatch, tmp_path):
+def test_only_the_base_env_is_asked_for_its_binaries(monkeypatch, tmp_path):
     """exiftool ships in the base env alone. Asking it of env-marine or
     env-ultralytics would read every built one as missing, so setup would
-    rebuild it on every run."""
+    rebuild it on every run. ffmpeg is not asked of them either: they are
+    new in 7.20.0, so none exists without it."""
     marine = tmp_path / "envs" / "env-marine"
     marine.mkdir(parents=True)
     em = SimpleNamespace(envs_dir=tmp_path / "envs", _validate_env=lambda p: True)
