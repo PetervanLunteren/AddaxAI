@@ -145,7 +145,7 @@ function ModelUpdateToast() {
   // to a project's Settings page, which broke when no project was open).
   return (
     <div
-      className="fixed bottom-4 right-4 z-50 w-96 rounded-lg border bg-white p-4 shadow-lg animate-in slide-in-from-bottom-5"
+      className="fixed bottom-4 right-4 z-50 w-96 rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg animate-in slide-in-from-bottom-5"
       role="alert"
     >
       <div className="flex items-start gap-3">
