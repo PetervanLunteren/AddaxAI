@@ -490,6 +490,34 @@ def test_video_counts_its_own_size_unless_written_as_a_still(db, tmp_path):
     assert stills.root_files == ["clip_still.jpg"]
 
 
+def test_blur_preview_promises_a_still_whose_stored_cover_is_gone(db, tmp_path):
+    """Separation decodes a missing stored cover (`media_picture`), so the
+    preview counts the still, as it did before separation could write it.
+    Its size is unknown until it is decoded, so the estimate says it is
+    partial rather than counting zero bytes."""
+    project = make_project(db, name="prev-cover-gone")
+    dep = make_deployment(db, project_id=project.id)
+    make_file(
+        db,
+        deployment_id=dep.id,
+        file_path="/cam/clip.mp4",
+        file_type="video",
+        file_format="mp4",
+        observation_type="blank",
+        size_bytes=5000,
+        best_frame_number=0,
+        best_frame_path=str(tmp_path / "gone.jpg"),
+    )
+
+    stills = build_output_preview(
+        db, project.id, media_threshold=0.5, group_by="none",
+        videos_as_stills=True,
+    )
+    assert stills.in_scope_files == 1
+    assert stills.root_files == ["clip_still.jpg"]
+    assert stills.files_with_known_size == 0
+
+
 def test_blur_preview_does_not_promise_a_clip_with_no_best_frame(db):
     """Under blur a video is written as its still. A clip with no best
     frame has no still to write, so separation skips it: the preview must

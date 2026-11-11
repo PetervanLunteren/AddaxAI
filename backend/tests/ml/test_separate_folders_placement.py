@@ -372,6 +372,31 @@ def test_blur_writes_a_video_as_its_still_only(db, tmp_path):
     assert not (target / "other" / "deer" / "CLIP01.MP4").exists()
 
 
+def test_a_still_is_decoded_when_the_stored_cover_is_gone(db, tmp_path, monkeypatch):
+    """After importing a bundle without photos onto videos that were never
+    analysed here, the stored cover is missing. Under blur the still is
+    then the cover frame decoded from the clip, not a skipped video."""
+    from app.services import video_frame_service
+
+    monkeypatch.setattr(
+        video_frame_service, "decode_frame_jpeg", lambda *a: b"decoded-frame-bytes"
+    )
+    project = make_project(db, name="vid-decoded", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    f = _video_on_disk(db, tmp_path, dep.id, "CLIP01.MP4")
+    Path(f.best_frame_path).unlink()
+    make_video_box(db, file_id=f.id, confidence=0.9, label="deer", frame_number=0)
+
+    target = tmp_path / "out"
+    result = separate_into_folders(
+        db, project.id, _ctx(target), media_threshold=0.5, videos_as_stills=True
+    )
+
+    assert result.copied_count == 1 and result.skipped_missing_source == 0
+    still = target / "other" / "deer" / "CLIP01_still.jpg"
+    assert still.read_bytes() == b"decoded-frame-bytes"
+
+
 def test_video_without_best_frame(db, tmp_path):
     """No best frame means no visible surface, so the clip reads blank:
     copied under ``blank/`` when empties are on, skipped when they are

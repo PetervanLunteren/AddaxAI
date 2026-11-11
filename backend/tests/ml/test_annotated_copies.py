@@ -419,6 +419,48 @@ def test_video_placed_as_a_still_is_annotated_in_place(db, tmp_path):
     assert not (target / "dog" / "clip.mp4").exists()
 
 
+def test_a_video_whose_stored_cover_is_gone_is_drawn_on_its_decoded_frame(
+    db, tmp_path, monkeypatch
+):
+    """The stored cover lives in the deployment's `.addaxai` folder, which
+    a bundle without photos does not bring. The boxes are then drawn on
+    the cover frame decoded from the clip, instead of the video being
+    reported as missing."""
+    import io
+
+    from PIL import Image
+
+    from app.services import video_frame_service
+
+    def fake_decode(path, frame_number, rate):
+        buf = io.BytesIO()
+        Image.new("RGB", (200, 200), (20, 200, 20)).save(buf, "JPEG")
+        return buf.getvalue()
+
+    monkeypatch.setattr(video_frame_service, "decode_frame_jpeg", fake_decode)
+    project = make_project(db, name="video-decoded", counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    file = _video_with_best_frame(db, tmp_path, dep.id)
+    Path(file.best_frame_path).unlink()
+
+    target = tmp_path / "out"
+    placed = target / "dog" / "clip_still.jpg"
+    placed.parent.mkdir(parents=True, exist_ok=True)
+    result = write_annotated_copies(
+        db,
+        project.id,
+        _ctx(target, {file.id: [placed]}),
+        draw_bboxes=True,
+        anonymise=False,
+        media_threshold=0.5,
+    )
+
+    assert result.written_count == 1 and result.skipped_missing_source == 0
+    with Image.open(placed) as still:
+        assert still.size == (200, 200)
+        assert still.getpixel((5, 5))[1] > 150
+
+
 def test_placed_video_with_nothing_to_draw_gets_no_still(db, tmp_path):
     """Deferred mode (``copy_unchanged``): an image with no effect is
     plain-copied so it is not left missing, but a video's container was

@@ -89,8 +89,8 @@ Blur is the one exception, through ``videos_as_stills``: a blurred
 still next to the unblurred video it came from is no anonymisation, so
 with blur on a video is written as its blurred still only. The worker
 passes ``videos_as_stills=anonymise``; nothing else sets it. In that
-mode a video with no best frame on disk is skipped, since there is no
-picture to blur; in normal mode such a video is still copied, and it
+mode a video with no picture (`media_picture`) is skipped, since there
+is nothing to blur; in normal mode such a video is still copied, and it
 reads ``blank`` unless a verified box speaks for it (no visible
 surface, see "What a file is about" in DEVELOPERS.md).
 
@@ -123,6 +123,7 @@ from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
 from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, File, LabelTaxonomy, Project
 from app.models.event import event_files
+from app.services.video_frame_service import video_cover
 
 from ._exif_writer import ExifBatch, build_tag_set, is_image_path
 from ._label_filter import (
@@ -542,20 +543,40 @@ def video_still_name(video_path: str | Path) -> str:
     return f"{Path(video_path).stem}_still.jpg"
 
 
+def media_picture(file: File) -> Path | bytes | None:
+    """The picture of a file, for a still or for drawing on: an image is
+    its own file, a video its cover (`video_cover`: the stored cover
+    frame, else that frame decoded from the clip). None for a video with
+    neither. An image's path is returned whether or not it is on disk,
+    so the caller can name the missing file."""
+    if file.file_type == "video":
+        return video_cover(file)
+    return Path(file.file_path)
+
+
+def place_copy(source: Path | bytes, dest: Path) -> None:
+    """Write ``source`` to ``dest``: a file is copied with its timestamps
+    (`shutil.copy2`, which tools that read modification time as capture
+    time rely on), a decoded video cover is written as it is."""
+    if isinstance(source, bytes):
+        dest.write_bytes(source)
+    else:
+        shutil.copy2(source, dest)
+
+
 def _media_source(
     file: File, videos_as_stills: bool
-) -> tuple[Path | None, str]:
-    """Resolve the on-disk source and the output filename for one file.
+) -> tuple[Path | bytes | None, str]:
+    """Resolve the source and the output filename for one file.
 
     Images and, normally, videos are their own file under their own
-    name. With ``videos_as_stills`` a video is its best-frame JPEG,
-    named ``<video_stem>_still.jpg``; ``(None, "")`` when that frame is
-    not on file, since there is then no picture to write.
+    name. With ``videos_as_stills`` a video is its picture
+    (`media_picture`), named ``<video_stem>_still.jpg``; ``(None, "")``
+    when it has none, since there is then nothing to write.
     """
     if file.file_type == "video" and videos_as_stills:
-        if not file.best_frame_path:
-            return None, ""
-        return Path(file.best_frame_path), video_still_name(file.file_path)
+        cover = media_picture(file)
+        return (cover, video_still_name(file.file_path)) if cover is not None else (None, "")
     p = Path(file.file_path)
     return p, p.name
 
@@ -778,10 +799,10 @@ def separate_into_folders(
             if source is None:
                 result.skipped_missing_source += 1
                 result.errors.append(
-                    f"Video has no best frame on disk: {file.file_path}"
+                    f"Video has no frame to show: {file.file_path}"
                 )
                 continue
-            if not source.exists():
+            if isinstance(source, Path) and not source.exists():
                 result.skipped_missing_source += 1
                 result.errors.append(
                     f"Source file no longer on disk: {source}"
@@ -833,14 +854,11 @@ def separate_into_folders(
             # container is copied here whatever ``place_files`` says.
             if place_files or is_container:
                 try:
-                    # copy2 preserves mtime. Important for downstream tools
-                    # that read modification time as a proxy for capture
-                    # time.
-                    shutil.copy2(source, dest)
+                    place_copy(source, dest)
                 except OSError as e:
-                    result.errors.append(f"Failed to copy {source}: {e}")
+                    result.errors.append(f"Failed to copy {file.file_path}: {e}")
                     logger.exception(
-                        f"separate_folders: copy failed for {source}"
+                        f"separate_folders: copy failed for {file.file_path}"
                     )
                     continue
 

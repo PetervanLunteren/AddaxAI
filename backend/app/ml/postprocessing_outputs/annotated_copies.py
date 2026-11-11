@@ -42,15 +42,16 @@ Source-vs-destination semantics:
 
 - Images: source is ``File.file_path``, the original. Effects are
   computed on the source pixels and saved to the destination.
-- Videos: source is the per-video best-frame JPEG
-  (``File.best_frame_path``), which lives inside ``.addaxai/projects/...``
-  and is unaffected by separation. The annotated JPEG is saved beside
-  the copied video, never written into the container itself.
+- Videos: source is the video's cover (``media_picture``): the stored
+  cover frame inside ``.addaxai/projects/...``, unaffected by
+  separation, else that frame decoded from the clip. The annotated JPEG
+  is saved beside the copied video, never written into the container
+  itself.
 """
 
 from __future__ import annotations
 
-import shutil
+import io
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -84,7 +85,7 @@ from ._visualisation_style import (
     detection_color,
     render_metrics,
 )
-from .separate_folders import video_still_name
+from .separate_folders import media_picture, place_copy, video_still_name
 
 logger = get_logger(__name__)
 
@@ -138,23 +139,6 @@ class AnnotatedCopiesResult:
 # ─────────────────────────────────────────────────────────────────
 # Source / destination resolution
 # ─────────────────────────────────────────────────────────────────
-
-
-def _source_for(file: File) -> Path | None:
-    """The on-disk file to read pixels from.
-
-    Images use their own path (which is the post-separation location
-    under ``move`` mode, the original under ``copy`` / no separation).
-    Videos use the pre-rendered best-frame JPEG, which sits in the
-    project's ``.addaxai`` cache and is unaffected by separation.
-    """
-    if file.file_type == "image":
-        return Path(file.file_path)
-    if file.file_type == "video":
-        if not file.best_frame_path:
-            return None
-        return Path(file.best_frame_path)
-    return None
 
 
 def _fallback_destination_name(file: File) -> str:
@@ -582,7 +566,7 @@ def write_annotated_copies(
                 # place (excluded / blank), so those are still just skipped.
                 if copy_unchanged:
                     dests = ctx.resolved_for(file.id)
-                    source = _source_for(file)
+                    source = media_picture(file)
                     # A video placed as its container was copied by
                     # separation itself; the still beside it exists to
                     # carry boxes or a blur, so with nothing to draw there
@@ -593,7 +577,7 @@ def write_annotated_copies(
                         dests
                         and not placed_container
                         and source is not None
-                        and source.exists()
+                        and (isinstance(source, bytes) or source.exists())
                     ):
                         tag_set = build_tag_set(
                             db,
@@ -606,10 +590,10 @@ def write_annotated_copies(
                         for dest in _resolve_destinations(file, ctx, result):
                             dest.parent.mkdir(parents=True, exist_ok=True)
                             try:
-                                shutil.copy2(source, dest)
+                                place_copy(source, dest)
                             except OSError as e:
                                 result.errors.append(
-                                    f"Could not copy {source} -> {dest}: {e}"
+                                    f"Could not copy {file.file_path} -> {dest}: {e}"
                                 )
                                 continue
                             if tag_set is not None and is_image_path(dest):
@@ -623,24 +607,26 @@ def write_annotated_copies(
                 result.skipped_no_change += 1
                 continue
 
-            source = _source_for(file)
-            if source is None or not source.exists():
+            source = media_picture(file)
+            if source is None or (isinstance(source, Path) and not source.exists()):
                 result.skipped_missing_source += 1
                 # Same wording as separation, so the completion dialog can
                 # list each file once whichever module noticed first.
                 result.errors.append(
-                    f"Video has no best frame on disk: {file.file_path}"
+                    f"Video has no frame to show: {file.file_path}"
                     if source is None
                     else f"Source file no longer on disk: {source}"
                 )
                 continue
 
             try:
-                opened = Image.open(source)
+                opened = Image.open(
+                    io.BytesIO(source) if isinstance(source, bytes) else source
+                )
             except OSError as e:
-                result.errors.append(f"Could not open {source}: {e}")
+                result.errors.append(f"Could not open {file.file_path}: {e}")
                 logger.exception(
-                    f"annotated_copies: open failed for {source}"
+                    f"annotated_copies: open failed for {file.file_path}"
                 )
                 continue
 
@@ -717,11 +703,15 @@ def write_annotated_copies(
 
                 # One exiftool call: the original's metadata, minus its
                 # previews, plus the predictions. A video still's source
-                # is the app's frame grab, which has none to copy.
+                # is the app's frame grab, which has none to copy, and a
+                # decoded one is not a file at all.
                 if tag_set is not None and is_image_path(dest):
                     try:
                         exif_batch.write(
-                            dest, tag_set, source=source, upright=rotated
+                            dest,
+                            tag_set,
+                            source=source if isinstance(source, Path) else None,
+                            upright=rotated,
                         )
                     except Exception as e:  # noqa: BLE001
                         logger.warning(
