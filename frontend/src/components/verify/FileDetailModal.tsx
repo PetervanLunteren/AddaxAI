@@ -738,7 +738,7 @@ export function FileDetailModal({
    *    and Enter Enter walks frame by frame.
    *  - Agreeing with boxes left on the picture selects the next of them,
    *    so V V V clears a frame and the last V moves on.
-   *  - A correction (X, U, R, M, 1 to 5, naming a drawn box) stays on
+   *  - A correction (X, U, R, M, a number key, naming a drawn box) stays on
    *    the picture with nothing selected: the person is working there,
    *    often on several boxes in a row. Until 2026-11-06 every verdict
    *    walked, and an X at the end of a drop wrapped back to its first

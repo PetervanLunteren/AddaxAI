@@ -120,19 +120,15 @@ _DETECTION_COLUMNS = """
 # queries. Ends on a WHERE clause so `_build_query` can append " AND ..."
 # filter clauses.
 #
-# The best-frame gate is part of the scope, not a user-facing filter. A
-# video's detections sit on every sampled frame, but only the best frame is
-# written to disk as a JPEG, so a detection on any other frame has no image
-# to crop. `crop_service` would answer with the best frame cropped at a
-# bbox belonging to a different moment: a picture of the wrong place, and
-# of nothing at all once the animal has moved on. Those detections stay in
-# the database (per-frame classifications are what smoothing and rollup
-# consume) and still draw in the video player, which has the real frames.
-#
-# Verified detections pass on any frame. A human decision must never end up
-# out of reach, and `rebuild_event_observations` already lets a species
-# verified on some frame into the counts, so the grid has to be able to
-# show the card that count came from.
+# The video gate is part of the scope, not a user-facing filter. A video's
+# detections sit on every sampled frame, and all boxes of one track are the
+# same animal, so only the box on the track's representative frame is a
+# card: the one the tracking script kept a crop of. The other boxes stay in
+# the database and draw in the video player. No exception for verified
+# boxes: a verdict on the card reaches every box of its track, so letting
+# those through would turn each frame of a verified track into a card.
+# This is `on_visible_frame` (`ml/detection_visibility.py`) written as SQL,
+# because this script runs outside the app and cannot import it.
 #
 # Images are never gated. This mirrors `on_embeddable_surface` in
 # routers/labels.py, `build_embedding_input`, the annotated exports and

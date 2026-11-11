@@ -35,11 +35,11 @@ DEVELOPERS.md "What a file is about" before unifying the two.
 **A detection labelled as a non-label class cannot be the subject.**
 ``bait``, ``blank``, ``empty``, ``false detection``, ``none``, ``vide``:
 these say "there is nothing here", so a file holding only those is
-``blank``. The AI's own such calls never reach the database, dropped by
-the ingest skip (see DEVELOPERS.md "Non-label detection skip"). This is
-the same rule applied at read time, for the case the ingest skip cannot
-reach: a human pressing X on the Labels page reaches the identical
-verdict later, and until this existed the file stayed ``animal``, because
+``blank``. The rule is applied at read time because the rows are kept: the
+AI's own such calls are stored as rejected boxes (see DEVELOPERS.md
+"Non-label classifications are kept as rejected rows"), and a human
+pressing X on the Labels page writes the identical verdict later. Until
+this existed such a file stayed ``animal``, because
 "Mark false" writes the label and deliberately leaves the detector's
 category alone. Measured: such a file exported ``observation_type=animal``
 with ``classification_label=false detection`` beside it.

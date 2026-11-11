@@ -1774,9 +1774,9 @@ def build_spatial_layers(
     """
     # One pass over the scoped files for both layers' counts: boxes per
     # deployment, and boxes per (site, species). Both hold only what the
-    # user can reach (``visible_only``), so a map bubble agrees with the
-    # Labels grid and detections.csv, and the species points of a site add
-    # up to its deployments.
+    # user can reach (`iter_scoped_files` yields cards only), so a map
+    # bubble agrees with the Labels grid and detections.csv, and the
+    # species points of a site add up to its deployments.
     #
     # The species layer aggregates classified detections only -- person,
     # vehicle, unclassified, and blank rows have no label and don't belong

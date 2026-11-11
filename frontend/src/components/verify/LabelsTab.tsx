@@ -130,6 +130,7 @@ const CROPS_SHORTCUTS: readonly Shortcut[] = [
   ["← / →", "Previous / next detection"],
   ["A", "Take the label the similar crops suggest"],
   ["B", "Hide or show the boxes"],
+  ["D", "Draw a box"],
   ["F", "Flag the file for review"],
 ];
 

@@ -70,8 +70,9 @@ def _refuse_mixed_domains(
 
     Not a matter of taste: classification runs on every box that is not a
     person or vehicle, and a box whose top-1 class is "blank" or "empty"
-    is never loaded (`should_skip_detection`). A camera trap classifier on
-    SharkTrack's boxes would therefore drop sharks without a word. The
+    is stored as a rejected box, out of every count. A camera trap
+    classifier on SharkTrack's boxes would therefore reject sharks without
+    a word. The
     setup forms only offer models of one data type; this holds for every
     other way in (a stale last-used setting, a duplicate, the API).
 

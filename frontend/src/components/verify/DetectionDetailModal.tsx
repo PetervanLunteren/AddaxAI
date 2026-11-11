@@ -183,20 +183,10 @@ export function DetectionDetailModal({
   // and still open. One box per press, like the Files viewer.
   const [drawMode, setDrawMode] = useState(false);
   const [drawnId, setDrawnId] = useState<string | null>(null);
-  // "Add new label" closes the picker before it applies the label
-  // (`LabelPicker` documents the trap), and the close clears `drawnId`,
-  // so the label would land on the crop instead. The ref keeps the box
-  // the picker was about across that gap, as `FileDetailModal` does.
-  // Cleared once a label lands and whenever the picker opens for the
-  // crop, so a cancelled naming cannot redirect a later R.
-  const drawnIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (drawnId) drawnIdRef.current = drawnId;
-  }, [drawnId]);
-  const openCropPicker = useCallback(() => {
-    drawnIdRef.current = null;
-    setForceOpenPicker(true);
-  }, []);
+  // `drawnId` is still set when "Add new label" hands its label over:
+  // the picker reports its close only after `onSelect` (`LabelPicker`,
+  // `handleTaxonomySheetClose`), so the label lands on the drawn box.
+  const openCropPicker = useCallback(() => setForceOpenPicker(true), []);
 
   // Source-image zoom (scroll wheel) + pan (drag while zoomed). The
   // image-detail modals zoom via a Konva stage, but this modal shows a
@@ -294,7 +284,6 @@ export function DetectionDetailModal({
     setImageFailed(false);
     setDrawMode(false);
     setDrawnId(null);
-    drawnIdRef.current = null;
   }, [detection?.detection_id, open]);
 
   // Drag to pan while zoomed in. Global listeners so the drag survives
@@ -1147,12 +1136,8 @@ export function DetectionDetailModal({
                   value={drawnId ? null : detection.label}
                   displayName={drawnId ? null : detection.scientific_name}
                   onSelect={(option) => {
-                    // The state when the pick follows the open, the
-                    // ref when creating a label closed the picker first.
-                    const drawn = drawnId ?? drawnIdRef.current;
-                    drawnIdRef.current = null;
-                    if (drawn) {
-                      nameDrawnBox(drawn, option);
+                    if (drawnId) {
+                      nameDrawnBox(drawnId, option);
                       return;
                     }
                     relabelMutation.mutate({
