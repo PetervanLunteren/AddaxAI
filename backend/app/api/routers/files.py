@@ -26,7 +26,7 @@ from app.api.schemas.undo import UndoSnapshot
 from app.db.base import get_db
 from app.ml.inference.image_io import upright_rgb
 from app.models import Deployment, File, Project
-from app.services.video_frame_service import decode_frame_jpeg
+from app.services.video_frame_service import decode_frame_jpeg, video_cover
 from app.utils.datetime_serialization import set_active_project_timezone
 
 router = APIRouter(prefix="/api/files", tags=["files"])
@@ -322,29 +322,32 @@ def get_file_image(
         # always reaches this endpoint, because a video with no visible
         # surface has no passing detection and so sits in the Empties
         # tab, one tile per clip.
+        picture: Path | bytes | None
         if frame is not None and frame != file.best_frame_number:
             # Any other frame is decoded on request; nothing per frame is
             # stored. A frame past the end, or a clip ffmpeg cannot read,
             # says so rather than serving the cover under a wrong label.
-            jpeg = decode_frame_jpeg(file.file_path, frame, file.frame_rate)
-            if jpeg is None:
+            picture = decode_frame_jpeg(file.file_path, frame, file.frame_rate)
+            if picture is None:
                 raise HTTPException(
                     status_code=404,
                     detail=f"Could not decode frame {frame} of this video.",
                 )
-            if size == "thumb":
-                jpeg = _render_thumbnail_bytes(io.BytesIO(jpeg))
-            return Response(
-                content=jpeg, media_type="image/jpeg", headers=_IMAGE_CACHE_HEADERS
-            )
-        elif not file.best_frame_path:
-            raise HTTPException(
-                status_code=404,
-                detail="This video could not be decoded, so it has no frame to show.",
-            )
         else:
-            source_path = Path(file.best_frame_path)
-            source_media_type = "image/jpeg"
+            picture = video_cover(file)
+            if picture is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="This video could not be decoded, so it has no frame to show.",
+                )
+        if isinstance(picture, bytes):
+            if size == "thumb":
+                picture = _render_thumbnail_bytes(io.BytesIO(picture))
+            return Response(
+                content=picture, media_type="image/jpeg", headers=_IMAGE_CACHE_HEADERS
+            )
+        source_path = picture
+        source_media_type = "image/jpeg"
     else:
         source_path = Path(file.file_path)
         source_media_type = f"image/{file.file_format}"

@@ -36,6 +36,7 @@ import cv2
 
 from app.core.logging_config import get_logger
 from app.ml.inference.video_iter import open_video
+from app.models import File
 from app.utils.ffmpeg_bin import APP_ENV, resolve_ffmpeg
 
 logger = get_logger(__name__)
@@ -338,3 +339,21 @@ def warm_track_frames(
         chunk = track_frames[at : at + TRACK_CHUNK]
         missing = [n for n in chunk if _cached((video_path, n, fps)) is None]
         decode_frames_jpeg(video_path, missing, fps)
+
+
+def video_cover(file: File) -> Path | bytes | None:
+    """The picture that stands for a video: its stored cover frame, else
+    that frame decoded from the clip, or None when there is neither.
+
+    The cover is written into the deployment's ``.addaxai`` folder when
+    the video is analysed. A bundle without photos, connected to a copy
+    of the videos that was never analysed, has the rows and not that
+    folder, so the cover is decoded instead of the video going without a
+    picture. Read for the Files tab tile and the project's card picture.
+    """
+    if file.best_frame_path and Path(file.best_frame_path).is_file():
+        return Path(file.best_frame_path)
+    if file.best_frame_number is None:
+        return None
+    return decode_frame_jpeg(file.file_path, file.best_frame_number, file.frame_rate)
+

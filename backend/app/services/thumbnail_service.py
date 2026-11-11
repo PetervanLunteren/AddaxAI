@@ -9,6 +9,7 @@ project's card shows one of its pictures after its first run rather
 than after the next restart (2026-11-04).
 """
 
+import io
 import random
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from app.core.config import get_settings
 from app.core.logging_config import get_logger
 from app.ml.label_exclusion import is_a_real_detection, is_wildlife_category
 from app.models import Deployment, Detection, File, Project
+from app.services.video_frame_service import video_cover
 
 logger = get_logger(__name__)
 
@@ -34,15 +36,16 @@ def thumbnails_dir() -> Path:
     return path
 
 
-def generate_thumbnail(source_path: Path, dest_path: Path) -> Path:
-    """Resize an image to max 512px wide and save as JPEG.
+def generate_thumbnail(source: Path | bytes, dest_path: Path) -> Path:
+    """Resize an image (a file, or JPEG bytes such as a decoded video
+    frame) to max 512px wide and save as JPEG.
 
     Maintains aspect ratio. Converts to RGB for JPEG compatibility.
     Creates parent directories if needed.
     """
     dest_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with Image.open(source_path) as img:
+    with Image.open(io.BytesIO(source) if isinstance(source, bytes) else source) as img:
         img = img.convert("RGB")
 
         if img.width > _MAX_WIDTH:
@@ -55,18 +58,15 @@ def generate_thumbnail(source_path: Path, dest_path: Path) -> Path:
     return dest_path
 
 
-def _resolve_image_path(file: File) -> Path | None:
-    """Get the displayable image path for a file.
+def _resolve_image_path(file: File) -> Path | bytes | None:
+    """Get the displayable picture of a file.
 
-    For videos, returns the best frame JPEG (or None if it's not on
-    disk — never the .mp4, which would crash PIL). For images, returns
-    the file itself. Returns None if no displayable image is available.
+    For videos, its cover (`video_cover`: the stored cover frame, else
+    that frame decoded; never the .mp4, which would crash PIL). For
+    images, the file itself. None if no displayable picture is available.
     """
     if file.file_type == "video":
-        if not file.best_frame_path:
-            return None
-        p = Path(file.best_frame_path)
-        return p if p.exists() else None
+        return video_cover(file)
 
     p = Path(file.file_path)
     return p if p.exists() else None

@@ -194,6 +194,49 @@ def test_label_tree_count_by_file(client, db):
     assert body["count_unit"] == "file"
 
 
+def test_a_video_whose_cover_is_gone_is_shown_from_its_decoded_frame(
+    client, db, tmp_path, monkeypatch
+):
+    """The cover lives in the deployment's `.addaxai` folder. A bundle
+    without photos, connected to a copy of the videos that was never
+    analysed, has the rows and not that folder: the tile then showed no
+    picture. The cover frame is decoded from the clip instead, at both
+    sizes, and the stored cover is still used when it is there."""
+    from app.api.routers.files import _THUMB_MAX_WIDTH
+    from app.services import video_frame_service
+
+    asked = []
+
+    def fake_decode(path, frame_number, rate):
+        asked.append(frame_number)
+        buf = io.BytesIO()
+        Image.new("RGB", (1024, 576), (20, 200, 20)).save(buf, "JPEG")
+        return buf.getvalue()
+
+    monkeypatch.setattr(video_frame_service, "decode_frame_jpeg", fake_decode)
+    d, _ = _setup_deployment(db)
+    f = make_file(
+        db, deployment_id=d.id, file_path=str(tmp_path / "clip.mp4"),
+        file_type="video", file_format="mp4", frame_rate=30.0,
+        best_frame_number=60, best_frame_path=str(tmp_path / "gone" / "frame000060.jpg"),
+    )
+
+    full = client.get(f"/api/files/{f.id}/image")
+    thumb = client.get(f"/api/files/{f.id}/image?size=thumb")
+
+    assert full.status_code == thumb.status_code == 200
+    assert Image.open(io.BytesIO(full.content)).size == (1024, 576)
+    assert Image.open(io.BytesIO(thumb.content)).width == _THUMB_MAX_WIDTH
+    assert asked == [60, 60]
+
+    stored = tmp_path / "gone" / "frame000060.jpg"
+    stored.parent.mkdir()
+    Image.new("RGB", (64, 48), (200, 20, 20)).save(stored)
+    resp = client.get(f"/api/files/{f.id}/image")
+    assert Image.open(io.BytesIO(resp.content)).size == (64, 48)
+    assert asked == [60, 60]
+
+
 def test_label_tree_count_by_file_reads_a_video_on_its_best_frame(client, db):
     """A video counts for a label only when the box sits on the frame the
     app shows. The count query used to leave File unjoined, so the frame
