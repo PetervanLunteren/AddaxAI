@@ -10,10 +10,14 @@ cuts a track's card the same way while it decodes the video. Cached in
 an in-memory LRU.
 
 A caller that shows the crop in a non-square frame (the dashboard's hero
-photo) asks for an `aspect`. The window then takes that shape and slides
-inside the photo, so the rest of the picture fills the frame instead of
-blur. Square crops never slide: the Labels grid draws its bbox overlay
-from a centred square (`_compute_crop_bbox` in similarity_script).
+photo, the calibration dialog) asks for an `aspect`. The window then
+takes that shape and slides inside the photo, so the rest of the picture
+fills the frame instead of blur. Square crops never slide: the Labels
+grid draws its bbox overlay from a centred square (`_compute_crop_bbox`
+in similarity_script). A shaped crop is always cut from the full picture,
+a video card's from its decoded frame: the track's stored crop is the
+square already, and a shape cut out of that loses the animal's head and
+feet (until 2026-11-11).
 """
 
 import io
@@ -36,13 +40,20 @@ _MAX_CACHE_ENTRIES = 2000
 _cache: OrderedDict[str, bytes] = OrderedDict()
 
 
-_WHOLE_IMAGE = [0.0, 0.0, 1.0, 1.0]
-
 
 def _resolve_source(
-    file: File, detection: Detection, track_frames: list[int] | None = None
-) -> tuple[Path | bytes, list[float]] | None:
+    file: File,
+    detection: Detection,
+    track_frames: list[int] | None = None,
+    *,
+    square: bool = True,
+) -> tuple[Path | bytes, list[float] | None] | None:
     """The picture to cut this detection's card from, and the box in it.
+    No box (None) says the picture is the card already, to be served as
+    it is: a track's stored crop. Said outright rather than read off a
+    box that spans the picture, because a real box can: a whole-image
+    classifier stamps one on every photo, and until 2026-11-11 those
+    photos were taken for stored crops and squeezed into the square.
 
     An image is cropped at the box. For a video the ladder is, in order:
 
@@ -52,6 +63,11 @@ def _resolve_source(
     2. the track's representative frame, its card: the track's stored
        crop (already the padded square, so the whole file), else the
        cover frame when the card sits on it, else that frame decoded.
+       A picture that is not on disk is passed over, so a card whose
+       crop did not travel (a bundle without photos, connected to a
+       copy of the videos that was never analysed) is decoded instead
+       of left blank. So is the stored crop when the request is not
+       ``square``: a shape needs the frame around the box.
     3. any other frame of the track: that frame decoded on request, cut
        at this box. Only the opened track on the Detections tab asks
        for these, and it asks for a screenful at once, so the chunk of
@@ -85,7 +101,9 @@ def _resolve_source(
         pixels = video_pixels_for(detection, file)
         if pixels is not None:
             path, bbox = pixels
-            return (Path(path), bbox) if Path(path).exists() else None
+            stored_crop = path == track.crop_path
+            if Path(path).exists() and (square or not stored_crop):
+                return Path(path), None if stored_crop else bbox
     if not file.file_path:
         return None
     if track_frames:
@@ -96,18 +114,6 @@ def _resolve_source(
     if jpeg is None:
         return None
     return jpeg, own_bbox
-
-
-def _centre_to_aspect(img: Image.Image, aspect: float) -> Image.Image:
-    """The centre of ``img`` cut to ``aspect`` (width / height)."""
-    w, h = img.size
-    if aspect > w / h:
-        new_h = max(1, round(w / aspect))
-        top = (h - new_h) // 2
-        return img.crop((0, top, w, top + new_h))
-    new_w = max(1, round(h * aspect))
-    left = (w - new_w) // 2
-    return img.crop((left, 0, left + new_w, h))
 
 
 def _track_frames_of(db: Session, file: File, detection: Detection) -> list[int] | None:
@@ -155,7 +161,10 @@ def get_or_create_crop(
     if not file:
         return None
 
-    source = _resolve_source(file, detection, _track_frames_of(db, file, detection))
+    square = aspect is None or aspect == 1
+    source = _resolve_source(
+        file, detection, _track_frames_of(db, file, detection), square=square
+    )
     if source is None:
         return None
     picture, bbox = source
@@ -170,11 +179,10 @@ def get_or_create_crop(
             img = Image.open(io.BytesIO(picture)).convert("RGB")
         w, h = img.size
 
-        if bbox == _WHOLE_IMAGE:
-            # A stored track crop is already the padded square. A shaped
-            # request takes its centre, which keeps the box: the square is
-            # centred on it.
-            crop = img if aspect is None or aspect == 1 else _centre_to_aspect(img, aspect)
+        if bbox is None:
+            # A stored track crop is already the padded square, and only
+            # a square request is handed one (`_resolve_source`).
+            crop = img
         else:
             left, top, right, bottom = compute_expanded_crop_region(
                 *bbox, w, h, aspect=aspect

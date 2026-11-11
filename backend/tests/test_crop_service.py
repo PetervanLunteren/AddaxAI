@@ -158,7 +158,7 @@ def test_a_tracks_card_is_the_stored_crop_as_it_is(db, tmp_path):
     card = make_detection(db, file_id=f.id, frame_number=300, track_id=track.id)
     db.commit()
 
-    assert _resolve_source(f, card) == (crop, [0.0, 0.0, 1.0, 1.0])
+    assert _resolve_source(f, card) == (crop, None)
     served = Image.open(io.BytesIO(get_or_create_crop(card.id, 100, db)))
     assert served.size == (100, 100)
     r, g, b = served.getpixel((50, 50))
@@ -297,26 +297,82 @@ def test_a_shaped_crop_comes_out_at_that_shape(db, tmp_path):
     assert wide.size == (320, 200)
 
 
-def test_a_tracks_stored_square_comes_out_shaped_without_stretching(db, tmp_path):
-    """The stored track crop is already a padded square centred on the
-    box. A shaped request (the dashboard hero) takes its centre at that
-    shape instead of squeezing the square into it."""
+def _card_with_stored_crop(db, tmp_path, crop_exists=True):
+    """A track's card off the cover, with a red stored crop; the clip's
+    frames decode to green."""
     f, _ = _video(db, tmp_path)
-    square = Image.new("RGB", (300, 300), (20, 20, 200))
-    square.paste((220, 30, 30), (0, 0, 300, 50))  # red band along the top
-    square.save(tmp_path / "track000001.jpg", "JPEG", quality=95)
+    crop = tmp_path / "track000001.jpg"
+    if crop_exists:
+        Image.new("RGB", (300, 300), (220, 30, 30)).save(crop, "JPEG")
     track = make_track(db, file_id=f.id, start_frame=270, end_frame=330,
-                       representative_frame_number=300,
-                       crop_path=str(tmp_path / "track000001.jpg"))
-    card = make_detection(db, file_id=f.id, frame_number=300, track_id=track.id)
+                       representative_frame_number=300, crop_path=str(crop))
+    card = make_detection(db, file_id=f.id, frame_number=300, track_id=track.id,
+                          bbox_x=0.4, bbox_y=0.1, bbox_width=0.2, bbox_height=0.8)
     db.commit()
+    return f, card
 
+
+def test_a_shaped_crop_of_a_tracks_card_is_cut_from_its_frame(db, tmp_path, monkeypatch):
+    """The stored track crop is the padded square. A shape cut out of its
+    centre lost the animal's head and feet (calibration at 4:3, the
+    dashboard hero at 16:10), so a shaped request decodes the card's
+    frame and is cut like a photo, with the whole box in it."""
+    f, card = _card_with_stored_crop(db, tmp_path)
+    asked = []
+
+    def fake_decode(path, frame_number, rate):
+        asked.append(frame_number)
+        return _jpeg_bytes(colour=(20, 200, 20))
+
+    monkeypatch.setattr(crop_service, "decode_frame_jpeg", fake_decode)
+
+    picture, bbox = _resolve_source(f, card, square=False)
+    assert isinstance(picture, bytes) and bbox == [0.4, 0.1, 0.2, 0.8]
     wide = Image.open(io.BytesIO(get_or_create_crop(card.id, 320, db, aspect=1.6)))
-
     assert wide.size == (320, 200)
-    # The centre was kept, so the red band at the very top was cut away.
-    r, g, b = wide.getpixel((160, 2))
-    assert b > 150 and r < 80
+    assert wide.getpixel((160, 100))[1] > 150
+    assert asked == [300, 300]
+
+    # The square card is still the stored crop, with nothing decoded.
+    square = Image.open(io.BytesIO(get_or_create_crop(card.id, 100, db)))
+    assert square.getpixel((50, 50))[0] > 180
+    assert asked == [300, 300]
+
+
+def test_a_card_whose_stored_crop_is_gone_is_cut_from_its_frame(db, tmp_path, monkeypatch):
+    """A bundle without photos, connected to a copy of the videos that was
+    never analysed, has the tracks and no `.addaxai` folder. The card is
+    decoded from the clip instead of left without a picture."""
+    f, card = _card_with_stored_crop(db, tmp_path, crop_exists=False)
+    monkeypatch.setattr(
+        crop_service, "decode_frame_jpeg", lambda *a: _jpeg_bytes(colour=(20, 200, 20))
+    )
+
+    picture, bbox = _resolve_source(f, card)
+    assert isinstance(picture, bytes) and bbox == [0.4, 0.1, 0.2, 0.8]
+    served = Image.open(io.BytesIO(get_or_create_crop(card.id, 100, db)))
+    assert served.size == (100, 100) and served.getpixel((50, 50))[1] > 150
+
+
+def test_a_box_that_spans_the_photo_is_not_squeezed_into_the_square(db, tmp_path):
+    """A whole-image classifier stamps a box over the full photo. It is a
+    box like any other: the card is a square cut around it, not the 5:3
+    photo pressed into a square."""
+    photo = tmp_path / "wide.jpg"
+    img = Image.new("RGB", (1000, 600), (20, 20, 200))
+    img.paste((220, 30, 30), (400, 200, 600, 400))  # a red square in the middle
+    img.save(photo, "JPEG", quality=95)
+    dep = make_deployment(db, project_id=make_project(db).id)
+    f = make_file(db, deployment_id=dep.id, file_path=str(photo))
+    d = make_detection(db, file_id=f.id, bbox_x=0.0, bbox_y=0.0,
+                       bbox_width=1.0, bbox_height=1.0)
+
+    assert _resolve_source(f, d) == (photo, [0.0, 0.0, 1.0, 1.0])
+    card = Image.open(io.BytesIO(get_or_create_crop(d.id, 200, db)))
+
+    red = [x for x in range(200) if card.getpixel((x, 100))[0] > 150]
+    red_rows = [y for y in range(200) if card.getpixel((100, y))[0] > 150]
+    assert abs(len(red) - len(red_rows)) <= 2
 
 
 def test_a_crop_from_a_rotated_photo_shows_the_same_pixels(db, tmp_path):
