@@ -1533,7 +1533,9 @@ export function FileDetailModal({
             clips={1}
             detections={cards.length}
             unchecked={unchecked}
-            onConfirm={verifyAndAdvance}
+            // Called bare: the dialog's button would hand its click event
+            // to `verifyAndAdvance` as the undo snapshot to merge with.
+            onConfirm={() => verifyAndAdvance()}
           />
 
           {/* Two searches, no triggers of their own. The first names the
